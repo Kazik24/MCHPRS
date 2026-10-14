@@ -3,10 +3,7 @@
 use crate::messages;
 
 pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
-    let topic = topic
-        .unwrap_or("")
-        .trim_start_matches('/')
-        .to_ascii_lowercase();
+    let topic = topic.unwrap_or("").trim_start_matches('/').to_ascii_lowercase();
     Some(match topic.as_str() {
         "" => messages::HELP_QUICK_START,
         "plots" | "plot" | "p" => messages::HELP_PLOTS,
@@ -15,16 +12,13 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "we" | "worldedit" => messages::HELP_WORLD_EDIT,
         "wire" => messages::HELP_WIRE,
         "small" => messages::HELP_SMALL,
-        "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs"
-        | "autostack" | "container" | "cursel" => messages::HELP_REDSTONE_TOOLS,
+        "tools" | "redstonetools" | "find" | "signsearch" | "ss" | "rstack" | "rs" | "autostack" | "container" | "cursel" => {
+            messages::HELP_REDSTONE_TOOLS
+        }
         "schematics" | "schematic" | "load" | "save" => messages::HELP_SCHEMATICS,
         "visual" | "pistons" | "animations" => messages::HELP_PISTONS,
-        "rev" | "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => {
-            messages::HELP_HISTORY
-        }
-        "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => {
-            messages::HELP_CHAT
-        }
+        "rev" | "back" | "rewind" | "history" | "tick_rewind" | "rhistory" | "rback" => messages::HELP_HISTORY,
+        "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => messages::HELP_CHAT,
         "redpiler" | "rp" => messages::HELP_REDPILER,
         "git" => messages::HELP_GIT,
         _ => return None,

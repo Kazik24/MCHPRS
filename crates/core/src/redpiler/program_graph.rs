@@ -1,6 +1,7 @@
 //! Typed construction and immutable program storage for the general graph.
 
 use crate::redpiler::components::{NodeState, NodeType};
+use crate::redpiler::passes::index_turbo_callbacks::TurboCallbackIndex;
 use mchprs_blocks::blocks::{Block, RedstoneWire};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
@@ -60,14 +61,8 @@ pub(crate) enum PowerPort {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Whether a callback link represents a block update or shape notification.
 pub(crate) enum LinkKind {
-    Update {
-        direction: Option<BlockFace>,
-        guard: GuardId,
-    },
-    Shape {
-        direction: BlockFace,
-        guard: GuardId,
-    },
+    Update { direction: Option<BlockFace>, guard: GuardId },
+    Shape { direction: BlockFace, guard: GuardId },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,14 +175,8 @@ pub(crate) enum OperandView {
 pub(crate) enum StateTest {
     PistonExtended(PistonId),
     PistonHeadPresent(PistonId),
-    PistonAvailability {
-        piston: PistonId,
-        is: PistonAvailability,
-    },
-    ResourceAt {
-        resource: ResourceId,
-        contact: ContactId,
-    },
+    PistonAvailability { piston: PistonId, is: PistonAvailability },
+    ResourceAt { resource: ResourceId, contact: ContactId },
     ResourceEnabled(ResourceId),
 }
 
@@ -205,11 +194,7 @@ pub(crate) enum SiteTest {
 pub(crate) enum Guard {
     Always,
     State(StateTest),
-    Site {
-        site: SiteId,
-        view: OperandView,
-        test: SiteTest,
-    },
+    Site { site: SiteId, view: OperandView, test: SiteTest },
     Not(GuardId),
     All(Box<[GuardId]>),
     Any(Box<[GuardId]>),
@@ -268,11 +253,9 @@ impl<T: Copy> ContactCandidates<T> {
         let mut ranges = Vec::with_capacity(buckets.len());
         let mut ids = Vec::new();
         for bucket in buckets {
-            let start =
-                u32::try_from(ids.len()).map_err(|_| GraphBuildError::TooManyEntries { table })?;
+            let start = u32::try_from(ids.len()).map_err(|_| GraphBuildError::TooManyEntries { table })?;
             ids.extend(bucket);
-            let end =
-                u32::try_from(ids.len()).map_err(|_| GraphBuildError::TooManyEntries { table })?;
+            let end = u32::try_from(ids.len()).map_err(|_| GraphBuildError::TooManyEntries { table })?;
             ranges.push(start..end);
         }
         Ok(Self {
@@ -505,6 +488,8 @@ pub(crate) struct CircuitDraft {
     pub(crate) guards: Vec<Guard>,
     pub(crate) contacts: Vec<ContactSpec>,
     pub(crate) routes: Vec<Route>,
+    /// An empty table disables indexing; otherwise this is aligned with wire plans.
+    pub(crate) turbo_callback_indices: Vec<Option<TurboCallbackIndex>>,
     pub(crate) wires: Vec<WirePlan>,
     pub(crate) dust_paths: Vec<DustPathPlan>,
     pub(crate) wire_relations: Vec<WireRelation>,
@@ -621,12 +606,10 @@ impl CircuitDraft {
                 let position = node.position?;
                 let facing = command_facing(block);
                 let command_at = |position: BlockPos| {
-                    node_positions.get(&position).copied().filter(|&other| {
-                        matches!(
-                            nodes[other.index()].kind,
-                            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                        )
-                    })
+                    node_positions
+                        .get(&position)
+                        .copied()
+                        .filter(|&other| matches!(nodes[other.index()].kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })))
                 };
                 let previous = command_at(position.offset(facing.opposite()));
                 let next = command_at(position.offset(facing)).filter(|&other| {
@@ -648,10 +631,7 @@ impl CircuitDraft {
             .iter()
             .enumerate()
             .filter_map(|(index, node)| {
-                if !matches!(
-                    node.kind,
-                    CircuitNodeKind::Electrical(NodeType::NoteBlock { .. })
-                ) {
+                if !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::NoteBlock { .. })) {
                     return None;
                 }
                 let id = NodeId::try_from_index(index)?;
@@ -683,9 +663,7 @@ impl CircuitDraft {
                 PistonLane::SingleResource { far } => self
                     .resources
                     .iter()
-                    .position(|resource| {
-                        resource.contacts.contains(&piston.near) && resource.contacts.contains(&far)
-                    })
+                    .position(|resource| resource.contacts.contains(&piston.near) && resource.contacts.contains(&far))
                     .map(|index| ResourceId::new(index as u32)),
             };
             piston_resources.push(binding);
@@ -706,10 +684,7 @@ impl CircuitDraft {
 
         let mut dust_path_by_wire = vec![None; self.wires.len()];
         for (path_index, path) in self.dust_paths.iter().enumerate() {
-            let id =
-                DustPathId::try_from_index(path_index).ok_or(GraphBuildError::TooManyEntries {
-                    table: "dust paths",
-                })?;
+            let id = DustPathId::try_from_index(path_index).ok_or(GraphBuildError::TooManyEntries { table: "dust paths" })?;
             for &node in path.wires.iter() {
                 let CircuitNodeKind::Wire(wire_index) = self.nodes[node.index()].kind else {
                     unreachable!("dust path references were validated before lowering");
@@ -719,12 +694,7 @@ impl CircuitDraft {
         }
 
         let state = CircuitState {
-            components: self
-                .nodes
-                .into_iter()
-                .map(|node| node.state)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
+            components: self.nodes.into_iter().map(|node| node.state).collect::<Vec<_>>().into_boxed_slice(),
             pistons: self.initial_pistons.into_boxed_slice(),
             resources: self.initial_resources.into_boxed_slice(),
         };
@@ -739,6 +709,7 @@ impl CircuitDraft {
             guards: self.guards.into_boxed_slice(),
             contacts: self.contacts.into_boxed_slice(),
             routes: self.routes.into_boxed_slice(),
+            turbo_callback_indices: self.turbo_callback_indices.into_boxed_slice(),
             wires: self.wires.into_boxed_slice(),
             dust_paths: self.dust_paths.into_boxed_slice(),
             dust_path_by_wire: dust_path_by_wire.into_boxed_slice(),
@@ -746,18 +717,9 @@ impl CircuitDraft {
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),
             piston_resources: piston_resources.into_boxed_slice(),
-            resource_contacts: ContactCandidates::from_buckets(
-                resource_buckets,
-                "resource contact candidates",
-            )?,
-            base_pistons: ContactCandidates::from_buckets(
-                base_piston_buckets,
-                "base piston candidates",
-            )?,
-            head_pistons: ContactCandidates::from_buckets(
-                head_piston_buckets,
-                "head piston candidates",
-            )?,
+            resource_contacts: ContactCandidates::from_buckets(resource_buckets, "resource contact candidates")?,
+            base_pistons: ContactCandidates::from_buckets(base_piston_buckets, "base piston candidates")?,
+            head_pistons: ContactCandidates::from_buckets(head_piston_buckets, "head piston candidates")?,
             command_blocks,
             command_plan_by_node: command_plan_by_node.into_boxed_slice(),
             note_blocks,
@@ -788,12 +750,75 @@ impl CircuitDraft {
         self.validate_nodes()?;
         self.validate_guards()?;
         self.validate_sites_and_wires()?;
+        self.validate_turbo_callback_indices()?;
         self.validate_wire_relations()?;
         self.validate_dust_paths()?;
         self.validate_contacts_and_pistons()?;
         self.validate_routes()?;
         self.validate_links()?;
         self.validate_power()?;
+        Ok(())
+    }
+
+    fn validate_turbo_callback_indices(&self) -> Result<(), GraphBuildError> {
+        if self.turbo_callback_indices.is_empty() {
+            return Ok(());
+        }
+        if self.turbo_callback_indices.len() != self.wires.len() {
+            return Err(GraphBuildError::StateTableLength {
+                table: "Turbo callback indices",
+                descriptions: self.wires.len(),
+                states: self.turbo_callback_indices.len(),
+            });
+        }
+        for (wire_index, index) in self.turbo_callback_indices.iter().enumerate() {
+            let Some(index) = index else {
+                continue;
+            };
+            let wire = &self.wires[wire_index];
+            let route_id = wire.turbo_route.ok_or(GraphBuildError::InvalidTurboCallbackIndex {
+                wire: wire_index,
+                reason: "indexed wire has no Turbo route",
+            })?;
+            let route = self.routes.get(route_id.index()).ok_or(GraphBuildError::InvalidTurboCallbackIndex {
+                wire: wire_index,
+                reason: "indexed Turbo route is missing",
+            })?;
+            let deliveries = &route.deliveries;
+            let route_len = u32::try_from(deliveries.len()).map_err(|_| GraphBuildError::InvalidTurboCallbackIndex {
+                wire: wire_index,
+                reason: "Turbo route length exceeds indexed range",
+            })?;
+            if index.offsets[0] != 0
+                || index.offsets[24] != route_len
+                || index
+                    .offsets
+                    .windows(2)
+                    .any(|range| range[0] > range[1] || usize::try_from(range[1]).unwrap() > deliveries.len())
+            {
+                return Err(GraphBuildError::InvalidTurboCallbackIndex {
+                    wire: wire_index,
+                    reason: "offsets are not ordered route bounds",
+                });
+            }
+            for slot in 0..24 {
+                let target = wire.canonical_neighbors[slot];
+                if wire.canonical_neighbors[..slot].contains(&target) {
+                    return Err(GraphBuildError::InvalidTurboCallbackIndex {
+                        wire: wire_index,
+                        reason: "canonical targets are repeated",
+                    });
+                }
+                for delivery in &deliveries[index.offsets[slot] as usize..index.offsets[slot + 1] as usize] {
+                    if delivery.target != target {
+                        return Err(GraphBuildError::InvalidTurboCallbackIndex {
+                            wire: wire_index,
+                            reason: "slot range contains a different target",
+                        });
+                    }
+                }
+            }
+        }
         Ok(())
     }
 
@@ -807,18 +832,13 @@ impl CircuitDraft {
                 });
             }
             check_id("nodes", path.input_node.index(), self.nodes.len())?;
-            let input_site = self.sites.get(path.input_site.index()).ok_or(
-                GraphBuildError::InvalidReference {
-                    table: "sites",
-                    index: path.input_site.index(),
-                    len: self.sites.len(),
-                },
-            )?;
+            let input_site = self.sites.get(path.input_site.index()).ok_or(GraphBuildError::InvalidReference {
+                table: "sites",
+                index: path.input_site.index(),
+                len: self.sites.len(),
+            })?;
             if input_site.source != SiteSource::Component(path.input_node)
-                || !matches!(
-                    self.nodes[path.input_node.index()].kind,
-                    CircuitNodeKind::Electrical(_)
-                )
+                || !matches!(self.nodes[path.input_node.index()].kind, CircuitNodeKind::Electrical(_))
                 || self.nodes[path.input_node.index()].raw_state.is_none()
             {
                 return Err(GraphBuildError::InvalidDustPath {
@@ -827,33 +847,30 @@ impl CircuitDraft {
                 });
             }
             check_id("nodes", path.wires[0].index(), self.nodes.len())?;
-            let first_position = self.nodes[path.wires[0].index()].position.ok_or(
-                GraphBuildError::InvalidDustPath {
-                    path: path_index,
-                    reason: "wire positions are required",
-                },
-            )?;
+            let first_position = self.nodes[path.wires[0].index()].position.ok_or(GraphBuildError::InvalidDustPath {
+                path: path_index,
+                reason: "wire positions are required",
+            })?;
             if input_site.position != first_position.offset(path.input_face) {
                 return Err(GraphBuildError::InvalidDustPath {
                     path: path_index,
                     reason: "input site is not directly adjacent on the declared face",
                 });
             }
-            if !matches!(
-                path.input_face,
-                BlockFace::North | BlockFace::South | BlockFace::East | BlockFace::West
-            ) || !self.power_links.iter().any(|link| {
-                link.from == path.input_site
-                    && link.from_port == PowerPort::Weak(path.input_face)
-                    && link.to
-                        == (PowerTarget::Input {
-                            node: path.wires[0],
-                            port: InputPort::Main,
-                        })
-                    && link.face == path.input_face
-                    && link.attenuation == 0
-                    && self.guards.get(link.guard.index()) == Some(&Guard::Always)
-            }) {
+            if !matches!(path.input_face, BlockFace::North | BlockFace::South | BlockFace::East | BlockFace::West)
+                || !self.power_links.iter().any(|link| {
+                    link.from == path.input_site
+                        && link.from_port == PowerPort::Weak(path.input_face)
+                        && link.to
+                            == (PowerTarget::Input {
+                                node: path.wires[0],
+                                port: InputPort::Main,
+                            })
+                        && link.face == path.input_face
+                        && link.attenuation == 0
+                        && self.guards.get(link.guard.index()) == Some(&Guard::Always)
+                })
+            {
                 return Err(GraphBuildError::InvalidDustPath {
                     path: path_index,
                     reason: "direct ingress power binding is missing or non-horizontal",
@@ -869,14 +886,11 @@ impl CircuitDraft {
                         reason: "path contains a non-wire node",
                     });
                 };
-                let wire = self
-                    .wires
-                    .get(wire_index)
-                    .ok_or(GraphBuildError::InvalidReference {
-                        table: "wires",
-                        index: wire_index,
-                        len: self.wires.len(),
-                    })?;
+                let wire = self.wires.get(wire_index).ok_or(GraphBuildError::InvalidReference {
+                    table: "wires",
+                    index: wire_index,
+                    len: self.wires.len(),
+                })?;
                 if wire.node != node || assigned[wire_index] {
                     return Err(GraphBuildError::InvalidDustPath {
                         path: path_index,
@@ -884,13 +898,10 @@ impl CircuitDraft {
                     });
                 }
                 assigned[wire_index] = true;
-                let position =
-                    self.nodes[node.index()]
-                        .position
-                        .ok_or(GraphBuildError::InvalidDustPath {
-                            path: path_index,
-                            reason: "wire positions are required",
-                        })?;
+                let position = self.nodes[node.index()].position.ok_or(GraphBuildError::InvalidDustPath {
+                    path: path_index,
+                    reason: "wire positions are required",
+                })?;
                 if let Some(previous) = previous {
                     let dx = position.x - previous.x;
                     let dz = position.z - previous.z;
@@ -926,12 +937,8 @@ impl CircuitDraft {
                 });
             }
             match link.to {
-                PowerTarget::Input { node, .. } => {
-                    check_id("nodes", node.index(), self.nodes.len())?
-                }
-                PowerTarget::Conductor { site, .. } => {
-                    check_id("sites", site.index(), self.sites.len())?
-                }
+                PowerTarget::Input { node, .. } => check_id("nodes", node.index(), self.nodes.len())?,
+                PowerTarget::Conductor { site, .. } => check_id("sites", site.index(), self.sites.len())?,
             }
         }
         for plan in &self.comparator_inputs {
@@ -944,15 +951,8 @@ impl CircuitDraft {
                 return Err(GraphBuildError::InvalidComponentBinding { node: plan.node });
             }
             let validate_override = |source| match source {
-                ComparatorOverride::Literal(strength) if strength > 15 => {
-                    Err(GraphBuildError::InvalidStrength {
-                        node: plan.node,
-                        strength,
-                    })
-                }
-                ComparatorOverride::LiveComponentOutput(node) => {
-                    check_id("nodes", node.index(), self.nodes.len())
-                }
+                ComparatorOverride::Literal(strength) if strength > 15 => Err(GraphBuildError::InvalidStrength { node: plan.node, strength }),
+                ComparatorOverride::LiveComponentOutput(node) => check_id("nodes", node.index(), self.nodes.len()),
                 _ => Ok(()),
             };
             if let Some(source) = plan.direct_override {
@@ -1012,40 +1012,33 @@ impl CircuitDraft {
                             strength: state.power,
                         });
                     }
-                    let wire = self
-                        .wires
-                        .get(*plan)
-                        .ok_or(GraphBuildError::InvalidReference {
-                            table: "wires",
-                            index: *plan,
-                            len: self.wires.len(),
-                        })?;
+                    let wire = self.wires.get(*plan).ok_or(GraphBuildError::InvalidReference {
+                        table: "wires",
+                        index: *plan,
+                        len: self.wires.len(),
+                    })?;
                     if wire.node != id {
                         return Err(GraphBuildError::NodeKindMismatch { node: id });
                     }
                     true
                 }
                 (CircuitNodeKind::Piston(piston), ComponentState::Specialized) => {
-                    let spec = self.pistons.get(piston.index()).ok_or(
-                        GraphBuildError::InvalidReference {
-                            table: "pistons",
-                            index: piston.index(),
-                            len: self.pistons.len(),
-                        },
-                    )?;
+                    let spec = self.pistons.get(piston.index()).ok_or(GraphBuildError::InvalidReference {
+                        table: "pistons",
+                        index: piston.index(),
+                        len: self.pistons.len(),
+                    })?;
                     if spec.node != id {
                         return Err(GraphBuildError::NodeKindMismatch { node: id });
                     }
                     true
                 }
                 (CircuitNodeKind::Contact(contact), ComponentState::Specialized) => {
-                    let spec = self.contacts.get(contact.index()).ok_or(
-                        GraphBuildError::InvalidReference {
-                            table: "contacts",
-                            index: contact.index(),
-                            len: self.contacts.len(),
-                        },
-                    )?;
+                    let spec = self.contacts.get(contact.index()).ok_or(GraphBuildError::InvalidReference {
+                        table: "contacts",
+                        index: contact.index(),
+                        len: self.contacts.len(),
+                    })?;
                     if spec.node != id {
                         return Err(GraphBuildError::NodeKindMismatch { node: id });
                     }
@@ -1095,13 +1088,11 @@ impl CircuitDraft {
             let mut stack = vec![(root, false)];
             while let Some((id, leaving)) = stack.pop() {
                 let guard_count = marks.len();
-                let mark = marks
-                    .get_mut(id.index())
-                    .ok_or(GraphBuildError::InvalidReference {
-                        table: "guards",
-                        index: id.index(),
-                        len: guard_count,
-                    })?;
+                let mark = marks.get_mut(id.index()).ok_or(GraphBuildError::InvalidReference {
+                    table: "guards",
+                    index: id.index(),
+                    len: guard_count,
+                })?;
                 if leaving {
                     *mark = 2;
                     continue;
@@ -1131,20 +1122,16 @@ impl CircuitDraft {
 
     fn validate_state_test(&self, test: StateTest) -> Result<(), GraphBuildError> {
         match test {
-            StateTest::PistonExtended(piston)
-            | StateTest::PistonHeadPresent(piston)
-            | StateTest::PistonAvailability { piston, .. } => {
+            StateTest::PistonExtended(piston) | StateTest::PistonHeadPresent(piston) | StateTest::PistonAvailability { piston, .. } => {
                 check_id("pistons", piston.index(), self.pistons.len())?;
             }
             StateTest::ResourceAt { resource, contact } => {
                 check_id("contacts", contact.index(), self.contacts.len())?;
-                let spec = self.resources.get(resource.index()).ok_or(
-                    GraphBuildError::InvalidReference {
-                        table: "resources",
-                        index: resource.index(),
-                        len: self.resources.len(),
-                    },
-                )?;
+                let spec = self.resources.get(resource.index()).ok_or(GraphBuildError::InvalidReference {
+                    table: "resources",
+                    index: resource.index(),
+                    len: self.resources.len(),
+                })?;
                 if !spec.contacts.contains(&contact) {
                     return Err(GraphBuildError::InvalidResourceSelection { resource, contact });
                 }
@@ -1170,14 +1157,11 @@ impl CircuitDraft {
         }
 
         for (index, wire) in self.wires.iter().enumerate() {
-            let node =
-                self.nodes
-                    .get(wire.node.index())
-                    .ok_or(GraphBuildError::InvalidReference {
-                        table: "nodes",
-                        index: wire.node.index(),
-                        len: self.nodes.len(),
-                    })?;
+            let node = self.nodes.get(wire.node.index()).ok_or(GraphBuildError::InvalidReference {
+                table: "nodes",
+                index: wire.node.index(),
+                len: self.nodes.len(),
+            })?;
             if node.kind != CircuitNodeKind::Wire(index) {
                 return Err(GraphBuildError::NodeKindMismatch { node: wire.node });
             }
@@ -1187,10 +1171,7 @@ impl CircuitDraft {
             for route in wire.shape_route.into_iter().chain(wire.turbo_route) {
                 check_id("routes", route.index(), self.routes.len())?;
                 if self.routes[route.index()].source != wire.node {
-                    return Err(GraphBuildError::RouteSourceMismatch {
-                        route,
-                        node: wire.node,
-                    });
+                    return Err(GraphBuildError::RouteSourceMismatch { route, node: wire.node });
                 }
             }
         }
@@ -1199,18 +1180,13 @@ impl CircuitDraft {
 
     fn validate_wire_relations(&self) -> Result<(), GraphBuildError> {
         for relation in &self.wire_relations {
-            let node =
-                self.nodes
-                    .get(relation.from.index())
-                    .ok_or(GraphBuildError::InvalidReference {
-                        table: "nodes",
-                        index: relation.from.index(),
-                        len: self.nodes.len(),
-                    })?;
+            let node = self.nodes.get(relation.from.index()).ok_or(GraphBuildError::InvalidReference {
+                table: "nodes",
+                index: relation.from.index(),
+                len: self.nodes.len(),
+            })?;
             if !matches!(node.kind, CircuitNodeKind::Wire(_)) {
-                return Err(GraphBuildError::NodeKindMismatch {
-                    node: relation.from,
-                });
+                return Err(GraphBuildError::NodeKindMismatch { node: relation.from });
             }
             check_id("sites", relation.to.index(), self.sites.len())?;
             check_id("guards", relation.guard.index(), self.guards.len())?;
@@ -1221,14 +1197,11 @@ impl CircuitDraft {
     fn validate_contacts_and_pistons(&self) -> Result<(), GraphBuildError> {
         for (index, contact) in self.contacts.iter().enumerate() {
             let id = ContactId::try_from_index(index).expect("contact count was checked");
-            let node =
-                self.nodes
-                    .get(contact.node.index())
-                    .ok_or(GraphBuildError::InvalidReference {
-                        table: "nodes",
-                        index: contact.node.index(),
-                        len: self.nodes.len(),
-                    })?;
+            let node = self.nodes.get(contact.node.index()).ok_or(GraphBuildError::InvalidReference {
+                table: "nodes",
+                index: contact.node.index(),
+                len: self.nodes.len(),
+            })?;
             if node.kind != CircuitNodeKind::Contact(id) {
                 return Err(GraphBuildError::NodeKindMismatch { node: contact.node });
             }
@@ -1247,14 +1220,11 @@ impl CircuitDraft {
 
         for (index, piston) in self.pistons.iter().enumerate() {
             let id = PistonId::try_from_index(index).expect("piston count was checked");
-            let node =
-                self.nodes
-                    .get(piston.node.index())
-                    .ok_or(GraphBuildError::InvalidReference {
-                        table: "nodes",
-                        index: piston.node.index(),
-                        len: self.nodes.len(),
-                    })?;
+            let node = self.nodes.get(piston.node.index()).ok_or(GraphBuildError::InvalidReference {
+                table: "nodes",
+                index: piston.node.index(),
+                len: self.nodes.len(),
+            })?;
             if node.kind != CircuitNodeKind::Piston(id) {
                 return Err(GraphBuildError::NodeKindMismatch { node: piston.node });
             }
@@ -1305,11 +1275,7 @@ impl CircuitDraft {
                     });
                 }
             }
-            let state = self
-                .initial_resources
-                .get(index)
-                .copied()
-                .expect("resource state count was validated");
+            let state = self.initial_resources.get(index).copied().expect("resource state count was validated");
             if !resource.contacts.contains(&state.at) {
                 return Err(GraphBuildError::InvalidResourceSelection {
                     resource: id,
@@ -1332,11 +1298,7 @@ impl CircuitDraft {
         Ok(())
     }
 
-    fn validate_contact_guard(
-        &self,
-        contact: ContactId,
-        root: GuardId,
-    ) -> Result<(), GraphBuildError> {
+    fn validate_contact_guard(&self, contact: ContactId, root: GuardId) -> Result<(), GraphBuildError> {
         let mut visited = rustc_hash::FxHashSet::default();
         let mut pending = vec![root];
         while let Some(id) = pending.pop() {
@@ -1359,12 +1321,8 @@ impl CircuitDraft {
     fn validate_receiver(&self, receiver: CallbackReceiver) -> Result<(), GraphBuildError> {
         match receiver {
             CallbackReceiver::Component(node) => self.validate_component_binding(node),
-            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
-                check_id("pistons", piston.index(), self.pistons.len())
-            }
-            CallbackReceiver::Contact(contact) => {
-                check_id("contacts", contact.index(), self.contacts.len())
-            }
+            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => check_id("pistons", piston.index(), self.pistons.len()),
+            CallbackReceiver::Contact(contact) => check_id("contacts", contact.index(), self.contacts.len()),
         }
     }
 
@@ -1380,9 +1338,7 @@ impl CircuitDraft {
             .kind;
         if matches!(
             kind,
-            CircuitNodeKind::Electrical(_)
-                | CircuitNodeKind::Observer { .. }
-                | CircuitNodeKind::Wire(_)
+            CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
         ) {
             Ok(())
         } else {
@@ -1390,14 +1346,8 @@ impl CircuitDraft {
         }
     }
 
-    fn validate_piston_routes(
-        &self,
-        source: NodeId,
-        lane: PistonLane,
-        routes: PistonRoutes,
-    ) -> Result<(), GraphBuildError> {
-        let has_resource_routes =
-            routes.resource_restored_near.is_some() && routes.resource_restored_far.is_some();
+    fn validate_piston_routes(&self, source: NodeId, lane: PistonLane, routes: PistonRoutes) -> Result<(), GraphBuildError> {
+        let has_resource_routes = routes.resource_restored_near.is_some() && routes.resource_restored_far.is_some();
         if matches!(lane, PistonLane::SingleResource { .. }) != has_resource_routes
             || routes.resource_restored_near.is_some() != routes.resource_restored_far.is_some()
         {
@@ -1418,10 +1368,7 @@ impl CircuitDraft {
         {
             check_id("routes", route.index(), self.routes.len())?;
             if self.routes[route.index()].source != source {
-                return Err(GraphBuildError::RouteSourceMismatch {
-                    route,
-                    node: source,
-                });
+                return Err(GraphBuildError::RouteSourceMismatch { route, node: source });
             }
         }
         Ok(())
@@ -1451,15 +1398,16 @@ impl CircuitDraft {
     fn receiver_node(&self, receiver: CallbackReceiver) -> Result<NodeId, GraphBuildError> {
         match receiver {
             CallbackReceiver::Component(node) => Ok(node),
-            CallbackReceiver::PistonBase(id) | CallbackReceiver::PistonHead(id) => self
-                .pistons
-                .get(id.index())
-                .map(|piston| piston.node)
-                .ok_or(GraphBuildError::InvalidReference {
-                    table: "pistons",
-                    index: id.index(),
-                    len: self.pistons.len(),
-                }),
+            CallbackReceiver::PistonBase(id) | CallbackReceiver::PistonHead(id) => {
+                self.pistons
+                    .get(id.index())
+                    .map(|piston| piston.node)
+                    .ok_or(GraphBuildError::InvalidReference {
+                        table: "pistons",
+                        index: id.index(),
+                        len: self.pistons.len(),
+                    })
+            }
             CallbackReceiver::Contact(id) => self
                 .contacts
                 .get(id.index())
@@ -1472,37 +1420,18 @@ impl CircuitDraft {
         }
     }
 
-    fn validate_delivery_receiver(
-        &self,
-        route: RouteId,
-        delivery: &RouteDelivery,
-        receiver: CallbackReceiver,
-    ) -> Result<(), GraphBuildError> {
+    fn validate_delivery_receiver(&self, route: RouteId, delivery: &RouteDelivery, receiver: CallbackReceiver) -> Result<(), GraphBuildError> {
         let site = self.sites[delivery.target.index()];
         let valid = match (delivery.kind, site.source, receiver) {
-            (
-                DeliveryKind::Shape { .. },
-                SiteSource::Contact(contact),
-                CallbackReceiver::Contact(target),
-            ) => contact == target && self.contact_guard_matches(delivery, contact, None),
-            (
-                DeliveryKind::Shape { .. },
-                SiteSource::Component(node),
-                CallbackReceiver::Component(target),
-            ) => node == target,
-            (
-                DeliveryKind::Update { .. },
-                SiteSource::Component(node),
-                CallbackReceiver::Component(target),
-            ) => node == target,
-            (DeliveryKind::Update { .. }, SiteSource::Contact(contact), receiver) => self.contacts
-                [contact.index()]
-            .variants
-            .iter()
-            .any(|variant| {
-                variant.receiver == Some(receiver)
-                    && self.contact_guard_matches(delivery, contact, Some(variant.profile))
-            }),
+            (DeliveryKind::Shape { .. }, SiteSource::Contact(contact), CallbackReceiver::Contact(target)) => {
+                contact == target && self.contact_guard_matches(delivery, contact, None)
+            }
+            (DeliveryKind::Shape { .. }, SiteSource::Component(node), CallbackReceiver::Component(target)) => node == target,
+            (DeliveryKind::Update { .. }, SiteSource::Component(node), CallbackReceiver::Component(target)) => node == target,
+            (DeliveryKind::Update { .. }, SiteSource::Contact(contact), receiver) => self.contacts[contact.index()]
+                .variants
+                .iter()
+                .any(|variant| variant.receiver == Some(receiver) && self.contact_guard_matches(delivery, contact, Some(variant.profile))),
             (_, SiteSource::Constant(_), _) => false,
             _ => false,
         };
@@ -1516,32 +1445,18 @@ impl CircuitDraft {
         }
     }
 
-    fn contact_guard_matches(
-        &self,
-        delivery: &RouteDelivery,
-        contact: ContactId,
-        profile: Option<ProfileId>,
-    ) -> bool {
+    fn contact_guard_matches(&self, delivery: &RouteDelivery, contact: ContactId, profile: Option<ProfileId>) -> bool {
         match delivery.view {
             OperandView::Live => self.contacts[contact.index()]
                 .variants
                 .iter()
                 .filter(|variant| profile.map_or(true, |profile| variant.profile == profile))
-                .any(|variant| {
-                    matches!(self.guards[variant.when.index()], Guard::Always)
-                        || self.guard_implies(delivery.guard, variant.when)
-                }),
+                .any(|variant| matches!(self.guards[variant.when.index()], Guard::Always) || self.guard_implies(delivery.guard, variant.when)),
             OperandView::Captured => self.contacts[contact.index()]
                 .variants
                 .iter()
                 .filter(|variant| profile.map_or(true, |profile| variant.profile == profile))
-                .any(|variant| {
-                    self.guard_implies_site_profile(
-                        delivery.guard,
-                        delivery.target,
-                        variant.profile,
-                    )
-                }),
+                .any(|variant| self.guard_implies_site_profile(delivery.guard, delivery.target, variant.profile)),
         }
     }
 
@@ -1550,15 +1465,8 @@ impl CircuitDraft {
             return true;
         }
         match &self.guards[root.index()] {
-            Guard::All(children) => children
-                .iter()
-                .any(|child| self.guard_implies(*child, expected)),
-            Guard::Any(children) => {
-                !children.is_empty()
-                    && children
-                        .iter()
-                        .all(|child| self.guard_implies(*child, expected))
-            }
+            Guard::All(children) => children.iter().any(|child| self.guard_implies(*child, expected)),
+            Guard::Any(children) => !children.is_empty() && children.iter().all(|child| self.guard_implies(*child, expected)),
             _ => false,
         }
     }
@@ -1575,22 +1483,14 @@ impl CircuitDraft {
             return true;
         }
         match &self.guards[root.index()] {
-            Guard::All(children) => children
-                .iter()
-                .any(|child| self.guard_implies_site_profile(*child, site, profile)),
-            Guard::Any(children) => {
-                !children.is_empty()
-                    && children
-                        .iter()
-                        .all(|child| self.guard_implies_site_profile(*child, site, profile))
-            }
+            Guard::All(children) => children.iter().any(|child| self.guard_implies_site_profile(*child, site, profile)),
+            Guard::Any(children) => !children.is_empty() && children.iter().all(|child| self.guard_implies_site_profile(*child, site, profile)),
             _ => false,
         }
     }
 
     fn validate_links(&self) -> Result<(), GraphBuildError> {
-        let mut callback_edges =
-            HashMap::<(CallbackEdgeRef, NodeId, NodeId, LinkKind), usize>::new();
+        let mut callback_edges = HashMap::<(CallbackEdgeRef, NodeId, NodeId, LinkKind), usize>::new();
         for link in &self.links {
             check_id("nodes", link.from.index(), self.nodes.len())?;
             check_id("nodes", link.to.index(), self.nodes.len())?;
@@ -1599,22 +1499,18 @@ impl CircuitDraft {
             };
             check_id("guards", guard.index(), self.guards.len())?;
             let reference = link.callback;
-            let route = self.routes.get(reference.route.index()).ok_or(
-                GraphBuildError::InvalidReference {
-                    table: "routes",
-                    index: reference.route.index(),
-                    len: self.routes.len(),
-                },
-            )?;
+            let route = self.routes.get(reference.route.index()).ok_or(GraphBuildError::InvalidReference {
+                table: "routes",
+                index: reference.route.index(),
+                len: self.routes.len(),
+            })?;
             if route.source != link.from {
                 return Err(GraphBuildError::CallbackEdgeMismatch {
                     route: reference.route,
                     sequence: reference.sequence,
                 });
             }
-            *callback_edges
-                .entry((reference, link.from, link.to, link.kind))
-                .or_default() += 1;
+            *callback_edges.entry((reference, link.from, link.to, link.kind)).or_default() += 1;
         }
 
         for (route_index, route) in self.routes.iter().enumerate() {
@@ -1648,9 +1544,7 @@ impl CircuitDraft {
                 *count = remaining;
             }
         }
-        if let Some(((reference, _, _, _), _)) =
-            callback_edges.iter().find(|(_, count)| **count != 0)
-        {
+        if let Some(((reference, _, _, _), _)) = callback_edges.iter().find(|(_, count)| **count != 0) {
             return Err(GraphBuildError::CallbackEdgeMismatch {
                 route: reference.route,
                 sequence: reference.sequence,
@@ -1679,11 +1573,7 @@ fn guard_children(guard: &Guard) -> &[GuardId] {
     }
 }
 
-fn validate_strength(
-    node: NodeId,
-    output: u8,
-    far_input: Option<u8>,
-) -> Result<(), GraphBuildError> {
+fn validate_strength(node: NodeId, output: u8, far_input: Option<u8>) -> Result<(), GraphBuildError> {
     for strength in std::iter::once(output).chain(far_input) {
         if strength > 15 {
             return Err(GraphBuildError::InvalidStrength { node, strength });
@@ -1726,6 +1616,10 @@ pub(crate) enum GraphBuildError {
     },
     InvalidDustPath {
         path: usize,
+        reason: &'static str,
+    },
+    InvalidTurboCallbackIndex {
+        wire: usize,
         reason: &'static str,
     },
     InvalidNodeState {
@@ -1808,82 +1702,42 @@ impl std::fmt::Display for GraphBuildError {
                 write!(f, "{table} reference {index} is out of range 0..{len}")
             }
             Self::InvalidStrength { node, strength } => {
-                write!(
-                    f,
-                    "node {} has strength {strength}; expected 0..15",
-                    node.index()
-                )
+                write!(f, "node {} has strength {strength}; expected 0..15", node.index())
             }
-            Self::InvalidPowerAttenuation { from, attenuation } => write!(
-                f,
-                "power source site {} has attenuation {attenuation}; expected 0..15",
-                from.index()
-            ),
+            Self::InvalidPowerAttenuation { from, attenuation } => {
+                write!(f, "power source site {} has attenuation {attenuation}; expected 0..15", from.index())
+            }
             Self::InvalidDustPath { path, reason } => {
                 write!(f, "dust path {path} is invalid: {reason}")
             }
-            Self::InvalidNodeState { node } => {
-                write!(
-                    f,
-                    "node {} has state that does not match its kind",
-                    node.index()
-                )
+            Self::InvalidTurboCallbackIndex { wire, reason } => {
+                write!(f, "Turbo callback index for wire {wire} is invalid: {reason}")
             }
-            Self::InvalidComponentBinding { node } => write!(
-                f,
-                "generic component binding references specialized node {}",
-                node.index()
-            ),
-            Self::MissingComponentState { node } => write!(
-                f,
-                "component node {} has no original block state",
-                node.index()
-            ),
-            Self::UseSpecializedNode { node } => write!(
-                f,
-                "node {} must use its typed wire or observer form",
-                node.index()
-            ),
-            Self::NodeKindMismatch { node } => write!(
-                f,
-                "description for node {} does not match its graph kind",
-                node.index()
-            ),
+            Self::InvalidNodeState { node } => {
+                write!(f, "node {} has state that does not match its kind", node.index())
+            }
+            Self::InvalidComponentBinding { node } => write!(f, "generic component binding references specialized node {}", node.index()),
+            Self::MissingComponentState { node } => write!(f, "component node {} has no original block state", node.index()),
+            Self::UseSpecializedNode { node } => write!(f, "node {} must use its typed wire or observer form", node.index()),
+            Self::NodeKindMismatch { node } => write!(f, "description for node {} does not match its graph kind", node.index()),
             Self::CyclicGuard { guard } => {
                 write!(f, "guard {} participates in a cycle", guard.index())
             }
-            Self::UnorderedRoute { route } => write!(
-                f,
-                "route {} has deliveries out of sequence order",
-                route.index()
-            ),
-            Self::RouteSourceMismatch { route, node } => write!(
-                f,
-                "route {} is assigned to the wrong source node {}",
-                route.index(),
-                node.index()
-            ),
-            Self::CallbackEdgeMismatch { route, sequence } => write!(
-                f,
-                "route {} delivery {sequence} does not match its callback edge",
-                route.index()
-            ),
+            Self::UnorderedRoute { route } => write!(f, "route {} has deliveries out of sequence order", route.index()),
+            Self::RouteSourceMismatch { route, node } => write!(f, "route {} is assigned to the wrong source node {}", route.index(), node.index()),
+            Self::CallbackEdgeMismatch { route, sequence } => {
+                write!(f, "route {} delivery {sequence} does not match its callback edge", route.index())
+            }
 
-            Self::PistonFarContactMismatch { node } => write!(
-                f,
-                "piston node {} has conflicting far contacts in its description and lane",
-                node.index()
-            ),
+            Self::PistonFarContactMismatch { node } => {
+                write!(f, "piston node {} has conflicting far contacts in its description and lane", node.index())
+            }
             Self::PistonResourceRestorationMismatch { node } => write!(
                 f,
                 "piston node {} has restoration routes that do not match its resource lane",
                 node.index()
             ),
-            Self::ContactGuardReadsSite {
-                contact,
-                guard,
-                site,
-            } => write!(
+            Self::ContactGuardReadsSite { contact, guard, site } => write!(
                 f,
                 "contact {} selector guard {} reads site {}",
                 contact.index(),
@@ -1902,25 +1756,16 @@ impl std::fmt::Display for GraphBuildError {
                 resource.index(),
                 contact.index()
             ),
-            Self::ResourcesShareContact {
-                first,
-                second,
-                contact,
-            } => write!(
+            Self::ResourcesShareContact { first, second, contact } => write!(
                 f,
                 "resources {} and {} both claim contact {}",
                 first.index(),
                 second.index(),
                 contact.index()
             ),
-            Self::StateTableLength {
-                table,
-                descriptions,
-                states,
-            } => write!(
-                f,
-                "{table} table has {descriptions} descriptions but {states} initial states"
-            ),
+            Self::StateTableLength { table, descriptions, states } => {
+                write!(f, "{table} table has {descriptions} descriptions but {states} initial states")
+            }
         }
     }
 }
@@ -1941,6 +1786,8 @@ pub(crate) struct CircuitProgram {
     guards: Box<[Guard]>,
     contacts: Box<[ContactSpec]>,
     routes: Box<[Route]>,
+    /// This maps each wire plan to ordered slices in its Turbo delivery route.
+    turbo_callback_indices: Box<[Option<TurboCallbackIndex>]>,
     wires: Box<[WirePlan]>,
     /// These immutable certificates select the local power calculation for proven wire paths.
     dust_paths: Box<[DustPathPlan]>,
@@ -1990,11 +1837,7 @@ impl CircuitProgram {
     }
 
     pub(crate) fn comparator_input(&self, node: NodeId) -> Option<&ComparatorInputPlan> {
-        let index = self
-            .comparator_plan_by_node
-            .get(node.index())
-            .copied()
-            .flatten()?;
+        let index = self.comparator_plan_by_node.get(node.index()).copied().flatten()?;
         self.comparator_inputs.get(index as usize)
     }
 
@@ -2020,6 +1863,14 @@ impl CircuitProgram {
 
     pub(crate) fn wires(&self) -> &[WirePlan] {
         &self.wires
+    }
+
+    pub(crate) fn turbo_callback_index(&self, wire_index: usize) -> Option<&TurboCallbackIndex> {
+        self.turbo_callback_indices.get(wire_index)?.as_ref()
+    }
+
+    pub(crate) fn turbo_callback_indices(&self) -> &[Option<TurboCallbackIndex>] {
+        &self.turbo_callback_indices
     }
 
     pub(crate) fn dust_paths(&self) -> &[DustPathPlan] {
@@ -2063,11 +1914,7 @@ impl CircuitProgram {
     }
 
     pub(crate) fn command_plan(&self, node: NodeId) -> Option<CommandBlockPlan> {
-        let index = self
-            .command_plan_by_node
-            .get(node.index())
-            .copied()
-            .flatten()?;
+        let index = self.command_plan_by_node.get(node.index()).copied().flatten()?;
         self.command_blocks.get(index as usize).copied()
     }
 
@@ -2076,11 +1923,7 @@ impl CircuitProgram {
     }
 
     pub(crate) fn note_plan(&self, node: NodeId) -> Option<NoteBlockPlan> {
-        let index = self
-            .note_plan_by_node
-            .get(node.index())
-            .copied()
-            .flatten()?;
+        let index = self.note_plan_by_node.get(node.index()).copied().flatten()?;
         self.note_blocks.get(index as usize).copied()
     }
 
@@ -2091,9 +1934,7 @@ impl CircuitProgram {
             .filter_map(|(index, node)| {
                 if !matches!(
                     node.kind,
-                    CircuitNodeKind::Electrical(_)
-                        | CircuitNodeKind::Observer { .. }
-                        | CircuitNodeKind::Wire(_)
+                    CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
                 ) {
                     return None;
                 }
@@ -2177,21 +2018,14 @@ mod tests {
             nodes: vec![
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(0, 0, 0)),
-                    raw_state: Some(
-                        mchprs_blocks::blocks::Block::Lever {
-                            lever: Default::default(),
-                        }
-                        .get_id(),
-                    ),
+                    raw_state: Some(mchprs_blocks::blocks::Block::Lever { lever: Default::default() }.get_id()),
                     kind: CircuitNodeKind::Electrical(NodeType::Lever),
                     state: ComponentState::Electrical(NodeState::default()),
                     output_route: None,
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(1, 0, 0)),
-                    raw_state: Some(
-                        mchprs_blocks::blocks::Block::RedstoneLamp { lit: false }.get_id(),
-                    ),
+                    raw_state: Some(mchprs_blocks::blocks::Block::RedstoneLamp { lit: false }.get_id()),
                     kind: CircuitNodeKind::Electrical(NodeType::Lamp),
                     state: ComponentState::Electrical(NodeState::default()),
                     output_route: None,
@@ -2219,12 +2053,7 @@ mod tests {
                 },
                 CircuitNodeDraft {
                     position: Some(BlockPos::new(0, 0, 1)),
-                    raw_state: Some(
-                        mchprs_blocks::blocks::Block::RedstoneWire {
-                            wire: Default::default(),
-                        }
-                        .get_id(),
-                    ),
+                    raw_state: Some(mchprs_blocks::blocks::Block::RedstoneWire { wire: Default::default() }.get_id()),
                     kind: CircuitNodeKind::Wire(0),
                     state: ComponentState::Wire(RedstoneWire {
                         power: 4,
@@ -2330,9 +2159,7 @@ mod tests {
                     },
                     RouteDelivery {
                         target: site,
-                        kind: DeliveryKind::Shape {
-                            direction: BlockFace::West,
-                        },
+                        kind: DeliveryKind::Shape { direction: BlockFace::West },
                         guard,
                         view: OperandView::Live,
                         sequence: 2,
@@ -2343,6 +2170,7 @@ mod tests {
                 #[cfg(feature = "graph-profile")]
                 native_event_count: 1,
             }],
+            turbo_callback_indices: vec![None],
             wires: vec![WirePlan {
                 node: NodeId::new(5),
                 canonical_neighbors: [site; 24],
@@ -2401,14 +2229,7 @@ mod tests {
         draft.validate().unwrap();
         assert_eq!(draft.links.len(), 3);
         assert_eq!(draft.power_links.len(), 1);
-        assert_eq!(
-            draft
-                .links
-                .iter()
-                .filter(|link| matches!(link.kind, LinkKind::Update { .. }))
-                .count(),
-            2
-        );
+        assert_eq!(draft.links.iter().filter(|link| matches!(link.kind, LinkKind::Update { .. })).count(), 2);
         assert!(matches!(
             draft.links[2].kind,
             LinkKind::Shape {
@@ -2429,12 +2250,7 @@ mod tests {
                 direction: Some(BlockFace::East)
             }
         );
-        assert_eq!(
-            program.routes[0].deliveries[2].kind,
-            DeliveryKind::Shape {
-                direction: BlockFace::West
-            }
-        );
+        assert_eq!(program.routes[0].deliveries[2].kind, DeliveryKind::Shape { direction: BlockFace::West });
         assert_eq!(state.pistons.len(), 1);
         assert_eq!(state.resources.len(), 1);
         assert_eq!(state.resources[0].at, ContactId::new(0));
@@ -2468,10 +2284,7 @@ mod tests {
         invalid_attenuation.power_links[0].attenuation = 16;
         assert!(matches!(
             invalid_attenuation.lower(),
-            Err(GraphBuildError::InvalidPowerAttenuation {
-                attenuation: 16,
-                ..
-            })
+            Err(GraphBuildError::InvalidPowerAttenuation { attenuation: 16, .. })
         ));
 
         let mut invalid_callback = draft_with_mixed_links();
@@ -2479,10 +2292,7 @@ mod tests {
             route: RouteId::try_from_index(0).unwrap(),
             sequence: 99,
         };
-        assert!(matches!(
-            invalid_callback.lower(),
-            Err(GraphBuildError::CallbackEdgeMismatch { .. })
-        ));
+        assert!(matches!(invalid_callback.lower(), Err(GraphBuildError::CallbackEdgeMismatch { .. })));
     }
 
     #[test]
@@ -2502,25 +2312,16 @@ mod tests {
     #[test]
     fn resource_lane_requires_both_destination_restoration_routes() {
         let mut missing = draft_with_mixed_links();
-        missing.pistons[0].lane = PistonLane::SingleResource {
-            far: ContactId::new(0),
-        };
-        assert!(matches!(
-            missing.lower(),
-            Err(GraphBuildError::PistonResourceRestorationMismatch { .. })
-        ));
+        missing.pistons[0].lane = PistonLane::SingleResource { far: ContactId::new(0) };
+        assert!(matches!(missing.lower(), Err(GraphBuildError::PistonResourceRestorationMismatch { .. })));
     }
 
     #[test]
     fn resource_lane_far_contact_must_match_piston_far_contact() {
         let mut mismatch = draft_with_mixed_links();
-        mismatch.pistons[0].lane = PistonLane::SingleResource {
-            far: ContactId::new(1),
-        };
-        mismatch.pistons[0].routes.resource_restored_near =
-            Some(RouteId::try_from_index(0).unwrap());
-        mismatch.pistons[0].routes.resource_restored_far =
-            Some(RouteId::try_from_index(0).unwrap());
+        mismatch.pistons[0].lane = PistonLane::SingleResource { far: ContactId::new(1) };
+        mismatch.pistons[0].routes.resource_restored_near = Some(RouteId::try_from_index(0).unwrap());
+        mismatch.pistons[0].routes.resource_restored_far = Some(RouteId::try_from_index(0).unwrap());
 
         assert!(matches!(
             mismatch.lower(),
@@ -2532,10 +2333,7 @@ mod tests {
     fn invalid_contact_binding_and_guard_cycle_are_rejected() {
         let mut invalid_contact = draft_with_mixed_links();
         invalid_contact.contacts[0].node = NodeId::new(1);
-        assert!(matches!(
-            invalid_contact.lower(),
-            Err(GraphBuildError::NodeKindMismatch { .. })
-        ));
+        assert!(matches!(invalid_contact.lower(), Err(GraphBuildError::NodeKindMismatch { .. })));
 
         let mut invalid_state = draft_with_mixed_links();
         invalid_state.nodes[2].state = ComponentState::Electrical(NodeState::default());
@@ -2548,10 +2346,7 @@ mod tests {
 
         let mut cyclic_guards = draft_with_mixed_links();
         cyclic_guards.guards = vec![Guard::Not(GuardId::new(0))];
-        assert!(matches!(
-            cyclic_guards.lower(),
-            Err(GraphBuildError::CyclicGuard { .. })
-        ));
+        assert!(matches!(cyclic_guards.lower(), Err(GraphBuildError::CyclicGuard { .. })));
 
         let mut self_dependent_contact = draft_with_mixed_links();
         let site = SiteId::new(1);
@@ -2645,22 +2440,14 @@ mod tests {
                 }
         });
         let result = std::panic::catch_unwind(|| draft.lower());
-        assert!(
-            result.is_ok(),
-            "invalid multiplicity must return a validation error, not panic"
-        );
-        assert!(matches!(
-            result.unwrap(),
-            Err(GraphBuildError::CallbackEdgeMismatch { .. })
-        ));
+        assert!(result.is_ok(), "invalid multiplicity must return a validation error, not panic");
+        assert!(matches!(result.unwrap(), Err(GraphBuildError::CallbackEdgeMismatch { .. })));
     }
 
     fn deep_audit_contact_delivery_draft(bypass_selection: bool) -> CircuitDraft {
         let mut draft = draft_with_mixed_links();
         let selector = GuardId::new(draft.guards.len() as u32);
-        draft
-            .guards
-            .push(Guard::State(StateTest::ResourceEnabled(ResourceId::new(0))));
+        draft.guards.push(Guard::State(StateTest::ResourceEnabled(ResourceId::new(0))));
         draft.contacts[0].variants[0].when = selector;
         draft.contacts[0].variants[0].receiver = Some(CallbackReceiver::Component(NodeId::new(1)));
         draft.sites[0].source = SiteSource::Contact(ContactId::new(0));

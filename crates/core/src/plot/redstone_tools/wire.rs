@@ -183,19 +183,14 @@ impl Session {
 
     fn retarget(&mut self, target: Option<BlockPos>) {
         if let Some(previous) = self.target {
-            if self
-                .wanted
-                .get(&previous)
-                .is_some_and(|kind| matches!(kind, 1 | 4))
-            {
+            if self.wanted.get(&previous).is_some_and(|kind| matches!(kind, 1 | 4)) {
                 self.wanted.remove(&previous);
             }
         }
-        let snapshot = self.snapshot.clone().filter(|snapshot| {
-            self.start
-                .zip(target)
-                .is_some_and(|(start, end)| snapshot.contains_target(start, end))
-        });
+        let snapshot = self
+            .snapshot
+            .clone()
+            .filter(|snapshot| self.start.zip(target).is_some_and(|(start, end)| snapshot.contains_target(start, end)));
         self.target = target;
         self.invalidate();
         self.snapshot = snapshot;
@@ -235,10 +230,7 @@ impl Session {
             return false;
         }
         self.needs_search = false;
-        self.pending = Some(Pending {
-            cancel,
-            reply: receiver,
-        });
+        self.pending = Some(Pending { cancel, reply: receiver });
         true
     }
 
@@ -247,14 +239,7 @@ impl Session {
             SearchResult::Found(plan) => {
                 self.wanted = plan.path.iter().map(|&pos| (pos, 0)).collect();
                 for &(pos, block) in &plan.placements {
-                    self.wanted.insert(
-                        pos,
-                        if matches!(block, Block::RedstoneWire { .. }) {
-                            0
-                        } else {
-                            2
-                        },
-                    );
+                    self.wanted.insert(pos, if matches!(block, Block::RedstoneWire { .. }) { 0 } else { 2 });
                 }
                 self.set_status(&messages::wire_status(plan.placements.len()));
                 self.plan = Some(plan);
@@ -268,8 +253,7 @@ impl Session {
             self.wanted.insert(start, 4);
         }
         if let Some(target) = self.target {
-            self.wanted
-                .insert(target, if self.plan.is_some() { 4 } else { 1 });
+            self.wanted.insert(target, if self.plan.is_some() { 4 } else { 1 });
         }
     }
 }
@@ -303,17 +287,12 @@ impl Plot {
         if !matches!(self.players[player].gamemode, Gamemode::Creative) {
             bail!(messages::SWITCH_CREATIVE_MODE_FIRST);
         }
-        if !self.players[player].can_build_action("place", self.owner, (self.world.x, self.world.z))
-        {
+        if !self.players[player].can_build_action("place", self.owner, (self.world.x, self.world.z)) {
             bail!(messages::TOOL_PERMISSION_DENIED);
         }
         if let Some(plane) = plane.filter(|_| holds_pen(&self.players[player])) {
             let data = &mut self.players[player];
-            let mut session = data
-                .redstone_tools
-                .wire
-                .take()
-                .unwrap_or_else(|| Session::new(data.selected_slot));
+            let mut session = data.redstone_tools.wire.take().unwrap_or_else(|| Session::new(data.selected_slot));
             session.plane = plane;
             let target = session
                 .start
@@ -342,13 +321,8 @@ impl Plot {
         self.clear_wire_tool(player);
         if self.players[player].inventory[36 + slot as usize].is_none() {
             let mut blob = nbt::Blob::new();
-            components::set_tool_display(
-                tool_item().get_id() as i32,
-                &mut blob,
-                "Wire Pen",
-                "L start | R commit | F mode | Q bend",
-            )
-            .map_err(|error| anyhow::anyhow!(messages::container_components_failed(error)))?;
+            components::set_tool_display(tool_item().get_id() as i32, &mut blob, "Wire Pen", "L start | R commit | F mode | Q bend")
+                .map_err(|error| anyhow::anyhow!(messages::container_components_failed(error)))?;
             self.players[player].set_inventory_slot(
                 36 + slot,
                 Some(ItemStack {
@@ -358,11 +332,7 @@ impl Plot {
                 }),
             );
         }
-        ServerBoundPacketHandler::handle_held_item_change(
-            self,
-            SHeldItemChange { slot: slot as i16 },
-            player,
-        );
+        ServerBoundPacketHandler::handle_held_item_change(self, SHeldItemChange { slot: slot as i16 }, player);
         self.players[player].send_packet(&CHeldItemChange { slot: slot as i8 }.encode());
         let mut session = Session::new(slot);
         if let Some(plane) = plane {
@@ -387,8 +357,7 @@ impl Plot {
     pub(in crate::plot) fn wire_tools_active(&self) -> bool {
         self.players.iter().any(|player| {
             !player.redstone_tools.wire_disabled
-                && (player.redstone_tools.wire.is_some()
-                    || (matches!(player.gamemode, Gamemode::Creative) && holds_pen(player)))
+                && (player.redstone_tools.wire.is_some() || (matches!(player.gamemode, Gamemode::Creative) && holds_pen(player)))
         })
     }
 
@@ -413,19 +382,12 @@ impl Plot {
         }
         if !matches!(self.players[player].gamemode, Gamemode::Creative)
             || self.check_tool_access(player, ToolCommand::Wire).is_err()
-            || !self.players[player].can_build_action(
-                "place",
-                self.owner,
-                (self.world.x, self.world.z),
-            )
+            || !self.players[player].can_build_action("place", self.owner, (self.world.x, self.world.z))
         {
             return true;
         }
         let slot = self.players[player].selected_slot;
-        let session = self.players[player]
-            .redstone_tools
-            .wire
-            .get_or_insert_with(|| Session::new(slot));
+        let session = self.players[player].redstone_tools.wire.get_or_insert_with(|| Session::new(slot));
         if bend {
             session.prefer_x = !session.prefer_x;
         } else {
@@ -440,13 +402,7 @@ impl Plot {
         true
     }
 
-    pub(in crate::plot) fn use_wire_tool(
-        &mut self,
-        player: usize,
-        hand: i32,
-        yaw: f32,
-        pitch: f32,
-    ) -> bool {
+    pub(in crate::plot) fn use_wire_tool(&mut self, player: usize, hand: i32, yaw: f32, pitch: f32) -> bool {
         if !self.wire_held(player) {
             return false;
         }
@@ -459,26 +415,15 @@ impl Plot {
             return true;
         }
         if self.check_tool_access(player, ToolCommand::Wire).is_err()
-            || !self.players[player].can_build_action(
-                "place",
-                self.owner,
-                (self.world.x, self.world.z),
-            )
+            || !self.players[player].can_build_action("place", self.owner, (self.world.x, self.world.z))
         {
             self.clear_wire_tool(player);
             self.players[player].send_no_permission_message();
             return true;
         }
         let slot = self.players[player].selected_slot;
-        let mut session = self.players[player]
-            .redstone_tools
-            .wire
-            .take()
-            .unwrap_or_else(|| Session::new(slot));
-        if session
-            .last_click
-            .is_some_and(|last| last.elapsed() < CLICK_INTERVAL)
-        {
+        let mut session = self.players[player].redstone_tools.wire.take().unwrap_or_else(|| Session::new(slot));
+        if session.last_click.is_some_and(|last| last.elapsed() < CLICK_INTERVAL) {
             self.players[player].redstone_tools.wire = Some(session);
             return true;
         }
@@ -491,26 +436,14 @@ impl Plot {
             session.set_status(messages::WIRE_ENABLED);
         } else if session.start.is_none() {
             session.set_status(messages::WIRE_SELECT_START_FIRST);
-        } else if let Some(target) = aim(
-            &self.world,
-            &self.players[player],
-            yaw,
-            pitch,
-            session.start,
-            session.plane,
-        ) {
+        } else if let Some(target) = aim(&self.world, &self.players[player], yaw, pitch, session.start, session.plane) {
             if session.target != Some(target) {
                 session.retarget(Some(target));
                 session.set_status(messages::WIRE_PENDING);
             } else if !session.displayed {
                 session.set_status(messages::WIRE_ROUTE_NOT_DISPLAYED);
             } else if let Some(plan) = session.plan.take() {
-                if self.git_checkout_locked()
-                    || self
-                        .redpiler
-                        .current_flags()
-                        .is_some_and(|flags| flags.io_only)
-                {
+                if self.git_checkout_locked() || self.redpiler.current_flags().is_some_and(|flags| flags.io_only) {
                     session.plan = Some(plan);
                     session.set_status(messages::WIRE_UNSUPPORTED);
                 } else if !plan.reads.is_current(&self.world) {
@@ -528,10 +461,7 @@ impl Plot {
                         for &(pos, block) in &plan.placements {
                             let block = if matches!(block, Block::RedstoneWire { .. }) {
                                 Block::RedstoneWire {
-                                    wire: crate::redstone::wire::get_state_for_placement(
-                                        &self.world,
-                                        pos,
-                                    ),
+                                    wire: crate::redstone::wire::get_state_for_placement(&self.world, pos),
                                 }
                             } else {
                                 block
@@ -568,17 +498,11 @@ impl Plot {
         if !self.wire_held(player) {
             return false;
         }
-        if self.players[player].awaiting_teleport()
-            || !matches!(self.players[player].gamemode, Gamemode::Creative)
-        {
+        if self.players[player].awaiting_teleport() || !matches!(self.players[player].gamemode, Gamemode::Creative) {
             return true;
         }
         if self.check_tool_access(player, ToolCommand::Wire).is_err()
-            || !self.players[player].can_build_action(
-                "place",
-                self.owner,
-                (self.world.x, self.world.z),
-            )
+            || !self.players[player].can_build_action("place", self.owner, (self.world.x, self.world.z))
         {
             self.clear_wire_tool(player);
             self.players[player].send_no_permission_message();
@@ -601,10 +525,7 @@ impl Plot {
         }
 
         let slot = self.players[player].selected_slot;
-        let session = self.players[player]
-            .redstone_tools
-            .wire
-            .get_or_insert_with(|| Session::new(slot));
+        let session = self.players[player].redstone_tools.wire.get_or_insert_with(|| Session::new(slot));
         session.start = Some(start);
         session.target = Some(start);
         session.invalidate();
@@ -628,21 +549,11 @@ impl Plot {
             }
             self.wire_cursor = (player + 1) % count;
             if !self.wire_held(player)
-                || self.players[player]
-                    .redstone_tools
-                    .wire
-                    .as_ref()
-                    .unwrap()
-                    .slot
-                    != self.players[player].selected_slot
+                || self.players[player].redstone_tools.wire.as_ref().unwrap().slot != self.players[player].selected_slot
                 || !matches!(self.players[player].gamemode, Gamemode::Creative)
                 || self.players[player].awaiting_teleport()
                 || self.check_tool_access(player, ToolCommand::Wire).is_err()
-                || !self.players[player].can_build_action(
-                    "place",
-                    self.owner,
-                    (self.world.x, self.world.z),
-                )
+                || !self.players[player].can_build_action("place", self.owner, (self.world.x, self.world.z))
             {
                 self.clear_wire_tool(player);
                 continue;
@@ -709,10 +620,7 @@ impl Plot {
             if session.pending.is_none() && session.needs_search {
                 if let (Some(start), Some(end)) = (session.start, session.target) {
                     if start != end {
-                        if session.capture.is_none()
-                            && session.snapshot.is_none()
-                            && now >= session.next_capture
-                        {
+                        if session.capture.is_none() && session.snapshot.is_none() && now >= session.next_capture {
                             match Capture::new(&self.world, start, end) {
                                 Ok(capture) => session.capture = Some(capture),
                                 Err(reason) => {
@@ -726,8 +634,7 @@ impl Plot {
                                 Ok(Some(snapshot)) => {
                                     session.snapshot = Some(snapshot);
                                     session.capture = None;
-                                    session.check =
-                                        session.snapshot.clone().map(GeometryCheck::new);
+                                    session.check = session.snapshot.clone().map(GeometryCheck::new);
                                 }
                                 Ok(None) => {}
                                 Err(reason) => {
@@ -756,12 +663,7 @@ impl Plot {
                 })
                 .map(|(&pos, &kind)| (pos, kind))
                 .collect();
-            let reconciled = preview::reconcile_markers(
-                &self.players[player],
-                &mut session.markers,
-                &wanted,
-                128,
-            );
+            let reconciled = preview::reconcile_markers(&self.players[player], &mut session.markers, &wanted, 128);
             session.displayed = wanted.len() == session.wanted.len() && reconciled;
             session.send_status(&self.players[player], now);
             self.players[player].redstone_tools.wire = Some(session);
@@ -783,14 +685,7 @@ fn action_bar(viewer: &impl PacketSender, message: &str) {
     );
 }
 
-fn aim(
-    world: &PlotWorld,
-    player: &Player,
-    yaw: f32,
-    pitch: f32,
-    start: Option<BlockPos>,
-    plane: Plane,
-) -> Option<BlockPos> {
+fn aim(world: &PlotWorld, player: &Player, yaw: f32, pitch: f32, start: Option<BlockPos>, plane: Plane) -> Option<BlockPos> {
     if !player.pos.is_valid() || !yaw.is_finite() || !pitch.is_finite() {
         return None;
     }
@@ -804,9 +699,7 @@ fn aim(
     ];
     let origin = [player.pos.x, eye_y, player.pos.z];
     let axis = plane.axis();
-    let read = |pos: BlockPos| {
-        Plot::in_plot_bounds(world.x, world.z, pos.x, pos.z).then(|| world.get_block(pos))
-    };
+    let read = |pos: BlockPos| Plot::in_plot_bounds(world.x, world.z, pos.x, pos.z).then(|| world.get_block(pos));
     let bounds = |block| match block {
         Block::Air {} => None,
         Block::RedstoneWire { .. } => Some(crate::plot::compass::Bounds {
@@ -818,14 +711,7 @@ fn aim(
             max: [1.0; 3],
         }),
     };
-    if let Some(hit) = crate::plot::compass::ray_trace(
-        PlayerPos::new(origin[0], origin[1], origin[2]),
-        yaw,
-        pitch,
-        AIM_DISTANCE,
-        &read,
-        &bounds,
-    ) {
+    if let Some(hit) = crate::plot::compass::ray_trace(PlayerPos::new(origin[0], origin[1], origin[2]), yaw, pitch, AIM_DISTANCE, &read, &bounds) {
         let hit = hit.block;
         let target = if matches!(world.get_block(hit), Block::RedstoneWire { .. }) {
             hit
@@ -843,11 +729,7 @@ fn aim(
     }
     let axis = axis?;
     let start = start?;
-    let support = [
-        f64::from(start.x) + 0.5,
-        f64::from(start.y) - 0.5,
-        f64::from(start.z) + 0.5,
-    ];
+    let support = [f64::from(start.x) + 0.5, f64::from(start.y) - 0.5, f64::from(start.z) + 0.5];
     let reach = origin
         .iter()
         .zip(support)
@@ -862,14 +744,9 @@ fn aim(
     } else {
         reach
     };
-    let mut point =
-        std::array::from_fn::<_, 3, _>(|axis| origin[axis] + direction[axis] * distance);
+    let mut point = std::array::from_fn::<_, 3, _>(|axis| origin[axis] + direction[axis] * distance);
     point[axis] = support[axis];
-    let target = BlockPos::new(
-        point[0].floor() as i32,
-        point[1].floor() as i32 + 1,
-        point[2].floor() as i32,
-    );
+    let target = BlockPos::new(point[0].floor() as i32, point[1].floor() as i32 + 1, point[2].floor() as i32);
     world.contains_position(target).then_some(target)
 }
 
@@ -879,14 +756,8 @@ fn undo_positions(world: &PlotWorld, plan: &Plan) -> Vec<BlockPos> {
     for &(pos, _) in &plan.placements {
         for side in BlockFace::values() {
             let neighbor = pos.offset(side);
-            for cell in [
-                neighbor,
-                neighbor.offset(BlockFace::Top),
-                neighbor.offset(BlockFace::Bottom),
-            ] {
-                if world.contains_position(cell)
-                    && matches!(world.get_block(cell), Block::RedstoneWire { .. })
-                {
+            for cell in [neighbor, neighbor.offset(BlockFace::Top), neighbor.offset(BlockFace::Bottom)] {
+                if world.contains_position(cell) && matches!(world.get_block(cell), Block::RedstoneWire { .. }) {
                     positions.insert(cell);
                 }
             }

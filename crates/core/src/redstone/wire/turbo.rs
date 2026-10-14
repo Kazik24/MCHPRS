@@ -259,9 +259,7 @@ impl RedstoneWireTurbo {
 
     /// This is the start of a great adventure
     pub fn update_surrounding_neighbors(world: &mut impl World, pos: BlockPos) {
-        let mut turbo = SCRATCH
-            .with(|scratch| scratch.borrow_mut().take())
-            .unwrap_or_else(RedstoneWireTurbo::new);
+        let mut turbo = SCRATCH.with(|scratch| scratch.borrow_mut().take()).unwrap_or_else(RedstoneWireTurbo::new);
         turbo.spatial.begin();
         let node_id = turbo.node_at(
             world,
@@ -354,9 +352,7 @@ impl RedstoneWireTurbo {
                     // the cached state will need to be updated
                     block => {
                         #[cfg(test)]
-                        let _source = crate::redstone::instant_piston_tests::notification_source(
-                            Some(self.notification_sources[0][index]),
-                        );
+                        let _source = crate::redstone::instant_piston_tests::notification_source(Some(self.notification_sources[0][index]));
                         redstone::update(block, world, self.nodes[node_id.index()].pos, None)
                     }
                 }
@@ -422,17 +418,11 @@ impl RedstoneWireTurbo {
         for (side, neighbor_id) in BlockFace::values().iter().zip(direct) {
             let neighbor_pos = pos.offset(*side);
             let neighbor = self.nodes[neighbor_id.index()].state;
-            wire_power = wire_power.max(redstone::get_redstone_power_no_dust(
-                neighbor,
-                world,
-                neighbor_pos,
-                *side,
-            ));
+            wire_power = wire_power.max(redstone::get_redstone_power_no_dust(neighbor, world, neighbor_pos, *side));
         }
 
         if wire_power < 15 {
-            let neighbors =
-                &self.neighbor_lists[self.nodes[upd.index()].neighborhood_index()].oriented;
+            let neighbors = &self.neighbor_lists[self.nodes[upd.index()].neighborhood_index()].oriented;
 
             let center_up = self.nodes[neighbors[1].index()].facts;
 

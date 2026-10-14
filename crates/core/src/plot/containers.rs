@@ -18,11 +18,10 @@ impl Plot {
 
     fn close_open_container_inner(&mut self, player: usize, notify: bool) {
         if let Some((pos, ty)) = self.players[player].close_container() {
-            let still_open = self.players.iter().any(|p| {
-                p.open_container
-                    .as_ref()
-                    .is_some_and(|m| m.pos == pos && m.ty == ty)
-            });
+            let still_open = self
+                .players
+                .iter()
+                .any(|p| p.open_container.as_ref().is_some_and(|m| m.pos == pos && m.ty == ty));
             if !still_open {
                 if ty == ContainerType::Barrel {
                     if notify {
@@ -46,9 +45,7 @@ impl Plot {
 
     pub(super) fn container_in_reach(&self, player: usize, pos: mchprs_blocks::BlockPos) -> bool {
         let p = self.players[player].pos;
-        let squared = (p.x - pos.x as f64 - 0.5).powi(2)
-            + (p.y - pos.y as f64 - 0.5).powi(2)
-            + (p.z - pos.z as f64 - 0.5).powi(2);
+        let squared = (p.x - pos.x as f64 - 0.5).powi(2) + (p.y - pos.y as f64 - 0.5).powi(2) + (p.z - pos.z as f64 - 0.5).powi(2);
         squared.is_finite() && squared <= 64.0
     }
 
@@ -57,8 +54,7 @@ impl Plot {
             return false;
         };
         self.container_in_reach(player, menu.pos)
-            && self.world.get_block(menu.pos).get_name()
-                == menu.ty.to_string().trim_start_matches("minecraft:")
+            && self.world.get_block(menu.pos).get_name() == menu.ty.to_string().trim_start_matches("minecraft:")
             && matches!(self.world.get_block_entity(menu.pos), Some(BlockEntity::Container { ty, .. }) if *ty == menu.ty)
     }
 
@@ -76,8 +72,7 @@ impl Plot {
             if menu.ty == ContainerType::Barrel {
                 container::set_barrel_open(&mut self.world, pos, true);
             }
-            if let Some(BlockEntity::Container { inventory, .. }) = self.world.get_block_entity(pos)
-            {
+            if let Some(BlockEntity::Container { inventory, .. }) = self.world.get_block_entity(pos) {
                 self.players[player].send_container_contents(inventory, false);
             }
         }
@@ -96,29 +91,20 @@ impl Plot {
             return;
         }
         let pos = menu.pos;
-        if !self.players[player_idx].can_build_action(
-            "container",
-            self.owner,
-            (self.world.x, self.world.z),
-        ) {
+        if !self.players[player_idx].can_build_action("container", self.owner, (self.world.x, self.world.z)) {
             self.players[player_idx].send_no_permission_message();
             self.close_open_container(player_idx);
             return;
         }
         if self.redpiler.is_active() {
-            if self
-                .redpiler
-                .current_flags()
-                .is_some_and(|flags| flags.io_only)
-            {
+            if self.redpiler.current_flags().is_some_and(|flags| flags.io_only) {
                 self.players[player_idx].send_error_message(super::packet_handlers::ERROR_IO_ONLY);
                 self.close_open_container(player_idx);
                 return;
             }
             self.reset_redpiler();
         }
-        let Some(BlockEntity::Container { inventory, ty, .. }) = self.world.get_block_entity(pos)
-        else {
+        let Some(BlockEntity::Container { inventory, ty, .. }) = self.world.get_block_entity(pos) else {
             return;
         };
         let size = ty.num_slots() as usize;

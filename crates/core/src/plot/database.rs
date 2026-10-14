@@ -34,26 +34,20 @@ pub fn set_warp(name: &str, warp: Warp) -> rusqlite::Result<()> {
         "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z,
              yaw=excluded.yaw, pitch=excluded.pitch",
-        params![
-            name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch
-        ],
+        params![name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch],
     )?;
     Ok(())
 }
 
 pub fn get_warp(name: &str) -> rusqlite::Result<Option<Warp>> {
     lock()
-        .query_row(
-            "SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1",
-            [name],
-            |row| {
-                Ok(Warp {
-                    pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
-                    yaw: row.get(3)?,
-                    pitch: row.get(4)?,
-                })
-            },
-        )
+        .query_row("SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1", [name], |row| {
+            Ok(Warp {
+                pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
+                yaw: row.get(3)?,
+                pitch: row.get(4)?,
+            })
+        })
         .optional()
 }
 
@@ -71,9 +65,7 @@ pub fn is_plot_member(x: i32, z: i32, uuid: u128) -> bool {
     MEMBERS.read().unwrap().contains(&(x, z, uuid))
 }
 
-static CONN: Lazy<Mutex<Connection>> = Lazy::new(|| {
-    Mutex::new(Connection::open("./world/plots.db").expect("Error opening plot database!"))
-});
+static CONN: Lazy<Mutex<Connection>> = Lazy::new(|| Mutex::new(Connection::open("./world/plots.db").expect("Error opening plot database!")));
 
 fn lock<'a>() -> MutexGuard<'a, Connection> {
     CONN.lock().unwrap()
@@ -156,9 +148,7 @@ fn get_owned_plots_in(conn: &Connection, player: &str) -> rusqlite::Result<Vec<(
                     AND is_owner=TRUE
                 ORDER BY plot.id",
     )?;
-    let plots = stmt
-        .query_map(params![player], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect();
+    let plots = stmt.query_map(params![player], |row| Ok((row.get(0)?, row.get(1)?)))?.collect();
     plots
 }
 
@@ -173,11 +163,7 @@ fn get_owned_plots_by_uuid_in(conn: &Connection, uuid: u128) -> rusqlite::Result
          JOIN user ON user.id=userplot.user_id
          WHERE uuid=?1 AND is_owner=TRUE ORDER BY plot.id",
     )?;
-    let result = stmt
-        .query_map([format!("{uuid:032x}")], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?
-        .collect();
+    let result = stmt.query_map([format!("{uuid:032x}")], |row| Ok((row.get(0)?, row.get(1)?)))?.collect();
     result
 }
 
@@ -186,9 +172,7 @@ pub fn known_usernames() -> rusqlite::Result<Vec<String>> {
 }
 
 fn known_usernames_in(conn: &Connection) -> rusqlite::Result<Vec<String>> {
-    let mut stmt = conn.prepare_cached(
-        "SELECT DISTINCT name FROM user WHERE name_current=TRUE ORDER BY name COLLATE NOCASE",
-    )?;
+    let mut stmt = conn.prepare_cached("SELECT DISTINCT name FROM user WHERE name_current=TRUE ORDER BY name COLLATE NOCASE")?;
     let result = stmt.query_map([], |row| row.get(0))?.collect();
     result
 }
@@ -219,14 +203,7 @@ pub enum MembershipResult {
     IsOwner,
 }
 
-pub fn set_plot_member(
-    x: i32,
-    z: i32,
-    actor: u128,
-    admin: bool,
-    name: &str,
-    add: bool,
-) -> rusqlite::Result<MembershipResult> {
+pub fn set_plot_member(x: i32, z: i32, actor: u128, admin: bool, name: &str, add: bool) -> rusqlite::Result<MembershipResult> {
     let mut conn = lock();
     let result = set_plot_member_in(&mut conn, x, z, actor, admin, name, add)?;
     if let MembershipResult::Changed { uuid, .. } = &result {
@@ -240,15 +217,7 @@ pub fn set_plot_member(
     Ok(result)
 }
 
-fn set_plot_member_in(
-    conn: &mut Connection,
-    x: i32,
-    z: i32,
-    actor: u128,
-    admin: bool,
-    name: &str,
-    add: bool,
-) -> rusqlite::Result<MembershipResult> {
+fn set_plot_member_in(conn: &mut Connection, x: i32, z: i32, actor: u128, admin: bool, name: &str, add: bool) -> rusqlite::Result<MembershipResult> {
     let tx = conn.transaction()?;
     let owner: Option<(i64, String)> = tx
         .query_row(
@@ -298,9 +267,8 @@ fn set_plot_member_in(
     if uuid == owner {
         return Ok(MembershipResult::IsOwner);
     }
-    let parsed_uuid = u128::from_str_radix(&uuid, 16).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(error))
-    })?;
+    let parsed_uuid = u128::from_str_radix(&uuid, 16)
+        .map_err(|error| rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(error)))?;
     let changed = if add {
         tx.execute(
             "INSERT INTO userplot(user_id, plot_id, is_owner)
@@ -316,10 +284,7 @@ fn set_plot_member_in(
     };
     tx.commit()?;
     Ok(if changed > 0 {
-        MembershipResult::Changed {
-            uuid: parsed_uuid,
-            name,
-        }
+        MembershipResult::Changed { uuid: parsed_uuid, name }
     } else {
         MembershipResult::Unchanged
     })
@@ -342,22 +307,11 @@ pub enum ClaimResult {
     LimitReached(usize),
 }
 
-pub fn claim_plot(
-    plot_x: i32,
-    plot_z: i32,
-    uuid: &str,
-    limit: Option<usize>,
-) -> rusqlite::Result<ClaimResult> {
+pub fn claim_plot(plot_x: i32, plot_z: i32, uuid: &str, limit: Option<usize>) -> rusqlite::Result<ClaimResult> {
     claim_plot_in(&mut lock(), plot_x, plot_z, uuid, limit)
 }
 
-fn claim_plot_in(
-    conn: &mut Connection,
-    plot_x: i32,
-    plot_z: i32,
-    uuid: &str,
-    limit: Option<usize>,
-) -> rusqlite::Result<ClaimResult> {
+fn claim_plot_in(conn: &mut Connection, plot_x: i32, plot_z: i32, uuid: &str, limit: Option<usize>) -> rusqlite::Result<ClaimResult> {
     let tx = conn.transaction()?;
     let claimed: bool = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM plot WHERE plot_x=?1 AND plot_z=?2)",
@@ -368,9 +322,7 @@ fn claim_plot_in(
         return Ok(ClaimResult::AlreadyClaimed);
     }
     // Resolve the user before writing either row; a failed claim leaves no orphan.
-    let user_id: i64 = tx.query_row("SELECT id FROM user WHERE uuid=?1", [uuid], |row| {
-        row.get(0)
-    })?;
+    let user_id: i64 = tx.query_row("SELECT id FROM user WHERE uuid=?1", [uuid], |row| row.get(0))?;
     if let Some(limit) = limit {
         // Count and insert under the same transaction and connection lock.
         // UUID ownership covers every plot, including unloaded plots.
@@ -383,10 +335,7 @@ fn claim_plot_in(
             return Ok(ClaimResult::LimitReached(limit));
         }
     }
-    tx.execute(
-        "INSERT INTO plot(plot_x, plot_z) VALUES(?1, ?2)",
-        params![plot_x, plot_z],
-    )?;
+    tx.execute("INSERT INTO plot(plot_x, plot_z) VALUES(?1, ?2)", params![plot_x, plot_z])?;
     tx.execute(
         "INSERT INTO userplot(user_id, plot_id, is_owner)
                 VALUES(
@@ -428,10 +377,7 @@ fn init_user_name_cache(conn: &Connection) -> rusqlite::Result<()> {
         |row| row.get(0),
     )?;
     if !migrated {
-        conn.execute(
-            "ALTER TABLE user ADD COLUMN name_current BOOLEAN NOT NULL DEFAULT TRUE",
-            [],
-        )?;
+        conn.execute("ALTER TABLE user ADD COLUMN name_current BOOLEAN NOT NULL DEFAULT TRUE", [])?;
     }
     conn.execute(
         "CREATE INDEX IF NOT EXISTS user_current_name ON user(name COLLATE NOCASE) WHERE name_current=TRUE",
@@ -494,11 +440,8 @@ pub fn init() {
     )
     .unwrap();
     // Fail visibly on legacy duplicate claims instead of selecting an arbitrary owner.
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS plot_coordinates ON plot(plot_x, plot_z)",
-        [],
-    )
-    .expect("Duplicate plot coordinates must be repaired before startup");
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS plot_coordinates ON plot(plot_x, plot_z)", [])
+        .expect("Duplicate plot coordinates must be repaired before startup");
     let mut stmt = conn
         .prepare(
             "SELECT plot_x, plot_z, uuid FROM plot
@@ -507,23 +450,13 @@ pub fn init() {
         )
         .expect("Could not read plot members");
     let rows = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, i32>(0)?,
-                row.get::<_, i32>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })
+        .query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i32>(1)?, row.get::<_, String>(2)?)))
         .expect("Could not read plot members");
     let mut members = MEMBERS.write().unwrap();
     members.clear();
     for row in rows {
         let (x, z, uuid) = row.expect("Could not read plot member");
-        members.insert((
-            x,
-            z,
-            u128::from_str_radix(&uuid, 16).expect("Invalid plot member UUID"),
-        ));
+        members.insert((x, z, u128::from_str_radix(&uuid, 16).expect("Invalid plot member UUID")));
     }
 }
 
@@ -536,25 +469,19 @@ mod tests {
             "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(name) DO UPDATE SET x=excluded.x, y=excluded.y, z=excluded.z,
                  yaw=excluded.yaw, pitch=excluded.pitch",
-            params![
-                name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch
-            ],
+            params![name, warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch],
         )?;
         Ok(())
     }
 
     fn get_warp_in(conn: &Connection, name: &str) -> rusqlite::Result<Option<Warp>> {
-        conn.query_row(
-            "SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1",
-            [name],
-            |row| {
-                Ok(Warp {
-                    pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
-                    yaw: row.get(3)?,
-                    pitch: row.get(4)?,
-                })
-            },
-        )
+        conn.query_row("SELECT x, y, z, yaw, pitch FROM warp WHERE name=?1", [name], |row| {
+            Ok(Warp {
+                pos: PlayerPos::new(row.get(0)?, row.get(1)?, row.get(2)?),
+                yaw: row.get(3)?,
+                pitch: row.get(4)?,
+            })
+        })
         .optional()
     }
 
@@ -584,13 +511,7 @@ mod tests {
             init_warps(&conn).unwrap();
             let saved = get_warp_in(&conn, "SPAWN").unwrap().unwrap();
             assert_eq!(
-                (
-                    saved.pos.x,
-                    saved.pos.y,
-                    saved.pos.z,
-                    saved.yaw,
-                    saved.pitch
-                ),
+                (saved.pos.x, saved.pos.y, saved.pos.z, saved.yaw, saved.pitch),
                 (warp.pos.x, warp.pos.y, warp.pos.z, warp.yaw, warp.pitch)
             );
             assert_eq!(warp_names_in(&conn).unwrap(), ["CPU", "Spawn"]);
@@ -603,36 +524,24 @@ mod tests {
                 }
                 .is_valid()
             );
-            assert!(
-                !Warp {
-                    yaw: f32::INFINITY,
-                    ..warp
-                }
-                .is_valid()
-            );
-            assert!(
-                !Warp {
-                    pitch: f32::NAN,
-                    ..warp
-                }
-                .is_valid()
-            );
+            assert!(!Warp { yaw: f32::INFINITY, ..warp }.is_valid());
+            assert!(!Warp { pitch: f32::NAN, ..warp }.is_valid());
         }
         std::fs::remove_file(path).unwrap();
     }
 
     fn legacy_name_collision() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA foreign_keys=ON;
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
             CREATE TABLE user(id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, name TEXT NOT NULL);
             CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
-            CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);").unwrap();
+            CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);",
+        )
+        .unwrap();
         for (id, name) in [(1, "Owner"), (2, "Kazik24"), (3, "KAZIK24")] {
-            conn.execute(
-                "INSERT INTO user VALUES(?1,?2,?3)",
-                params![id, format!("{id:032x}"), name],
-            )
-            .unwrap();
+            conn.execute("INSERT INTO user VALUES(?1,?2,?3)", params![id, format!("{id:032x}"), name])
+                .unwrap();
         }
         conn.execute_batch(
             "INSERT INTO plot VALUES(1,2,3),(2,4,5);
@@ -660,28 +569,15 @@ mod tests {
             }
         );
         assert_eq!(get_cached_username_in(&conn, &format!("{:032x}", 2)), None);
-        assert_eq!(
-            get_cached_username_in(&conn, &format!("{:032x}", 3)),
-            Some("Kazik24".into())
-        );
+        assert_eq!(get_cached_username_in(&conn, &format!("{:032x}", 3)), Some("Kazik24".into()));
         assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
         assert!(get_owned_plots_by_uuid_in(&conn, 3).unwrap().is_empty());
         assert!(get_owned_plots_in(&conn, "Kazik24").unwrap().is_empty());
+        assert_eq!(plot_member_names_in(&conn, 2, 3).unwrap(), [format!("{:032x}", 2), "Kazik24".into()]);
+        assert_eq!(conn.query_row("SELECT count(*) FROM user", [], |r| r.get::<_, i64>(0)).unwrap(), 3);
         assert_eq!(
-            plot_member_names_in(&conn, 2, 3).unwrap(),
-            [format!("{:032x}", 2), "Kazik24".into()]
-        );
-        assert_eq!(
-            conn.query_row("SELECT count(*) FROM user", [], |r| r.get::<_, i64>(0))
+            conn.query_row("SELECT count(*) FROM userplot WHERE user_id=2", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            3
-        );
-        assert_eq!(
-            conn.query_row("SELECT count(*) FROM userplot WHERE user_id=2", [], |r| r
-                .get::<_, i64>(
-                0
-            ))
-            .unwrap(),
             2
         );
         let uuid = crate::utils::HyphenatedUUID(2).to_string();
@@ -721,10 +617,7 @@ mod tests {
         assert_eq!(known_usernames_in(&conn).unwrap(), ["NewKazik", "Owner"]);
         ensure_user_in(&mut conn, &format!("{:032x}", 2), "FormerKazik").unwrap();
         assert_eq!(get_owned_plots_in(&conn, "formerkazik").unwrap(), [(4, 5)]);
-        assert_eq!(
-            plot_member_names_in(&conn, 2, 3).unwrap(),
-            ["FormerKazik", "NewKazik"]
-        );
+        assert_eq!(plot_member_names_in(&conn, 2, 3).unwrap(), ["FormerKazik", "NewKazik"]);
         assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
     }
 
@@ -738,18 +631,10 @@ mod tests {
         )
         .unwrap();
         assert!(ensure_user_in(&mut conn, &format!("{:032x}", 4), "Kazik24").is_err());
+        assert_eq!(conn.query_row("SELECT count(*) FROM user", [], |r| r.get::<_, i64>(0)).unwrap(), 3);
         assert_eq!(
-            conn.query_row("SELECT count(*) FROM user", [], |r| r.get::<_, i64>(0))
+            conn.query_row("SELECT count(*) FROM user WHERE name_current=TRUE", [], |r| r.get::<_, i64>(0))
                 .unwrap(),
-            3
-        );
-        assert_eq!(
-            conn.query_row(
-                "SELECT count(*) FROM user WHERE name_current=TRUE",
-                [],
-                |r| r.get::<_, i64>(0)
-            )
-            .unwrap(),
             3
         );
         assert_eq!(get_owned_plots_by_uuid_in(&conn, 2).unwrap(), [(4, 5)]);
@@ -762,10 +647,13 @@ mod tests {
     #[test]
     fn only_owners_or_admins_can_manage_members_and_ownership_is_preserved() {
         let mut conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA foreign_keys=ON;
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
             CREATE TABLE user(id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, name TEXT);
             CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
-            CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);").unwrap();
+            CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);",
+        )
+        .unwrap();
         init_user_name_cache(&conn).unwrap();
         for (id, name) in [(1, "Owner"), (2, "Builder"), (3, "Other")] {
             conn.execute(
@@ -790,28 +678,21 @@ mod tests {
             }
         );
         assert_eq!(get_owned_plots_by_uuid_in(&conn, 1).unwrap(), [(2, 3)]);
-        conn.execute("UPDATE user SET name='BUILDER' WHERE id=3", [])
-            .unwrap();
+        conn.execute("UPDATE user SET name='BUILDER' WHERE id=3", []).unwrap();
         assert_eq!(
             set_plot_member_in(&mut conn, 2, 3, 1, false, "Builder", true).unwrap(),
             MembershipResult::AmbiguousPlayer
         );
-        conn.execute("UPDATE user SET name='Other' WHERE id=3", [])
-            .unwrap();
+        conn.execute("UPDATE user SET name='Other' WHERE id=3", []).unwrap();
         assert!(get_owned_plots_by_uuid_in(&conn, 2).unwrap().is_empty());
-        conn.execute("UPDATE user SET name='RenamedOwner' WHERE id=1", [])
-            .unwrap();
+        conn.execute("UPDATE user SET name='RenamedOwner' WHERE id=1", []).unwrap();
         assert_eq!(get_owned_plots_by_uuid_in(&conn, 1).unwrap(), [(2, 3)]);
-        conn.execute("UPDATE user SET name='Owner' WHERE id=1", [])
-            .unwrap();
+        conn.execute("UPDATE user SET name='Owner' WHERE id=1", []).unwrap();
         assert_eq!(
             claim_plot_in(&mut conn, -10, -20, &format!("{:032x}", 1), None).unwrap(),
             ClaimResult::Claimed
         );
-        assert_eq!(
-            get_owned_plots_by_uuid_in(&conn, 1).unwrap(),
-            [(2, 3), (-10, -20)]
-        );
+        assert_eq!(get_owned_plots_by_uuid_in(&conn, 1).unwrap(), [(2, 3), (-10, -20)]);
         assert_eq!(
             set_plot_member_in(&mut conn, 2, 3, 1, false, "Builder", true).unwrap(),
             MembershipResult::Unchanged
@@ -856,33 +737,25 @@ mod tests {
     #[test]
     fn claims_are_atomic_and_duplicate_claims_cannot_change_the_owner() {
         let mut conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA foreign_keys=ON;
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
             CREATE TABLE user(id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, name TEXT);
             CREATE TABLE plot(id INTEGER PRIMARY KEY, plot_x INTEGER, plot_z INTEGER, UNIQUE(plot_x, plot_z));
             CREATE TABLE userplot(user_id INTEGER REFERENCES user(id), plot_id INTEGER REFERENCES plot(id), is_owner BOOLEAN);
-            INSERT INTO user VALUES(1, 'first', 'First'), (2, 'second', 'Second');").unwrap();
+            INSERT INTO user VALUES(1, 'first', 'First'), (2, 'second', 'Second');",
+        )
+        .unwrap();
         assert!(claim_plot_in(&mut conn, 0, 0, "missing", None).is_err());
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM plot", [], |row| row.get(0))
-            .unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM plot", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
-        assert_eq!(
-            claim_plot_in(&mut conn, 0, 0, "first", None).unwrap(),
-            ClaimResult::Claimed
-        );
-        assert_eq!(
-            claim_plot_in(&mut conn, 0, 0, "second", None).unwrap(),
-            ClaimResult::AlreadyClaimed
-        );
-        let owner: i64 = conn
-            .query_row("SELECT user_id FROM userplot", [], |row| row.get(0))
-            .unwrap();
+        assert_eq!(claim_plot_in(&mut conn, 0, 0, "first", None).unwrap(), ClaimResult::Claimed);
+        assert_eq!(claim_plot_in(&mut conn, 0, 0, "second", None).unwrap(), ClaimResult::AlreadyClaimed);
+        let owner: i64 = conn.query_row("SELECT user_id FROM userplot", [], |row| row.get(0)).unwrap();
         assert_eq!(owner, 1);
-        conn.execute_batch("CREATE TRIGGER fail_claim BEFORE INSERT ON userplot BEGIN SELECT RAISE(ABORT, 'failure'); END;").unwrap();
-        assert!(claim_plot_in(&mut conn, 1, 0, "second", None).is_err());
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM plot", [], |row| row.get(0))
+        conn.execute_batch("CREATE TRIGGER fail_claim BEFORE INSERT ON userplot BEGIN SELECT RAISE(ABORT, 'failure'); END;")
             .unwrap();
+        assert!(claim_plot_in(&mut conn, 1, 0, "second", None).is_err());
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM plot", [], |row| row.get(0)).unwrap();
         assert_eq!(count, 1);
     }
 }

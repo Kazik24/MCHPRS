@@ -52,14 +52,10 @@ impl<T> Queues<T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&T, TickPriority)> {
-        self.0
-            .each_ref()
-            .into_iter()
-            .enumerate()
-            .flat_map(|(i, q)| {
-                let priority = TickPriority::ALL[i];
-                q.iter().map(move |n| (n, priority))
-            })
+        self.0.each_ref().into_iter().enumerate().flat_map(|(i, q)| {
+            let priority = TickPriority::ALL[i];
+            q.iter().map(move |n| (n, priority))
+        })
     }
 }
 
@@ -130,10 +126,7 @@ impl<T> TickScheduler<T> {
     pub fn schedule_half_tick(&mut self, node: T, delay: usize, priority: TickPriority) {
         debug_assert!(delay < NUM_QUEUES);
         if delay == 0 {
-            debug_assert!(
-                priority == TickPriority::NanoTick,
-                "0 delay can only be scheduled with NanoTick priority"
-            );
+            debug_assert!(priority == TickPriority::NanoTick, "0 delay can only be scheduled with NanoTick priority");
         }
         self.queues_deque[(self.pos + delay) % NUM_QUEUES].0[priority as usize].push_back(node);
     }
@@ -184,9 +177,7 @@ impl<T> TickScheduler<T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&T, usize, TickPriority)> {
-        self.queues_iter()
-            .enumerate()
-            .flat_map(|(d, q)| q.iter().map(move |(n, p)| (n, d, p)))
+        self.queues_iter().enumerate().flat_map(|(d, q)| q.iter().map(move |(n, p)| (n, d, p)))
     }
 
     pub fn end_tick(&mut self, mut queues: Queues<T>) {
@@ -213,11 +204,7 @@ mod tests {
 
         let entries = iter::repeat_with(|| TickEntry {
             block_type: None,
-            pos: BlockPos::new(
-                rng.random_range(0..128),
-                rng.random_range(0..128),
-                rng.random_range(0..128),
-            ),
+            pos: BlockPos::new(rng.random_range(0..128), rng.random_range(0..128), rng.random_range(0..128)),
             ticks_left: rng.random_range(0..16),
             tick_priority: TickPriority::ALL[rng.random_range(0..TickPriority::COUNT)],
         })

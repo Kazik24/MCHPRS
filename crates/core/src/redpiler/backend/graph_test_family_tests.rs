@@ -36,9 +36,7 @@ const PULSE_WIDTHS: [usize; 6] = [1, 2, 3, 4, 6, 8];
 const SETTLE: usize = 12;
 
 fn source() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(SOURCE)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(SOURCE)
 }
 
 fn json(name: &str) -> Value {
@@ -83,11 +81,7 @@ fn load_circuit(name: &'static str) -> Circuit {
     assert_eq!(entry["bytes"].as_u64().unwrap() as usize, bytes.len());
     assert_eq!(entry["sha256"], sha256.as_str(), "{name} hash");
     let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
-    let size = BlockPos::new(
-        clipboard.size_x as i32,
-        clipboard.size_y as i32,
-        clipboard.size_z as i32,
-    );
+    let size = BlockPos::new(clipboard.size_x as i32, clipboard.size_y as i32, clipboard.size_z as i32);
     let mut world = empty_world();
     paste_clipboard(
         &mut world,
@@ -104,12 +98,7 @@ fn load_circuit(name: &'static str) -> Circuit {
         .iter()
         .find(|record| record["name"] == file.as_str())
         .expect("fixture has recorded observations");
-    let added: Vec<_> = record["added_controls"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(local)
-        .collect();
+    let added: Vec<_> = record["added_controls"].as_array().unwrap().iter().map(local).collect();
     for &position in &added {
         // The added lever drives the saved torch support exactly as the
         // levered fixtures do: a wall lever on the support's north face.
@@ -133,8 +122,7 @@ fn load_circuit(name: &'static str) -> Circuit {
             let position = ORIGIN + BlockPos::new(x, 0, z);
             let block = world.get_block(position);
             let below = position.offset(BlockFace::Bottom);
-            if crate::interaction::attachment_support(block, position)
-                .is_some_and(|(support, _)| support == below)
+            if crate::interaction::attachment_support(block, position).is_some_and(|(support, _)| support == below)
                 && world.get_block(below) == Block::Air
             {
                 world.set_block(below, Block::Stone {});
@@ -155,11 +143,7 @@ fn load_circuit(name: &'static str) -> Circuit {
                     controls.push(position);
                 }
                 if block != Block::Air {
-                    cells.push((
-                        position,
-                        block,
-                        world.get_block_entity(ORIGIN + position).cloned(),
-                    ));
+                    cells.push((position, block, world.get_block_entity(ORIGIN + position).cloned()));
                 }
             }
         }
@@ -174,12 +158,7 @@ fn load_circuit(name: &'static str) -> Circuit {
         controls,
         added_controls: added.len(),
         floor,
-        outputs: record["outputs"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(local)
-            .collect(),
+        outputs: record["outputs"].as_array().unwrap().iter().map(local).collect(),
     }
 }
 
@@ -215,9 +194,7 @@ fn empty_world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -336,10 +313,7 @@ fn episodes(controls: usize) -> Vec<Episode> {
     if controls == 2 {
         episodes.push(Episode {
             id: "mask_3_reversed_order".into(),
-            steps: [Step::Toggle(1), Step::Toggle(0)]
-                .into_iter()
-                .chain(ticks(SETTLE))
-                .collect(),
+            steps: [Step::Toggle(1), Step::Toggle(0)].into_iter().chain(ticks(SETTLE)).collect(),
         });
         episodes.push(Episode {
             id: "staggered_both".into(),
@@ -368,10 +342,7 @@ fn episodes(controls: usize) -> Vec<Episode> {
         }
         episodes.push(Episode {
             id: format!("lever_{control}_same_tick_cancel"),
-            steps: [Step::Toggle(control), Step::Toggle(control)]
-                .into_iter()
-                .chain(ticks(SETTLE))
-                .collect(),
+            steps: [Step::Toggle(control), Step::Toggle(control)].into_iter().chain(ticks(SETTLE)).collect(),
         });
         episodes.push(Episode {
             id: format!("lever_{control}_rearm"),
@@ -424,25 +395,14 @@ fn future(world: &PlotWorld, positions: &[BlockPos]) -> Future {
             .collect(),
         entities: positions
             .iter()
-            .filter_map(|&position| {
-                world
-                    .get_block_entity(position)
-                    .map(|entity| (position, format!("{entity:?}")))
-            })
+            .filter_map(|&position| world.get_block_entity(position).map(|entity| (position, format!("{entity:?}"))))
             .collect(),
         ticks: world.scheduler().iter_entries().collect(),
         events: state.events.iter().copied().collect(),
         motions: state
             .motions
             .iter()
-            .map(|motion| {
-                (
-                    motion.pos,
-                    motion.progress,
-                    motion.previous_progress,
-                    motion.last_tick,
-                )
-            })
+            .map(|motion| (motion.pos, motion.progress, motion.previous_progress, motion.last_tick))
             .collect(),
     }
 }
@@ -467,12 +427,7 @@ fn first_difference(expected: &Future, actual: &Future) -> Option<String> {
             .cells
             .iter()
             .filter(|cell| !actual.cells.contains(cell))
-            .chain(
-                actual
-                    .cells
-                    .iter()
-                    .filter(|cell| !expected.cells.contains(cell)),
-            )
+            .chain(actual.cells.iter().filter(|cell| !expected.cells.contains(cell)))
             .collect();
         return Some(format!("cells: {mismatch:?}"));
     }
@@ -524,17 +479,13 @@ struct Coverage {
 
 /// Lockstep native and graph replay. Each boundary compares ordered
 /// callbacks, samples, requests, acceptance, and the projected future.
-fn replay(
-    circuit: &Circuit,
-    episode: &Episode,
-) -> Result<(Coverage, GraphExecutionCounts), String> {
+fn replay(circuit: &Circuit, episode: &Episode) -> Result<(Coverage, GraphExecutionCounts), String> {
     let positions = circuit.positions();
     let outputs: Vec<_> = circuit.outputs.iter().map(|&o| circuit.place(o)).collect();
     let mut native = circuit.build();
     let mut scratch = circuit.build();
     let ticks = native.scheduler().iter_entries().collect();
-    let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default())
-        .map_err(|error| format!("compile: {error}"))?;
+    let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default()).map_err(|error| format!("compile: {error}"))?;
     backend.set_test_recording(true);
     let mut coverage = Coverage::default();
     let mut last_outputs: Vec<_> = outputs.iter().map(|&o| native.get_block(o)).collect();
@@ -554,9 +505,7 @@ fn replay(
                 .zip(&actual_ops)
                 .position(|(a, b)| a != b)
                 .unwrap_or(expected_ops.len().min(actual_ops.len()));
-            let window = |ops: &[Operation]| {
-                ops[first.saturating_sub(8)..(first + 8).min(ops.len())].to_vec()
-            };
+            let window = |ops: &[Operation]| ops[first.saturating_sub(8)..(first + 8).min(ops.len())].to_vec();
             return Err(format!(
                 "step {index} {step:?}: operation {first}: native {:?}; graph {:?}",
                 window(&expected_ops),
@@ -584,11 +533,7 @@ fn replay(
         coverage.pending_transition_boundaries += usize::from(!expected.motions.is_empty());
         coverage.pending_tick_boundaries += usize::from(!expected.ticks.is_empty());
         let current: Vec<_> = outputs.iter().map(|&o| native.get_block(o)).collect();
-        coverage.output_changes += current
-            .iter()
-            .zip(&last_outputs)
-            .filter(|(a, b)| a != b)
-            .count();
+        coverage.output_changes += current.iter().zip(&last_outputs).filter(|(a, b)| a != b).count();
         last_outputs = current;
     }
     coverage.cancelled_attempts -= coverage.accepted_extensions + coverage.accepted_retractions;
@@ -606,13 +551,7 @@ fn stop_and_restart(circuit: &Circuit, episode: &Episode, cut: usize) -> Result<
         let ticks = world.scheduler().iter_entries().collect();
         let corners = world.get_corners();
         compiler
-            .compile(
-                world,
-                corners,
-                CompilerOptions::default(),
-                ticks,
-                Arc::default(),
-            )
+            .compile(world, corners, CompilerOptions::default(), ticks, Arc::default())
             .map_err(|error| format!("compile: {error}"))?;
         if compiler.backend_kind() != Some(BackendKind::Graph) {
             return Err(format!("selected {:?}", compiler.backend_kind()));
@@ -636,16 +575,13 @@ fn stop_and_restart(circuit: &Circuit, episode: &Episode, cut: usize) -> Result<
     compiler.reset(&mut world, corners);
     let pending = !world.piston_state().motions.is_empty();
     let compare = |native: &PlotWorld, world: &PlotWorld, at: &str| {
-        first_difference(&future(native, &positions), &future(world, &positions))
-            .map(|difference| format!("{at}: {difference}"))
+        first_difference(&future(native, &positions), &future(world, &positions)).map(|difference| format!("{at}: {difference}"))
     };
     if let Some(error) = compare(&native, &world, &format!("reset at {cut}")) {
         return Err(error);
     }
     // The interpreter owns the circuit until it is stationary again.
-    while index < episode.steps.len()
-        && (!world.piston_state().motions.is_empty() || !world.piston_state().events.is_empty())
-    {
+    while index < episode.steps.len() && (!world.piston_state().motions.is_empty() || !world.piston_state().events.is_empty()) {
         native_step(&mut native, circuit, episode.steps[index]);
         native_step(&mut world, circuit, episode.steps[index]);
         index += 1;
@@ -684,8 +620,7 @@ fn run_circuit(circuit: &Circuit, continuation_cuts: bool) -> Result<FamilyRow, 
     let mut coverage = Coverage::default();
     let mut counts = GraphExecutionCounts::default();
     for episode in &episodes {
-        let (episode_coverage, episode_counts) = replay(circuit, episode)
-            .map_err(|error| format!("{} {}: {error}", circuit.label(), episode.id))?;
+        let (episode_coverage, episode_counts) = replay(circuit, episode).map_err(|error| format!("{} {}: {error}", circuit.label(), episode.id))?;
         coverage.boundaries += episode_coverage.boundaries;
         coverage.pending_transition_boundaries += episode_coverage.pending_transition_boundaries;
         coverage.pending_tick_boundaries += episode_coverage.pending_tick_boundaries;
@@ -703,20 +638,14 @@ fn run_circuit(circuit: &Circuit, continuation_cuts: bool) -> Result<FamilyRow, 
     }
 
     // Output waveform of the two-tick pulse on control 0, native and graph agree.
-    let pulse = episodes
-        .iter()
-        .find(|episode| episode.id == "lever_0_pulse_2")
-        .unwrap();
+    let pulse = episodes.iter().find(|episode| episode.id == "lever_0_pulse_2").unwrap();
     let mut world = circuit.build();
     let outputs: Vec<_> = circuit.outputs.iter().map(|&o| circuit.place(o)).collect();
     let mut waveform = String::new();
     for &step in &pulse.steps {
         native_step(&mut world, circuit, step);
         if step == Step::Tick {
-            let powered = outputs
-                .iter()
-                .filter(|&&o| output_on(world.get_block(o)))
-                .count();
+            let powered = outputs.iter().filter(|&&o| output_on(world.get_block(o))).count();
             waveform.push(char::from_digit(powered as u32, 10).unwrap_or('+'));
         }
     }
@@ -724,14 +653,14 @@ fn run_circuit(circuit: &Circuit, continuation_cuts: bool) -> Result<FamilyRow, 
     let mut checked = 0;
     let mut pending = 0;
     if continuation_cuts {
-        for episode in episodes.iter().filter(|e| {
-            e.id.ends_with("pulse_2") || e.id.ends_with("rearm") || e.id.starts_with("mask")
-        }) {
+        for episode in episodes
+            .iter()
+            .filter(|e| e.id.ends_with("pulse_2") || e.id.ends_with("rearm") || e.id.starts_with("mask"))
+        {
             for cut in 0..=episode.steps.len() {
-                pending +=
-                    usize::from(stop_and_restart(circuit, episode, cut).map_err(|error| {
-                        format!("{} {} cut {cut}: {error}", circuit.label(), episode.id)
-                    })?);
+                pending += usize::from(
+                    stop_and_restart(circuit, episode, cut).map_err(|error| format!("{} {} cut {cut}: {error}", circuit.label(), episode.id))?,
+                );
                 checked += 1;
             }
         }
@@ -742,16 +671,9 @@ fn run_circuit(circuit: &Circuit, continuation_cuts: bool) -> Result<FamilyRow, 
         String::new()
     };
     let stimulus = if circuit.added_controls > 0 {
-        format!(
-            "{} added wall levers on torch supports {:?}",
-            circuit.added_controls, circuit.controls
-        )
+        format!("{} added wall levers on torch supports {:?}", circuit.added_controls, circuit.controls)
     } else {
-        format!(
-            "{} saved levers {:?}",
-            circuit.controls.len(),
-            circuit.controls
-        )
+        format!("{} saved levers {:?}", circuit.controls.len(), circuit.controls)
     } + &floor;
     Ok(FamilyRow {
         label: circuit.label(),
@@ -807,26 +729,10 @@ fn print_row(row: &FamilyRow) {
 fn assert_meaningful(row: &FamilyRow) {
     let c = &row.coverage;
     let n = &row.counts;
-    assert!(
-        n.piston_actions > 0 && n.piston_samples > 0,
-        "{}: no piston work",
-        row.label
-    );
-    assert!(
-        n.callbacks > 0 && n.ticks > 0,
-        "{}: no graph callbacks",
-        row.label
-    );
-    assert!(
-        c.accepted_extensions > 0 && c.accepted_retractions > 0,
-        "{}",
-        row.label
-    );
-    assert!(
-        c.pending_transition_boundaries > 0,
-        "{}: no pending transition",
-        row.label
-    );
+    assert!(n.piston_actions > 0 && n.piston_samples > 0, "{}: no piston work", row.label);
+    assert!(n.callbacks > 0 && n.ticks > 0, "{}: no graph callbacks", row.label);
+    assert!(c.accepted_extensions > 0 && c.accepted_retractions > 0, "{}", row.label);
+    assert!(c.pending_transition_boundaries > 0, "{}: no pending transition", row.label);
     assert!(c.output_changes > 0, "{}: outputs never changed", row.label);
 }
 
@@ -847,12 +753,7 @@ fn test_family_matches_native_under_active_controls() {
             }
         }
     }
-    assert!(
-        failures.is_empty(),
-        "{} failures; first: {}",
-        failures.len(),
-        failures[0]
-    );
+    assert!(failures.is_empty(), "{} failures; first: {}", failures.len(), failures[0]);
 }
 
 #[test]
@@ -860,11 +761,7 @@ fn test_family_rotations_match_native() {
     let mut failures = Vec::new();
     for name in FAMILY {
         let circuit = load_circuit(name);
-        for rotation in [
-            RotateAmt::Rotate90,
-            RotateAmt::Rotate180,
-            RotateAmt::Rotate270,
-        ] {
+        for rotation in [RotateAmt::Rotate90, RotateAmt::Rotate180, RotateAmt::Rotate270] {
             match run_circuit(&circuit.rotated(rotation), false) {
                 Ok(row) => {
                     print_row(&row);
@@ -877,12 +774,7 @@ fn test_family_rotations_match_native() {
             }
         }
     }
-    assert!(
-        failures.is_empty(),
-        "{} failures; first: {}",
-        failures.len(),
-        failures[0]
-    );
+    assert!(failures.is_empty(), "{} failures; first: {}", failures.len(), failures[0]);
 }
 
 #[test]
@@ -898,19 +790,9 @@ fn piston_beside_already_unsupported_dust_is_rejected_with_its_position() {
             extended: true,
         };
         world.set_block(base, Block::Piston { piston });
-        world.set_block(
-            base.offset(BlockFace::Bottom),
-            Block::PistonHead {
-                head: piston.into(),
-            },
-        );
+        world.set_block(base.offset(BlockFace::Bottom), Block::PistonHead { head: piston.into() });
         world.set_block(stone, Block::Stone {});
-        world.set_block(
-            dust,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(dust, Block::RedstoneWire { wire: Default::default() });
         if floor {
             world.set_block(dust.offset(BlockFace::Bottom), Block::Stone {});
         }

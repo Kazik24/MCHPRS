@@ -48,10 +48,7 @@ fn capture_bubblesort_reference() {
             checkpoints.push(cpus::checkpoint(&world, tick, &chat_trace));
         }
     }
-    assert_eq!(
-        &ram_trace.last().unwrap().1[48..],
-        (0..16).map(Some).collect::<Vec<_>>()
-    );
+    assert_eq!(&ram_trace.last().unwrap().1[48..], (0..16).map(Some).collect::<Vec<_>>());
     let reference = cpus::Reference {
         schema: 1,
         schematic_sha256: cpu.sha256.into(),
@@ -59,10 +56,6 @@ fn capture_bubblesort_reference() {
         chat_trace,
         ram_trace,
     };
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(destination)
-        .unwrap();
+    let file = std::fs::OpenOptions::new().write(true).create_new(true).open(destination).unwrap();
     serde_json::to_writer_pretty(file, &reference).unwrap();
 }

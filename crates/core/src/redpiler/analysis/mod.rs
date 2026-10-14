@@ -71,9 +71,7 @@ impl fmt::Display for AnalysisError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Cancelled => f.write_str("analysis cancelled"),
-            Self::InvalidBounds => {
-                f.write_str("analysis bounds exceed world height or coordinate range")
-            }
+            Self::InvalidBounds => f.write_str("analysis bounds exceed world height or coordinate range"),
             Self::UnloadedChunk { x, z } => write!(f, "analysis requires loaded chunk {x}, {z}"),
             Self::CellLimit => f.write_str("analysis cell budget exceeded"),
             Self::PistonLimit => f.write_str("analysis piston budget exceeded"),
@@ -111,18 +109,11 @@ impl<'a> PreparationBudget<'a> {
 
     pub(crate) fn consume(&mut self, work: usize) -> Result<(), AnalysisError> {
         self.check()?;
-        self.remaining = self
-            .remaining
-            .checked_sub(work)
-            .ok_or(AnalysisError::CellLimit)?;
+        self.remaining = self.remaining.checked_sub(work).ok_or(AnalysisError::CellLimit)?;
         Ok(())
     }
 
-    pub(crate) fn check_estimated_bytes(
-        &self,
-        stage: &'static str,
-        estimated_bytes: usize,
-    ) -> Result<(), AnalysisError> {
+    pub(crate) fn check_estimated_bytes(&self, stage: &'static str, estimated_bytes: usize) -> Result<(), AnalysisError> {
         self.check()?;
         if estimated_bytes > MAX_GRAPH_PREPARATION_BYTES {
             return Err(AnalysisError::PreparationMemoryLimit {
@@ -139,11 +130,7 @@ impl<'a> PreparationBudget<'a> {
 /// A condition that makes the selected world state unsuitable for graph compilation.
 pub enum AdmissionIssue {
     /// A block is recognized but its graph behavior is not implemented.
-    UnsupportedComponent {
-        pos: BlockPos,
-        block: u32,
-        reason: &'static str,
-    },
+    UnsupportedComponent { pos: BlockPos, block: u32, reason: &'static str },
     /// An extended piston has no head at the expected position.
     MissingPistonHead { piston: BlockPos, head: BlockPos },
     /// A piston head in the selection does not belong to an extended piston.
@@ -163,15 +150,10 @@ pub enum AdmissionIssue {
 impl fmt::Display for AdmissionIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnsupportedComponent { pos, block, reason } => write!(
-                f,
-                "{} at {pos:?} is unsupported: {reason}",
-                Block::from_id(*block).get_name()
-            ),
-            Self::MissingPistonHead { piston, head } => write!(
-                f,
-                "extended piston at {piston:?} is missing its head at {head:?}"
-            ),
+            Self::UnsupportedComponent { pos, block, reason } => {
+                write!(f, "{} at {pos:?} is unsupported: {reason}", Block::from_id(*block).get_name())
+            }
+            Self::MissingPistonHead { piston, head } => write!(f, "extended piston at {piston:?} is missing its head at {head:?}"),
             Self::UnownedPistonHead { pos } => {
                 write!(f, "piston head at {pos:?} has no matching extended base")
             }
@@ -262,10 +244,7 @@ pub fn analyze(
             }
             let chunk = world
                 .get_chunk(chunk_x, chunk_z)
-                .ok_or(AnalysisError::UnloadedChunk {
-                    x: chunk_x,
-                    z: chunk_z,
-                })?;
+                .ok_or(AnalysisError::UnloadedChunk { x: chunk_x, z: chunk_z })?;
             for section_y in bounds.0.y / 16..=bounds.1.y / 16 {
                 if chunk.sections[section_y as usize].block_count() == 0 {
                     continue;
@@ -308,9 +287,7 @@ pub fn analyze(
                                     }
                                 }
                                 Block::PistonHead { head } => heads.push((pos, head)),
-                                Block::MovingPiston { .. } => {
-                                    report.issues.push(AdmissionIssue::MovingPiston { pos })
-                                }
+                                Block::MovingPiston { .. } => report.issues.push(AdmissionIssue::MovingPiston { pos }),
                                 _ => {}
                             }
                             report.nonair_blocks += 1;
@@ -323,26 +300,18 @@ pub fn analyze(
     report.pistons.sort_by_key(|p| (p.y, p.z, p.x));
     for (pos, head) in heads {
         if !owned_heads.contains(&(pos, BlockFace::from(head.facing), head.sticky)) {
-            report
-                .issues
-                .push(AdmissionIssue::UnownedPistonHead { pos });
+            report.issues.push(AdmissionIssue::UnownedPistonHead { pos });
         }
     }
     let state = world.piston_state();
     if state.phase != AdvancePhase::BetweenTicks {
-        report
-            .issues
-            .push(AdmissionIssue::EntryPhase { phase: state.phase });
+        report.issues.push(AdmissionIssue::EntryPhase { phase: state.phase });
     }
     if !state.events.is_empty() {
-        report.issues.push(AdmissionIssue::PendingPistonEvents {
-            count: state.events.len(),
-        });
+        report.issues.push(AdmissionIssue::PendingPistonEvents { count: state.events.len() });
     }
     if !state.motions.is_empty() {
-        report.issues.push(AdmissionIssue::PendingPistonMotions {
-            count: state.motions.len(),
-        });
+        report.issues.push(AdmissionIssue::PendingPistonMotions { count: state.motions.len() });
     }
     if state.movement_cursor < state.movement_work.len() {
         report.issues.push(AdmissionIssue::PendingMovementWork {

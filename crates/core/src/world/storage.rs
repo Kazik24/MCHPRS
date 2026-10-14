@@ -5,8 +5,7 @@ use mchprs_blocks::blocks::Block;
 use mchprs_save_data::plot_data::{ChunkData, ChunkSectionData};
 
 use mchprs_network::packets::clientbound::{
-    C3BMultiBlockChangeRecord, CChunkData, CChunkDataBlockEntity, CChunkDataSection,
-    CMultiBlockChange, ClientBoundPacket,
+    C3BMultiBlockChangeRecord, CChunkData, CChunkDataBlockEntity, CChunkDataSection, CMultiBlockChange, ClientBoundPacket,
 };
 use mchprs_network::packets::{PacketEncoder, PalettedContainer};
 use rustc_hash::FxHashMap;
@@ -95,8 +94,7 @@ impl BitBuffer {
     pub fn get_entry(&self, word_idx: usize) -> u32 {
         // Find the set of indices.
         let arr_idx = (self.fast_arr_idx)(word_idx);
-        let sub_idx =
-            (word_idx as u64 - arr_idx as u64 * self.entries_per_long) * self.bits_per_entry;
+        let sub_idx = (word_idx as u64 - arr_idx as u64 * self.entries_per_long) * self.bits_per_entry;
         // Find the word.
         let word = (self.longs[arr_idx] >> sub_idx) & self.mask;
         word as u32
@@ -105,8 +103,7 @@ impl BitBuffer {
     pub fn set_entry(&mut self, word_idx: usize, word: u32) {
         // Find the set of indices.
         let arr_idx = (self.fast_arr_idx)(word_idx);
-        let sub_idx =
-            (word_idx as u64 - arr_idx as u64 * self.entries_per_long) * self.bits_per_entry;
+        let sub_idx = (word_idx as u64 - arr_idx as u64 * self.entries_per_long) * self.bits_per_entry;
         // Set the word.
         let mask = !(self.mask << sub_idx);
         self.longs[arr_idx] = (self.longs[arr_idx] & mask) | ((word as u64) << sub_idx);
@@ -115,9 +112,7 @@ impl BitBuffer {
 
 #[test]
 fn bitbuffer_format() {
-    let entries = [
-        1, 2, 2, 3, 4, 4, 5, 6, 6, 4, 8, 0, 7, 4, 3, 13, 15, 16, 9, 14, 10, 12, 0, 2,
-    ];
+    let entries = [1, 2, 2, 3, 4, 4, 5, 6, 6, 4, 8, 0, 7, 4, 3, 13, 15, 16, 9, 14, 10, 12, 0, 2];
     let mut buffer = BitBuffer::create(5, 24);
     for (i, entry) in entries.iter().enumerate() {
         buffer.set_entry(i, *entry);
@@ -149,13 +144,7 @@ impl PalettedBitBuffer {
         }
     }
 
-    fn load(
-        entries: usize,
-        bits_per_entry: u8,
-        longs: Vec<u64>,
-        palette: Vec<u32>,
-        direct_threshold: u64,
-    ) -> PalettedBitBuffer {
+    fn load(entries: usize, bits_per_entry: u8, longs: Vec<u64>, palette: Vec<u32>, direct_threshold: u64) -> PalettedBitBuffer {
         PalettedBitBuffer {
             data: BitBuffer::load(entries, bits_per_entry, longs),
             palette,
@@ -166,10 +155,7 @@ impl PalettedBitBuffer {
     }
 
     fn resize_buffer(&mut self) {
-        assert!(
-            self.use_palette,
-            "Cannot resize a buffer that already uses the global palette"
-        );
+        assert!(self.use_palette, "Cannot resize a buffer that already uses the global palette");
         let old_bits_per_entry = self.data.bits_per_entry;
         // Switch to global state IDs when the local palette reaches its bit limit.
         let new_bits = if old_bits_per_entry + 1 >= self.direct_threshold {
@@ -240,9 +226,7 @@ impl PalettedBitBuffer {
             PalettedContainer {
                 bits_per_entry: self.data.bits_per_entry as u8,
                 data_array: self.data.longs.clone(),
-                palette: self
-                    .use_palette
-                    .then(|| self.palette.iter().map(|&id| id as i32).collect()),
+                palette: self.use_palette.then(|| self.palette.iter().map(|&id| id as i32).collect()),
             }
         }
     }
@@ -296,8 +280,7 @@ impl ChunkSection {
         let idx = ChunkSection::get_index(x, y, z);
         let changed = old_block != block;
         if changed {
-            self.changed_blocks
-                .get_or_insert_with(|| Box::new([-1; 4096]))[idx] = block as i16;
+            self.changed_blocks.get_or_insert_with(|| Box::new([-1; 4096]))[idx] = block as i16;
         }
         changed
     }
@@ -311,8 +294,7 @@ impl ChunkSection {
         let loaded_longs = data.data.into_iter().map(|x| x as u64).collect();
         let bits_per_entry = data.bits_per_block as u8;
         let palette = data.palette.into_iter().map(|x| x as u32).collect();
-        let buffer =
-            PalettedBitBuffer::load(data.entries, bits_per_entry, loaded_longs, palette, 9);
+        let buffer = PalettedBitBuffer::load(data.entries, bits_per_entry, loaded_longs, palette, 9);
         ChunkSection {
             buffer,
             block_count: data.block_count as u32,
@@ -328,20 +310,13 @@ impl ChunkSection {
 
     fn save(&mut self) -> Option<ChunkSectionData> {
         self.flush();
-        if self.buffer.use_palette && self.buffer.palette.len() == 1 && self.buffer.palette[0] == 0
-        {
+        if self.buffer.use_palette && self.buffer.palette.len() == 1 && self.buffer.palette[0] == 0 {
             // chunk section is completely air
             return None;
         }
 
         Some(ChunkSectionData {
-            data: self
-                .buffer
-                .data
-                .longs
-                .iter()
-                .map(|&word| word as i64)
-                .collect(),
+            data: self.buffer.data.longs.iter().map(|&word| word as i64).collect(),
             palette: self.buffer.palette.iter().map(|&id| id as i32).collect(),
             bits_per_block: self.buffer.data.bits_per_entry as i8,
             block_count: self.block_count as i32,
@@ -454,9 +429,7 @@ pub struct Chunk {
 impl Chunk {
     pub(crate) fn staging_clone(&self) -> Self {
         Self {
-            sections: std::array::from_fn(|index| {
-                self.sections[index].staging_clone(self.x, self.z, index as u32)
-            }),
+            sections: std::array::from_fn(|index| self.sections[index].staging_clone(self.x, self.z, index as u32)),
             x: self.x,
             z: self.z,
             block_entities: self.block_entities.clone(),
@@ -509,18 +482,12 @@ impl Chunk {
         let mut bulbs = Vec::new();
         for (y, section) in self.sections.iter().enumerate() {
             if section.block_count == 0
-                || (section.buffer.use_palette
-                    && !section
-                        .buffer
-                        .palette
-                        .iter()
-                        .any(|&id| Block::from_id(id).is_copper_bulb()))
+                || (section.buffer.use_palette && !section.buffer.palette.iter().any(|&id| Block::from_id(id).is_copper_bulb()))
             {
                 continue;
             }
             for index in 0..4096 {
-                let block =
-                    Block::from_id(section.get_block(index & 15, index >> 8, (index >> 4) & 15));
+                let block = Block::from_id(section.get_block(index & 15, index >> 8, (index >> 4) & 15));
                 if block.is_copper_bulb() {
                     bulbs.push((
                         BlockPos::new(
@@ -583,10 +550,7 @@ impl Chunk {
             let block = Block::from_id(id);
             matches!(
                 block,
-                Block::Piston { .. }
-                    | Block::PistonHead { .. }
-                    | Block::MovingPiston { .. }
-                    | Block::Observer { .. }
+                Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. } | Block::Observer { .. }
             )
         };
         self.sections.iter().any(|s| {
@@ -602,8 +566,7 @@ impl Chunk {
             }
             // Palettes retain removed states. Use them only to avoid scanning
             // sections that cannot contain interpreter components.
-            if s.buffer.use_palette && !s.buffer.palette.iter().any(|id| requires_interpreter(*id))
-            {
+            if s.buffer.use_palette && !s.buffer.palette.iter().any(|id| requires_interpreter(*id)) {
                 return false;
             }
             (0..4096).any(|i| requires_interpreter(s.get_block(i & 15, i >> 8, (i >> 4) & 15)))
@@ -628,27 +591,20 @@ impl Chunk {
                         && (0..16).contains(&pos.z)
                         && (0..PLOT_BLOCK_HEIGHT).contains(&pos.y)
                         && matches!(
-                            Block::from_id(self.get_block(
-                                pos.x as u32,
-                                pos.y as u32,
-                                pos.z as u32
-                            )),
+                            Block::from_id(self.get_block(pos.x as u32, pos.y as u32, pos.z as u32)),
                             Block::MovingPiston { .. }
                         )
                     {
                         projected.insert(*pos, entity.block_state);
-                        overrides[pos.y as usize / 16].push((
-                            ChunkSection::get_index(pos.x as u32, pos.y as u32 & 15, pos.z as u32),
-                            entity.block_state,
-                        ));
+                        overrides[pos.y as usize / 16]
+                            .push((ChunkSection::get_index(pos.x as u32, pos.y as u32 & 15, pos.z as u32), entity.block_state));
                     }
                 }
             }
         }
         // Integer arithmetic trick: ceil(log2(x)) can be calculated with 32 - (x - 1).leading_zeros().
         // See also: https://wiki.vg/Protocol#Chunk_Data_and_Update_Light
-        const HEIGHTMAP_BITS: u8 =
-            (32 - ((PLOT_BLOCK_HEIGHT as u32 + 1) - 1).leading_zeros()) as u8;
+        const HEIGHTMAP_BITS: u8 = (32 - ((PLOT_BLOCK_HEIGHT as u32 + 1) - 1).leading_zeros()) as u8;
         let mut heightmap_buffer = BitBuffer::create(HEIGHTMAP_BITS, 16 * 16);
         for x in 0..16 {
             for z in 0..16 {
@@ -675,17 +631,9 @@ impl Chunk {
             chunk_sections.push(section.encode_packet(overrides));
         }
         let mut heightmaps = nbt::Blob::new();
-        let heightmap_longs: Vec<i64> = heightmap_buffer
-            .longs
-            .into_iter()
-            .map(|x| x as i64)
-            .collect();
-        heightmaps
-            .insert("WORLD_SURFACE", heightmap_longs.clone())
-            .unwrap();
-        heightmaps
-            .insert("MOTION_BLOCKING", heightmap_longs)
-            .unwrap();
+        let heightmap_longs: Vec<i64> = heightmap_buffer.longs.into_iter().map(|x| x as i64).collect();
+        heightmaps.insert("WORLD_SURFACE", heightmap_longs.clone()).unwrap();
+        heightmaps.insert("MOTION_BLOCKING", heightmap_longs).unwrap();
         let mut block_entities = Vec::new();
         for (pos, block_entity) in &self.block_entities {
             if static_pistons && matches!(block_entity, BlockEntity::MovingPiston(_)) {
@@ -756,9 +704,7 @@ impl Chunk {
         let changed = section.set_block(x, y & 0xF, z, block_id);
         if changed {
             self.revision = self.revision.wrapping_add(1);
-            if super::wire_cache::routing_state(Block::from_id(previous))
-                != super::wire_cache::routing_state(Block::from_id(block_id))
-            {
+            if super::wire_cache::routing_state(Block::from_id(previous)) != super::wire_cache::routing_state(Block::from_id(block_id)) {
                 self.routing_revision = self.routing_revision.wrapping_add(1);
             }
         }
@@ -793,11 +739,7 @@ impl Chunk {
             sections: std::array::from_fn(|index| self.sections[index].save()),
             // Cloning the map also clones spare capacity after mass deletions.
             // Saved snapshots need space only for the remaining entities.
-            block_entities: self
-                .block_entities
-                .iter()
-                .map(|(&pos, entity)| (pos, entity.clone()))
-                .collect(),
+            block_entities: self.block_entities.iter().map(|(&pos, entity)| (pos, entity.clone())).collect(),
         }
     }
 
@@ -815,27 +757,13 @@ impl Chunk {
         // Older saves can have sign blocks without entities. These signs need
         // an entry in the initial chunk packet even when their text is empty.
         for (section_y, section) in chunk.sections.iter().enumerate() {
-            if section.block_count == 0
-                || (section.buffer.use_palette
-                    && !section
-                        .buffer
-                        .palette
-                        .iter()
-                        .any(|&id| Block::from_id(id).is_sign()))
-            {
+            if section.block_count == 0 || (section.buffer.use_palette && !section.buffer.palette.iter().any(|&id| Block::from_id(id).is_sign())) {
                 continue;
             }
             for index in 0..4096 {
                 if Block::from_id(section.buffer.get_entry(index)).is_sign() {
-                    let pos = BlockPos::new(
-                        (index & 15) as i32,
-                        (section_y * 16 + (index >> 8)) as i32,
-                        ((index >> 4) & 15) as i32,
-                    );
-                    chunk
-                        .block_entities
-                        .entry(pos)
-                        .or_insert_with(|| BlockEntity::Sign(Default::default()));
+                    let pos = BlockPos::new((index & 15) as i32, (section_y * 16 + (index >> 8)) as i32, ((index >> 4) & 15) as i32);
+                    chunk.block_entities.entry(pos).or_insert_with(|| BlockEntity::Sign(Default::default()));
                 }
             }
         }
@@ -843,9 +771,7 @@ impl Chunk {
     }
 
     pub fn compress(&mut self) {
-        self.sections
-            .iter_mut()
-            .for_each(|section| section.compress());
+        self.sections.iter_mut().for_each(|section| section.compress());
     }
 
     pub fn empty(x: i32, z: i32) -> Chunk {
@@ -867,12 +793,7 @@ impl Chunk {
         self.sections
             .iter_mut()
             .enumerate()
-            .filter_map(move |(y, section)| {
-                section
-                    .changed_blocks
-                    .is_some()
-                    .then(move || section.multi_block(x, y as u32, z))
-            })
+            .filter_map(move |(y, section)| section.changed_blocks.is_some().then(move || section.multi_block(x, y as u32, z)))
     }
 
     pub fn reset_multi_blocks(&mut self) {
@@ -906,12 +827,7 @@ mod heightmap_tests {
         let mut chunk = Chunk::empty(-2, 3);
         let positions = [BlockPos::new(15, 20, 14), BlockPos::new(1, 255, 2)];
         for (name, pos) in ["oak_sign", "cherry_wall_sign"].into_iter().zip(positions) {
-            chunk.set_block(
-                pos.x as u32,
-                pos.y as u32,
-                pos.z as u32,
-                Block::from_name(name).unwrap().get_id(),
-            );
+            chunk.set_block(pos.x as u32, pos.y as u32, pos.z as u32, Block::from_name(name).unwrap().get_id());
         }
         // Older plots and block-only schematics can contain signs without entities.
         let loaded = Chunk::load(-2, 3, chunk.save());
@@ -922,16 +838,9 @@ mod heightmap_tests {
                 let entity = data
                     .block_entities
                     .iter()
-                    .find(|entity| {
-                        entity.x == pos.x as i8
-                            && entity.y == pos.y as i16
-                            && entity.z == pos.z as i8
-                    })
+                    .find(|entity| entity.x == pos.x as i8 && entity.y == pos.y as i16 && entity.z == pos.z as i8)
                     .unwrap();
-                assert_eq!(
-                    entity.ty,
-                    mchprs_blocks::generated::block_entity_types::SIGN
-                );
+                assert_eq!(entity.ty, mchprs_blocks::generated::block_entity_types::SIGN);
                 assert!(entity.data.get("front_text").is_some());
                 assert!(entity.data.get("back_text").is_some());
             }
@@ -943,12 +852,7 @@ mod heightmap_tests {
         use mchprs_blocks::block_entities::SignBlockEntity;
         let mut chunk = Chunk::empty(2, -3);
         let pos = BlockPos::new(15, 20, 14);
-        chunk.set_block(
-            15,
-            20,
-            14,
-            Block::from_name("oak_wall_sign").unwrap().get_id(),
-        );
+        chunk.set_block(15, 20, 14, Block::from_name("oak_wall_sign").unwrap().get_id());
         let entity = BlockEntity::Sign(Box::new(SignBlockEntity {
             rows: std::array::from_fn(|_| r#"{"text":"front","bold":true}"#.into()),
             back_rows: std::array::from_fn(|_| r#""back""#.into()),
@@ -961,64 +865,39 @@ mod heightmap_tests {
         chunk.set_block_entity(pos, entity.clone());
         let loaded = Chunk::load(2, -3, chunk.save());
         assert_eq!(
-            loaded
-                .get_block_entity(pos)
-                .unwrap()
-                .to_nbt(false)
-                .unwrap()
-                .content,
+            loaded.get_block_entity(pos).unwrap().to_nbt(false).unwrap().content,
             entity.to_nbt(false).unwrap().content
         );
         for fast in [false, true] {
             let data = loaded.client_data(fast);
             assert_eq!(data.block_entities.len(), 1);
-            let nbt::Value::Compound(front) =
-                data.block_entities[0].data.get("front_text").unwrap()
-            else {
+            let nbt::Value::Compound(front) = data.block_entities[0].data.get("front_text").unwrap() else {
                 panic!()
             };
             assert_eq!(front["color"], nbt::Value::String("red".into()));
             assert_eq!(front["has_glowing_text"], nbt::Value::Byte(1));
-            let nbt::Value::List(messages) = &front["messages"] else {
-                panic!()
-            };
+            let nbt::Value::List(messages) = &front["messages"] else { panic!() };
             assert_eq!(messages.len(), 4);
-            let nbt::Value::Compound(line) = &messages[0] else {
-                panic!()
-            };
+            let nbt::Value::Compound(line) = &messages[0] else { panic!() };
             assert_eq!(line["text"], nbt::Value::String("front".into()));
             assert_eq!(line["bold"], nbt::Value::Byte(1));
-            let nbt::Value::Compound(back) = data.block_entities[0].data.get("back_text").unwrap()
-            else {
+            let nbt::Value::Compound(back) = data.block_entities[0].data.get("back_text").unwrap() else {
                 panic!()
             };
-            assert_eq!(
-                back["messages"],
-                nbt::Value::List(vec![nbt::Value::String("back".into()); 4])
-            );
+            assert_eq!(back["messages"], nbt::Value::List(vec![nbt::Value::String("back".into()); 4]));
         }
     }
     #[test]
     fn client_snapshots_include_pending_changes_and_project_air_height() {
         let mut chunk = Chunk::empty(0, 0);
         let pos = BlockPos::new(1, 20, 2);
-        let moving = Block::MovingPiston {
-            moving: Default::default(),
-        }
-        .get_id();
+        let moving = Block::MovingPiston { moving: Default::default() }.get_id();
         chunk.set_block(1, 20, 2, moving);
         chunk.set_block_entity(pos, BlockEntity::MovingPiston(Default::default()));
         let normal = chunk.client_data(false);
         let fast = chunk.client_data(true);
         assert_eq!(normal.chunk_sections[1].block_count, 1);
-        assert!(
-            normal.chunk_sections[1]
-                .block_states
-                .palette
-                .as_ref()
-                .unwrap()
-                .contains(&(moving as i32))
-        );
+        assert!(normal.chunk_sections[1].block_states.palette.as_ref().unwrap().contains(&(moving as i32)));
         assert_eq!(fast.chunk_sections[1].block_count, 0);
         assert_eq!(normal.block_entities.len(), 1);
         assert!(fast.block_entities.is_empty());
@@ -1032,10 +911,7 @@ mod heightmap_tests {
         assert_eq!(height(&fast), 0);
         assert_eq!(chunk.get_block(1, 20, 2), moving);
         assert!(chunk.sections[1].changed_blocks.is_some());
-        assert_eq!(
-            chunk.multi_blocks().next().unwrap().records[0].block_id,
-            moving
-        );
+        assert_eq!(chunk.multi_blocks().next().unwrap().records[0].block_id, moving);
     }
     #[test]
     fn heightmap_uses_first_air_above_top_block() {
@@ -1061,10 +937,7 @@ mod heightmap_tests {
         assert_eq!(section.get_block_by_index(index), 1);
         let saved = section.save();
         assert_eq!(section.get_block(1, 2, 3), 1);
-        assert!(
-            section.changed_blocks.is_some(),
-            "saving must retain pending client changes"
-        );
+        assert!(section.changed_blocks.is_some(), "saving must retain pending client changes");
         let packet = section.multi_block(0, 0, 0);
         assert_eq!(packet.records.len(), 1);
         assert_eq!(packet.records[0].block_id, 1);

@@ -35,8 +35,7 @@ impl SpatialNodes {
         if self.sections.len() <= section {
             self.sections.resize_with(section + 1, || None);
         }
-        let section =
-            self.sections[section].get_or_insert_with(|| Box::new([Stamp::default(); 4096]));
+        let section = self.sections[section].get_or_insert_with(|| Box::new([Stamp::default(); 4096]));
         section[(cell & 4095) as usize] = Stamp {
             epoch: self.epoch,
             node: node.index,

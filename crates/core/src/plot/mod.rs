@@ -169,12 +169,7 @@ struct UpdateStats {
 
 impl PlotWorld {
     #[inline]
-    pub fn from_chunks(
-        x: i32,
-        z: i32,
-        chunks: Vec<Chunk>,
-        to_be_ticked: TickScheduler<ScheduledBlockTick>,
-    ) -> Self {
+    pub fn from_chunks(x: i32, z: i32, chunks: Vec<Chunk>, to_be_ticked: TickScheduler<ScheduledBlockTick>) -> Self {
         let mut world = Self {
             x,
             z,
@@ -244,14 +239,10 @@ impl PlotWorld {
             .chunks
             .iter()
             .flat_map(|chunk| {
-                chunk
-                    .block_entities
-                    .iter()
-                    .filter_map(move |(local, entity)| {
-                        let pos =
-                            BlockPos::new(chunk.x * 16 + local.x, local.y, chunk.z * 16 + local.z);
-                        matches!(entity, BlockEntity::CommandBlock(_)).then_some(pos)
-                    })
+                chunk.block_entities.iter().filter_map(move |(local, entity)| {
+                    let pos = BlockPos::new(chunk.x * 16 + local.x, local.y, chunk.z * 16 + local.z);
+                    matches!(entity, BlockEntity::CommandBlock(_)).then_some(pos)
+                })
             })
             .filter(|&pos| world.get_block(pos).get_name() == "repeating_command_block")
             .collect();
@@ -292,9 +283,7 @@ impl PlotWorld {
                 .motions
                 .iter()
                 .filter_map(|motion| match self.get_block_entity(motion.pos) {
-                    Some(BlockEntity::MovingPiston(entity)) => {
-                        Some((motion.pos, entity.block_state))
-                    }
+                    Some(BlockEntity::MovingPiston(entity)) => Some((motion.pos, entity.block_state)),
                     _ => None,
                 })
                 .collect()
@@ -352,11 +341,7 @@ impl PlotWorld {
     pub fn get_corners(&self) -> (BlockPos, BlockPos) {
         const W: i32 = PLOT_BLOCK_WIDTH;
         let first_pos = BlockPos::new(self.x * W, 0, self.z * W);
-        let second_pos = BlockPos::new(
-            (self.x + 1) * W - 1,
-            PLOT_BLOCK_HEIGHT - 1,
-            (self.z + 1) * W - 1,
-        );
+        let second_pos = BlockPos::new((self.x + 1) * W - 1, PLOT_BLOCK_HEIGHT - 1, (self.z + 1) * W - 1);
         (first_pos, second_pos)
     }
 
@@ -375,11 +360,7 @@ impl PlotWorld {
     }
 
     fn publish_activation_changes(&mut self, staged: &Self) {
-        let changes: Vec<_> = staged
-            .chunks
-            .iter()
-            .flat_map(Chunk::changed_blocks)
-            .collect();
+        let changes: Vec<_> = staged.chunks.iter().flat_map(Chunk::changed_blocks).collect();
         for (pos, block) in changes {
             self.set_block(pos, Block::from_id(block));
         }
@@ -400,9 +381,7 @@ impl PlotWorld {
 
     /// Queued command-block chat, in emission order.
     pub fn command_output(&self) -> impl Iterator<Item = &str> {
-        self.command_messages
-            .iter()
-            .map(|message| message.message.as_str())
+        self.command_messages.iter().map(|message| message.message.as_str())
     }
 
     /// Disable wall-clock and queue output limits for deterministic offline replay.
@@ -423,16 +402,12 @@ impl PlotWorld {
             last_tick: state.logical_tick,
             carried_entity: None,
         });
-        self.piston_index
-            .get_mut()
-            .inserted(pos, state.motions.len() - 1);
+        self.piston_index.get_mut().inserted(pos, state.motions.len() - 1);
     }
 
     fn remove_motions_at(&mut self, pos: BlockPos) {
         if let Some(index) = self.piston_motion_index(pos, None) {
-            if self.piston_state.motions.len() <= 8
-                || self.piston_index.get_mut().has_duplicate_motions(pos)
-            {
+            if self.piston_state.motions.len() <= 8 || self.piston_index.get_mut().has_duplicate_motions(pos) {
                 // Legacy saves can contain repeated positions; remove all of
                 // them as before. Small banks are cheap to retain in order.
                 self.piston_state.motions.retain(|m| m.pos != pos);
@@ -486,12 +461,9 @@ impl PlotWorld {
                         return true;
                     }
                     self.piston_state.movement_work.clear();
-                    self.piston_state.movement_work.extend(
-                        self.piston_state
-                            .motions
-                            .iter()
-                            .map(|m| (m.pos, m.identity)),
-                    );
+                    self.piston_state
+                        .movement_work
+                        .extend(self.piston_state.motions.iter().map(|m| (m.pos, m.identity)));
                     self.piston_state.movement_cursor = 0;
                     self.piston_state.phase = AdvancePhase::MovingEntities;
                 }
@@ -533,15 +505,10 @@ impl PlotWorld {
                 redstone::piston::execute_event(self, event);
             }
             AdvancePhase::MovingEntities => {
-                let (pos, identity) =
-                    self.piston_state.movement_work[self.piston_state.movement_cursor];
+                let (pos, identity) = self.piston_state.movement_work[self.piston_state.movement_cursor];
                 self.piston_state.movement_cursor += 1;
                 #[cfg(test)]
-                redstone::instant_piston_tests::record_operation(
-                    self,
-                    "motion",
-                    serde_json::json!([pos, identity]),
-                );
+                redstone::instant_piston_tests::record_operation(self, "motion", serde_json::json!([pos, identity]));
                 redstone::piston::tick_motion(self, pos, identity);
             }
             AdvancePhase::BetweenTicks => unreachable!(),
@@ -566,9 +533,7 @@ impl PlotWorld {
             let count = match self.piston_state.phase {
                 AdvancePhase::ScheduledTicks => self.to_be_ticked.this_tick_ref().len(),
                 AdvancePhase::PistonEvents => self.piston_state.events.len(),
-                AdvancePhase::MovingEntities => {
-                    self.piston_state.movement_work.len() - self.piston_state.movement_cursor
-                }
+                AdvancePhase::MovingEntities => self.piston_state.movement_work.len() - self.piston_state.movement_cursor,
                 AdvancePhase::BetweenTicks => 0,
             };
             for _ in 0..count {
@@ -594,20 +559,14 @@ impl World for PlotWorld {
             self.command_output_count = 0;
             self.command_output_bytes = 0;
         }
-        if (self.command_output_limits_enabled
-            && (self.command_messages.len() >= 64 || self.command_output_count >= 64))
+        if (self.command_output_limits_enabled && (self.command_messages.len() >= 64 || self.command_output_count >= 64))
             || command.len() > 131_068
             || source.len() > 256
         {
             return Err(messages::COMMAND_BLOCK_OUTPUT_LIMIT.into());
         }
         let message = crate::chat_commands::parse(command, source, None)?;
-        if self.command_output_limits_enabled
-            && self
-                .command_output_bytes
-                .saturating_add(message.message.len())
-                > 65_536
-        {
+        if self.command_output_limits_enabled && self.command_output_bytes.saturating_add(message.message.len()) > 65_536 {
             return Err(messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.into());
         }
         self.command_output_count += 1;
@@ -630,10 +589,7 @@ impl World for PlotWorld {
         let old = self.get_block(pos);
         let new = Block::from_id(block);
         let screen_change = self.screen_updates.as_ref().is_some_and(|updates| {
-            updates.authoritative
-                || old.is_screen()
-                || new.is_screen()
-                || (matches!(old, Block::MovingPiston { .. }) && updates.contains(pos))
+            updates.authoritative || old.is_screen() || new.is_screen() || (matches!(old, Block::MovingPiston { .. }) && updates.contains(pos))
         });
         let previous_screen = screen_change.then(|| self.screen_state(pos));
         if mchprs_blocks::block_entities::ContainerType::from_block(old).is_some()
@@ -644,23 +600,14 @@ impl World for PlotWorld {
         if matches!(old, Block::MovingPiston { .. }) && old.get_id() != block {
             self.delete_block_entity(pos);
         }
-        if old.is_sign()
-            && !new.is_sign()
-            && matches!(self.get_block_entity(pos), Some(BlockEntity::Sign(_)))
-        {
+        if old.is_sign() && !new.is_sign() && matches!(self.get_block_entity(pos), Some(BlockEntity::Sign(_))) {
             self.delete_block_entity(pos);
         }
         let chunk = &mut self.chunks[chunk_index];
-        let changed = chunk.set_block(
-            (pos.x & 0xF) as u32,
-            pos.y as u32,
-            (pos.z & 0xF) as u32,
-            block,
-        );
+        let changed = chunk.set_block((pos.x & 0xF) as u32, pos.y as u32, (pos.z & 0xF) as u32, block);
         let local_pos = BlockPos::new(pos.x & 15, pos.y, pos.z & 15);
         if let Some(ty) = mchprs_blocks::block_entities::ContainerType::from_block(new) {
-            if !matches!(chunk.get_block_entity(local_pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty)
-            {
+            if !matches!(chunk.get_block_entity(local_pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty) {
                 chunk.set_block_entity(
                     local_pos,
                     BlockEntity::Container {
@@ -671,22 +618,12 @@ impl World for PlotWorld {
                 );
             }
         }
-        if new.is_sign()
-            && !matches!(
-                chunk.get_block_entity(local_pos),
-                Some(BlockEntity::Sign(_))
-            )
-        {
+        if new.is_sign() && !matches!(chunk.get_block_entity(local_pos), Some(BlockEntity::Sign(_))) {
             // The client creates signs from chunk block-entity entries on join.
             // Keep an existing sign's text when only its block state changes.
             chunk.set_block_entity(local_pos, BlockEntity::Sign(Default::default()));
         }
-        if changed
-            || self
-                .screen_updates
-                .as_ref()
-                .is_some_and(|updates| updates.authoritative)
-        {
+        if changed || self.screen_updates.as_ref().is_some_and(|updates| updates.authoritative) {
             if let Some(previous) = previous_screen {
                 self.track_screen_change(pos, previous);
             }
@@ -743,9 +680,7 @@ impl World for PlotWorld {
         let Some(index) = self.get_chunk_index_for_block(pos.x, pos.z) else {
             return;
         };
-        if let Some(BlockEntity::MovingPiston(entity)) =
-            self.chunks[index].get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
-        {
+        if let Some(BlockEntity::MovingPiston(entity)) = self.chunks[index].get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15)) {
             entity.set_progress(progress);
         }
     }
@@ -760,9 +695,7 @@ impl World for PlotWorld {
     }
 
     fn piston_motion_index(&self, pos: BlockPos, identity: Option<u64>) -> Option<usize> {
-        self.piston_index
-            .borrow_mut()
-            .motion(&self.piston_state, pos, identity)
+        self.piston_index.borrow_mut().motion(&self.piston_state, pos, identity)
     }
 
     fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
@@ -786,11 +719,7 @@ impl World for PlotWorld {
     }
 
     fn enqueue_piston_event(&mut self, event: mchprs_world::PistonEvent) {
-        if !self
-            .piston_index
-            .borrow_mut()
-            .has_event(&self.piston_state, event)
-        {
+        if !self.piston_index.borrow_mut().has_event(&self.piston_state, event) {
             self.piston_state.events.push_back(event);
             self.piston_index.get_mut().pushed(event);
             #[cfg(test)]
@@ -804,24 +733,12 @@ impl World for PlotWorld {
         }
         let chunk = self.get_chunk_index_for_block(pos.x, pos.z)? as u32;
         let section = (chunk << 4) | (pos.y as u32 >> 4);
-        Some(
-            (section << 12)
-                | ((pos.y as u32 & 15) << 8)
-                | ((pos.z as u32 & 15) << 4)
-                | (pos.x as u32 & 15),
-        )
+        Some((section << 12) | ((pos.y as u32 & 15) << 8) | ((pos.z as u32 & 15) << 4) | (pos.x as u32 & 15))
     }
 
-    fn wire_neighborhood(
-        &self,
-        pos: BlockPos,
-    ) -> Option<std::sync::Arc<[crate::world::WireNeighbor; 24]>> {
+    fn wire_neighborhood(&self, pos: BlockPos) -> Option<std::sync::Arc<[crate::world::WireNeighbor; 24]>> {
         let cell = self.wire_location(pos)?;
-        Some(
-            self.wire_topology
-                .borrow_mut()
-                .neighborhood(cell, pos, |p| self.wire_location(p)),
-        )
+        Some(self.wire_topology.borrow_mut().neighborhood(cell, pos, |p| self.wire_location(p)))
     }
 
     fn get_wire_block_raw(&self, location: crate::world::WireNeighbor) -> u32 {
@@ -882,9 +799,7 @@ impl World for PlotWorld {
     }
 
     fn get_chunk(&self, x: i32, z: i32) -> Option<&Chunk> {
-        if !(self.x * PLOT_WIDTH..(self.x + 1) * PLOT_WIDTH).contains(&x)
-            || !(self.z * PLOT_WIDTH..(self.z + 1) * PLOT_WIDTH).contains(&z)
-        {
+        if !(self.x * PLOT_WIDTH..(self.x + 1) * PLOT_WIDTH).contains(&x) || !(self.z * PLOT_WIDTH..(self.z + 1) * PLOT_WIDTH).contains(&z) {
             return None;
         }
         self.chunks.get(self.get_chunk_index_for_chunk(x, z))
@@ -907,8 +822,7 @@ impl World for PlotWorld {
             block_type: Some(self.get_block(pos).registry_id()),
         };
         if !self.tick_index.contains(&self.to_be_ticked, node) {
-            self.to_be_ticked
-                .schedule_half_tick(node, delay as usize, priority);
+            self.to_be_ticked.schedule_half_tick(node, delay as usize, priority);
             self.tick_index.pushed(node);
         }
     }
@@ -918,8 +832,7 @@ impl World for PlotWorld {
             pos: entry.pos,
             block_type: entry.block_type,
         };
-        self.to_be_ticked
-            .schedule_half_tick(node, entry.ticks_left as usize, entry.tick_priority);
+        self.to_be_ticked.schedule_half_tick(node, entry.ticks_left as usize, entry.tick_priority);
         self.tick_index.pushed(node);
     }
 
@@ -973,14 +886,7 @@ impl World for PlotWorld {
         ));
     }
 
-    fn play_sound(
-        &mut self,
-        pos: BlockPos,
-        sound_id: i32,
-        sound_category: i32,
-        volume: f32,
-        pitch: f32,
-    ) {
+    fn play_sound(&mut self, pos: BlockPos, sound_id: i32, sound_category: i32, volume: f32, pitch: f32) {
         // Fast rendering suppresses automated circuit sounds.
         if self.fast_rendering {
             return;
@@ -988,31 +894,16 @@ impl World for PlotWorld {
         self.play_sound_for_action(pos, sound_id, sound_category, volume, pitch, None);
     }
 
-    fn play_sound_for_action(
-        &mut self,
-        pos: BlockPos,
-        sound_id: i32,
-        sound_category: i32,
-        volume: f32,
-        pitch: f32,
-        excluded: Option<u128>,
-    ) {
+    fn play_sound_for_action(&mut self, pos: BlockPos, sound_id: i32, sound_category: i32, volume: f32, pitch: f32, excluded: Option<u128>) {
         if self.sounds.len() >= 256 {
             return;
         }
-        if let Some(sound) =
-            crate::sound::Emission::new(pos, sound_id, sound_category, volume, pitch, excluded)
-        {
+        if let Some(sound) = crate::sound::Emission::new(pos, sound_id, sound_category, volume, pitch, excluded) {
             self.sounds.push(sound);
         }
     }
-    fn container_opened(
-        &mut self,
-        pos: BlockPos,
-        ty: mchprs_blocks::block_entities::ContainerType,
-    ) {
-        if ty == mchprs_blocks::block_entities::ContainerType::Chest && self.open_chests.insert(pos)
-        {
+    fn container_opened(&mut self, pos: BlockPos, ty: mchprs_blocks::block_entities::ContainerType) {
+        if ty == mchprs_blocks::block_entities::ContainerType::Chest && self.open_chests.insert(pos) {
             crate::sound::play(self, pos, "block.chest.open", 0.5, 0.95, None);
         }
     }
@@ -1049,11 +940,7 @@ impl Plot {
             p.collection.as_secs_f64(),
             p.enqueue.as_secs_f64(),
             self.effective_send_rate(),
-            if self.world.screen_only() {
-                "screen"
-            } else {
-                "all"
-            },
+            if self.world.screen_only() { "screen" } else { "all" },
             packets,
             bytes,
             encode_ns as f64 / 1e9,
@@ -1075,9 +962,7 @@ impl Plot {
     }
 
     fn refresh_sidebar(&mut self, force: bool) {
-        if self.players.is_empty()
-            || (!force && self.last_sidebar_update.elapsed() < Duration::from_secs(1))
-        {
+        if self.players.is_empty() || (!force && self.last_sidebar_update.elapsed() < Duration::from_secs(1)) {
             return;
         }
 
@@ -1114,11 +999,7 @@ impl Plot {
     }
 
     fn update_render_mode(&mut self) {
-        let fast = visuals::static_pistons(
-            self.piston_animation,
-            self.tps,
-            CONFIG.fast_render_threshold,
-        );
+        let fast = visuals::static_pistons(self.piston_animation, self.tps, CONFIG.fast_render_threshold);
         if fast == self.world.fast_rendering {
             return;
         }
@@ -1130,22 +1011,13 @@ impl Plot {
             .piston_state
             .motions
             .iter()
-            .filter_map(|motion| {
-                self.world
-                    .get_chunk_index_for_block(motion.pos.x, motion.pos.z)
-            })
+            .filter_map(|motion| self.world.get_chunk_index_for_block(motion.pos.x, motion.pos.z))
             .collect();
         for index in chunks {
             let chunk = &self.world.chunks[index];
             let encoded = chunk.encode_packet_for_client(fast || self.world.screen_only());
             for player in &self.players {
-                if Self::get_chunk_distance(
-                    chunk.x,
-                    chunk.z,
-                    player.last_chunk_x,
-                    player.last_chunk_z,
-                ) <= CONFIG.view_distance.max(0) as u32
-                {
+                if Self::get_chunk_distance(chunk.x, chunk.z, player.last_chunk_x, player.last_chunk_z) <= CONFIG.view_distance.max(0) as u32 {
                     player.client.send_packet(&encoded);
                 }
             }
@@ -1186,11 +1058,7 @@ impl Plot {
     }
 
     pub fn broadcast_chat_message(&mut self, message: String) {
-        let broadcast_message = Message::ChatInfo(
-            0,
-            messages::plot_chat_source(self.world.x, self.world.z),
-            message,
-        );
+        let broadcast_message = Message::ChatInfo(0, messages::plot_chat_source(self.world.x, self.world.z), message);
         self.message_sender.send(broadcast_message).unwrap();
     }
 
@@ -1217,16 +1085,13 @@ impl Plot {
                 return;
             }
         }
-        if self.players[player_idx].small_model.is_some() != small
-            && !self.set_small(player_idx, small)
-        {
+        if self.players[player_idx].small_model.is_some() != small && !self.set_small(player_idx, small) {
             return;
         }
         self.players[player_idx].set_gamemode(gamemode);
-        let _ = self.message_sender.send(Message::PlayerUpdateGamemode(
-            self.players[player_idx].uuid,
-            gamemode,
-        ));
+        let _ = self
+            .message_sender
+            .send(Message::PlayerUpdateGamemode(self.players[player_idx].uuid, gamemode));
     }
 
     fn on_player_move(&mut self, player_idx: usize, old: PlayerPos, new: PlayerPos) {
@@ -1235,34 +1100,18 @@ impl Plot {
         }
         if matches!(self.players[player_idx].gamemode, Gamemode::Spectator)
             || (crate::permissions::dedicated_permissions()
-                && !self.players[player_idx].can_build_action(
-                    "interact",
-                    self.owner,
-                    (self.world.x, self.world.z),
-                ))
+                && !self.players[player_idx].can_build_action("interact", self.owner, (self.world.x, self.world.z)))
         {
             return;
         }
         let old_block = old.block_pos();
         let new_block = new.block_pos();
 
-        if self
-            .world
-            .get_block(old_block)
-            .pressure_plate_powered()
-            .is_some()
-            && !self.are_players_on_block(old_block)
-        {
+        if self.world.get_block(old_block).pressure_plate_powered().is_some() && !self.are_players_on_block(old_block) {
             self.set_pressure_plate(old_block, false);
         }
 
-        if self
-            .world
-            .get_block(new_block)
-            .pressure_plate_powered()
-            .is_some()
-            && self.players[player_idx].on_ground
-        {
+        if self.world.get_block(new_block).pressure_plate_powered().is_some() && self.players[player_idx].on_ground {
             self.set_pressure_plate(new_block, true);
         }
     }
@@ -1276,8 +1125,7 @@ impl Plot {
         let block = self.world.get_block(pos);
         match block {
             block if block.pressure_plate_powered().is_some() => {
-                self.world
-                    .set_block(pos, block.with_pressure_plate_power(powered).unwrap());
+                self.world.set_block(pos, block.with_pressure_plate_power(powered).unwrap());
                 redstone::update_surrounding_blocks(&mut self.world, pos);
                 redstone::update_surrounding_blocks(&mut self.world, pos.offset(BlockFace::Bottom));
             }
@@ -1290,12 +1138,7 @@ impl Plot {
             if player.pos.block_pos() == pos
                 && player.on_ground
                 && !matches!(player.gamemode, Gamemode::Spectator)
-                && (!crate::permissions::dedicated_permissions()
-                    || player.can_build_action(
-                        "interact",
-                        self.owner,
-                        (self.world.x, self.world.z),
-                    ))
+                && (!crate::permissions::dedicated_permissions() || player.can_build_action("interact", self.owner, (self.world.x, self.world.z)))
             {
                 return true;
             }
@@ -1333,8 +1176,7 @@ impl Plot {
             plot_x = self.world.x, plot_z = self.world.z, "Player entered plot");
         // Another running plot can claim this plot before teleporting here.
         // Refresh the cached owner so permission checks reflect that claim.
-        self.owner = database::get_plot_owner(self.world.x, self.world.z)
-            .map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
+        self.owner = database::get_plot_owner(self.world.x, self.world.z).map(|s| s.parse::<HyphenatedUUID>().unwrap().0);
         self.save();
         let status = CEntityStatus {
             entity_id: player.entity_id as i32,
@@ -1356,9 +1198,7 @@ impl Plot {
         }
 
         player.send_system_message(&messages::plot_entered(self.world.x, self.world.z));
-        self.world
-            .packet_senders
-            .push(PlayerPacketSender::new(&player.client));
+        self.world.packet_senders.push(PlayerPacketSender::new(&player.client));
         self.players.push(player);
         let player = self.players.len() - 1;
         let git_read = self.git_access(player, "read");
@@ -1373,34 +1213,22 @@ impl Plot {
         x.abs().max(z.abs()) as u32
     }
 
-    fn set_chunk_loaded_at_player(
-        &mut self,
-        player_idx: usize,
-        chunk_x: i32,
-        chunk_z: i32,
-        was_loaded: bool,
-        should_be_loaded: bool,
-    ) {
+    fn set_chunk_loaded_at_player(&mut self, player_idx: usize, chunk_x: i32, chunk_z: i32, was_loaded: bool, should_be_loaded: bool) {
         if was_loaded && !should_be_loaded {
             self.unload_git_chunk(player_idx, chunk_x, chunk_z);
             self.unload_wire_chunk(player_idx, chunk_x, chunk_z);
-            self.neighbor_views
-                .unload(self.players[player_idx].uuid, (chunk_x, chunk_z));
+            self.neighbor_views.unload(self.players[player_idx].uuid, (chunk_x, chunk_z));
             let unload_chunk = CUnloadChunk { chunk_x, chunk_z }.encode();
             self.players[player_idx].client.send_packet(&unload_chunk);
         } else if !was_loaded && should_be_loaded {
             if !Plot::chunk_in_plot_bounds(self.world.x, self.world.z, chunk_x, chunk_z) {
                 if CONFIG.neighbor_update_interval_ms != 0 {
-                    self.neighbor_views
-                        .load(self.players[player_idx].uuid, (chunk_x, chunk_z));
+                    self.neighbor_views.load(self.players[player_idx].uuid, (chunk_x, chunk_z));
                 }
-                self.players[player_idx]
-                    .client
-                    .send_packet(&Chunk::encode_empty_packet(chunk_x, chunk_z));
+                self.players[player_idx].client.send_packet(&Chunk::encode_empty_packet(chunk_x, chunk_z));
             } else {
-                let chunk_data = self.world.chunks
-                    [self.world.get_chunk_index_for_chunk(chunk_x, chunk_z)]
-                .encode_packet_for_client(self.world.fast_rendering || self.world.screen_only());
+                let chunk_data = self.world.chunks[self.world.get_chunk_index_for_chunk(chunk_x, chunk_z)]
+                    .encode_packet_for_client(self.world.fast_rendering || self.world.screen_only());
                 self.players[player_idx].client.send_packet(&chunk_data);
             }
         }
@@ -1415,20 +1243,15 @@ impl Plot {
         let update_view = CUpdateViewPosition { chunk_x, chunk_z }.encode();
         self.players[player_idx].client.send_packet(&update_view);
 
-        if ((last_chunk_x - chunk_x).abs() <= view_distance * 2
-            && (last_chunk_z - chunk_z).abs() <= view_distance * 2)
-            && !force_load
-        {
+        if ((last_chunk_x - chunk_x).abs() <= view_distance * 2 && (last_chunk_z - chunk_z).abs() <= view_distance * 2) && !force_load {
             let nx = chunk_x.min(last_chunk_x) - view_distance;
             let nz = chunk_z.min(last_chunk_z) - view_distance;
             let px = chunk_x.max(last_chunk_x) + view_distance;
             let pz = chunk_z.max(last_chunk_z) + view_distance;
             for x in nx..=px {
                 for z in nz..=pz {
-                    let was_loaded = Self::get_chunk_distance(x, z, last_chunk_x, last_chunk_z)
-                        <= view_distance as u32;
-                    let should_be_loaded =
-                        Self::get_chunk_distance(x, z, chunk_x, chunk_z) <= view_distance as u32;
+                    let was_loaded = Self::get_chunk_distance(x, z, last_chunk_x, last_chunk_z) <= view_distance as u32;
+                    let should_be_loaded = Self::get_chunk_distance(x, z, chunk_x, chunk_z) <= view_distance as u32;
                     // todo make this little bit async, so that chunks dont load all at the same time
                     // causing lag spikes in client when there is a massive redstone contraption on plot
                     self.set_chunk_loaded_at_player(player_idx, x, z, was_loaded, should_be_loaded);
@@ -1462,16 +1285,9 @@ impl Plot {
 
     fn start_redpiler(&mut self, options: CompilerOptions) {
         let started = Instant::now();
-        info!(
-            plot_x = self.world.x,
-            plot_z = self.world.z,
-            ?options,
-            "Redpiler started"
-        );
-        self.scoreboard
-            .set_redpiler_state(&self.players, RedpilerState::Compiling);
-        self.scoreboard
-            .set_redpiler_options(&self.players, &options);
+        info!(plot_x = self.world.x, plot_z = self.world.z, ?options, "Redpiler started");
+        self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
+        self.scoreboard.set_redpiler_options(&self.players, &options);
 
         let bounds = self.world.get_corners();
         // TODO: use monitor
@@ -1481,9 +1297,7 @@ impl Plot {
             .players
             .iter()
             .filter_map(|player| player.open_container.as_ref())
-            .filter(|container| {
-                container.ty == mchprs_blocks::block_entities::ContainerType::Barrel
-            })
+            .filter(|container| container.ty == mchprs_blocks::block_entities::ContainerType::Barrel)
             .map(|container| container.pos)
             .collect();
         for pos in open_barrels {
@@ -1542,12 +1356,9 @@ impl Plot {
                 self.close_all_containers_after_redpiler();
                 if self.world.history.enabled() {
                     let bytes = self.world.history.disable();
-                    self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(
-                        history::format_memory(bytes),
-                    ));
+                    self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(history::format_memory(bytes)));
                 }
-                self.scoreboard
-                    .set_redpiler_state(&self.players, RedpilerState::Running);
+                self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Running);
             }
             failure => {
                 let reason = match failure {
@@ -1567,14 +1378,10 @@ impl Plot {
                 warn!(plot_x = self.world.x, plot_z = self.world.z,
                     elapsed_ms = started.elapsed().as_millis(), %reason, "Redpiler rejected");
                 for player in &self.players {
-                    player.send_error_message(&format!(
-                        "Redpiler: {reason}. Use /rp analyze for details."
-                    ));
+                    player.send_error_message(&format!("Redpiler: {reason}. Use /rp analyze for details."));
                 }
-                self.scoreboard
-                    .set_redpiler_state(&self.players, RedpilerState::Stopped);
-                self.scoreboard
-                    .set_redpiler_options(&self.players, &Default::default());
+                self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
+                self.scoreboard.set_redpiler_options(&self.players, &Default::default());
             }
         }
 
@@ -1587,10 +1394,8 @@ impl Plot {
             debug!("Discarding redpiler");
             let bounds = self.world.get_corners();
             self.redpiler.reset(&mut self.world, bounds);
-            self.scoreboard
-                .set_redpiler_state(&self.players, RedpilerState::Stopped);
-            self.scoreboard
-                .set_redpiler_options(&self.players, &Default::default());
+            self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
+            self.scoreboard.set_redpiler_options(&self.players, &Default::default());
 
             // reseting redpiler could cause a large amount of block updates
             self.reset_timings();
@@ -1621,10 +1426,7 @@ impl Plot {
             entity_ids: self
                 .players
                 .iter()
-                .flat_map(|p| {
-                    std::iter::once(p.entity_id as i32)
-                        .chain(p.small_model.as_ref().map(|model| model.entity_id as i32))
-                })
+                .flat_map(|p| std::iter::once(p.entity_id as i32).chain(p.small_model.as_ref().map(|model| model.entity_id as i32)))
                 .collect(),
         }
         .encode();
@@ -1713,10 +1515,7 @@ impl Plot {
 
     pub fn get_center(plot_x: i32, plot_z: i32) -> (f64, f64) {
         const WIDTH: f64 = PLOT_BLOCK_WIDTH as f64;
-        (
-            plot_x as f64 * WIDTH + WIDTH / 2.0,
-            plot_z as f64 * WIDTH + WIDTH / 2.0,
-        )
+        (plot_x as f64 * WIDTH + WIDTH / 2.0, plot_z as f64 * WIDTH + WIDTH / 2.0)
     }
 
     pub fn get_next_plot(plot_x: i32, plot_z: i32) -> (i32, i32) {
@@ -1755,9 +1554,7 @@ impl Plot {
         for player_idx in 0..self.players.len() {
             let player_idx = player_idx - removal_offset;
             let commands: Vec<String> = std::mem::take(&mut self.players[player_idx].command_queue);
-            if commands::run_command_queue(commands, |command, args| {
-                self.handle_command(player_idx, command, args)
-            }) {
+            if commands::run_command_queue(commands, |command, args| self.handle_command(player_idx, command, args)) {
                 removal_offset += 1;
             }
         }
@@ -1772,10 +1569,8 @@ impl Plot {
                     }
                 }
                 BroadcastMessage::PlayerJoinedInfo(player_join_info) => {
-                    let join_message = (CONFIG.native_chat
-                        && crate::permissions::ranked_chat()
-                        && !crate::redbox::enabled())
-                    .then(|| ChatComponent::player_joined(&player_join_info.username));
+                    let join_message = (CONFIG.native_chat && crate::permissions::ranked_chat() && !crate::redbox::enabled())
+                        .then(|| ChatComponent::player_joined(&player_join_info.username));
                     let player_info = CPlayerInfo::AddPlayer(vec![CPlayerInfoAddPlayer {
                         name: player_join_info.username,
                         properties: player_join_info.properties,
@@ -1846,21 +1641,14 @@ impl Plot {
                 PrivMessage::RedBoxTeleport { uuid, position } => {
                     if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
                         if position.is_valid() {
-                            self.teleport_player_to(
-                                player,
-                                position.player_pos(),
-                                position.yaw,
-                                position.pitch,
-                            );
+                            self.teleport_player_to(player, position.player_pos(), position.yaw, position.pitch);
                         }
                     }
                 }
                 PrivMessage::RedBoxGamemode(uuid, gamemode) => {
                     if let Some(player) = self.players.iter().position(|p| p.uuid == uuid) {
                         self.players[player].set_gamemode(gamemode);
-                        let _ = self
-                            .message_sender
-                            .send(Message::PlayerUpdateGamemode(uuid, gamemode));
+                        let _ = self.message_sender.send(Message::PlayerUpdateGamemode(uuid, gamemode));
                     }
                 }
                 PrivMessage::RedBoxPermissions {
@@ -1887,11 +1675,7 @@ impl Plot {
             }
             let (plot_x, plot_z) = player.pos.plot_pos();
             if plot_x != self.world.x || plot_z != self.world.z {
-                if player.should_transfer_plot(
-                    (self.world.x, self.world.z),
-                    (plot_x, plot_z),
-                    player.pos,
-                ) {
+                if player.should_transfer_plot((self.world.x, self.world.z), (plot_x, plot_z), player.pos) {
                     outside_players.push(player.uuid);
                 }
             }
@@ -1919,9 +1703,7 @@ impl Plot {
             let alive = player.client.alive();
             if !alive {
                 player.save();
-                message_sender
-                    .send(Message::PlayerLeft(player.uuid))
-                    .unwrap();
+                message_sender.send(Message::PlayerLeft(player.uuid)).unwrap();
                 disconnected_players.push(player.entity_id);
                 if let Some(model) = &player.small_model {
                     disconnected_players.push(model.entity_id);
@@ -1948,8 +1730,7 @@ impl Plot {
         self.last_redbox_state = now;
         let world = format!("plot_{}_{}", self.world.x, self.world.z);
         for player in &self.players {
-            let position =
-                crate::redbox::Position::new(world.clone(), player.pos, player.yaw, player.pitch);
+            let position = crate::redbox::Position::new(world.clone(), player.pos, player.yaw, player.pitch);
             let packet = CPluginMessage {
                 channel: crate::redbox::CHANNEL.to_owned(),
                 data: crate::redbox::encode_player_state(player.uuid, &position),
@@ -1985,8 +1766,7 @@ impl Plot {
             self.last_player_time = now;
 
             let effective_send_rate = self.effective_send_rate();
-            let world_send_rate =
-                Duration::from_nanos(1_000_000_000 / effective_send_rate.max(1) as u64);
+            let world_send_rate = Duration::from_nanos(1_000_000_000 / effective_send_rate.max(1) as u64);
 
             let max_batch_size = match self.last_nspt {
                 Some(Duration::ZERO) | None => 1,
@@ -1999,9 +1779,7 @@ impl Plot {
             };
 
             let tick_duration = match self.tps {
-                Tps::Limited(tps) if tps != 0 => {
-                    Some(Duration::from_nanos((1_000_000_000 / tps as u64).max(1)))
-                }
+                Tps::Limited(tps) if tps != 0 => Some(Duration::from_nanos((1_000_000_000 / tps as u64).max(1))),
                 _ => None,
             };
             let batch_size = match self.tps {
@@ -2199,13 +1977,7 @@ impl Plot {
             .chunk_data
             .into_iter()
             .enumerate()
-            .map(|(i, c)| {
-                Chunk::load(
-                    chunk_x_offset + i as i32 / PLOT_WIDTH,
-                    chunk_z_offset + i as i32 % PLOT_WIDTH,
-                    c,
-                )
-            })
+            .map(|(i, c)| Chunk::load(chunk_x_offset + i as i32 / PLOT_WIDTH, chunk_z_offset + i as i32 % PLOT_WIDTH, c))
             .collect();
         if owner.is_some() {
             for chunk in &mut chunks {
@@ -2221,8 +1993,7 @@ impl Plot {
             );
         }
 
-        let mut world =
-            PlotWorld::from_chunks(x, z, chunks, plot_data.pending_ticks.into_iter().collect());
+        let mut world = PlotWorld::from_chunks(x, z, chunks, plot_data.pending_ticks.into_iter().collect());
         if plot_data.piston_state.logical_tick != 0
             || plot_data.piston_state.next_identity != 0
             || !plot_data.piston_state.events.is_empty()
@@ -2232,11 +2003,7 @@ impl Plot {
             world.invalidate_interpreter_caches();
         }
         let tps = plot_data.tps;
-        world.fast_rendering = visuals::static_pistons(
-            plot_data.piston_animation,
-            tps,
-            CONFIG.fast_render_threshold,
-        );
+        world.fast_rendering = visuals::static_pistons(plot_data.piston_animation, tps, CONFIG.fast_render_threshold);
         let world_send_rate = plot_data.world_send_rate;
         world.set_screen_only(database::get_screen_only(x, z));
         Plot {
@@ -2280,8 +2047,7 @@ impl Plot {
             return;
         }
         let world = &mut self.world;
-        let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> =
-            world.chunks.iter_mut().map(|c| c.save()).collect();
+        let chunk_data: Vec<ChunkData<PLOT_SECTIONS>> = world.chunks.iter_mut().map(|c| c.save()).collect();
         let data = PlotData {
             tps: self.tps,
             world_send_rate: self.world_send_rate,
@@ -2290,8 +2056,7 @@ impl Plot {
             piston_state: world.piston_state.clone(),
             piston_animation: self.piston_animation,
         };
-        data.save_to_file(format!("./world/plots/p{},{}", world.x, world.z))
-            .unwrap();
+        data.save_to_file(format!("./world/plots/p{},{}", world.x, world.z)).unwrap();
 
         self.reset_timings();
     }
@@ -2300,10 +2065,7 @@ impl Plot {
         let _guard = self.async_rt.enter();
 
         if CONFIG.neighbor_update_interval_ms != 0 {
-            self.neighbor_source = Some(neighbors::LiveSource::register((
-                self.world.x,
-                self.world.z,
-            )));
+            self.neighbor_source = Some(neighbors::LiveSource::register((self.world.x, self.world.z)));
         }
 
         if let Some(player) = initial_player {
@@ -2350,18 +2112,11 @@ impl Plot {
         thread::Builder::new()
             .name(format!("p{},{}", x, z))
             .spawn(move || {
-                let loaded = data::load_plot(format!("./world/plots/p{},{}", x, z))
-                    .with_context(|| format!("error loading plot {},{}", x, z));
+                let loaded = data::load_plot(format!("./world/plots/p{},{}", x, z)).with_context(|| format!("error loading plot {},{}", x, z));
                 let data = match loaded {
                     Ok(data) => data,
                     Err(error) => {
-                        let _ = tx.send(Message::PlotLoadFailed(
-                            x,
-                            z,
-                            format!("{:#}", error),
-                            initial_player,
-                            priv_rx,
-                        ));
+                        let _ = tx.send(Message::PlotLoadFailed(x, z, format!("{:#}", error), initial_player, priv_rx));
                         return;
                     }
                 };
@@ -2400,22 +2155,15 @@ impl Drop for Plot {
             while !self.players.is_empty() {
                 let uuid = self.players[0].uuid;
                 let player = self.leave_plot(uuid);
-                self.message_sender
-                    .send(Message::PlayerLeavePlot(player))
-                    .unwrap();
+                self.message_sender.send(Message::PlayerLeavePlot(player)).unwrap();
             }
         }
 
         self.reset_redpiler();
-        self.world
-            .chunks
-            .iter_mut()
-            .for_each(|chunk| chunk.compress());
+        self.world.chunks.iter_mut().for_each(|chunk| chunk.compress());
         self.save();
         let world = &self.world;
-        self.message_sender
-            .send(Message::PlotUnload(world.x, world.z))
-            .unwrap();
+        self.message_sender.send(Message::PlotUnload(world.x, world.z)).unwrap();
     }
 }
 
@@ -2467,20 +2215,12 @@ fn copper_bulb_item_actions_preserve_state_and_exclude_predicted_feedback() {
         );
         assert!(matches!(result, ItemUseResult::Used));
         assert_eq!(world.get_block(pos).get_name(), variant);
-        assert_eq!(
-            world.get_block(pos).copper_bulb_state(),
-            Some((true, false))
-        );
+        assert_eq!(world.get_block(pos).copper_bulb_state(), Some((true, false)));
         let (excluded, feedback) = world.level_events.last().unwrap();
         assert_eq!(*excluded, player.uuid);
         assert_eq!(feedback.effect_id, event);
     }
     assert_eq!(world.level_events.len(), 3);
     assert_eq!(world.sounds.len(), 2);
-    assert!(
-        world
-            .sounds
-            .iter()
-            .all(|sound| sound.excluded == Some(player.uuid))
-    );
+    assert!(world.sounds.iter().all(|sound| sound.excluded == Some(player.uuid)));
 }

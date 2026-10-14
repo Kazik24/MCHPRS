@@ -53,19 +53,10 @@ impl Write for Writer<'_> {
                 files.bytes = 0;
             }
             if files.file.is_none() {
-                files.file = Some(
-                    OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(&files.path)?,
-                );
+                files.file = Some(OpenOptions::new().create(true).append(true).open(&files.path)?);
             }
             let count = remaining.len().min((files.limit - files.bytes) as usize);
-            files
-                .file
-                .as_mut()
-                .unwrap()
-                .write_all(&remaining[..count])?;
+            files.file.as_mut().unwrap().write_all(&remaining[..count])?;
             files.bytes += count as u64;
             remaining = &remaining[count..];
         }

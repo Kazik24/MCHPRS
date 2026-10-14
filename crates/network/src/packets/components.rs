@@ -9,33 +9,18 @@ const RAW: &str = "__mchprs_components_770";
 const MAX_STACK_SIZE: &str = "__mchprs_max_stack_size";
 
 /// Decorate a generated tool item without changing its inventory component.
-pub fn set_tool_display(
-    item_id: i32,
-    blob: &mut nbt::Blob,
-    name: &str,
-    lore: &str,
-) -> DecodeResult<()> {
+pub fn set_tool_display(item_id: i32, blob: &mut nbt::Blob, name: &str, lore: &str) -> DecodeResult<()> {
     let mut custom_name = Vec::new();
     custom_name.write_text(&serde_json::json!({"text": name, "italic": false}).to_string());
     let mut description = Vec::new();
     description.write_varint(1);
-    description.write_text(
-        &serde_json::json!({"text": lore, "color": "gray", "italic": false}).to_string(),
-    );
-    patch_components(
-        item_id,
-        blob,
-        &[(5, custom_name), (8, description), (18, vec![1])],
-    )
+    description.write_text(&serde_json::json!({"text": lore, "color": "gray", "italic": false}).to_string());
+    patch_components(item_id, blob, &[(5, custom_name), (8, description), (18, vec![1])])
 }
 
 /// Protocol boundary: preserve each validated component's bytes, replacing only
 /// explicitly supplied components. Prepare the complete patch before changing NBT.
-fn patch_components(
-    item_id: i32,
-    blob: &mut nbt::Blob,
-    replacements: &[(i32, Vec<u8>)],
-) -> DecodeResult<()> {
+fn patch_components(item_id: i32, blob: &mut nbt::Blob, replacements: &[(i32, Vec<u8>)]) -> DecodeResult<()> {
     if !(0..crate::generated::ITEM_COUNT).contains(&item_id) {
         return Err(invalid("invalid item ID"));
     }
@@ -60,9 +45,7 @@ fn patch_components(
     let mut components = std::collections::BTreeMap::new();
     for _ in 0..added {
         let id = cursor.read_varint()?;
-        let name = names[id.to_string()]
-            .as_str()
-            .ok_or_else(|| invalid("unknown component ID"))?;
+        let name = names[id.to_string()].as_str().ok_or_else(|| invalid("unknown component ID"))?;
         let mut recording = Recording {
             reader: &mut cursor,
             bytes: Vec::new(),
@@ -73,10 +56,7 @@ fn patch_components(
     let mut removals = Vec::new();
     for _ in 0..removed {
         let id = cursor.read_varint()?;
-        if !replacements
-            .iter()
-            .any(|(replacement, _)| *replacement == id)
-        {
+        if !replacements.iter().any(|(replacement, _)| *replacement == id) {
             removals.push(id);
         }
     }
@@ -93,10 +73,7 @@ fn patch_components(
     for id in removals {
         patch.write_varint(id);
     }
-    blob.insert(
-        RAW,
-        nbt::Value::ByteArray(patch.into_iter().map(|byte| byte as i8).collect()),
-    )?;
+    blob.insert(RAW, nbt::Value::ByteArray(patch.into_iter().map(|byte| byte as i8).collect()))?;
     Ok(())
 }
 
@@ -134,9 +111,7 @@ fn bounded(n: i32) -> DecodeResult<usize> {
 }
 fn schema() -> &'static Value {
     static SCHEMA: OnceLock<Value> = OnceLock::new();
-    SCHEMA.get_or_init(|| {
-        serde_json::from_str(include_str!("../../../../mc_data/1.21.5/protocol.json")).unwrap()
-    })
+    SCHEMA.get_or_init(|| serde_json::from_str(include_str!("../../../../mc_data/1.21.5/protocol.json")).unwrap())
 }
 struct Recording<'a> {
     reader: &'a mut dyn Read,
@@ -202,10 +177,7 @@ fn nbt_payload<T: PacketDecoderExt>(r: &mut T, tag: u8, depth: usize) -> DecodeR
     Ok(())
 }
 pub(super) fn anonymous_nbt<T: PacketDecoderExt>(r: &mut T) -> DecodeResult<Vec<u8>> {
-    let mut rec = Recording {
-        reader: r,
-        bytes: vec![],
-    };
+    let mut rec = Recording { reader: r, bytes: vec![] };
     let tag = rec.read_unsigned_byte()?;
     nbt_payload(&mut rec, tag, 0)?;
     Ok(rec.bytes)
@@ -213,12 +185,7 @@ pub(super) fn anonymous_nbt<T: PacketDecoderExt>(r: &mut T) -> DecodeResult<Vec<
 
 // The checked-in schema describes each component's actual payload; there is no
 // generic component length prefix. Counts, nesting and unknown types are checked.
-fn consume<T: PacketDecoderExt>(
-    r: &mut T,
-    ty: &Value,
-    context: &Map<String, Value>,
-    depth: usize,
-) -> DecodeResult<Value> {
+fn consume<T: PacketDecoderExt>(r: &mut T, ty: &Value, context: &Map<String, Value>, depth: usize) -> DecodeResult<Value> {
     if depth > 64 {
         return Err(invalid("component nesting limit"));
     }
@@ -264,17 +231,12 @@ fn consume<T: PacketDecoderExt>(
             }
         });
     }
-    let kind = ty[0]
-        .as_str()
-        .ok_or_else(|| invalid("invalid component schema"))?;
+    let kind = ty[0].as_str().ok_or_else(|| invalid("invalid component schema"))?;
     let args = &ty[1];
     match kind {
         "container" => {
             let mut fields = context.clone();
-            for f in args
-                .as_array()
-                .ok_or_else(|| invalid("invalid container"))?
-            {
+            for f in args.as_array().ok_or_else(|| invalid("invalid container"))? {
                 let value = consume(r, &f["type"], &fields, depth + 1)?;
                 if let Some(name) = f["name"].as_str() {
                     fields.insert(name.to_owned(), value);
@@ -286,9 +248,7 @@ fn consume<T: PacketDecoderExt>(
             let count = if let Some(n) = args["count"].as_i64() {
                 n as i32
             } else if let Some(field) = args["count"].as_str() {
-                context[field]
-                    .as_i64()
-                    .ok_or_else(|| invalid("missing count"))? as i32
+                context[field].as_i64().ok_or_else(|| invalid("missing count"))? as i32
             } else {
                 r.read_varint()?
             };
@@ -309,16 +269,9 @@ fn consume<T: PacketDecoderExt>(
             Ok(args["mappings"][raw.to_string()].clone())
         }
         "switch" => {
-            let field = args["compareTo"]
-                .as_str()
-                .ok_or_else(|| invalid("missing switch field"))?;
-            let value = context
-                .get(field)
-                .ok_or_else(|| invalid("missing component discriminator"))?;
-            let key = value
-                .as_str()
-                .map(str::to_owned)
-                .unwrap_or_else(|| value.to_string());
+            let field = args["compareTo"].as_str().ok_or_else(|| invalid("missing switch field"))?;
+            let value = context.get(field).ok_or_else(|| invalid("missing component discriminator"))?;
+            let key = value.as_str().map(str::to_owned).unwrap_or_else(|| value.to_string());
             let t = args["fields"]
                 .get(&key)
                 .or_else(|| args.get("default"))
@@ -364,11 +317,7 @@ fn item_names() -> &'static Vec<String> {
             .collect()
     })
 }
-fn read_slot_depth<T: PacketDecoderExt>(
-    r: &mut T,
-    depth: usize,
-    untrusted: bool,
-) -> DecodeResult<Option<SlotData>> {
+fn read_slot_depth<T: PacketDecoderExt>(r: &mut T, depth: usize, untrusted: bool) -> DecodeResult<Option<SlotData>> {
     if depth > 64 {
         return Err(invalid("item nesting limit"));
     }
@@ -400,9 +349,7 @@ fn read_slot_depth<T: PacketDecoderExt>(
         if !seen.insert(component_id) {
             return Err(invalid("duplicate component"));
         }
-        let name = names[component_id.to_string()]
-            .as_str()
-            .ok_or_else(|| invalid("unknown component ID"))?;
+        let name = names[component_id.to_string()].as_str().ok_or_else(|| invalid("unknown component ID"))?;
         let component_type = component_type(name);
         let data = if untrusted {
             let n = bounded(r.read_varint()?)?;
@@ -414,10 +361,7 @@ fn read_slot_depth<T: PacketDecoderExt>(
             }
             data
         } else {
-            let mut rec = Recording {
-                reader: r,
-                bytes: vec![],
-            };
+            let mut rec = Recording { reader: r, bytes: vec![] };
             consume(&mut rec, &component_type, &Map::new(), depth + 1)?;
             rec.bytes
         };
@@ -430,11 +374,7 @@ fn read_slot_depth<T: PacketDecoderExt>(
             }
             nbt.insert(MAX_STACK_SIZE, nbt::Value::Int(size))?;
         }
-        if matches!(
-            name,
-            "custom_data" | "debug_stick_state" | "block_entity_data"
-        ) && data.first() == Some(&10)
-        {
+        if matches!(name, "custom_data" | "debug_stick_state" | "block_entity_data") && data.first() == Some(&10) {
             let mut named = vec![10, 0, 0];
             named.extend_from_slice(&data[1..]);
             let blob = nbt::Blob::from_reader(&mut Cursor::new(named))?;
@@ -462,10 +402,7 @@ fn read_slot_depth<T: PacketDecoderExt>(
                     map.insert("Count".to_owned(), nbt::Value::Byte(item.item_count));
                     map.insert(
                         "id".to_owned(),
-                        nbt::Value::String(format!(
-                            "minecraft:{}",
-                            item_names()[item.item_id as usize]
-                        )),
+                        nbt::Value::String(format!("minecraft:{}", item_names()[item.item_id as usize])),
                     );
                     if let Some(tag) = item.nbt {
                         map.insert("tag".to_owned(), nbt::Value::Compound(tag.content));
@@ -480,10 +417,7 @@ fn read_slot_depth<T: PacketDecoderExt>(
             let n = bounded(cursor.read_varint()?)?;
             let mut props = std::collections::HashMap::new();
             for _ in 0..n {
-                props.insert(
-                    cursor.read_string()?,
-                    nbt::Value::String(cursor.read_string()?),
-                );
+                props.insert(cursor.read_string()?, nbt::Value::String(cursor.read_string()?));
             }
             nbt.insert("BlockStateTag", nbt::Value::Compound(props))?;
         }
@@ -496,15 +430,12 @@ fn read_slot_depth<T: PacketDecoderExt>(
         raw.write_varint(id);
     }
     if !entity.is_empty() {
-        entity.entry("id".into()).or_insert_with(|| {
-            nbt::Value::String(format!("minecraft:{}", item_names()[id as usize]))
-        });
+        entity
+            .entry("id".into())
+            .or_insert_with(|| nbt::Value::String(format!("minecraft:{}", item_names()[id as usize])));
         nbt.insert("BlockEntityTag", nbt::Value::Compound(entity))?;
     }
-    nbt.insert(
-        RAW,
-        nbt::Value::ByteArray(raw.iter().map(|b| *b as i8).collect()),
-    )?;
+    nbt.insert(RAW, nbt::Value::ByteArray(raw.iter().map(|b| *b as i8).collect()))?;
     Ok(Some(SlotData {
         item_id: id,
         item_count: count as i8,
@@ -531,9 +462,9 @@ pub fn write_slot<T: PacketEncoderExt>(w: &mut T, slot: &Option<SlotData>) {
             if let Some(value) = entity.remove("Id") {
                 entity.entry("id".into()).or_insert(value);
             }
-            entity.entry("id".into()).or_insert_with(|| {
-                nbt::Value::String(format!("minecraft:{}", item_names()[slot.item_id as usize]))
-            });
+            entity
+                .entry("id".into())
+                .or_insert_with(|| nbt::Value::String(format!("minecraft:{}", item_names()[slot.item_id as usize])));
             if let Some(nbt::Value::List(items)) = entity.remove("Items") {
                 let mut inventory = std::collections::BTreeMap::new();
                 for value in items {
@@ -600,10 +531,7 @@ mod tool_component_tests {
 
     #[test]
     fn tool_display_preserves_existing_components_and_custom_data() {
-        let item_id = item_names()
-            .iter()
-            .position(|name| name == "oak_slab")
-            .unwrap() as i32;
+        let item_id = item_names().iter().position(|name| name == "oak_slab").unwrap() as i32;
         let mut raw = Vec::new();
         raw.write_varint(3);
         raw.write_varint(0);
@@ -611,9 +539,10 @@ mod tool_component_tests {
         raw.write_varint(1); // maximum stack size
         raw.write_varint(16);
         raw.write_varint(0); // authored custom data
-        raw.write_nbt_blob(&nbt::Blob::with_content(std::collections::HashMap::from([
-            ("owner".into(), nbt::Value::String("kitten".into())),
-        ])));
+        raw.write_nbt_blob(&nbt::Blob::with_content(std::collections::HashMap::from([(
+            "owner".into(),
+            nbt::Value::String("kitten".into()),
+        )])));
         let mut slot = vec![8];
         slot.write_varint(item_id);
         slot.write_bytes(&raw);
@@ -629,10 +558,7 @@ mod tool_component_tests {
         let Some(nbt::Value::Compound(data)) = blob.get("custom_data") else {
             panic!("tool display must retain custom data");
         };
-        assert_eq!(
-            data.get("owner"),
-            Some(&nbt::Value::String("kitten".into()))
-        );
+        assert_eq!(data.get("owner"), Some(&nbt::Value::String("kitten".into())));
         let mut again = Vec::new();
         write_slot(&mut again, &Some(restored));
         assert_eq!(bytes, again);

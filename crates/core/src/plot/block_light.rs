@@ -66,16 +66,13 @@ impl PlotWorld {
                 }
             }
         }
-        let mut arrays: Vec<[Option<Vec<u8>>; PLOT_SECTIONS]> = (0..self.chunks.len())
-            .map(|_| std::array::from_fn(|_| None))
-            .collect();
+        let mut arrays: Vec<[Option<Vec<u8>>; PLOT_SECTIONS]> = (0..self.chunks.len()).map(|_| std::array::from_fn(|_| None)).collect();
         for (pos, value) in levels {
             let Some(chunk) = self.get_chunk_index_for_block(pos.x, pos.z) else {
                 continue;
             };
             let section = arrays[chunk][pos.y as usize / 16].get_or_insert_with(|| vec![0; 2048]);
-            let index =
-                ((pos.y as usize & 15) << 8) | ((pos.z as usize & 15) << 4) | (pos.x as usize & 15);
+            let index = ((pos.y as usize & 15) << 8) | ((pos.z as usize & 15) << 4) | (pos.x as usize & 15);
             section[index / 2] |= value << ((index & 1) * 4);
         }
         for (chunk, light) in self.chunks.iter_mut().zip(arrays) {
@@ -99,8 +96,7 @@ impl PlotWorld {
         let Some(section) = &chunk.block_light[pos.y as usize / 16] else {
             return 0;
         };
-        let index =
-            ((pos.y as usize & 15) << 8) | ((pos.z as usize & 15) << 4) | (pos.x as usize & 15);
+        let index = ((pos.y as usize & 15) << 8) | ((pos.z as usize & 15) << 4) | (pos.x as usize & 15);
         (section[index / 2] >> ((index & 1) * 4)) & 15
     }
 }

@@ -69,9 +69,7 @@ impl RStackRequest {
         let count = numbers.first().copied().unwrap_or(1);
         let mut spacing = numbers.get(1).copied().unwrap_or(2);
         if count < 0 {
-            spacing = spacing
-                .checked_neg()
-                .context(messages::SPACING_OVERFLOWS_WHEN_REVERSING_DIRECTION)?;
+            spacing = spacing.checked_neg().context(messages::SPACING_OVERFLOWS_WHEN_REVERSING_DIRECTION)?;
         }
         let count = count.unsigned_abs();
         if count > MAX_COPIES {
@@ -86,14 +84,8 @@ impl RStackRequest {
         })
     }
 
-    fn destinations(
-        &self,
-        bounds: SelectionBounds,
-        world: &PlotWorld,
-    ) -> Result<Vec<SelectionBounds>> {
-        if bounds.volume() * (u64::from(self.count) + 1)
-            > MAX_STACK_BLOCKS.min(crate::config::CONFIG.worldedit_max_blocks)
-        {
+    fn destinations(&self, bounds: SelectionBounds, world: &PlotWorld) -> Result<Vec<SelectionBounds>> {
+        if bounds.volume() * (u64::from(self.count) + 1) > MAX_STACK_BLOCKS.min(crate::config::CONFIG.worldedit_max_blocks) {
             bail!(messages::stack_block_limit(MAX_STACK_BLOCKS));
         }
         let mut destinations = Vec::new();
@@ -116,10 +108,7 @@ pub(crate) struct AutoStack {
 
 impl AutoStack {
     fn new(bounds: SelectionBounds, destinations: &[SelectionBounds]) -> Result<Self> {
-        let offsets: Vec<_> = destinations
-            .iter()
-            .map(|area| area.start - bounds.start)
-            .collect();
+        let offsets: Vec<_> = destinations.iter().map(|area| area.start - bounds.start).collect();
         if offsets.is_empty() || offsets.contains(&BlockPos::new(0, 0, 0)) {
             bail!(messages::AUTO_STACK_NEEDS_NONZERO_COPIES_AND_SPACING);
         }
@@ -127,12 +116,8 @@ impl AutoStack {
     }
 
     fn destinations(&self, pos: BlockPos) -> impl Iterator<Item = BlockPos> + '_ {
-        let inside = pos.min(self.bounds.start) == self.bounds.start
-            && pos.max(self.bounds.end) == self.bounds.end;
-        self.offsets
-            .iter()
-            .filter(move |_| inside)
-            .map(move |&offset| pos + offset)
+        let inside = pos.min(self.bounds.start) == self.bounds.start && pos.max(self.bounds.end) == self.bounds.end;
+        self.offsets.iter().filter(move |_| inside).map(move |&offset| pos + offset)
     }
 
     pub(crate) fn mirror(&self, world: &mut PlotWorld, pos: BlockPos) {
@@ -174,9 +159,7 @@ impl Plot {
         let player = &mut self.players[player];
         player.redstone_tools.auto_stack = Some(session);
         if matches!(request.selection, SelectionPolicy::Expand) {
-            let last = destinations
-                .last()
-                .expect("nonempty auto stack destinations");
+            let last = destinations.last().expect("nonempty auto stack destinations");
             player.worldedit_set_first_position(bounds.start.min(last.start));
             player.worldedit_set_second_position(bounds.end.max(last.end));
         }
@@ -188,10 +171,7 @@ impl Plot {
         if self.players[player].redstone_tools.auto_stack.is_none() {
             return;
         }
-        if self
-            .check_tool_access(player, super::ToolCommand::AutoStack)
-            .is_err()
-        {
+        if self.check_tool_access(player, super::ToolCommand::AutoStack).is_err() {
             self.players[player].redstone_tools.auto_stack = None;
             ToolNotice::AutoStackDisabled.send(&self.players[player]);
             return;
@@ -212,26 +192,15 @@ impl Plot {
         }
 
         self.reset_redpiler();
-        let destinations: Vec<_> = destinations
-            .iter()
-            .map(|area| (area.start, area.end))
-            .collect();
-        let undo = worldedit::stack_prepared(
-            &mut self.world,
-            bounds.start,
-            bounds.end,
-            &destinations,
-            request.air,
-        );
+        let destinations: Vec<_> = destinations.iter().map(|area| (area.start, area.end)).collect();
+        let undo = worldedit::stack_prepared(&mut self.world, bounds.start, bounds.end, &destinations, request.air);
         let player = &mut self.players[player];
         player.worldedit_undo.push(undo);
         player.worldedit_redo.clear();
         worldedit::trim_history(player);
 
         if matches!(request.selection, SelectionPolicy::Expand) {
-            let last = destinations
-                .last()
-                .expect("nonempty validated destinations");
+            let last = destinations.last().expect("nonempty validated destinations");
             player.worldedit_set_first_position(bounds.start.min(last.0));
             player.worldedit_set_second_position(bounds.end.max(last.1));
         }
@@ -356,23 +325,13 @@ mod tests {
         let mut world = super::super::tests::test_world();
         let pos = BlockPos::new(10, 30, 10);
         let stack = session(&world, pos, pos, &["east", "2", "2"]);
-        let item =
-            ItemStack::container_with_ss(ContainerType::Chest, SignalStrength::new(13).unwrap());
-        crate::interaction::place_in_world(
-            Block::from_name("chest").unwrap(),
-            &mut world,
-            pos,
-            &item.nbt,
-        );
+        let item = ItemStack::container_with_ss(ContainerType::Chest, SignalStrength::new(13).unwrap());
+        crate::interaction::place_in_world(Block::from_name("chest").unwrap(), &mut world, pos, &item.nbt);
         stack.mirror(&mut world, pos);
         for x in [12, 14] {
             let destination = BlockPos::new(x, 30, 10);
             assert_eq!(
-                crate::redstone::comparator::get_override(
-                    world.get_block(destination),
-                    &world,
-                    destination
-                ),
+                crate::redstone::comparator::get_override(world.get_block(destination), &world, destination),
                 13
             );
             assert_eq!(
@@ -410,12 +369,9 @@ mod tests {
         let bounds = SelectionBounds::new(pos, pos, &world).unwrap();
         for args in [["east", "0", "2"], ["east", "2", "0"]] {
             let request = RStackRequest::parse_mode(&args, BlockPos::new(0, 0, 1), true).unwrap();
-            assert!(
-                AutoStack::new(bounds, &request.destinations(bounds, &world).unwrap()).is_err()
-            );
+            assert!(AutoStack::new(bounds, &request.destinations(bounds, &world).unwrap()).is_err());
         }
-        let request =
-            RStackRequest::parse_mode(&["east", "4", "2"], BlockPos::new(0, 0, 1), true).unwrap();
+        let request = RStackRequest::parse_mode(&["east", "4", "2"], BlockPos::new(0, 0, 1), true).unwrap();
         assert!(request.destinations(bounds, &world).is_err());
         for flag in ["-w", "-a"] {
             assert!(RStackRequest::parse_mode(&[flag], BlockPos::new(0, 0, 1), true).is_err());

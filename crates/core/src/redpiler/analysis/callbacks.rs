@@ -7,9 +7,8 @@ use super::{AnalysisError, PreparationBudget};
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
-    CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, GuardId, LinkKind,
-    LinkSpec, OperandView, PistonLane, PistonRoutes, PistonSpec, Route, RouteDelivery, RouteId,
-    SiteId, SiteSource, SiteSpec, SiteTest,
+    CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, GuardId, LinkKind, LinkSpec, OperandView, PistonLane, PistonRoutes,
+    PistonSpec, Route, RouteDelivery, RouteId, SiteId, SiteSource, SiteSpec, SiteTest,
 };
 use crate::redstone;
 use crate::world::World;
@@ -50,14 +49,9 @@ impl fmt::Display for CallbackError {
             Self::UnloadedTarget { position } => {
                 write!(f, "callback route reaches unloaded position {position:?}")
             }
-            Self::UninventoriedReceiver {
-                source,
-                target,
-                block,
-            } => write!(
-                f,
-                "callback from {source:?} reaches uncompiled receiver {block} at {target:?}"
-            ),
+            Self::UninventoriedReceiver { source, target, block } => {
+                write!(f, "callback from {source:?} reaches uncompiled receiver {block} at {target:?}")
+            }
             Self::UnsupportedComponent {
                 source,
                 target,
@@ -96,11 +90,7 @@ pub(crate) struct CallbackDraft {
 #[derive(Debug, Clone, Copy)]
 enum Filter {
     Any,
-    Around {
-        source: BlockPos,
-        diagonal: bool,
-        skip_pistons: bool,
-    },
+    Around { source: BlockPos, diagonal: bool, skip_pistons: bool },
     ExcludeObservers,
     ObserversOnly,
     ComparatorsOnly,
@@ -154,36 +144,23 @@ pub(crate) fn prepare_callbacks<W: World>(
         .contacts
         .iter()
         .enumerate()
-        .map(|(index, contact)| {
-            (
-                contact.position,
-                crate::redpiler::program_graph::ContactId::new(index as u32),
-            )
-        })
+        .map(|(index, contact)| (contact.position, crate::redpiler::program_graph::ContactId::new(index as u32)))
         .collect();
-    let piston_nodes: FxHashMap<_, _> = geometry
-        .pistons
-        .iter()
-        .map(|piston| (piston.id, piston.node))
-        .collect();
+    let piston_nodes: FxHashMap<_, _> = geometry.pistons.iter().map(|piston| (piston.id, piston.node)).collect();
     let profile_at = electrical
         .profiles
         .iter()
         .enumerate()
-        .map(|(index, profile)| {
-            (
-                profile.raw_state,
-                crate::redpiler::program_graph::ProfileId::new(index as u32),
-            )
-        })
+        .map(|(index, profile)| (profile.raw_state, crate::redpiler::program_graph::ProfileId::new(index as u32)))
         .collect();
     let contact_variant_bytes = electrical
         .contacts
         .iter()
         .map(|contact| {
-            contact.variants.len().saturating_mul(std::mem::size_of::<
-                crate::redpiler::program_graph::ContactVariant,
-            >())
+            contact
+                .variants
+                .len()
+                .saturating_mul(std::mem::size_of::<crate::redpiler::program_graph::ContactVariant>())
         })
         .sum();
     let mut builder = Builder {
@@ -202,9 +179,7 @@ pub(crate) fn prepare_callbacks<W: World>(
         delivery_entries: 0,
     };
     for (index, site) in builder.electrical.sites.iter().enumerate() {
-        builder
-            .site_at
-            .insert(site.position, SiteId::new(index as u32));
+        builder.site_at.insert(site.position, SiteId::new(index as u32));
     }
 
     builder.compile_component_routes()?;
@@ -227,8 +202,7 @@ struct Builder<'a, W> {
     geometry_table_bytes: usize,
     contact_variant_bytes: usize,
     contact_at: FxHashMap<BlockPos, crate::redpiler::program_graph::ContactId>,
-    piston_nodes:
-        FxHashMap<crate::redpiler::program_graph::PistonId, crate::redpiler::program_graph::NodeId>,
+    piston_nodes: FxHashMap<crate::redpiler::program_graph::PistonId, crate::redpiler::program_graph::NodeId>,
     profile_at: FxHashMap<u32, crate::redpiler::program_graph::ProfileId>,
     site_at: FxHashMap<BlockPos, SiteId>,
     routes: Vec<Route>,
@@ -243,21 +217,17 @@ impl<W: World> Builder<'_, W> {
             let Some(position) = self.electrical.nodes[index].position else {
                 continue;
             };
-            let node = crate::redpiler::program_graph::NodeId::try_from_index(index)
-                .ok_or(CallbackError::TooManyEntries { table: "nodes" })?;
+            let node = crate::redpiler::program_graph::NodeId::try_from_index(index).ok_or(CallbackError::TooManyEntries { table: "nodes" })?;
             let kind = self.electrical.nodes[index].kind.clone();
             let block = self.world.get_block(position);
             let events = match kind {
                 CircuitNodeKind::Observer { facing, .. } => observer_events(position, facing),
                 CircuitNodeKind::Electrical(ty) => match ty {
                     NodeType::Lever | NodeType::Button => control_events(block, position),
-                    NodeType::PressurePlate => vec![
-                        around_events(position, true),
-                        around_events(position.offset(BlockFace::Bottom), true),
-                    ]
-                    .into_iter()
-                    .flatten()
-                    .collect(),
+                    NodeType::PressurePlate => vec![around_events(position, true), around_events(position.offset(BlockFace::Bottom), true)]
+                        .into_iter()
+                        .flatten()
+                        .collect(),
                     NodeType::Torch => around_events(position, false),
                     NodeType::Repeater { .. } => diode_events(block, position, false),
                     NodeType::Comparator { .. } => diode_events(block, position, true),
@@ -278,9 +248,7 @@ impl<W: World> Builder<'_, W> {
             self.budget.check()?;
             let node = self.electrical.wires[wire_index].node;
             let canonical_neighbors = self.electrical.wires[wire_index].canonical_neighbors;
-            let position = self.electrical.nodes[node.index()]
-                .position
-                .expect("wire nodes have positions");
+            let position = self.electrical.nodes[node.index()].position.expect("wire nodes have positions");
             let events = wire_shape_events(position);
             let shape_route = self.compile_route(node, position, events)?;
             self.electrical.wires[wire_index].shape_route = Some(shape_route);
@@ -309,20 +277,14 @@ impl<W: World> Builder<'_, W> {
             append_notify(&mut near_changed, near_pos);
             let far_changed = if matches!(piston.lane, PistonLane::SingleResource { .. }) {
                 let mut events = Vec::new();
-                append_notify(
-                    &mut events,
-                    self.electrical.contacts[piston.far.index()].position,
-                );
+                append_notify(&mut events, self.electrical.contacts[piston.far.index()].position);
                 Some(self.compile_route(piston.node, piston.position, events)?)
             } else {
                 None
             };
             let far_shape_changed = if matches!(piston.lane, PistonLane::SingleResource { .. }) {
                 let mut events = Vec::new();
-                append_shape_changed(
-                    &mut events,
-                    self.electrical.contacts[piston.far.index()].position,
-                );
+                append_shape_changed(&mut events, self.electrical.contacts[piston.far.index()].position);
                 Some(self.compile_route(piston.node, piston.position, events)?)
             } else {
                 None
@@ -332,20 +294,19 @@ impl<W: World> Builder<'_, W> {
             append_notify(&mut base_restored, piston.position);
             let mut head_restored = Vec::new();
             append_notify(&mut head_restored, near_pos);
-            let (resource_restored_near, resource_restored_far) =
-                if matches!(piston.lane, PistonLane::SingleResource { .. }) {
-                    let mut near_events = vec![Event::update(near_pos, None)];
-                    append_notify(&mut near_events, near_pos);
-                    let far_pos = self.electrical.contacts[piston.far.index()].position;
-                    let mut far_events = vec![Event::update(far_pos, None)];
-                    append_notify(&mut far_events, far_pos);
-                    (
-                        Some(self.compile_route(piston.node, piston.position, near_events)?),
-                        Some(self.compile_route(piston.node, piston.position, far_events)?),
-                    )
-                } else {
-                    (None, None)
-                };
+            let (resource_restored_near, resource_restored_far) = if matches!(piston.lane, PistonLane::SingleResource { .. }) {
+                let mut near_events = vec![Event::update(near_pos, None)];
+                append_notify(&mut near_events, near_pos);
+                let far_pos = self.electrical.contacts[piston.far.index()].position;
+                let mut far_events = vec![Event::update(far_pos, None)];
+                append_notify(&mut far_events, far_pos);
+                (
+                    Some(self.compile_route(piston.node, piston.position, near_events)?),
+                    Some(self.compile_route(piston.node, piston.position, far_events)?),
+                )
+            } else {
+                (None, None)
+            };
 
             let routes = PistonRoutes {
                 base_changed: self.compile_route(piston.node, piston.position, base_changed)?,
@@ -381,14 +342,11 @@ impl<W: World> Builder<'_, W> {
         self.budget.consume(1)?;
         #[cfg(feature = "graph-profile")]
         let native_event_count = events.len();
-        let route_id = RouteId::try_from_index(self.routes.len())
-            .ok_or(CallbackError::TooManyEntries { table: "routes" })?;
+        let route_id = RouteId::try_from_index(self.routes.len()).ok_or(CallbackError::TooManyEntries { table: "routes" })?;
         let mut deliveries = Vec::with_capacity(events.len());
         for (sequence, event) in events.into_iter().enumerate() {
             self.budget.check()?;
-            let sequence = u32::try_from(sequence).map_err(|_| CallbackError::TooManyEntries {
-                table: "deliveries",
-            })?;
+            let sequence = u32::try_from(sequence).map_err(|_| CallbackError::TooManyEntries { table: "deliveries" })?;
             let target = self.ensure_site(event.position)?;
             let mut event = event;
             if let Some(position) = event.solid_at {
@@ -411,10 +369,8 @@ impl<W: World> Builder<'_, W> {
                     sequence,
                     receiver,
                 });
-                self.budget.check_estimated_bytes(
-                    "callbacks",
-                    self.callback_capacity_estimate(deliveries.capacity()),
-                )?;
+                self.budget
+                    .check_estimated_bytes("callbacks", self.callback_capacity_estimate(deliveries.capacity()))?;
                 let Some(receiver) = receiver else {
                     continue;
                 };
@@ -428,15 +384,10 @@ impl<W: World> Builder<'_, W> {
                     from: source,
                     to,
                     kind,
-                    callback: CallbackEdgeRef {
-                        route: route_id,
-                        sequence,
-                    },
+                    callback: CallbackEdgeRef { route: route_id, sequence },
                 });
-                self.budget.check_estimated_bytes(
-                    "callbacks",
-                    self.callback_capacity_estimate(deliveries.capacity()),
-                )?;
+                self.budget
+                    .check_estimated_bytes("callbacks", self.callback_capacity_estimate(deliveries.capacity()))?;
             }
         }
         let delivery_count = deliveries.len();
@@ -452,64 +403,33 @@ impl<W: World> Builder<'_, W> {
 
     fn callback_capacity_estimate(&self, pending_delivery_capacity: usize) -> usize {
         use crate::redpiler::program_graph::{
-            CircuitNodeDraft, ComparatorInputPlan, ContactSpec, Guard, PistonSpec, Profile, Route,
-            RouteDelivery, SiteSpec, WirePlan, WireRelation,
+            CircuitNodeDraft, ComparatorInputPlan, ContactSpec, Guard, PistonSpec, Profile, Route, RouteDelivery, SiteSpec, WirePlan, WireRelation,
         };
         let bytes = |capacity: usize, element_size: usize| capacity.saturating_mul(element_size);
         self.geometry_table_bytes
-            .saturating_add(bytes(
-                self.electrical.nodes.capacity(),
-                std::mem::size_of::<CircuitNodeDraft>(),
-            ))
-            .saturating_add(bytes(
-                self.electrical.profiles.capacity(),
-                std::mem::size_of::<Profile>(),
-            ))
+            .saturating_add(bytes(self.electrical.nodes.capacity(), std::mem::size_of::<CircuitNodeDraft>()))
+            .saturating_add(bytes(self.electrical.profiles.capacity(), std::mem::size_of::<Profile>()))
             .saturating_add(bytes(
                 self.electrical.guards.capacity(),
                 std::mem::size_of::<Guard>() + std::mem::size_of::<GuardId>() * 4,
             ))
-            .saturating_add(bytes(
-                self.electrical.contacts.capacity(),
-                std::mem::size_of::<ContactSpec>(),
-            ))
+            .saturating_add(bytes(self.electrical.contacts.capacity(), std::mem::size_of::<ContactSpec>()))
             .saturating_add(self.contact_variant_bytes)
-            .saturating_add(bytes(
-                self.electrical.sites.capacity(),
-                std::mem::size_of::<SiteSpec>(),
-            ))
-            .saturating_add(bytes(
-                self.electrical.wires.capacity(),
-                std::mem::size_of::<WirePlan>(),
-            ))
+            .saturating_add(bytes(self.electrical.sites.capacity(), std::mem::size_of::<SiteSpec>()))
+            .saturating_add(bytes(self.electrical.wires.capacity(), std::mem::size_of::<WirePlan>()))
             .saturating_add(bytes(
                 self.electrical.links.capacity(),
                 std::mem::size_of::<crate::redpiler::analysis::electrical::ElectricalLink>(),
             ))
-            .saturating_add(bytes(
-                self.electrical.wire_relations.capacity(),
-                std::mem::size_of::<WireRelation>(),
-            ))
-            .saturating_add(bytes(
-                self.electrical.comparators.capacity(),
-                std::mem::size_of::<ComparatorInputPlan>(),
-            ))
-            .saturating_add(bytes(
-                self.geometry.pistons.len(),
-                std::mem::size_of::<PistonSpec>(),
-            ))
-            .saturating_add(bytes(
-                self.routes.capacity() + 1,
-                std::mem::size_of::<Route>(),
-            ))
+            .saturating_add(bytes(self.electrical.wire_relations.capacity(), std::mem::size_of::<WireRelation>()))
+            .saturating_add(bytes(self.electrical.comparators.capacity(), std::mem::size_of::<ComparatorInputPlan>()))
+            .saturating_add(bytes(self.geometry.pistons.len(), std::mem::size_of::<PistonSpec>()))
+            .saturating_add(bytes(self.routes.capacity() + 1, std::mem::size_of::<Route>()))
             .saturating_add(bytes(
                 self.delivery_entries + pending_delivery_capacity,
                 std::mem::size_of::<RouteDelivery>(),
             ))
-            .saturating_add(bytes(
-                self.links.capacity(),
-                std::mem::size_of::<LinkSpec>(),
-            ))
+            .saturating_add(bytes(self.links.capacity(), std::mem::size_of::<LinkSpec>()))
     }
 
     fn branches(
@@ -526,8 +446,7 @@ impl<W: World> Builder<'_, W> {
                 let contact = self.electrical.contacts[contact_id.index()].clone();
                 for variant in contact.variants.iter() {
                     self.budget.check()?;
-                    let block =
-                        Block::from_id(self.electrical.profiles[variant.profile.index()].raw_state);
+                    let block = Block::from_id(self.electrical.profiles[variant.profile.index()].raw_state);
                     if !self.allowed(event.filter, block, event.position) {
                         continue;
                     }
@@ -585,8 +504,7 @@ impl<W: World> Builder<'_, W> {
                     let guard = self.combine_guards(self.always_guard(), condition)?;
                     let receiver = match event.kind {
                         DeliveryKind::Shape { .. } => Some(CallbackReceiver::Component(node)),
-                        DeliveryKind::Update { .. } => redstone::has_neighbor_update(block)
-                            .then_some(CallbackReceiver::Component(node)),
+                        DeliveryKind::Update { .. } => redstone::has_neighbor_update(block).then_some(CallbackReceiver::Component(node)),
                     };
                     branches.push((guard, receiver));
                 }
@@ -606,11 +524,7 @@ impl<W: World> Builder<'_, W> {
                         DeliveryKind::Update { .. } => redstone::has_neighbor_update(block),
                         DeliveryKind::Shape { .. } => {
                             crate::interaction::attachment_support(block, event.position).is_some()
-                                && !crate::interaction::is_valid_position(
-                                    block,
-                                    self.world,
-                                    event.position,
-                                )
+                                && !crate::interaction::is_valid_position(block, self.world, event.position)
                         }
                     };
                     if requires_receiver {
@@ -652,32 +566,24 @@ impl<W: World> Builder<'_, W> {
         if let Some(&site) = self.site_at.get(&position) {
             return Ok(site);
         }
-        if self
-            .world
-            .get_chunk(position.x.div_euclid(16), position.z.div_euclid(16))
-            .is_none()
-        {
+        if self.world.get_chunk(position.x.div_euclid(16), position.z.div_euclid(16)).is_none() {
             return Err(CallbackError::UnloadedTarget { position });
         }
         self.budget.consume(1)?;
         let block = self.world.get_block(position);
-        let source = if let Some(&contact) = self.contact_at.get(&position) {
-            SiteSource::Contact(contact)
-        } else if let Some((index, _)) =
-            self.electrical.nodes.iter().enumerate().find(|(_, node)| {
-                node.position == Some(position)
-                    && !matches!(
-                        node.kind,
-                        CircuitNodeKind::Piston(_) | CircuitNodeKind::Contact(_)
-                    )
-            })
-        {
-            SiteSource::Component(crate::redpiler::program_graph::NodeId::new(index as u32))
-        } else {
-            SiteSource::Constant(self.profile_for(block)?)
-        };
-        let site = SiteId::try_from_index(self.electrical.sites.len())
-            .ok_or(CallbackError::TooManyEntries { table: "sites" })?;
+        let source =
+            if let Some(&contact) = self.contact_at.get(&position) {
+                SiteSource::Contact(contact)
+            } else if let Some((index, _)) =
+                self.electrical.nodes.iter().enumerate().find(|(_, node)| {
+                    node.position == Some(position) && !matches!(node.kind, CircuitNodeKind::Piston(_) | CircuitNodeKind::Contact(_))
+                })
+            {
+                SiteSource::Component(crate::redpiler::program_graph::NodeId::new(index as u32))
+            } else {
+                SiteSource::Constant(self.profile_for(block)?)
+            };
+        let site = SiteId::try_from_index(self.electrical.sites.len()).ok_or(CallbackError::TooManyEntries { table: "sites" })?;
         self.budget.consume(1)?;
         self.electrical.sites.push(SiteSpec {
             position,
@@ -688,60 +594,50 @@ impl<W: World> Builder<'_, W> {
         Ok(site)
     }
 
-    fn profile_for(
-        &mut self,
-        block: Block,
-    ) -> Result<crate::redpiler::program_graph::ProfileId, CallbackError> {
+    fn profile_for(&mut self, block: Block) -> Result<crate::redpiler::program_graph::ProfileId, CallbackError> {
         if let Some(&profile) = self.profile_at.get(&block.get_id()) {
             return Ok(profile);
         }
-        let profile = crate::redpiler::program_graph::ProfileId::try_from_index(
-            self.electrical.profiles.len(),
-        )
-        .ok_or(CallbackError::TooManyEntries { table: "profiles" })?;
+        let profile = crate::redpiler::program_graph::ProfileId::try_from_index(self.electrical.profiles.len())
+            .ok_or(CallbackError::TooManyEntries { table: "profiles" })?;
         self.budget.consume(1)?;
-        self.electrical
-            .profiles
-            .push(crate::redpiler::program_graph::Profile {
-                raw_state: block.get_id(),
-                registry_type: if matches!(block, Block::Unknown { .. }) {
-                    u32::MAX
-                } else {
-                    block.registry_id()
-                },
-                solid: block.is_solid(),
-                transparent: block.is_transparent(),
-                cube: block.is_cube(),
-                electrical: if matches!(block, Block::RedstoneBlock {}) {
-                    crate::redpiler::program_graph::ProfileElectrical::RedstoneSource
-                } else {
-                    crate::redpiler::program_graph::ProfileElectrical::None
-                },
-            });
+        self.electrical.profiles.push(crate::redpiler::program_graph::Profile {
+            raw_state: block.get_id(),
+            registry_type: if matches!(block, Block::Unknown { .. }) {
+                u32::MAX
+            } else {
+                block.registry_id()
+            },
+            solid: block.is_solid(),
+            transparent: block.is_transparent(),
+            cube: block.is_cube(),
+            electrical: if matches!(block, Block::RedstoneBlock {}) {
+                crate::redpiler::program_graph::ProfileElectrical::RedstoneSource
+            } else {
+                crate::redpiler::program_graph::ProfileElectrical::None
+            },
+        });
         self.profile_at.insert(block.get_id(), profile);
         Ok(profile)
     }
 
-    fn receiver_node(
-        &self,
-        receiver: CallbackReceiver,
-    ) -> Result<crate::redpiler::program_graph::NodeId, CallbackError> {
+    fn receiver_node(&self, receiver: CallbackReceiver) -> Result<crate::redpiler::program_graph::NodeId, CallbackError> {
         match receiver {
             CallbackReceiver::Component(node) => Ok(node),
-            receiver @ (CallbackReceiver::PistonBase(piston)
-            | CallbackReceiver::PistonHead(piston)) => self
+            receiver @ (CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston)) => self
                 .piston_nodes
                 .get(&piston)
                 .copied()
                 .ok_or(CallbackError::InvalidReceiverReference { receiver }),
-            CallbackReceiver::Contact(contact) => self
-                .electrical
-                .contacts
-                .get(contact.index())
-                .map(|contact| contact.node)
-                .ok_or(CallbackError::InvalidReceiverReference {
-                    receiver: CallbackReceiver::Contact(contact),
-                }),
+            CallbackReceiver::Contact(contact) => {
+                self.electrical
+                    .contacts
+                    .get(contact.index())
+                    .map(|contact| contact.node)
+                    .ok_or(CallbackError::InvalidReceiverReference {
+                        receiver: CallbackReceiver::Contact(contact),
+                    })
+            }
         }
     }
 
@@ -749,11 +645,7 @@ impl<W: World> Builder<'_, W> {
         GuardId::new(0)
     }
 
-    fn combine_guards(
-        &mut self,
-        first: GuardId,
-        second: Option<GuardId>,
-    ) -> Result<GuardId, CallbackError> {
+    fn combine_guards(&mut self, first: GuardId, second: Option<GuardId>) -> Result<GuardId, CallbackError> {
         let Some(second) = second else {
             return Ok(first);
         };
@@ -765,28 +657,17 @@ impl<W: World> Builder<'_, W> {
 
     fn push_guard(&mut self, value: Guard) -> Result<GuardId, CallbackError> {
         self.budget.consume(1)?;
-        let guard = GuardId::try_from_index(self.electrical.guards.len())
-            .ok_or(CallbackError::TooManyEntries { table: "guards" })?;
+        let guard = GuardId::try_from_index(self.electrical.guards.len()).ok_or(CallbackError::TooManyEntries { table: "guards" })?;
         self.electrical.guards.push(value);
         Ok(guard)
     }
 
-    fn solid_guard(
-        &mut self,
-        position: BlockPos,
-        view: OperandView,
-    ) -> Result<Option<GuardId>, CallbackError> {
+    fn solid_guard(&mut self, position: BlockPos, view: OperandView) -> Result<Option<GuardId>, CallbackError> {
         let site_id = self.ensure_site(position)?;
         let site = self.electrical.sites[site_id.index()];
         match site.source {
-            SiteSource::Constant(profile) => Ok(self.electrical.profiles[profile.index()]
-                .solid
-                .then_some(self.always_guard())),
-            SiteSource::Component(_) => Ok(self
-                .world
-                .get_block(position)
-                .is_solid()
-                .then_some(self.always_guard())),
+            SiteSource::Constant(profile) => Ok(self.electrical.profiles[profile.index()].solid.then_some(self.always_guard())),
+            SiteSource::Component(_) => Ok(self.world.get_block(position).is_solid().then_some(self.always_guard())),
             SiteSource::Contact(contact) => {
                 let variants = self.electrical.contacts[contact.index()].variants.clone();
                 let solid_profiles: Vec<_> = variants
@@ -818,9 +699,7 @@ impl<W: World> Builder<'_, W> {
                 if guards.len() == 1 {
                     return Ok(guards.first().copied());
                 }
-                Ok(Some(
-                    self.push_guard(Guard::Any(guards.into_boxed_slice()))?,
-                ))
+                Ok(Some(self.push_guard(Guard::Any(guards.into_boxed_slice()))?))
             }
         }
     }
@@ -851,9 +730,7 @@ fn around_events(position: BlockPos, skip_pistons: bool) -> Vec<Event> {
     redstone::surrounding_notifications(position, |target, direction, diagonal| {
         events.push(Event {
             position: target,
-            kind: DeliveryKind::Update {
-                direction: Some(direction),
-            },
+            kind: DeliveryKind::Update { direction: Some(direction) },
             filter: Filter::Around {
                 source: position,
                 diagonal,
@@ -874,11 +751,7 @@ fn diode_events(block: Block, position: BlockPos, comparator: bool) -> Vec<Event
         _ => return Vec::new(),
     };
     let front = position.offset(facing.opposite());
-    let first_direction = if comparator {
-        facing.opposite()
-    } else {
-        facing
-    };
+    let first_direction = if comparator { facing.opposite() } else { facing };
     let mut events = Vec::new();
     redstone::diode_notifications(front, first_direction, |target, direction| {
         events.push(Event::update(target, direction));
@@ -896,12 +769,7 @@ fn observer_events(position: BlockPos, facing: BlockFace) -> Vec<Event> {
 
 fn component_output_events(position: BlockPos, skip_pistons: bool) -> Vec<Event> {
     let mut events = around_events(position, skip_pistons);
-    let horizontal = [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ];
+    let horizontal = [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West];
     for face in horizontal {
         let adjacent = position.offset(face);
         let far = adjacent.offset(face);
@@ -918,14 +786,8 @@ fn wire_shape_events(position: BlockPos) -> Vec<Event> {
     redstone::wire_update_notifications(position, |target, direction, indirect| {
         events.push(Event {
             position: target,
-            kind: DeliveryKind::Update {
-                direction: Some(direction),
-            },
-            filter: if indirect {
-                Filter::ExcludeObservers
-            } else {
-                Filter::Any
-            },
+            kind: DeliveryKind::Update { direction: Some(direction) },
+            filter: if indirect { Filter::ExcludeObservers } else { Filter::Any },
             condition: None,
             solid_at: None,
             view: OperandView::Live,
@@ -939,9 +801,7 @@ fn append_notify(events: &mut Vec<Event>, position: BlockPos) {
     redstone::piston::neighbor_notifications(position, |target, direction| {
         events.push(Event {
             position: target,
-            kind: DeliveryKind::Update {
-                direction: Some(direction),
-            },
+            kind: DeliveryKind::Update { direction: Some(direction) },
             filter: Filter::ExcludeObservers,
             condition: None,
             solid_at: None,

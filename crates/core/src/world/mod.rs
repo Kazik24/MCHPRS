@@ -141,24 +141,9 @@ pub trait World {
         Err(messages::COMMAND_BLOCK_EXECUTION_UNAVAILABLE.into())
     }
 
-    fn play_sound(
-        &mut self,
-        pos: BlockPos,
-        sound_id: i32,
-        sound_category: i32,
-        volume: f32,
-        pitch: f32,
-    );
+    fn play_sound(&mut self, pos: BlockPos, sound_id: i32, sound_category: i32, volume: f32, pitch: f32);
     /// Feedback for a successful player action, even while fast rendering.
-    fn play_sound_for_action(
-        &mut self,
-        pos: BlockPos,
-        sound_id: i32,
-        category: i32,
-        volume: f32,
-        pitch: f32,
-        _excluded: Option<u128>,
-    ) {
+    fn play_sound_for_action(&mut self, pos: BlockPos, sound_id: i32, category: i32, volume: f32, pitch: f32, _excluded: Option<u128>) {
         self.play_sound(pos, sound_id, category, volume, pitch);
     }
     fn container_opened(&mut self, _pos: BlockPos, _ty: ContainerType) {}
@@ -167,23 +152,13 @@ pub trait World {
 
 // https://wiki.vg/Block_Actions#Piston
 pub enum BlockAction {
-    Piston {
-        action: PistonAction,
-        piston: RedstonePiston,
-    },
-    BlockChange {
-        pos: BlockPos,
-        block_id: u32,
-    },
+    Piston { action: PistonAction, piston: RedstonePiston },
+    BlockChange { pos: BlockPos, block_id: u32 },
 }
 
 /// Executes the given function for each block excluding most air blocks
-pub fn for_each_block_optimized<F, W: World>(
-    world: &W,
-    first_pos: BlockPos,
-    second_pos: BlockPos,
-    mut f: F,
-) where
+pub fn for_each_block_optimized<F, W: World>(world: &W, first_pos: BlockPos, second_pos: BlockPos, mut f: F)
+where
     F: FnMut(BlockPos),
 {
     for (first, last) in section_bounds(first_pos, second_pos) {
@@ -194,12 +169,8 @@ pub fn for_each_block_optimized<F, W: World>(
 }
 
 /// Executes the given function for each block excluding most air blocks
-pub fn for_each_block_mut_optimized<F, W: World>(
-    world: &mut W,
-    first_pos: BlockPos,
-    second_pos: BlockPos,
-    mut f: F,
-) where
+pub fn for_each_block_mut_optimized<F, W: World>(world: &mut W, first_pos: BlockPos, second_pos: BlockPos, mut f: F)
+where
     F: FnMut(&mut W, BlockPos),
 {
     for (first, last) in section_bounds(first_pos, second_pos) {
@@ -231,20 +202,14 @@ pub(crate) fn try_for_each_block_optimized<E>(
 }
 
 /// Intersect the selection with each aligned section, including partial sections.
-fn section_bounds(
-    first_pos: BlockPos,
-    second_pos: BlockPos,
-) -> impl Iterator<Item = (BlockPos, BlockPos)> {
+fn section_bounds(first_pos: BlockPos, second_pos: BlockPos) -> impl Iterator<Item = (BlockPos, BlockPos)> {
     let first = first_pos.min(second_pos);
     let last = first_pos.max(second_pos);
     (first.x.div_euclid(16)..=last.x.div_euclid(16)).flat_map(move |chunk_x| {
         (first.z.div_euclid(16)..=last.z.div_euclid(16)).flat_map(move |chunk_z| {
             (first.y.div_euclid(16)..=last.y.div_euclid(16)).map(move |section_y| {
                 let origin = BlockPos::new(chunk_x * 16, section_y * 16, chunk_z * 16);
-                (
-                    first.max(origin),
-                    last.min(origin + BlockPos::new(15, 15, 15)),
-                )
+                (first.max(origin), last.min(origin + BlockPos::new(15, 15, 15)))
             })
         })
     })

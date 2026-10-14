@@ -8,9 +8,7 @@ use mchprs_core::world::{World, storage::Chunk};
 use std::time::Duration;
 
 fn world() -> PlotWorld {
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
 
@@ -50,9 +48,7 @@ fn pistons(c: &mut Criterion) {
     group.sample_size(20);
     for count in [1, 64, 256, 1024] {
         let mut world = world();
-        let positions: Vec<_> = (0..count)
-            .map(|i| BlockPos::new(8 + (i % 32) * 6, 30, 8 + (i / 32) * 6))
-            .collect();
+        let positions: Vec<_> = (0..count).map(|i| BlockPos::new(8 + (i % 32) * 6, 30, 8 + (i / 32) * 6)).collect();
         for &pos in &positions {
             install(&mut world, pos, 1);
         }

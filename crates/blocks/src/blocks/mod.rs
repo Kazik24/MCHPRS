@@ -135,12 +135,8 @@ impl Block {
     }
 
     pub fn copper_bulb_state(self) -> Option<(bool, bool)> {
-        self.is_copper_bulb().then(|| {
-            (
-                self.property("lit") == Some("true"),
-                self.property("powered") == Some("true"),
-            )
-        })
+        self.is_copper_bulb()
+            .then(|| (self.property("lit") == Some("true"), self.property("powered") == Some("true")))
     }
 
     pub fn with_copper_bulb_state(mut self, lit: bool, powered: bool) -> Option<Self> {
@@ -192,10 +188,7 @@ impl Block {
         let Some((true, _)) = self.copper_bulb_state() else {
             return 0;
         };
-        let name = self
-            .get_name()
-            .strip_prefix("waxed_")
-            .unwrap_or(self.get_name());
+        let name = self.get_name().strip_prefix("waxed_").unwrap_or(self.get_name());
         match name {
             "copper_bulb" => 15,
             "exposed_copper_bulb" => 12,
@@ -243,8 +236,7 @@ impl Block {
         let waterlogged = self.property("waterlogged");
         let state = (definition.2..=definition.3).find(|&state| {
             let block = Self::from_id(state);
-            block.property("type") == Some(slab_type.as_str())
-                && block.property("waterlogged") == waterlogged
+            block.property("type") == Some(slab_type.as_str()) && block.property("waterlogged") == waterlogged
         })?;
         Some(Self::from_id(state))
     }
@@ -253,19 +245,14 @@ impl Block {
     pub fn pressure_plate_powered(self) -> Option<bool> {
         match self {
             Self::StonePressurePlate { powered } => Some(powered),
-            Self::Unknown { .. } if self.get_name().ends_with("_pressure_plate") => {
-                self.property("powered").map(|value| value == "true")
-            }
+            Self::Unknown { .. } if self.get_name().ends_with("_pressure_plate") => self.property("powered").map(|value| value == "true"),
             _ => None,
         }
     }
 
     pub fn with_pressure_plate_power(mut self, powered: bool) -> Option<Self> {
         self.pressure_plate_powered()?;
-        self.set_properties(HashMap::from([(
-            "powered",
-            if powered { "true" } else { "false" },
-        )]));
+        self.set_properties(HashMap::from([("powered", if powered { "true" } else { "false" })]));
         Some(self)
     }
 
@@ -296,21 +283,14 @@ impl Block {
     #[inline]
     pub fn from_id(id: u32) -> Self {
         DECODED_STATES
-            .get_or_init(|| {
-                (0..crate::generated::TARGET_TO_LEGACY.len() as u32)
-                    .map(Self::decode_id)
-                    .collect()
-            })
+            .get_or_init(|| (0..crate::generated::TARGET_TO_LEGACY.len() as u32).map(Self::decode_id).collect())
             .get(id as usize)
             .copied()
             .unwrap_or(Self::Unknown { id })
     }
 
     fn decode_id(id: u32) -> Self {
-        let legacy = crate::generated::TARGET_TO_LEGACY
-            .get(id as usize)
-            .copied()
-            .unwrap_or(u32::MAX);
+        let legacy = crate::generated::TARGET_TO_LEGACY.get(id as usize).copied().unwrap_or(u32::MAX);
         if legacy == u32::MAX {
             Self::Unknown { id }
         } else {
@@ -331,11 +311,7 @@ impl Block {
                 Self::Chest { chest }
             }
             Self::Unknown { id } => Self::Unknown {
-                id: crate::generated::STATE_DRY_IDS
-                    .get(id as usize)
-                    .copied()
-                    .map(u32::from)
-                    .unwrap_or(id),
+                id: crate::generated::STATE_DRY_IDS.get(id as usize).copied().map(u32::from).unwrap_or(id),
             },
             _ => self,
         }
@@ -363,11 +339,7 @@ impl Block {
     pub fn is_command_block(self) -> bool {
         // Command blocks have no modeled enum variant. Avoid registry/name
         // lookups for the modeled blocks on every redstone update and solid check.
-        matches!(self, Self::Unknown { .. })
-            && matches!(
-                self.get_name(),
-                "command_block" | "repeating_command_block" | "chain_command_block"
-            )
+        matches!(self, Self::Unknown { .. }) && matches!(self.get_name(), "command_block" | "repeating_command_block" | "chain_command_block")
     }
 
     pub fn can_place_block_in(self) -> bool {
@@ -397,21 +369,9 @@ fn slab_geometry_and_redstone_flags_cover_every_registry_state() {
             let block = Block::from_id(id);
             let slab_type = block.property("type").unwrap().parse::<SlabType>().unwrap();
             assert_eq!(block.slab_type(), Some(slab_type), "{name}: {id}");
-            assert_eq!(
-                block.is_solid(),
-                slab_type == SlabType::Double,
-                "{name}: {id}"
-            );
-            assert_eq!(
-                block.is_transparent(),
-                slab_type != SlabType::Double,
-                "{name}: {id}"
-            );
-            assert_eq!(
-                block.is_cube(),
-                slab_type != SlabType::Bottom,
-                "{name}: {id}"
-            );
+            assert_eq!(block.is_solid(), slab_type == SlabType::Double, "{name}: {id}");
+            assert_eq!(block.is_transparent(), slab_type != SlabType::Double, "{name}: {id}");
+            assert_eq!(block.is_cube(), slab_type != SlabType::Bottom, "{name}: {id}");
 
             let top = block.with_slab_type(SlabType::Top).unwrap();
             assert_eq!(top.slab_type(), Some(SlabType::Top), "{name}: {id}");
@@ -424,21 +384,10 @@ fn slab_geometry_and_redstone_flags_cover_every_registry_state() {
 
 #[test]
 fn opaque_simple_blocks_have_the_same_flags_as_iron() {
-    for name in [
-        "stone",
-        "dirt",
-        "coarse_dirt",
-        "netherite_block",
-        "diamond_block",
-        "copper_block",
-    ] {
+    for name in ["stone", "dirt", "coarse_dirt", "netherite_block", "diamond_block", "copper_block"] {
         let block = Block::from_name(name).unwrap();
         assert_eq!(block.is_solid(), Block::IronBlock {}.is_solid(), "{name}");
-        assert_eq!(
-            block.is_transparent(),
-            Block::IronBlock {}.is_transparent(),
-            "{name}"
-        );
+        assert_eq!(block.is_transparent(), Block::IronBlock {}.is_transparent(), "{name}");
         assert_eq!(block.is_cube(), Block::IronBlock {}.is_cube(), "{name}");
     }
     for name in ["glass", "ice", "brick_wall", "pointed_dripstone"] {
@@ -476,10 +425,7 @@ fn standing_sign_transform_preserves_species_and_waterlogging() {
 fn generated_registry_ranges_resolve_every_target_state() {
     let mut next_state = 0;
     for &(name, registry, first, last, _) in crate::generated::BLOCKS {
-        assert_eq!(
-            first, next_state,
-            "registry ranges must remain ordered and contiguous"
-        );
+        assert_eq!(first, next_state, "registry ranges must remain ordered and contiguous");
         for state in first..=last {
             let block = Block::from_id(state);
             assert_eq!(block.get_id(), state);
@@ -488,10 +434,7 @@ fn generated_registry_ranges_resolve_every_target_state() {
         }
         next_state = last + 1;
     }
-    assert_eq!(
-        next_state as usize,
-        crate::generated::STATE_PROPERTIES.len()
-    );
+    assert_eq!(next_state as usize, crate::generated::STATE_PROPERTIES.len());
     assert_eq!(Block::Unknown { id: next_state }.get_name(), "air");
 }
 
@@ -541,11 +484,7 @@ fn all_barrel_states_keep_entity_redstone_and_transform_semantics() {
 
 #[test]
 fn hopper_furnace_and_cake_states_match_registry_properties() {
-    for (name, ids) in [
-        ("hopper", 10034..=10043),
-        ("furnace", 4358..=4365),
-        ("cake", 6053..=6059),
-    ] {
+    for (name, ids) in [("hopper", 10034..=10043), ("furnace", 4358..=4365), ("cake", 6053..=6059)] {
         for id in ids {
             let mut block = Block::from_id(id);
             assert_eq!(block.get_name(), name);
@@ -2116,11 +2055,7 @@ mod decoded_state_tests {
                 let mut expected = block;
                 expected.set_properties(HashMap::from([("waterlogged", "false")]));
                 assert_eq!(block.without_waterlogging(), expected, "state {id}");
-                assert_eq!(
-                    block.without_waterlogging().without_waterlogging(),
-                    expected,
-                    "idempotence {id}"
-                );
+                assert_eq!(block.without_waterlogging().without_waterlogging(), expected, "idempotence {id}");
             }
         }
         for id in [crate::generated::STATE_PROPERTIES.len() as u32, u32::MAX] {
@@ -2138,10 +2073,7 @@ mod decoded_state_tests {
             assert_eq!(cached.get_id(), id, "registry round trip {id}");
             assert_eq!(
                 cached.is_command_block(),
-                matches!(
-                    decoded.get_name(),
-                    "command_block" | "repeating_command_block" | "chain_command_block"
-                ),
+                matches!(decoded.get_name(), "command_block" | "repeating_command_block" | "chain_command_block"),
                 "command block classification {id}"
             );
         }

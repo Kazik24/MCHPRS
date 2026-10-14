@@ -1,5 +1,6 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod contract_dust_paths;
+pub(crate) mod index_turbo_callbacks;
 pub(crate) mod rich;
 pub(crate) mod simplify_guards;
 pub(crate) mod utils;
@@ -14,6 +15,15 @@ pub(crate) trait GraphPass {
     fn name(&self) -> &'static str;
     fn validate_input(&self, graph: &CompileGraph) -> Result<(), String>;
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String>;
+
+    // TODO: I do not like these special functions on passes, why they are required?
+    fn preserves_dust_paths(&self) -> bool {
+        false
+    }
+
+    fn preserves_turbo_callback_indices(&self) -> bool {
+        false
+    }
 }
 
 #[allow(dead_code)]
@@ -50,9 +60,7 @@ impl PassPipeline {
 
 impl Default for PassPipeline {
     fn default() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self { entries: Vec::new() }
     }
 }
 
@@ -72,10 +80,7 @@ pub(crate) enum PassPipelineError {
     /// A pass returned an execution error.
     Failed { pass: &'static str, message: String },
     /// A successful pass returned a graph that failed structural validation.
-    MalformedOutput {
-        pass: &'static str,
-        source: GraphBuildError,
-    },
+    MalformedOutput { pass: &'static str, source: GraphBuildError },
 }
 
 impl fmt::Display for PassPipelineError {
@@ -127,17 +132,15 @@ pub(crate) fn run_graph_pipeline(
     }
     graph.validate().map_err(PassPipelineError::InvalidInput)?;
     monitor.set_max_progress(monitor.progress() + pipeline.entries.len() + 1);
-    let context = PassContext {
-        monitor,
-        options,
-        entry,
-    };
+    let context = PassContext { monitor, options, entry };
     for item in &pipeline.entries {
         if monitor.cancelled() {
             return Err(PassPipelineError::Cancelled);
         }
         let name = item.pass.name();
         let before = GraphCounts::of(graph);
+
+        // TODO PassStatistics::Default() or new_disabled()
         if !item.enabled {
             monitor.record_transformation(PassStatistics {
                 name,
@@ -149,32 +152,35 @@ pub(crate) fn run_graph_pipeline(
             monitor.inc_progress();
             continue;
         }
-        if name != "contract-static-dust-paths" && !graph.dust_paths.is_empty() {
+        // TODO - I do not like these 'preserve' function callbacks on passes. makes stuff unreadable. Should create an nice structured way to declare what should do what or create 'dummy' pass.
+        if !item.pass.preserves_dust_paths() && !graph.dust_paths.is_empty() {
             graph.dust_paths.clear();
+        }
+        if !item.pass.preserves_turbo_callback_indices() {
+            graph.turbo_callback_indices.clear();
         }
         monitor.set_message(name.to_string());
         let start = Instant::now();
+
         if let Err(message) = item.pass.validate_input(graph) {
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
-            return Err(PassPipelineError::Precondition {
-                pass: name,
-                message,
-            });
+            return Err(PassPipelineError::Precondition { pass: name, message });
         }
         if let Err(message) = item.pass.run(graph, &context) {
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
-            return Err(PassPipelineError::Failed {
-                pass: name,
-                message,
-            });
+            return Err(PassPipelineError::Failed { pass: name, message });
         }
         if let Err(source) = graph.validate() {
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::MalformedOutput { pass: name, source });
         }
+
         let after = GraphCounts::of(graph);
+
         utils::record_transformation(monitor, name, before, after, start);
+
         monitor.inc_progress();
+
         if monitor.cancelled() {
             return Err(PassPipelineError::Cancelled);
         }
@@ -193,22 +199,18 @@ pub(crate) fn run_graph_pipeline(
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let mut entries: Vec<_> = [(
-        1,
-        Box::new(simplify_guards::GuardAndUpdateReduction) as Box<dyn GraphPass>,
-    )]
-    .into_iter()
-    .map(|(minimum_level, pass)| PassEntry {
-        pass,
-        enabled: level >= minimum_level,
-    })
-    .collect();
-    if options.experimental_dust_paths {
-        entries.push(PassEntry {
-            pass: Box::new(contract_dust_paths::ContractDustPaths),
-            enabled: level >= 1,
-        });
-    }
+    let optimization_1: [Box<dyn GraphPass>; 3] = [
+        Box::new(simplify_guards::GuardAndUpdateReduction),
+        Box::new(index_turbo_callbacks::IndexTurboCallbacks),
+        Box::new(contract_dust_paths::ContractDustPaths),
+    ];
+    let passes = optimization_1.into_iter().map(|pass| (1, pass));
+    let entries = passes
+        .map(|(minimum_level, pass)| PassEntry {
+            pass,
+            enabled: level >= minimum_level,
+        })
+        .collect();
     PassPipeline::new(entries)
 }
 
@@ -243,11 +245,7 @@ mod tests {
         fn validate_input(&self, _graph: &CompileGraph) -> Result<(), String> {
             let (validate, run) = self.calls.get();
             self.calls.set((validate + 1, run));
-            if self.reject {
-                Err("test precondition".into())
-            } else {
-                Ok(())
-            }
+            if self.reject { Err("test precondition".into()) } else { Ok(()) }
         }
 
         fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
@@ -269,11 +267,7 @@ mod tests {
         }
     }
 
-    fn test_pass(
-        name: &'static str,
-        strength: Option<u8>,
-        calls: Rc<Cell<(usize, usize)>>,
-    ) -> TestPass {
+    fn test_pass(name: &'static str, strength: Option<u8>, calls: Rc<Cell<(usize, usize)>>) -> TestPass {
         TestPass {
             name,
             strength,
@@ -303,6 +297,7 @@ mod tests {
             guards: vec![],
             contacts: vec![],
             routes: vec![],
+            turbo_callback_indices: vec![],
             wires: vec![],
             dust_paths: vec![],
             wire_relations: vec![],
@@ -314,11 +309,7 @@ mod tests {
         }
     }
 
-    fn run_test_pipeline(
-        graph: &mut CompileGraph,
-        entries: Vec<PassEntry>,
-        monitor: &TaskMonitor,
-    ) -> Result<(), PassPipelineError> {
+    fn run_test_pipeline(graph: &mut CompileGraph, entries: Vec<PassEntry>, monitor: &TaskMonitor) -> Result<(), PassPipelineError> {
         let options = CompilerOptions::default();
         run_graph_pipeline(
             graph,
@@ -385,19 +376,11 @@ mod tests {
         assert_eq!(calls.get(), (2, 2));
         let stats = monitor.graph_statistics();
         assert_eq!(
-            stats
-                .transformations
-                .iter()
-                .map(|pass| pass.name)
-                .collect::<Vec<_>>(),
+            stats.transformations.iter().map(|pass| pass.name).collect::<Vec<_>>(),
             ["set-low", "skipped", "set-high"]
         );
         assert_eq!(
-            stats
-                .passes
-                .iter()
-                .map(|pass| pass.name)
-                .collect::<Vec<_>>(),
+            stats.passes.iter().map(|pass| pass.name).collect::<Vec<_>>(),
             ["set-low", "skipped", "set-high"]
         );
         assert!(!stats.passes[1].enabled);
@@ -423,10 +406,7 @@ mod tests {
         .unwrap();
         assert_eq!(graph, before);
         assert_eq!(calls.get(), (0, 0));
-        assert_eq!(
-            monitor.graph_statistics().final_graph(),
-            Some(GraphCounts::of(&graph))
-        );
+        assert_eq!(monitor.graph_statistics().final_graph(), Some(GraphCounts::of(&graph)));
         let summary = monitor.graph_statistics().summary_lines().join("\n");
         assert!(summary.contains("Transformations: 0 enabled, 1 skipped."));
 
@@ -434,12 +414,7 @@ mod tests {
         run_test_pipeline(&mut graph, vec![], &monitor).unwrap();
         let statistics = monitor.graph_statistics();
         assert!(statistics.transformations.is_empty());
-        assert!(
-            statistics
-                .summary_lines()
-                .iter()
-                .any(|line| line == "Transformations: none configured.")
-        );
+        assert!(statistics.summary_lines().iter().any(|line| line == "Transformations: none configured."));
     }
 
     #[test]
@@ -518,10 +493,7 @@ mod tests {
                 }],
                 &TaskMonitor::default(),
             ),
-            Err(PassPipelineError::Precondition {
-                pass: "precondition",
-                ..
-            })
+            Err(PassPipelineError::Precondition { pass: "precondition", .. })
         ));
 
         let mut failure = test_pass("failure", None, empty_calls.clone());
@@ -536,10 +508,7 @@ mod tests {
                 }],
                 &failure_monitor,
             ),
-            Err(PassPipelineError::Failed {
-                pass: "failure",
-                ..
-            })
+            Err(PassPipelineError::Failed { pass: "failure", .. })
         ));
         let failed_pass = &failure_monitor.graph_statistics().passes[0];
         assert_eq!(failed_pass.name, "failure");
@@ -557,10 +526,7 @@ mod tests {
                 }],
                 &TaskMonitor::default(),
             ),
-            Err(PassPipelineError::MalformedOutput {
-                pass: "malformed",
-                ..
-            })
+            Err(PassPipelineError::MalformedOutput { pass: "malformed", .. })
         ));
     }
 
@@ -624,26 +590,16 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(crate::redpiler::CompileError::RichGraph(
-                    crate::redpiler::RichGraphError(
-                        crate::redpiler::backend::graph::GraphBackendError::PassPipeline(
-                            PassPipelineError::Failed {
-                                pass: "compile-failure",
-                                ..
-                            }
-                        )
-                    )
-                ))
+                Err(crate::redpiler::CompileError::RichGraph(crate::redpiler::RichGraphError(
+                    crate::redpiler::backend::graph::GraphBackendError::PassPipeline(PassPipelineError::Failed { pass: "compile-failure", .. })
+                )))
             ),
             "unexpected compile result: {result:?}"
         );
         assert!(!compiler.is_active());
         assert!(compiler.stats().is_none());
         assert_eq!(world.get_block(piston), before_block);
-        assert_eq!(
-            world.scheduler().iter_entries().collect::<Vec<_>>(),
-            before_ticks
-        );
+        assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), before_ticks);
         assert_eq!(world.piston_state().logical_tick, before_tick);
     }
 }

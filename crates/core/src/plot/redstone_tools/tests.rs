@@ -30,43 +30,23 @@ fn bounds_reject_world_edges_without_mutating_world() {
 fn every_container_power_matches_the_comparator_and_survives_save() {
     let mut world = test_world();
     let position = BlockPos::new(4, 30, 4);
-    for kind in [
-        ContainerType::Chest,
-        ContainerType::Barrel,
-        ContainerType::Hopper,
-        ContainerType::Furnace,
-    ] {
+    for kind in [ContainerType::Chest, ContainerType::Barrel, ContainerType::Hopper, ContainerType::Furnace] {
         for power in 0..=15 {
             let item = ItemStack::container_with_ss(kind, SignalStrength::new(power).unwrap());
             let block = Block::from_name(item.item_type.get_name()).unwrap();
             world.set_block(position, Block::Air {});
             crate::interaction::place_in_world(block, &mut world, position, &item.nbt);
-            assert_eq!(
-                crate::redstone::comparator::get_override(block, &world, position),
-                power
-            );
+            assert_eq!(crate::redstone::comparator::get_override(block, &world, position), power);
             let entity = world.get_block_entity(position).unwrap();
             let serialized = bincode::serialize(entity).unwrap();
             let decoded: BlockEntity = bincode::deserialize(&serialized).unwrap();
             assert_eq!(bincode::serialize(&decoded).unwrap(), serialized);
         }
     }
-    assert_eq!(
-        bincode::serialize(&ContainerType::Furnace).unwrap(),
-        0u32.to_le_bytes()
-    );
-    assert_eq!(
-        bincode::serialize(&ContainerType::Barrel).unwrap(),
-        1u32.to_le_bytes()
-    );
-    assert_eq!(
-        bincode::serialize(&ContainerType::Hopper).unwrap(),
-        2u32.to_le_bytes()
-    );
-    assert_eq!(
-        bincode::serialize(&ContainerType::Chest).unwrap(),
-        3u32.to_le_bytes()
-    );
+    assert_eq!(bincode::serialize(&ContainerType::Furnace).unwrap(), 0u32.to_le_bytes());
+    assert_eq!(bincode::serialize(&ContainerType::Barrel).unwrap(), 1u32.to_le_bytes());
+    assert_eq!(bincode::serialize(&ContainerType::Hopper).unwrap(), 2u32.to_le_bytes());
+    assert_eq!(bincode::serialize(&ContainerType::Chest).unwrap(), 3u32.to_le_bytes());
 }
 
 #[test]
@@ -82,19 +62,14 @@ fn chest_entity_survives_chunk_save_and_disappears_with_the_block() {
     let chunk = crate::world::storage::Chunk::load(0, 0, saved);
     let mut restored = PlotWorld::from_chunks(0, 0, vec![chunk], Default::default());
     assert_eq!(restored.get_block(position), block);
-    assert_eq!(
-        crate::redstone::comparator::get_override(block, &restored, position),
-        15
-    );
+    assert_eq!(crate::redstone::comparator::get_override(block, &restored, position), 15);
     restored.set_block(position, Block::Stone {});
     assert!(restored.get_block_entity(position).is_none());
 }
 
 pub(super) fn test_world() -> PlotWorld {
     let chunks = (0..super::super::PLOT_WIDTH)
-        .flat_map(|x| {
-            (0..super::super::PLOT_WIDTH).map(move |z| crate::world::storage::Chunk::empty(x, z))
-        })
+        .flat_map(|x| (0..super::super::PLOT_WIDTH).map(move |z| crate::world::storage::Chunk::empty(x, z)))
         .collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }

@@ -2,9 +2,7 @@ use super::*;
 use mchprs_blocks::block_entities::SignBlockEntity;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_network::packets::PacketDecoderExt;
-use mchprs_network::packets::serverbound::{
-    SPlayerBlockPlacemnt, SUpdateSign, ServerBoundPacketHandler,
-};
+use mchprs_network::packets::serverbound::{SPlayerBlockPlacemnt, SUpdateSign, ServerBoundPacketHandler};
 use mchprs_network::test_support::read_frame;
 use std::net::TcpStream;
 
@@ -27,10 +25,7 @@ fn editor_packets(peer: &mut TcpStream, compressed: bool, sequence: i32) -> Vec<
         let (id, mut frame) = read_frame(peer, compressed).unwrap();
         match id {
             0x35 => {
-                editors.push((
-                    BlockPos::from_packed(frame.read_position().unwrap()),
-                    frame.read_bool().unwrap(),
-                ));
+                editors.push((BlockPos::from_packed(frame.read_position().unwrap()), frame.read_bool().unwrap()));
                 assert_eq!(frame.position() as usize, frame.get_ref().len());
             }
             0x04 => {
@@ -72,15 +67,10 @@ fn right_click_reopens_both_sign_sides_and_preserves_other_text_and_style() {
                 back_glow: true,
                 ..Default::default()
             };
-            plot.world
-                .set_block_entity(pos, BlockEntity::Sign(Box::new(original.clone())));
+            plot.world.set_block_entity(pos, BlockEntity::Sign(Box::new(original.clone())));
             for (sequence, front) in [(1, true), (2, false)] {
                 let side = if front { 1.0 } else { -1.0 };
-                plot.players[0].pos = PlayerPos::new(
-                    pos.x as f64 + 0.5 + side * front_dx,
-                    pos.y as f64,
-                    pos.z as f64 + 0.5 + side * front_dz,
-                );
+                plot.players[0].pos = PlayerPos::new(pos.x as f64 + 0.5 + side * front_dx, pos.y as f64, pos.z as f64 + 0.5 + side * front_dz);
                 plot.players[0].inventory[36] = if front {
                     None
                 } else {
@@ -91,11 +81,7 @@ fn right_click_reopens_both_sign_sides_and_preserves_other_text_and_style() {
                     })
                 };
                 plot.handle_player_block_placement(click(pos, sequence), 0);
-                assert_eq!(
-                    editor_packets(&mut peer, compressed, sequence),
-                    [(pos, front)],
-                    "{name}"
-                );
+                assert_eq!(editor_packets(&mut peer, compressed, sequence), [(pos, front)], "{name}");
                 plot.handle_update_sign(
                     SUpdateSign {
                         pos: pos.packed(),
@@ -107,9 +93,7 @@ fn right_click_reopens_both_sign_sides_and_preserves_other_text_and_style() {
                 let Some(BlockEntity::Sign(sign)) = plot.world.get_block_entity(pos) else {
                     panic!("sign disappeared")
                 };
-                let rows = std::array::from_fn::<_, 4, _>(|_| {
-                    serde_json::json!({ "text": format!("edited {front}") }).to_string()
-                });
+                let rows = std::array::from_fn::<_, 4, _>(|_| serde_json::json!({ "text": format!("edited {front}") }).to_string());
                 if front {
                     assert_eq!(sign.rows, rows);
                     assert_eq!(sign.back_rows, original.back_rows);
@@ -132,8 +116,7 @@ fn sign_editor_respects_wax_permissions_and_reach() {
         let (mut plot, mut peer) = client_sync_tests::fixture(false);
         plot.world.packet_senders.clear();
         let pos = BlockPos::new(32, 21, 32);
-        plot.world
-            .set_block(pos, Block::from_name("oak_sign").unwrap());
+        plot.world.set_block(pos, Block::from_name("oak_sign").unwrap());
         plot.world.set_block_entity(
             pos,
             BlockEntity::Sign(Box::new(SignBlockEntity {
@@ -198,9 +181,7 @@ fn world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -212,18 +193,10 @@ fn placing_signs_creates_editable_entities_and_preserves_text_on_rotation() {
     for face in BlockFace::values() {
         world.set_block(pos.offset(face), Block::Stone {});
     }
-    for name in [
-        "oak_sign",
-        "spruce_wall_sign",
-        "cherry_sign",
-        "bamboo_wall_sign",
-    ] {
+    for name in ["oak_sign", "spruce_wall_sign", "cherry_sign", "bamboo_wall_sign"] {
         let mut block = Block::from_name(name).unwrap();
         crate::interaction::place_in_world(block, &mut world, pos, &None);
-        assert!(
-            matches!(world.get_block_entity(pos), Some(BlockEntity::Sign(_))),
-            "{name}"
-        );
+        assert!(matches!(world.get_block_entity(pos), Some(BlockEntity::Sign(_))), "{name}");
 
         let sign = SignBlockEntity {
             rows: std::array::from_fn(|_| r#"{"text":"front"}"#.into()),
@@ -235,12 +208,7 @@ fn placing_signs_creates_editable_entities_and_preserves_text_on_rotation() {
         block.rotate(mchprs_blocks::blocks::RotateAmt::Rotate90);
         world.set_block(pos, block);
         assert_eq!(
-            world
-                .get_block_entity(pos)
-                .unwrap()
-                .to_nbt(false)
-                .unwrap()
-                .content,
+            world.get_block_entity(pos).unwrap().to_nbt(false).unwrap().content,
             entity.to_nbt(false).unwrap().content
         );
 

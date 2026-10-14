@@ -47,9 +47,7 @@ impl CandidateGraph {
     pub fn summary(&self) -> GraphSummary {
         GraphSummary {
             nodes: self.graph.nodes.len(),
-            links: self.graph.links.len()
-                + self.graph.power_links.len()
-                + self.graph.wire_relations.len(),
+            links: self.graph.links.len() + self.graph.power_links.len() + self.graph.wire_relations.len(),
         }
     }
 }
@@ -72,14 +70,8 @@ pub fn prepare_candidate_graph(
     )
     .map_err(map_preparation_error)?;
     let pipeline = passes::default_graph_pipeline(options);
-    passes::run_graph_pipeline(
-        &mut prepared.graph,
-        options,
-        &prepared.entry,
-        &pipeline,
-        &monitor,
-    )
-    .map_err(|error| GraphPreparationError::Graph(error.to_string()))?;
+    passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, &monitor)
+        .map_err(|error| GraphPreparationError::Graph(error.to_string()))?;
     prepared.finish_pipeline_statistics(&monitor);
     Ok(CandidateGraph {
         graph: prepared.graph,
@@ -91,9 +83,7 @@ fn map_preparation_error(error: PreparationError) -> GraphPreparationError {
     match error {
         PreparationError::Analysis(error) => GraphPreparationError::Analysis(error),
         PreparationError::Geometry(error) => match error {
-            crate::redpiler::analysis::geometry::GeometryError::Entry(issue) => {
-                GraphPreparationError::Entry(issue)
-            }
+            crate::redpiler::analysis::geometry::GeometryError::Entry(issue) => GraphPreparationError::Entry(issue),
             error => GraphPreparationError::Graph(error.to_string()),
         },
         PreparationError::Electrical(error) => GraphPreparationError::Graph(error.to_string()),

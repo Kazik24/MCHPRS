@@ -42,11 +42,7 @@ impl Drop for NotificationGuard {
     }
 }
 pub(crate) fn notification_source(pos: Option<BlockPos>) -> NotificationGuard {
-    NotificationGuard(RECORDER.with(|r| {
-        r.borrow_mut()
-            .as_mut()
-            .and_then(|r| std::mem::replace(&mut r.source, pos))
-    }))
+    NotificationGuard(RECORDER.with(|r| r.borrow_mut().as_mut().and_then(|r| std::mem::replace(&mut r.source, pos))))
 }
 
 pub(crate) struct CallbackGuard(bool, bool);
@@ -64,18 +60,11 @@ impl Drop for CallbackGuard {
         }
     }
 }
-pub(crate) fn callback(
-    world: &impl World,
-    block: Block,
-    pos: BlockPos,
-    dir: Option<BlockFace>,
-) -> CallbackGuard {
+pub(crate) fn callback(world: &impl World, block: Block, pos: BlockPos, dir: Option<BlockFace>) -> CallbackGuard {
     let (active, parents) = RECORDER.with(|r| {
         r.borrow().as_ref().map_or((false, None), |r| {
             (
-                r.positions
-                    .as_ref()
-                    .is_none_or(|positions| positions.contains(&pos)),
+                r.positions.as_ref().is_none_or(|positions| positions.contains(&pos)),
                 Some(r.parents.clone()),
             )
         })
@@ -144,12 +133,7 @@ fn context(action: usize, operation: usize) {
     });
 }
 fn take_callbacks() -> Vec<Value> {
-    RECORDER.with(|r| {
-        r.borrow_mut()
-            .as_mut()
-            .map(|r| std::mem::take(&mut r.entries))
-            .unwrap_or_default()
-    })
+    RECORDER.with(|r| r.borrow_mut().as_mut().map(|r| std::mem::take(&mut r.entries)).unwrap_or_default())
 }
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -195,19 +179,13 @@ fn dims(cb: &WorldEditClipboard) -> (u32, u32, u32) {
     (cb.size_x, cb.size_y, cb.size_z)
 }
 fn local_at(i: usize, d: (u32, u32, u32)) -> BlockPos {
-    BlockPos::new(
-        i as i32 % d.0 as i32,
-        (i as u32 / (d.0 * d.2)) as i32,
-        (i as u32 / d.0 % d.2) as i32,
-    )
+    BlockPos::new(i as i32 % d.0 as i32, (i as u32 / (d.0 * d.2)) as i32, (i as u32 / d.0 % d.2) as i32)
 }
 fn empty() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -217,10 +195,7 @@ fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32))
     let mut cb = load_schematic(std::io::Cursor::new(bytes)).unwrap();
     let d = dims(&cb);
     assert_eq!(m["dimensions"], json!([d.0, d.1, d.2]));
-    assert_eq!(
-        m["coordinates"]["loader_offset"],
-        json!([cb.offset_x, cb.offset_y, cb.offset_z])
-    );
+    assert_eq!(m["coordinates"]["loader_offset"], json!([cb.offset_x, cb.offset_y, cb.offset_z]));
     let mut watch = BTreeSet::new();
     for i in 0..cb.data.entries() {
         let p = local_at(i, d);
@@ -255,11 +230,7 @@ fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32))
     }
     ports(&m["ports"], &mut watch);
     if rotation != 0 {
-        let (w, l) = if rotation == 90 || rotation == 270 {
-            (d.2, d.0)
-        } else {
-            (d.0, d.2)
-        };
+        let (w, l) = if rotation == 90 || rotation == 270 { (d.2, d.0) } else { (d.0, d.2) };
         let mut data = PalettedBitBuffer::new((w * d.1 * l) as usize, 9);
         for i in 0..cb.data.entries() {
             let p = transform(local_at(i, d), d, rotation) - ORIGIN;
@@ -270,10 +241,7 @@ fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32))
                 270 => RotateAmt::Rotate270,
                 _ => unreachable!(),
             });
-            data.set_entry(
-                ((p.y as u32 * l + p.z as u32) * w + p.x as u32) as usize,
-                b.get_id(),
-            );
+            data.set_entry(((p.y as u32 * l + p.z as u32) * w + p.x as u32) as usize, b.get_id());
         }
         cb.data = data;
         cb.block_entities = cb
@@ -285,12 +253,7 @@ fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32))
         cb.size_z = l;
     }
     let mut world = empty();
-    paste_clipboard(
-        &mut world,
-        &cb,
-        ORIGIN + BlockPos::new(cb.offset_x, cb.offset_y, cb.offset_z),
-        false,
-    );
+    paste_clipboard(&mut world, &cb, ORIGIN + BlockPos::new(cb.offset_x, cb.offset_y, cb.offset_z), false);
     assert_eq!(world.piston_state().phase, AdvancePhase::BetweenTicks);
     assert!(quiet(&world));
     (
@@ -303,9 +266,7 @@ fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32))
     )
 }
 fn quiet(w: &PlotWorld) -> bool {
-    w.scheduler().iter_entries().next().is_none()
-        && w.piston_state().events.is_empty()
-        && w.piston_state().motions.is_empty()
+    w.scheduler().iter_entries().next().is_none() && w.piston_state().events.is_empty() && w.piston_state().motions.is_empty()
 }
 fn cell(w: &PlotWorld, p: BlockPos) -> Value {
     let b = w.get_block(p);
@@ -317,13 +278,7 @@ fn observe(w: &PlotWorld, m: &Value, d: (u32, u32, u32), r: u32) -> Value {
         if v[0].is_number() {
             cell(w, transform(triple(v), d, r))
         } else {
-            Value::Array(
-                v.as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|p| walk(w, p, d, r))
-                    .collect(),
-            )
+            Value::Array(v.as_array().unwrap().iter().map(|p| walk(w, p, d, r)).collect())
         }
     }
     Value::Object(
@@ -339,13 +294,7 @@ fn physical(w: &PlotWorld, watch: &[BlockPos]) -> Value {
     // All watched physical cells and global work at completed boundaries.
     json!({"cells":watch.iter().map(|&p|cell(w,p)).collect::<Vec<_>>(),"scheduled":w.scheduler().iter_entries().collect::<Vec<_>>(),"piston_state":w.piston_state()})
 }
-fn step(
-    w: &mut PlotWorld,
-    mode: &str,
-    action: usize,
-    operation: &mut usize,
-    mut snap: impl FnMut(&PlotWorld, usize),
-) {
+fn step(w: &mut PlotWorld, mode: &str, action: usize, operation: &mut usize, mut snap: impl FnMut(&PlotWorld, usize)) {
     let target = w.piston_state().logical_tick + 1;
     for _ in 0..200_000 {
         *operation += 1;
@@ -357,9 +306,7 @@ fn step(
             _ => unreachable!(),
         }
         snap(w, *operation);
-        if w.piston_state().logical_tick == target
-            && w.piston_state().phase == AdvancePhase::BetweenTicks
-        {
+        if w.piston_state().logical_tick == target && w.piston_state().phase == AdvancePhase::BetweenTicks {
             return;
         }
     }
@@ -367,12 +314,7 @@ fn step(
 }
 fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) {
     if op["op"] == "construct_retracted" {
-        let bases: Vec<_> = op["bases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| transform(triple(v), d, r))
-            .collect();
+        let bases: Vec<_> = op["bases"].as_array().unwrap().iter().map(|v| transform(triple(v), d, r)).collect();
         for &p in &bases {
             let Block::Piston { piston } = w.get_block(p) else {
                 panic!("base missing")
@@ -420,12 +362,7 @@ fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) {
         "raw" | "set_notified" => {
             let mut b = Block::from_name(op["state"].as_str().unwrap()).unwrap();
             if let Some(props) = op["properties"].as_object() {
-                b.set_properties(
-                    props
-                        .iter()
-                        .map(|(k, v)| (k.as_str(), v.as_str().unwrap()))
-                        .collect(),
-                );
+                b.set_properties(props.iter().map(|(k, v)| (k.as_str(), v.as_str().unwrap())).collect());
             }
             w.set_block(p, b);
             if op["op"] == "set_notified" {
@@ -480,28 +417,17 @@ fn episode(m: &Value, c: &Value, r: u32, mode: &str, capture: bool) -> Value {
                 let mut stable = 0;
                 let mut last = physical(&w, &watch)["cells"].clone();
                 for _ in 0..bound {
-                    step(&mut w, mode, ai, &mut operation, |w, oi| {
-                        snapshot(w, oi, ai, "setup-step")
-                    });
+                    step(&mut w, mode, ai, &mut operation, |w, oi| snapshot(w, oi, ai, "setup-step"));
                     used += 1;
                     let now = physical(&w, &watch)["cells"].clone();
-                    stable = if quiet(&w) && now == last {
-                        stable + 1
-                    } else {
-                        0
-                    };
+                    stable = if quiet(&w) && now == last { stable + 1 } else { 0 };
                     last = now;
                     if op["op"] == "wait_ready" && stable >= 2 {
                         break;
                     }
                 }
                 if op["op"] == "wait_ready" {
-                    assert!(
-                        stable >= 2,
-                        "{} {} did not reach readiness within {bound} ticks",
-                        m["id"],
-                        c["id"]
-                    );
+                    assert!(stable >= 2, "{} {} did not reach readiness within {bound} ticks", m["id"], c["id"]);
                 }
                 ready_checks.push(json!({"action":ai,"kind":op["op"],"used_ticks":used,"quiet":quiet(&w),"stable_boundaries":stable}));
             }
@@ -513,16 +439,11 @@ fn episode(m: &Value, c: &Value, r: u32, mode: &str, capture: bool) -> Value {
     let actions = c["actions"].as_array().unwrap().len();
     let mut projections = vec![observe(&w, m, d, r)];
     for _ in 0..c["ticks"].as_u64().unwrap() {
-        step(&mut w, mode, actions, &mut operation, |w, oi| {
-            snapshot(w, oi, actions, "step")
-        });
+        step(&mut w, mode, actions, &mut operation, |w, oi| snapshot(w, oi, actions, "step"));
         projections.push(observe(&w, m, d, r));
         if !capture {
             // Hash the complete serialized state to bound memory in long counter episodes.
-            boundaries.push(json!(format!(
-                "{:x}",
-                Sha256::digest(serde_json::to_vec(&physical(&w, &watch)).unwrap())
-            )));
+            boundaries.push(json!(format!("{:x}", Sha256::digest(serde_json::to_vec(&physical(&w, &watch)).unwrap()))));
         }
     }
     let callbacks = take_callbacks();
@@ -540,13 +461,7 @@ fn fixture(id: &str) -> Value {
     manifests().into_iter().find(|m| m["id"] == id).unwrap()
 }
 fn named_case(m: &Value, id: &str) -> Value {
-    m["cases"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["id"] == id)
-        .unwrap()
-        .clone()
+    m["cases"].as_array().unwrap().iter().find(|c| c["id"] == id).unwrap().clone()
 }
 fn power(v: &Value) -> u8 {
     v["properties"]["power"].as_str().unwrap().parse().unwrap()
@@ -572,11 +487,7 @@ fn applied(t: &Value) -> Vec<&Value> {
 fn assert_sampled_request(entries: &[&Value], request: usize) {
     let sample = entries[request - 1];
     assert_eq!(sample["kind"], "piston_sample");
-    let callback = entries[..request - 1]
-        .iter()
-        .rev()
-        .find(|entry| entry["kind"] == "callback")
-        .unwrap();
+    let callback = entries[..request - 1].iter().rev().find(|entry| entry["kind"] == "callback").unwrap();
     assert_eq!(callback["data"]["pos"], sample["data"]["pos"]);
     assert_eq!(callback["data"]["piston_power"], sample["data"]["powered"]);
     assert_eq!(callback["operation"], sample["operation"]);
@@ -586,23 +497,13 @@ fn assert_sampled_request(entries: &[&Value], request: usize) {
 #[test]
 fn exact_saved_imports_remain_ready_without_notifications() {
     for m in manifests() {
-        for r in m["rotations"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|r| r.as_u64().unwrap() as u32)
-        {
+        for r in m["rotations"].as_array().unwrap().iter().map(|r| r.as_u64().unwrap() as u32) {
             let (mut w, watch, _) = load(&m, r);
             let initial = physical(&w, &watch)["cells"].clone();
             for _ in 0..24 {
                 w.tick_interpreted();
                 assert!(quiet(&w), "{} r{r} saved work", m["id"]);
-                assert_eq!(
-                    physical(&w, &watch)["cells"],
-                    initial,
-                    "{} r{r} saved stability",
-                    m["id"]
-                );
+                assert_eq!(physical(&w, &watch)["cells"], initial, "{} r{r} saved stability", m["id"]);
             }
         }
     }
@@ -623,22 +524,13 @@ fn quiescent_torch_and_external_rearm_protocols_allow_another_falling_response()
             w.tick_interpreted();
         }
         assert!(quiet(&w), "{id} endpoint");
-        mutate(
-            &mut w,
-            &json!({"op":"set_notified","pos":source,"state":"redstone_block"}),
-            d,
-            0,
-        );
+        mutate(&mut w, &json!({"op":"set_notified","pos":source,"state":"redstone_block"}), d, 0);
         let mut stable = 0;
         let mut last = physical(&w, &watch)["cells"].clone();
         for _ in 0..32 {
             w.tick_interpreted();
             let now = physical(&w, &watch)["cells"].clone();
-            stable = if quiet(&w) && now == last {
-                stable + 1
-            } else {
-                0
-            };
+            stable = if quiet(&w) && now == last { stable + 1 } else { 0 };
             last = now;
             if stable >= 2 {
                 break;
@@ -650,16 +542,9 @@ fn quiescent_torch_and_external_rearm_protocols_allow_another_falling_response()
             panic!("{id} ready base missing")
         };
         assert!(piston.extended);
-        assert!(matches!(
-            w.get_block(bp.offset(piston.facing.into())),
-            Block::PistonHead { .. }
-        ));
+        assert!(matches!(w.get_block(bp.offset(piston.facing.into())), Block::PistonHead { .. }));
         assert_eq!(
-            w.get_block(transform(
-                BlockPos::new(payload[0], payload[1], payload[2]),
-                d,
-                0
-            )),
+            w.get_block(transform(BlockPos::new(payload[0], payload[1], payload[2]), d, 0)),
             Block::RedstoneBlock {}
         );
         assert!(power(&observe(&w, &m, d, 0)["output"]) > 0);
@@ -669,11 +554,7 @@ fn quiescent_torch_and_external_rearm_protocols_allow_another_falling_response()
         for _ in 0..5 {
             w.tick_interpreted();
         }
-        assert_eq!(
-            power(&observe(&w, &m, d, 0)["output"]) > 0,
-            resets,
-            "{id} second reset"
-        );
+        assert_eq!(power(&observe(&w, &m, d, 0)["output"]) > 0, resets, "{id} second reset");
     }
 }
 
@@ -691,11 +572,7 @@ fn single_falling_responses_distinguish_autoreset_latch_and_forced_power() {
         let m = fixture(id);
         let t = episode(&m, &named_case(&m, "falling"), 0, "pico", true);
         let p = t["projections"].as_array().unwrap();
-        assert_eq!(
-            power(&p[1]["output"]) == 0,
-            id != "instant_blocked",
-            "{id} first falling response"
-        );
+        assert_eq!(power(&p[1]["output"]) == 0, id != "instant_blocked", "{id} first falling response");
         if id == "instant_blocked" {
             assert!(applied(&t).is_empty());
             continue;
@@ -703,11 +580,7 @@ fn single_falling_responses_distinguish_autoreset_latch_and_forced_power() {
         assert_eq!(applied(&t)[0]["data"]["action"], "Retract");
         assert_eq!(applied(&t)[0]["tick"], 1);
         assert_eq!(power(&p[6]["output"]) > 0, reset, "{id} reset output");
-        assert_eq!(
-            power(&p[7]["output"]) == 0,
-            periodic || !reset,
-            "{id} recurring response"
-        );
+        assert_eq!(power(&p[7]["output"]) == 0, periodic || !reset, "{id} recurring response");
         if periodic {
             for n in 1..=18 {
                 assert_eq!(p[n], p[n + 6], "{id} period at {n}");
@@ -738,12 +611,7 @@ fn conjunction_or_inhibition_and_xor_have_contextual_first_wave_tables() {
             };
             for r in [0, 90, 180, 270] {
                 let t = episode(&m, c, r, "game", false);
-                assert_eq!(
-                    power(&t["projections"][1]["output"]) == 0,
-                    expected,
-                    "{id} {} r{r}",
-                    c["id"]
-                );
+                assert_eq!(power(&t["projections"][1]["output"]) == 0, expected, "{id} {} r{r}", c["id"]);
             }
         }
     }
@@ -759,10 +627,7 @@ fn chain_causality_is_fifo_retraction_then_callback_then_downstream_event() {
         .iter()
         .flat_map(|s| s["callbacks"].as_array().unwrap())
         .collect();
-    let first = entries
-        .iter()
-        .position(|c| c["kind"] == "event_execute" && c["tick"] == 1)
-        .unwrap();
+    let first = entries.iter().position(|c| c["kind"] == "event_execute" && c["tick"] == 1).unwrap();
     let enqueue = entries
         .iter()
         .position(|c| c["kind"] == "event_enqueue" && c["data"]["pos"]["z"] == 46)
@@ -783,34 +648,10 @@ fn chain_causality_is_fifo_retraction_then_callback_then_downstream_event() {
 #[test]
 fn adder_inhibition_changes_dust_connections_before_pending_target_validation() {
     for (id, case, inhibit, target, wire) in [
-        (
-            "adder_1bit",
-            "prepared-1-1-0",
-            [6, 3, 1],
-            [11, 2, 1],
-            [8, 2, 1],
-        ),
-        (
-            "adder_1bit",
-            "prepared-0-1-1",
-            [12, 3, 1],
-            [16, 2, 1],
-            [14, 2, 1],
-        ),
-        (
-            "adder_11bits",
-            "prepared-1023-1-0",
-            [8, 3, 41],
-            [13, 2, 41],
-            [10, 2, 41],
-        ),
-        (
-            "adder_11bits",
-            "prepared-1023-1-0",
-            [14, 3, 37],
-            [18, 2, 37],
-            [16, 2, 37],
-        ),
+        ("adder_1bit", "prepared-1-1-0", [6, 3, 1], [11, 2, 1], [8, 2, 1]),
+        ("adder_1bit", "prepared-0-1-1", [12, 3, 1], [16, 2, 1], [14, 2, 1]),
+        ("adder_11bits", "prepared-1023-1-0", [8, 3, 41], [13, 2, 41], [10, 2, 41]),
+        ("adder_11bits", "prepared-1023-1-0", [14, 3, 37], [18, 2, 37], [16, 2, 37]),
     ] {
         let m = fixture(id);
         let mut protocol = named_case(&m, case);
@@ -843,23 +684,11 @@ fn adder_inhibition_changes_dust_connections_before_pending_target_validation() 
             "{id} {case} pending target must be inhibited before validation"
         );
         assert!(
-            !entries
-                .iter()
-                .any(|e| e["kind"] == "event_applied" && e["data"]["pos"] == pos(target)),
+            !entries.iter().any(|e| e["kind"] == "event_applied" && e["data"]["pos"] == pos(target)),
             "{id} {case} target retraction canceled"
         );
-        let target_index = t["watch_absolute"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .position(|p| *p == pos(target))
-            .unwrap();
-        let wire_index = t["watch_absolute"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .position(|p| *p == pos(wire))
-            .unwrap();
+        let target_index = t["watch_absolute"].as_array().unwrap().iter().position(|p| *p == pos(target)).unwrap();
+        let wire_index = t["watch_absolute"].as_array().unwrap().iter().position(|p| *p == pos(wire)).unwrap();
         let mut cells = std::collections::BTreeMap::new();
         let mut pending_unpowered = false;
         let mut witnessed = false;
@@ -870,28 +699,17 @@ fn adder_inhibition_changes_dust_connections_before_pending_target_validation() 
             if s["tick"] != tick {
                 continue;
             }
-            if s["operation"].as_u64().unwrap() < entries[fired]["operation"].as_u64().unwrap()
-                && cells[&target_index]["piston_power"] == false
-            {
+            if s["operation"].as_u64().unwrap() < entries[fired]["operation"].as_u64().unwrap() && cells[&target_index]["piston_power"] == false {
                 pending_unpowered = true;
             }
             if s["operation"] == entries[fired]["operation"] {
                 assert_eq!(cells[&target_index]["piston_power"], true);
                 assert!(power(&cells[&wire_index]) > 0);
-                assert!(
-                    cells[&wire_index]["properties"]
-                        .as_object()
-                        .unwrap()
-                        .values()
-                        .any(|v| v == "up")
-                );
+                assert!(cells[&wire_index]["properties"].as_object().unwrap().values().any(|v| v == "up"));
                 witnessed = true;
             }
         }
-        assert!(
-            pending_unpowered && witnessed,
-            "{id} {case} causal power restoration"
-        );
+        assert!(pending_unpowered && witnessed, "{id} {case} causal power restoration");
     }
 }
 
@@ -913,22 +731,12 @@ fn one_bit_and_corrected_eleven_bit_arithmetic_have_separate_valid_windows() {
                     .iter()
                     .all(|r| r["quiet"] == true && r["stable_boundaries"].as_u64().unwrap() >= 2)
             );
-            let sum = c["inputs"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|n| n.as_u64().unwrap() as u16)
-                .sum::<u16>();
+            let sum = c["inputs"].as_array().unwrap().iter().map(|n| n.as_u64().unwrap() as u16).sum::<u16>();
             for tick in 1..=3 {
                 let p = &t["projections"][tick];
                 if id == "adder_1bit" {
                     assert_eq!(bit(&p["sum"]), Some(sum & 1), "{} at {tick}", c["id"]);
-                    assert_eq!(
-                        u16::from(power(&p["carry"]) == 0),
-                        sum >> 1,
-                        "{} carry at {tick}",
-                        c["id"]
-                    );
+                    assert_eq!(u16::from(power(&p["carry"]) == 0), sum >> 1, "{} carry at {tick}", c["id"]);
                 } else {
                     let value = p["sum"]
                         .as_array()
@@ -975,11 +783,7 @@ fn counter_free_running_clock_increments_persistent_bud_bank() {
             assert_eq!(read(&w), Some(tick as u16 / 6));
         }
         if tick % 6 == 5 {
-            assert_eq!(
-                read(&w),
-                Some((tick as u16 + 1) / 6),
-                "memory persistence at {tick}"
-            );
+            assert_eq!(read(&w), Some((tick as u16 + 1) / 6), "memory persistence at {tick}");
         }
     }
 }
@@ -999,13 +803,7 @@ fn negation_records_transient_order_and_repeater_filters_same_wave() {
     assert!(falls(&ab));
     assert!(!falls(&ba));
     for order in ["ab", "ba"] {
-        let probe = episode(
-            &m,
-            &named_case(&m, &format!("probe-repeater-{order}")),
-            0,
-            "pico",
-            true,
-        );
+        let probe = episode(&m, &named_case(&m, &format!("probe-repeater-{order}")), 0, "pico", true);
         assert!(
             probe["projections"]
                 .as_array()
@@ -1027,14 +825,8 @@ fn supplied_nanotick_counterexample_activates_consumer_before_inhibit_arrives() 
         let d = (4, 5, 14);
         let out = transform(BlockPos::new(1, 2, 9), d, r);
         let inhibit = transform(BlockPos::new(2, 2, 5), d, r);
-        let oi = events
-            .iter()
-            .position(|e| e["data"]["pos"] == json!(out))
-            .unwrap();
-        let ii = events
-            .iter()
-            .position(|e| e["data"]["pos"] == json!(inhibit))
-            .unwrap();
+        let oi = events.iter().position(|e| e["data"]["pos"] == json!(out)).unwrap();
+        let ii = events.iter().position(|e| e["data"]["pos"] == json!(inhibit)).unwrap();
         assert!(oi < ii);
         assert_eq!(events[oi]["tick"], events[ii]["tick"]);
     }
@@ -1045,13 +837,7 @@ fn shared_or_conserves_one_payload_and_illegal_group_starves_a_reset() {
     for id in ["or_1", "or_interpreter_illigal"] {
         let m = fixture(id);
         for order in ["ab", "ba"] {
-            let t = episode(
-                &m,
-                &named_case(&m, &format!("events-11-{order}")),
-                0,
-                "pico",
-                true,
-            );
+            let t = episode(&m, &named_case(&m, &format!("events-11-{order}")), 0, "pico", true);
             let allowed = if id == "or_1" {
                 [[0, 2, 4], [1, 2, 4], [0, 2, 5]]
             } else {
@@ -1076,33 +862,24 @@ fn shared_or_conserves_one_payload_and_illegal_group_starves_a_reset() {
                 let payloads = indices
                     .iter()
                     .filter(|i| {
-                        cells[i]["name"] == "redstone_block"
-                            || cells[i]["entity"]["MovingPiston"]["block_state"]
-                                == Block::RedstoneBlock {}.get_id()
+                        cells[i]["name"] == "redstone_block" || cells[i]["entity"]["MovingPiston"]["block_state"] == Block::RedstoneBlock {}.get_id()
                     })
                     .count();
-                assert_eq!(
-                    payloads, 1,
-                    "{id} {order} tick {} operation {}",
-                    s["tick"], s["operation"]
-                );
+                assert_eq!(payloads, 1, "{id} {order} tick {} operation {}", s["tick"], s["operation"]);
             }
             if id == "or_interpreter_illigal" {
                 let (mut w, _, d) = load(&m, 0);
-                for op in named_case(&m, &format!("events-11-{order}"))["actions"]
-                    .as_array()
-                    .unwrap()
-                {
+                for op in named_case(&m, &format!("events-11-{order}"))["actions"].as_array().unwrap() {
                     mutate(&mut w, op, d, 0);
                 }
                 for _ in 0..6 {
                     w.tick_interpreted();
                 }
-                let extended=[[0,2,2],[2,2,0]].iter().filter(|p|matches!(w.get_block(ORIGIN+BlockPos::new(p[0],p[1],p[2])),Block::Piston{piston}if piston.extended)).count();
-                assert_eq!(
-                    extended, 1,
-                    "shared payload does not close both dust resets"
-                );
+                let extended = [[0, 2, 2], [2, 2, 0]]
+                    .iter()
+                    .filter(|p| matches!(w.get_block(ORIGIN+BlockPos::new(p[0],p[1],p[2])),Block::Piston{piston}if piston.extended))
+                    .count();
+                assert_eq!(extended, 1, "shared payload does not close both dust resets");
             }
         }
     }
@@ -1117,25 +894,13 @@ fn downloaded_edge_case_drops_an_inflight_payload_and_later_recaptures_it() {
         for _ in 0..5 {
             w.tick_interpreted();
         }
-        assert_eq!(
-            w.get_block(transform(BlockPos::new(2, 2, 2), d, r)),
-            Block::RedstoneBlock {}
-        );
-        assert_eq!(
-            w.get_block(transform(BlockPos::new(2, 3, 2), d, r)),
-            Block::Air
-        );
-        assert!(matches!(
-            w.get_block(transform(BlockPos::new(2, 4, 2), d, r)),
-            Block::MovingPiston { .. }
-        ));
+        assert_eq!(w.get_block(transform(BlockPos::new(2, 2, 2), d, r)), Block::RedstoneBlock {});
+        assert_eq!(w.get_block(transform(BlockPos::new(2, 3, 2), d, r)), Block::Air);
+        assert!(matches!(w.get_block(transform(BlockPos::new(2, 4, 2), d, r)), Block::MovingPiston { .. }));
         for _ in 0..4 {
             w.tick_interpreted();
         }
-        assert_eq!(
-            w.get_block(transform(BlockPos::new(2, 2, 2), d, r)),
-            Block::Air
-        );
+        assert_eq!(w.get_block(transform(BlockPos::new(2, 2, 2), d, r)), Block::Air);
         let head = transform(BlockPos::new(2, 3, 2), d, r);
         assert!(
             matches!(w.get_block_entity(head),Some(mchprs_blocks::block_entities::BlockEntity::MovingPiston(e))if !e.extending&&!e.source&&e.block_state==Block::RedstoneBlock {}.get_id())
@@ -1169,13 +934,7 @@ fn frozen_java_port_waveforms_match_current_binaries_and_protocols() {
         assert_eq!(c["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
         let protocol = named_case(&m, c["case_id"].as_str().unwrap());
         assert_eq!(c["actions"], protocol["actions"]);
-        let actual = episode(
-            &m,
-            &protocol,
-            c["rotation"].as_u64().unwrap() as u32,
-            "game",
-            false,
-        );
+        let actual = episode(&m, &protocol, c["rotation"].as_u64().unwrap() as u32, "game", false);
         subset(&actual["projections"], &c["projections"]);
     }
 }
@@ -1195,12 +954,7 @@ fn strength_one_falls_but_positive_changes_and_held_zero_are_not_new_roots() {
     let rear = p.offset(BlockFace::North);
     w.set_block(rear, Block::RedstoneBlock {});
     w.set_block(p, Block::RedstoneComparator { comparator });
-    w.set_block_entity(
-        p,
-        BlockEntity::Comparator {
-            output_strength: 15,
-        },
-    );
+    w.set_block_entity(p, BlockEntity::Comparator { output_strength: 15 });
     super::update_surrounding_blocks(&mut w, p);
     let edge = load_schematic(std::io::Cursor::new(
         std::fs::read(pack().join("MCHPRS_REDSTONE_UPDATE_EDGECASE.schem")).unwrap(),
@@ -1220,18 +974,13 @@ fn strength_one_falls_but_positive_changes_and_held_zero_are_not_new_roots() {
     }
     assert!(quiet(&w));
     assert_eq!(power(&cell(&w, p.offset(BlockFace::South))), 1);
-    assert!(
-        matches!(w.get_block(transform(BlockPos::new(0,1,3),d,0)),Block::Piston {piston} if piston.extended)
-    );
+    assert!(matches!(w.get_block(transform(BlockPos::new(0,1,3),d,0)),Block::Piston {piston} if piston.extended));
     crate::interaction::destroy(w.get_block(rear), &mut w, rear);
     for _ in 0..2 {
         w.tick_interpreted();
     }
     assert_eq!(power(&cell(&w, p.offset(BlockFace::South))), 0);
-    assert!(matches!(
-        w.get_block(transform(BlockPos::new(0, 1, 3), d, 0)),
-        Block::MovingPiston { .. }
-    ));
+    assert!(matches!(w.get_block(transform(BlockPos::new(0, 1, 3), d, 0)), Block::MovingPiston { .. }));
     for _ in 0..12 {
         w.tick_interpreted();
     }
@@ -1239,10 +988,7 @@ fn strength_one_falls_but_positive_changes_and_held_zero_are_not_new_roots() {
     let requests = json!(w.scheduler().iter_entries().collect::<Vec<_>>());
     super::update_surrounding_blocks(&mut w, p);
     assert_eq!(json!(w.piston_state()), before);
-    assert_eq!(
-        json!(w.scheduler().iter_entries().collect::<Vec<_>>()),
-        requests
-    );
+    assert_eq!(json!(w.scheduler().iter_entries().collect::<Vec<_>>()), requests);
 }
 
 #[test]
@@ -1250,12 +996,7 @@ fn pack_completed_boundaries_agree_for_game_nano_pico() {
     for m in manifests() {
         for c in m["cases"].as_array().unwrap() {
             // Exercise every supported episode; rotations compare independently.
-            for r in m["rotations"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|r| r.as_u64().unwrap() as u32)
-            {
+            for r in m["rotations"].as_array().unwrap().iter().map(|r| r.as_u64().unwrap() as u32) {
                 let game = episode(&m, c, r, "game", false);
                 for mode in ["nano", "pico"] {
                     let fine = episode(&m, c, r, mode, false);
@@ -1279,25 +1020,14 @@ fn capture_pack() {
         .expect("set INSTANT_CAPTURE_DIR to a new directory");
     std::fs::create_dir_all(&directory).unwrap();
     let filter = std::env::var("INSTANT_FIXTURE").unwrap_or_default();
-    let source = std::env::var_os("INSTANT_PACK_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(pack);
+    let source = std::env::var_os("INSTANT_PACK_DIR").map(PathBuf::from).unwrap_or_else(pack);
     for m in manifests_at(&source)
         .into_iter()
         .filter(|m| filter.is_empty() || m["id"].as_str().unwrap() == filter)
     {
         for c in m["cases"].as_array().unwrap() {
-            for r in m["rotations"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|r| r.as_u64().unwrap() as u32)
-            {
-                let name = format!(
-                    "mchprs-{}-{}-r{r}.json",
-                    m["id"].as_str().unwrap(),
-                    c["id"].as_str().unwrap()
-                );
+            for r in m["rotations"].as_array().unwrap().iter().map(|r| r.as_u64().unwrap() as u32) {
+                let name = format!("mchprs-{}-{}-r{r}.json", m["id"].as_str().unwrap(), c["id"].as_str().unwrap());
                 let path = directory.join(name);
                 assert!(!path.exists(), "refusing overwrite {}", path.display());
                 let mut trace = episode(&m, c, r, "pico", true);

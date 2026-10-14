@@ -58,8 +58,7 @@ impl FurnaceRules {
         static RULES: std::sync::OnceLock<FurnaceRules> = std::sync::OnceLock::new();
 
         RULES.get_or_init(|| {
-            serde_json::from_str(include_str!("../../../mc_data/1.21.5/furnace_menu.json"))
-                .expect("checked-in Java furnace menu rules")
+            serde_json::from_str(include_str!("../../../mc_data/1.21.5/furnace_menu.json")).expect("checked-in Java furnace menu rules")
         })
     }
 
@@ -104,25 +103,12 @@ pub(crate) fn set_barrel_open(world: &mut impl crate::world::World, pos: BlockPo
     set_barrel_open_inner(world, pos, open, true);
 }
 
-pub(crate) fn set_barrel_open_without_updates(
-    world: &mut impl crate::world::World,
-    pos: BlockPos,
-    open: bool,
-) {
+pub(crate) fn set_barrel_open_without_updates(world: &mut impl crate::world::World, pos: BlockPos, open: bool) {
     set_barrel_open_inner(world, pos, open, false);
 }
 
-fn set_barrel_open_inner(
-    world: &mut impl crate::world::World,
-    pos: BlockPos,
-    open: bool,
-    notify: bool,
-) {
-    let Block::Barrel {
-        facing,
-        open: previous,
-    } = world.get_block(pos)
-    else {
+fn set_barrel_open_inner(world: &mut impl crate::world::World, pos: BlockPos, open: bool, notify: bool) {
+    let Block::Barrel { facing, open: previous } = world.get_block(pos) else {
         return;
     };
     if previous == open {
@@ -130,18 +116,7 @@ fn set_barrel_open_inner(
     }
 
     world.set_block(pos, Block::Barrel { facing, open });
-    crate::sound::play(
-        world,
-        pos,
-        if open {
-            "block.barrel.open"
-        } else {
-            "block.barrel.close"
-        },
-        0.5,
-        0.95,
-        None,
-    );
+    crate::sound::play(world, pos, if open { "block.barrel.open" } else { "block.barrel.close" }, 0.5, 0.95, None);
     if notify {
         crate::redstone::update_surrounding_blocks(world, pos);
     }
@@ -156,17 +131,9 @@ pub(crate) fn barrel_facing(yaw: f32, pitch: f32) -> mchprs_blocks::BlockFacing 
     let y = -pitch.sin();
     let z = yaw.cos() * pitch.cos();
     let look = if y.abs() > x.abs().max(z.abs()) {
-        if y > 0.0 {
-            BlockFacing::Up
-        } else {
-            BlockFacing::Down
-        }
+        if y > 0.0 { BlockFacing::Up } else { BlockFacing::Down }
     } else if x.abs() > z.abs() {
-        if x > 0.0 {
-            BlockFacing::East
-        } else {
-            BlockFacing::West
-        }
+        if x > 0.0 { BlockFacing::East } else { BlockFacing::West }
     } else if z > 0.0 {
         BlockFacing::South
     } else {
@@ -176,11 +143,7 @@ pub(crate) fn barrel_facing(yaw: f32, pitch: f32) -> mchprs_blocks::BlockFacing 
 }
 
 pub(crate) fn comparator_strength(slots: &[Option<ItemStack>]) -> u8 {
-    let fullness: f32 = slots
-        .iter()
-        .flatten()
-        .map(|item| item.count as f32 / max_count(item) as f32)
-        .sum();
+    let fullness: f32 = slots.iter().flatten().map(|item| item.count as f32 / max_count(item) as f32).sum();
     let scaled_fullness = (fullness / slots.len() as f32 * 14.0).floor() as u8;
     let occupied_bonus = u8::from(slots.iter().any(Option::is_some));
 
@@ -254,10 +217,7 @@ pub(crate) fn inventory_entries(slots: &[Option<ItemStack>]) -> Vec<InventoryEnt
 }
 
 pub(crate) fn max_count(item: &ItemStack) -> u8 {
-    mchprs_network::packets::components::max_stack_size(
-        &item.nbt,
-        item.item_type.max_stack_size() as u8,
-    )
+    mchprs_network::packets::components::max_stack_size(&item.nbt, item.item_type.max_stack_size() as u8)
 }
 
 fn may_place(ty: ContainerType, slot: usize, item: &ItemStack) -> bool {
@@ -299,20 +259,11 @@ pub(crate) fn signature(slots: &[Option<ItemStack>], cursor: &Option<ItemStack>)
 }
 
 /// Merge into occupied slots first, then empty slots, in the requested order.
-pub(crate) fn insert(
-    slots: &mut [Option<ItemStack>],
-    item: &mut Option<ItemStack>,
-    indices: &[usize],
-) {
+pub(crate) fn insert(slots: &mut [Option<ItemStack>], item: &mut Option<ItemStack>, indices: &[usize]) {
     insert_with_rules(slots, item, indices, None);
 }
 
-fn insert_with_rules(
-    slots: &mut [Option<ItemStack>],
-    item: &mut Option<ItemStack>,
-    indices: &[usize],
-    ty: Option<ContainerType>,
-) {
+fn insert_with_rules(slots: &mut [Option<ItemStack>], item: &mut Option<ItemStack>, indices: &[usize], ty: Option<ContainerType>) {
     for empty in [false, true] {
         for &index in indices {
             let Some(source) = item.as_mut() else {
@@ -324,9 +275,7 @@ fn insert_with_rules(
             let limit = slot_limit(ty, index, source);
             let dest = &mut slots[index];
             let amount = match dest {
-                Some(dest) if !empty && same_item(dest, source) => {
-                    source.count.min(limit.saturating_sub(dest.count))
-                }
+                Some(dest) if !empty && same_item(dest, source) => source.count.min(limit.saturating_sub(dest.count)),
                 None if empty => source.count.min(limit),
                 _ => 0,
             };
@@ -348,12 +297,7 @@ fn insert_with_rules(
     }
 }
 
-fn pickup(
-    slot: &mut Option<ItemStack>,
-    cursor: &mut Option<ItemStack>,
-    button: MouseButton,
-    limit: u8,
-) {
+fn pickup(slot: &mut Option<ItemStack>, cursor: &mut Option<ItemStack>, button: MouseButton, limit: u8) {
     match (slot.as_mut(), cursor.as_mut()) {
         (Some(item), None) => {
             let amount = match button {
@@ -430,11 +374,7 @@ pub(crate) fn click(
             };
 
             if let Some(i) = index {
-                if menu
-                    .cursor
-                    .as_ref()
-                    .is_none_or(|item| may_place(menu.ty, i, item))
-                {
+                if menu.cursor.as_ref().is_none_or(|item| may_place(menu.ty, i, item)) {
                     let limit = menu
                         .cursor
                         .as_ref()
@@ -444,9 +384,7 @@ pub(crate) fn click(
                 } else if let (Some(dest), Some(cursor)) = (&mut slots[i], &mut menu.cursor) {
                     // Output slots allow collecting into a compatible carried stack.
                     if same_item(dest, cursor) {
-                        let amount = dest
-                            .count
-                            .min(max_count(cursor).saturating_sub(cursor.count));
+                        let amount = dest.count.min(max_count(cursor).saturating_sub(cursor.count));
                         cursor.count += amount;
                         dest.count -= amount;
                         if dest.count == 0 {
@@ -488,14 +426,8 @@ pub(crate) fn click(
         ClickAction::Swap if (0..=8).contains(&button) || button == 40 => {
             if let Some(i) = index {
                 let hotbar = size + 27 + button.clamp(0, 8) as usize;
-                let incoming = if button == 40 {
-                    offhand.as_ref()
-                } else {
-                    slots[hotbar].as_ref()
-                };
-                if incoming.is_some_and(|item| {
-                    !may_place(menu.ty, i, item) || item.count > slot_limit(Some(menu.ty), i, item)
-                }) {
+                let incoming = if button == 40 { offhand.as_ref() } else { slots[hotbar].as_ref() };
+                if incoming.is_some_and(|item| !may_place(menu.ty, i, item) || item.count > slot_limit(Some(menu.ty), i, item)) {
                     return;
                 }
                 if button == 40 {
@@ -527,12 +459,7 @@ pub(crate) fn click(
     }
 }
 
-fn shift_click_destinations(
-    ty: ContainerType,
-    slot_count: usize,
-    source: usize,
-    item: Option<&ItemStack>,
-) -> Vec<usize> {
+fn shift_click_destinations(ty: ContainerType, slot_count: usize, source: usize, item: Option<&ItemStack>) -> Vec<usize> {
     let container_size = ty.num_slots() as usize;
     let hotbar_start = container_size + 27;
 
@@ -554,9 +481,7 @@ fn shift_click_destinations(
         return (container_size..slot_count).rev().collect();
     }
 
-    (0..container_size)
-        .filter(|&slot| ty != ContainerType::Furnace || slot != 2)
-        .collect()
+    (0..container_size).filter(|&slot| ty != ContainerType::Furnace || slot != 2).collect()
 }
 
 fn decode_drag_button(button: i8) -> Option<(DragKind, DragPhase)> {
@@ -580,13 +505,7 @@ fn decode_drag_button(button: i8) -> Option<(DragKind, DragPhase)> {
     Some((kind, phase))
 }
 
-fn drag_click(
-    menu: &mut OpenContainer,
-    slots: &mut [Option<ItemStack>],
-    index: Option<usize>,
-    button: i8,
-    creative: bool,
-) {
+fn drag_click(menu: &mut OpenContainer, slots: &mut [Option<ItemStack>], index: Option<usize>, button: i8, creative: bool) {
     let Some((kind, phase)) = decode_drag_button(button) else {
         menu.drag = None;
         return;
@@ -598,22 +517,14 @@ fn drag_click(
 
     match phase {
         DragPhase::Start => {
-            menu.drag = Some(Drag {
-                kind,
-                slots: Vec::new(),
-            });
+            menu.drag = Some(Drag { kind, slots: Vec::new() });
         }
         DragPhase::AddSlot => add_drag_slot(menu, slots, index, kind),
         DragPhase::Finish => finish_drag(menu, slots, kind),
     }
 }
 
-fn add_drag_slot(
-    menu: &mut OpenContainer,
-    slots: &[Option<ItemStack>],
-    index: Option<usize>,
-    kind: DragKind,
-) {
+fn add_drag_slot(menu: &mut OpenContainer, slots: &[Option<ItemStack>], index: Option<usize>, kind: DragKind) {
     let (Some(index), Some(drag), Some(item)) = (index, &mut menu.drag, &menu.cursor) else {
         return;
     };
@@ -627,9 +538,10 @@ fn add_drag_slot(
     if kind != DragKind::CreativeFill && item.count as usize <= drag.slots.len() {
         return;
     }
-    if slots[index].as_ref().is_some_and(|present| {
-        !same_item(present, item) || present.count >= slot_limit(Some(menu.ty), index, present)
-    }) {
+    if slots[index]
+        .as_ref()
+        .is_some_and(|present| !same_item(present, item) || present.count >= slot_limit(Some(menu.ty), index, present))
+    {
         return;
     }
 
@@ -652,10 +564,7 @@ fn finish_drag(menu: &mut OpenContainer, slots: &mut [Option<ItemStack>], kind: 
     };
 
     for index in drag.slots {
-        if slots[index]
-            .as_ref()
-            .is_some_and(|present| !same_item(present, &item))
-        {
+        if slots[index].as_ref().is_some_and(|present| !same_item(present, &item)) {
             continue;
         }
 
@@ -682,11 +591,7 @@ fn finish_drag(menu: &mut OpenContainer, slots: &mut [Option<ItemStack>], kind: 
     }
 }
 
-fn collect_matching_items(
-    slots: &mut [Option<ItemStack>],
-    cursor: &mut Option<ItemStack>,
-    button: i8,
-) {
+fn collect_matching_items(slots: &mut [Option<ItemStack>], cursor: &mut Option<ItemStack>, button: i8) {
     let Some(cursor) = cursor else {
         return;
     };

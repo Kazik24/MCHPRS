@@ -5,12 +5,7 @@ use mchprs_blocks::{BlockDirection, BlockFace, BlockPos};
 use mchprs_world::TickPriority;
 
 pub(crate) fn update_far_neighbors(world: &mut impl World, pos: BlockPos) {
-    for face in [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ] {
+    for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
         let adjacent = pos.offset(face);
         if world.get_block(adjacent).is_solid() {
             let far = adjacent.offset(face);
@@ -44,10 +39,8 @@ fn get_power_on_sides(comp: RedstoneComparator, world: &impl World, pos: BlockPo
 }
 
 pub fn has_override(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Cauldron { .. } | Block::Composter { .. } | Block::Cake { .. }
-    ) || ContainerType::from_block(block).is_some()
+    matches!(block, Block::Cauldron { .. } | Block::Composter { .. } | Block::Cake { .. })
+        || ContainerType::from_block(block).is_some()
         || block.get_name() == "end_portal_frame"
         || block.is_command_block()
         || block.is_copper_bulb()
@@ -55,26 +48,19 @@ pub fn has_override(block: Block) -> bool {
 
 pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
     match block {
-        block if block.is_copper_bulb() => {
-            super::bool_to_ss(world.get_block(pos).copper_bulb_state().unwrap().0)
-        }
+        block if block.is_copper_bulb() => super::bool_to_ss(world.get_block(pos).copper_bulb_state().unwrap().0),
         block if block.is_command_block() => match world.get_block_entity(pos) {
             Some(BlockEntity::CommandBlock(entity)) => entity.success_count.clamp(0, 15) as u8,
             _ => 0,
         },
         block if ContainerType::from_block(block).is_some() => match world.get_block_entity(pos) {
-            Some(BlockEntity::Container {
-                comparator_override,
-                ..
-            }) => *comparator_override,
+            Some(BlockEntity::Container { comparator_override, .. }) => *comparator_override,
             _ => 0,
         },
         Block::Cauldron { level } => level,
         Block::Composter { level } => level,
         Block::Cake { bites } => 14 - 2 * bites,
-        block if block.get_name() == "end_portal_frame" => {
-            super::bool_to_ss(block.property("eye") == Some("true"))
-        }
+        block if block.get_name() == "end_portal_frame" => super::bool_to_ss(block.property("eye") == Some("true")),
         _ => unreachable!("Block does not override comparators"),
     }
 }
@@ -129,11 +115,7 @@ pub fn should_be_powered(comp: RedstoneComparator, world: &impl World, pos: Bloc
     }
 }
 
-fn calculate_output_strength(
-    comp: RedstoneComparator,
-    world: &mut impl World,
-    pos: BlockPos,
-) -> u8 {
+fn calculate_output_strength(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) -> u8 {
     let input_strength = calculate_input_strength(comp, world, pos);
     if comp.mode == ComparatorMode::Subtract {
         input_strength.saturating_sub(get_power_on_sides(comp, world, pos))
@@ -154,12 +136,11 @@ pub fn update(comp: RedstoneComparator, world: &mut impl World, pos: BlockPos) {
         return;
     }
     let output_strength = calculate_output_strength(comp, world, pos);
-    let old_strength =
-        if let Some(BlockEntity::Comparator { output_strength }) = world.get_block_entity(pos) {
-            *output_strength
-        } else {
-            0
-        };
+    let old_strength = if let Some(BlockEntity::Comparator { output_strength }) = world.get_block_entity(pos) {
+        *output_strength
+    } else {
+        0
+    };
     if output_strength != old_strength || comp.powered != should_be_powered(comp, world, pos) {
         let front_block = world.get_block(pos.offset(comp.facing.opposite().block_face()));
         let priority = if super::is_diode(front_block) {

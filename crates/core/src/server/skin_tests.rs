@@ -1,8 +1,6 @@
 use super::*;
 use mchprs_network::packets::PacketDecoderExt;
-use mchprs_network::packets::serverbound::{
-    SClientSettings, SConfigurationFinished, ServerBoundPacket,
-};
+use mchprs_network::packets::serverbound::{SClientSettings, SConfigurationFinished, ServerBoundPacket};
 use std::io::Cursor;
 
 #[test]
@@ -37,11 +35,7 @@ fn configuration_skin_settings_reach_the_player_before_the_first_spawn() {
         let settings = SClientSettings::decode(&mut Cursor::new(settings)).unwrap();
         Box::new(settings).handle(&mut server, 0);
         server.handle_configuration_finished(SConfigurationFinished, 0);
-        let Message::PlayerJoined(player) = server
-            .receiver
-            .recv_timeout(Duration::from_secs(1))
-            .unwrap()
-        else {
+        let Message::PlayerJoined(player) = server.receiver.recv_timeout(Duration::from_secs(1)).unwrap() else {
             panic!("configuration did not produce a player");
         };
         assert_eq!(player.skin_parts.bits(), u32::from(mask & 0x7f));
@@ -50,14 +44,8 @@ fn configuration_skin_settings_reach_the_player_before_the_first_spawn() {
             assert_eq!(metadata.read_varint().unwrap(), player.entity_id as i32);
             for index in [0, 6, 17] {
                 assert_eq!(metadata.read_unsigned_byte().unwrap(), index);
-                assert_eq!(
-                    metadata.read_varint().unwrap(),
-                    if index == 6 { 21 } else { 0 }
-                );
-                assert_eq!(
-                    metadata.read_unsigned_byte().unwrap(),
-                    if index == 17 { mask & 0x7f } else { 0 }
-                );
+                assert_eq!(metadata.read_varint().unwrap(), if index == 6 { 21 } else { 0 });
+                assert_eq!(metadata.read_unsigned_byte().unwrap(), if index == 17 { mask & 0x7f } else { 0 });
             }
             assert_eq!(metadata.read_unsigned_byte().unwrap(), 0xff);
         }

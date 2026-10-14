@@ -32,13 +32,7 @@ pub fn bool_to_ss(b: bool) -> u8 {
     }
 }
 
-fn get_weak_power(
-    block: Block,
-    world: &impl World,
-    pos: BlockPos,
-    side: BlockFace,
-    dust_power: bool,
-) -> u8 {
+fn get_weak_power(block: Block, world: &impl World, pos: BlockPos, side: BlockFace, dust_power: bool) -> u8 {
     let strength = source_strength(block, world, pos);
     if strength > 0 && power::emits_weak_power(block, world, pos, side, dust_power) {
         strength
@@ -69,13 +63,7 @@ pub(crate) fn source_strength(block: Block, world: &impl World, pos: BlockPos) -
     }
 }
 
-fn get_strong_power(
-    block: Block,
-    world: &impl World,
-    pos: BlockPos,
-    side: BlockFace,
-    dust_power: bool,
-) -> u8 {
+fn get_strong_power(block: Block, world: &impl World, pos: BlockPos, side: BlockFace, dust_power: bool) -> u8 {
     let strength = source_strength(block, world, pos);
     if strength > 0 && power::emits_strong_power(block, world, pos, side, dust_power) {
         strength
@@ -88,23 +76,12 @@ fn get_max_strong_power(world: &impl World, pos: BlockPos, dust_power: bool) -> 
     let mut max_power = 0;
     for side in &BlockFace::values() {
         let block = world.get_block(pos.offset(*side));
-        max_power = max_power.max(get_strong_power(
-            block,
-            world,
-            pos.offset(*side),
-            *side,
-            dust_power,
-        ));
+        max_power = max_power.max(get_strong_power(block, world, pos.offset(*side), *side, dust_power));
     }
     max_power
 }
 
-pub fn get_redstone_power(
-    block: Block,
-    world: &impl World,
-    pos: BlockPos,
-    facing: BlockFace,
-) -> u8 {
+pub fn get_redstone_power(block: Block, world: &impl World, pos: BlockPos, facing: BlockFace) -> u8 {
     if block.is_solid() {
         get_max_strong_power(world, pos, true)
     } else {
@@ -125,12 +102,7 @@ fn has_redstone_power(block: Block, world: &impl World, pos: BlockPos, facing: B
     }
 }
 
-fn get_redstone_power_no_dust(
-    block: Block,
-    world: &impl World,
-    pos: BlockPos,
-    facing: BlockFace,
-) -> u8 {
+fn get_redstone_power_no_dust(block: Block, world: &impl World, pos: BlockPos, facing: BlockFace) -> u8 {
     if block.is_solid() {
         get_max_strong_power(world, pos, false)
     } else {
@@ -150,35 +122,20 @@ pub fn on_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPo
 }
 
 fn update_output_neighbors(world: &mut impl World, front_pos: BlockPos, source_face: BlockFace) {
-    diode_notifications(front_pos, source_face, |pos, dir| {
-        update(world.get_block(pos), world, pos, dir)
-    });
+    diode_notifications(front_pos, source_face, |pos, dir| update(world.get_block(pos), world, pos, dir));
 }
 
-pub(crate) fn diode_notifications(
-    front_pos: BlockPos,
-    source_face: BlockFace,
-    mut visit: impl FnMut(BlockPos, Option<BlockFace>),
-) {
+pub(crate) fn diode_notifications(front_pos: BlockPos, source_face: BlockFace, mut visit: impl FnMut(BlockPos, Option<BlockFace>)) {
     visit(front_pos, Some(source_face));
     for direction in BlockFace::values() {
         visit(front_pos.offset(direction), Some(direction));
     }
 }
 
-pub fn wall_torch_should_be_off(
-    world: &impl World,
-    pos: BlockPos,
-    direction: BlockDirection,
-) -> bool {
+pub fn wall_torch_should_be_off(world: &impl World, pos: BlockPos, direction: BlockDirection) -> bool {
     let wall_pos = pos.offset(direction.opposite().block_face());
     let wall_block = world.get_block(wall_pos);
-    has_redstone_power(
-        wall_block,
-        world,
-        wall_pos,
-        direction.opposite().block_face(),
-    )
+    has_redstone_power(wall_block, world, wall_pos, direction.opposite().block_face())
 }
 
 pub fn redstone_lamp_should_be_lit(world: &impl World, pos: BlockPos) -> bool {
@@ -278,11 +235,7 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
                 );
             }
         }
-        Block::IronTrapdoor {
-            powered,
-            facing,
-            half,
-        } => {
+        Block::IronTrapdoor { powered, facing, half } => {
             let should_be_powered = redstone_lamp_should_be_lit(world, pos);
             if powered != should_be_powered {
                 let new_block = Block::IronTrapdoor {
@@ -384,13 +337,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
             if button.powered {
                 button.powered = false;
                 world.set_block(pos, Block::StoneButton { button });
-                world.play_sound(
-                    pos,
-                    crate::sound::event_id("block.stone_button.click_off"),
-                    4,
-                    1.0,
-                    1.0,
-                );
+                world.play_sound(pos, crate::sound::event_id("block.stone_button.click_off"), 4, 1.0, 1.0);
                 update_surrounding_blocks(world, pos);
                 match button.face {
                     ButtonFace::Ceiling => {
@@ -399,10 +346,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                     ButtonFace::Floor => {
                         update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
                     }
-                    ButtonFace::Wall => update_surrounding_blocks(
-                        world,
-                        pos.offset(button.facing.opposite().block_face()),
-                    ),
+                    ButtonFace::Wall => update_surrounding_blocks(world, pos.offset(button.facing.opposite().block_face())),
                 }
             }
         }
@@ -434,16 +378,10 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
 }
 
 fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
-    observer_notifications(facing, pos, |pos, dir| {
-        update(world.get_block(pos), world, pos, dir)
-    });
+    observer_notifications(facing, pos, |pos, dir| update(world.get_block(pos), world, pos, dir));
 }
 
-pub(crate) fn observer_notifications(
-    facing: BlockFacing,
-    pos: BlockPos,
-    mut visit: impl FnMut(BlockPos, Option<BlockFace>),
-) {
+pub(crate) fn observer_notifications(facing: BlockFacing, pos: BlockPos, mut visit: impl FnMut(BlockPos, Option<BlockFace>)) {
     let front_pos = pos.offset(facing.opposite().into());
     visit(front_pos, Some(facing.into()));
     for direction in BlockFace::values() {
@@ -464,10 +402,7 @@ pub fn update_wire_neighbors(world: &mut impl World, pos: BlockPos) {
     });
 }
 
-pub(crate) fn wire_update_notifications(
-    pos: BlockPos,
-    mut visit: impl FnMut(BlockPos, BlockFace, bool),
-) {
+pub(crate) fn wire_update_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace, bool)) {
     for direction in BlockFace::values() {
         let neighbor = pos.offset(direction);
         visit(neighbor, direction.opposite(), false);
@@ -486,11 +421,7 @@ pub fn on_torch_state_change(world: &mut impl World, pos: BlockPos) {
     skipping_update_surrounding_blocks(world, pos, false);
 }
 
-pub fn skipping_update_surrounding_blocks(
-    world: &mut impl World,
-    pos: BlockPos,
-    skip_pistons: bool,
-) {
+pub fn skipping_update_surrounding_blocks(world: &mut impl World, pos: BlockPos, skip_pistons: bool) {
     surrounding_notifications(pos, |target, dir, diagonal| {
         let block = world.get_block(target);
         if diagonal
@@ -507,10 +438,7 @@ pub fn skipping_update_surrounding_blocks(
 /// Visit direct neighbors and their vertical diagonals in interpreter order.
 /// Keep repeated positions, including the origin: these are ordered callbacks.
 /// Callers filter recipients because diagonal rechecks are not watched-block changes.
-pub(crate) fn surrounding_notifications(
-    pos: BlockPos,
-    mut visit: impl FnMut(BlockPos, BlockFace, bool),
-) {
+pub(crate) fn surrounding_notifications(pos: BlockPos, mut visit: impl FnMut(BlockPos, BlockFace, bool)) {
     for direction in &BlockFace::values() {
         let neighbor_pos = pos.offset(*direction);
         visit(neighbor_pos, direction.opposite(), false);
@@ -522,10 +450,7 @@ pub(crate) fn surrounding_notifications(
 }
 
 pub fn is_diode(block: Block) -> bool {
-    matches!(
-        block,
-        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }
-    )
+    matches!(block, Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. })
 }
 
 #[cfg(test)]
@@ -599,14 +524,8 @@ mod tests {
     }
 
     fn java_trace(name: &str) -> serde_json::Value {
-        let data: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../test_data/piston-repair/java-traces.json"
-        ))
-        .unwrap();
-        assert_eq!(
-            data["server_sha1"],
-            "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
-        );
+        let data: serde_json::Value = serde_json::from_str(include_str!("../../../../test_data/piston-repair/java-traces.json")).unwrap();
+        assert_eq!(data["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
         data["fixtures"][name]["trace"].clone()
     }
 
@@ -630,24 +549,14 @@ mod tests {
 
     #[test]
     fn test_edgecase_single_pulse_on_both_outputs() {
-        let reference: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../test_data/piston-repair/java-edgecase-traces.json"
-        ))
-        .unwrap();
-        assert_eq!(
-            reference["server_sha1"],
-            "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
-        );
+        let reference: serde_json::Value =
+            serde_json::from_str(include_str!("../../../../test_data/piston-repair/java-edgecase-traces.json")).unwrap();
+        assert_eq!(reference["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
         let fixture = &reference["fixtures"]["MCHPRS_EDGECASE.schem"];
         use sha2::{Digest, Sha256};
         assert_eq!(
             fixture["sha256"],
-            format!(
-                "{:x}",
-                Sha256::digest(include_bytes!(
-                    "../../../../test_data/MCHPRS_EDGECASE.schem"
-                ))
-            )
+            format!("{:x}", Sha256::digest(include_bytes!("../../../../test_data/MCHPRS_EDGECASE.schem")))
         );
         let expected: Vec<[bool; 2]> = serde_json::from_value(fixture["trace"].clone()).unwrap();
         let invalid = BlockPos::new(100, 30, 100);
@@ -674,26 +583,15 @@ mod tests {
                         "pico" => world.picotick_advance(1),
                         _ => unreachable!(),
                     }
-                    if world.piston_state().logical_tick == target_tick
-                        && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
-                    {
+                    if world.piston_state().logical_tick == target_tick && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks {
                         break;
                     }
                 }
                 assert_eq!(world.piston_state().logical_tick, target_tick);
-                assert_eq!(
-                    world.piston_state().phase,
-                    mchprs_world::AdvancePhase::BetweenTicks
-                );
-                trace.push([
-                    world.is_wire_powered(invalid),
-                    world.is_wire_powered(correct),
-                ]);
+                assert_eq!(world.piston_state().phase, mchprs_world::AdvancePhase::BetweenTicks);
+                trace.push([world.is_wire_powered(invalid), world.is_wire_powered(correct)]);
             }
-            assert_eq!(
-                trace, expected,
-                "Java 1.21.5 edge-case trace with {stepping} stepping"
-            );
+            assert_eq!(trace, expected, "Java 1.21.5 edge-case trace with {stepping} stepping");
             for x in [100, 102] {
                 assert!(world.get_piston_extended(BlockPos::new(x, 30, 103)));
             }
@@ -719,11 +617,9 @@ mod tests {
 
     #[test]
     fn test_memory_cell_unaligned_nanoticks() {
-        let expected: Vec<bool> =
-            serde_json::from_value(java_trace("MemCellUnalignedNanoTicks.schem")).unwrap();
+        let expected: Vec<bool> = serde_json::from_value(java_trace("MemCellUnalignedNanoTicks.schem")).unwrap();
         let cell_pos = BlockPos::new(97, 30, 107);
-        let world =
-            &mut TestWorld::load_with_schematic("MemCellUnalignedNanoTicks.schem", BUTTON_POS);
+        let world = &mut TestWorld::load_with_schematic("MemCellUnalignedNanoTicks.schem", BUTTON_POS);
         assert!(!world.get_piston_extended(cell_pos));
 
         world.place(BUTTON_POS, Block::Air);

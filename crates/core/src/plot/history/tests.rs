@@ -55,11 +55,7 @@ fn state(world: &PlotWorld) -> State {
     State {
         blocks,
         entities,
-        counts: chunk
-            .sections
-            .iter()
-            .map(|section| section.block_count())
-            .collect(),
+        counts: chunk.sections.iter().map(|section| section.block_count()).collect(),
         piston: bincode::serialize(&world.piston_state).unwrap(),
         // Relative delays, FIFO contents, priorities and expected types are observable.
         scheduler: world.to_be_ticked.iter_entries().collect(),
@@ -75,11 +71,7 @@ fn ring_wrap_eviction_rewind_and_new_future() {
         let mut before = Vec::new();
         let mut after = Vec::new();
         for tick in 0..12 {
-            let block = if tick % 2 == 0 {
-                Block::GoldBlock {}
-            } else {
-                Block::Glass {}
-            };
+            let block = if tick % 2 == 0 { Block::GoldBlock {} } else { Block::Glass {} };
             world.set_block(pos, block);
             before.push(state(&world));
             world.tick_interpreted();
@@ -231,11 +223,7 @@ fn edits_and_entity_only_changes_restore_and_snapshot_capture_preserves_packets(
     assert_eq!(packets.len(), 1);
     assert_eq!(packets[0].records.len(), 1);
     assert_eq!(packets[0].records[0].block_id, expected_id);
-    if let Some(BlockEntity::Container {
-        comparator_override,
-        ..
-    }) = world.get_block_entity_mut(pos)
-    {
+    if let Some(BlockEntity::Container { comparator_override, .. }) = world.get_block_entity_mut(pos) {
         *comparator_override = 12;
     }
     world.set_block(BlockPos::new(5, 30, 4), Block::Glass {});
@@ -286,26 +274,14 @@ fn normal_limit_and_admin_override_preserve_existing_history_on_rejection() {
     let before = state(&world);
     let memory = world.history.memory_bytes();
     for ticks in [NORMAL_HISTORY_LIMIT + 1, usize::MAX] {
-        assert!(
-            world
-                .enable_history(ticks, false)
-                .unwrap_err()
-                .contains(UNLIMITED_HISTORY_PERMISSION)
-        );
-        assert!(
-            world
-                .rewind_ticks(ticks, false)
-                .unwrap_err()
-                .contains(UNLIMITED_HISTORY_PERMISSION)
-        );
+        assert!(world.enable_history(ticks, false).unwrap_err().contains(UNLIMITED_HISTORY_PERMISSION));
+        assert!(world.rewind_ticks(ticks, false).unwrap_err().contains(UNLIMITED_HISTORY_PERMISSION));
         assert_eq!(world.history.capacity(), NORMAL_HISTORY_LIMIT);
         assert_eq!(world.history.len(), 1);
         assert_eq!(world.history.memory_bytes(), memory);
         assert_eq!(state(&world), before);
     }
-    world
-        .enable_history(NORMAL_HISTORY_LIMIT + 1, true)
-        .unwrap();
+    world.enable_history(NORMAL_HISTORY_LIMIT + 1, true).unwrap();
     assert_eq!(world.history.capacity(), NORMAL_HISTORY_LIMIT + 1);
     assert_eq!(world.history.len(), 0);
     // Admin bypasses the policy cap, but not depth validation or representable capacity.
@@ -392,9 +368,7 @@ fn shared_dictionary_compresses_repeated_random_data() {
     assert!(shared.compressed);
     assert!(shared.bytes.data.len() < without.bytes.data.len() / 10);
     let mut decoded = vec![0; shared.raw_len];
-    let count =
-        lz4_flex::block::decompress_into_with_dict(&shared.bytes.data, &mut decoded, &dictionary)
-            .unwrap();
+    let count = lz4_flex::block::decompress_into_with_dict(&shared.bytes.data, &mut decoded, &dictionary).unwrap();
     assert_eq!(count, dictionary.len());
     assert_eq!(decoded, dictionary);
 }
@@ -441,11 +415,7 @@ fn byte_limit_evicts_oldest_ticks_without_gaps_and_oversized_capture_stops() {
     let sample = Encoded::encode(raw, world.history.dictionary(), &world.history.work).unwrap();
     let limit = world.history.memory_bytes() + sample.bytes.data.len() * 2 + 8;
     drop(sample);
-    world
-        .history
-        .budget
-        .set_limit(limit, |_| "too small".into(), || Ok(()))
-        .unwrap();
+    world.history.budget.set_limit(limit, |_| "too small".into(), || Ok(())).unwrap();
     for _ in 0..20 {
         world.tick_interpreted();
     }
@@ -483,15 +453,10 @@ fn shared_limits_release_on_drop_and_reenable_rejection_preserves_history() {
     second.enable_history(3, false).unwrap();
     first.tick_interpreted();
     second.tick_interpreted();
-    assert_eq!(
-        budget.stats().0,
-        first.history.memory_bytes() + second.history.memory_bytes()
-    );
+    assert_eq!(budget.stats().0, first.history.memory_bytes() + second.history.memory_bytes());
     let memory = first.history.memory_bytes();
     let before = state(&first);
-    budget
-        .set_limit(budget.stats().0, |_| "too small".into(), || Ok(()))
-        .unwrap();
+    budget.set_limit(budget.stats().0, |_| "too small".into(), || Ok(())).unwrap();
     assert!(first.enable_history(4, false).is_err());
     assert_eq!(first.history.memory_bytes(), memory);
     assert_eq!(state(&first), before);
@@ -518,11 +483,7 @@ fn corrupt_snapshot_or_exhausted_workspace_preserves_rewind_state() {
     assert_eq!(world.history.len(), 1);
     assert_eq!(world.history.memory_bytes(), memory);
     world.history.slots[0].as_mut().unwrap().checksum ^= 1;
-    world
-        .history
-        .work
-        .set_limit(0, |_| "too small".into(), || Ok(()))
-        .unwrap();
+    world.history.work.set_limit(0, |_| "too small".into(), || Ok(())).unwrap();
     assert!(world.rewind_ticks(1, false).is_err());
     assert_eq!(state(&world), before);
     assert_eq!(world.history.len(), 1);
@@ -547,25 +508,15 @@ fn raw_fallback_and_concurrent_reservations_obey_exact_limits() {
     assert!(Bytes::copy(&stored, &encoded.bytes.data).is_ok());
     let held = Bytes::copy(&stored, &encoded.bytes.data).unwrap();
     assert!(stored.reserve(1).is_none());
+    assert!(stored.set_limit(2047, |used| used.to_string(), || Ok(())).is_err());
     assert!(
         stored
-            .set_limit(2047, |used| used.to_string(), || Ok(()))
-            .is_err()
-    );
-    assert!(
-        stored
-            .set_limit(
-                4096,
-                |_| "too small".into(),
-                || Err::<(), String>("disk error".into())
-            )
+            .set_limit(4096, |_| "too small".into(), || Err::<(), String>("disk error".into()))
             .is_err()
     );
     assert_eq!(stored.stats().1, 2048);
     drop(held);
-    stored
-        .set_limit(0, |_| "too small".into(), || Ok(()))
-        .unwrap();
+    stored.set_limit(0, |_| "too small".into(), || Ok(())).unwrap();
     assert!(stored.reserve(1).is_none());
 
     let budget = Budget::new(4);

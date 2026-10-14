@@ -12,10 +12,7 @@ pub(super) fn read_blocks(peer: &mut TcpStream, compressed: bool) -> Vec<(BlockP
 
 pub(super) fn decode_blocks(id: i32, frame: &mut Cursor<Vec<u8>>) -> Vec<(BlockPos, u32)> {
     let blocks = match id {
-        0x08 => vec![(
-            BlockPos::from_packed(frame.read_position().unwrap()),
-            frame.read_varint().unwrap() as u32,
-        )],
+        0x08 => vec![(BlockPos::from_packed(frame.read_position().unwrap()), frame.read_varint().unwrap() as u32)],
         0x4d => {
             let section = frame.read_long().unwrap();
             let origin = BlockPos::new(
@@ -28,12 +25,7 @@ pub(super) fn decode_blocks(id: i32, frame: &mut Cursor<Vec<u8>>) -> Vec<(BlockP
                 .map(|_| {
                     let record = frame.read_varlong().unwrap() as u64;
                     (
-                        origin
-                            + BlockPos::new(
-                                ((record >> 8) & 15) as i32,
-                                (record & 15) as i32,
-                                ((record >> 4) & 15) as i32,
-                            ),
+                        origin + BlockPos::new(((record >> 8) & 15) as i32, (record & 15) as i32, ((record >> 4) & 15) as i32),
                         (record >> 12) as u32,
                     )
                 })

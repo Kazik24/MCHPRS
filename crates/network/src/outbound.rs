@@ -1,8 +1,6 @@
 //! One ordered writer per connection. Only adjacent visual updates may coalesce.
 use crate::packets::PacketEncoder;
-use crate::packets::clientbound::{
-    C3BMultiBlockChangeRecord, CMultiBlockChange, ClientBoundPacket,
-};
+use crate::packets::clientbound::{C3BMultiBlockChangeRecord, CMultiBlockChange, ClientBoundPacket};
 use std::collections::{BTreeMap, VecDeque};
 use std::io::Write;
 use std::net::{Shutdown, TcpStream};
@@ -125,9 +123,10 @@ impl Outbound {
         if pending.closed {
             return;
         }
-        let merge = pending.items.back().is_some_and(|item| {
-            item.compressed == compressed && matches!(item.payload, Payload::Blocks(_))
-        });
+        let merge = pending
+            .items
+            .back()
+            .is_some_and(|item| item.compressed == compressed && matches!(item.payload, Payload::Blocks(_)));
         if !merge {
             pending.items.push_back(Item {
                 compressed,
@@ -137,22 +136,13 @@ impl Outbound {
             pending.bytes += 64;
         }
         let item = pending.items.back_mut().unwrap();
-        let Payload::Blocks(sections) = &mut item.payload else {
-            unreachable!()
-        };
-        let records = sections
-            .entry((packet.chunk_x, packet.chunk_y, packet.chunk_z))
-            .or_default();
+        let Payload::Blocks(sections) = &mut item.payload else { unreachable!() };
+        let records = sections.entry((packet.chunk_x, packet.chunk_y, packet.chunk_z)).or_default();
         let mut added = 0;
         for record in &packet.records {
-            let position =
-                (u16::from(record.x) << 8) | (u16::from(record.z) << 4) | u16::from(record.y);
+            let position = (u16::from(record.x) << 8) | (u16::from(record.z) << 4) | u16::from(record.y);
             if records.insert(position, record.block_id).is_some() {
-                self.handle
-                    .shared
-                    .counters
-                    .coalesced_blocks
-                    .fetch_add(1, Ordering::Relaxed);
+                self.handle.shared.counters.coalesced_blocks.fetch_add(1, Ordering::Relaxed);
             } else {
                 added += 32;
             }
@@ -175,11 +165,7 @@ impl Outbound {
             pending.closed = true;
             pending.items.clear();
             pending.bytes = 0;
-            self.handle
-                .shared
-                .counters
-                .failures
-                .fetch_add(1, Ordering::Relaxed);
+            self.handle.shared.counters.failures.fetch_add(1, Ordering::Relaxed);
         }
         self.handle.shared.ready.notify_one();
     }
@@ -240,10 +226,7 @@ impl Outbound {
                             .encode()
                         })
                         .collect();
-                    shared
-                        .counters
-                        .encode_ns
-                        .fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
+                    shared.counters.encode_ns.fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
                     packets
                 }
             };
@@ -255,16 +238,10 @@ impl Outbound {
                 } else {
                     packet.write_uncompressed(&mut bytes)
                 };
-                shared
-                    .counters
-                    .compress_ns
-                    .fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
+                shared.counters.compress_ns.fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
                 let now = Instant::now();
                 let result = result.and_then(|()| stream.write_all(&bytes));
-                shared
-                    .counters
-                    .write_ns
-                    .fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
+                shared.counters.write_ns.fetch_add(now.elapsed().as_nanos() as u64, Ordering::Relaxed);
                 if let Err(error) = result {
                     tracing::warn!(
                         peer = ?shared.peer,
@@ -280,10 +257,7 @@ impl Outbound {
                     return;
                 }
                 shared.counters.packets.fetch_add(1, Ordering::Relaxed);
-                shared
-                    .counters
-                    .bytes
-                    .fetch_add(bytes.len() as u64, Ordering::Relaxed);
+                shared.counters.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
             }
         }
     }

@@ -12,9 +12,7 @@ mod minecraft_data;
 pub fn minecraft_blocks(input: TokenStream) -> TokenStream {
     parse_macro_input!(input as syn::parse::Nothing);
     minecraft_data::blocks()
-        .unwrap_or_else(|message| {
-            Error::new(proc_macro2::Span::call_site(), message).to_compile_error()
-        })
+        .unwrap_or_else(|message| Error::new(proc_macro2::Span::call_site(), message).to_compile_error())
         .into()
 }
 
@@ -23,9 +21,7 @@ pub fn minecraft_blocks(input: TokenStream) -> TokenStream {
 pub fn minecraft_protocol(input: TokenStream) -> TokenStream {
     parse_macro_input!(input as syn::parse::Nothing);
     minecraft_data::protocol()
-        .unwrap_or_else(|message| {
-            Error::new(proc_macro2::Span::call_site(), message).to_compile_error()
-        })
+        .unwrap_or_else(|message| Error::new(proc_macro2::Span::call_site(), message).to_compile_error())
         .into()
 }
 
@@ -43,10 +39,7 @@ fn create_block_property_impl(input: DeriveInput) -> Result<TokenStream, Error> 
     let fields = match input.data {
         Data::Struct(ds) => ds.fields,
         _ => {
-            return Err(Error::new_spanned(
-                input,
-                "BlockProperty proxy type must be a struct",
-            ));
+            return Err(Error::new_spanned(input, "BlockProperty proxy type must be a struct"));
         }
     };
     let field_types: Vec<&Type> = fields.iter().map(|f| &f.ty).collect();
@@ -85,10 +78,7 @@ fn create_block_transform_impl(input: DeriveInput) -> Result<TokenStream, Error>
     let fields = match input.data {
         Data::Struct(ds) => ds.fields,
         _ => {
-            return Err(Error::new_spanned(
-                input,
-                "BlockTransform proxy type must be a struct",
-            ));
+            return Err(Error::new_spanned(input, "BlockTransform proxy type must be a struct"));
         }
     };
     let field_types: Vec<&Type> = fields.iter().map(|f| &f.ty).collect();

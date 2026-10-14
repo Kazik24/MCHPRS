@@ -41,12 +41,7 @@ pub fn play_note(world: &mut impl World, pos: BlockPos, instrument: Instrument, 
 }
 
 /// The client waits for the server to play a manually tuned note.
-pub fn play_note_for_action(
-    world: &mut impl World,
-    pos: BlockPos,
-    instrument: Instrument,
-    note: u32,
-) {
+pub fn play_note_for_action(world: &mut impl World, pos: BlockPos, instrument: Instrument, note: u32) {
     let Some(pitch) = pitch(note) else {
         return;
     };

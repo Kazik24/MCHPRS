@@ -2,9 +2,7 @@
 use super::legacy_1_21_5::LegacyTick;
 use crate::plot_data::{ChunkData, ChunkSectionData, PlotData, PlotLoadError, Tps, WorldSendRate};
 use mchprs_blocks::BlockPos;
-use mchprs_blocks::block_entities::{
-    self as current, ContainerType, InventoryEntry, MovingPistonEntity,
-};
+use mchprs_blocks::block_entities::{self as current, ContainerType, InventoryEntry, MovingPistonEntity};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
@@ -57,22 +55,17 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
         let mut sections = chunk.sections;
         for section in sections.iter_mut().flatten() {
             if !(4..=15).contains(&section.bits_per_block) || section.entries != 4096 {
-                return Err(PlotLoadError::InvalidLegacyId(
-                    "invalid chunk section geometry".into(),
-                ));
+                return Err(PlotLoadError::InvalidLegacyId("invalid chunk section geometry".into()));
             }
             let bits = section.bits_per_block as usize;
             let per = 64 / bits;
             if section.data.len() != section.entries.div_ceil(per) {
-                return Err(PlotLoadError::InvalidLegacyId(
-                    "invalid chunk section data length".into(),
-                ));
+                return Err(PlotLoadError::InvalidLegacyId("invalid chunk section data length".into()));
             }
             if bits >= 9 {
                 let mut data = vec![0i64; section.entries.div_ceil(4)];
                 for i in 0..section.entries {
-                    let id = ((section.data[i / per] as u64 >> ((i % per) * bits))
-                        & ((1 << bits) - 1)) as u32;
+                    let id = ((section.data[i / per] as u64 >> ((i % per) * bits)) & ((1 << bits) - 1)) as u32;
                     data[i / 4] |= (state(id)? as i64) << ((i % 4) * 15);
                 }
                 section.bits_per_block = 15;
@@ -86,9 +79,7 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
         let mut entities = FxHashMap::default();
         for (pos, entity) in chunk.block_entities {
             let entity = match entity {
-                Entity::Comparator { output_strength } => {
-                    current::BlockEntity::Comparator { output_strength }
-                }
+                Entity::Comparator { output_strength } => current::BlockEntity::Comparator { output_strength },
                 Entity::Container {
                     comparator_override,
                     mut inventory,
@@ -103,12 +94,10 @@ pub fn convert<const N: usize>(old: Plot<N>) -> Result<PlotData<N>, PlotLoadErro
                         ty,
                     }
                 }
-                Entity::Sign(sign) => {
-                    current::BlockEntity::Sign(Box::new(current::SignBlockEntity {
-                        rows: sign.rows,
-                        ..Default::default()
-                    }))
-                }
+                Entity::Sign(sign) => current::BlockEntity::Sign(Box::new(current::SignBlockEntity {
+                    rows: sign.rows,
+                    ..Default::default()
+                })),
                 Entity::MovingPiston(mut piston) => {
                     piston.block_state = state(piston.block_state)?;
                     current::BlockEntity::MovingPiston(piston)

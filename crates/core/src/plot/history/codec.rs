@@ -21,11 +21,7 @@ pub(super) struct Snapshot {
 
 impl Snapshot {
     pub fn restore(self, world: &mut PlotWorld) {
-        world.chunks = self
-            .chunks
-            .into_iter()
-            .map(|(x, z, data)| Chunk::load(x, z, data))
-            .collect();
+        world.chunks = self.chunks.into_iter().map(|(x, z, data)| Chunk::load(x, z, data)).collect();
         world.to_be_ticked = self.ticks.into_iter().collect();
         world.piston_state = self.piston_state;
         world.invalidate_interpreter_caches();
@@ -77,8 +73,7 @@ pub(super) fn capture_raw(world: &mut PlotWorld, work: &Arc<Budget>) -> Result<B
         piston_state: &world.piston_state,
     };
     let serialized_size = bincode::serialized_size(&view).map_err(|error| error.to_string())?;
-    let size = usize::try_from(serialized_size)
-        .map_err(|_| messages::HISTORY_SNAPSHOT_TOO_LARGE.to_owned())?;
+    let size = usize::try_from(serialized_size).map_err(|_| messages::HISTORY_SNAPSHOT_TOO_LARGE.to_owned())?;
     let mut raw = Bytes::zeroed(work, size).map_err(messages::history_capture_workspace_failed)?;
     bincode::serialize_into(Cursor::new(&mut raw.data[..]), &view).map_err(|e| e.to_string())?;
     Ok(raw)
@@ -101,10 +96,8 @@ impl Encoded {
             .map(|n| n / 100)
             .and_then(|n| n.checked_add(20))
             .ok_or_else(|| messages::HISTORY_COMPRESSION_SIZE_OVERFLOW.to_owned())?;
-        let mut output =
-            Bytes::zeroed(work, bound).map_err(messages::history_compression_workspace_failed)?;
-        let size = lz4_flex::block::compress_into_with_dict(&raw.data, &mut output.data, dict)
-            .map_err(|e| e.to_string())?;
+        let mut output = Bytes::zeroed(work, bound).map_err(messages::history_compression_workspace_failed)?;
+        let size = lz4_flex::block::compress_into_with_dict(&raw.data, &mut output.data, dict).map_err(|e| e.to_string())?;
 
         if size < raw_len {
             output.data.truncate(size);
@@ -147,11 +140,9 @@ impl Encoded {
     }
 
     fn decompress(&self, dict: &[u8], work: &Arc<Budget>) -> Result<Bytes, String> {
-        let mut buffer =
-            Bytes::zeroed(work, self.raw_len).map_err(messages::history_rewind_workspace_failed)?;
+        let mut buffer = Bytes::zeroed(work, self.raw_len).map_err(messages::history_rewind_workspace_failed)?;
         let count =
-            lz4_flex::block::decompress_into_with_dict(&self.bytes.data, &mut buffer.data, dict)
-                .map_err(messages::history_compression_invalid)?;
+            lz4_flex::block::decompress_into_with_dict(&self.bytes.data, &mut buffer.data, dict).map_err(messages::history_compression_invalid)?;
         if count != self.raw_len {
             return Err(messages::HISTORY_DECODE_SIZE_INVALID.into());
         }

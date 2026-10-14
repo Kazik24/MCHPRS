@@ -45,14 +45,7 @@ pub(crate) fn sample(world: &impl World, pos: BlockPos, extended: bool, powered:
         "piston_sample",
         serde_json::json!({"pos":pos,"extended":extended,"powered":powered}),
     );
-    record(
-        world,
-        Operation::Sample {
-            pos,
-            extended,
-            powered,
-        },
-    );
+    record(world, Operation::Sample { pos, extended, powered });
 }
 
 pub(crate) fn applied(world: &impl World, event: PistonEvent) {

@@ -1,27 +1,16 @@
 use super::*;
 use crate::redpiler::analysis::callbacks;
 use crate::redpiler::program_graph::{
-    CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, LinkKind, OperandView,
-    Route, SiteSource,
+    CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, LinkKind, OperandView, Route, SiteSource,
 };
 use mchprs_blocks::block_entities::MovingPistonEntity;
 use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneObserver, TrapdoorHalf};
 use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstonePistonHead};
 
-fn prepare_callbacks_for(
-    world: &PlotWorld,
-) -> (GeometryResult, ElectricalDraft, callbacks::CallbackDraft) {
+fn prepare_callbacks_for(world: &PlotWorld) -> (GeometryResult, ElectricalDraft, callbacks::CallbackDraft) {
     let geometry = prepare_geometry_for(world).unwrap();
-    let mut electrical = electrical::prepare_electrical(
-        world,
-        geometry.report.bounds,
-        &geometry.draft,
-        &Default::default(),
-    )
-    .unwrap();
-    let callbacks =
-        callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &Default::default())
-            .unwrap();
+    let mut electrical = electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let callbacks = callbacks::prepare_callbacks(world, &geometry.draft, &mut electrical, &Default::default()).unwrap();
     (geometry, electrical, callbacks)
 }
 
@@ -35,22 +24,14 @@ fn route_for(
         .iter()
         .find(|node| node.position == Some(position) && matches(&node.kind))
         .unwrap_or_else(|| panic!("no callback source at {position:?}"));
-    node.output_route
-        .unwrap_or_else(|| panic!("node at {position:?} has no output route"))
+    node.output_route.unwrap_or_else(|| panic!("node at {position:?} has no output route"))
 }
 
-fn route_position(
-    electrical: &ElectricalDraft,
-    delivery: &crate::redpiler::program_graph::RouteDelivery,
-) -> BlockPos {
+fn route_position(electrical: &ElectricalDraft, delivery: &crate::redpiler::program_graph::RouteDelivery) -> BlockPos {
     electrical.sites[delivery.target.index()].position
 }
 
-fn selected_updates(
-    world: &PlotWorld,
-    electrical: &ElectricalDraft,
-    route: &Route,
-) -> Vec<(BlockPos, Option<BlockFace>)> {
+fn selected_updates(world: &PlotWorld, electrical: &ElectricalDraft, route: &Route) -> Vec<(BlockPos, Option<BlockFace>)> {
     route
         .deliveries
         .iter()
@@ -60,14 +41,10 @@ fn selected_updates(
             };
             let site = electrical.sites[delivery.target.index()];
             let selected = match site.source {
-                SiteSource::Contact(contact) => electrical.contacts[contact.index()]
-                    .variants
-                    .iter()
-                    .any(|variant| {
-                        variant.when == delivery.guard
-                            && electrical.profiles[variant.profile.index()].raw_state
-                                == world.get_block(site.position).get_id()
-                    }),
+                SiteSource::Contact(contact) => electrical.contacts[contact.index()].variants.iter().any(|variant| {
+                    variant.when == delivery.guard
+                        && electrical.profiles[variant.profile.index()].raw_state == world.get_block(site.position).get_id()
+                }),
                 _ => true,
             };
             selected.then_some((site.position, direction))
@@ -120,12 +97,7 @@ fn native_completion_updates(
     });
     trace
         .iter()
-        .filter(|entry| {
-            entry["kind"] == "callback"
-                && entry["data"]["parents"]
-                    .as_array()
-                    .is_some_and(Vec::is_empty)
-        })
+        .filter(|entry| entry["kind"] == "callback" && entry["data"]["parents"].as_array().is_some_and(Vec::is_empty))
         .map(|entry| {
             (
                 serde_json::from_value(entry["data"]["pos"].clone()).unwrap(),
@@ -141,18 +113,12 @@ fn control_routes_keep_native_sequence_directions_and_repeated_targets() {
     world.set_block(
         BASE,
         Block::Lever {
-            lever: Lever::new(
-                LeverFace::Floor,
-                mchprs_blocks::BlockDirection::North,
-                false,
-            ),
+            lever: Lever::new(LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
         },
     );
     world.set_block(BASE.offset(BlockFace::Bottom), Block::Stone {});
     let (_, electrical, callbacks) = prepare_callbacks_for(&world);
-    let route_id = route_for(&electrical, BASE, |kind| {
-        matches!(kind, CircuitNodeKind::Electrical(NodeType::Lever))
-    });
+    let route_id = route_for(&electrical, BASE, |kind| matches!(kind, CircuitNodeKind::Electrical(NodeType::Lever)));
     let route = &callbacks.routes[route_id.index()];
 
     let mut expected = Vec::new();
@@ -162,9 +128,7 @@ fn control_routes_keep_native_sequence_directions_and_repeated_targets() {
         });
     }
     assert_eq!(route.deliveries.len(), expected.len());
-    for (sequence, (delivery, (target, direction))) in
-        route.deliveries.iter().zip(expected).enumerate()
-    {
+    for (sequence, (delivery, (target, direction))) in route.deliveries.iter().zip(expected).enumerate() {
         assert_eq!(delivery.sequence, sequence as u32);
         assert_eq!(route_position(&electrical, delivery), target);
         assert_eq!(delivery.kind, DeliveryKind::Update { direction });
@@ -174,10 +138,7 @@ fn control_routes_keep_native_sequence_directions_and_repeated_targets() {
         .iter()
         .filter(|delivery| route_position(&electrical, delivery) == BASE)
         .count();
-    assert!(
-        repeated > 1,
-        "overlapping notification loops must retain duplicates"
-    );
+    assert!(repeated > 1, "overlapping notification loops must retain duplicates");
 }
 
 #[test]
@@ -197,11 +158,7 @@ fn repeater_and_comparator_keep_their_distinct_first_directions() {
     world.set_block(
         comparator_pos,
         Block::RedstoneComparator {
-            comparator: RedstoneComparator::new(
-                mchprs_blocks::BlockDirection::East,
-                ComparatorMode::Compare,
-                false,
-            ),
+            comparator: RedstoneComparator::new(mchprs_blocks::BlockDirection::East, ComparatorMode::Compare, false),
         },
     );
     let (_, electrical, callbacks) = prepare_callbacks_for(&world);
@@ -209,14 +166,9 @@ fn repeater_and_comparator_keep_their_distinct_first_directions() {
         matches!(kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
     });
     let comparator_route = route_for(&electrical, comparator_pos, |kind| {
-        matches!(
-            kind,
-            CircuitNodeKind::Electrical(NodeType::Comparator { .. })
-        )
+        matches!(kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. }))
     });
-    let first = |route_id: crate::redpiler::program_graph::RouteId| {
-        callbacks.routes[route_id.index()].deliveries[0]
-    };
+    let first = |route_id: crate::redpiler::program_graph::RouteId| callbacks.routes[route_id.index()].deliveries[0];
     assert_eq!(
         first(repeater_route).kind,
         DeliveryKind::Update {
@@ -233,14 +185,9 @@ fn repeater_and_comparator_keep_their_distinct_first_directions() {
     assert_eq!(route.deliveries.len(), 7);
 
     // Compare mode notifies even when its stored analog output remains zero.
-    world.set_block_entity(
-        comparator_pos,
-        BlockEntity::Comparator { output_strength: 0 },
-    );
+    world.set_block_entity(comparator_pos, BlockEntity::Comparator { output_strength: 0 });
     let front = comparator_pos.offset(BlockFace::West);
-    let watched: Vec<_> = std::iter::once(front)
-        .chain(BlockFace::values().map(|face| front.offset(face)))
-        .collect();
+    let watched: Vec<_> = std::iter::once(front).chain(BlockFace::values().map(|face| front.offset(face))).collect();
     let callbacks_seen = crate::redstone::instant_piston_tests::capture_at(&watched, || {
         let Block::RedstoneComparator { comparator } = world.get_block(comparator_pos) else {
             unreachable!();
@@ -309,12 +256,7 @@ fn piston_route_separates_shape_observer_and_power_notifications() {
         .filter(|delivery| route_position(&electrical, delivery) == observer_pos)
         .collect();
     assert_eq!(observer_deliveries.len(), 2);
-    assert_eq!(
-        observer_deliveries[0].kind,
-        DeliveryKind::Shape {
-            direction: BlockFace::West
-        }
-    );
+    assert_eq!(observer_deliveries[0].kind, DeliveryKind::Shape { direction: BlockFace::West });
     assert_eq!(
         observer_deliveries[1].kind,
         DeliveryKind::Update {
@@ -331,26 +273,17 @@ fn piston_route_separates_shape_observer_and_power_notifications() {
             )
     }));
 
-    let observer = electrical
-        .nodes
-        .iter()
-        .find(|node| node.position == Some(observer_pos))
-        .unwrap();
+    let observer = electrical.nodes.iter().find(|node| node.position == Some(observer_pos)).unwrap();
     let CircuitNodeKind::Observer { watched, .. } = &observer.kind else {
         panic!("expected specialized observer")
     };
     assert_eq!(electrical.sites[watched.index()].position, BASE);
-    assert!(matches!(
-        electrical.sites[watched.index()].source,
-        SiteSource::Contact(_)
-    ));
+    assert!(matches!(electrical.sites[watched.index()].source, SiteSource::Contact(_)));
 
     let near_pos = geometry.draft.contacts[piston.near.index()].position;
     assert!(
         route.deliveries.iter().any(|delivery| {
-            route_position(&electrical, delivery) == near_pos
-                && delivery.receiver
-                    == Some(CallbackReceiver::PistonHead(geometry.draft.pistons[0].id))
+            route_position(&electrical, delivery) == near_pos && delivery.receiver == Some(CallbackReceiver::PistonHead(geometry.draft.pistons[0].id))
         }),
         "the prospective head is selected by the near contact at delivery"
     );
@@ -446,12 +379,7 @@ fn restoration_routes_match_native_head_and_resource_completions() {
     };
 
     let mut extension = make_resource_world();
-    extension.set_block(
-        BASE,
-        Block::Piston {
-            piston: sticky.extend(true),
-        },
-    );
+    extension.set_block(BASE, Block::Piston { piston: sticky.extend(true) });
     extension.set_block(
         near_pos,
         Block::PistonHead {
@@ -469,10 +397,7 @@ fn restoration_routes_match_native_head_and_resource_completions() {
         true,
         false,
     );
-    assert_eq!(
-        extension_actual,
-        selected_updates(&extension, &electrical, far_route)
-    );
+    assert_eq!(extension_actual, selected_updates(&extension, &electrical, far_route));
     assert_eq!(extension_actual.first(), Some(&(far_pos, None)));
 
     let mut pull = empty();
@@ -489,19 +414,11 @@ fn restoration_routes_match_native_head_and_resource_completions() {
         false,
         false,
     );
-    assert_eq!(
-        pull_actual,
-        selected_updates(&pull, &electrical, near_route)
-    );
+    assert_eq!(pull_actual, selected_updates(&pull, &electrical, near_route));
     assert_eq!(pull_actual.first(), Some(&(near_pos, None)));
 
     let mut interrupted = make_resource_world();
-    interrupted.set_block(
-        BASE,
-        Block::Piston {
-            piston: sticky.extend(true),
-        },
-    );
+    interrupted.set_block(BASE, Block::Piston { piston: sticky.extend(true) });
     interrupted.set_block(
         near_pos,
         Block::PistonHead {
@@ -519,10 +436,7 @@ fn restoration_routes_match_native_head_and_resource_completions() {
         true,
         true,
     );
-    assert_eq!(
-        interrupted_actual,
-        selected_updates(&interrupted, &electrical, far_route)
-    );
+    assert_eq!(interrupted_actual, selected_updates(&interrupted, &electrical, far_route));
     assert_eq!(interrupted_actual.first(), Some(&(far_pos, None)));
 }
 
@@ -532,12 +446,7 @@ fn turbo_route_retains_captured_contact_eligibility() {
     world.set_block(BASE, piston_block(BlockFace::East, false, false));
     let wire_pos = BASE + BlockPos::new(1, 0, -1);
     world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
-    world.set_block(
-        wire_pos,
-        Block::RedstoneWire {
-            wire: Default::default(),
-        },
-    );
+    world.set_block(wire_pos, Block::RedstoneWire { wire: Default::default() });
     let (geometry, electrical, callbacks) = prepare_callbacks_for(&world);
     let wire_index = electrical
         .wires
@@ -549,8 +458,7 @@ fn turbo_route_retains_captured_contact_eligibility() {
     let mut found_captured_head = false;
     let route = electrical.wires[wire_index].turbo_route.unwrap();
     for delivery in callbacks.routes[route.index()].deliveries.iter() {
-        if route_position(&electrical, delivery) == near_pos
-            && delivery.receiver == Some(CallbackReceiver::PistonHead(geometry.draft.pistons[0].id))
+        if route_position(&electrical, delivery) == near_pos && delivery.receiver == Some(CallbackReceiver::PistonHead(geometry.draft.pistons[0].id))
         {
             assert_eq!(delivery.view, OperandView::Captured);
             assert!(matches!(
@@ -564,10 +472,7 @@ fn turbo_route_retains_captured_contact_eligibility() {
             found_captured_head = true;
         }
     }
-    assert!(
-        found_captured_head,
-        "wire Turbo candidates must retain captured head eligibility"
-    );
+    assert!(found_captured_head, "wire Turbo candidates must retain captured head eligibility");
 }
 
 #[test]
@@ -576,11 +481,7 @@ fn callback_targets_outside_component_inventory_are_rejected() {
     world.set_block(
         BASE,
         Block::Lever {
-            lever: Lever::new(
-                LeverFace::Floor,
-                mchprs_blocks::BlockDirection::North,
-                false,
-            ),
+            lever: Lever::new(LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
         },
     );
     let external = BASE.offset(BlockFace::East);
@@ -590,16 +491,8 @@ fn callback_targets_outside_component_inventory_are_rejected() {
     world.set_block(external, repeater);
     let bounds = (BASE, BASE);
     let geometry = prepare_geometry_with_bounds(&world, bounds).unwrap();
-    let mut electrical =
-        electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default())
-            .unwrap();
-    let error = callbacks::prepare_callbacks(
-        &world,
-        &geometry.draft,
-        &mut electrical,
-        &Default::default(),
-    )
-    .unwrap_err();
+    let mut electrical = electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default()).unwrap();
+    let error = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default()).unwrap_err();
     assert_eq!(
         error,
         callbacks::CallbackError::UninventoriedReceiver {
@@ -627,30 +520,14 @@ fn unsupported_external_hopper_and_trapdoor_dependencies_name_type_and_reason() 
         world.set_block(
             BASE,
             Block::Lever {
-                lever: Lever::new(
-                    LeverFace::Floor,
-                    mchprs_blocks::BlockDirection::North,
-                    false,
-                ),
+                lever: Lever::new(LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
             },
         );
         let external = BASE.offset(BlockFace::East);
         world.set_block(external, block);
         let geometry = prepare_geometry_with_bounds(&world, (BASE, BASE)).unwrap();
-        let mut electrical = electrical::prepare_electrical(
-            &world,
-            (BASE, BASE),
-            &geometry.draft,
-            &Default::default(),
-        )
-        .unwrap();
-        let error = callbacks::prepare_callbacks(
-            &world,
-            &geometry.draft,
-            &mut electrical,
-            &Default::default(),
-        )
-        .unwrap_err();
+        let mut electrical = electrical::prepare_electrical(&world, (BASE, BASE), &geometry.draft, &Default::default()).unwrap();
+        let error = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default()).unwrap_err();
         let message = error.to_string();
         assert!(message.contains(expected_name), "{message}");
         assert!(message.contains(&format!("{external:?}")), "{message}");

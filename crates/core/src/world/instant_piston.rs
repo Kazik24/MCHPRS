@@ -47,14 +47,7 @@ impl InstantPistonCache {
         )
     }
 
-    pub(crate) fn tracks(
-        &self,
-        base: BlockPos,
-        face: BlockFace,
-        slot: usize,
-        id: u64,
-        extending: bool,
-    ) -> bool {
+    pub(crate) fn tracks(&self, base: BlockPos, face: BlockFace, slot: usize, id: u64, extending: bool) -> bool {
         let Some(entry) = self.entries.get(&base).filter(|entry| entry.face == face) else {
             return false;
         };
@@ -62,12 +55,8 @@ impl InstantPistonCache {
             return false;
         }
         match entry.stage {
-            Stage::Retracting { ids, finished } if !extending => {
-                ids[slot] == id && finished & (1 << slot) == 0
-            }
-            Stage::Resetting { ids, finished } if extending => {
-                ids[slot] == id && finished & (1 << slot) == 0
-            }
+            Stage::Retracting { ids, finished } if !extending => ids[slot] == id && finished & (1 << slot) == 0,
+            Stage::Resetting { ids, finished } if extending => ids[slot] == id && finished & (1 << slot) == 0,
             _ => false,
         }
     }
@@ -105,18 +94,10 @@ impl InstantPistonCache {
     }
 
     pub(crate) fn has_routes(&self, base: BlockPos, face: BlockFace) -> bool {
-        self.entries
-            .get(&base)
-            .is_some_and(|entry| entry.face == face && entry.routes.is_some())
+        self.entries.get(&base).is_some_and(|entry| entry.face == face && entry.routes.is_some())
     }
 
-    pub(crate) fn begin_reset(
-        &mut self,
-        base: BlockPos,
-        face: BlockFace,
-        ids: [u64; 2],
-        routes: Option<PowerRoutes>,
-    ) {
+    pub(crate) fn begin_reset(&mut self, base: BlockPos, face: BlockFace, ids: [u64; 2], routes: Option<PowerRoutes>) {
         let Some(entry) = self.entries.get_mut(&base) else {
             return;
         };
@@ -134,15 +115,7 @@ impl InstantPistonCache {
         entry.stage = Stage::Resetting { ids, finished: 0 };
     }
 
-    pub(crate) fn completed(
-        &mut self,
-        base: BlockPos,
-        face: BlockFace,
-        slot: usize,
-        id: u64,
-        extending: bool,
-        footprint_ok: bool,
-    ) {
+    pub(crate) fn completed(&mut self, base: BlockPos, face: BlockFace, slot: usize, id: u64, extending: bool, footprint_ok: bool) {
         let Some(entry) = self.entries.get_mut(&base) else {
             return;
         };
@@ -180,8 +153,7 @@ impl InstantPistonCache {
             .filter(|entry| entry.face == face && entry.proven)?
             .routes
             .as_ref()?;
-        self.power_route_hits
-            .set(self.power_route_hits.get().saturating_add(1));
+        self.power_route_hits.set(self.power_route_hits.get().saturating_add(1));
         Some(routes)
     }
 
@@ -200,12 +172,8 @@ impl InstantPistonCache {
         }
         if let Some(entry) = self.entries.get(&pos) {
             let matches = match new {
-                Block::Piston { piston } => {
-                    piston.sticky && BlockFace::from(piston.facing) == entry.face
-                }
-                Block::MovingPiston { moving } => {
-                    moving.sticky && BlockFace::from(moving.facing) == entry.face
-                }
+                Block::Piston { piston } => piston.sticky && BlockFace::from(piston.facing) == entry.face,
+                Block::MovingPiston { moving } => moving.sticky && BlockFace::from(moving.facing) == entry.face,
                 _ => false,
             };
             if !matches {
@@ -220,18 +188,13 @@ impl InstantPistonCache {
             self.invalidate(pos.offset(BlockFace::Bottom));
         }
         let cap_base = pos.offset(BlockFace::Bottom).offset(BlockFace::Bottom);
-        if self.entries.contains_key(&cap_base)
-            && ((!new.is_solid() && old.is_solid()) || old.get_name() != new.get_name())
-        {
+        if self.entries.contains_key(&cap_base) && ((!new.is_solid() && old.is_solid()) || old.get_name() != new.get_name()) {
             self.invalidate(cap_base);
         }
         let transport_block = |block| {
             matches!(
                 block,
-                Block::Air
-                    | Block::RedstoneBlock {}
-                    | Block::MovingPiston { .. }
-                    | Block::PistonHead { .. }
+                Block::Air | Block::RedstoneBlock {} | Block::MovingPiston { .. } | Block::PistonHead { .. }
             )
         };
         let restoring_motion = matches!(old, Block::MovingPiston { .. });
@@ -250,14 +213,8 @@ impl InstantPistonCache {
                         && (!restoring_motion
                             || match new {
                                 Block::RedstoneBlock => false,
-                                Block::PistonHead { head } => {
-                                    !head.sticky
-                                        || head.short
-                                        || BlockFace::from(head.facing) != face
-                                }
-                                Block::MovingPiston { moving } => {
-                                    !moving.sticky || BlockFace::from(moving.facing) != face
-                                }
+                                Block::PistonHead { head } => !head.sticky || head.short || BlockFace::from(head.facing) != face,
+                                Block::MovingPiston { moving } => !moving.sticky || BlockFace::from(moving.facing) != face,
                                 _ => true,
                             })
                 }) {
@@ -271,22 +228,16 @@ impl InstantPistonCache {
         if self.is_empty() {
             return;
         }
-        let candidates =
-            std::iter::once(pos).chain(BlockFace::values().into_iter().flat_map(|face| {
-                let head_base = pos.offset(face.opposite());
-                [head_base, head_base.offset(face.opposite())]
-            }));
+        let candidates = std::iter::once(pos).chain(BlockFace::values().into_iter().flat_map(|face| {
+            let head_base = pos.offset(face.opposite());
+            [head_base, head_base.offset(face.opposite())]
+        }));
         for base in candidates {
             let reject = self.entries.get(&base).is_some_and(|entry| {
                 let head = base.offset(entry.face);
                 match entry.stage {
-                    Stage::Retracting { ids, .. } => {
-                        (base == pos && ids[0] == id) || (head == pos && ids[1] == id)
-                    }
-                    Stage::Resetting { ids, .. } => {
-                        (head == pos && ids[0] == id)
-                            || (head.offset(entry.face) == pos && ids[1] == id)
-                    }
+                    Stage::Retracting { ids, .. } => (base == pos && ids[0] == id) || (head == pos && ids[1] == id),
+                    Stage::Resetting { ids, .. } => (head == pos && ids[0] == id) || (head.offset(entry.face) == pos && ids[1] == id),
                     _ => false,
                 }
             });
@@ -307,11 +258,7 @@ impl InstantPistonCache {
         for face in BlockFace::values() {
             let head_base = pos.offset(face.opposite());
             for base in [head_base, head_base.offset(face.opposite())] {
-                if self
-                    .entries
-                    .get(&base)
-                    .is_some_and(|entry| entry.face == face)
-                {
+                if self.entries.get(&base).is_some_and(|entry| entry.face == face) {
                     self.invalidate(base);
                 }
             }
@@ -381,31 +328,16 @@ mod tests {
         assert!(cache.power_routes(base(), BlockFace::East).is_none());
         cache.completed(base(), BlockFace::East, 0, 3, true, true);
         assert_eq!(cache.stats(), (1, 1, 0));
-        assert_eq!(
-            cache.power_routes(base(), BlockFace::East).unwrap()[0]
-                .source
-                .cell,
-            Some(5)
-        );
+        assert_eq!(cache.power_routes(base(), BlockFace::East).unwrap()[0].source.cell, Some(5));
         cache.begin_retract(base(), BlockFace::East, [5, 6]);
         assert_eq!(cache.stats(), (1, 1, 1));
         cache.completed(base(), BlockFace::East, 0, 5, false, true);
         cache.completed(base(), BlockFace::East, 1, 6, false, true);
         cache.begin_reset(base(), BlockFace::East, [7, 8], None);
-        assert_eq!(
-            cache.power_routes(base(), BlockFace::East).unwrap()[0]
-                .source
-                .cell,
-            Some(5)
-        );
+        assert_eq!(cache.power_routes(base(), BlockFace::East).unwrap()[0].source.cell, Some(5));
         cache.completed(base(), BlockFace::East, 0, 7, true, true);
         cache.completed(base(), BlockFace::East, 1, 8, true, true);
-        assert_eq!(
-            cache.power_routes(base(), BlockFace::East).unwrap()[0]
-                .source
-                .cell,
-            Some(5)
-        );
+        assert_eq!(cache.power_routes(base(), BlockFace::East).unwrap()[0].source.cell, Some(5));
     }
 
     #[test]
@@ -486,11 +418,7 @@ mod tests {
                 Block::Air,
             ),
             (base().offset(BlockFace::Top), observer, Block::Air),
-            (
-                base().offset(BlockFace::Top).offset(BlockFace::Top),
-                Block::Stone {},
-                Block::Air,
-            ),
+            (base().offset(BlockFace::Top).offset(BlockFace::Top), Block::Stone {}, Block::Air),
             (
                 base().offset(BlockFace::Top).offset(BlockFace::Top),
                 Block::Stone {},
@@ -533,11 +461,7 @@ mod tests {
                     .into(),
                 },
                 Block::PistonHead {
-                    head: RedstonePiston {
-                        sticky: false,
-                        ..piston
-                    }
-                    .into(),
+                    head: RedstonePiston { sticky: false, ..piston }.into(),
                 },
                 Block::PistonHead {
                     head: mchprs_blocks::blocks::RedstonePistonHead {
@@ -548,21 +472,12 @@ mod tests {
             ] {
                 let mut cache = proven();
                 cache.block_changed(pos, moving, restored);
-                assert!(
-                    cache.is_empty(),
-                    "malformed restoration at {pos:?}: {restored:?}"
-                );
+                assert!(cache.is_empty(), "malformed restoration at {pos:?}: {restored:?}");
             }
         }
         let mut cache = proven();
         cache.block_changed(base(), moving, Block::Piston { piston });
-        cache.block_changed(
-            head,
-            moving,
-            Block::PistonHead {
-                head: piston.into(),
-            },
-        );
+        cache.block_changed(head, moving, Block::PistonHead { head: piston.into() });
         cache.block_changed(far, moving, Block::RedstoneBlock);
         assert_eq!(cache.stats().1, 1);
     }
@@ -584,10 +499,7 @@ mod tests {
         for pos in [
             base().offset(BlockFace::North),
             base().offset(BlockFace::West).offset(BlockFace::West),
-            base()
-                .offset(BlockFace::East)
-                .offset(BlockFace::East)
-                .offset(BlockFace::East),
+            base().offset(BlockFace::East).offset(BlockFace::East).offset(BlockFace::East),
         ] {
             cache.entity_changed(pos);
             assert_eq!(cache.stats().1, 1, "unrelated entity edit at {pos:?}");
@@ -607,20 +519,13 @@ mod tests {
                         cache.begin_reset(base(), face, [3, 4], Some(routes(5)));
                     }
                     let head = base().offset(face);
-                    let positions = if extending {
-                        [head, head.offset(face)]
-                    } else {
-                        [base(), head]
-                    };
+                    let positions = if extending { [head, head.offset(face)] } else { [base(), head] };
                     let ids = if extending { [3, 4] } else { [1, 2] };
                     cache.reject_motion(positions[slot], 99);
                     cache.reject_motion(base().offset(face.opposite()), ids[slot]);
                     assert!(cache.tracks(base(), face, slot, ids[slot], extending));
                     cache.reject_motion(positions[slot], ids[slot]);
-                    assert!(
-                        cache.is_empty(),
-                        "face={face:?} extending={extending} slot={slot}"
-                    );
+                    assert!(cache.is_empty(), "face={face:?} extending={extending} slot={slot}");
                 }
             }
         }

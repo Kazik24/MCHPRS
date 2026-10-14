@@ -46,12 +46,7 @@ fn callback_research_inventory_covers_shared_adder_at_o0_and_o1() {
             .unwrap_or_else(|error| panic!("{} O{level}: {error}", circuit.id));
         let inventory = compiler.graph_callback_inventory().unwrap();
         assert!(inventory["exact_duplicate_route_bodies"].as_u64().unwrap() > 0);
-        assert!(
-            inventory["exact_duplicate_route_body_delivery_rows"]
-                .as_u64()
-                .unwrap()
-                > 0
-        );
+        assert!(inventory["exact_duplicate_route_body_delivery_rows"].as_u64().unwrap() > 0);
         println!(
             "CALLBACK_INVENTORY fixture={} optimization=O{level} data={}",
             circuit.id,
@@ -64,9 +59,7 @@ fn empty_world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -91,17 +84,12 @@ struct Adder {
 
 fn load_adder(id: &'static str, anchor: BlockPos, rotation: Option<RotateAmt>) -> Adder {
     let directory = root().join("test_data/instant-pistons-io");
-    let manifest: Value = serde_json::from_slice(
-        &std::fs::read(directory.join("fixtures").join(format!("{id}.json"))).unwrap(),
-    )
-    .unwrap();
+    let manifest: Value = serde_json::from_slice(&std::fs::read(directory.join("fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
     let filename = manifest["fixture"].as_str().unwrap();
     let bytes = std::fs::read(root().join(filename)).unwrap();
     let hash = format!("{:x}", Sha256::digest(&bytes));
     assert_eq!(manifest["sha256"], hash);
-    let pinned: Value =
-        serde_json::from_slice(&std::fs::read(directory.join("download-manifest.json")).unwrap())
-            .unwrap();
+    let pinned: Value = serde_json::from_slice(&std::fs::read(directory.join("download-manifest.json")).unwrap()).unwrap();
     let file = filename.rsplit('/').next().unwrap();
     let entry = pinned["files"]
         .as_array()
@@ -113,11 +101,7 @@ fn load_adder(id: &'static str, anchor: BlockPos, rotation: Option<RotateAmt>) -
     assert_eq!(entry["bytes"].as_u64().unwrap() as usize, bytes.len());
 
     let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
-    let size = BlockPos::new(
-        clipboard.size_x as i32,
-        clipboard.size_y as i32,
-        clipboard.size_z as i32,
-    );
+    let size = BlockPos::new(clipboard.size_x as i32, clipboard.size_y as i32, clipboard.size_z as i32);
     let mut imported = empty_world();
     paste_clipboard(
         &mut imported,
@@ -145,10 +129,7 @@ fn load_adder(id: &'static str, anchor: BlockPos, rotation: Option<RotateAmt>) -
     }
     controls.sort_by_key(|p| (p.x, p.y, p.z));
     assert_eq!(controls.len(), if id == "adder_1bit" { 4 } else { 23 });
-    assert_eq!(
-        manifest["dimensions"],
-        serde_json::json!([size.x, size.y, size.z])
-    );
+    assert_eq!(manifest["dimensions"], serde_json::json!([size.x, size.y, size.z]));
     Adder {
         id,
         hash,
@@ -217,10 +198,7 @@ impl Adder {
 
     fn port_positions(&self, group: &str, name: &str) -> Vec<BlockPos> {
         fn flatten(value: &Value, out: &mut Vec<BlockPos>) {
-            if value
-                .as_array()
-                .is_some_and(|v| v.len() == 3 && v[0].is_number())
-            {
+            if value.as_array().is_some_and(|v| v.len() == 3 && v[0].is_number()) {
                 out.push(local(value));
             } else if let Some(values) = value.as_array() {
                 for value in values {
@@ -230,10 +208,7 @@ impl Adder {
         }
         let mut local_positions = Vec::new();
         flatten(&self.ports[group][name], &mut local_positions);
-        local_positions
-            .into_iter()
-            .map(|position| self.place(position))
-            .collect()
+        local_positions.into_iter().map(|position| self.place(position)).collect()
     }
 
     fn trigger(&self) -> BlockPos {
@@ -267,10 +242,7 @@ fn case_steps(circuit: &Adder, case: &Value, reverse_data: bool, trigger: bool) 
             }
             "lever" => data.push(step_for_action(circuit, action)),
             "wait" | "wait_ready" => {
-                waits.extend(std::iter::repeat_n(
-                    Step::Tick,
-                    action["ticks"].as_u64().unwrap() as usize,
-                ));
+                waits.extend(std::iter::repeat_n(Step::Tick, action["ticks"].as_u64().unwrap() as usize));
             }
             op => panic!("unexpected adder fixture action: {op}"),
         }
@@ -308,11 +280,7 @@ fn native_step(world: &mut PlotWorld, step: Step) {
     }
 }
 
-fn graph_step(
-    backend: &mut GraphBackend,
-    step: Step,
-    toggle: bool,
-) -> Result<(), GraphExecutionError> {
+fn graph_step(backend: &mut GraphBackend, step: Step, toggle: bool) -> Result<(), GraphExecutionError> {
     match step {
         Step::Tick => backend.tick(),
         Step::SetLever { position, .. } => {
@@ -347,25 +315,14 @@ fn future(world: &PlotWorld, positions: &[BlockPos]) -> Future {
             .collect(),
         entities: positions
             .iter()
-            .filter_map(|&position| {
-                world
-                    .get_block_entity(position)
-                    .map(|entity| (position, format!("{entity:?}")))
-            })
+            .filter_map(|&position| world.get_block_entity(position).map(|entity| (position, format!("{entity:?}"))))
             .collect(),
         scheduled: world.scheduler().iter_entries().collect(),
         events: state.events.iter().copied().collect(),
         motions: state
             .motions
             .iter()
-            .map(|motion| {
-                (
-                    motion.pos,
-                    motion.progress,
-                    motion.previous_progress,
-                    motion.last_tick,
-                )
-            })
+            .map(|motion| (motion.pos, motion.progress, motion.previous_progress, motion.last_tick))
             .collect(),
     }
 }
@@ -410,18 +367,11 @@ struct Coverage {
     accepted_retractions: usize,
 }
 
-fn check_boundary(
-    backend: &GraphBackend,
-    native: &PlotWorld,
-    scratch: &mut PlotWorld,
-    positions: &[BlockPos],
-    label: &str,
-) -> Result<(), String> {
+fn check_boundary(backend: &GraphBackend, native: &PlotWorld, scratch: &mut PlotWorld, positions: &[BlockPos], label: &str) -> Result<(), String> {
     project(backend, scratch);
     let expected = future(native, positions);
     let actual = future(scratch, positions);
-    first_difference(&expected, &actual)
-        .map_or(Ok(()), |difference| Err(format!("{label}: {difference}")))
+    first_difference(&expected, &actual).map_or(Ok(()), |difference| Err(format!("{label}: {difference}")))
 }
 
 fn payload_bit(world: &PlotWorld, position: BlockPos) -> Option<u16> {
@@ -446,9 +396,7 @@ fn assert_math_window(circuit: &Adder, world: &PlotWorld, sum: u16, carry: u16, 
         let bits = payload
             .iter()
             .enumerate()
-            .try_fold(0, |value, (index, &position)| {
-                Some(value | (payload_bit(world, position)? << index))
-            });
+            .try_fold(0, |value, (index, &position)| Some(value | (payload_bit(world, position)? << index)));
         assert_eq!(bits, Some(sum), "{} sum payload at tick {tick}", circuit.id);
     }
     if (3..=7).contains(&tick) {
@@ -456,9 +404,7 @@ fn assert_math_window(circuit: &Adder, world: &PlotWorld, sum: u16, carry: u16, 
             .port_positions("observations", "sum_repeater")
             .iter()
             .enumerate()
-            .fold(0, |value, (index, &position)| {
-                value | (repeater_bit(world, position) << index)
-            });
+            .fold(0, |value, (index, &position)| value | (repeater_bit(world, position) << index));
         assert_eq!(bits, sum, "{} sum consumer at tick {tick}", circuit.id);
     }
     if circuit.id == "adder_1bit" && (5..=9).contains(&tick) {
@@ -478,8 +424,8 @@ fn replay(
     let mut native = circuit.build();
     let mut scratch = circuit.build();
     let ticks = native.scheduler().iter_entries().collect();
-    let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default())
-        .map_err(|error| format!("{} compile: {error}", circuit.id))?;
+    let mut backend =
+        GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default()).map_err(|error| format!("{} compile: {error}", circuit.id))?;
     backend.set_test_recording(true);
     let mut coverage = Coverage::default();
     check_boundary(&backend, &native, &mut scratch, &positions, "initial")?;
@@ -496,8 +442,7 @@ fn replay(
         };
         let start = backend.observed_operations.len();
         let entries = capture_at(&positions, || native_step(&mut native, step));
-        graph_step(&mut backend, step, toggle)
-            .map_err(|error| format!("{} step {index}: {error:?}", circuit.id))?;
+        graph_step(&mut backend, step, toggle).map_err(|error| format!("{} step {index}: {error:?}", circuit.id))?;
         let expected_ops = native_operations(&entries, &positions);
         let actual_ops = graph_operations_since(&backend, start, &positions);
         if expected_ops != actual_ops {
@@ -506,9 +451,7 @@ fn replay(
                 .zip(&actual_ops)
                 .position(|(native, graph)| native != graph)
                 .unwrap_or(expected_ops.len().min(actual_ops.len()));
-            let show = |operations: &[Operation]| {
-                operations[first.saturating_sub(8)..(first + 8).min(operations.len())].to_vec()
-            };
+            let show = |operations: &[Operation]| operations[first.saturating_sub(8)..(first + 8).min(operations.len())].to_vec();
             return Err(format!(
                 "{} step {index} {step:?}, operation {first}: native {:?}; graph {:?}",
                 circuit.id,
@@ -516,11 +459,7 @@ fn replay(
                 show(&actual_ops)
             ));
         }
-        if accepted_at == Some(index)
-            && !actual_ops
-                .iter()
-                .any(|operation| matches!(operation, Operation::Accepted { .. }))
-        {
+        if accepted_at == Some(index) && !actual_ops.iter().any(|operation| matches!(operation, Operation::Accepted { .. })) {
             return Err(format!(
                 "{} step {index}: expected an accepted piston action before later inhibition",
                 circuit.id
@@ -550,13 +489,7 @@ fn replay(
                 _ => {}
             }
         }
-        check_boundary(
-            &backend,
-            &native,
-            &mut scratch,
-            &positions,
-            &format!("step {index} {step:?}"),
-        )?;
+        check_boundary(&backend, &native, &mut scratch, &positions, &format!("step {index} {step:?}"))?;
         coverage.boundaries += 1;
         if let (Some(response_start), Some((sum, carry))) = (response_start, expected) {
             if index >= response_start {
@@ -581,42 +514,17 @@ fn expectation(circuit: &Adder, case: &Value) -> (u16, u16) {
     );
     let width = if circuit.id == "adder_1bit" { 1 } else { 11 };
     let mask = (1 << width) - 1;
-    assert_eq!(
-        expected,
-        (total & mask, total >> width),
-        "{} {} arithmetic",
-        circuit.id,
-        case["id"]
-    );
+    assert_eq!(expected, (total & mask, total >> width), "{} {} arithmetic", circuit.id, case["id"]);
     expected
 }
 
 fn assert_case_outputs(circuit: &Adder, case: &Value) -> Result<Coverage, String> {
     let mut steps = case_steps(circuit, case, false, true);
     let response_start = steps.len();
-    steps.extend(std::iter::repeat_n(
-        Step::Tick,
-        case["ticks"].as_u64().unwrap() as usize,
-    ));
-    let (coverage, counts) = replay(
-        circuit,
-        &steps,
-        Some(response_start),
-        Some(expectation(circuit, case)),
-        None,
-    )?;
-    assert!(
-        coverage.callbacks > 0,
-        "{} {} callbacks",
-        circuit.id,
-        case["id"]
-    );
-    assert!(
-        coverage.samples > 0,
-        "{} {} samples",
-        circuit.id,
-        case["id"]
-    );
+    steps.extend(std::iter::repeat_n(Step::Tick, case["ticks"].as_u64().unwrap() as usize));
+    let (coverage, counts) = replay(circuit, &steps, Some(response_start), Some(expectation(circuit, case)), None)?;
+    assert!(coverage.callbacks > 0, "{} {} callbacks", circuit.id, case["id"]);
+    assert!(coverage.samples > 0, "{} {} samples", circuit.id, case["id"]);
     assert!(counts.ticks > 0 && counts.wire_walks > 0);
     Ok(coverage)
 }
@@ -626,15 +534,8 @@ fn one_bit_all_inputs_and_eleven_bit_manifest_vectors_match_every_graph_boundary
     let mut total = BTreeMap::new();
     for id in FAMILY {
         let circuit = load_adder(id, ORIGIN, None);
-        let manifest: Value = serde_json::from_slice(
-            &std::fs::read(
-                root()
-                    .join("test_data/instant-pistons-io/fixtures")
-                    .join(format!("{id}.json")),
-            )
-            .unwrap(),
-        )
-        .unwrap();
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
         let cases: Vec<_> = manifest["cases"]
             .as_array()
             .unwrap()
@@ -644,8 +545,7 @@ fn one_bit_all_inputs_and_eleven_bit_manifest_vectors_match_every_graph_boundary
         assert_eq!(cases.len(), if id == "adder_1bit" { 8 } else { 40 });
         let mut coverage = Coverage::default();
         for &case in &cases {
-            let case_coverage = assert_case_outputs(&circuit, case)
-                .unwrap_or_else(|error| panic!("{} {}: {error}", id, case["id"]));
+            let case_coverage = assert_case_outputs(&circuit, case).unwrap_or_else(|error| panic!("{} {}: {error}", id, case["id"]));
             coverage.boundaries += case_coverage.boundaries;
             coverage.acceptance_attempts += case_coverage.acceptance_attempts;
             coverage.accepted_extensions += case_coverage.accepted_extensions;
@@ -662,26 +562,11 @@ fn one_bit_all_inputs_and_eleven_bit_manifest_vectors_match_every_graph_boundary
 
 #[test]
 fn adder_operands_accept_reversed_order_same_tick_cancel_hold_and_rearm() {
-    for (id, case_id) in [
-        ("adder_1bit", "prepared-1-1-1"),
-        ("adder_11bits", "prepared-1365-682-0"),
-    ] {
+    for (id, case_id) in [("adder_1bit", "prepared-1-1-1"), ("adder_11bits", "prepared-1365-682-0")] {
         let circuit = load_adder(id, ORIGIN, None);
-        let manifest: Value = serde_json::from_slice(
-            &std::fs::read(
-                root()
-                    .join("test_data/instant-pistons-io/fixtures")
-                    .join(format!("{id}.json")),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let case = manifest["cases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|case| case["id"] == case_id)
-            .unwrap();
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
+        let case = manifest["cases"].as_array().unwrap().iter().find(|case| case["id"] == case_id).unwrap();
         for (name, mut steps) in [
             ("reverse-order", case_steps(&circuit, case, true, true)),
             ("same-tick-cancel", case_steps(&circuit, case, false, false)),
@@ -718,8 +603,7 @@ fn adder_operands_accept_reversed_order_same_tick_cancel_hold_and_rearm() {
             } else {
                 steps.extend(std::iter::repeat_n(Step::Tick, 24));
             }
-            let (coverage, counts) = replay(&circuit, &steps, None, None, None)
-                .unwrap_or_else(|error| panic!("{} {name}: {error}", circuit.id));
+            let (coverage, counts) = replay(&circuit, &steps, None, None, None).unwrap_or_else(|error| panic!("{} {name}: {error}", circuit.id));
             assert!(coverage.operations > 0, "{} {name}", circuit.id);
             assert!(counts.callbacks > 0 && counts.piston_samples > 0);
         }
@@ -729,11 +613,8 @@ fn adder_operands_accept_reversed_order_same_tick_cancel_hold_and_rearm() {
 #[test]
 fn inhibition_after_acceptance_does_not_cancel_an_adder_action() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
-    let manifest: Value = serde_json::from_slice(
-        &std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json"))
-            .unwrap(),
-    )
-    .unwrap();
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
     let case = manifest["cases"]
         .as_array()
         .unwrap()
@@ -748,57 +629,25 @@ fn inhibition_after_acceptance_does_not_cancel_an_adder_action() {
         powered: true,
     });
     steps.extend(std::iter::repeat_n(Step::Tick, 24));
-    let (coverage, _) = replay(&circuit, &steps, None, None, Some(accepted_at))
-        .unwrap_or_else(|error| panic!("late inhibition: {error}"));
+    let (coverage, _) = replay(&circuit, &steps, None, None, Some(accepted_at)).unwrap_or_else(|error| panic!("late inhibition: {error}"));
     assert!(coverage.accepted_extensions > 0);
 }
 
 #[test]
 fn translated_rotated_adders_preserve_world_up_qc_and_native_timing() {
     for (id, case_id, anchor, rotation) in [
-        (
-            "adder_1bit",
-            "prepared-1-1-1",
-            BlockPos::new(110, 30, 110),
-            RotateAmt::Rotate90,
-        ),
-        (
-            "adder_11bits",
-            "prepared-2047-1-0",
-            BlockPos::new(130, 30, 130),
-            RotateAmt::Rotate270,
-        ),
+        ("adder_1bit", "prepared-1-1-1", BlockPos::new(110, 30, 110), RotateAmt::Rotate90),
+        ("adder_11bits", "prepared-2047-1-0", BlockPos::new(130, 30, 130), RotateAmt::Rotate270),
     ] {
         let circuit = load_adder(id, anchor, Some(rotation));
-        let manifest: Value = serde_json::from_slice(
-            &std::fs::read(
-                root()
-                    .join("test_data/instant-pistons-io/fixtures")
-                    .join(format!("{id}.json")),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let case = manifest["cases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|case| case["id"] == case_id)
-            .unwrap();
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
+        let case = manifest["cases"].as_array().unwrap().iter().find(|case| case["id"] == case_id).unwrap();
         let mut steps = case_steps(&circuit, case, false, true);
         let response_start = steps.len();
-        steps.extend(std::iter::repeat_n(
-            Step::Tick,
-            case["ticks"].as_u64().unwrap() as usize,
-        ));
-        replay(
-            &circuit,
-            &steps,
-            Some(response_start),
-            Some(expectation(&circuit, case)),
-            None,
-        )
-        .unwrap_or_else(|error| panic!("{id} {case_id} rotated: {error}"));
+        steps.extend(std::iter::repeat_n(Step::Tick, case["ticks"].as_u64().unwrap() as usize));
+        replay(&circuit, &steps, Some(response_start), Some(expectation(&circuit, case)), None)
+            .unwrap_or_else(|error| panic!("{id} {case_id} rotated: {error}"));
     }
 }
 
@@ -811,8 +660,8 @@ fn reset_and_continue(circuit: &Adder, case: &Value, response_tick: usize, expec
     let mut native = circuit.build();
     let mut handed_back = circuit.build();
     let ticks = native.scheduler().iter_entries().collect();
-    let mut backend = GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default())
-        .unwrap_or_else(|error| panic!("{} compile: {error}", circuit.id));
+    let mut backend =
+        GraphBackend::compile(&native, circuit.bounds(), ticks, Arc::default()).unwrap_or_else(|error| panic!("{} compile: {error}", circuit.id));
     backend.set_test_recording(true);
     let mut scratch = circuit.build();
     for (index, &step) in steps[..cut].iter().enumerate() {
@@ -834,26 +683,15 @@ fn reset_and_continue(circuit: &Adder, case: &Value, response_tick: usize, expec
             "{} prefix step {index}",
             circuit.id
         );
-        check_boundary(&backend, &native, &mut scratch, &positions, "reset prefix")
-            .unwrap_or_else(|error| panic!("{error}"));
+        check_boundary(&backend, &native, &mut scratch, &positions, "reset prefix").unwrap_or_else(|error| panic!("{error}"));
     }
     let pending = |world: &PlotWorld| {
-        !world.piston_state().motions.is_empty()
-            || !world.piston_state().events.is_empty()
-            || !world.piston_state().movement_work.is_empty()
+        !world.piston_state().motions.is_empty() || !world.piston_state().events.is_empty() || !world.piston_state().movement_work.is_empty()
     };
-    assert_eq!(
-        pending(&native),
-        expected_active,
-        "{} cut {response_tick}",
-        circuit.id
-    );
+    assert_eq!(pending(&native), expected_active, "{} cut {response_tick}", circuit.id);
     backend.reset(&mut handed_back);
     assert_eq!(
-        first_difference(
-            &future(&native, &positions),
-            &future(&handed_back, &positions)
-        ),
+        first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
         None,
         "{} reset at response tick {response_tick}",
         circuit.id
@@ -865,10 +703,7 @@ fn reset_and_continue(circuit: &Adder, case: &Value, response_tick: usize, expec
         native.tick_interpreted();
         handed_back.tick_interpreted();
         assert_eq!(
-            first_difference(
-                &future(&native, &positions),
-                &future(&handed_back, &positions)
-            ),
+            first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
             None,
             "{} interpreter continuation after reset",
             circuit.id
@@ -876,9 +711,8 @@ fn reset_and_continue(circuit: &Adder, case: &Value, response_tick: usize, expec
     }
     if !pending(&native) && !pending(&handed_back) {
         let ticks = handed_back.scheduler().iter_entries().collect();
-        let mut resumed =
-            GraphBackend::compile(&handed_back, circuit.bounds(), ticks, Arc::default())
-                .unwrap_or_else(|error| panic!("{} recompile: {error}", circuit.id));
+        let mut resumed = GraphBackend::compile(&handed_back, circuit.bounds(), ticks, Arc::default())
+            .unwrap_or_else(|error| panic!("{} recompile: {error}", circuit.id));
         for tick in 0..4 {
             native.tick_interpreted();
             resumed.tick().unwrap();
@@ -902,11 +736,8 @@ fn reset_and_continue(circuit: &Adder, case: &Value, response_tick: usize, expec
 #[test]
 fn graph_reset_at_early_and_late_adder_cuts_hands_back_the_same_future() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
-    let manifest: Value = serde_json::from_slice(
-        &std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json"))
-            .unwrap(),
-    )
-    .unwrap();
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
     let active_case = manifest["cases"]
         .as_array()
         .unwrap()
@@ -938,12 +769,7 @@ fn structure(circuit: &Adder) -> String {
         };
         *kinds.entry(name).or_default() += 1;
     }
-    let deliveries = backend
-        .program
-        .routes()
-        .iter()
-        .map(|route| route.deliveries.len())
-        .sum::<usize>();
+    let deliveries = backend.program.routes().iter().map(|route| route.deliveries.len()).sum::<usize>();
     let shared: Vec<_> = backend
         .program
         .resources()
@@ -953,12 +779,8 @@ fn structure(circuit: &Adder) -> String {
         .collect();
     let mut pistons_by_z = BTreeMap::<i32, usize>::new();
     for piston in backend.program.pistons() {
-        let position = backend.program.nodes()[piston.node.index()]
-            .position
-            .unwrap();
-        *pistons_by_z
-            .entry(position.z - circuit.anchor.z)
-            .or_default() += 1;
+        let position = backend.program.nodes()[piston.node.index()].position.unwrap();
+        *pistons_by_z.entry(position.z - circuit.anchor.z).or_default() += 1;
     }
     format!(
         "{} sha256={} nodes={} {:?}; profiles={} guards={} sites={} contacts={} pistons={} resources={} shared-resource arities={:?}; wires={} power-links={} routes={} ordered-deliveries={} pistons-per-z={:?}",

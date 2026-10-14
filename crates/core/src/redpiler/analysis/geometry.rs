@@ -4,9 +4,8 @@ use super::{AdmissionIssue, AnalysisError, AnalysisLimits, AnalysisReport, analy
 use crate::interaction;
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::program_graph::{
-    CircuitNodeDraft, CircuitNodeKind, ComponentState, ContactId, NodeId, PistonAvailability,
-    PistonId, PistonLane, PistonState, Profile, ProfileElectrical, ProfileId, ResourceId,
-    ResourceSpec, ResourceState,
+    CircuitNodeDraft, CircuitNodeKind, ComponentState, ContactId, NodeId, PistonAvailability, PistonId, PistonLane, PistonState, Profile,
+    ProfileElectrical, ProfileId, ResourceId, ResourceSpec, ResourceState,
 };
 use crate::world::World;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
@@ -72,43 +71,21 @@ pub(crate) enum GeometryIssue {
 impl fmt::Display for GeometryIssue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MalformedHead {
-                actor,
-                position,
-                found,
-            } => write!(
-                f,
-                "piston at {actor:?} has malformed head at {position:?} (state {found})"
-            ),
+            Self::MalformedHead { actor, position, found } => write!(f, "piston at {actor:?} has malformed head at {position:?} (state {found})"),
             Self::MissingMotionMetadata { position } => {
-                write!(
-                    f,
-                    "moving piston at {position:?} has missing motion metadata"
-                )
+                write!(f, "moving piston at {position:?} has missing motion metadata")
             }
-            Self::UnsupportedMaterial {
-                actor,
-                position,
-                block,
-            } => write!(
+            Self::UnsupportedMaterial { actor, position, block } => write!(
                 f,
                 "piston at {actor:?} may transport unsupported {} at {position:?}",
                 Block::from_id(*block).get_name()
             ),
-            Self::OrdinaryPush {
-                actor,
-                position,
-                block,
-            } => write!(
+            Self::OrdinaryPush { actor, position, block } => write!(
                 f,
                 "ordinary piston at {actor:?} may push {} at {position:?}",
                 Block::from_id(*block).get_name()
             ),
-            Self::PossibleLongerPush {
-                actor,
-                position,
-                block,
-            } => write!(
+            Self::PossibleLongerPush { actor, position, block } => write!(
                 f,
                 "piston at {actor:?} may make an unsupported longer push through {} at {position:?}",
                 Block::from_id(*block).get_name()
@@ -117,14 +94,10 @@ impl fmt::Display for GeometryIssue {
                 f,
                 "piston at {actor:?} has a possible payload line blocked by changing head at {position:?}"
             ),
-            Self::OutsideFootprint { actor, position } => write!(
-                f,
-                "piston at {actor:?} may move a payload outside the compiled footprint at {position:?}"
-            ),
-            Self::UnknownExternalOccupancy { actor, position } => write!(
-                f,
-                "piston at {actor:?} needs unknown external occupancy at {position:?}"
-            ),
+            Self::OutsideFootprint { actor, position } => {
+                write!(f, "piston at {actor:?} may move a payload outside the compiled footprint at {position:?}")
+            }
+            Self::UnknownExternalOccupancy { actor, position } => write!(f, "piston at {actor:?} needs unknown external occupancy at {position:?}"),
             Self::SupportLoss {
                 actor,
                 changed,
@@ -137,14 +110,9 @@ impl fmt::Display for GeometryIssue {
                 Block::from_id(*block).get_name(),
                 Block::from_id(*support_state).get_name(),
             ),
-            Self::MultipleResources {
-                actor,
-                first,
-                second,
-            } => write!(
-                f,
-                "piston at {actor:?} can connect independent payloads at {first:?} and {second:?}"
-            ),
+            Self::MultipleResources { actor, first, second } => {
+                write!(f, "piston at {actor:?} can connect independent payloads at {first:?} and {second:?}")
+            }
             Self::ContactLimit => f.write_str("piston geometry contact budget exceeded"),
         }
     }
@@ -314,14 +282,8 @@ impl<W: World> Probe<'_, W> {
         if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&position.y) {
             return Ok(Block::Air);
         }
-        if self
-            .world
-            .get_chunk(position.x.div_euclid(16), position.z.div_euclid(16))
-            .is_none()
-        {
-            return Err(GeometryError::Rejected(
-                GeometryIssue::UnknownExternalOccupancy { actor, position },
-            ));
+        if self.world.get_chunk(position.x.div_euclid(16), position.z.div_euclid(16)).is_none() {
+            return Err(GeometryError::Rejected(GeometryIssue::UnknownExternalOccupancy { actor, position }));
         }
         let block = self.world.get_block(position);
         self.blocks.insert(position, block);
@@ -388,22 +350,13 @@ fn validate_entry(world: &impl World, report: &AnalysisReport) -> Result<(), Geo
 }
 
 fn validate_moving_metadata(world: &impl World, position: BlockPos) -> Result<(), GeometryError> {
-    if !matches!(
-        world.get_block_entity(position),
-        Some(BlockEntity::MovingPiston(_))
-    ) || world.piston_motion_index(position, None).is_none()
-    {
-        return Err(GeometryError::Rejected(
-            GeometryIssue::MissingMotionMetadata { position },
-        ));
+    if !matches!(world.get_block_entity(position), Some(BlockEntity::MovingPiston(_))) || world.piston_motion_index(position, None).is_none() {
+        return Err(GeometryError::Rejected(GeometryIssue::MissingMotionMetadata { position }));
     }
     Ok(())
 }
 
-fn inventory_actors<W: World>(
-    probe: &mut Probe<'_, W>,
-    report: &AnalysisReport,
-) -> Result<Vec<Actor>, GeometryError> {
+fn inventory_actors<W: World>(probe: &mut Probe<'_, W>, report: &AnalysisReport) -> Result<Vec<Actor>, GeometryError> {
     let mut actors = Vec::with_capacity(report.pistons.len());
     for (index, &position) in report.pistons.iter().enumerate() {
         let Block::Piston { piston } = probe.block(position, position)? else {
@@ -458,13 +411,7 @@ fn inventory_actors<W: World>(
 fn resolve_resources<W: World>(
     probe: &mut Probe<'_, W>,
     actors: &[Actor],
-) -> Result<
-    (
-        Vec<(BlockPos, Vec<BlockPos>, Vec<ResourceWitness>)>,
-        FxHashMap<BlockPos, ResourceId>,
-    ),
-    GeometryError,
-> {
+) -> Result<(Vec<(BlockPos, Vec<BlockPos>, Vec<ResourceWitness>)>, FxHashMap<BlockPos, ResourceId>), GeometryError> {
     let mut seeds: FxHashMap<BlockPos, Vec<WitnessSeed>> = FxHashMap::default();
     let mut edges = Vec::new();
 
@@ -472,13 +419,7 @@ fn resolve_resources<W: World>(
         let line = if actor.piston.extended {
             None
         } else {
-            Some(payload_line(
-                probe,
-                actor.position,
-                actor.near,
-                actor.facing,
-                None,
-            )?)
+            Some(payload_line(probe, actor.position, actor.near, actor.facing, None)?)
         };
         if let Some(line) = &line {
             if let LineEnd::Air(end) = line.end {
@@ -521,10 +462,9 @@ fn resolve_resources<W: World>(
             continue;
         }
         let extension_can_settle = actor.piston.extended
-            || line.as_ref().is_some_and(|line| {
-                matches!(line.end, LineEnd::Air(_))
-                    || matches!(line.end, LineEnd::Head(_)) && line.blocks.is_empty()
-            });
+            || line
+                .as_ref()
+                .is_some_and(|line| matches!(line.end, LineEnd::Air(_)) || matches!(line.end, LineEnd::Head(_)) && line.blocks.is_empty());
         let far_block = probe.block(actor.position, actor.far)?;
         if extension_can_settle && far_block != Block::Air && !is_container(far_block) {
             classify_material(actor.position, actor.far, far_block, probe.world)?;
@@ -565,11 +505,7 @@ fn resolve_resources<W: World>(
             }
         }
         contacts.sort_by_key(|p| (p.y, p.z, p.x));
-        let payloads: Vec<_> = contacts
-            .iter()
-            .filter(|position| seeds.contains_key(position))
-            .copied()
-            .collect();
+        let payloads: Vec<_> = contacts.iter().filter(|position| seeds.contains_key(position)).copied().collect();
         if payloads.len() > 1 {
             let actor = seeds[&payloads[1]][0].actor;
             return Err(GeometryError::Rejected(GeometryIssue::MultipleResources {
@@ -605,9 +541,7 @@ fn payload_line<W: World>(
     let mut blocks = Vec::new();
     let mut position = start;
     loop {
-        if empty_resource_contacts
-            .is_some_and(|(contacts, resource)| contacts.get(&position) == Some(&resource))
-        {
+        if empty_resource_contacts.is_some_and(|(contacts, resource)| contacts.get(&position) == Some(&resource)) {
             return Ok(PayloadLine {
                 blocks,
                 end: LineEnd::Air(position),
@@ -635,9 +569,7 @@ fn payload_line<W: World>(
         match block {
             Block::MovingPiston { .. } => {
                 validate_moving_metadata(probe.world, position)?;
-                return Err(GeometryError::Entry(AdmissionIssue::MovingPiston {
-                    pos: position,
-                }));
+                return Err(GeometryError::Entry(AdmissionIssue::MovingPiston { pos: position }));
             }
             Block::PistonHead { .. } => {
                 return Ok(PayloadLine {
@@ -651,12 +583,7 @@ fn payload_line<W: World>(
     }
 }
 
-fn check_line_destination<W: World>(
-    probe: &Probe<'_, W>,
-    actor: &Actor,
-    line: &PayloadLine,
-    air: BlockPos,
-) -> Result<(), GeometryError> {
+fn check_line_destination<W: World>(probe: &Probe<'_, W>, actor: &Actor, line: &PayloadLine, air: BlockPos) -> Result<(), GeometryError> {
     if !probe.in_bounds(air) {
         return Err(GeometryError::Rejected(GeometryIssue::OutsideFootprint {
             actor: actor.position,
@@ -686,13 +613,7 @@ fn validate_footprint<W: World>(
         };
         let source = resources[resource.index()].0;
         let block = probe.block(actor.position, source)?;
-        let line = payload_line(
-            probe,
-            actor.position,
-            actor.far,
-            actor.facing,
-            Some((resource_at, resource)),
-        )?;
+        let line = payload_line(probe, actor.position, actor.far, actor.facing, Some((resource_at, resource)))?;
         if let LineEnd::Air(end) = line.end {
             check_line_destination(probe, actor, &line, end)?;
             if let Some(&(position, block)) = line.blocks.first() {
@@ -735,27 +656,12 @@ fn validate_support<W: World>(
                     piston: actor.piston.extend(!actor.piston.extended),
                 },
             ),
-            (
-                actor.id,
-                Block::MovingPiston {
-                    moving: actor.piston.into(),
-                },
-            ),
+            (actor.id, Block::MovingPiston { moving: actor.piston.into() }),
         ]);
         changing.entry(actor.near).or_default().extend([
             (actor.id, Block::Air),
-            (
-                actor.id,
-                Block::PistonHead {
-                    head: actor.piston.into(),
-                },
-            ),
-            (
-                actor.id,
-                Block::MovingPiston {
-                    moving: actor.piston.into(),
-                },
-            ),
+            (actor.id, Block::PistonHead { head: actor.piston.into() }),
+            (actor.id, Block::MovingPiston { moving: actor.piston.into() }),
         ]);
     }
     for (source, contacts, witnesses) in resources {
@@ -807,9 +713,10 @@ fn validate_support<W: World>(
                     && face == BlockFace::Top
                     && owner.facing == BlockFace::Bottom
             };
-            if let Some((_, unsupported_support)) = alternatives.iter().find(|&&(id, support)| {
-                !interaction::supports_attachment(support, support_face) && !keeps_dust(id, support)
-            }) {
+            if let Some((_, unsupported_support)) = alternatives
+                .iter()
+                .find(|&&(id, support)| !interaction::supports_attachment(support, support_face) && !keeps_dust(id, support))
+            {
                 return Err(GeometryError::Rejected(GeometryIssue::SupportLoss {
                     actor,
                     changed,
@@ -890,11 +797,7 @@ fn build_draft<W: World>(
             output_route: None,
         });
     }
-    let contact_ids: FxHashMap<_, _> = positions
-        .iter()
-        .enumerate()
-        .map(|(i, &pos)| (pos, ContactId::new(i as u32)))
-        .collect();
+    let contact_ids: FxHashMap<_, _> = positions.iter().enumerate().map(|(i, &pos)| (pos, ContactId::new(i as u32))).collect();
     let mut variants: FxHashMap<BlockPos, Vec<GeometryVariant>> = FxHashMap::default();
     for actor in actors {
         add_variant(
@@ -919,62 +822,25 @@ fn build_draft<W: World>(
                 piston: actor.piston.extend(true),
             }),
         );
-        let moving = Block::MovingPiston {
-            moving: actor.piston.into(),
-        };
-        add_variant(
-            &mut variants,
-            actor.position,
-            GeometryView::MovingPistonBase(actor.id),
-            profile(moving),
-        );
-        let head = Block::PistonHead {
-            head: actor.piston.into(),
-        };
-        add_variant(
-            &mut variants,
-            actor.near,
-            GeometryView::MovingPistonHead(actor.id),
-            profile(moving),
-        );
-        add_variant(
-            &mut variants,
-            actor.near,
-            GeometryView::PistonHead(actor.id),
-            profile(head),
-        );
-        add_variant(
-            &mut variants,
-            actor.near,
-            GeometryView::Air,
-            profile(Block::Air),
-        );
+        let moving = Block::MovingPiston { moving: actor.piston.into() };
+        add_variant(&mut variants, actor.position, GeometryView::MovingPistonBase(actor.id), profile(moving));
+        let head = Block::PistonHead { head: actor.piston.into() };
+        add_variant(&mut variants, actor.near, GeometryView::MovingPistonHead(actor.id), profile(moving));
+        add_variant(&mut variants, actor.near, GeometryView::PistonHead(actor.id), profile(head));
+        add_variant(&mut variants, actor.near, GeometryView::Air, profile(Block::Air));
     }
     for (index, (source, contacts, _)) in resources.iter().enumerate() {
         let resource = ResourceId::new(index as u32);
         let block = probe.block(actors[0].position, *source)?;
         for &position in contacts {
-            add_variant(
-                &mut variants,
-                position,
-                GeometryView::Resource(resource),
-                profile(block),
-            );
-            add_variant(
-                &mut variants,
-                position,
-                GeometryView::Air,
-                profile(Block::Air),
-            );
+            add_variant(&mut variants, position, GeometryView::Resource(resource), profile(block));
+            add_variant(&mut variants, position, GeometryView::Air, profile(Block::Air));
         }
     }
     for &position in &positions {
         let block = probe.block(actors.first().map_or(position, |a| a.position), position)?;
         variants.entry(position).or_default();
-        if !variants[&position]
-            .iter()
-            .any(|variant| variant.profile == profile(block))
-        {
+        if !variants[&position].iter().any(|variant| variant.profile == profile(block)) {
             add_variant(&mut variants, position, GeometryView::Fixed, profile(block));
         }
     }
@@ -1020,10 +886,7 @@ fn build_draft<W: World>(
         .into_iter()
         .map(|(source, positions, witnesses)| {
             let material = probe.block(witnesses[0].position, source)?;
-            let contacts = positions
-                .iter()
-                .map(|position| contact_ids[position])
-                .collect();
+            let contacts = positions.iter().map(|position| contact_ids[position]).collect();
             let initial = ResourceState {
                 at: contact_ids[&source],
                 enabled: true,
@@ -1040,15 +903,10 @@ fn build_draft<W: World>(
             })
         })
         .collect::<Result<Vec<_>, GeometryError>>()?;
-    let initial_resources = geometry_resources
-        .iter()
-        .map(|resource| resource.initial)
-        .collect();
+    let initial_resources = geometry_resources.iter().map(|resource| resource.initial).collect();
     let mut observations = FxHashMap::default();
     for &position in &positions {
-        for observed in
-            std::iter::once(position).chain(BlockFace::values().map(|face| position.offset(face)))
-        {
+        for observed in std::iter::once(position).chain(BlockFace::values().map(|face| position.offset(face))) {
             let block = probe.block(position, observed)?;
             observations.entry(observed).or_insert(GeometryObservation {
                 position: observed,
@@ -1081,12 +939,7 @@ fn build_draft<W: World>(
     })
 }
 
-fn add_variant(
-    variants: &mut FxHashMap<BlockPos, Vec<GeometryVariant>>,
-    position: BlockPos,
-    view: GeometryView,
-    profile: ProfileId,
-) {
+fn add_variant(variants: &mut FxHashMap<BlockPos, Vec<GeometryVariant>>, position: BlockPos, view: GeometryView, profile: ProfileId) {
     let entries = variants.entry(position).or_default();
     let candidate = GeometryVariant { view, profile };
     if !entries.contains(&candidate) {
@@ -1094,12 +947,7 @@ fn add_variant(
     }
 }
 
-fn classify_material<W: World>(
-    actor: BlockPos,
-    position: BlockPos,
-    block: Block,
-    world: &W,
-) -> Result<(), GeometryError> {
+fn classify_material<W: World>(actor: BlockPos, position: BlockPos, block: Block, world: &W) -> Result<(), GeometryError> {
     let name = block.get_name();
     let entity_free = !block.has_block_entity() && world.get_block_entity(position).is_none();
     // Registry wool/concrete/quartz states are opaque cubes without handlers;
@@ -1111,21 +959,15 @@ fn classify_material<W: World>(
         && !crate::redstone::has_neighbor_update(block)
         && !crate::redstone::comparator::has_override(block)
         && !matches!(block, Block::RedstoneBlock {});
-    let inert_cube = block.is_cube()
-        && (modeled_inert
-            || name.ends_with("_wool")
-            || name.ends_with("_concrete")
-            || name.contains("quartz"));
+    let inert_cube = block.is_cube() && (modeled_inert || name.ends_with("_wool") || name.ends_with("_concrete") || name.contains("quartz"));
     if entity_free && (matches!(block, Block::RedstoneBlock {}) || inert_cube) {
         Ok(())
     } else {
-        Err(GeometryError::Rejected(
-            GeometryIssue::UnsupportedMaterial {
-                actor,
-                position,
-                block: block.get_id(),
-            },
-        ))
+        Err(GeometryError::Rejected(GeometryIssue::UnsupportedMaterial {
+            actor,
+            position,
+            block: block.get_id(),
+        }))
     }
 }
 

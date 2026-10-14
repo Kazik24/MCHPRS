@@ -22,13 +22,9 @@ pub fn load_plot(path: impl AsRef<Path>) -> Result<PlotData<PLOT_SECTIONS>> {
     let path = path.as_ref();
     super::git::recover_pending(path).context("Recovering interrupted plot Git checkout")?;
     let data = if path.exists() {
-        PlotData::load_from_file(path, true)
-            .with_context(|| format!("error loading plot save file at {}", path.display()))?
+        PlotData::load_from_file(path, true).with_context(|| format!("error loading plot save file at {}", path.display()))?
     } else {
-        EMPTY_PLOT
-            .as_ref()
-            .map_err(|error| anyhow!("{}", error))?
-            .clone()
+        EMPTY_PLOT.as_ref().map_err(|error| anyhow!("{}", error))?.clone()
     };
     ensure!(
         data.chunk_data.len() == NUM_CHUNKS,
@@ -41,10 +37,7 @@ pub fn load_plot(path: impl AsRef<Path>) -> Result<PlotData<PLOT_SECTIONS>> {
 }
 
 pub fn empty_plot() -> PlotData<PLOT_SECTIONS> {
-    EMPTY_PLOT
-        .as_ref()
-        .expect("failed to read template plot")
-        .clone()
+    EMPTY_PLOT.as_ref().expect("failed to read template plot").clone()
 }
 
 static EMPTY_PLOT: Lazy<Result<PlotData<PLOT_SECTIONS>, String>> = Lazy::new(|| {

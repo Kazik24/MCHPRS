@@ -6,14 +6,12 @@ use once_cell::sync::Lazy;
 use std::sync::Arc;
 
 pub(super) static STORED: Lazy<Arc<Budget>> = Lazy::new(|| {
-    let limit =
-        mib_to_bytes(CONFIG.rhistory_memory_limit_mib).expect("invalid rhistory_memory_limit_mib");
+    let limit = mib_to_bytes(CONFIG.rhistory_memory_limit_mib).expect("invalid rhistory_memory_limit_mib");
     memory_budget::Budget::new(limit)
 });
 
 pub(super) static WORK: Lazy<Arc<Budget>> = Lazy::new(|| {
-    let limit = mib_to_bytes(CONFIG.rhistory_work_memory_limit_mib)
-        .expect("invalid rhistory_work_memory_limit_mib");
+    let limit = mib_to_bytes(CONFIG.rhistory_work_memory_limit_mib).expect("invalid rhistory_work_memory_limit_mib");
     memory_budget::Budget::new(limit)
 });
 
@@ -34,12 +32,9 @@ pub(super) struct Bytes {
 
 impl Bytes {
     pub fn zeroed(budget: &Arc<Budget>, size: usize) -> Result<Self, String> {
-        let reservation = budget
-            .reserve(size)
-            .ok_or_else(|| messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned())?;
+        let reservation = budget.reserve(size).ok_or_else(|| messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned())?;
         let mut data = Vec::new();
-        data.try_reserve_exact(size)
-            .map_err(|_| messages::HISTORY_ALLOCATION_FAILED.to_owned())?;
+        data.try_reserve_exact(size).map_err(|_| messages::HISTORY_ALLOCATION_FAILED.to_owned())?;
         debug_assert_eq!(data.capacity(), size);
         data.resize(size, 0);
 

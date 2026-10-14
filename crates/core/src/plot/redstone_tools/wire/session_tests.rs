@@ -66,32 +66,18 @@ fn staged_route(plot: &mut Plot) -> (BlockPos, BlockPos, Block) {
     let start = BlockPos::new(28, 21, 35);
     let end = BlockPos::new(32, 21, 35);
     for x in start.x..=end.x {
-        plot.world
-            .set_block(BlockPos::new(x, 19, 35), Block::Stone {});
+        plot.world.set_block(BlockPos::new(x, 19, 35), Block::Stone {});
     }
-    plot.world
-        .set_block(start.offset(BlockFace::Bottom), Block::Stone {});
+    plot.world.set_block(start.offset(BlockFace::Bottom), Block::Stone {});
     let old = Block::RedstoneWire {
         wire: RedstoneWire::default(),
     };
     plot.world.set_block(start, old);
     plot.players[0].pitch = 90.0;
     plot.players[0].yaw = 0.0;
-    assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            0.0,
-            90.0,
-            Some(start),
-            Plane::Horizontal
-        ),
-        Some(end)
-    );
+    assert_eq!(aim(&plot.world, &plot.players[0], 0.0, 90.0, Some(start), Plane::Horizontal), Some(end));
     let reads = snapshot(&plot.world, start, end);
-    let path: Vec<_> = (start.x..=end.x)
-        .map(|x| BlockPos::new(x, 21, 35))
-        .collect();
+    let path: Vec<_> = (start.x..=end.x).map(|x| BlockPos::new(x, 21, 35)).collect();
     let placements = path
         .iter()
         .skip(1)
@@ -110,12 +96,7 @@ fn staged_route(plot: &mut Plot) -> (BlockPos, BlockPos, Block) {
     session.publish(SearchResult::Found(plan));
     let mut complete = false;
     for _ in 0..session.wanted.len() {
-        complete = preview::reconcile_markers(
-            &plot.players[0],
-            &mut session.markers,
-            &session.wanted,
-            128,
-        );
+        complete = preview::reconcile_markers(&plot.players[0], &mut session.markers, &session.wanted, 128);
         if complete {
             break;
         }
@@ -131,15 +112,9 @@ fn command_uses_empty_hotbar_slot_and_refuses_to_overwrite_full_inventory() {
     let (mut plot, _peer) = fixture(false);
     let existing = plot.players[0].inventory[36].as_ref().unwrap().item_type;
     plot.wire_tool(0, &[]).unwrap();
-    assert_eq!(
-        plot.players[0].inventory[36].as_ref().unwrap().item_type,
-        existing
-    );
+    assert_eq!(plot.players[0].inventory[36].as_ref().unwrap().item_type, existing);
     assert_eq!(plot.players[0].selected_slot, 1);
-    assert_eq!(
-        plot.players[0].inventory[37].as_ref().unwrap().item_type,
-        tool_item()
-    );
+    assert_eq!(plot.players[0].inventory[37].as_ref().unwrap().item_type, tool_item());
     assert!(plot.wire_held(0));
     assert!(plot.handle_redstone_tools_command(0, "/wire", &["off"]));
     assert!(plot.players[0].redstone_tools.wire.is_none());
@@ -165,30 +140,10 @@ fn invalid_and_offhand_use_acknowledge_without_starting_or_editing() {
     equip(&mut plot);
     let pos = BlockPos::new(32, 20, 32);
     let before = plot.world.get_block_raw(pos);
-    for (sequence, hand, yaw, pitch) in [
-        (1, 1, 0.0, 90.0),
-        (2, 0, f32::NAN, 90.0),
-        (3, 0, 0.0, f32::INFINITY),
-    ] {
-        plot.handle_use_item(
-            SUseItem {
-                hand,
-                sequence,
-                yaw,
-                pitch,
-            },
-            0,
-        );
+    for (sequence, hand, yaw, pitch) in [(1, 1, 0.0, 90.0), (2, 0, f32::NAN, 90.0), (3, 0, 0.0, f32::INFINITY)] {
+        plot.handle_use_item(SUseItem { hand, sequence, yaw, pitch }, 0);
         assert_eq!(read_through_ack(&mut peer, sequence), [0x04]);
-        assert!(
-            plot.players[0]
-                .redstone_tools
-                .wire
-                .as_ref()
-                .unwrap()
-                .start
-                .is_none()
-        );
+        assert!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start.is_none());
         assert_eq!(plot.world.get_block_raw(pos), before);
         assert!(plot.players[0].worldedit_undo.is_empty());
     }
@@ -219,10 +174,7 @@ fn swap_cycles_mode_drop_changes_bend_without_losing_pen_and_dig_is_corrected() 
     assert_eq!(session.plane, Plane::VerticalX);
     assert!(session.prefer_x);
     assert_eq!(session.generation, 1);
-    assert_eq!(
-        plot.players[0].inventory[36].as_ref().unwrap().item_type,
-        tool_item()
-    );
+    assert_eq!(plot.players[0].inventory[36].as_ref().unwrap().item_type, tool_item());
     assert_eq!(plot.players[0].inventory[45].as_ref().unwrap().count, 32);
     plot.players[0].crouching = true;
     plot.handle_player_digging(
@@ -317,12 +269,7 @@ fn stopping_cancels_worker_and_destroys_only_its_markers() {
     let mut session = plot.players[0].redstone_tools.wire.take().unwrap();
     let pos = BlockPos::new(32, 21, 35);
     session.wanted.insert(pos, 0);
-    assert!(preview::reconcile_markers(
-        &plot.players[0],
-        &mut session.markers,
-        &session.wanted,
-        1
-    ));
+    assert!(preview::reconcile_markers(&plot.players[0], &mut session.markers, &session.wanted, 1));
     let id = session.markers[&pos].0;
     let cancel = Arc::new(AtomicBool::new(false));
     let (_reply, receiver) = mpsc::sync_channel(1);
@@ -391,10 +338,7 @@ fn changed_live_world_refuses_commit_without_partial_placement_or_undo() {
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
     assert_eq!(plot.world.get_block(obstruction), Block::Glass);
     assert!(matches!(plot.world.get_block(end), Block::Air));
-    assert!(matches!(
-        plot.world.get_block(start.offset(BlockFace::East)),
-        Block::Air
-    ));
+    assert!(matches!(plot.world.get_block(start.offset(BlockFace::East)), Block::Air));
     assert!(plot.players[0].worldedit_undo.is_empty());
     let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
     assert!(session.plan.is_none());
@@ -413,36 +357,16 @@ fn committed_segment_is_one_sparse_undo_including_existing_endpoint_shape() {
     session.snapshot = Some(reads.clone());
     session.plan.as_mut().unwrap().reads = reads;
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
-    assert!(matches!(
-        plot.world.get_block(end),
-        Block::RedstoneWire { .. }
-    ));
+    assert!(matches!(plot.world.get_block(end), Block::RedstoneWire { .. }));
     assert_ne!(plot.world.get_block(start), old);
     assert_eq!(plot.players[0].worldedit_undo.len(), 1);
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(end)
-    );
-    assert!(worldedit::execute_command(
-        &mut plot,
-        0,
-        "/undo",
-        &mut Vec::new()
-    ));
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(end));
+    assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
     assert_eq!(plot.world.get_block(start), old);
     for x in start.x + 1..=end.x {
-        assert!(matches!(
-            plot.world.get_block(BlockPos::new(x, 21, 35)),
-            Block::Air
-        ));
-        assert_eq!(
-            plot.world.get_block(BlockPos::new(x, 20, 35)),
-            Block::Air {}
-        );
-        assert_eq!(
-            plot.world.get_block(BlockPos::new(x, 19, 35)),
-            Block::Stone {}
-        );
+        assert!(matches!(plot.world.get_block(BlockPos::new(x, 21, 35)), Block::Air));
+        assert_eq!(plot.world.get_block(BlockPos::new(x, 20, 35)), Block::Air {});
+        assert_eq!(plot.world.get_block(BlockPos::new(x, 19, 35)), Block::Stone {});
     }
     assert_eq!(plot.world.get_block(untouched), Block::Glass);
     assert_eq!(plot.players[0].worldedit_redo.len(), 1);
@@ -456,12 +380,7 @@ fn partial_visibility_still_reconciles_visible_markers_and_never_allows_commit()
     let outside = BlockPos::new(30_000_000, 21, 35);
     let mut session = plot.players[0].redstone_tools.wire.take().unwrap();
     let original = HashMap::from([(visible, 0)]);
-    assert!(preview::reconcile_markers(
-        &plot.players[0],
-        &mut session.markers,
-        &original,
-        1
-    ));
+    assert!(preview::reconcile_markers(&plot.players[0], &mut session.markers, &original, 1));
     let entity_id = session.markers[&visible].0;
     session.wanted = HashMap::from([(visible, 2), (outside, 2)]);
     session.displayed = true;
@@ -471,13 +390,7 @@ fn partial_visibility_still_reconciles_visible_markers_and_never_allows_commit()
     assert_eq!(session.markers[&visible], (entity_id, 2));
     assert!(!session.markers.contains_key(&outside));
     assert!(!session.displayed);
-    plot.players[0]
-        .redstone_tools
-        .wire
-        .as_mut()
-        .unwrap()
-        .wanted
-        .remove(&visible);
+    plot.players[0].redstone_tools.wire.as_mut().unwrap().wanted.remove(&visible);
     plot.update_wire_tools();
     let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
     assert!(session.markers.is_empty());
@@ -507,9 +420,7 @@ fn rotating_work_cursor_services_later_players_before_earlier_heavy_previews() {
     // index zero ignores this cursor and cannot provide round-robin fairness.
     plot.wire_cursor = 1;
     let first = plot.players[0].redstone_tools.wire.as_mut().unwrap();
-    first.wanted = (0..512)
-        .map(|i| (BlockPos::new(16 + i % 32, 24, 16 + i / 32), 0))
-        .collect();
+    first.wanted = (0..512).map(|i| (BlockPos::new(16 + i % 32, 24, 16 + i / 32), 0)).collect();
     plot.update_wire_tools();
     let second = plot.players[1].redstone_tools.wire.as_ref().unwrap();
     assert_eq!(second.markers[&pos].1, 4);
@@ -522,55 +433,22 @@ fn each_construction_plane_allows_both_coordinates_and_keeps_its_anchor() {
     equip(&mut plot);
     plot.players[0].pos = PlayerPos::new(32.5, 34.0, 32.5);
     let start = BlockPos::new(40, 30, 40);
-    let horizontal = [0.0, 90.0].map(|yaw| {
-        aim(
-            &plot.world,
-            &plot.players[0],
-            yaw,
-            45.0,
-            Some(start),
-            Plane::Horizontal,
-        )
-        .unwrap()
-    });
+    let horizontal = [0.0, 90.0].map(|yaw| aim(&plot.world, &plot.players[0], yaw, 45.0, Some(start), Plane::Horizontal).unwrap());
     assert!(horizontal.iter().all(|pos| pos.y == start.y));
     assert_ne!(horizontal[0].x, horizontal[1].x);
     assert_ne!(horizontal[0].z, horizontal[1].z);
-    let vertical_x = [(0.0, 0.0), (-30.0, 0.0), (0.0, -30.0)].map(|(yaw, pitch)| {
-        aim(
-            &plot.world,
-            &plot.players[0],
-            yaw,
-            pitch,
-            Some(start),
-            Plane::VerticalX,
-        )
-        .unwrap()
-    });
+    let vertical_x = [(0.0, 0.0), (-30.0, 0.0), (0.0, -30.0)]
+        .map(|(yaw, pitch)| aim(&plot.world, &plot.players[0], yaw, pitch, Some(start), Plane::VerticalX).unwrap());
     assert!(vertical_x.iter().all(|pos| pos.z == start.z));
     assert_ne!(vertical_x[0].x, vertical_x[1].x);
     assert_ne!(vertical_x[0].y, vertical_x[2].y);
-    let vertical_z = [(-90.0, 0.0), (-60.0, 0.0), (-90.0, -30.0)].map(|(yaw, pitch)| {
-        aim(
-            &plot.world,
-            &plot.players[0],
-            yaw,
-            pitch,
-            Some(start),
-            Plane::VerticalZ,
-        )
-        .unwrap()
-    });
+    let vertical_z = [(-90.0, 0.0), (-60.0, 0.0), (-90.0, -30.0)]
+        .map(|(yaw, pitch)| aim(&plot.world, &plot.players[0], yaw, pitch, Some(start), Plane::VerticalZ).unwrap());
     assert!(vertical_z.iter().all(|pos| pos.x == start.x));
     assert_ne!(vertical_z[0].z, vertical_z[1].z);
     assert_ne!(vertical_z[0].y, vertical_z[2].y);
     plot.players[0].redstone_tools.wire.as_mut().unwrap().start = Some(start);
-    for expected in [
-        Plane::VerticalX,
-        Plane::VerticalZ,
-        Plane::Free,
-        Plane::Horizontal,
-    ] {
+    for expected in [Plane::VerticalX, Plane::VerticalZ, Plane::Free, Plane::Horizontal] {
         assert!(plot.flip_wire_route(0, false));
         let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
         assert_eq!(session.plane, expected);
@@ -588,31 +466,11 @@ fn free_aim_accepts_different_xyz_endpoints_and_requires_a_pointed_block() {
     let horizontal = (2.0_f64.powi(2) + 5.0_f64.powi(2)).sqrt();
     let yaw = -(2.0_f64 / 5.0).atan().to_degrees() as f32;
     let pitch = -(1.88_f64 / horizontal).atan().to_degrees() as f32;
-    assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            yaw,
-            pitch,
-            Some(start),
-            Plane::Free
-        ),
-        Some(target)
-    );
+    assert_eq!(aim(&plot.world, &plot.players[0], yaw, pitch, Some(start), Plane::Free), Some(target));
     assert_ne!(start.x, target.x);
     assert_ne!(start.y, target.y);
     assert_ne!(start.z, target.z);
-    assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            0.0,
-            -90.0,
-            Some(start),
-            Plane::Free
-        ),
-        None
-    );
+    assert_eq!(aim(&plot.world, &plot.players[0], 0.0, -90.0, Some(start), Plane::Free), None);
     plot.world.set_block(
         target,
         Block::RedstoneWire {
@@ -621,17 +479,7 @@ fn free_aim_accepts_different_xyz_endpoints_and_requires_a_pointed_block() {
     );
     plot.players[0].pos.y = 28.0;
     let pitch = (4.59_f64 / horizontal).atan().to_degrees() as f32;
-    assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            yaw,
-            pitch,
-            Some(start),
-            Plane::Free
-        ),
-        Some(target)
-    );
+    assert_eq!(aim(&plot.world, &plot.players[0], yaw, pitch, Some(start), Plane::Free), Some(target));
 }
 
 #[test]
@@ -643,9 +491,7 @@ fn mode_commands_preserve_the_start_cancel_stale_routes_and_reaim_immediately() 
     plot.world.set_block(support, Block::Stone {});
     plot.players[0].pos.y = 26.0;
     plot.players[0].yaw = -45.0;
-    plot.players[0].pitch = (4.12_f64 / (4.0_f64.powi(2) * 2.0).sqrt())
-        .atan()
-        .to_degrees() as f32;
+    plot.players[0].pitch = (4.12_f64 / (4.0_f64.powi(2) * 2.0).sqrt()).atan().to_degrees() as f32;
     let session = plot.players[0].redstone_tools.wire.as_mut().unwrap();
     let old_generation = session.generation;
     let old_plan = session.plan.as_ref().unwrap();
@@ -692,13 +538,7 @@ fn mode_commands_preserve_the_start_cancel_stale_routes_and_reaim_immediately() 
     assert_ne!(session.target, Some(free_target));
     assert!(session.plan.is_none());
     assert!(plot.handle_redstone_tools_command(0, "/wire", &["free"]));
-    for expected in [
-        Plane::Horizontal,
-        Plane::VerticalX,
-        Plane::VerticalZ,
-        Plane::Free,
-        Plane::Horizontal,
-    ] {
+    for expected in [Plane::Horizontal, Plane::VerticalX, Plane::VerticalZ, Plane::Free, Plane::Horizontal] {
         assert!(plot.flip_wire_route(0, false));
         let session = plot.players[0].redstone_tools.wire.as_ref().unwrap();
         assert_eq!(session.plane, expected);
@@ -742,14 +582,9 @@ fn live_free_route_changes_xyz_builds_and_undoes_the_complete_segment() {
     plot.players[0].yaw = 0.0;
     plot.players[0].pitch = 90.0;
     assert!(plot.start_wire_route(0, first_support));
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(start)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(start));
     plot.players[0].yaw = -45.0;
-    plot.players[0].pitch = (4.12_f64 / (4.0_f64.powi(2) * 2.0).sqrt())
-        .atan()
-        .to_degrees() as f32;
+    plot.players[0].pitch = (4.12_f64 / (4.0_f64.powi(2) * 2.0).sqrt()).atan().to_degrees() as f32;
     assert_eq!(
         aim(
             &plot.world,
@@ -776,11 +611,7 @@ fn live_free_route_changes_xyz_builds_and_undoes_the_complete_segment() {
     for pos in path {
         let block = plot.world.get_block(pos);
         assert!(matches!(block, Block::RedstoneWire { .. }));
-        assert!(crate::interaction::is_valid_position(
-            block,
-            &plot.world,
-            pos
-        ));
+        assert!(crate::interaction::is_valid_position(block, &plot.world, pos));
     }
     for &(pos, block) in &placements {
         if !matches!(block, Block::RedstoneWire { .. }) {
@@ -788,16 +619,8 @@ fn live_free_route_changes_xyz_builds_and_undoes_the_complete_segment() {
             assert_eq!(plot.world.get_block(pos), block);
         }
     }
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(end)
-    );
-    assert!(worldedit::execute_command(
-        &mut plot,
-        0,
-        "/undo",
-        &mut Vec::new()
-    ));
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(end));
+    assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
     for &(pos, _) in &placements {
         assert_eq!(plot.world.get_block(pos), Block::Air {});
     }
@@ -863,8 +686,7 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
     let (mut plot, mut peer) = fixture(false);
     for x in 0..4 {
         for z in 0..5 {
-            plot.world.chunks[(x * crate::plot::PLOT_WIDTH + z) as usize] =
-                Plot::generate_chunk(8, x, z);
+            plot.world.chunks[(x * crate::plot::PLOT_WIDTH + z) as usize] = Plot::generate_chunk(8, x, z);
         }
     }
     equip(&mut plot);
@@ -875,20 +697,10 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
     let end = BlockPos::new(32, 8, 47);
     let drawing_started = Instant::now();
     assert!(plot.start_wire_route(0, BlockPos::new(32, 7, 32)));
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(start)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(start));
     plot.players[0].pitch = (1.62_f64 / 15.0).atan().to_degrees() as f32;
     assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            0.0,
-            plot.players[0].pitch,
-            Some(start),
-            Plane::Horizontal,
-        ),
+        aim(&plot.world, &plot.players[0], 0.0, plot.players[0].pitch, Some(start), Plane::Horizontal,),
         Some(end)
     );
     wait_for_preview(&mut plot);
@@ -897,20 +709,11 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
     let pitch = plot.players[0].pitch;
     assert!(plot.use_wire_tool(0, 0, 0.0, pitch));
     for z in start.z..=end.z {
-        assert!(matches!(
-            plot.world.get_block(BlockPos::new(32, 8, z)),
-            Block::RedstoneWire { .. }
-        ));
-        assert_eq!(
-            plot.world.get_block(BlockPos::new(32, 7, z)),
-            Block::Sandstone {}
-        );
+        assert!(matches!(plot.world.get_block(BlockPos::new(32, 8, z)), Block::RedstoneWire { .. }));
+        assert_eq!(plot.world.get_block(BlockPos::new(32, 7, z)), Block::Sandstone {});
     }
     assert_eq!(plot.players[0].worldedit_undo.len(), 1);
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(end)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(end));
 
     plot.handle_use_item(
         SUseItem {
@@ -926,11 +729,7 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
         let (id, mut frame) = read_frame(&mut peer, false).unwrap();
         if id == 0x72 {
             // System Chat: all routine wire status uses the action bar overlay.
-            assert_eq!(
-                frame.get_ref().last(),
-                Some(&1),
-                "Wire status leaked into chat"
-            );
+            assert_eq!(frame.get_ref().last(), Some(&1), "Wire status leaked into chat");
             status_packets += 1;
         }
         if id == 0x04 {
@@ -939,18 +738,10 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
                 status_packets <= 1 + drawing_started.elapsed().as_secs() as usize,
                 "Wire status must be throttled during a short drawing gesture"
             );
-            assert!(worldedit::execute_command(
-                &mut plot,
-                0,
-                "/undo",
-                &mut Vec::new()
-            ));
+            assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
             for z in start.z..=end.z {
                 assert_eq!(plot.world.get_block(BlockPos::new(32, 8, z)), Block::Air {});
-                assert_eq!(
-                    plot.world.get_block(BlockPos::new(32, 7, z)),
-                    Block::Sandstone {}
-                );
+                assert_eq!(plot.world.get_block(BlockPos::new(32, 7, z)), Block::Sandstone {});
             }
             return;
         }
@@ -969,10 +760,7 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
     plot.players[0].yaw = 0.0;
     plot.players[0].pitch = 90.0;
     assert!(plot.start_wire_route(0, pillar));
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(start)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(start));
     let endpoints = [
         BlockPos::new(32, 21, 47),
         BlockPos::new(32, 21, 62),
@@ -983,17 +771,7 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
     for (segment, end) in endpoints.into_iter().enumerate() {
         plot.players[0].pos = PlayerPos::new(f64::from(end.x) + 0.5, 24.0, f64::from(end.z) + 0.5);
         let source = plot.players[0].redstone_tools.wire.as_ref().unwrap().start;
-        assert_eq!(
-            aim(
-                &plot.world,
-                &plot.players[0],
-                0.0,
-                90.0,
-                source,
-                Plane::Horizontal
-            ),
-            Some(end)
-        );
+        assert_eq!(aim(&plot.world, &plot.players[0], 0.0, 90.0, source, Plane::Horizontal), Some(end));
         let deadline = Instant::now() + Duration::from_secs(2);
         loop {
             plot.update_wire_tools();
@@ -1018,10 +796,7 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
         let session = plot.players[0].redstone_tools.wire.as_mut().unwrap();
         let plan = session.plan.as_ref().unwrap();
         let previous = source.unwrap();
-        assert_eq!(
-            plan.path.len(),
-            (end.x.abs_diff(previous.x) + end.z.abs_diff(previous.z)) as usize + 1
-        );
+        assert_eq!(plan.path.len(), (end.x.abs_diff(previous.x) + end.z.abs_diff(previous.z)) as usize + 1);
         assert!(plan.path.iter().all(|pos| pos.y == start.y));
         assert!(
             plan.placements
@@ -1032,23 +807,12 @@ fn live_continuation_builds_several_supported_segments_then_turns_and_undoes() {
         session.last_click = None;
         assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
         assert_eq!(plot.players[0].worldedit_undo.len(), segment + 1);
-        assert_eq!(
-            plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-            Some(end)
-        );
+        assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(end));
         assert_eq!(plot.world.get_block(pillar), Block::Glass {});
-        assert!(matches!(
-            plot.world.get_block(end),
-            Block::RedstoneWire { .. }
-        ));
+        assert!(matches!(plot.world.get_block(end), Block::RedstoneWire { .. }));
     }
     for _ in endpoints {
-        assert!(worldedit::execute_command(
-            &mut plot,
-            0,
-            "/undo",
-            &mut Vec::new()
-        ));
+        assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
     }
     assert!(plot.players[0].worldedit_undo.is_empty());
     assert_eq!(plot.players[0].worldedit_redo.len(), endpoints.len());
@@ -1086,16 +850,9 @@ fn status_uses_latest_action_bar_message_once_per_second_without_repeating() {
     let message = nbt::Blob::from_reader(&mut std::io::Cursor::new(named)).unwrap();
     assert_eq!(
         message.get("text"),
-        Some(&nbt::Value::String(format!(
-            "{} | latest",
-            Plane::Horizontal.label()
-        )))
+        Some(&nbt::Value::String(format!("{} | latest", Plane::Horizontal.label())))
     );
-    assert!(
-        packets
-            .iter()
-            .all(|packet| packet.packet_id == 0x72 && packet.buffer.last() == Some(&1))
-    );
+    assert!(packets.iter().all(|packet| packet.packet_id == 0x72 && packet.buffer.last() == Some(&1)));
     drop(packets);
     session.send_status(&viewer, now + NOTICE_INTERVAL * 2);
     assert_eq!(viewer.0.borrow().len(), 2);
@@ -1109,8 +866,7 @@ fn holding_a_pen_starts_and_restarts_drawing_without_a_command() {
         count: 1,
         nbt: None,
     });
-    plot.world
-        .set_block(BlockPos::new(32, 20, 35), Block::Stone {});
+    plot.world.set_block(BlockPos::new(32, 20, 35), Block::Stone {});
     plot.players[0].pitch = 90.0;
     assert!(plot.players[0].redstone_tools.wire.is_none());
     assert!(plot.wire_tools_active());
@@ -1196,15 +952,9 @@ fn wire_off_survives_inputs_item_changes_and_route_cleanup() {
     assert!(plot.players[0].redstone_tools.wire.is_none());
     assert!(!plot.wire_held(0));
     assert!(!plot.wire_tools_active());
-    assert_eq!(
-        plot.players[0].inventory[36].as_ref().unwrap().item_type,
-        tool_item()
-    );
+    assert_eq!(plot.players[0].inventory[36].as_ref().unwrap().item_type, tool_item());
     assert_eq!(plot.world.get_block(support), Block::Stone {});
-    assert_eq!(
-        plot.world.get_block(support.offset(BlockFace::Top)),
-        Block::Air {}
-    );
+    assert_eq!(plot.world.get_block(support.offset(BlockFace::Top)), Block::Air {});
     assert!(plot.players[0].worldedit_undo.is_empty());
     plot.players[0].inventory[36].as_mut().unwrap().count = 2;
     for (sequence, status, count) in [(3, 4, Some(1)), (4, 3, None)] {
@@ -1218,12 +968,7 @@ fn wire_off_survives_inputs_item_changes_and_route_cleanup() {
             0,
         );
         read_through_ack(&mut peer, sequence);
-        assert_eq!(
-            plot.players[0].inventory[36]
-                .as_ref()
-                .map(|item| item.count),
-            count
-        );
+        assert_eq!(plot.players[0].inventory[36].as_ref().map(|item| item.count), count);
         assert!(plot.players[0].redstone_tools.wire_disabled);
         assert!(plot.players[0].redstone_tools.wire.is_none());
     }
@@ -1233,8 +978,7 @@ fn wire_off_survives_inputs_item_changes_and_route_cleanup() {
 fn each_explicit_wire_command_reenables_drawing_after_off() {
     let (mut plot, _peer) = fixture(false);
     equip(&mut plot);
-    plot.world
-        .set_block(BlockPos::new(32, 20, 35), Block::Stone {});
+    plot.world.set_block(BlockPos::new(32, 20, 35), Block::Stone {});
     for slot in 37..45 {
         plot.players[0].inventory[slot] = Some(ItemStack {
             item_type: Item::Sandstone {},
@@ -1253,10 +997,7 @@ fn each_explicit_wire_command_reenables_drawing_after_off() {
         assert!(!plot.players[0].redstone_tools.wire_disabled);
         assert!(plot.wire_held(0));
         assert!(plot.wire_tools_active());
-        assert_eq!(
-            plot.players[0].redstone_tools.wire.as_ref().unwrap().plane,
-            mode
-        );
+        assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().plane, mode);
         assert!(plot.start_wire_route(0, BlockPos::new(32, 20, 35)));
         assert_eq!(
             plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
@@ -1312,22 +1053,15 @@ fn clicking_existing_dust_preserves_its_support_and_copies_the_support_color() {
     let old_wire = Block::RedstoneWire {
         wire: RedstoneWire::default(),
     };
-    plot.world
-        .set_block(start.offset(BlockFace::Bottom), support);
+    plot.world.set_block(start.offset(BlockFace::Bottom), support);
     plot.world.set_block(start, old_wire);
     plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
     plot.players[0].yaw = 0.0;
     plot.players[0].pitch = 90.0;
     assert!(plot.start_wire_route(0, start));
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(start)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(start));
     assert_eq!(plot.world.get_block(start), old_wire);
-    assert_eq!(
-        plot.world.get_block(start.offset(BlockFace::Bottom)),
-        support
-    );
+    assert_eq!(plot.world.get_block(start.offset(BlockFace::Bottom)), support);
     assert!(plot.players[0].worldedit_undo.is_empty());
     plot.players[0].pos.x = f64::from(end.x) + 0.5;
     wait_for_preview(&mut plot);
@@ -1346,31 +1080,14 @@ fn clicking_existing_dust_preserves_its_support_and_copies_the_support_color() {
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
     for x in start.x..=end.x {
         assert_eq!(plot.world.get_block(BlockPos::new(x, 20, 35)), support);
-        assert!(matches!(
-            plot.world.get_block(BlockPos::new(x, 21, 35)),
-            Block::RedstoneWire { .. }
-        ));
+        assert!(matches!(plot.world.get_block(BlockPos::new(x, 21, 35)), Block::RedstoneWire { .. }));
     }
-    assert!(worldedit::execute_command(
-        &mut plot,
-        0,
-        "/undo",
-        &mut Vec::new()
-    ));
+    assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
     assert_eq!(plot.world.get_block(start), old_wire);
-    assert_eq!(
-        plot.world.get_block(start.offset(BlockFace::Bottom)),
-        support
-    );
+    assert_eq!(plot.world.get_block(start.offset(BlockFace::Bottom)), support);
     for x in start.x + 1..=end.x {
-        assert_eq!(
-            plot.world.get_block(BlockPos::new(x, 20, 35)),
-            Block::Air {}
-        );
-        assert_eq!(
-            plot.world.get_block(BlockPos::new(x, 21, 35)),
-            Block::Air {}
-        );
+        assert_eq!(plot.world.get_block(BlockPos::new(x, 20, 35)), Block::Air {});
+        assert_eq!(plot.world.get_block(BlockPos::new(x, 21, 35)), Block::Air {});
     }
 }
 
@@ -1418,30 +1135,16 @@ fn left_click_selects_support_and_right_click_without_a_start_does_not() {
         },
         0,
     );
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(wire)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(wire));
     assert_eq!(plot.world.get_block(support), Block::Stone {});
-    assert!(matches!(
-        plot.world.get_block(wire),
-        Block::RedstoneWire { .. }
-    ));
+    assert!(matches!(plot.world.get_block(wire), Block::RedstoneWire { .. }));
 
     let (mut plot, _peer) = fixture(false);
     equip(&mut plot);
     plot.world.set_block(support, Block::Stone {});
     plot.players[0].pos = PlayerPos::new(32.5, 24.0, 35.5);
     assert!(plot.use_wire_tool(0, 0, 0.0, 90.0));
-    assert!(
-        plot.players[0]
-            .redstone_tools
-            .wire
-            .as_ref()
-            .unwrap()
-            .start
-            .is_none()
-    );
+    assert!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start.is_none());
 }
 
 #[test]
@@ -1462,10 +1165,7 @@ fn noncreative_pen_use_and_plane_switch_do_not_activate_or_edit() {
         assert!(plot.players[0].redstone_tools.wire.is_none());
         assert!(plot.players[0].worldedit_undo.is_empty());
         assert_eq!(plot.world.get_block(platform), Block::Stone {});
-        assert_eq!(
-            plot.world.get_block(platform.offset(BlockFace::Top)),
-            Block::Air {}
-        );
+        assert_eq!(plot.world.get_block(platform.offset(BlockFace::Top)), Block::Air {});
     }
 }
 
@@ -1486,10 +1186,7 @@ fn denied_pen_use_and_plane_switch_do_not_activate_or_edit() {
     assert!(plot.players[0].redstone_tools.wire.is_none());
     assert!(plot.players[0].worldedit_undo.is_empty());
     assert_eq!(plot.world.get_block(platform), Block::Stone {});
-    assert_eq!(
-        plot.world.get_block(platform.offset(BlockFace::Top)),
-        Block::Air {}
-    );
+    assert_eq!(plot.world.get_block(platform.offset(BlockFace::Top)), Block::Air {});
 }
 
 #[test]
@@ -1497,8 +1194,7 @@ fn cursor_skips_space_above_thin_dust_but_can_select_the_dust_itself() {
     let (mut plot, _peer) = fixture(false);
     let wire = BlockPos::new(32, 22, 36);
     let farther_platform = BlockPos::new(32, 22, 40);
-    plot.world
-        .set_block(wire.offset(BlockFace::Bottom), Block::Glass {});
+    plot.world.set_block(wire.offset(BlockFace::Bottom), Block::Glass {});
     plot.world.set_block(
         wire,
         Block::RedstoneWire {
@@ -1508,28 +1204,11 @@ fn cursor_skips_space_above_thin_dust_but_can_select_the_dust_itself() {
     plot.world.set_block(farther_platform, Block::Stone {});
     plot.players[0].pos = PlayerPos::new(32.5, 21.0, 35.5);
     assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            0.0,
-            0.0,
-            None,
-            Plane::Horizontal
-        ),
+        aim(&plot.world, &plot.players[0], 0.0, 0.0, None, Plane::Horizontal),
         Some(farther_platform.offset(BlockFace::Top)),
     );
     plot.players[0].pos.y = 20.4;
-    assert_eq!(
-        aim(
-            &plot.world,
-            &plot.players[0],
-            0.0,
-            0.0,
-            None,
-            Plane::Horizontal
-        ),
-        Some(wire),
-    );
+    assert_eq!(aim(&plot.world, &plot.players[0], 0.0, 0.0, None, Plane::Horizontal), Some(wire),);
 }
 
 #[test]
@@ -1547,19 +1226,11 @@ fn live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms() 
     let start = lower_platform.offset(BlockFace::Top);
     let end = upper_platform.offset(BlockFace::Top);
     assert!(plot.start_wire_route(0, lower_platform));
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().start,
-        Some(start)
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(start));
     assert!(plot.flip_wire_route(0, false));
-    assert_eq!(
-        plot.players[0].redstone_tools.wire.as_ref().unwrap().plane,
-        Plane::VerticalX
-    );
+    assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().plane, Plane::VerticalX);
     plot.players[0].yaw = -45.0;
-    plot.players[0].pitch = (1.62_f64 / (4.0_f64 * 4.0 * 2.0).sqrt())
-        .atan()
-        .to_degrees() as f32;
+    plot.players[0].pitch = (1.62_f64 / (4.0_f64 * 4.0 * 2.0).sqrt()).atan().to_degrees() as f32;
     assert_eq!(
         aim(
             &plot.world,
@@ -1576,11 +1247,7 @@ fn live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms() 
     let plan = session.plan.as_ref().unwrap();
     let path = plan.path.clone();
     let placements = plan.placements.clone();
-    assert!(
-        placements
-            .iter()
-            .any(|(_, block)| matches!(block, Block::Stone {}))
-    );
+    assert!(placements.iter().any(|(_, block)| matches!(block, Block::Stone {})));
     assert!(
         placements
             .iter()
@@ -1593,25 +1260,14 @@ fn live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms() 
     assert_eq!(plot.players[0].worldedit_undo.len(), 1);
     for &(pos, block) in &placements {
         if matches!(block, Block::RedstoneWire { .. }) {
-            assert!(matches!(
-                plot.world.get_block(pos),
-                Block::RedstoneWire { .. }
-            ));
-            assert!(crate::interaction::is_valid_position(
-                plot.world.get_block(pos),
-                &plot.world,
-                pos
-            ));
+            assert!(matches!(plot.world.get_block(pos), Block::RedstoneWire { .. }));
+            assert!(crate::interaction::is_valid_position(plot.world.get_block(pos), &plot.world, pos));
         } else {
             assert_eq!(plot.world.get_block(pos), block);
         }
     }
     for pair in path.windows(2).filter(|pair| pair[0].y != pair[1].y) {
-        let higher = if pair[0].y > pair[1].y {
-            pair[0]
-        } else {
-            pair[1]
-        };
+        let higher = if pair[0].y > pair[1].y { pair[0] } else { pair[1] };
         let support = higher.offset(BlockFace::Bottom);
         if !placements.iter().any(|&(pos, _)| pos == support) {
             continue;
@@ -1620,12 +1276,7 @@ fn live_elevated_route_copies_stone_supports_and_undo_restores_both_platforms() 
     }
     assert_eq!(plot.world.get_block(lower_platform), Block::Stone {});
     assert_eq!(plot.world.get_block(upper_platform), Block::Stone {});
-    assert!(worldedit::execute_command(
-        &mut plot,
-        0,
-        "/undo",
-        &mut Vec::new()
-    ));
+    assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
     for &(pos, _) in &placements {
         assert_eq!(plot.world.get_block(pos), Block::Air {});
     }

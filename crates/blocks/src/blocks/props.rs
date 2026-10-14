@@ -232,12 +232,7 @@ impl Default for RedstoneRepeater {
 }
 
 impl RedstoneRepeater {
-    pub(super) fn new(
-        delay: u8,
-        facing: BlockDirection,
-        locked: bool,
-        powered: bool,
-    ) -> RedstoneRepeater {
+    pub(super) fn new(delay: u8, facing: BlockDirection, locked: bool, powered: bool) -> RedstoneRepeater {
         RedstoneRepeater {
             delay,
             facing,
@@ -308,11 +303,7 @@ pub struct RedstoneComparator {
 
 impl RedstoneComparator {
     pub fn new(facing: BlockDirection, mode: ComparatorMode, powered: bool) -> RedstoneComparator {
-        RedstoneComparator {
-            facing,
-            mode,
-            powered,
-        }
+        RedstoneComparator { facing, mode, powered }
     }
 }
 
@@ -481,11 +472,7 @@ pub struct Lever {
 
 impl Lever {
     pub fn new(face: LeverFace, facing: BlockDirection, powered: bool) -> Lever {
-        Lever {
-            face,
-            facing,
-            powered,
-        }
+        Lever { face, facing, powered }
     }
 }
 
@@ -548,11 +535,7 @@ pub struct StoneButton {
 
 impl StoneButton {
     pub fn new(face: ButtonFace, facing: BlockDirection, powered: bool) -> StoneButton {
-        StoneButton {
-            face,
-            facing,
-            powered,
-        }
+        StoneButton { face, facing, powered }
     }
 }
 
@@ -622,13 +605,7 @@ pub struct RedstoneWire {
 }
 
 impl RedstoneWire {
-    pub fn new(
-        north: RedstoneWireSide,
-        south: RedstoneWireSide,
-        east: RedstoneWireSide,
-        west: RedstoneWireSide,
-        power: u8,
-    ) -> RedstoneWire {
+    pub fn new(north: RedstoneWireSide, south: RedstoneWireSide, east: RedstoneWireSide, west: RedstoneWireSide, power: u8) -> RedstoneWire {
         RedstoneWire {
             north,
             south,
@@ -770,10 +747,7 @@ impl Instrument {
             // All glass materials: GlassPane
             Block::Glass | Block::StainedGlass { .. } => Instrument::Hat,
             // All wood materials: Log, Plank
-            Block::Sign { .. }
-            | Block::NoteBlock { .. }
-            | Block::Barrel { .. }
-            | Block::Composter { .. } => Instrument::Bass,
+            Block::Sign { .. } | Block::NoteBlock { .. } | Block::Barrel { .. } | Block::Composter { .. } => Instrument::Bass,
             Block::Clay => Instrument::Flute,
             Block::GoldBlock => Instrument::Bell,
             Block::Wool { .. } => Instrument::Guitar,

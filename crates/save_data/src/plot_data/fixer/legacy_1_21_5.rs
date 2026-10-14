@@ -56,24 +56,15 @@ pub fn convert_motion<const N: usize>(plot: &mut PlotData<N>) -> Result<(), Plot
     for (i, chunk) in plot.chunk_data.iter().enumerate() {
         for (local, entity) in &chunk.block_entities {
             if let BlockEntity::MovingPiston(entity) = entity {
-                let pos = BlockPos::new(
-                    (i / width) as i32 * 16 + local.x,
-                    local.y,
-                    (i % width) as i32 * 16 + local.z,
-                );
-                if entity.source
-                    && matches!(read(plot, width, pos), Some(Block::MovingPiston { .. }))
-                {
+                let pos = BlockPos::new((i / width) as i32 * 16 + local.x, local.y, (i % width) as i32 * 16 + local.z);
+                if entity.source && matches!(read(plot, width, pos), Some(Block::MovingPiston { .. })) {
                     old.push((pos, *entity));
                 }
             }
         }
     }
     for (head, entity) in old {
-        if matches!(
-            Block::from_id(entity.block_state),
-            Block::PistonHead { .. } | Block::Piston { .. }
-        ) {
+        if matches!(Block::from_id(entity.block_state), Block::PistonHead { .. } | Block::Piston { .. }) {
             continue;
         }
         let base = head.offset(entity.facing.opposite());
@@ -89,55 +80,25 @@ pub fn convert_motion<const N: usize>(plot: &mut PlotData<N>) -> Result<(), Plot
             let destination = head.offset(entity.facing);
             if entity.block_state != 0 {
                 if read(plot, width, destination) != Some(Block::Air) {
-                    return Err(PlotLoadError::InvalidLegacyId("legacy pushed destination is occupied/outside the plot; original preserved".into()));
+                    return Err(PlotLoadError::InvalidLegacyId(
+                        "legacy pushed destination is occupied/outside the plot; original preserved".into(),
+                    ));
                 }
-                write(
-                    plot,
-                    width,
-                    destination,
-                    Block::MovingPiston {
-                        moving: piston.into(),
-                    },
-                )?;
-                set_entity(
-                    plot,
-                    width,
-                    destination,
-                    Some(MovingPistonEntity {
-                        source: false,
-                        ..entity
-                    }),
-                );
+                write(plot, width, destination, Block::MovingPiston { moving: piston.into() })?;
+                set_entity(plot, width, destination, Some(MovingPistonEntity { source: false, ..entity }));
             }
             set_entity(
                 plot,
                 width,
                 head,
                 Some(MovingPistonEntity {
-                    block_state: Block::PistonHead {
-                        head: piston.into(),
-                    }
-                    .get_id(),
+                    block_state: Block::PistonHead { head: piston.into() }.get_id(),
                     ..entity
                 }),
             );
-            write(
-                plot,
-                width,
-                base,
-                Block::Piston {
-                    piston: piston.extend(true),
-                },
-            )?;
+            write(plot, width, base, Block::Piston { piston: piston.extend(true) })?;
         } else {
-            write(
-                plot,
-                width,
-                base,
-                Block::MovingPiston {
-                    moving: piston.into(),
-                },
-            )?;
+            write(plot, width, base, Block::MovingPiston { moving: piston.into() })?;
             set_entity(
                 plot,
                 width,
@@ -155,15 +116,7 @@ pub fn convert_motion<const N: usize>(plot: &mut PlotData<N>) -> Result<(), Plot
                 write(plot, width, head, Block::Air)?;
                 set_entity(plot, width, head, None);
             } else {
-                set_entity(
-                    plot,
-                    width,
-                    head,
-                    Some(MovingPistonEntity {
-                        source: false,
-                        ..entity
-                    }),
-                );
+                set_entity(plot, width, head, Some(MovingPistonEntity { source: false, ..entity }));
             }
         }
     }
@@ -177,17 +130,8 @@ pub fn convert_motion<const N: usize>(plot: &mut PlotData<N>) -> Result<(), Plot
     }
     Ok(())
 }
-fn location<const N: usize>(
-    _plot: &PlotData<N>,
-    width: usize,
-    pos: BlockPos,
-) -> Option<(usize, usize, usize)> {
-    if pos.x < 0
-        || pos.z < 0
-        || pos.x >= (width * 16) as i32
-        || pos.z >= (width * 16) as i32
-        || !(0..N as i32 * 16).contains(&pos.y)
-    {
+fn location<const N: usize>(_plot: &PlotData<N>, width: usize, pos: BlockPos) -> Option<(usize, usize, usize)> {
+    if pos.x < 0 || pos.z < 0 || pos.x >= (width * 16) as i32 || pos.z >= (width * 16) as i32 || !(0..N as i32 * 16).contains(&pos.y) {
         return None;
     }
     Some((
@@ -206,8 +150,7 @@ fn read<const N: usize>(plot: &PlotData<N>, width: usize, pos: BlockPos) -> Opti
         return None;
     }
     let per = 64 / bits;
-    let packed = ((*section.data.get(entry / per)? as u64 >> (entry % per * bits))
-        & ((1 << bits) - 1)) as u32;
+    let packed = ((*section.data.get(entry / per)? as u64 >> (entry % per * bits)) & ((1 << bits) - 1)) as u32;
     let id = if bits < 9 {
         *section.palette.get(packed as usize)? as u32
     } else {
@@ -215,14 +158,8 @@ fn read<const N: usize>(plot: &PlotData<N>, width: usize, pos: BlockPos) -> Opti
     };
     Some(Block::from_id(id))
 }
-fn write<const N: usize>(
-    plot: &mut PlotData<N>,
-    width: usize,
-    pos: BlockPos,
-    block: Block,
-) -> Result<(), PlotLoadError> {
-    let (chunk, section, entry) =
-        location(plot, width, pos).ok_or(PlotLoadError::ConversionFailed(3))?;
+fn write<const N: usize>(plot: &mut PlotData<N>, width: usize, pos: BlockPos, block: Block) -> Result<(), PlotLoadError> {
+    let (chunk, section, entry) = location(plot, width, pos).ok_or(PlotLoadError::ConversionFailed(3))?;
     let mut ids = Vec::with_capacity(4096);
     for i in 0..4096 {
         let at = BlockPos::new(
@@ -230,11 +167,7 @@ fn write<const N: usize>(
             pos.y.div_euclid(16) * 16 + (i / 256),
             pos.z.div_euclid(16) * 16 + (i / 16 % 16),
         );
-        ids.push(
-            read(plot, width, at)
-                .ok_or(PlotLoadError::ConversionFailed(3))?
-                .get_id(),
-        );
+        ids.push(read(plot, width, at).ok_or(PlotLoadError::ConversionFailed(3))?.get_id());
     }
     ids[entry] = block.get_id();
     let mut data = vec![0i64; 1024];
@@ -250,18 +183,11 @@ fn write<const N: usize>(
     });
     Ok(())
 }
-fn set_entity<const N: usize>(
-    plot: &mut PlotData<N>,
-    width: usize,
-    pos: BlockPos,
-    entity: Option<MovingPistonEntity>,
-) {
+fn set_entity<const N: usize>(plot: &mut PlotData<N>, width: usize, pos: BlockPos, entity: Option<MovingPistonEntity>) {
     let (index, _, _) = location(plot, width, pos).unwrap();
     let local = BlockPos::new(pos.x % 16, pos.y, pos.z % 16);
     if let Some(entity) = entity {
-        plot.chunk_data[index]
-            .block_entities
-            .insert(local, BlockEntity::MovingPiston(entity));
+        plot.chunk_data[index].block_entities.insert(local, BlockEntity::MovingPiston(entity));
     } else {
         plot.chunk_data[index].block_entities.remove(&local);
     }

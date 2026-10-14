@@ -20,16 +20,12 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
     let mut world = PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     );
     world.set_block(BlockPos::new(32, 20, 32), Block::Sandstone {});
     world.set_screen_only(true);
-    world
-        .packet_senders
-        .push(PlayerPacketSender::new(&player.client));
+    world.packet_senders.push(PlayerPacketSender::new(&player.client));
     let (message_sender, _) = std::sync::mpsc::channel();
     let (_, priv_message_receiver) = std::sync::mpsc::channel();
     let plot = Plot {
@@ -107,15 +103,9 @@ fn redpiler_activation_stages_barrel_close_notifications() {
     plot.start_redpiler(CompilerOptions::default());
 
     assert!(plot.redpiler.is_active());
-    assert_eq!(
-        plot.redpiler.backend_kind(),
-        Some(crate::redpiler::BackendKind::Graph)
-    );
+    assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
     assert!(plot.players[0].open_container.is_none());
-    assert!(matches!(
-        plot.world.get_block(barrel),
-        Block::Barrel { open: false, .. }
-    ));
+    assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
     assert!(plot.world.scheduler().iter_entries().next().is_none());
 
     plot.redpiler.tick().unwrap();
@@ -135,10 +125,8 @@ fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
     let plate = BlockPos::new(34, 20, 34);
     let outside = PlayerPos::new(33.5, 20.0, 34.5);
     let on_plate = PlayerPos::new(34.5, 20.0, 34.5);
-    plot.world
-        .set_block(plate.offset(BlockFace::Bottom), Block::Stone {});
-    plot.world
-        .set_block(plate, Block::StonePressurePlate { powered: false });
+    plot.world.set_block(plate.offset(BlockFace::Bottom), Block::Stone {});
+    plot.world.set_block(plate, Block::StonePressurePlate { powered: false });
     plot.world.set_block(
         BlockPos::new(38, 20, 34),
         Block::Piston {
@@ -151,10 +139,7 @@ fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
     );
     plot.start_redpiler(CompilerOptions::default());
     assert!(plot.redpiler.is_active());
-    assert_eq!(
-        plot.redpiler.backend_kind(),
-        Some(crate::redpiler::BackendKind::Graph)
-    );
+    assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
     plot.players[0].on_ground = true;
 
     plot.players[0].pos = outside;
@@ -212,10 +197,7 @@ fn wand_right_click_accepts_block_edges_and_extended_shapes_without_placing() {
         episode(&mut peer, compressed, 5);
         assert_eq!(plot.players[0].second_position, Some(support));
         assert_eq!(plot.world.get_block(support), Block::Sandstone {});
-        assert_eq!(
-            plot.world.get_block(support.offset(BlockFace::Top)),
-            Block::Air
-        );
+        assert_eq!(plot.world.get_block(support.offset(BlockFace::Top)), Block::Air);
 
         let fence = support + BlockPos::new(1, 0, 0);
         let block = Block::from_name("oak_fence").unwrap();
@@ -234,11 +216,7 @@ fn both_wand_positions_need_selection_permission_without_plot_edit_access() {
     for allowed in [false, true] {
         let (mut plot, mut peer) = fixture(false);
         plot.owner = None;
-        plot.players[0].set_test_permissions(if allowed {
-            &["worldedit.selection.pos"]
-        } else {
-            &[]
-        });
+        plot.players[0].set_test_permissions(if allowed { &["worldedit.selection.pos"] } else { &[] });
         assert!(!plot.players[0].can_edit_plot(plot.owner, (0, 0)));
         let support = BlockPos::new(32, 20, 32);
         plot.players[0].inventory[36] = Some(ItemStack {
@@ -254,10 +232,7 @@ fn both_wand_positions_need_selection_permission_without_plot_edit_access() {
         assert_eq!(plot.players[0].first_position, expected);
         assert_eq!(plot.players[0].second_position, expected);
         assert_eq!(plot.world.get_block(support), Block::Sandstone {});
-        assert_eq!(
-            plot.world.get_block(support.offset(BlockFace::Top)),
-            Block::Air
-        );
+        assert_eq!(plot.world.get_block(support.offset(BlockFace::Top)), Block::Air);
     }
 }
 
@@ -322,10 +297,7 @@ fn compass_right_click_works_in_air_and_on_blocks_with_either_hand() {
                 let (ids, _) = episode(&mut peer, compressed, 1);
                 assert_eq!(ids.iter().filter(|&&id| id == 0x41).count(), 1);
                 let destination = plot.players[0].pos;
-                assert_eq!(
-                    (destination.x, destination.y, destination.z),
-                    (32.5, 23.0, 39.5)
-                );
+                assert_eq!((destination.x, destination.y, destination.z), (32.5, 23.0, 39.5));
                 plot.handle_use_item(
                     SUseItem {
                         hand,
@@ -339,10 +311,7 @@ fn compass_right_click_works_in_air_and_on_blocks_with_either_hand() {
                 assert!(!ids.contains(&0x41), "fallback packet teleported twice");
                 assert_eq!(plot.players[0].pos.y, destination.y);
                 assert_eq!(plot.world.get_block(target), Block::Stone {});
-                assert_eq!(
-                    plot.world.get_block(target.offset(BlockFace::Top)),
-                    Block::Air
-                );
+                assert_eq!(plot.world.get_block(target.offset(BlockFace::Top)), Block::Air);
             }
         }
     }
@@ -357,9 +326,7 @@ fn wire_input_slices_retain_unfinished_limited_tps_tick_debt() {
     let _live_peer = connection.peer;
     plot.players[0].client = connection.player;
     plot.world.packet_senders.clear();
-    plot.world
-        .packet_senders
-        .push(PlayerPacketSender::new(&plot.players[0].client));
+    plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
     assert!(plot.handle_redstone_tools_command(0, "/wire", &[]));
     assert!(plot.wire_tools_active());
     plot.tps = Tps::Limited(1_000_000);
@@ -374,8 +341,7 @@ fn wire_input_slices_retain_unfinished_limited_tps_tick_debt() {
         assert!((1..=50_000).contains(&completed));
         assert_eq!(
             plot.lag_time,
-            previous_debt + (plot.last_update_time - previous_time)
-                - Duration::from_micros(completed)
+            previous_debt + (plot.last_update_time - previous_time) - Duration::from_micros(completed)
         );
         assert!(plot.lag_time >= Duration::from_millis(900));
     }
@@ -412,10 +378,7 @@ fn redbox_teleport_restores_exact_position_and_facing_and_transfers_out_of_plots
             panic!("redbox teleport must transfer through the normal plot routing");
         };
         assert_eq!(player.pos.plot_pos(), (-3, 4));
-        assert_eq!(
-            (player.pos.x, player.pos.y, player.pos.z),
-            (remote.x, remote.y, remote.z)
-        );
+        assert_eq!((player.pos.x, player.pos.y, player.pos.z), (remote.x, remote.y, remote.z));
         assert_eq!((player.yaw, player.pitch), (123.5, -20.25));
     }
 }
@@ -436,10 +399,7 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
         let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
         assert_eq!(id, 0x0f);
         assert_eq!(frame.read_varint().unwrap(), 42);
-        assert_eq!(
-            frame.read_varint().unwrap(),
-            text.rfind(' ').unwrap() as i32 + 1
-        );
+        assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
         assert_eq!(frame.read_varint().unwrap(), 2);
         assert_eq!(frame.read_varint().unwrap(), 2);
         assert_eq!(frame.read_string().unwrap(), "-O0");
@@ -460,11 +420,7 @@ fn digging(pos: BlockPos, status: i32, sequence: i32) -> SPlayerDigging {
 
 /// Read through the ACK, retaining all authoritative block updates and packet
 /// order. A missing correction/ACK fails within the socket's bounded timeout.
-fn episode(
-    peer: &mut TcpStream,
-    compressed: bool,
-    sequence: i32,
-) -> (Vec<i32>, Vec<(BlockPos, u32)>) {
+fn episode(peer: &mut TcpStream, compressed: bool, sequence: i32) -> (Vec<i32>, Vec<(BlockPos, u32)>) {
     let mut ids = Vec::new();
     let mut blocks = Vec::new();
     for _ in 0..128 {
@@ -490,35 +446,24 @@ fn actual_placement_and_break_handlers_publish_edits_in_screen_mode() {
         let mut viewer_peer = viewer.peer;
         let mut viewer_player = Player::test_player(viewer.player);
         viewer_player.uuid = 2;
-        plot.world
-            .packet_senders
-            .push(PlayerPacketSender::new(&viewer_player.client));
+        plot.world.packet_senders.push(PlayerPacketSender::new(&viewer_player.client));
         plot.players.push(viewer_player);
         let support = BlockPos::new(32, 20, 32);
         let placed = support.offset(BlockFace::Top);
         plot.handle_player_block_placement(placement(support, 1), 0);
         assert_eq!(plot.world.get_block(placed), Block::Sandstone {});
         let (ids, blocks) = episode(&mut peer, compressed, 1);
-        assert!(
-            ids.contains(&0x4d),
-            "other viewers also need the placement delta"
-        );
+        assert!(ids.contains(&0x4d), "other viewers also need the placement delta");
         assert!(blocks.contains(&(placed, Block::Sandstone {}.get_id())));
         assert_eq!(ids.last(), Some(&0x04));
-        assert_eq!(
-            read_blocks(&mut viewer_peer, compressed),
-            [(placed, Block::Sandstone {}.get_id())]
-        );
+        assert_eq!(read_blocks(&mut viewer_peer, compressed), [(placed, Block::Sandstone {}.get_id())]);
 
         plot.handle_player_digging(digging(placed, 0, 2), 0);
         assert_eq!(plot.world.get_block(placed), Block::Air);
         let (ids, blocks) = episode(&mut peer, compressed, 2);
         assert!(ids.contains(&0x4d));
         assert!(blocks.contains(&(placed, Block::Air.get_id())));
-        assert_eq!(
-            read_blocks(&mut viewer_peer, compressed),
-            [(placed, Block::Air.get_id())]
-        );
+        assert_eq!(read_blocks(&mut viewer_peer, compressed), [(placed, Block::Air.get_id())]);
         assert!(plot.world.screen_only());
     }
 }
@@ -529,10 +474,7 @@ fn swords_inspect_without_a_diff_and_never_break_blocks() {
         for hand in [0, 1] {
             let (mut plot, mut peer) = fixture(compressed);
             let support = BlockPos::new(32, 20, 32);
-            for (index, material) in ["wooden", "stone", "iron", "golden", "diamond", "netherite"]
-                .into_iter()
-                .enumerate()
-            {
+            for (index, material) in ["wooden", "stone", "iron", "golden", "diamond", "netherite"].into_iter().enumerate() {
                 plot.players[0].inventory[36] = Some(ItemStack {
                     item_type: Item::from_name(&format!("{material}_sword")).unwrap(),
                     count: 1,
@@ -580,10 +522,7 @@ fn swords_inspect_without_a_diff_and_never_break_blocks() {
             let (ids, _) = episode(&mut peer, compressed, 9);
             assert!(!ids.contains(&0x72));
             assert_eq!(plot.world.get_block(support), Block::Sandstone {});
-            assert_eq!(
-                plot.world.get_block(support.offset(BlockFace::Top)),
-                Block::Air
-            );
+            assert_eq!(plot.world.get_block(support.offset(BlockFace::Top)), Block::Air);
         }
     }
 }
@@ -632,11 +571,7 @@ fn void_recovery_fences_stale_movement_and_preserves_coordinate_validation() {
             let rescue_id = frame.read_varint().unwrap();
             assert_ne!(rescue_id, old_id);
             assert_eq!(
-                [
-                    frame.read_double().unwrap(),
-                    frame.read_double().unwrap(),
-                    frame.read_double().unwrap(),
-                ],
+                [frame.read_double().unwrap(), frame.read_double().unwrap(), frame.read_double().unwrap(),],
                 [original.x, 128.0, original.z]
             );
             plot.handle_teleport_confirm(STeleportConfirm { id: old_id }, 0);
@@ -662,10 +597,7 @@ fn void_recovery_fences_stale_movement_and_preserves_coordinate_validation() {
             );
             assert_eq!(plot.players[0].pos.y, 128.0);
             assert!(plot.players[0].client.alive());
-            drop(mchprs_network::BlockActionAcknowledgement::new(
-                &plot.players[0].client,
-                1,
-            ));
+            drop(mchprs_network::BlockActionAcknowledgement::new(&plot.players[0].client, 1));
             read_ack(&mut peer, compressed, 1);
 
             plot.handle_teleport_confirm(STeleportConfirm { id: rescue_id }, 0);
@@ -710,24 +642,13 @@ fn teleport_fences_movement_and_edits_until_destination_view_is_queued() {
     let (ids, _) = episode(&mut peer, compressed, 1);
     assert_eq!(ids, [0x08, 0x04]);
 
-    plot.handle_teleport_confirm(
-        STeleportConfirm {
-            id: teleport_id - 1,
-        },
-        0,
-    );
+    plot.handle_teleport_confirm(STeleportConfirm { id: teleport_id - 1 }, 0);
     assert!(plot.players[0].awaiting_teleport());
-    drop(mchprs_network::BlockActionAcknowledgement::new(
-        &plot.players[0].client,
-        2,
-    ));
+    drop(mchprs_network::BlockActionAcknowledgement::new(&plot.players[0].client, 2));
     read_ack(&mut peer, compressed, 2); // Wrong confirmation sends no view/chunk work.
     plot.handle_teleport_confirm(STeleportConfirm { id: teleport_id }, 0);
     assert!(!plot.players[0].awaiting_teleport());
-    assert_eq!(
-        (plot.players[0].last_chunk_x, plot.players[0].last_chunk_z),
-        (3, 2)
-    );
+    assert_eq!((plot.players[0].last_chunk_x, plot.players[0].last_chunk_z), (3, 2));
     // The next edit in the SAME drained packet batch must follow the chunk loads.
     let target = BlockPos::new(48, 20, 32);
     plot.handle_player_digging(digging(target, 2, 3), 0);

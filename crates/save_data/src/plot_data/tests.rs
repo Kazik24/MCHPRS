@@ -27,21 +27,10 @@ fn format_four_migration_preserves_original_and_command_blocks_save_in_five() {
     let mut old = PLOT_MAGIC.to_vec();
     old.extend_from_slice(&4u32.to_le_bytes());
     old.extend_from_slice(&MC_DATA_VERSION.to_le_bytes());
-    old.extend_from_slice(
-        &bincode::serialize(&(
-            data.tps,
-            data.world_send_rate,
-            &data.chunk_data,
-            &data.pending_ticks,
-            &data.piston_state,
-        ))
-        .unwrap(),
-    );
+    old.extend_from_slice(&bincode::serialize(&(data.tps, data.world_send_rate, &data.chunk_data, &data.pending_ticks, &data.piston_state)).unwrap());
     fs::write(&path, &old).unwrap();
     assert_eq!(
-        PlotData::<1>::load_from_file(&path, true)
-            .unwrap()
-            .piston_animation,
+        PlotData::<1>::load_from_file(&path, true).unwrap().piston_animation,
         PistonAnimation::Auto
     );
     assert_eq!(fs::read(temp.0.join("plot.bak")).unwrap(), old);
@@ -53,10 +42,7 @@ fn format_four_migration_preserves_original_and_command_blocks_save_in_five() {
         })),
     );
     data.save_to_file(&path).unwrap();
-    assert_eq!(
-        u32::from_le_bytes(fs::read(&path).unwrap()[8..12].try_into().unwrap()),
-        5
-    );
+    assert_eq!(u32::from_le_bytes(fs::read(&path).unwrap()[8..12].try_into().unwrap()), 5);
     let loaded = PlotData::<1>::load_from_file(&path, false).unwrap();
     assert_eq!(loaded.piston_animation, PistonAnimation::Off);
     assert!(
@@ -152,20 +138,11 @@ fn migrates_palette_and_direct_states_with_pistons_signs_and_backup() {
         assert!(
             matches!(converted.chunk_data[0].block_entities.get(&BlockPos::new(2,8,1)), Some(BlockEntity::Sign(s)) if s.rows[0] == "A" && s.back_rows[0] == "{\"text\":\"\"}")
         );
-        assert_eq!(
-            fs::read(temp.0.join("plot.bak")).unwrap(),
-            b"existing backup"
-        );
+        assert_eq!(fs::read(temp.0.join("plot.bak")).unwrap(), b"existing backup");
         assert_eq!(fs::read(temp.0.join("plot.bak.1")).unwrap(), original);
         let bytes = fs::read(&path).unwrap();
-        assert_eq!(
-            u32::from_le_bytes(bytes[8..12].try_into().unwrap()),
-            VERSION
-        );
-        assert_eq!(
-            u32::from_le_bytes(bytes[12..16].try_into().unwrap()),
-            MC_DATA_VERSION
-        );
+        assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), VERSION);
+        assert_eq!(u32::from_le_bytes(bytes[12..16].try_into().unwrap()), MC_DATA_VERSION);
         PlotData::<1>::load_from_file(&path, true).unwrap();
         converted.save_to_file(&path).unwrap(); // Existing destination replacement on Windows.
     }
@@ -215,12 +192,7 @@ fn format_three_motion(occupied: bool) -> Vec<u8> {
         data[i / 4] |= (block.get_id() as i64) << (i % 4 * 15);
     };
     put(base, Block::Piston { piston });
-    put(
-        head,
-        Block::MovingPiston {
-            moving: piston.into(),
-        },
-    );
+    put(head, Block::MovingPiston { moving: piston.into() });
     if occupied {
         put(head.offset(BlockFace::East), Block::GoldBlock {});
     }
@@ -269,10 +241,8 @@ fn format_three_motion_migrates_to_destination_entities_and_keeps_backup() {
     let data = PlotData::<1>::load_from_file(&path, true).unwrap();
     assert_eq!(fs::read(temp.0.join("plot.bak")).unwrap(), old);
     let head = BlockPos::new(4, 8, 4);
-    assert!(
-        matches!(data.chunk_data[0].block_entities.get(&head), Some(BlockEntity::MovingPiston(e))
-        if e.source && matches!(Block::from_id(e.block_state), Block::PistonHead { .. }))
-    );
+    assert!(matches!(data.chunk_data[0].block_entities.get(&head), Some(BlockEntity::MovingPiston(e))
+        if e.source && matches!(Block::from_id(e.block_state), Block::PistonHead { .. })));
     assert!(
         matches!(data.chunk_data[0].block_entities.get(&head.offset(BlockFace::East)), Some(BlockEntity::MovingPiston(e))
         if !e.source && Block::from_id(e.block_state) == Block::Stone {} && e.progress == 127)

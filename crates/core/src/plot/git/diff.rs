@@ -29,20 +29,11 @@ pub(super) struct Diff {
 }
 
 fn air(id: u32) -> bool {
-    matches!(
-        Block::from_id(id).get_name(),
-        "air" | "void_air" | "cave_air"
-    )
+    matches!(Block::from_id(id).get_name(), "air" | "void_air" | "cave_air")
 }
 
 impl Diff {
-    pub fn new(
-        from_id: String,
-        to_id: String,
-        from: Snapshot,
-        to: Snapshot,
-        reservation: super::Reservation,
-    ) -> Result<Self> {
+    pub fn new(from_id: String, to_id: String, from: Snapshot, to: Snapshot, reservation: super::Reservation) -> Result<Self> {
         ensure!(from.plot == to.plot, messages::GIT_DIFFERENT_PLOTS);
         let a = from.fingerprints()?;
         let b = to.fingerprints()?;
@@ -80,13 +71,9 @@ impl Diff {
 
     fn position(&self, chunk: usize, sy: usize, index: usize) -> BlockPos {
         BlockPos::new(
-            self.from.plot.0 * PLOT_WIDTH * 16
-                + (chunk as i32 / PLOT_WIDTH) * 16
-                + (index & 15) as i32,
+            self.from.plot.0 * PLOT_WIDTH * 16 + (chunk as i32 / PLOT_WIDTH) * 16 + (index & 15) as i32,
             sy as i32 * 16 + (index / 256) as i32,
-            self.from.plot.1 * PLOT_WIDTH * 16
-                + (chunk as i32 % PLOT_WIDTH) * 16
-                + ((index / 16) & 15) as i32,
+            self.from.plot.1 * PLOT_WIDTH * 16 + (chunk as i32 % PLOT_WIDTH) * 16 + ((index / 16) & 15) as i32,
         )
     }
 
@@ -118,15 +105,9 @@ impl Diff {
             extra.push(json!({"text": messages::GIT_EXECUTION_CHANGED_SUFFIX, "color": "gray"}));
         }
         extra.push(json!({"text": "\n", "color": "gray"}));
-        for (label, id) in [
-            (&self.from_label, &self.from_id),
-            (&self.to_label, &self.to_id),
-        ] {
+        for (label, id) in [(&self.from_label, &self.from_id), (&self.to_label, &self.to_id)] {
             if !id.is_empty() {
-                extra.push(button(
-                    &messages::git_diff_reference(label, &id[..8]),
-                    &format!("/git show {}", &id[..8]),
-                ));
+                extra.push(button(&messages::git_diff_reference(label, &id[..8]), &format!("/git show {}", &id[..8])));
             } else {
                 extra.push(json!({"text": format!(" [{label}]"), "color": "gray"}));
             }
@@ -140,14 +121,10 @@ impl Diff {
             .iter()
             .map(|&section| {
                 let start = self.position(section / PLOT_SECTIONS, section % PLOT_SECTIONS, 0);
-                let distance = [
-                    (center.x, start.x),
-                    (center.y, start.y),
-                    (center.z, start.z),
-                ]
-                .iter()
-                .map(|&(p, s)| (p - p.clamp(s as f64, s as f64 + 16.0)).powi(2))
-                .sum::<f64>();
+                let distance = [(center.x, start.x), (center.y, start.y), (center.z, start.z)]
+                    .iter()
+                    .map(|&(p, s)| (p - p.clamp(s as f64, s as f64 + 16.0)).powi(2))
+                    .sum::<f64>();
                 (distance, section)
             })
             .collect();
@@ -160,30 +137,20 @@ impl Diff {
             if distance > radius * radius {
                 break;
             }
-            if heap.len() == limit
-                && (distance * 1024.0) as i64
-                    > heap
-                        .peek()
-                        .map(|v: &(i64, i32, i32, i32, u8)| v.0)
-                        .unwrap_or(i64::MAX)
-            {
+            if heap.len() == limit && (distance * 1024.0) as i64 > heap.peek().map(|v: &(i64, i32, i32, i32, u8)| v.0).unwrap_or(i64::MAX) {
                 break;
             }
             let chunk = section / PLOT_SECTIONS;
             let sy = section % PLOT_SECTIONS;
             for index in 0..4096 {
-                let a = state(
-                    self.from.data.chunk_data[chunk].sections[sy].as_ref(),
-                    index,
-                );
+                let a = state(self.from.data.chunk_data[chunk].sections[sy].as_ref(), index);
                 let b = state(self.to.data.chunk_data[chunk].sections[sy].as_ref(), index);
                 if air(a) && air(b) {
                     continue;
                 }
                 let pos = self.position(chunk, sy, index);
-                let distance = (center.x - pos.x as f64 - 0.5).powi(2)
-                    + (center.y - pos.y as f64 - 0.5).powi(2)
-                    + (center.z - pos.z as f64 - 0.5).powi(2);
+                let distance =
+                    (center.x - pos.x as f64 - 0.5).powi(2) + (center.y - pos.y as f64 - 0.5).powi(2) + (center.z - pos.z as f64 - 0.5).powi(2);
                 if distance > radius * radius {
                     continue;
                 }
@@ -213,25 +180,18 @@ impl Diff {
         ensure!(self.kind(pos)?.is_some(), messages::GIT_POSITION_UNCHANGED);
         let a = Block::from_id(self.from.block(pos));
         let b = Block::from_id(self.to.block(pos));
-        let mut text =
-            messages::git_block_diff(pos.x, pos.y, pos.z, description(a), description(b));
+        let mut text = messages::git_block_diff(pos.x, pos.y, pos.z, description(a), description(b));
         let ae = self.from.entity(pos)?;
         let be = self.to.entity(pos)?;
         if ae != be {
             text.push_str(messages::GIT_BLOCK_DATA_CHANGED);
         }
         if let Some(side) = side {
-            ensure!(
-                matches!(side, "from" | "to"),
-                messages::GIT_INVALID_DETAILS_SIDE
-            );
+            ensure!(matches!(side, "from" | "to"), messages::GIT_INVALID_DETAILS_SIDE);
         }
         // Include both saved versions unless a coordinate command requests one side.
         if ae != be || side.is_some() {
-            for (label, value, selected) in [
-                (messages::GIT_FROM_LABEL, &ae, "from"),
-                (messages::GIT_TO_LABEL, &be, "to"),
-            ] {
+            for (label, value, selected) in [(messages::GIT_FROM_LABEL, &ae, "from"), (messages::GIT_TO_LABEL, &be, "to")] {
                 if side.is_some_and(|side| side != selected) {
                     continue;
                 }
@@ -244,11 +204,7 @@ impl Diff {
                 text.push_str(&messages::git_block_data_details(
                     label,
                     serialized.chars().take(3000).collect::<String>(),
-                    if truncated {
-                        messages::GIT_DATA_TRUNCATED
-                    } else {
-                        ""
-                    },
+                    if truncated { messages::GIT_DATA_TRUNCATED } else { "" },
                 ));
             }
         }
@@ -265,11 +221,7 @@ pub(super) fn change_summary(counts: [u64; 4]) -> Value {
 }
 
 pub(super) fn description(block: Block) -> String {
-    let mut props: Vec<_> = block
-        .properties()
-        .into_iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect();
+    let mut props: Vec<_> = block.properties().into_iter().map(|(k, v)| format!("{k}={v}")).collect();
     props.sort();
     format!(
         "{}{}",

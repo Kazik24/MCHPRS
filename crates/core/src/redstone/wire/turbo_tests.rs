@@ -119,9 +119,7 @@ fn omitted_wire_callbacks_are_inert_for_every_registry_state() {
 fn reused_walk_scratch_observes_changed_blocks_and_other_worlds() {
     use crate::plot::{PLOT_WIDTH, PlotWorld};
     let make_world = || {
-        let chunks = (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect();
+        let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
         PlotWorld::from_chunks(0, 0, chunks, Default::default())
     };
     let root = BlockPos::new(8, 8, 8);
@@ -129,20 +127,10 @@ fn reused_walk_scratch_observes_changed_blocks_and_other_worlds() {
     let mut world = make_world();
     for x in 8..=14 {
         world.set_block(BlockPos::new(x, 7, 8), Block::Stone {});
-        world.set_block(
-            BlockPos::new(x, 8, 8),
-            Block::from_name("redstone_wire").unwrap(),
-        );
+        world.set_block(BlockPos::new(x, 8, 8), Block::from_name("redstone_wire").unwrap());
     }
     for powered in [true, false, true, false] {
-        world.set_block(
-            source,
-            if powered {
-                Block::RedstoneBlock {}
-            } else {
-                Block::Air
-            },
-        );
+        world.set_block(source, if powered { Block::RedstoneBlock {} } else { Block::Air });
         redstone::update(world.get_block(root), &mut world, root, None);
         for x in 8..=14 {
             assert_eq!(

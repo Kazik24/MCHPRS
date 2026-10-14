@@ -75,10 +75,7 @@ impl TimingsMonitor {
             tps: AtomicTps::from_tps(tps),
         });
         let monitor_thread = Some(Self::run_thread(data.clone()));
-        TimingsMonitor {
-            data,
-            monitor_thread,
-        }
+        TimingsMonitor { data, monitor_thread }
     }
 
     pub fn stop(&mut self) {
@@ -98,11 +95,7 @@ impl TimingsMonitor {
 
         let average = |seconds: usize| {
             let samples = records.len().min(seconds * SAMPLES_PER_SECOND);
-            let ticks: u64 = records
-                .iter()
-                .take(samples)
-                .map(|&ticks| u64::from(ticks))
-                .sum();
+            let ticks: u64 = records.iter().take(samples).map(|&ticks| u64::from(ticks)).sum();
             ticks as f32 / samples as f32 * SAMPLES_PER_SECOND as f32
         };
 
@@ -156,24 +149,17 @@ impl TimingsMonitor {
 
                 let tps = data.tps.tps.load(Ordering::Relaxed);
                 let ticking = data.ticking.load(Ordering::Relaxed);
-                if !(ticking && was_ticking_before)
-                    || tps != last_tps
-                    || data.reset_timings.load(Ordering::Relaxed) > 0
-                {
-                    let _ = data.reset_timings.try_update(
-                        Ordering::Relaxed,
-                        Ordering::Relaxed,
-                        |remaining| remaining.checked_sub(1),
-                    );
+                if !(ticking && was_ticking_before) || tps != last_tps || data.reset_timings.load(Ordering::Relaxed) > 0 {
+                    let _ = data
+                        .reset_timings
+                        .try_update(Ordering::Relaxed, Ordering::Relaxed, |remaining| remaining.checked_sub(1));
                     was_ticking_before = ticking;
                     last_tps = tps;
                     continue;
                 }
 
                 // 5% threshold
-                if data.tps.unlimited.load(Ordering::Relaxed)
-                    || (ticks_passed as u64) < (tps as u64 / 2) * 95 / 100
-                {
+                if data.tps.unlimited.load(Ordering::Relaxed) || (ticks_passed as u64) < (tps as u64 / 2) * 95 / 100 {
                     behind_for += 1;
                 } else {
                     behind_for = 0;

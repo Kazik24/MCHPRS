@@ -36,24 +36,12 @@ fn backlog_keeps_latest_state_without_crossing_packet_barriers() {
     sender.blocks(&block(20_000), true);
     let pending = sender.handle.shared.pending.lock().unwrap();
     assert_eq!(pending.items.len(), 4);
-    let Payload::Blocks(blocks) = &pending.items[1].payload else {
-        panic!()
-    };
+    let Payload::Blocks(blocks) = &pending.items[1].payload else { panic!() };
     assert_eq!(blocks[&(-3, 15, 7)][&0x0fde], 9_999);
     assert_eq!(pending.items[1].bytes, 96);
-    let Payload::Blocks(blocks) = &pending.items[3].payload else {
-        panic!()
-    };
+    let Payload::Blocks(blocks) = &pending.items[3].payload else { panic!() };
     assert_eq!(blocks[&(-3, 15, 7)][&0x0fde], 20_000);
-    assert_eq!(
-        sender
-            .handle
-            .shared
-            .counters
-            .coalesced_blocks
-            .load(Ordering::Relaxed),
-        9_999
-    );
+    assert_eq!(sender.handle.shared.counters.coalesced_blocks.load(Ordering::Relaxed), 9_999);
 }
 
 #[test]
@@ -64,11 +52,7 @@ fn chunk_snapshots_and_prediction_acks_preserve_their_place_in_the_wire_stream()
 
     for compressed in [false, true] {
         let sender = queued(); // Populate a backlog before starting the writer.
-        let unload = CUnloadChunk {
-            chunk_x: -3,
-            chunk_z: 7,
-        }
-        .encode();
+        let unload = CUnloadChunk { chunk_x: -3, chunk_z: 7 }.encode();
         let load = CChunkData {
             chunk_x: -3,
             chunk_z: 7,
@@ -112,9 +96,7 @@ fn chunk_snapshots_and_prediction_acks_preserve_their_place_in_the_wire_stream()
                 let size = frame.read_varint().unwrap();
                 if size != 0 {
                     let mut data = Vec::new();
-                    flate2::read::ZlibDecoder::new(frame)
-                        .read_to_end(&mut data)
-                        .unwrap();
+                    flate2::read::ZlibDecoder::new(frame).read_to_end(&mut data).unwrap();
                     assert_eq!(data.len(), size as usize);
                     frame = Cursor::new(data);
                 }
@@ -152,36 +134,17 @@ fn failed_writes_close_the_connection_instead_of_skipping_reliable_packets() {
     sender.packet(&PacketEncoder::new(vec![42], 0x04), true);
     Outbound::run(&sender.handle.shared, FailingSink);
     let stats = sender.stats();
-    assert_eq!(
-        (
-            stats.packets,
-            stats.bytes,
-            stats.failures,
-            stats.queued_bytes
-        ),
-        (0, 0, 1, 0)
-    );
+    assert_eq!((stats.packets, stats.bytes, stats.failures, stats.queued_bytes), (0, 0, 1, 0));
     assert!(sender.handle.shared.pending.lock().unwrap().closed);
     sender.packet(&PacketEncoder::new(vec![43], 0x04), true);
-    assert!(
-        sender
-            .handle
-            .shared
-            .pending
-            .lock()
-            .unwrap()
-            .items
-            .is_empty()
-    );
+    assert!(sender.handle.shared.pending.lock().unwrap().items.is_empty());
 }
 
 #[test]
 fn ordered_writer_matches_protocol_bytes_and_drains_on_close() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-    client
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
+    client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let (server, _) = listener.accept().unwrap();
     let sender = queued(); // hold worker until all updates have been coalesced
     let login = PacketEncoder::new(vec![1, 2, 3], 7);
@@ -232,24 +195,14 @@ fn dropping_last_handle_closes_shared_writer_and_overflow_closes_connection() {
     assert!(pending.closed);
     assert!(pending.items.is_empty());
     assert_eq!(pending.bytes, 0);
-    assert_eq!(
-        sender
-            .handle
-            .shared
-            .counters
-            .failures
-            .load(Ordering::Relaxed),
-        1
-    );
+    assert_eq!(sender.handle.shared.counters.failures.load(Ordering::Relaxed), 1);
 }
 
 #[test]
 fn background_writer_accepts_packets_without_waiting_for_client_reads() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-    client
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
+    client.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
     let (server, _) = listener.accept().unwrap();
     let sender = Outbound::new(server);
     let packet = PacketEncoder::new(vec![123; 4096], 1);
@@ -299,9 +252,7 @@ fn compare_no_client_synchronous_and_background_sending() {
         let worker = if mode == "background" {
             let shared = sender.handle.shared.clone();
             let output = output.clone();
-            Some(std::thread::spawn(move || {
-                Outbound::run(&shared, SlowSink(output))
-            }))
+            Some(std::thread::spawn(move || Outbound::run(&shared, SlowSink(output))))
         } else {
             None
         };
@@ -311,12 +262,7 @@ fn compare_no_client_synchronous_and_background_sending() {
         for tick in 1..=10_000u32 {
             // The same small synthetic simulation kernel in all three modes.
             for value in &mut state {
-                *value = std::hint::black_box(
-                    value
-                        .rotate_left(7)
-                        .wrapping_mul(6364136223846793005)
-                        .wrapping_add(u64::from(tick)),
-                );
+                *value = std::hint::black_box(value.rotate_left(7).wrapping_mul(6364136223846793005).wrapping_add(u64::from(tick)));
             }
             if tick % 20 != 0 || mode == "no_client" {
                 continue;
@@ -338,10 +284,7 @@ fn compare_no_client_synchronous_and_background_sending() {
         let total = started.elapsed();
         if mode != "no_client" {
             let mut last_frame = Vec::new();
-            frame(10_000)
-                .encode()
-                .write_compressed(&mut last_frame)
-                .unwrap();
+            frame(10_000).encode().write_compressed(&mut last_frame).unwrap();
             assert_eq!(
                 output.lock().unwrap().last().unwrap(),
                 &last_frame,

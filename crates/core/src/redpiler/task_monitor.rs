@@ -45,11 +45,7 @@ impl TaskMonitor {
     }
 
     pub(crate) fn record_preparation_tables(&self, tables: Vec<PreparationTableStatistics>) {
-        self.graph_statistics
-            .lock()
-            .unwrap()
-            .preparation_tables
-            .extend(tables);
+        self.graph_statistics.lock().unwrap().preparation_tables.extend(tables);
     }
 
     #[cfg(feature = "graph-profile")]
@@ -71,9 +67,7 @@ impl TaskMonitor {
             .preparation_tables
             .iter()
             .filter(|table| table.stage == stage)
-            .fold(0usize, |total, table| {
-                total.saturating_add(table.estimated_bytes)
-            })
+            .fold(0usize, |total, table| total.saturating_add(table.estimated_bytes))
     }
 
     pub(crate) fn set_parser_complete(&self, counts: super::GraphCounts) {
@@ -89,8 +83,7 @@ impl TaskMonitor {
     }
 
     pub fn set_budget_multiplier(&self, multiplier: usize) {
-        self.budget_multiplier
-            .store(multiplier.clamp(1, 8), Ordering::Relaxed);
+        self.budget_multiplier.store(multiplier.clamp(1, 8), Ordering::Relaxed);
     }
 
     pub fn budget_multiplier(&self) -> usize {

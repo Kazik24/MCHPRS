@@ -11,11 +11,7 @@ fn read_teleport(peer: &mut std::net::TcpStream, destination: PlayerPos) -> i32 
     assert_eq!(packet_id, 0x41); // Minecraft 1.21.5 Synchronize Player Position.
     let id = frame.read_varint().unwrap();
     assert_eq!(
-        [
-            frame.read_double().unwrap(),
-            frame.read_double().unwrap(),
-            frame.read_double().unwrap()
-        ],
+        [frame.read_double().unwrap(), frame.read_double().unwrap(), frame.read_double().unwrap()],
         xyz(destination)
     );
     for _ in 0..3 {
@@ -40,11 +36,7 @@ fn queued_movement_cannot_undo_teleports_or_release_a_newer_destination() {
     let second = PlayerPos::new(128.0, 90.0, 128.0);
     player.teleport(first);
     let first_id = read_teleport(&mut peer, first);
-    assert!(
-        player
-            .accept_position(original, true, Some((180.0, 90.0)))
-            .is_none()
-    );
+    assert!(player.accept_position(original, true, Some((180.0, 90.0))).is_none());
     assert_eq!(xyz(player.pos), xyz(first));
     assert_eq!((player.yaw, player.pitch), (35.0, -10.0));
 
@@ -58,15 +50,7 @@ fn queued_movement_cannot_undo_teleports_or_release_a_newer_destination() {
     assert!(!player.confirm_teleport(second_id));
 
     let next = PlayerPos::new(129.0, 90.0, 128.0);
-    assert_eq!(
-        xyz(player
-            .accept_position(next, true, Some((45.0, 5.0)))
-            .unwrap()),
-        xyz(second)
-    );
+    assert_eq!(xyz(player.accept_position(next, true, Some((45.0, 5.0))).unwrap()), xyz(second));
     assert_eq!(xyz(player.pos), xyz(next));
-    assert_eq!(
-        (player.yaw, player.pitch, player.on_ground),
-        (45.0, 5.0, true)
-    );
+    assert_eq!((player.yaw, player.pitch, player.on_ground), (45.0, 5.0, true));
 }

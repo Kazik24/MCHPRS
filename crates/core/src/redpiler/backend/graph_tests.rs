@@ -8,8 +8,8 @@ use crate::redstone::instant_piston_tests::capture_at;
 use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::{BlockEntity, CommandBlockEntity};
 use mchprs_blocks::blocks::{
-    Block, ButtonFace, ComparatorMode, Instrument, Lever, LeverFace, RedstoneComparator,
-    RedstoneObserver, RedstoneRepeater, RedstoneWire, RedstoneWireSide, StoneButton,
+    Block, ButtonFace, ComparatorMode, Instrument, Lever, LeverFace, RedstoneComparator, RedstoneObserver, RedstoneRepeater, RedstoneWire,
+    RedstoneWireSide, StoneButton,
 };
 use mchprs_blocks::{BlockDirection, BlockFacing};
 use serde_json::Value;
@@ -28,9 +28,7 @@ fn fixture_world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -45,12 +43,7 @@ fn set_native_lever(world: &mut PlotWorld, position: BlockPos, powered: bool) {
     set_native_lever_with_support(world, position, powered, BlockFace::Bottom);
 }
 
-fn set_native_lever_with_support(
-    world: &mut PlotWorld,
-    position: BlockPos,
-    powered: bool,
-    support: BlockFace,
-) {
+fn set_native_lever_with_support(world: &mut PlotWorld, position: BlockPos, powered: bool, support: BlockFace) {
     let Block::Lever { mut lever } = world.get_block(position) else {
         panic!("expected lever at {position:?}");
     };
@@ -87,15 +80,10 @@ fn recording_graph(world: &PlotWorld, ticks: Vec<TickEntry>) -> GraphBackend {
     backend
 }
 
-fn dust_path_backend(
-    world: &PlotWorld,
-    optimization_level: Option<usize>,
-    dust_paths: bool,
-) -> GraphBackend {
+fn dust_path_backend(world: &PlotWorld, optimization_level: Option<usize>) -> GraphBackend {
     let monitor = TaskMonitor::default();
     let options = crate::redpiler::CompilerOptions {
         optimization_level,
-        experimental_dust_paths: dust_paths,
         ..Default::default()
     };
     let mut prepared = passes::rich::prepare(
@@ -107,14 +95,7 @@ fn dust_path_backend(
     )
     .unwrap();
     let pipeline = passes::default_graph_pipeline(&options);
-    passes::run_graph_pipeline(
-        &mut prepared.graph,
-        &options,
-        &prepared.entry,
-        &pipeline,
-        &monitor,
-    )
-    .unwrap();
+    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).unwrap();
     prepared.finish_pipeline_statistics(&monitor);
     let lowered = prepared.lower(&monitor).unwrap();
     GraphBackend::from_lowered(lowered, &monitor).unwrap()
@@ -148,19 +129,10 @@ fn analog_dust_world() -> PlotWorld {
     world.set_block(
         LEVER_POS,
         Block::RedstoneComparator {
-            comparator: RedstoneComparator::new(
-                BlockDirection::West,
-                ComparatorMode::Compare,
-                false,
-            ),
+            comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Compare, false),
         },
     );
-    world.set_block_entity(
-        LEVER_POS,
-        BlockEntity::Comparator {
-            output_strength: 15,
-        },
-    );
+    world.set_block_entity(LEVER_POS, BlockEntity::Comparator { output_strength: 15 });
     for distance in 0..3 {
         let position = NEXT_POS + BlockPos::new(distance, 0, 0);
         world.set_block(
@@ -188,15 +160,8 @@ fn analog_dust_world() -> PlotWorld {
     world
 }
 
-fn set_analog_dust_state(
-    backend: &mut GraphBackend,
-    input: NodeId,
-    wires: &[NodeId],
-    old_strength: u8,
-    new_strength: u8,
-) {
-    let ComponentState::Electrical(input_state) = &mut backend.state.components[input.index()]
-    else {
+fn set_analog_dust_state(backend: &mut GraphBackend, input: NodeId, wires: &[NodeId], old_strength: u8, new_strength: u8) {
+    let ComponentState::Electrical(input_state) = &mut backend.state.components[input.index()] else {
         panic!("analog source must have electrical state");
     };
     input_state.powered = new_strength > 0;
@@ -244,19 +209,11 @@ fn callback_profile_matches_dispatched_graph_callbacks_for_an_ordered_route() {
     assert_eq!(profile.route_calls, 1);
     assert!(profile.delivery_records_examined > 0);
     assert_eq!(
-        profile
-            .dispatches_by_receiver_and_kind
-            .iter()
-            .flatten()
-            .sum::<u64>(),
+        profile.dispatches_by_receiver_and_kind.iter().flatten().sum::<u64>(),
         backend.execution_counts().callbacks
     );
     assert_eq!(
-        profile
-            .dispatches_by_role_and_kind
-            .iter()
-            .flatten()
-            .sum::<u64>(),
+        profile.dispatches_by_role_and_kind.iter().flatten().sum::<u64>(),
         backend.execution_counts().callbacks
     );
 }
@@ -264,8 +221,8 @@ fn callback_profile_matches_dispatched_graph_callbacks_for_an_ordered_route() {
 #[test]
 fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
     let world = analog_dust_world();
-    let mut general = dust_path_backend(&world, Some(0), false);
-    let mut contracted = dust_path_backend(&world, None, true);
+    let mut general = dust_path_backend(&world, Some(0));
+    let mut contracted = dust_path_backend(&world, None);
     let path = contracted.program.dust_paths();
     assert_eq!(path.len(), 1);
     let wires = path[0].wires.to_vec();
@@ -275,20 +232,8 @@ fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
 
     for old_strength in 0..=15 {
         for new_strength in 0..=15 {
-            set_analog_dust_state(
-                &mut general,
-                general_input,
-                &general_wires,
-                old_strength,
-                new_strength,
-            );
-            set_analog_dust_state(
-                &mut contracted,
-                contracted_input,
-                &wires,
-                old_strength,
-                new_strength,
-            );
+            set_analog_dust_state(&mut general, general_input, &general_wires, old_strength, new_strength);
+            set_analog_dust_state(&mut contracted, contracted_input, &wires, old_strength, new_strength);
             for &node in &wires {
                 let general_plan = general.wire_plan(node).clone();
                 let contracted_plan = contracted.wire_plan(node).clone();
@@ -300,20 +245,11 @@ fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
                 let mut general_walk = captured_wire_walk(&general, &general_plan);
                 let mut contracted_walk = captured_wire_walk(&contracted, &contracted_plan);
                 let general_ordered = general.identify_wire_neighbors(node, &mut general_walk);
-                let contracted_ordered =
-                    contracted.identify_wire_neighbors(node, &mut contracted_walk);
+                let contracted_ordered = contracted.identify_wire_neighbors(node, &mut contracted_walk);
                 assert_eq!(contracted_ordered, general_ordered);
                 assert_eq!(
-                    contracted.turbo_wire_power(
-                        &contracted_plan,
-                        &contracted_ordered,
-                        &contracted_walk,
-                    ),
-                    general.turbo_wire_power_general(
-                        &general_plan,
-                        &general_ordered,
-                        &general_walk,
-                    ),
+                    contracted.turbo_wire_power(&contracted_plan, &contracted_ordered, &contracted_walk,),
+                    general.turbo_wire_power_general(&general_plan, &general_ordered, &general_walk,),
                     "captured old={old_strength} new={new_strength} wire={node:?}"
                 );
             }
@@ -351,8 +287,8 @@ fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
 #[test]
 fn dust_path_keeps_nested_input_callback_order_and_intermediate_writes() {
     let world = analog_dust_world();
-    let mut general = dust_path_backend(&world, None, false);
-    let mut contracted = dust_path_backend(&world, None, true);
+    let mut general = dust_path_backend(&world, Some(0));
+    let mut contracted = dust_path_backend(&world, None);
     let input = general.positions[&LEVER_POS];
     let wires = contracted.program.dust_paths()[0].wires.to_vec();
     general.set_test_recording(true);
@@ -360,12 +296,8 @@ fn dust_path_keeps_nested_input_callback_order_and_intermediate_writes() {
 
     for strength in [8, 3, 15, 0, 0, 7] {
         let start = general.callback_order.len();
-        general
-            .set_node(input, false, strength, None, true)
-            .unwrap();
-        contracted
-            .set_node(input, false, strength, None, true)
-            .unwrap();
+        general.set_node(input, false, strength, None, true).unwrap();
+        contracted.set_node(input, false, strength, None, true).unwrap();
         assert_eq!(
             &contracted.callback_order[start..],
             &general.callback_order[start..],
@@ -386,12 +318,7 @@ fn state_at(backend: &GraphBackend, position: BlockPos) -> NodeState {
     backend.node_state(backend.positions[&position]).clone()
 }
 
-fn ticks_at(
-    position: BlockPos,
-    block: Block,
-    count: usize,
-    priority: TickPriority,
-) -> Vec<TickEntry> {
+fn ticks_at(position: BlockPos, block: Block, count: usize, priority: TickPriority) -> Vec<TickEntry> {
     (0..count)
         .map(|_| TickEntry {
             ticks_left: 0,
@@ -426,16 +353,10 @@ fn contact_resource_backend() -> GraphBackend {
     let air = ProfileId::new(0);
     let guards = vec![
         Guard::Always,
-        Guard::State(StateTest::ResourceAt {
-            resource,
-            contact: first,
-        }),
+        Guard::State(StateTest::ResourceAt { resource, contact: first }),
         Guard::State(StateTest::ResourceEnabled(resource)),
         Guard::All(vec![first_at, enabled].into_boxed_slice()),
-        Guard::State(StateTest::ResourceAt {
-            resource,
-            contact: second,
-        }),
+        Guard::State(StateTest::ResourceAt { resource, contact: second }),
         Guard::State(StateTest::ResourceEnabled(resource)),
         Guard::All(vec![second_at, GuardId::new(5)].into_boxed_slice()),
         Guard::Not(at_first_and_enabled),
@@ -461,11 +382,7 @@ fn contact_resource_backend() -> GraphBackend {
             test_profile(Block::RedstoneBlock, ProfileElectrical::RedstoneSource),
             test_profile(
                 Block::RedstoneComparator {
-                    comparator: RedstoneComparator::new(
-                        BlockDirection::South,
-                        ComparatorMode::Compare,
-                        true,
-                    ),
+                    comparator: RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, true),
                 },
                 ProfileElectrical::Component,
             ),
@@ -508,6 +425,7 @@ fn contact_resource_backend() -> GraphBackend {
             },
         ],
         routes: vec![],
+        turbo_callback_indices: vec![],
         wires: vec![],
         dust_paths: vec![],
         wire_relations: vec![],
@@ -548,10 +466,7 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         PowerLink {
             from: source,
             from_port: PowerPort::Output,
-            to: PowerTarget::Input {
-                node,
-                port: InputPort::Main,
-            },
+            to: PowerTarget::Input { node, port: InputPort::Main },
             face: BlockFace::Top,
             attenuation: 0,
             guard: GuardId::new(0),
@@ -572,10 +487,7 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         power_links.push(PowerLink {
             from: source,
             from_port: PowerPort::Output,
-            to: PowerTarget::Input {
-                node,
-                port: InputPort::Side,
-            },
+            to: PowerTarget::Input { node, port: InputPort::Side },
             face: BlockFace::Top,
             attenuation: 0,
             guard: GuardId::new(0),
@@ -607,6 +519,7 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         guards: vec![Guard::Always],
         contacts: vec![],
         routes: vec![],
+        turbo_callback_indices: vec![],
         wires: vec![],
         dust_paths: vec![],
         wire_relations: vec![],
@@ -649,28 +562,13 @@ fn graph_route_powers_lamp_synchronously_and_flush_only_projects_state() {
     backend.use_block(LEVER_POS).unwrap();
     set_native_lever(&mut native, LEVER_POS, true);
     assert!(state_at(&backend, lamp_pos).powered);
-    assert!(matches!(
-        native.get_block(lamp_pos),
-        Block::RedstoneLamp { lit: true }
-    ));
+    assert!(matches!(native.get_block(lamp_pos), Block::RedstoneLamp { lit: true }));
 
     let trace = backend.trace();
-    let source_change = trace
-        .iter()
-        .position(|item| item.starts_with(&format!("state {lever_node:?}")))
-        .unwrap();
-    let lamp_change = trace
-        .iter()
-        .position(|item| item.starts_with(&format!("state {lamp_node:?}")))
-        .unwrap();
-    let delivery = trace
-        .iter()
-        .position(|item| item.starts_with("route "))
-        .unwrap();
-    assert!(
-        source_change < delivery && delivery < lamp_change,
-        "{trace:#?}"
-    );
+    let source_change = trace.iter().position(|item| item.starts_with(&format!("state {lever_node:?}"))).unwrap();
+    let lamp_change = trace.iter().position(|item| item.starts_with(&format!("state {lamp_node:?}"))).unwrap();
+    let delivery = trace.iter().position(|item| item.starts_with("route ")).unwrap();
+    assert!(source_change < delivery && delivery < lamp_change, "{trace:#?}");
 
     let state = backend.state.clone();
     let scheduled = backend.scheduled_ticks();
@@ -696,36 +594,24 @@ fn dust_output_uses_regulated_sides_from_compiled_neighbors() {
         world.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
         world.set_block(LEVER_POS, lever(false));
         world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(
-            wire_pos,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(wire_pos, Block::RedstoneWire { wire: Default::default() });
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
     let mut backend = recording_graph(&graph_world, vec![]);
-    assert!(
-        matches!(backend.node_block(backend.positions[&wire_pos]), Block::RedstoneWire { wire }
+    assert!(matches!(backend.node_block(backend.positions[&wire_pos]), Block::RedstoneWire { wire }
         if wire.north == RedstoneWireSide::None && wire.south == RedstoneWireSide::None
-            && wire.east == RedstoneWireSide::None && wire.west == RedstoneWireSide::None)
-    );
+            && wire.east == RedstoneWireSide::None && wire.west == RedstoneWireSide::None));
 
     backend.use_block(LEVER_POS).unwrap();
     set_native_lever(&mut native, LEVER_POS, true);
     backend.flush(&mut graph_world, false);
 
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
-    assert!(matches!(
-        graph_world.get_block(lamp_pos),
-        Block::RedstoneLamp { lit: true }
-    ));
-    assert!(
-        matches!(graph_world.get_block(wire_pos), Block::RedstoneWire { wire }
+    assert!(matches!(graph_world.get_block(lamp_pos), Block::RedstoneLamp { lit: true }));
+    assert!(matches!(graph_world.get_block(wire_pos), Block::RedstoneWire { wire }
         if wire.power == 15 && wire.north == RedstoneWireSide::None
             && wire.south == RedstoneWireSide::None && wire.east == RedstoneWireSide::None
-            && wire.west == RedstoneWireSide::None)
-    );
+            && wire.west == RedstoneWireSide::None));
 }
 
 #[test]
@@ -748,10 +634,7 @@ fn external_torch_boundary_supplies_power_to_selected_lamp() {
     redstone::update(native.get_block(lamp_pos), &mut native, lamp_pos, None);
     backend.flush(&mut graph_world, false);
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
-    assert!(matches!(
-        graph_world.get_block(lamp_pos),
-        Block::RedstoneLamp { lit: true }
-    ));
+    assert!(matches!(graph_world.get_block(lamp_pos), Block::RedstoneLamp { lit: true }));
 }
 
 #[test]
@@ -765,12 +648,7 @@ fn dust_strong_output_uses_regulated_sides_through_a_conductor() {
         world.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
         world.set_block(LEVER_POS, lever(false));
         world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(
-            wire_pos,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(wire_pos, Block::RedstoneWire { wire: Default::default() });
         world.set_block(conductor_pos, Block::Stone {});
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
@@ -781,10 +659,7 @@ fn dust_strong_output_uses_regulated_sides_through_a_conductor() {
     backend.flush(&mut graph_world, false);
 
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
-    assert!(matches!(
-        graph_world.get_block(lamp_pos),
-        Block::RedstoneLamp { lit: true }
-    ));
+    assert!(matches!(graph_world.get_block(lamp_pos), Block::RedstoneLamp { lit: true }));
 }
 
 #[test]
@@ -800,12 +675,7 @@ fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
         world.set_block(lever_pos, lever(false));
         for position in &wire_positions {
             world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
-            world.set_block(
-                *position,
-                Block::RedstoneWire {
-                    wire: Default::default(),
-                },
-            );
+            world.set_block(*position, Block::RedstoneWire { wire: Default::default() });
         }
         world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     }
@@ -814,9 +684,7 @@ fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
     for powered in [true, false] {
         let graph_start = backend.callback_order.len();
         backend.use_block(lever_pos).unwrap();
-        let native_trace = capture_at(&observed, || {
-            set_native_lever(&mut native, lever_pos, powered)
-        });
+        let native_trace = capture_at(&observed, || set_native_lever(&mut native, lever_pos, powered));
         let native_callbacks: Vec<_> = native_trace
             .iter()
             .filter(|entry| entry["kind"] == "callback")
@@ -831,20 +699,13 @@ fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
             .iter()
             .filter(|(position, _)| observed.contains(position))
             .map(|(position, kind)| {
-                let DeliveryKind::Update { direction } = kind else {
-                    unreachable!()
-                };
+                let DeliveryKind::Update { direction } = kind else { unreachable!() };
                 (*position, *direction)
             })
             .collect();
 
         backend.flush(&mut graph_world, false);
-        assert_eq!(
-            graph_callbacks,
-            native_callbacks,
-            "graph trace: {:#?}",
-            backend.trace()
-        );
+        assert_eq!(graph_callbacks, native_callbacks, "graph trace: {:#?}", backend.trace());
         for position in &wire_positions {
             assert_eq!(
                 graph_world.get_block(*position),
@@ -864,10 +725,7 @@ fn wire_seed_and_turbo_rise_and_fall_match_native_order() {
             "wire deliver ",
         ] {
             assert!(
-                backend
-                    .trace()
-                    .iter()
-                    .any(|entry| entry.starts_with(prefix)),
+                backend.trace().iter().any(|entry| entry.starts_with(prefix)),
                 "missing trace operation {prefix:?}: {:#?}",
                 backend.trace()
             );
@@ -893,25 +751,13 @@ fn wire_seed_with_unchanged_power_does_not_start_a_turbo_walk() {
     }
     let mut backend = recording_graph(&graph_world, vec![]);
     let node = backend.positions[&wire_pos];
-    backend
-        .update_component(node, DeliveryKind::Update { direction: None }, None)
-        .unwrap();
+    backend.update_component(node, DeliveryKind::Update { direction: None }, None).unwrap();
     redstone::update(native.get_block(wire_pos), &mut native, wire_pos, None);
 
     assert_eq!(backend.wire_state(node), wire);
     assert_eq!(graph_world.get_block(wire_pos), native.get_block(wire_pos));
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|entry| entry.starts_with("wire seed "))
-    );
-    assert!(
-        !backend
-            .trace()
-            .iter()
-            .any(|entry| entry.starts_with("wire turbo start "))
-    );
+    assert!(backend.trace().iter().any(|entry| entry.starts_with("wire seed ")));
+    assert!(!backend.trace().iter().any(|entry| entry.starts_with("wire turbo start ")));
 }
 
 #[test]
@@ -943,32 +789,16 @@ fn wire_shape_callback_regulates_sides_then_uses_native_neighbor_route() {
     let mut graph_world = empty_world();
     for world in [&mut native, &mut graph_world] {
         world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(
-            wire_pos,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(wire_pos, Block::RedstoneWire { wire: Default::default() });
         world.set_block(source_pos, Block::RedstoneBlock {});
     }
     let mut backend = recording_graph(&graph_world, vec![]);
     let node = backend.positions[&wire_pos];
     let native_trace = capture_at(&[wire_pos], || {
-        crate::interaction::change(
-            native.get_block(wire_pos),
-            &mut native,
-            wire_pos,
-            BlockFace::West,
-        );
+        crate::interaction::change(native.get_block(wire_pos), &mut native, wire_pos, BlockFace::West);
     });
     backend
-        .update_component(
-            node,
-            DeliveryKind::Shape {
-                direction: BlockFace::West,
-            },
-            None,
-        )
+        .update_component(node, DeliveryKind::Shape { direction: BlockFace::West }, None)
         .unwrap();
     backend.flush(&mut graph_world, false);
 
@@ -1014,12 +844,7 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
         world.set_block(BlockPos::new(7, 20, 6), Block::Stone {});
         for position in wires {
             world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
-            world.set_block(
-                position,
-                Block::RedstoneWire {
-                    wire: Default::default(),
-                },
-            );
+            world.set_block(position, Block::RedstoneWire { wire: Default::default() });
         }
     }
     let mut backend = recording_graph(&graph_world, vec![]);
@@ -1028,11 +853,7 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
     backend.flush(&mut graph_world, false);
 
     for position in wires {
-        assert_eq!(
-            graph_world.get_block(position),
-            native.get_block(position),
-            "wire at {position:?}"
-        );
+        assert_eq!(graph_world.get_block(position), native.get_block(position), "wire at {position:?}");
     }
     assert!(matches!(
         graph_world.get_block(wires[1]),
@@ -1046,18 +867,11 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
 
 #[test]
 fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
-    for direction in [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ] {
+    for direction in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
         let first_wire = BlockPos::new(8, 20, 8);
-        let wires: Vec<_> = std::iter::successors(Some(first_wire), |position| {
-            Some(position.offset(direction))
-        })
-        .take(6)
-        .collect();
+        let wires: Vec<_> = std::iter::successors(Some(first_wire), |position| Some(position.offset(direction)))
+            .take(6)
+            .collect();
         let lever_pos = first_wire.offset(direction.opposite());
         let mut native = empty_world();
         let mut graph_world = empty_world();
@@ -1066,12 +880,7 @@ fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
             world.set_block(lever_pos, lever(false));
             for position in &wires {
                 world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
-                world.set_block(
-                    *position,
-                    Block::RedstoneWire {
-                        wire: Default::default(),
-                    },
-                );
+                world.set_block(*position, Block::RedstoneWire { wire: Default::default() });
             }
         }
         let mut backend = recording_graph(&graph_world, vec![]);
@@ -1092,9 +901,7 @@ fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
             .iter()
             .filter(|(position, _)| wires.contains(position))
             .map(|(position, kind)| {
-                let DeliveryKind::Update { direction } = kind else {
-                    unreachable!()
-                };
+                let DeliveryKind::Update { direction } = kind else { unreachable!() };
                 (*position, *direction)
             })
             .collect();
@@ -1127,12 +934,7 @@ fn wire_reads_live_strong_power_through_a_compiled_conductor() {
         world.set_block(conductor_pos, Block::Stone {});
         world.set_block(lever_pos, lever(false));
         world.set_block(wire_pos.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(
-            wire_pos,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(wire_pos, Block::RedstoneWire { wire: Default::default() });
     }
     let mut backend = recording_graph(&graph_world, vec![]);
 
@@ -1147,11 +949,12 @@ fn wire_reads_live_strong_power_through_a_compiled_conductor() {
             backend.trace()
         );
     }
-    assert!(backend.trace().iter().any(|entry| {
-        entry.starts_with("wire seed ")
-            && entry.contains("operands=live-sites/live-strong")
-            && entry.contains("block=15")
-    }));
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|entry| { entry.starts_with("wire seed ") && entry.contains("operands=live-sites/live-strong") && entry.contains("block=15") })
+    );
 }
 
 #[test]
@@ -1162,27 +965,14 @@ fn compiled_wire_side_sites_match_native_vertical_and_horizontal_rules() {
     let west = wire_pos.offset(BlockFace::West);
     let mut world = empty_world();
     world.set_block(north, Block::Stone {});
-    world.set_block(
-        north.offset(BlockFace::Top),
-        Block::RedstoneWire {
-            wire: Default::default(),
-        },
-    );
-    world.set_block(
-        east.offset(BlockFace::Bottom),
-        Block::RedstoneWire {
-            wire: Default::default(),
-        },
-    );
+    world.set_block(north.offset(BlockFace::Top), Block::RedstoneWire { wire: Default::default() });
+    world.set_block(east.offset(BlockFace::Bottom), Block::RedstoneWire { wire: Default::default() });
     world.set_block(west, Block::RedstoneBlock {});
 
-    let sites =
-        crate::world::wire_cache::positions(wire_pos).map(|position| world.get_block(position));
+    let sites = crate::world::wire_cache::positions(wire_pos).map(|position| world.get_block(position));
     let wire = RedstoneWire::default();
     let compiled = crate::redstone::wire::get_raw_sides_from_neighbors(wire, &sites);
-    let native = crate::redstone::wire::get_raw_sides_from(wire, wire_pos, |position| {
-        world.get_block(position)
-    });
+    let native = crate::redstone::wire::get_raw_sides_from(wire, wire_pos, |position| world.get_block(position));
 
     assert_eq!(compiled, native);
     assert_eq!(compiled.north, RedstoneWireSide::Up);
@@ -1200,14 +990,7 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
     let inner_source = inner_wire.offset(BlockFace::North);
     let continuation = inner_wire.offset(BlockFace::East);
     let bulb_source = bulb_pos.offset(BlockFace::South);
-    let observed = [
-        lever_pos,
-        outer_wire,
-        bulb_pos,
-        inner_wire,
-        inner_source,
-        continuation,
-    ];
+    let observed = [lever_pos, outer_wire, bulb_pos, inner_wire, inner_source, continuation];
     let mut native = empty_world();
     let mut graph_world = empty_world();
     let bulb = Block::from_name("copper_bulb").unwrap();
@@ -1218,24 +1001,9 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
     }
     for world in [&mut native, &mut graph_world] {
         world.set_block(lever_pos, lever(false));
-        world.set_block(
-            outer_wire,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
-        world.set_block(
-            inner_wire,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
-        world.set_block(
-            continuation,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(outer_wire, Block::RedstoneWire { wire: Default::default() });
+        world.set_block(inner_wire, Block::RedstoneWire { wire: Default::default() });
+        world.set_block(continuation, Block::RedstoneWire { wire: Default::default() });
         world.set_block(bulb_pos, bulb);
         world.set_block(inner_source, lever(false));
         world.set_block(bulb_source, Block::RedstoneBlock);
@@ -1246,9 +1014,7 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
     let inner_node = backend.positions[&inner_wire];
     let continuation_node = backend.positions[&continuation];
 
-    backend
-        .set_node(inner_source_node, true, 15, None, false)
-        .unwrap();
+    backend.set_node(inner_source_node, true, 15, None, false).unwrap();
     native.set_block(inner_source, lever(true));
 
     backend.use_block(lever_pos).unwrap();
@@ -1268,19 +1034,13 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
         .iter()
         .filter(|(position, _)| observed.contains(position))
         .map(|(position, kind)| {
-            let DeliveryKind::Update { direction } = kind else {
-                unreachable!()
-            };
+            let DeliveryKind::Update { direction } = kind else { unreachable!() };
             (*position, *direction)
         })
         .collect();
     assert_eq!(graph_callbacks, native_callbacks, "{:#?}", backend.trace());
 
-    let bulb_callback_index = backend
-        .callback_order
-        .iter()
-        .position(|(position, _)| *position == bulb_pos)
-        .unwrap();
+    let bulb_callback_index = backend.callback_order.iter().position(|(position, _)| *position == bulb_pos).unwrap();
     let inner_callback_index = backend
         .callback_order
         .iter()
@@ -1288,11 +1048,7 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
         .skip(bulb_callback_index + 1)
         .find_map(|(index, (position, _))| (*position == inner_wire).then_some(index))
         .unwrap();
-    assert!(
-        bulb_callback_index < inner_callback_index,
-        "{:#?}",
-        backend.callback_order
-    );
+    assert!(bulb_callback_index < inner_callback_index, "{:#?}", backend.callback_order);
 
     let native_nested_callback = native_trace
         .iter()
@@ -1308,17 +1064,10 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
     let native_nested_strength = native_trace
         .iter()
         .position(|entry| {
-            entry["kind"] == "wire_strength"
-                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone()).unwrap()
-                    == continuation
+            entry["kind"] == "wire_strength" && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone()).unwrap() == continuation
         })
-        .unwrap_or_else(|| {
-            panic!("nested walk did not write the continuation wire: {native_trace:#?}")
-        });
-    assert!(
-        native_nested_callback < native_nested_strength,
-        "{native_trace:#?}"
-    );
+        .unwrap_or_else(|| panic!("nested walk did not write the continuation wire: {native_trace:#?}"));
+    assert!(native_nested_callback < native_nested_strength, "{native_trace:#?}");
     assert_eq!(native_trace[native_nested_strength]["data"]["old"], 0);
     assert_eq!(native_trace[native_nested_strength]["data"]["new"], 14);
 
@@ -1326,10 +1075,7 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
         .trace()
         .iter()
         .enumerate()
-        .filter_map(|(index, line)| {
-            line.starts_with("wire turbo start ")
-                .then_some((index, line))
-        })
+        .filter_map(|(index, line)| line.starts_with("wire turbo start ").then_some((index, line)))
         .collect();
     let ends: Vec<_> = backend
         .trace()
@@ -1353,28 +1099,21 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
             .iter()
             .any(|line| line.starts_with("wire deliver "))
     );
-    assert!(backend.trace().iter().any(|line| {
-        line.starts_with(&format!("wire strength {continuation_node:?}"))
-            && line.ends_with("0 -> 14")
-    }));
+    assert!(
+        backend
+            .trace()
+            .iter()
+            .any(|line| { line.starts_with(&format!("wire strength {continuation_node:?}")) && line.ends_with("0 -> 14") })
+    );
 
     backend.flush(&mut graph_world, false);
     for position in [outer_wire, inner_wire, continuation, bulb_pos] {
         assert_eq!(graph_world.get_block(position), native.get_block(position));
     }
-    assert!(
-        matches!(graph_world.get_block(outer_wire), Block::RedstoneWire { wire } if wire.power == 15)
-    );
-    assert!(
-        matches!(graph_world.get_block(inner_wire), Block::RedstoneWire { wire } if wire.power == 15)
-    );
-    assert!(
-        matches!(graph_world.get_block(continuation), Block::RedstoneWire { wire } if wire.power == 14)
-    );
-    assert_eq!(
-        graph_world.get_block(bulb_pos).copper_bulb_state(),
-        Some((true, true))
-    );
+    assert!(matches!(graph_world.get_block(outer_wire), Block::RedstoneWire { wire } if wire.power == 15));
+    assert!(matches!(graph_world.get_block(inner_wire), Block::RedstoneWire { wire } if wire.power == 15));
+    assert!(matches!(graph_world.get_block(continuation), Block::RedstoneWire { wire } if wire.power == 14));
+    assert_eq!(graph_world.get_block(bulb_pos).copper_bulb_state(), Some((true, true)));
 }
 
 #[test]
@@ -1406,10 +1145,7 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
             None,
         )
         .unwrap();
-    assert!(
-        !backend.is_pending(observer),
-        "wrong watched face must be ignored"
-    );
+    assert!(!backend.is_pending(observer), "wrong watched face must be ignored");
 
     backend.use_block(LEVER_POS).unwrap();
     set_native_lever(&mut native, LEVER_POS, true);
@@ -1424,30 +1160,15 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
             None,
         )
         .unwrap();
-    assert_eq!(
-        backend.scheduled_ticks().len(),
-        1,
-        "a duplicate callback is suppressed"
-    );
+    assert_eq!(backend.scheduled_ticks().len(), 1, "a duplicate callback is suppressed");
 
     for (tick, expected_powered) in [(1, false), (2, true), (3, true), (4, false)] {
         backend.tick().unwrap();
         native.tick_interpreted();
         backend.flush(&mut graph_world, false);
-        assert_eq!(
-            state_at(&backend, observer_pos).powered,
-            expected_powered,
-            "tick {tick}"
-        );
-        assert_eq!(
-            graph_world.get_block(observer_pos),
-            native.get_block(observer_pos),
-            "tick {tick}"
-        );
-        assert_eq!(
-            backend.clock.logical_tick,
-            native.piston_state().logical_tick
-        );
+        assert_eq!(state_at(&backend, observer_pos).powered, expected_powered, "tick {tick}");
+        assert_eq!(graph_world.get_block(observer_pos), native.get_block(observer_pos), "tick {tick}");
+        assert_eq!(backend.clock.logical_tick, native.piston_state().logical_tick);
     }
 
     let mut recovery_world = empty_world();
@@ -1463,16 +1184,9 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
     let mut recovery = recording_graph(&recovery_world, vec![]);
     let recovery_node = recovery.positions[&observer_pos];
     recovery
-        .update_component(
-            recovery_node,
-            DeliveryKind::Update { direction: None },
-            None,
-        )
+        .update_component(recovery_node, DeliveryKind::Update { direction: None }, None)
         .unwrap();
-    assert!(
-        recovery.is_pending(recovery_node),
-        "powered/None recovery schedules the off edge"
-    );
+    assert!(recovery.is_pending(recovery_node), "powered/None recovery schedules the off edge");
 }
 
 #[test]
@@ -1481,10 +1195,7 @@ fn shape_delivery_does_not_sample_observers() {
     let away = source.offset(BlockFace::West);
     let toward = source.offset(BlockFace::East);
     let observer = |facing| Block::Observer {
-        observer: RedstoneObserver {
-            facing,
-            powered: false,
-        },
+        observer: RedstoneObserver { facing, powered: false },
     };
     let mut native = empty_world();
     let mut graph_world = empty_world();
@@ -1495,35 +1206,16 @@ fn shape_delivery_does_not_sample_observers() {
     }
     let mut backend = recording_graph(&graph_world, vec![]);
 
-    for (position, shape_direction, update_direction) in [
-        (away, BlockFace::West, BlockFace::East),
-        (toward, BlockFace::East, BlockFace::West),
-    ] {
+    for (position, shape_direction, update_direction) in [(away, BlockFace::West, BlockFace::East), (toward, BlockFace::East, BlockFace::West)] {
         let node = backend.positions[&position];
-        crate::interaction::change(
-            native.get_block(position),
-            &mut native,
-            position,
-            shape_direction,
-        );
+        crate::interaction::change(native.get_block(position), &mut native, position, shape_direction);
         backend
-            .update_component(
-                node,
-                DeliveryKind::Shape {
-                    direction: shape_direction,
-                },
-                None,
-            )
+            .update_component(node, DeliveryKind::Shape { direction: shape_direction }, None)
             .unwrap();
         assert!(!backend.is_pending(node));
         assert!(!native.pending_tick_at(position));
 
-        redstone::update(
-            native.get_block(position),
-            &mut native,
-            position,
-            Some(update_direction),
-        );
+        redstone::update(native.get_block(position), &mut native, position, Some(update_direction));
         backend
             .update_component(
                 node,
@@ -1578,19 +1270,12 @@ fn imported_ticks_keep_duplicates_priority_fifo_and_reject_stale_types() {
             tick_priority: TickPriority::Normal,
         },
     ];
-    let scheduler = entries
-        .clone()
-        .into_iter()
-        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let scheduler = entries.clone().into_iter().collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(first, button);
     native.set_block(second, button);
     let mut backend = recording_graph(&native, entries);
-    assert_eq!(
-        backend.scheduled_ticks().len(),
-        5,
-        "duplicates and stale typed work are imported"
-    );
+    assert_eq!(backend.scheduled_ticks().len(), 5, "duplicates and stale typed work are imported");
 
     backend.tick().unwrap();
     native.tick_interpreted();
@@ -1605,43 +1290,28 @@ fn imported_ticks_keep_duplicates_priority_fifo_and_reject_stale_types() {
         .trace()
         .iter()
         .filter_map(|line| {
-            backend.positions.iter().find_map(|(position, node)| {
-                (line == &format!("dispatch {node:?}")).then_some(*position)
-            })
+            backend
+                .positions
+                .iter()
+                .find_map(|(position, node)| (line == &format!("dispatch {node:?}")).then_some(*position))
         })
         .collect();
     assert_eq!(dispatches, [second, first, second, first]);
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.starts_with("stale "))
-    );
-    assert_eq!(
-        backend
-            .trace()
-            .iter()
-            .filter(|line| line.as_str() == "clock.advance")
-            .count(),
-        2
-    );
+    assert!(backend.trace().iter().any(|line| line.starts_with("stale ")));
+    assert_eq!(backend.trace().iter().filter(|line| line.as_str() == "clock.advance").count(), 2);
 }
 
 #[test]
 fn imported_wire_tick_is_consumed_as_a_native_noop() {
     let position = BlockPos::new(8, 20, 5);
-    let block = Block::RedstoneWire {
-        wire: Default::default(),
-    };
+    let block = Block::RedstoneWire { wire: Default::default() };
     let entry = TickEntry {
         pos: position,
         block_type: Some(block.registry_id()),
         ticks_left: 2,
         tick_priority: TickPriority::High,
     };
-    let scheduler = vec![entry.clone()]
-        .into_iter()
-        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let scheduler = vec![entry.clone()].into_iter().collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(position, block);
     let mut backend = recording_graph(&native, vec![entry.clone()]);
@@ -1657,12 +1327,7 @@ fn imported_wire_tick_is_consumed_as_a_native_noop() {
 
     assert!(backend.scheduled_ticks().is_empty());
     assert_eq!(backend.node_block(node), native.get_block(position));
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line == &format!("dispatch {node:?}"))
-    );
+    assert!(backend.trace().iter().any(|line| line == &format!("dispatch {node:?}")));
 }
 
 #[test]
@@ -1724,10 +1389,7 @@ fn imported_ticks_preserve_stale_air_duplicates_and_reset_deadlines() {
 
     let mut reset_world = empty_world();
     backend.reset(&mut reset_world);
-    assert_eq!(
-        reset_world.scheduler().iter_entries().collect::<Vec<_>>(),
-        expected
-    );
+    assert_eq!(reset_world.scheduler().iter_entries().collect::<Vec<_>>(), expected);
 }
 
 #[test]
@@ -1747,8 +1409,7 @@ fn untyped_imported_work_does_not_suppress_a_typed_callback_tick() {
     };
     let mut world = empty_world();
     world.set_block(position, block);
-    let mut backend =
-        GraphBackend::compile(&world, BOUNDS, vec![untyped.clone()], Arc::default()).unwrap();
+    let mut backend = GraphBackend::compile(&world, BOUNDS, vec![untyped.clone()], Arc::default()).unwrap();
     let node = backend.positions[&position];
     assert!(!backend.is_pending(node));
 
@@ -1762,15 +1423,9 @@ fn untyped_imported_work_does_not_suppress_a_typed_callback_tick() {
         )
         .unwrap();
     assert_eq!(backend.scheduled_ticks()[0], untyped);
-    assert_eq!(
-        backend.scheduled_ticks()[1].block_type,
-        Some(block.registry_id())
-    );
+    assert_eq!(backend.scheduled_ticks()[1].block_type, Some(block.registry_id()));
     assert_eq!(backend.scheduled_ticks()[1].ticks_left, 2);
-    assert_eq!(
-        backend.scheduled_ticks()[1].tick_priority,
-        TickPriority::Normal
-    );
+    assert_eq!(backend.scheduled_ticks()[1].tick_priority, TickPriority::Normal);
     assert_eq!(backend.scheduled_ticks().len(), 2);
 }
 
@@ -1850,10 +1505,7 @@ fn graph_noteblock_samples_live_instrument_and_buffers_only_eligible_edges() {
 
     backend.use_block(LEVER_POS).unwrap();
     assert!(!state_at(&backend, note_pos).powered);
-    assert!(
-        backend.effects.is_empty(),
-        "falling power does not play a note"
-    );
+    assert!(backend.effects.is_empty(), "falling power does not play a note");
     backend.flush(&mut world, true);
     set_native_lever_as_interaction(&mut native, LEVER_POS, false);
     assert_eq!(world.get_block(note_pos), native.get_block(note_pos));
@@ -1864,14 +1516,8 @@ fn graph_noteblock_samples_live_instrument_and_buffers_only_eligible_edges() {
     blocked.use_block(LEVER_POS).unwrap();
     set_native_lever_as_interaction(&mut native, LEVER_POS, true);
     assert!(state_at(&blocked, note_pos).powered);
-    assert_eq!(
-        blocked.node_block(blocked.positions[&note_pos]),
-        native.get_block(note_pos)
-    );
-    assert!(
-        blocked.effects.is_empty(),
-        "an occupied above block blocks sound"
-    );
+    assert_eq!(blocked.node_block(blocked.positions[&note_pos]), native.get_block(note_pos));
+    assert!(blocked.effects.is_empty(), "an occupied above block blocks sound");
 }
 
 #[test]
@@ -1894,9 +1540,7 @@ fn imported_note_ticks_are_noops_and_reset_keeps_future_work() {
         0,
         0,
         vec![Chunk::empty(0, 0)],
-        vec![entry.clone()]
-            .into_iter()
-            .collect::<TickScheduler<ScheduledBlockTick>>(),
+        vec![entry.clone()].into_iter().collect::<TickScheduler<ScheduledBlockTick>>(),
     );
     native.set_block(position, note);
 
@@ -1913,13 +1557,9 @@ fn imported_note_ticks_are_noops_and_reset_keeps_future_work() {
         ticks_left: 3,
         tick_priority: TickPriority::High,
     };
-    let mut backend =
-        GraphBackend::compile(&world, BOUNDS, vec![future.clone()], Arc::default()).unwrap();
+    let mut backend = GraphBackend::compile(&world, BOUNDS, vec![future.clone()], Arc::default()).unwrap();
     backend.reset(&mut world);
-    assert_eq!(
-        world.scheduler().iter_entries().collect::<Vec<_>>(),
-        [future]
-    );
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), [future]);
 }
 
 #[test]
@@ -1943,11 +1583,7 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
         world.set_block(
             comparator_pos,
             Block::RedstoneComparator {
-                comparator: RedstoneComparator::new(
-                    BlockDirection::East,
-                    ComparatorMode::Compare,
-                    false,
-                ),
+                comparator: RedstoneComparator::new(BlockDirection::East, ComparatorMode::Compare, false),
             },
         );
         world
@@ -1961,12 +1597,7 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
     backend.flush(&mut world, true);
     let due_before = backend.scheduler.iter().count();
     let clock_before = backend.clock.logical_tick;
-    assert_eq!(
-        backend.tick(),
-        Err(GraphExecutionError::CommandHostUnavailable {
-            position: command_pos
-        })
-    );
+    assert_eq!(backend.tick(), Err(GraphExecutionError::CommandHostUnavailable { position: command_pos }));
     assert_eq!(backend.scheduler.iter().count(), due_before);
     assert_eq!(backend.clock.logical_tick, clock_before);
     assert!(matches!(
@@ -1980,25 +1611,17 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
     assert_eq!(continuation[0].pos, command_pos);
     assert_eq!(continuation[0].ticks_left, 1);
     assert_eq!(continuation[0].tick_priority, TickPriority::Normal);
-    assert_eq!(
-        continuation,
-        native_world.scheduler().iter_entries().collect::<Vec<_>>()
-    );
+    assert_eq!(continuation, native_world.scheduler().iter_entries().collect::<Vec<_>>());
     world.clear_scheduled_ticks();
     let mut backend = recording_graph(&world, continuation);
 
     backend.tick_with_world(&mut world).unwrap();
     native_world.tick_interpreted();
-    let ComponentState::Electrical(command_state) =
-        &backend.state.components[backend.positions[&command_pos].index()]
-    else {
+    let ComponentState::Electrical(command_state) = &backend.state.components[backend.positions[&command_pos].index()] else {
         panic!("command block retains electrical state");
     };
     assert_eq!(command_state.output_strength, 1);
-    assert_eq!(
-        world.command_output().collect::<Vec<_>>(),
-        [r#"{"text":"[@] graph"}"#]
-    );
+    assert_eq!(world.command_output().collect::<Vec<_>>(), [r#"{"text":"[@] graph"}"#]);
     assert!(matches!(
         world.get_block_entity(command_pos),
         Some(BlockEntity::CommandBlock(entity)) if entity.success_count == 1
@@ -2022,10 +1645,7 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
             .iter()
             .any(|entry| entry.starts_with("route "))
     );
-    assert_eq!(
-        backend.scheduled_ticks(),
-        native_world.scheduler().iter_entries().collect::<Vec<_>>()
-    );
+    assert_eq!(backend.scheduled_ticks(), native_world.scheduler().iter_entries().collect::<Vec<_>>());
     assert_eq!(backend.comparator_output(comparator), 1);
     assert!(backend.is_pending(comparator));
     assert!(native_world.pending_tick_at(comparator_pos));
@@ -2035,10 +1655,7 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
         Some(BlockEntity::Comparator { output_strength }) => *output_strength,
         _ => 0,
     };
-    assert_eq!(
-        backend.node_state(comparator).output_strength,
-        native_comparator_output
-    );
+    assert_eq!(backend.node_state(comparator).output_strength, native_comparator_output);
     assert_eq!(
         world.command_output().collect::<Vec<_>>(),
         native_world.command_output().collect::<Vec<_>>()
@@ -2079,14 +1696,10 @@ fn graph_conditional_chain_reads_the_synchronous_predecessor_result() {
     let mut backend = recording_graph(&world, vec![]);
     backend.use_block(lever_pos).unwrap();
     backend.tick_with_world(&mut world).unwrap();
-    let ComponentState::Electrical(first_state) =
-        &backend.state.components[backend.positions[&first].index()]
-    else {
+    let ComponentState::Electrical(first_state) = &backend.state.components[backend.positions[&first].index()] else {
         panic!("command block retains electrical state");
     };
-    let ComponentState::Electrical(second_state) =
-        &backend.state.components[backend.positions[&second].index()]
-    else {
+    let ComponentState::Electrical(second_state) = &backend.state.components[backend.positions[&second].index()] else {
         panic!("chain command block retains electrical state");
     };
     assert_eq!(first_state.output_strength, 0);
@@ -2172,8 +1785,7 @@ fn imported_automatic_command_keeps_its_captured_condition() {
     let mut world = make_world();
     let mut native = make_world();
     native.restore_scheduled_tick(imported.clone());
-    let mut backend =
-        GraphBackend::compile(&world, BOUNDS, vec![imported], Arc::default()).unwrap();
+    let mut backend = GraphBackend::compile(&world, BOUNDS, vec![imported], Arc::default()).unwrap();
 
     backend.tick_with_world(&mut world).unwrap();
     native.tick_interpreted();
@@ -2259,12 +1871,7 @@ fn hostless_tick_preserves_work_that_can_activate_a_command() {
     let mut backend = GraphBackend::compile(&world, BOUNDS, vec![entry], Arc::default()).unwrap();
     let pending_before = backend.scheduled_ticks();
     let clock_before = backend.clock.logical_tick;
-    assert_eq!(
-        backend.tick(),
-        Err(GraphExecutionError::CommandHostUnavailable {
-            position: command_pos
-        })
-    );
+    assert_eq!(backend.tick(), Err(GraphExecutionError::CommandHostUnavailable { position: command_pos }));
     assert_eq!(backend.scheduled_ticks(), pending_before);
     assert_eq!(backend.clock.logical_tick, clock_before);
     assert!(!state_at(&backend, repeater_pos).powered);
@@ -2346,10 +1953,7 @@ fn selected_trapdoor_rejection_preserves_world_work_and_compiler_activation() {
         world.get_block_entity(command_pos),
         Some(BlockEntity::CommandBlock(entity)) if entity.as_ref() == &before_entity
     ));
-    assert_eq!(
-        world.scheduler().iter_entries().collect::<Vec<_>>(),
-        before_ticks
-    );
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), before_ticks);
     assert_eq!(world.piston_state().logical_tick, before_clock);
     assert_eq!(world.piston_state().events.len(), before_events);
     assert!(world.command_output().next().is_none());
@@ -2370,35 +1974,21 @@ fn stale_tick_at_uncompiled_air_position_remains_until_dispatch() {
         ticks_left: 2,
         tick_priority: TickPriority::High,
     }];
-    let scheduler = entries
-        .clone()
-        .into_iter()
-        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let scheduler = entries.clone().into_iter().collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     let mut backend = recording_graph(&native, entries);
 
-    assert_eq!(
-        backend.scheduled_ticks(),
-        native.scheduler().iter_entries().collect::<Vec<_>>()
-    );
+    assert_eq!(backend.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
     backend.tick().unwrap();
     native.tick_interpreted();
-    assert_eq!(
-        backend.scheduled_ticks(),
-        native.scheduler().iter_entries().collect::<Vec<_>>()
-    );
+    assert_eq!(backend.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
     assert_eq!(backend.scheduled_ticks()[0].ticks_left, 1);
 
     backend.tick().unwrap();
     native.tick_interpreted();
     assert!(backend.scheduled_ticks().is_empty());
     assert!(native.scheduler().iter_entries().next().is_none());
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line == &format!("stale {position:?} skipped"))
-    );
+    assert!(backend.trace().iter().any(|line| line == &format!("stale {position:?} skipped")));
 }
 
 #[test]
@@ -2415,28 +2005,16 @@ fn due_at_entry_comparator_repeats_same_value_notification() {
     graph_world.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
     graph_world.set_block(source_pos, lever(true));
     graph_world.set_block(comparator_pos, comparator);
-    graph_world.set_block_entity(
-        comparator_pos,
-        BlockEntity::Comparator {
-            output_strength: 15,
-        },
-    );
+    graph_world.set_block_entity(comparator_pos, BlockEntity::Comparator { output_strength: 15 });
     graph_world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
     let mut backend = recording_graph(&graph_world, ticks.clone());
 
-    let scheduler = ticks
-        .into_iter()
-        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let scheduler = ticks.into_iter().collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
     native.set_block(source_pos, lever(true));
     native.set_block(comparator_pos, comparator);
-    native.set_block_entity(
-        comparator_pos,
-        BlockEntity::Comparator {
-            output_strength: 15,
-        },
-    );
+    native.set_block_entity(comparator_pos, BlockEntity::Comparator { output_strength: 15 });
     native.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
 
     backend.tick().unwrap();
@@ -2446,39 +2024,14 @@ fn due_at_entry_comparator_repeats_same_value_notification() {
         state_at(&backend, lamp_pos).powered,
         "unchanged comparator output still delivers its callback"
     );
-    assert!(matches!(
-        native.get_block(lamp_pos),
-        Block::RedstoneLamp { lit: true }
-    ));
+    assert!(matches!(native.get_block(lamp_pos), Block::RedstoneLamp { lit: true }));
     let comparator_node = backend.positions[&comparator_pos];
-    let route = backend.program.nodes()[comparator_node.index()]
-        .output_route
-        .unwrap();
+    let route = backend.program.nodes()[comparator_node.index()].output_route.unwrap();
+    assert!(backend.trace().iter().any(|item| item.starts_with(&format!("route {}:", route.index()))));
+    assert_eq!(backend.trace().iter().filter(|line| line.as_str() == "clock.advance").count(), 1);
     assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|item| item.starts_with(&format!("route {}:", route.index())))
-    );
-    assert_eq!(
-        backend
-            .trace()
-            .iter()
-            .filter(|line| line.as_str() == "clock.advance")
-            .count(),
-        1
-    );
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .position(|line| line.starts_with("dispatch "))
-            .unwrap()
-            < backend
-                .trace()
-                .iter()
-                .position(|line| line == "clock.advance")
-                .unwrap()
+        backend.trace().iter().position(|line| line.starts_with("dispatch ")).unwrap()
+            < backend.trace().iter().position(|line| line == "clock.advance").unwrap()
     );
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
     assert_eq!(state_at(&backend, comparator_pos).output_strength, 15);
@@ -2517,10 +2070,7 @@ fn repeater_keeps_short_pulse_and_delayed_off_transition() {
         native.tick_interpreted();
         backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, repeater_pos).powered, expected);
-        assert_eq!(
-            graph_world.get_block(repeater_pos),
-            native.get_block(repeater_pos)
-        );
+        assert_eq!(graph_world.get_block(repeater_pos), native.get_block(repeater_pos));
         assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
     }
 }
@@ -2544,12 +2094,7 @@ fn captured_repeater_lock_change_uses_captured_powered_state() {
     for world in [&mut native, &mut graph_world] {
         world.set_block(repeater_pos, repeater);
         world.set_block(side_pos, side);
-        world.set_block_entity(
-            side_pos,
-            BlockEntity::Comparator {
-                output_strength: 15,
-            },
-        );
+        world.set_block_entity(side_pos, BlockEntity::Comparator { output_strength: 15 });
     }
     let mut backend = recording_graph(&graph_world, vec![]);
     let node = backend.positions[&repeater_pos];
@@ -2603,15 +2148,9 @@ fn copper_bulb_uses_power_latch_separately_from_lit_state() {
         set_native_lever(&mut native, LEVER_POS, powered);
         backend.flush(&mut graph_world, false);
         assert_eq!(graph_world.get_block(bulb_pos), native.get_block(bulb_pos));
-        assert_eq!(
-            graph_world.get_block(bulb_pos).copper_bulb_state(),
-            Some((lit, powered))
-        );
+        assert_eq!(graph_world.get_block(bulb_pos).copper_bulb_state(), Some((lit, powered)));
         assert_eq!(state_at(&backend, bulb_pos).powered, powered);
-        assert_eq!(
-            state_at(&backend, bulb_pos).output_strength,
-            if lit { 15 } else { 0 }
-        );
+        assert_eq!(state_at(&backend, bulb_pos).output_strength, if lit { 15 } else { 0 });
     }
 }
 
@@ -2634,19 +2173,14 @@ fn bulb_far_comparator_callbacks_match_native_order_and_count() {
         world.set_block(bulb_pos, bulb);
         world.set_block(spacer_pos, Block::Stone {});
         world.set_block(comparator_pos, comparator);
-        world.set_block_entity(
-            comparator_pos,
-            BlockEntity::Comparator { output_strength: 0 },
-        );
+        world.set_block_entity(comparator_pos, BlockEntity::Comparator { output_strength: 0 });
     }
     let mut backend = recording_graph(&graph_world, vec![]);
     let comparator_node = backend.positions[&comparator_pos];
 
     backend.use_block(lever_pos).unwrap();
     let native_trace =
-        crate::redstone::instant_piston_tests::capture_at(&[bulb_pos, comparator_pos], || {
-            set_native_lever(&mut native, lever_pos, true)
-        });
+        crate::redstone::instant_piston_tests::capture_at(&[bulb_pos, comparator_pos], || set_native_lever(&mut native, lever_pos, true));
     let native_callbacks: Vec<_> = native_trace
         .iter()
         .filter(|entry| entry["kind"] == "callback")
@@ -2662,32 +2196,17 @@ fn bulb_far_comparator_callbacks_match_native_order_and_count() {
         .iter()
         .filter(|(position, _)| [bulb_pos, comparator_pos].contains(position))
         .map(|(position, kind)| {
-            let DeliveryKind::Update { direction } = kind else {
-                unreachable!()
-            };
+            let DeliveryKind::Update { direction } = kind else { unreachable!() };
             (*position, *direction)
         })
         .collect();
     assert_eq!(graph_callbacks, native_callbacks);
+    assert_eq!(native_callbacks.iter().filter(|(pos, _)| *pos == comparator_pos).count(), 1);
     assert_eq!(
-        native_callbacks
-            .iter()
-            .filter(|(pos, _)| *pos == comparator_pos)
-            .count(),
+        backend.comparator_updates.iter().filter(|&&position| position == comparator_pos).count(),
         1
     );
-    assert_eq!(
-        backend
-            .comparator_updates
-            .iter()
-            .filter(|&&position| position == comparator_pos)
-            .count(),
-        1
-    );
-    assert_eq!(
-        backend.scheduled_ticks(),
-        native.scheduler().iter_entries().collect::<Vec<_>>()
-    );
+    assert_eq!(backend.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
     assert_eq!(
         backend.comparator_updates,
         [comparator_pos],
@@ -2727,10 +2246,7 @@ fn torch_uses_compiled_conductor_query_and_scheduled_edges() {
         native.tick_interpreted();
         backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, torch_pos).powered, expected);
-        assert_eq!(
-            graph_world.get_block(torch_pos),
-            native.get_block(torch_pos)
-        );
+        assert_eq!(graph_world.get_block(torch_pos), native.get_block(torch_pos));
     }
 
     backend.use_block(lever_pos).unwrap();
@@ -2740,10 +2256,7 @@ fn torch_uses_compiled_conductor_query_and_scheduled_edges() {
         native.tick_interpreted();
         backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, torch_pos).powered, expected);
-        assert_eq!(
-            graph_world.get_block(torch_pos),
-            native.get_block(torch_pos)
-        );
+        assert_eq!(graph_world.get_block(torch_pos), native.get_block(torch_pos));
     }
 }
 
@@ -2751,9 +2264,7 @@ fn frozen_clipboard(name: &str) -> WorldEditClipboard {
     let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .join("test_data/instant-pistons-io");
-    let manifest: Value =
-        serde_json::from_slice(&std::fs::read(directory.join("download-manifest.json")).unwrap())
-            .unwrap();
+    let manifest: Value = serde_json::from_slice(&std::fs::read(directory.join("download-manifest.json")).unwrap()).unwrap();
     let entry = manifest["files"]
         .as_array()
         .unwrap()
@@ -2786,10 +2297,7 @@ fn frozen_component(name: &str, matches: impl Fn(Block) -> bool) -> Block {
 
 fn fixture_torch(lit: bool) -> Block {
     match frozen_component("INSTANT_TORCH.schem", |block| {
-        matches!(
-            block,
-            Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
-        )
+        matches!(block, Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })
     }) {
         Block::RedstoneTorch { .. } => Block::RedstoneTorch { lit },
         Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { facing, lit },
@@ -2816,10 +2324,7 @@ fn boundary_torch_power_is_not_silently_compiled_as_zero() {
     };
     assert!(redstone::redstone_lamp_should_be_lit(&world, lamp));
     let full = recording_graph(&world, vec![]);
-    assert_eq!(
-        full.input_strength(full.positions[&lamp], InputPort::Main),
-        15
-    );
+    assert_eq!(full.input_strength(full.positions[&lamp], InputPort::Main), 15);
     match GraphBackend::compile(&world, (lamp, lamp), vec![], Arc::default()) {
         Err(error) => assert!(
             error.to_string().contains(&format!("{source:?}")),
@@ -2832,9 +2337,7 @@ fn boundary_torch_power_is_not_silently_compiled_as_zero() {
                 15,
                 "an admitted external torch must not become zero power"
             );
-            backend
-                .update_component(node, DeliveryKind::Update { direction: None }, None)
-                .unwrap();
+            backend.update_component(node, DeliveryKind::Update { direction: None }, None).unwrap();
             redstone::update(world.get_block(lamp), &mut world, lamp, None);
             assert_eq!(backend.node_block(node), world.get_block(lamp));
         }
@@ -2843,9 +2346,7 @@ fn boundary_torch_power_is_not_silently_compiled_as_zero() {
 
 #[test]
 fn imported_stale_and_inert_ticks_are_retained_or_explicitly_rejected() {
-    let repeater = frozen_component("ADDER_1BIT.schem", |block| {
-        matches!(block, Block::RedstoneRepeater { .. })
-    });
+    let repeater = frozen_component("ADDER_1BIT.schem", |block| matches!(block, Block::RedstoneRepeater { .. }));
     let removed = NEXT_POS;
     let inert = NEXT_POS.offset(BlockFace::East);
     let entries = vec![
@@ -2862,10 +2363,7 @@ fn imported_stale_and_inert_ticks_are_retained_or_explicitly_rejected() {
             tick_priority: TickPriority::Normal,
         },
     ];
-    let scheduler = entries
-        .clone()
-        .into_iter()
-        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let scheduler = entries.clone().into_iter().collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(LEVER_POS, lever(false));
     native.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
@@ -2877,16 +2375,10 @@ fn imported_stale_and_inert_ticks_are_retained_or_explicitly_rejected() {
         Err(error) => {
             let message = error.to_string();
             assert!(
-                message.contains("tick")
-                    && entries
-                        .iter()
-                        .any(|entry| message.contains(&format!("{:?}", entry.pos))),
+                message.contains("tick") && entries.iter().any(|entry| message.contains(&format!("{:?}", entry.pos))),
                 "rejection must identify the unbound scheduled target: {message}"
             );
-            assert_eq!(
-                native.scheduler().iter_entries().collect::<Vec<_>>(),
-                before
-            );
+            assert_eq!(native.scheduler().iter_entries().collect::<Vec<_>>(), before);
         }
         Ok(mut backend) => {
             assert_eq!(
@@ -2897,10 +2389,7 @@ fn imported_stale_and_inert_ticks_are_retained_or_explicitly_rejected() {
             for _ in 0..4 {
                 backend.tick().unwrap();
                 native.tick_interpreted();
-                assert_eq!(
-                    backend.scheduled_ticks(),
-                    native.scheduler().iter_entries().collect::<Vec<_>>()
-                );
+                assert_eq!(backend.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
             }
         }
     }
@@ -2908,9 +2397,7 @@ fn imported_stale_and_inert_ticks_are_retained_or_explicitly_rejected() {
 
 #[test]
 fn removed_repeater_tick_keeps_its_deadline_until_native_stale_dispatch() {
-    let repeater = frozen_component("ADDER_1BIT.schem", |block| {
-        matches!(block, Block::RedstoneRepeater { .. })
-    });
+    let repeater = frozen_component("ADDER_1BIT.schem", |block| matches!(block, Block::RedstoneRepeater { .. }));
     let removed = NEXT_POS;
     let entry = TickEntry {
         pos: removed,
@@ -2918,9 +2405,7 @@ fn removed_repeater_tick_keeps_its_deadline_until_native_stale_dispatch() {
         ticks_left: 4,
         tick_priority: TickPriority::High,
     };
-    let scheduler = vec![entry]
-        .into_iter()
-        .collect::<TickScheduler<ScheduledBlockTick>>();
+    let scheduler = vec![entry].into_iter().collect::<TickScheduler<ScheduledBlockTick>>();
     let mut native = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], scheduler);
     native.set_block(LEVER_POS, lever(false));
     native.set_block(LEVER_POS.offset(BlockFace::Bottom), Block::Stone {});
@@ -2928,35 +2413,18 @@ fn removed_repeater_tick_keeps_its_deadline_until_native_stale_dispatch() {
     match GraphBackend::compile(&native, BOUNDS, before.clone(), Arc::default()) {
         Err(error) => {
             let message = error.to_string();
-            assert!(
-                message.contains("tick") && message.contains(&format!("{removed:?}")),
-                "{message}"
-            );
-            assert_eq!(
-                native.scheduler().iter_entries().collect::<Vec<_>>(),
-                before
-            );
+            assert!(message.contains("tick") && message.contains(&format!("{removed:?}")), "{message}");
+            assert_eq!(native.scheduler().iter_entries().collect::<Vec<_>>(), before);
         }
         Ok(mut backend) => {
             assert_eq!(backend.scheduled_ticks(), before);
             let mut dispatches = Vec::new();
             for _ in 0..4 {
                 let records = capture_at(&[removed], || native.tick_interpreted());
-                dispatches.push(
-                    records
-                        .iter()
-                        .filter(|record| record["kind"] == "scheduled_tick")
-                        .count(),
-                );
+                dispatches.push(records.iter().filter(|record| record["kind"] == "scheduled_tick").count());
                 backend.tick().unwrap();
-                assert_eq!(
-                    backend.scheduled_ticks(),
-                    native.scheduler().iter_entries().collect::<Vec<_>>()
-                );
-                assert_eq!(
-                    backend.clock.logical_tick,
-                    native.piston_state().logical_tick
-                );
+                assert_eq!(backend.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
+                assert_eq!(backend.clock.logical_tick, native.piston_state().logical_tick);
             }
             assert_eq!(dispatches, [0, 0, 0, 1]);
             assert_eq!(native.get_block(removed), Block::Air);
@@ -2966,20 +2434,14 @@ fn removed_repeater_tick_keeps_its_deadline_until_native_stale_dispatch() {
 
 #[test]
 fn observer_shape_then_explicit_update_matches_native_for_every_orientation() {
-    let template = frozen_component("INSTANT_OBSERVER.schem", |block| {
-        matches!(block, Block::Observer { .. })
-    });
+    let template = frozen_component("INSTANT_OBSERVER.schem", |block| matches!(block, Block::Observer { .. }));
     let Block::Observer { observer: template } = template else {
         unreachable!()
     };
     let position = BlockPos::new(7, 20, 7);
     let mut mismatches = Vec::new();
     let original_facing = BlockFace::from(template.facing);
-    let facings = std::iter::once(original_facing).chain(
-        BlockFace::values()
-            .into_iter()
-            .filter(|face| *face != original_facing),
-    );
+    let facings = std::iter::once(original_facing).chain(BlockFace::values().into_iter().filter(|face| *face != original_facing));
     for facing in facings {
         for watches_changed_cell in [false, true] {
             let mut native = empty_world();
@@ -2992,31 +2454,16 @@ fn observer_shape_then_explicit_update_matches_native_for_every_orientation() {
             native.set_block(position, observer);
             let mut backend = recording_graph(&native, vec![]);
             let node = backend.positions[&position];
-            let shape_direction = if watches_changed_cell {
-                facing.opposite()
-            } else {
-                facing
-            };
+            let shape_direction = if watches_changed_cell { facing.opposite() } else { facing };
             crate::interaction::change(observer, &mut native, position, shape_direction);
             backend
-                .update_component(
-                    node,
-                    DeliveryKind::Shape {
-                        direction: shape_direction,
-                    },
-                    None,
-                )
+                .update_component(node, DeliveryKind::Shape { direction: shape_direction }, None)
                 .unwrap();
             if backend.is_pending(node) != native.pending_tick_at(position) {
                 mismatches.push((facing, watches_changed_cell, "after_shape", 0));
             }
             let update_direction = shape_direction.opposite();
-            redstone::update(
-                native.get_block(position),
-                &mut native,
-                position,
-                Some(update_direction),
-            );
+            redstone::update(native.get_block(position), &mut native, position, Some(update_direction));
             backend
                 .update_component(
                     node,
@@ -3052,15 +2499,10 @@ fn torch_shape_does_not_sample_power_before_the_update_phase() {
     native.set_block(position, torch);
     let (support, _) = crate::interaction::attachment_support(torch, position).unwrap();
     native.set_block(support, Block::Stone {});
-    let control_face = [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ]
-    .into_iter()
-    .find(|face| support.offset(*face) != position)
-    .unwrap();
+    let control_face = [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West]
+        .into_iter()
+        .find(|face| support.offset(*face) != position)
+        .unwrap();
     native.set_block(
         support.offset(control_face),
         Block::Lever {
@@ -3070,18 +2512,10 @@ fn torch_shape_does_not_sample_power_before_the_update_phase() {
     let mut backend = recording_graph(&native, vec![]);
     let node = backend.positions[&position];
     assert_eq!(backend.input_strength(node, InputPort::Main), 15);
-    assert!(crate::interaction::is_valid_position(
-        torch, &native, position
-    ));
+    assert!(crate::interaction::is_valid_position(torch, &native, position));
     crate::interaction::change(torch, &mut native, position, BlockFace::East);
     backend
-        .update_component(
-            node,
-            DeliveryKind::Shape {
-                direction: BlockFace::East,
-            },
-            None,
-        )
+        .update_component(node, DeliveryKind::Shape { direction: BlockFace::East }, None)
         .unwrap();
     assert_eq!(
         backend.is_pending(node),
@@ -3103,9 +2537,7 @@ fn torch_shape_does_not_sample_power_before_the_update_phase() {
 
 #[test]
 fn captured_repeater_lock_rewrite_keeps_native_output_strength_and_consumers() {
-    let template = frozen_component("ADDER_1BIT.schem", |block| {
-        matches!(block, Block::RedstoneRepeater { .. })
-    });
+    let template = frozen_component("ADDER_1BIT.schem", |block| matches!(block, Block::RedstoneRepeater { .. }));
     let Block::RedstoneRepeater { repeater: template } = template else {
         unreachable!()
     };
@@ -3165,8 +2597,7 @@ fn captured_repeater_lock_rewrite_keeps_native_output_strength_and_consumers() {
                 Some(&observed),
             )
             .unwrap();
-        let native_strength =
-            redstone::source_strength(native.get_block(position), &native, position);
+        let native_strength = redstone::source_strength(native.get_block(position), &native, position);
         redstone::update(native.get_block(lamp), &mut native, lamp, None);
         let lamp_node = backend.positions[&lamp];
         backend
@@ -3177,11 +2608,7 @@ fn captured_repeater_lock_rewrite_keeps_native_output_strength_and_consumers() {
             backend.node_state(node).output_strength,
             backend.node_block(lamp_node),
         );
-        let expected = (
-            native.get_block(position),
-            native_strength,
-            native.get_block(lamp),
-        );
+        let expected = (native.get_block(position), native_strength, native.get_block(lamp));
         if actual != expected {
             mismatches.push((captured_powered, actual, expected));
         }
@@ -3199,12 +2626,7 @@ fn bulb_far_comparator_callbacks_match_native_order_and_multiplicity() {
     let mut native = empty_world();
     native.set_block(bulb, Block::from_name("copper_bulb").unwrap());
     native.set_block(control, lever(false));
-    let faces = [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ];
+    let faces = [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West];
     let mut comparators = Vec::new();
     for face in faces {
         let support = bulb.offset(face);
@@ -3213,20 +2635,14 @@ fn bulb_far_comparator_callbacks_match_native_order_and_multiplicity() {
         native.set_block(
             position,
             Block::RedstoneComparator {
-                comparator: RedstoneComparator::new(
-                    face.opposite().unwrap_direction(),
-                    ComparatorMode::Compare,
-                    false,
-                ),
+                comparator: RedstoneComparator::new(face.opposite().unwrap_direction(), ComparatorMode::Compare, false),
             },
         );
         native.set_block_entity(position, BlockEntity::Comparator { output_strength: 0 });
         comparators.push(position);
     }
     let mut backend = recording_graph(&native, vec![]);
-    let records = capture_at(&comparators, || {
-        set_native_lever(&mut native, control, true)
-    });
+    let records = capture_at(&comparators, || set_native_lever(&mut native, control, true));
     let expected: Vec<BlockPos> = records
         .iter()
         .filter(|entry| entry["kind"] == "callback")
@@ -3243,10 +2659,7 @@ fn bulb_far_comparator_callbacks_match_native_order_and_multiplicity() {
         .copied()
         .filter(|position| comparators.contains(position))
         .collect();
-    assert_eq!(
-        actual, expected,
-        "same final output does not justify additional far callbacks"
-    );
+    assert_eq!(actual, expected, "same final output does not justify additional far callbacks");
     let delivered: Vec<_> = backend
         .callback_order
         .iter()
@@ -3278,10 +2691,7 @@ fn isolated_empty_ordinary_and_sticky_pistons_compile() {
             world.set_block(base.offset(BlockFace::East), Block::RedstoneBlock);
         }
         assert!(
-            matches!(
-                GraphBackend::compile(&world, BOUNDS, vec![], Arc::default()),
-                Ok(_)
-            ),
+            matches!(GraphBackend::compile(&world, BOUNDS, vec![], Arc::default()), Ok(_)),
             "isolated sticky={sticky} piston should be admitted"
         );
     }
@@ -3292,10 +2702,7 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
     let mut graph_world = empty_world();
     let bases = [BlockPos::new(5, 20, 5), BlockPos::new(5, 20, 9)];
     let facings = [BlockFacing::South, BlockFacing::North];
-    let near = [
-        bases[0].offset(BlockFace::South),
-        bases[1].offset(BlockFace::North),
-    ];
+    let near = [bases[0].offset(BlockFace::South), bases[1].offset(BlockFace::North)];
     let resource = BlockPos::new(5, 20, 7);
     for world in [&mut native, &mut graph_world] {
         for (base, facing) in bases.into_iter().zip(facings) {
@@ -3305,12 +2712,7 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
                 extended: true,
             };
             world.set_block(base, Block::Piston { piston });
-            world.set_block(
-                base.offset(facing.into()),
-                Block::PistonHead {
-                    head: piston.into(),
-                },
-            );
+            world.set_block(base.offset(facing.into()), Block::PistonHead { head: piston.into() });
         }
         world.set_block(resource, Block::RedstoneBlock);
     }
@@ -3322,7 +2724,7 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
 fn callback_research_inventory_covers_shared_piston_contacts_at_o0_and_o1() {
     let (_, world, _, _, _) = opposing_shared_pistons();
     for level in [0, 1] {
-        let backend = dust_path_backend(&world, Some(level), false);
+        let backend = dust_path_backend(&world, Some(level));
         assert_eq!(backend.program.resources().len(), 1);
         assert_eq!(backend.program.resources()[0].contacts.len(), 3);
         let inventory = backend.callback_research_inventory();
@@ -3346,14 +2748,7 @@ fn shared_payload_opposite_direction_does_not_request_early_retraction() {
                 };
                 piston.extended = false;
                 world.set_block(bases[index], Block::Piston { piston });
-                world.set_block(
-                    near[index],
-                    if index == extending_actor {
-                        Block::RedstoneBlock
-                    } else {
-                        Block::Air
-                    },
-                );
+                world.set_block(near[index], if index == extending_actor { Block::RedstoneBlock } else { Block::Air });
                 world.set_block(controls[index].offset(BlockFace::Bottom), Block::Stone {});
                 world.set_block(controls[index], lever(false));
             }
@@ -3375,10 +2770,7 @@ fn shared_payload_opposite_direction_does_not_request_early_retraction() {
         assert_eq!(native_request.pos, bases[retracting_actor]);
         assert_eq!(native_request.action, mchprs_world::PistonAction::Retract);
         let graph_request = backend.piston_requests.back().unwrap();
-        assert_eq!(
-            graph_request.piston,
-            piston_id_at(&backend, bases[retracting_actor])
-        );
+        assert_eq!(graph_request.piston, piston_id_at(&backend, bases[retracting_actor]));
         assert_eq!(graph_request.action, native_request.action);
     }
 }
@@ -3415,10 +2807,7 @@ fn shared_payload_deadline_reversal_executes_notified_actor_in_same_tick() {
         tick_native_bounded(&mut native);
         backend.tick().unwrap();
         assert_resource_invariants(&backend);
-        assert!(matches!(
-            native.get_block(bases[notified_actor]),
-            Block::MovingPiston { .. }
-        ));
+        assert!(matches!(native.get_block(bases[notified_actor]), Block::MovingPiston { .. }));
         assert_eq!(
             piston_state_at(&backend, bases[notified_actor]).availability,
             PistonAvailability::BasePending,
@@ -3426,10 +2815,7 @@ fn shared_payload_deadline_reversal_executes_notified_actor_in_same_tick() {
         );
         assert!(native.piston_state().events.is_empty());
         assert!(backend.piston_requests.is_empty());
-        assert_eq!(
-            backend.state.resources[0].at,
-            contact_at(&backend, near[notified_actor])
-        );
+        assert_eq!(backend.state.resources[0].at, contact_at(&backend, near[notified_actor]));
         assert!(!backend.state.resources[0].enabled);
 
         for _ in 0..3 {
@@ -3438,10 +2824,7 @@ fn shared_payload_deadline_reversal_executes_notified_actor_in_same_tick() {
             assert_resource_invariants(&backend);
         }
         for position in [bases[0], bases[1], near[0], near[1], far] {
-            assert_eq!(
-                piston_contact_block(&backend, position),
-                native.get_block(position)
-            );
+            assert_eq!(piston_contact_block(&backend, position), native.get_block(position));
         }
     }
 }
@@ -3465,12 +2848,10 @@ fn shared_payload_actor_orders_select_the_first_retracting_contact() {
                 .pistons()
                 .iter()
                 .find(|spec| backend.program.nodes()[spec.node.index()].position == Some(base))
-                .map(
-                    |spec| match backend.program.nodes()[spec.node.index()].kind {
-                        CircuitNodeKind::Piston(id) => id,
-                        _ => unreachable!(),
-                    },
-                )
+                .map(|spec| match backend.program.nodes()[spec.node.index()].kind {
+                    CircuitNodeKind::Piston(id) => id,
+                    _ => unreachable!(),
+                })
                 .unwrap();
             backend.sample_piston(piston_id).unwrap();
             for _ in 0..3 {
@@ -3498,15 +2879,7 @@ fn shared_payload_actor_orders_select_the_first_retracting_contact() {
                 .unwrap()
         );
         assert!(resource.enabled);
-        assert_eq!(
-            backend
-                .state
-                .pistons
-                .iter()
-                .filter(|state| !state.extended)
-                .count(),
-            2
-        );
+        assert_eq!(backend.state.pistons.iter().filter(|state| !state.extended).count(), 2);
     }
 }
 
@@ -3529,12 +2902,7 @@ fn shared_payload_overlapping_repeated_triggers_keep_fifo_and_conserve_one_token
             }
         }
 
-        let native_order: Vec<_> = native
-            .piston_state()
-            .events
-            .iter()
-            .map(|event| event.pos)
-            .collect();
+        let native_order: Vec<_> = native.piston_state().events.iter().map(|event| event.pos).collect();
         let graph_order: Vec<_> = backend
             .piston_requests
             .iter()
@@ -3557,10 +2925,7 @@ fn shared_payload_overlapping_repeated_triggers_keep_fifo_and_conserve_one_token
             .filter(|position| native.get_block(*position) == Block::RedstoneBlock)
             .count();
         assert_eq!(native_tokens, 1);
-        assert_eq!(
-            piston_contact_block(&backend, near[order[0]]),
-            Block::RedstoneBlock
-        );
+        assert_eq!(piston_contact_block(&backend, near[order[0]]), Block::RedstoneBlock);
         for position in [bases[0], bases[1], near[0], near[1], resource_pos] {
             assert_eq!(
                 piston_contact_block(&backend, position),
@@ -3589,12 +2954,7 @@ fn three_sticky_actors_share_one_conserved_resource() {
                 extended: true,
             };
             world.set_block(base, Block::Piston { piston });
-            world.set_block(
-                base.offset(facing.into()),
-                Block::PistonHead {
-                    head: piston.into(),
-                },
-            );
+            world.set_block(base.offset(facing.into()), Block::PistonHead { head: piston.into() });
         }
         world.set_block(resource_pos, Block::RedstoneBlock);
     }
@@ -3609,9 +2969,7 @@ fn three_sticky_actors_share_one_conserved_resource() {
         unreachable!();
     };
     redstone::piston::update_piston_state(&mut native, piston, bases[first].0);
-    backend
-        .sample_piston(piston_id_at(&backend, bases[first].0))
-        .unwrap();
+    backend.sample_piston(piston_id_at(&backend, bases[first].0)).unwrap();
     for _ in 0..3 {
         tick_shared_and_compare_callbacks(&mut native, &mut backend);
     }
@@ -3625,10 +2983,7 @@ fn three_sticky_actors_share_one_conserved_resource() {
 #[test]
 fn shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event() {
     let (mut native, mut graph_world, bases, near, resource_pos) = opposing_shared_pistons();
-    let controls = [
-        bases[0].offset(BlockFace::East),
-        bases[1].offset(BlockFace::East),
-    ];
+    let controls = [bases[0].offset(BlockFace::East), bases[1].offset(BlockFace::East)];
     for world in [&mut native, &mut graph_world] {
         for (index, control) in controls.into_iter().enumerate() {
             world.set_block(control.offset(BlockFace::Bottom), Block::Stone {});
@@ -3643,9 +2998,7 @@ fn shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event() {
         unreachable!();
     };
     redstone::piston::update_piston_state(&mut native, piston, bases[0]);
-    backend
-        .sample_piston(piston_id_at(&backend, bases[0]))
-        .unwrap();
+    backend.sample_piston(piston_id_at(&backend, bases[0])).unwrap();
     for _ in 0..3 {
         tick_shared_and_compare_callbacks(&mut native, &mut backend);
     }
@@ -3658,58 +3011,37 @@ fn shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event() {
     ));
     tick_shared_and_compare_callbacks(&mut native, &mut backend);
     assert!(!backend.state.resources[0].enabled);
-    assert_eq!(
-        backend.state.resources[0].at,
-        contact_at(&backend, resource_pos)
-    );
+    assert_eq!(backend.state.resources[0].at, contact_at(&backend, resource_pos));
 
     set_shared_lever_and_compare_callbacks(&mut native, &mut backend, controls[0], false);
     assert!(matches!(
         native.piston_state().events.back(),
         Some(event) if event.action == mchprs_world::PistonAction::RetractWithoutPull
     ));
-    assert!(backend.piston_requests.iter().any(|request| {
-        request.piston == piston_id_at(&backend, bases[0])
-            && request.action == mchprs_world::PistonAction::RetractWithoutPull
-    }));
+    assert!(
+        backend.piston_requests.iter().any(|request| {
+            request.piston == piston_id_at(&backend, bases[0]) && request.action == mchprs_world::PistonAction::RetractWithoutPull
+        })
+    );
     tick_shared_and_compare_callbacks(&mut native, &mut backend);
     assert_eq!(native.get_block(resource_pos), Block::RedstoneBlock);
-    assert_eq!(
-        piston_contact_block(&backend, resource_pos),
-        Block::RedstoneBlock
-    );
+    assert_eq!(piston_contact_block(&backend, resource_pos), Block::RedstoneBlock);
     assert!(backend.state.resources[0].enabled);
 
     set_shared_lever_and_compare_callbacks(&mut native, &mut backend, controls[1], false);
     tick_shared_and_compare_callbacks(&mut native, &mut backend);
     assert_eq!(native.get_block(resource_pos), Block::Air);
-    assert!(matches!(
-        native.get_block(near[1]),
-        Block::MovingPiston { .. }
-    ));
+    assert!(matches!(native.get_block(near[1]), Block::MovingPiston { .. }));
     assert_eq!(backend.state.resources[0].at, contact_at(&backend, near[1]));
     assert!(!backend.state.resources[0].enabled);
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("resource stale"))
-    );
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("piston stale"))
-    );
+    assert!(backend.trace().iter().any(|line| line.contains("resource stale")));
+    assert!(backend.trace().iter().any(|line| line.contains("piston stale")));
 
     for _ in 0..3 {
         tick_shared_and_compare_callbacks(&mut native, &mut backend);
     }
     assert_eq!(native.get_block(near[1]), Block::RedstoneBlock);
-    assert_eq!(
-        piston_contact_block(&backend, near[1]),
-        Block::RedstoneBlock
-    );
+    assert_eq!(piston_contact_block(&backend, near[1]), Block::RedstoneBlock);
     assert!(backend.state.resources[0].enabled);
     assert_eq!(native.get_block(resource_pos), Block::Air);
     for position in [bases[0], bases[1], near[0], near[1], resource_pos] {
@@ -3730,38 +3062,19 @@ fn stale_resource_publication_does_not_cancel_a_valid_actor_publication() {
     let actor = piston_id_at(&backend, bases[0]);
     backend.retract_connections(actor, false).unwrap();
     let event = backend.deferred_pistons.pop_front().unwrap();
-    assert_eq!(
-        backend.state.pistons[actor.index()].availability,
-        PistonAvailability::BasePending
-    );
+    assert_eq!(backend.state.pistons[actor.index()].availability, PistonAvailability::BasePending);
 
     // Model a legal recapture at the shared contact before the original restore arrives.
     backend.set_resource_contact(ResourceId::new(0), contact_at(&backend, resource_pos), true);
     backend.apply_deferred_event(event).unwrap();
     assert_resource_invariants(&backend);
 
-    assert_eq!(
-        backend.state.pistons[actor.index()].availability,
-        PistonAvailability::Ready
-    );
+    assert_eq!(backend.state.pistons[actor.index()].availability, PistonAvailability::Ready);
     assert!(!backend.state.pistons[actor.index()].extended);
-    assert_eq!(
-        backend.state.resources[0].at,
-        contact_at(&backend, resource_pos)
-    );
+    assert_eq!(backend.state.resources[0].at, contact_at(&backend, resource_pos));
     assert!(backend.state.resources[0].enabled);
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("resource stale"))
-    );
-    assert!(
-        !backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("piston stale"))
-    );
+    assert!(backend.trace().iter().any(|line| line.contains("resource stale")));
+    assert!(!backend.trace().iter().any(|line| line.contains("piston stale")));
 }
 
 #[test]
@@ -3770,30 +3083,22 @@ fn adder_inhibition_matches_native_for_a_bounded_shared_resource_episode() {
     let clipboard = frozen_clipboard("ADDER_1BIT.schem");
     let dimensions = (clipboard.size_x, clipboard.size_y, clipboard.size_z);
     let origin = BlockPos::new(40, 30, 40);
-    let paste_anchor =
-        origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z);
+    let paste_anchor = origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z);
     let bounds = (
         origin,
-        origin
-            + BlockPos::new(
-                dimensions.0 as i32 - 1,
-                dimensions.1 as i32 - 1,
-                dimensions.2 as i32 - 1,
-            ),
+        origin + BlockPos::new(dimensions.0 as i32 - 1, dimensions.1 as i32 - 1, dimensions.2 as i32 - 1),
     );
     let mut native = fixture_world();
     let mut graph_world = fixture_world();
     for world in [&mut native, &mut graph_world] {
         paste_clipboard(world, &clipboard, paste_anchor, false);
     }
-    let mut backend = GraphBackend::compile(&graph_world, bounds, vec![], Arc::default())
-        .unwrap_or_else(|error| panic!("bounded adder fixture rejected: {error}"));
+    let mut backend =
+        GraphBackend::compile(&graph_world, bounds, vec![], Arc::default()).unwrap_or_else(|error| panic!("bounded adder fixture rejected: {error}"));
     let mut component_positions = non_resource_component_positions(&backend);
     component_positions.sort_by_key(|position| (position.x, position.y, position.z));
-    let manifest: Value = serde_json::from_slice(
-        &std::fs::read(root.join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap(),
-    )
-    .unwrap();
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root.join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
     let case = manifest["cases"]
         .as_array()
         .unwrap()
@@ -3801,10 +3106,7 @@ fn adder_inhibition_matches_native_for_a_bounded_shared_resource_episode() {
         .find(|case| case["id"] == "prepared-1-1-0")
         .unwrap();
 
-    let compare_components = |backend: &mut GraphBackend,
-                              native: &PlotWorld,
-                              graph_world: &mut PlotWorld,
-                              boundary: &str| {
+    let compare_components = |backend: &mut GraphBackend, native: &PlotWorld, graph_world: &mut PlotWorld, boundary: &str| {
         assert_resource_invariants(backend);
         backend.flush(graph_world, false);
         for &position in &component_positions {
@@ -3815,10 +3117,7 @@ fn adder_inhibition_matches_native_for_a_bounded_shared_resource_episode() {
             );
         }
     };
-    let advance = |backend: &mut GraphBackend,
-                   native: &mut PlotWorld,
-                   graph_world: &mut PlotWorld,
-                   boundary: &str| {
+    let advance = |backend: &mut GraphBackend, native: &mut PlotWorld, graph_world: &mut PlotWorld, boundary: &str| {
         native.tick_interpreted();
         backend.tick().unwrap();
         compare_components(backend, native, graph_world, boundary);
@@ -3845,24 +3144,14 @@ fn adder_inhibition_matches_native_for_a_bounded_shared_resource_episode() {
             }
             "wait_ready" | "wait" => {
                 for tick in 0..action["ticks"].as_u64().unwrap() {
-                    advance(
-                        &mut backend,
-                        &mut native,
-                        &mut graph_world,
-                        &format!("setup action {index}, tick {tick}"),
-                    );
+                    advance(&mut backend, &mut native, &mut graph_world, &format!("setup action {index}, tick {tick}"));
                 }
             }
             operation => panic!("unexpected adder operation {operation}"),
         }
     }
     for tick in 0..case["ticks"].as_u64().unwrap() {
-        advance(
-            &mut backend,
-            &mut native,
-            &mut graph_world,
-            &format!("inhibition response tick {tick}"),
-        );
+        advance(&mut backend, &mut native, &mut graph_world, &format!("inhibition response tick {tick}"));
     }
 }
 
@@ -3933,10 +3222,7 @@ pub(super) fn assert_resource_invariants(backend: &GraphBackend) {
     for (index, state) in backend.state.resources.iter().enumerate() {
         let spec = &backend.program.resources()[index];
         assert!(spec.contacts.contains(&state.at));
-        assert!(
-            !selected.contains(&state.at),
-            "two resources selected one contact"
-        );
+        assert!(!selected.contains(&state.at), "two resources selected one contact");
         selected.push(state.at);
     }
     for contact in backend.program.contacts() {
@@ -4005,12 +3291,7 @@ fn tick_shared_and_compare_callbacks(native: &mut PlotWorld, backend: &mut Graph
     assert_resource_invariants(backend);
 }
 
-fn set_shared_lever_and_compare_callbacks(
-    native: &mut PlotWorld,
-    backend: &mut GraphBackend,
-    position: BlockPos,
-    powered: bool,
-) {
+fn set_shared_lever_and_compare_callbacks(native: &mut PlotWorld, backend: &mut GraphBackend, position: BlockPos, powered: bool) {
     let watched = shared_callback_positions(backend);
     let graph_start = backend.observed_operations.len();
     let native_trace = capture_at(&watched, || set_native_lever(native, position, powered));
@@ -4025,25 +3306,19 @@ fn tick_native_bounded(world: &mut PlotWorld) {
     let target_tick = world.piston_state().logical_tick + 1;
     for _ in 0..128 {
         world.nanotick_advance(1);
-        if world.piston_state().logical_tick == target_tick
-            && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
-        {
+        if world.piston_state().logical_tick == target_tick && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks {
             return;
         }
     }
     panic!("native piston tick did not settle within 128 operations");
 }
 
-fn native_callbacks_at(
-    trace: &[Value],
-    positions: &[BlockPos],
-) -> Vec<(BlockPos, Option<BlockFace>)> {
+fn native_callbacks_at(trace: &[Value], positions: &[BlockPos]) -> Vec<(BlockPos, Option<BlockFace>)> {
     trace
         .iter()
         .filter(|entry| {
             entry["kind"] == "callback"
-                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone())
-                    .is_ok_and(|position| positions.contains(&position))
+                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone()).is_ok_and(|position| positions.contains(&position))
         })
         .map(|entry| {
             (
@@ -4054,10 +3329,7 @@ fn native_callbacks_at(
         .collect()
 }
 
-fn native_shared_callbacks_at(
-    trace: &[Value],
-    positions: &[BlockPos],
-) -> Vec<(BlockPos, Option<BlockFace>)> {
+fn native_shared_callbacks_at(trace: &[Value], positions: &[BlockPos]) -> Vec<(BlockPos, Option<BlockFace>)> {
     trace
         .iter()
         .filter(|entry| {
@@ -4078,8 +3350,7 @@ fn native_shared_callbacks_at(
                             | "copper_bulb"
                     )
                 )
-                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone())
-                    .is_ok_and(|position| positions.contains(&position))
+                && serde_json::from_value::<BlockPos>(entry["data"]["pos"].clone()).is_ok_and(|position| positions.contains(&position))
         })
         .map(|entry| {
             (
@@ -4090,11 +3361,7 @@ fn native_shared_callbacks_at(
         .collect()
 }
 
-fn graph_callbacks_at(
-    backend: &GraphBackend,
-    start: usize,
-    positions: &[BlockPos],
-) -> Vec<(BlockPos, Option<BlockFace>)> {
+fn graph_callbacks_at(backend: &GraphBackend, start: usize, positions: &[BlockPos]) -> Vec<(BlockPos, Option<BlockFace>)> {
     backend.callback_order[start..]
         .iter()
         .filter(|(position, _)| positions.contains(position))
@@ -4105,19 +3372,11 @@ fn graph_callbacks_at(
         .collect()
 }
 
-fn graph_routed_callbacks_at(
-    backend: &GraphBackend,
-    start: usize,
-    positions: &[BlockPos],
-) -> Vec<(BlockPos, Option<BlockFace>)> {
+fn graph_routed_callbacks_at(backend: &GraphBackend, start: usize, positions: &[BlockPos]) -> Vec<(BlockPos, Option<BlockFace>)> {
     backend.observed_operations[start..]
         .iter()
         .filter_map(|operation| match operation {
-            GraphObservedOperation::Callback { target, direction }
-                if positions.contains(target) =>
-            {
-                Some((*target, *direction))
-            }
+            GraphObservedOperation::Callback { target, direction } if positions.contains(target) => Some((*target, *direction)),
             _ => None,
         })
         .collect()
@@ -4130,10 +3389,7 @@ fn piston_contact_block(backend: &GraphBackend, position: BlockPos) -> Block {
         .iter()
         .position(|site| site.position == position && matches!(site.source, SiteSource::Contact(_)))
         .unwrap();
-    backend
-        .resolve_site(SiteId::new(site as u32), None)
-        .unwrap()
-        .block
+    backend.resolve_site(SiteId::new(site as u32), None).unwrap().block
 }
 
 #[test]
@@ -4147,11 +3403,7 @@ fn same_value_quasi_updates_match_native_and_deduplicate_extension() {
 
     assert_eq!(backend.input_strength(piston_node, InputPort::Main), 0);
     assert!(backend.input_strength(piston_node, InputPort::Quasi) > 0);
-    assert!(redstone::piston::should_piston_extend(
-        &native,
-        mchprs_blocks::BlockFacing::East,
-        base
-    ));
+    assert!(redstone::piston::should_piston_extend(&native, mchprs_blocks::BlockFacing::East, base));
 
     for _ in 0..2 {
         redstone::update(native.get_block(base), &mut native, base, None);
@@ -4182,12 +3434,7 @@ fn piston_acceptance_cancellation_matches_interpreter() {
 
     assert!(matches!(native.get_block(base), Block::Piston { piston } if !piston.extended));
     assert!(!piston_state_at(&backend, base).extended);
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("piston cancelled"))
-    );
+    assert!(backend.trace().iter().any(|line| line.contains("piston cancelled")));
 }
 
 #[test]
@@ -4207,10 +3454,7 @@ fn blocked_piston_lane_rejects_extension_at_sampling_and_acceptance() {
         _ => unreachable!(),
     };
     backend.sample_piston(id).unwrap();
-    assert!(
-        backend.piston_requests.is_empty(),
-        "sampling must reject the blocked lane"
-    );
+    assert!(backend.piston_requests.is_empty(), "sampling must reject the blocked lane");
 
     backend.enqueue_piston(PistonRequest {
         piston: id,
@@ -4220,12 +3464,7 @@ fn blocked_piston_lane_rejects_extension_at_sampling_and_acceptance() {
     assert!(!piston_state_at(&backend, base).extended);
     assert!(!matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
     assert!(native.piston_state().events.is_empty());
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("piston cancelled"))
-    );
+    assert!(backend.trace().iter().any(|line| line.contains("piston cancelled")));
 }
 
 #[test]
@@ -4254,10 +3493,7 @@ fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
         if event.action == mchprs_world::PistonAction::RetractWithoutPull));
     native.nanotick_advance(1);
     backend.tick().unwrap();
-    assert_eq!(
-        piston_state_at(&backend, base).availability,
-        PistonAvailability::BasePending
-    );
+    assert_eq!(piston_state_at(&backend, base).availability, PistonAvailability::BasePending);
     assert!(
         backend
             .trace()
@@ -4269,50 +3505,27 @@ fn piston_early_reversal_matches_interpreter_and_invalidates_old_restoration() {
         Block::RedstoneBlock
     );
     assert_eq!(
-        piston_contact_block(
-            &backend,
-            base.offset(BlockFace::East).offset(BlockFace::East)
-        ),
+        piston_contact_block(&backend, base.offset(BlockFace::East).offset(BlockFace::East)),
         Block::RedstoneBlock
     );
     tick_native_bounded(&mut native);
     backend.tick().unwrap();
-    assert_eq!(
-        piston_state_at(&backend, base).availability,
-        PistonAvailability::BasePending
-    );
-    assert!(
-        backend
-            .trace()
-            .iter()
-            .any(|line| line.contains("piston stale"))
-    );
+    assert_eq!(piston_state_at(&backend, base).availability, PistonAvailability::BasePending);
+    assert!(backend.trace().iter().any(|line| line.contains("piston stale")));
     tick_native_bounded(&mut native);
     backend.tick().unwrap();
     assert!(matches!(native.get_block(base), Block::Piston { piston } if !piston.extended));
     assert!(!piston_state_at(&backend, base).extended);
-    assert_eq!(
-        piston_state_at(&backend, base).availability,
-        PistonAvailability::Ready
-    );
-    assert_eq!(
-        piston_contact_block(&backend, base.offset(BlockFace::East)),
-        Block::Air
-    );
+    assert_eq!(piston_state_at(&backend, base).availability, PistonAvailability::Ready);
+    assert_eq!(piston_contact_block(&backend, base.offset(BlockFace::East)), Block::Air);
     assert_eq!(
         native.get_block(base.offset(BlockFace::East).offset(BlockFace::East)),
-        piston_contact_block(
-            &backend,
-            base.offset(BlockFace::East).offset(BlockFace::East)
-        )
+        piston_contact_block(&backend, base.offset(BlockFace::East).offset(BlockFace::East))
     );
 
     backend.flush(&mut graph_world, false);
     assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
-    assert_eq!(
-        native.get_block(far_lamp),
-        Block::RedstoneLamp { lit: true }
-    );
+    assert_eq!(native.get_block(far_lamp), Block::RedstoneLamp { lit: true });
     set_native_lever_with_support(&mut native, lever_pos, true, BlockFace::West);
     backend.use_block(lever_pos).unwrap();
     for tick in 1..=3 {
@@ -4366,11 +3579,7 @@ fn ordinary_early_retraction_publishes_interrupted_head_before_base() {
     let native_callbacks = native_callbacks_at(&native_trace, &[far]);
     let graph_callbacks = graph_callbacks_at(&backend, graph_start, &[far]);
     assert_eq!(graph_callbacks, native_callbacks);
-    assert_eq!(
-        native_callbacks.len(),
-        2,
-        "interrupted head is removed before base retraction"
-    );
+    assert_eq!(native_callbacks.len(), 2, "interrupted head is removed before base retraction");
 }
 
 #[test]
@@ -4394,41 +3603,23 @@ fn piston_delayed_restoration_matches_interpreter() {
             assert_eq!(state.availability, PistonAvailability::HeadPending);
             assert!(matches!(native.get_block(far), Block::MovingPiston { .. }));
             assert_eq!(piston_contact_block(&backend, far), Block::Air);
-            assert_eq!(
-                native.get_block(far_lamp),
-                Block::RedstoneLamp { lit: false }
-            );
-            assert_eq!(
-                graph_world.get_block(far_lamp),
-                Block::RedstoneLamp { lit: false }
-            );
+            assert_eq!(native.get_block(far_lamp), Block::RedstoneLamp { lit: false });
+            assert_eq!(graph_world.get_block(far_lamp), Block::RedstoneLamp { lit: false });
         }
     }
     assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
-    assert!(matches!(
-        native.get_block(base.offset(BlockFace::East)),
-        Block::PistonHead { .. }
-    ));
+    assert!(matches!(native.get_block(base.offset(BlockFace::East)), Block::PistonHead { .. }));
     assert!(piston_state_at(&backend, base).extended);
-    assert_eq!(
-        piston_state_at(&backend, base).availability,
-        PistonAvailability::Ready
-    );
+    assert_eq!(piston_state_at(&backend, base).availability, PistonAvailability::Ready);
     assert!(matches!(
         piston_contact_block(&backend, base.offset(BlockFace::East)),
         Block::PistonHead { .. }
     ));
     assert_eq!(
         native.get_block(base.offset(BlockFace::East).offset(BlockFace::East)),
-        piston_contact_block(
-            &backend,
-            base.offset(BlockFace::East).offset(BlockFace::East)
-        )
+        piston_contact_block(&backend, base.offset(BlockFace::East).offset(BlockFace::East))
     );
-    assert_eq!(
-        native.get_block(far_lamp),
-        Block::RedstoneLamp { lit: true }
-    );
+    assert_eq!(native.get_block(far_lamp), Block::RedstoneLamp { lit: true });
     assert_eq!(graph_world.get_block(far_lamp), native.get_block(far_lamp));
 }
 
@@ -4437,11 +3628,7 @@ fn sticky_retraction_publishes_base_then_resource_once_in_native_order() {
     let (mut native, mut graph_world, base, lever_pos) = isolated_piston_pair(true);
     let near = base.offset(BlockFace::East);
     let far = near.offset(BlockFace::East);
-    let watched = [
-        base.offset(BlockFace::North),
-        near.offset(BlockFace::North),
-        far.offset(BlockFace::North),
-    ];
+    let watched = [base.offset(BlockFace::North), near.offset(BlockFace::North), far.offset(BlockFace::North)];
     for world in [&mut native, &mut graph_world] {
         for position in watched {
             world.set_block(
@@ -4541,20 +3728,14 @@ fn ordinary_empty_piston_extension_restoration_matches_interpreter() {
             .collect();
         assert_eq!(graph_callbacks, native_callbacks, "visit {visit}");
         let state = piston_state_at(&backend, base);
-        assert_eq!(
-            native.pending_tick_at(far),
-            backend.is_pending(observer_node)
-        );
+        assert_eq!(native.pending_tick_at(far), backend.is_pending(observer_node));
         assert!(state.extended);
         if visit < 3 {
             assert_eq!(state.availability, PistonAvailability::HeadPending);
             assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
         } else {
             assert_eq!(state.availability, PistonAvailability::Ready);
-            assert!(matches!(
-                native.get_block(base.offset(BlockFace::East)),
-                Block::PistonHead { .. }
-            ));
+            assert!(matches!(native.get_block(base.offset(BlockFace::East)), Block::PistonHead { .. }));
             assert!(matches!(
                 piston_contact_block(&backend, base.offset(BlockFace::East)),
                 Block::PistonHead { .. }
@@ -4580,12 +3761,7 @@ fn external_wire_boundary_uses_regulated_sides() {
     world.set_block(source, lever(true));
     world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
 
-    let result = GraphBackend::compile(
-        &world,
-        (BlockPos::new(0, 0, 0), BlockPos::new(10, 31, 15)),
-        vec![],
-        Arc::default(),
-    );
+    let result = GraphBackend::compile(&world, (BlockPos::new(0, 0, 0), BlockPos::new(10, 31, 15)), vec![], Arc::default());
     assert!(
         matches!(
             result,
@@ -4704,27 +3880,18 @@ fn stored_wire_diode_input_outside_selection_is_rejected() {
 fn moved_redstone_resource_uses_its_selected_profile_strength() {
     let mut backend = contact_resource_backend();
     let target = SiteId::new(0);
-    assert_eq!(
-        backend.site_power(target, PowerPort::Weak(BlockFace::West)),
-        0
-    );
+    assert_eq!(backend.site_power(target, PowerPort::Weak(BlockFace::West)), 0);
 
     backend.state.resources[0].at = ContactId::new(1);
 
-    assert_eq!(
-        backend.site_power(target, PowerPort::Weak(BlockFace::West)),
-        15
-    );
+    assert_eq!(backend.site_power(target, PowerPort::Weak(BlockFace::West)), 15);
 }
 
 #[test]
 fn fixed_boundary_comparator_keeps_its_sampled_analog_strength() {
     let backend = contact_resource_backend();
     assert_eq!(backend.site_power(SiteId::new(1), PowerPort::Output), 7);
-    assert_eq!(
-        backend.site_power(SiteId::new(1), PowerPort::Weak(BlockFace::South)),
-        7
-    );
+    assert_eq!(backend.site_power(SiteId::new(1), PowerPort::Weak(BlockFace::South)), 7);
 }
 
 #[test]
@@ -4764,6 +3931,7 @@ fn site_geometry_guards_use_compiled_profile_facts() {
         }],
         contacts: vec![],
         routes: vec![],
+        turbo_callback_indices: vec![],
         wires: vec![],
         dust_paths: vec![],
         wire_relations: vec![],
@@ -4858,20 +4026,9 @@ fn compiler_returns_hostless_error_and_can_retry_with_world() {
         })),
     );
     let mut compiler = crate::redpiler::Compiler::default();
-    compiler
-        .compile(
-            &world,
-            BOUNDS,
-            Default::default(),
-            vec![],
-            Default::default(),
-        )
-        .unwrap();
+    compiler.compile(&world, BOUNDS, Default::default(), vec![], Default::default()).unwrap();
     for _ in 0..2 {
-        assert_eq!(
-            compiler.tick(),
-            Err(GraphExecutionError::CommandHostUnavailable { position: pos })
-        );
+        assert_eq!(compiler.tick(), Err(GraphExecutionError::CommandHostUnavailable { position: pos }));
         assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 0);
     }
     compiler.tick_with_world(&mut world).unwrap();
@@ -4884,15 +4041,7 @@ fn compiler_returns_latched_execution_failure_without_advancing_host() {
     let mut world = empty_world();
     world.set_block(LEVER_POS, lever(false));
     let mut compiler = crate::redpiler::Compiler::default();
-    compiler
-        .compile(
-            &world,
-            BOUNDS,
-            Default::default(),
-            vec![],
-            Default::default(),
-        )
-        .unwrap();
+    compiler.compile(&world, BOUNDS, Default::default(), vec![], Default::default()).unwrap();
     let error = GraphExecutionError::UnsupportedComponent {
         position: Some(LEVER_POS),
         kind: "injected execution failure",

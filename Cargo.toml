@@ -28,8 +28,6 @@ opt-level = 3
 # This seems to speed up Redpiler compile times
 lto = "fat"
 
-
-
 [dependencies]
 mchprs_core = { path = "./crates/core" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -80,7 +80,7 @@ The runner checks cancellation, validates the graph before execution and after e
 
 **A candidate that is not optimizable is not an invalid circuit.** Leave it unchanged and continue. Use errors for actual violated pass contracts or failed execution, not ordinary lack of an eligible motif. A proof timeout, excessive state space, unknown dependency, or unsupported optimization case retains general execution.
 
-The API and custom compiler entry point remain crate-private. Each default pass is registered with its minimum optimization level; `O0` skips all tiers and `O1` enables `guard-and-update-reduction`. The experimental dust-path pass is also an O1 entry, but only when `--experimental-dust-paths` is explicitly supplied; it stays off in ordinary production compilation until review. Use `-O1 --experimental-dust-paths` or `-O --experimental-dust-paths` to select it. Bare `-O` alone enables only reviewed configured passes. The unoptimized pipeline still runs the complete general graph. Keep supplied experimental order explicit; do not silently reorder passes or turn a custom pipeline into the default.
+The API and custom compiler entry point remain crate-private. `O0` skips optimization passes; `O1` enables `guard-and-update-reduction`, `index-turbo-callbacks`, and `contract-static-dust-paths` in the order listed in the pipeline. The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding pass, add it to corresponding list, do not introduce dedicated setting for pass.
 
 Long discovery/proof loops must check cancellation at sensible boundaries. Compute eligibility and replacement data before mutating each candidate. The compiler stages the graph and publishes only after success; the runner does not roll back failed mutations. Do not clone an entire large graph merely to provide rollback, and never mutate the input World from a pass.
 
@@ -176,7 +176,7 @@ The final report must state:
 - A positive real example and a counterexample the pass declined.
 - Mathematical/checker evidence, registered tests actually run, fuzz seeds/budgets, and unresolved failures.
 - Paired runtime results, work reduction, memory accounting, and candidate coverage.
-- What was not checked, remaining risks, and whether the pass is experimental or enabled by default.
+- What was not checked, remaining risks, and in what opt effort is enabled.
 
 Default enablement requires reviewed correctness evidence and measured benefit. Unsupported proof cases must retain the general graph; no Native/Direct fallback, TODO execution branch, guessed output, or broader unsupported circuit rejection may substitute for a proof.
 

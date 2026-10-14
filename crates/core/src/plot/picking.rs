@@ -13,18 +13,12 @@ const HOTBAR_END: usize = HOTBAR_START + HOTBAR_SIZE;
 pub(super) fn within_reach(eye: PlayerPos, pos: BlockPos) -> bool {
     let distance: f64 = [(eye.x, pos.x), (eye.y, pos.y), (eye.z, pos.z)]
         .into_iter()
-        .map(|(value, start)| {
-            (value - value.clamp(f64::from(start), f64::from(start) + 1.0)).powi(2)
-        })
+        .map(|(value, start)| (value - value.clamp(f64::from(start), f64::from(start) + 1.0)).powi(2))
         .sum();
     distance.is_finite() && distance <= 36.0 // Creative block reach (5) + Java's pick tolerance (1).
 }
 
-pub(super) fn picked_stack(
-    world: &impl World,
-    pos: BlockPos,
-    include_data: bool,
-) -> Option<ItemStack> {
+pub(super) fn picked_stack(world: &impl World, pos: BlockPos, include_data: bool) -> Option<ItemStack> {
     let block = world.get_block(pos);
     let name = match block {
         Block::Air | Block::MovingPiston { .. } => return None,
@@ -44,44 +38,29 @@ pub(super) fn picked_stack(
             name => name,
         },
     };
-    let name = name
-        .replace("_wall_sign", "_sign")
-        .replace("_wall_hanging_sign", "_hanging_sign");
+    let name = name.replace("_wall_sign", "_sign").replace("_wall_hanging_sign", "_hanging_sign");
     let item_type = Item::from_name(&name)?;
     let nbt = if include_data {
-        world
-            .get_block_entity(pos)
-            .and_then(|entity| entity.to_nbt(false))
-            .map(|entity| {
-                nbt::Blob::with_content(std::collections::HashMap::from([(
-                    "BlockEntityTag".into(),
-                    nbt::Value::Compound(entity.content),
-                )]))
-            })
+        world.get_block_entity(pos).and_then(|entity| entity.to_nbt(false)).map(|entity| {
+            nbt::Blob::with_content(std::collections::HashMap::from([(
+                "BlockEntityTag".into(),
+                nbt::Value::Compound(entity.content),
+            )]))
+        })
     } else {
         None
     };
-    Some(ItemStack {
-        item_type,
-        count: 1,
-        nbt,
-    })
+    Some(ItemStack { item_type, count: 1, nbt })
 }
 
 // Inventory protocol order: main inventory 9..36, then hotbar 36..45.
-pub(super) fn pick_into_inventory(
-    inventory: &mut [Option<ItemStack>],
-    selected: &mut u32,
-    picked: ItemStack,
-) -> Vec<usize> {
+pub(super) fn pick_into_inventory(inventory: &mut [Option<ItemStack>], selected: &mut u32, picked: ItemStack) -> Vec<usize> {
     let wanted = item_components(&picked);
-    let matching = (HOTBAR_START..HOTBAR_END)
-        .chain(MAIN_INVENTORY_START..HOTBAR_START)
-        .find(|&slot| {
-            inventory[slot].as_ref().is_some_and(|item| {
-                item.item_type == picked.item_type && item_components(item) == wanted
-            })
-        });
+    let matching = (HOTBAR_START..HOTBAR_END).chain(MAIN_INVENTORY_START..HOTBAR_START).find(|&slot| {
+        inventory[slot]
+            .as_ref()
+            .is_some_and(|item| item.item_type == picked.item_type && item_components(item) == wanted)
+    });
     if let Some(slot) = matching.filter(|slot| *slot >= HOTBAR_START) {
         *selected = (slot - HOTBAR_START) as u32;
         return vec![];
@@ -131,23 +110,14 @@ mod tests {
         assert_eq!(selected, 4);
         assert_eq!(slots[40].as_ref().unwrap().count, 64);
         slots[10] = Some(stack("redstone"));
-        assert_eq!(
-            pick_into_inventory(&mut slots, &mut selected, stack("redstone")),
-            [41, 10]
-        );
+        assert_eq!(pick_into_inventory(&mut slots, &mut selected, stack("redstone")), [41, 10]);
         assert!(slots[10].is_none());
         for slot in &mut slots[36..45] {
             *slot = Some(stack("stone"));
         }
-        assert_eq!(
-            pick_into_inventory(&mut slots, &mut selected, stack("piston")),
-            [41, 9]
-        );
+        assert_eq!(pick_into_inventory(&mut slots, &mut selected, stack("piston")), [41, 9]);
         assert_eq!(slots[9].as_ref().unwrap().item_type, Item::Stone {});
-        assert_eq!(
-            slots[41].as_ref().unwrap().item_type,
-            Item::from_name("piston").unwrap()
-        );
+        assert_eq!(slots[41].as_ref().unwrap().item_type, Item::from_name("piston").unwrap());
         assert_eq!(slots[40].as_ref().unwrap().item_type, Item::Stone {});
     }
 

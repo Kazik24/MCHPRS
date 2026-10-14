@@ -21,9 +21,7 @@ use crate::world::World;
 use crate::world::storage::Chunk;
 use anyhow::{Context, Result, bail, ensure};
 use mchprs_blocks::BlockPos;
-use mchprs_network::packets::clientbound::{
-    CDestroyEntities, CTabComplete, CTabCompleteMatch, ClientBoundPacket,
-};
+use mchprs_network::packets::clientbound::{CDestroyEntities, CTabComplete, CTabCompleteMatch, ClientBoundPacket};
 use mchprs_save_data::plot_data::{PlotData, Tps};
 use mchprs_world::AdvancePhase;
 use once_cell::sync::Lazy;
@@ -40,9 +38,7 @@ const ROOT: &str = "./world/plot-git";
 const MAX_WORK_MEMORY_MIB: u64 = 1024;
 const MAX_SNAPSHOT_MIB: u64 = 128;
 
-static MEMORY: Lazy<Arc<memory_budget::Budget>> = Lazy::new(|| {
-    memory_budget::Budget::new(mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB)))
-});
+static MEMORY: Lazy<Arc<memory_budget::Budget>> = Lazy::new(|| memory_budget::Budget::new(mib(CONFIG.git_work_memory_mib.min(MAX_WORK_MEMORY_MIB))));
 
 pub(super) fn memory_usage() -> (usize, usize) {
     MEMORY.stats()
@@ -63,12 +59,8 @@ impl Reservation {
     }
 
     fn new(bytes: usize) -> Result<Self> {
-        let reservation = MEMORY
-            .reserve(bytes)
-            .ok_or_else(|| anyhow::anyhow!(messages::GIT_MEMORY_LIMIT_REACHED))?;
-        Ok(Self {
-            _reservation: reservation,
-        })
+        let reservation = MEMORY.reserve(bytes).ok_or_else(|| anyhow::anyhow!(messages::GIT_MEMORY_LIMIT_REACHED))?;
+        Ok(Self { _reservation: reservation })
     }
 }
 
@@ -96,11 +88,7 @@ fn storage_limit_mib(grant: Option<usize>, default: u64, ceiling: u64) -> u64 {
 }
 
 fn plot_storage_mib(grant: Option<usize>) -> u64 {
-    storage_limit_mib(
-        grant,
-        CONFIG.git_default_plot_storage_mib,
-        CONFIG.git_plot_storage_mib,
-    )
+    storage_limit_mib(grant, CONFIG.git_default_plot_storage_mib, CONFIG.git_plot_storage_mib)
 }
 
 fn owner_limits(owner: Option<u128>, cached_storage: Option<u64>) -> Result<Limits> {
@@ -109,8 +97,7 @@ fn owner_limits(owner: Option<u128>, cached_storage: Option<u64>) -> Result<Limi
     let storage = match (owner, cached_storage) {
         (_, Some(storage)) => storage,
         (Some(owner), None) if CONFIG.luckperms.is_some() => {
-            let cache = permissions::load_player_cache(owner)
-                .context(messages::GIT_OWNER_STORAGE_LIMIT_UNAVAILABLE)?;
+            let cache = permissions::load_player_cache(owner).context(messages::GIT_OWNER_STORAGE_LIMIT_UNAVAILABLE)?;
             plot_storage_mib(cache.numeric_limit(storage_permission_prefix()))
         }
         _ => plot_storage_mib(None),
@@ -134,25 +121,29 @@ static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
         let receiver = receiver.clone();
         std::thread::Builder::new()
             .name(format!("plot-git-{index}"))
-            .spawn(move || loop {
-                let job = receiver.lock().unwrap().recv();
-                let Ok(job) = job else {
-                    break;
-                };
-                let _entered = job.span.enter();
-                let started = Instant::now();
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job.task))
-                    .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
-                match &result {
-                    Ok(reply) => {
-                        if let Payload::Text(text, _) = &reply.payload {
-                            tracing::info!(result = %text, "Git result");
+            .spawn(move || {
+                loop {
+                    let job = receiver.lock().unwrap().recv();
+                    let Ok(job) = job else {
+                        break;
+                    };
+                    let _entered = job.span.enter();
+                    let started = Instant::now();
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job.task))
+                        .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
+                    match &result {
+                        Ok(reply) => {
+                            if let Payload::Text(text, _) = &reply.payload {
+                                tracing::info!(result = %text, "Git result");
+                            }
+                            tracing::info!(elapsed_ms = started.elapsed().as_millis(), "Git worker completed");
                         }
-                        tracing::info!(elapsed_ms = started.elapsed().as_millis(), "Git worker completed");
+                        Err(error) => {
+                            tracing::warn!(elapsed_ms = started.elapsed().as_millis(), error = %format_args!("{error:#}"), "Git worker rejected")
+                        }
                     }
-                    Err(error) => tracing::warn!(elapsed_ms = started.elapsed().as_millis(), error = %format_args!("{error:#}"), "Git worker rejected"),
+                    let _ = job.reply.send(result);
                 }
-                let _ = job.reply.send(result);
             })
             .expect("Cannot start plot Git worker");
     }
@@ -220,22 +211,14 @@ impl State {
 }
 
 pub(super) fn recover_pending(path: &Path) -> Result<()> {
-    let Some(name) = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .and_then(|n| n.strip_prefix('p'))
-    else {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_prefix('p')) else {
         return Ok(());
     };
     let Some((x, z)) = name.split_once(',') else {
         return Ok(());
     };
     let plot = (x.parse::<i32>()?, z.parse::<i32>()?);
-    if !Path::new(ROOT)
-        .join(format!("p{},{}", plot.0, plot.1))
-        .join("repository.sqlite")
-        .exists()
-    {
+    if !Path::new(ROOT).join(format!("p{},{}", plot.0, plot.1)).join("repository.sqlite").exists() {
         return Ok(());
     }
     let mut repo = Repository::open(Path::new(ROOT), plot, limits())?;
@@ -272,14 +255,8 @@ impl Plot {
             return false;
         }
         match action {
-            "checkout" => {
-                admin
-                    || (self.owner == Some(actor.uuid)
-                        && actor.can_edit_plot(self.owner, (self.world.x, self.world.z)))
-            }
-            "commit" | "branch" => {
-                admin || actor.can_edit_plot(self.owner, (self.world.x, self.world.z))
-            }
+            "checkout" => admin || (self.owner == Some(actor.uuid) && actor.can_edit_plot(self.owner, (self.world.x, self.world.z))),
+            "commit" | "branch" => admin || actor.can_edit_plot(self.owner, (self.world.x, self.world.z)),
             _ => true,
         }
     }
@@ -309,16 +286,9 @@ impl Plot {
             .world
             .to_be_ticked
             .iter_entries()
-            .try_fold(0u64, |total, t| {
-                Ok::<_, anyhow::Error>(total + bincode::serialized_size(&t)?)
-            })?;
-        let estimate = usize::try_from(
-            chunks_size + ticks_size + bincode::serialized_size(&self.world.piston_state)? + 128,
-        )?;
-        ensure!(
-            estimate < limits().snapshot,
-            messages::GIT_SNAPSHOT_SIZE_LIMIT
-        );
+            .try_fold(0u64, |total, t| Ok::<_, anyhow::Error>(total + bincode::serialized_size(&t)?))?;
+        let estimate = usize::try_from(chunks_size + ticks_size + bincode::serialized_size(&self.world.piston_state)? + 128)?;
+        ensure!(estimate < limits().snapshot, messages::GIT_SNAPSHOT_SIZE_LIMIT);
         let reservation = Reservation::snapshot(estimate)?;
         let snapshot = Snapshot {
             version: 1,
@@ -356,11 +326,7 @@ impl Plot {
                 actor = %format_args!("{actor:032x}")),
             })
             .map_err(|_| anyhow::anyhow!(messages::GIT_WORKER_QUEUE_FULL))?;
-        self.git.pending = Some(Pending {
-            receiver,
-            actor,
-            checkout,
-        });
+        self.git.pending = Some(Pending { receiver, actor, checkout });
         Ok(())
     }
 
@@ -377,34 +343,19 @@ impl Plot {
     }
 
     fn git_command(&mut self, player: usize, args: &[&str]) -> Result<()> {
-        self.git_command_with_aim(
-            player,
-            args,
-            self.players[player].yaw,
-            self.players[player].pitch,
-        )
+        self.git_command_with_aim(player, args, self.players[player].yaw, self.players[player].pitch)
     }
 
-    fn git_command_with_aim(
-        &mut self,
-        player: usize,
-        args: &[&str],
-        yaw: f32,
-        pitch: f32,
-    ) -> Result<()> {
+    fn git_command_with_aim(&mut self, player: usize, args: &[&str], yaw: f32, pitch: f32) -> Result<()> {
         let action = match args.first().copied() {
             Some("commit") => "commit",
             Some("branch") if args.len() > 1 => "branch",
             Some("checkout" | "restore" | "recover" | "rebase") => "checkout",
             _ => "read",
         };
-        ensure!(
-            self.git_access(player, action),
-            messages::GIT_PERMISSION_DENIED
-        );
+        ensure!(self.git_access(player, action), messages::GIT_PERMISSION_DENIED);
         let actor = self.players[player].uuid;
-        if args != ["inspect"] && (args.first() != Some(&"diff") || args.get(1) != Some(&"inspect"))
-        {
+        if args != ["inspect"] && (args.first() != Some(&"diff") || args.get(1) != Some(&"inspect")) {
             self.hide_git(player, false);
         }
         if args.is_empty() || args == ["help"] {
@@ -416,19 +367,10 @@ impl Plot {
         ensure!(!self.git.locked, messages::GIT_CHECKOUT_LOCKED);
         ensure!(self.git.pending.is_none(), messages::GIT_OPERATION_RUNNING);
         if args.first() == Some(&"diff") && args.get(1) == Some(&"inspect") {
-            ensure!(
-                args.len() == 5 || args.len() == 6,
-                messages::USAGE_GIT_DIFF_INSPECT
-            );
+            ensure!(args.len() == 5 || args.len() == 6, messages::USAGE_GIT_DIFF_INSPECT);
             let pos = BlockPos::new(args[2].parse()?, args[3].parse()?, args[4].parse()?);
             let side = args.get(5).map(|s| s.to_string());
-            let diff = self
-                .git
-                .sessions
-                .get(&actor)
-                .context(messages::GIT_NO_COMPARISON)?
-                .diff
-                .clone();
+            let diff = self.git.sessions.get(&actor).context(messages::GIT_NO_COMPARISON)?.diff.clone();
             return self.start_git(
                 actor,
                 None,
@@ -445,14 +387,8 @@ impl Plot {
         let inspection = if args == ["inspect"] {
             self.reset_redpiler();
             let viewer = &self.players[player];
-            let pos = super::worldedit::ray_trace_block(
-                &self.world,
-                viewer.eye_position(),
-                f64::from(pitch),
-                f64::from(yaw),
-                10.0,
-            )
-            .context(messages::GIT_INSPECT_TARGET_REQUIRED)?;
+            let pos = super::worldedit::ray_trace_block(&self.world, viewer.eye_position(), f64::from(pitch), f64::from(yaw), 10.0)
+                .context(messages::GIT_INSPECT_TARGET_REQUIRED)?;
             ensure!(
                 Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z),
                 messages::GIT_POSITION_OUTSIDE_PLOT
@@ -471,10 +407,7 @@ impl Plot {
         });
         let name = self.players[player].username.clone();
         let owned: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        let checkout = matches!(
-            args.first(),
-            Some(&"checkout" | &"restore" | &"recover" | &"rebase")
-        );
+        let checkout = matches!(args.first(), Some(&"checkout" | &"restore" | &"recover" | &"rebase"));
         let captured = if matches!(
             args.first(),
             Some(&"commit" | &"status" | &"checkout" | &"restore" | &"recover" | &"rebase")
@@ -486,25 +419,17 @@ impl Plot {
         };
         let previous = checkout.then_some(self.tps);
         let task: Task = Box::new(move || {
-            let mut repo =
-                Repository::open(Path::new(ROOT), plot, owner_limits(owner, cached_storage)?)?;
+            let mut repo = Repository::open(Path::new(ROOT), plot, owner_limits(owner, cached_storage)?)?;
             let words: Vec<&str> = owned.iter().map(String::as_str).collect();
             let payload = match words.as_slice() {
                 ["status"] => Payload::Chat(repo.status_chat(&captured.as_ref().unwrap().0)?),
                 ["commit", message @ ..] if !message.is_empty() => Payload::Text(
-                    repo.commit(
-                        &captured.as_ref().unwrap().0,
-                        actor,
-                        &name,
-                        &message.join(" "),
-                    )?,
+                    repo.commit(&captured.as_ref().unwrap().0, actor, &name, &message.join(" "))?,
                     ColorCode::Green,
                 ),
                 ["branch"] => Payload::Chat(repo.branches()?),
                 ["branch", branch] => Payload::Text(repo.branch(branch, "HEAD")?, ColorCode::Green),
-                ["branch", branch, reference] => {
-                    Payload::Text(repo.branch(branch, reference)?, ColorCode::Green)
-                }
+                ["branch", branch, reference] => Payload::Text(repo.branch(branch, reference)?, ColorCode::Green),
                 ["show", reference] => Payload::Text(repo.show(reference)?, ColorCode::Gray),
                 ["recoveries"] => Payload::Chat(repo.recoveries(1)?),
                 ["recoveries", page] => Payload::Chat(repo.recoveries(page.parse()?)?),
@@ -519,16 +444,8 @@ impl Plot {
                     let (all, page, query) = parse_search(rest)?;
                     Payload::Chat(repo.log(all, Some(&query), page)?)
                 }
-                ["diff"] => Payload::Diff(Arc::new(repo.comparison(
-                    "HEAD",
-                    None,
-                    captured.as_ref().map(|(s, _)| s),
-                )?)),
-                ["diff", reference] => Payload::Diff(Arc::new(repo.comparison(
-                    reference,
-                    None,
-                    captured.as_ref().map(|(s, _)| s),
-                )?)),
+                ["diff"] => Payload::Diff(Arc::new(repo.comparison("HEAD", None, captured.as_ref().map(|(s, _)| s))?)),
+                ["diff", reference] => Payload::Diff(Arc::new(repo.comparison(reference, None, captured.as_ref().map(|(s, _)| s))?)),
                 ["diff", a, b] => Payload::Diff(Arc::new(repo.comparison(a, Some(b), None)?)),
                 ["inspect"] => {
                     let (pos, current) = inspection.unwrap();
@@ -536,57 +453,23 @@ impl Plot {
                 }
                 ["restore", reference] => {
                     let save = PathBuf::from(format!("./world/plots/p{},{}", plot.0, plot.1));
-                    match repo.restore_working(
-                        reference,
-                        &captured.as_ref().unwrap().0,
-                        actor,
-                        &name,
-                        &save,
-                    ) {
-                        Ok((snapshot, message, reservation)) => {
-                            Payload::Checkout(snapshot, message, reservation)
-                        }
-                        Err(error) => Payload::CheckoutFailed(
-                            format!("{error:#}"),
-                            repo.has_pending().unwrap_or(true),
-                        ),
+                    match repo.restore_working(reference, &captured.as_ref().unwrap().0, actor, &name, &save) {
+                        Ok((snapshot, message, reservation)) => Payload::Checkout(snapshot, message, reservation),
+                        Err(error) => Payload::CheckoutFailed(format!("{error:#}"), repo.has_pending().unwrap_or(true)),
                     }
                 }
-                ["checkout", branch] => checkout_payload(
-                    &mut repo,
-                    branch,
-                    &captured.as_ref().unwrap().0,
-                    actor,
-                    &name,
-                ),
+                ["checkout", branch] => checkout_payload(&mut repo, branch, &captured.as_ref().unwrap().0, actor, &name),
                 ["rebase", reference] => {
                     let save = PathBuf::from(format!("./world/plots/p{},{}", plot.0, plot.1));
-                    match repo.rebase(
-                        reference,
-                        &captured.as_ref().unwrap().0,
-                        actor,
-                        &name,
-                        &save,
-                    ) {
-                        Ok((snapshot, message, reservation)) => {
-                            Payload::Checkout(snapshot, message, reservation)
-                        }
-                        Err(error) => Payload::CheckoutFailed(
-                            format!("{error:#}"),
-                            repo.has_pending().unwrap_or(true),
-                        ),
+                    match repo.rebase(reference, &captured.as_ref().unwrap().0, actor, &name, &save) {
+                        Ok((snapshot, message, reservation)) => Payload::Checkout(snapshot, message, reservation),
+                        Err(error) => Payload::CheckoutFailed(format!("{error:#}"), repo.has_pending().unwrap_or(true)),
                     }
                 }
                 ["rebase", ..] => bail!(messages::USAGE_GIT_REBASE),
                 ["recover", id, branch] => {
                     repo.recover_branch(id, branch, actor, &name)?;
-                    checkout_payload(
-                        &mut repo,
-                        branch,
-                        &captured.as_ref().unwrap().0,
-                        actor,
-                        &name,
-                    )
+                    checkout_payload(&mut repo, branch, &captured.as_ref().unwrap().0, actor, &name)
                 }
                 _ => bail!(messages::GIT_UNKNOWN_ARGUMENTS),
             };
@@ -655,8 +538,7 @@ impl Plot {
                             self.set_git_tps(Tps::Limited(0));
                         }
                         if let Some(player) = actor {
-                            self.players[player]
-                                .send_error_message(&messages::git_checkout_failed(error));
+                            self.players[player].send_error_message(&messages::git_checkout_failed(error));
                         }
                     }
                     payload => {
@@ -666,16 +548,11 @@ impl Plot {
                                 return;
                             }
                             match payload {
-                                Payload::Text(text, color) => {
-                                    self.players[player].send_color_message(color, &text)
-                                }
-                                Payload::Chat(json) => {
-                                    self.players[player].send_raw_system_message(json.to_string())
-                                }
+                                Payload::Text(text, color) => self.players[player].send_color_message(color, &text),
+                                Payload::Chat(json) => self.players[player].send_raw_system_message(json.to_string()),
                                 Payload::Diff(diff) => {
                                     self.hide_git(player, true);
-                                    self.players[player]
-                                        .send_raw_system_message(diff.summary().to_string());
+                                    self.players[player].send_raw_system_message(diff.summary().to_string());
                                     if diff.counts.iter().sum::<u64>() == 0 {
                                         return;
                                     }
@@ -685,19 +562,14 @@ impl Plot {
                                         Session {
                                             diff,
                                             enabled: true,
-                                            expires: now
-                                                + Duration::from_secs(
-                                                    CONFIG.git_session_seconds.clamp(10, 3600),
-                                                ),
+                                            expires: now + Duration::from_secs(CONFIG.git_session_seconds.clamp(10, 3600)),
                                             next_update: now,
                                             last_pos: None,
                                             markers: HashMap::new(),
                                         },
                                     );
                                 }
-                                Payload::Markers(markers, center)
-                                    if self.git_access(player, "visual") =>
-                                {
+                                Payload::Markers(markers, center) if self.git_access(player, "visual") => {
                                     self.replace_git_markers(player, markers, center);
                                 }
                                 _ => {}
@@ -713,13 +585,9 @@ impl Plot {
                         .join(format!("p{},{}", self.world.x, self.world.z))
                         .join("repository.sqlite");
                     if path.exists() {
-                        let unresolved = Repository::open(
-                            Path::new(ROOT),
-                            (self.world.x, self.world.z),
-                            limits(),
-                        )
-                        .and_then(|r| r.has_pending())
-                        .unwrap_or(true);
+                        let unresolved = Repository::open(Path::new(ROOT), (self.world.x, self.world.z), limits())
+                            .and_then(|r| r.has_pending())
+                            .unwrap_or(true);
                         if unresolved {
                             self.git.locked = true;
                             self.git.fatal = true;
@@ -738,17 +606,12 @@ impl Plot {
         if self.players.is_empty()
             || self.git.head.is_some()
             || self.git.pending.is_some()
-            || self
-                .git
-                .metadata_retry_at
-                .is_some_and(|at| at > Instant::now())
+            || self.git.metadata_retry_at.is_some_and(|at| at > Instant::now())
         {
             return;
         }
         let plot = (self.world.x, self.world.z);
-        let path = Path::new(ROOT)
-            .join(format!("p{},{}", plot.0, plot.1))
-            .join("repository.sqlite");
+        let path = Path::new(ROOT).join(format!("p{},{}", plot.0, plot.1)).join("repository.sqlite");
         if !path.exists() {
             // Visiting a plot must not create a Git repository.
             self.git.head = Some(String::new());
@@ -778,10 +641,7 @@ impl Plot {
             match pending.receiver.try_recv() {
                 Ok(result) => self.accept_git(pending, result),
                 Err(TryRecvError::Empty) => self.git.pending = Some(pending),
-                Err(TryRecvError::Disconnected) => self.accept_git(
-                    pending,
-                    Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED)),
-                ),
+                Err(TryRecvError::Disconnected) => self.accept_git(pending, Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED))),
             }
         }
         let inspection_viewers: Vec<_> = (0..self.players.len())
@@ -790,8 +650,7 @@ impl Plot {
                     .inspections
                     .get(&self.players[player].uuid)
                     .is_some_and(|(_, _, expires, requires_git_access)| {
-                        *expires <= Instant::now()
-                            || (*requires_git_access && !self.git_access(player, "read"))
+                        *expires <= Instant::now() || (*requires_git_access && !self.git_access(player, "read"))
                     })
             })
             .collect();
@@ -809,19 +668,16 @@ impl Plot {
                         .players
                         .iter()
                         .position(|p| p.uuid == **uuid)
-                        .is_some_and(|p| {
-                            self.git_access(p, "read")
-                                && (!s.enabled || self.git_access(p, "visual"))
-                        })
+                        .is_some_and(|p| self.git_access(p, "read") && (!s.enabled || self.git_access(p, "visual")))
             })
             .map(|(uuid, _)| *uuid)
             .collect();
         for uuid in expired {
             self.remove_git_session(uuid);
         }
-        self.git.clicks.retain(|uuid, time| {
-            time.elapsed() < Duration::from_secs(1) && self.players.iter().any(|p| p.uuid == *uuid)
-        });
+        self.git
+            .clicks
+            .retain(|uuid, time| time.elapsed() < Duration::from_secs(1) && self.players.iter().any(|p| p.uuid == *uuid));
         if self.git.pending.is_some() || self.git.locked {
             return;
         }
@@ -835,10 +691,10 @@ impl Plot {
                 continue;
             }
             session.next_update = now + Duration::from_secs(1);
-            if session.last_pos.is_some_and(|old| {
-                (old.x - center.x).powi(2) + (old.y - center.y).powi(2) + (old.z - center.z).powi(2)
-                    < 16.0
-            }) {
+            if session
+                .last_pos
+                .is_some_and(|old| (old.x - center.x).powi(2) + (old.y - center.y).powi(2) + (old.z - center.z).powi(2) < 16.0)
+            {
                 continue;
             }
             let diff = session.diff.clone();
@@ -860,9 +716,10 @@ impl Plot {
 
     pub(super) fn finish_git(&mut self) {
         if let Some(pending) = self.git.pending.take() {
-            let result = pending.receiver.recv().unwrap_or_else(|_| {
-                Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED_SHUTDOWN))
-            });
+            let result = pending
+                .receiver
+                .recv()
+                .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_DISCONNECTED_SHUTDOWN)));
             self.accept_git(pending, result);
         }
     }
@@ -924,11 +781,7 @@ impl Plot {
     }
     fn git_safe_position(&self, pos: PlayerPos) -> Option<PlayerPos> {
         // Above the build is always available: creative/spectator plots permit flight.
-        let safe = PlayerPos::new(
-            pos.x.floor() + 0.5,
-            super::PLOT_BLOCK_HEIGHT as f64 + 1.0,
-            pos.z.floor() + 0.5,
-        );
+        let safe = PlayerPos::new(pos.x.floor() + 0.5, super::PLOT_BLOCK_HEIGHT as f64 + 1.0, pos.z.floor() + 0.5);
         safe.is_valid().then_some(safe)
     }
 
@@ -936,18 +789,12 @@ impl Plot {
         let viewer = &self.players[player];
         let uuid = viewer.uuid;
         // Consume Java's duplicate use-item and offhand fallback packets too.
-        if self
-            .git
-            .clicks
-            .get(&uuid)
-            .is_some_and(|last| last.elapsed() < Duration::from_millis(200))
-            && [36 + viewer.selected_slot as usize, 45]
-                .iter()
-                .any(|&slot| {
-                    viewer.inventory[slot]
-                        .as_ref()
-                        .is_some_and(|item| item.item_type.get_name().ends_with("_sword"))
-                })
+        if self.git.clicks.get(&uuid).is_some_and(|last| last.elapsed() < Duration::from_millis(200))
+            && [36 + viewer.selected_slot as usize, 45].iter().any(|&slot| {
+                viewer.inventory[slot]
+                    .as_ref()
+                    .is_some_and(|item| item.item_type.get_name().ends_with("_sword"))
+            })
         {
             return true;
         }
@@ -984,10 +831,7 @@ impl Plot {
         let matches = if self.git_access(player, "read") {
             completion(&words, prefix, &self.git.names, &self.git.commits)
                 .into_iter()
-                .map(|match_| CTabCompleteMatch {
-                    match_,
-                    tooltip: None,
-                })
+                .map(|match_| CTabCompleteMatch { match_, tooltip: None })
                 .collect()
         } else {
             Vec::new()
@@ -1036,13 +880,7 @@ fn send_git_error(viewer: &impl PacketSender, error: &anyhow::Error) {
     }
 }
 
-fn checkout_payload(
-    repo: &mut Repository,
-    branch: &str,
-    before: &Snapshot,
-    actor: u128,
-    name: &str,
-) -> Payload {
+fn checkout_payload(repo: &mut Repository, branch: &str, before: &Snapshot, actor: u128, name: &str) -> Payload {
     let save = PathBuf::from(format!("./world/plots/p{},{}", repo.plot.0, repo.plot.1));
     let (active, _) = match repo.head() {
         Ok(head) => head,
@@ -1055,21 +893,12 @@ fn checkout_payload(
     });
     match repo.checkout(branch, before, actor, name, &save) {
         Ok((snapshot, message, reservation)) => Payload::Checkout(snapshot, message, reservation),
-        Err(error) if error.root_cause().to_string() == already_current => {
-            Payload::Text(already_current, ColorCode::Gray)
-        }
-        Err(error) => {
-            Payload::CheckoutFailed(format!("{error:#}"), repo.has_pending().unwrap_or(true))
-        }
+        Err(error) if error.root_cause().to_string() == already_current => Payload::Text(already_current, ColorCode::Gray),
+        Err(error) => Payload::CheckoutFailed(format!("{error:#}"), repo.has_pending().unwrap_or(true)),
     }
 }
 
-fn completion(
-    words: &[&str],
-    prefix: &str,
-    branches: &[String],
-    commits: &[String],
-) -> Vec<String> {
+fn completion(words: &[&str], prefix: &str, branches: &[String], commits: &[String]) -> Vec<String> {
     let command = words.get(1).copied().unwrap_or("").to_ascii_lowercase();
     let argument = words.len().saturating_sub(1);
     let mut values: Vec<&str> = match (command.as_str(), argument) {
@@ -1129,15 +958,9 @@ fn parse_log(args: &[&str]) -> Result<(bool, usize, Option<usize>)> {
             "--all" => all = true,
             "--page" => {
                 index += 1;
-                page = Some(
-                    args.get(index)
-                        .context(messages::GIT_MISSING_PAGE)?
-                        .parse()?,
-                );
+                page = Some(args.get(index).context(messages::GIT_MISSING_PAGE)?.parse()?);
             }
-            value if index + 1 == args.len() && page.is_none() => {
-                count = value.parse::<i64>().unwrap_or(10).clamp(1, 1000) as usize
-            }
+            value if index + 1 == args.len() && page.is_none() => count = value.parse::<i64>().unwrap_or(10).clamp(1, 1000) as usize,
             _ => bail!(messages::USAGE_GIT_LOG),
         }
         index += 1;
@@ -1155,19 +978,13 @@ fn parse_search(args: &[&str]) -> Result<(bool, usize, String)> {
                 index += 1;
             }
             "--page" => {
-                page = args
-                    .get(index + 1)
-                    .context(messages::GIT_MISSING_PAGE)?
-                    .parse()?;
+                page = args.get(index + 1).context(messages::GIT_MISSING_PAGE)?.parse()?;
                 index += 2;
             }
             _ => break,
         }
     }
     let text = args[index..].join(" ");
-    ensure!(
-        !text.is_empty() && text.chars().count() <= 128,
-        messages::GIT_SEARCH_TEXT_LIMIT
-    );
+    ensure!(!text.is_empty() && text.chars().count() <= 128, messages::GIT_SEARCH_TEXT_LIMIT);
     Ok((all, page, text))
 }

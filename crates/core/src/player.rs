@@ -103,8 +103,7 @@ impl PlayerData {
             if !matches!(version, 3 | 4 | 5) {
                 anyhow::bail!("unsupported player save version");
             }
-            if u32::from_le_bytes(data[11..15].try_into()?) != crate::server::MC_DATA_VERSION as u32
-            {
+            if u32::from_le_bytes(data[11..15].try_into()?) != crate::server::MC_DATA_VERSION as u32 {
                 anyhow::bail!("player Minecraft data version mismatch");
             }
             data.drain(..15);
@@ -304,11 +303,7 @@ impl fmt::Debug for Player {
 impl Player {
     pub(crate) fn scale(&self) -> f64 {
         if self.small_model.is_some() {
-            if self.small_animal == SmallAnimal::BabyOcelot {
-                0.25
-            } else {
-                0.5
-            }
+            if self.small_animal == SmallAnimal::BabyOcelot { 0.25 } else { 0.5 }
         } else {
             1.0
         }
@@ -323,9 +318,7 @@ impl Player {
     }
 
     pub(crate) fn entity_metadata_packet(&self, for_self: bool) -> PacketEncoder {
-        let flags = u8::from(self.crouching) * 0x02
-            | u8::from(self.sprinting) * 0x08
-            | u8::from(self.small_model.is_some() && !for_self) * 0x20;
+        let flags = u8::from(self.crouching) * 0x02 | u8::from(self.sprinting) * 0x08 | u8::from(self.small_model.is_some() && !for_self) * 0x20;
         CEntityMetadata {
             entity_id: self.entity_id as i32,
             metadata: vec![
@@ -388,28 +381,18 @@ impl Player {
             | ((0x8 << 60) | (0x3 << 76))
     }
 
-    fn from_data(
-        player_data: PlayerData,
-        uuid: u128,
-        username: String,
-        client: PlayerConn,
-    ) -> Player {
+    fn from_data(player_data: PlayerData, uuid: u128, username: String, client: PlayerConn) -> Player {
         // Load inventory
         let mut inventory: Vec<Option<ItemStack>> = vec![None; 46];
         for entry in player_data.inventory {
-            let nbt = entry
-                .nbt
-                .map(|data| nbt::Blob::from_reader(&mut Cursor::new(data)).unwrap());
+            let nbt = entry.nbt.map(|data| nbt::Blob::from_reader(&mut Cursor::new(data)).unwrap());
             inventory[entry.slot as usize] = Some(ItemStack {
                 item_type: Item::from_id(entry.id),
                 count: entry.count as u8,
                 nbt,
             });
         }
-        let proxy_permissions = CONFIG
-            .luckperms
-            .as_ref()
-            .is_some_and(|config| config.from_redbox());
+        let proxy_permissions = CONFIG.luckperms.as_ref().is_some_and(|config| config.from_redbox());
         let permissions_cache = (CONFIG.luckperms.is_some() && !proxy_permissions).then(|| {
             permissions::load_player_cache(uuid).unwrap_or_else(|error| {
                 tracing::error!("Could not load LuckPerms permissions: {error}; denying permissions for this session");
@@ -503,8 +486,7 @@ impl Player {
             if !(0..9).contains(&player.selected_item_slot) {
                 anyhow::bail!("invalid hotbar slot");
             }
-            if !PlayerPos::new(player.position[0], player.position[1], player.position[2])
-                .is_valid()
+            if !PlayerPos::new(player.position[0], player.position[1], player.position[2]).is_valid()
                 || player.rotation.iter().any(|angle| !angle.is_finite())
                 || !player.fly_speed.is_finite()
                 || !(0.0..=10.0).contains(&player.fly_speed)
@@ -515,10 +497,7 @@ impl Player {
             }
             let mut inventory_slots = std::collections::HashSet::new();
             for entry in &mut player.inventory {
-                if !(0..46).contains(&entry.slot)
-                    || entry.count <= 0
-                    || !inventory_slots.insert(entry.slot)
-                {
+                if !(0..46).contains(&entry.slot) || entry.count <= 0 || !inventory_slots.insert(entry.slot) {
                     anyhow::bail!("invalid inventory entry");
                 }
                 if legacy {
@@ -546,14 +525,10 @@ impl Player {
         match result {
             Ok(data) => Some(Self::from_data(data, uuid, username, client)),
             Err(err) => {
-                error!(
-                    "Refusing player login; original save preserved for {}: {}",
-                    username, err
-                );
+                error!("Refusing player login; original save preserved for {}: {}", username, err);
                 client.send_packet(
                     &CDisconnect {
-                        reason: json!({"text":messages::PLAYER_SAVE_COULD_NOT_LOADED_ASK})
-                            .to_string(),
+                        reason: json!({"text":messages::PLAYER_SAVE_COULD_NOT_LOADED_ASK}).to_string(),
                     }
                     .encode(),
                 );
@@ -650,10 +625,7 @@ impl Player {
     /// Sends the keep alive packet to the client and updates `last_keep_alive_sent`
     pub fn send_keep_alive(&mut self) {
         let keep_alive = CKeepAlive {
-            id: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64,
+            id: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() as i64,
         }
         .encode();
         self.client.send_packet(&keep_alive);
@@ -715,12 +687,7 @@ impl Player {
         self.send_position_sync(id);
     }
 
-    pub(crate) fn should_transfer_plot(
-        &mut self,
-        from: (i32, i32),
-        to: (i32, i32),
-        pos: PlayerPos,
-    ) -> bool {
+    pub(crate) fn should_transfer_plot(&mut self, from: (i32, i32), to: (i32, i32), pos: PlayerPos) -> bool {
         let crossed_back = |from, to, position| {
             let width = f64::from(PLOT_BLOCK_WIDTH);
             if from > to {
@@ -768,12 +735,7 @@ impl Player {
 
     /// Ignore movement queued at the previous position until the client accepts
     /// the current teleport. Return the previous position for viewer updates.
-    pub(crate) fn accept_position(
-        &mut self,
-        pos: PlayerPos,
-        on_ground: bool,
-        rotation: Option<(f32, f32)>,
-    ) -> Option<PlayerPos> {
+    pub(crate) fn accept_position(&mut self, pos: PlayerPos, on_ground: bool, rotation: Option<(f32, f32)>) -> Option<PlayerPos> {
         if self.awaiting_teleport() {
             return None;
         }
@@ -887,11 +849,7 @@ impl Player {
 
     /// True while the proxy permission source has not delivered data yet.
     pub(crate) fn proxy_permissions_pending(&self) -> bool {
-        CONFIG
-            .luckperms
-            .as_ref()
-            .is_some_and(|config| config.from_redbox())
-            && self.permissions_cache.is_none()
+        CONFIG.luckperms.as_ref().is_some_and(|config| config.from_redbox()) && self.permissions_cache.is_none()
     }
 
     pub fn has_permission(&self, node: &str) -> bool {
@@ -942,8 +900,7 @@ impl Player {
                         PlayerPermissionsCache::default()
                     }));
                     self.permissions_refresh = None;
-                    self.next_permissions_refresh =
-                        Instant::now() + std::time::Duration::from_secs(25);
+                    self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(25);
                 }
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.permissions_cache = Some(PlayerPermissionsCache::default());
@@ -980,12 +937,7 @@ impl Player {
     }
 
     /// Applies effective LuckPerms data received from the Velocity proxy.
-    pub fn apply_proxy_permissions(
-        &mut self,
-        group: String,
-        prefix: String,
-        permissions: Vec<(String, bool)>,
-    ) {
+    pub fn apply_proxy_permissions(&mut self, group: String, prefix: String, permissions: Vec<(String, bool)>) {
         if !self.permissions_initialized {
             tracing::info!(
                 player = %self.username,
@@ -994,11 +946,7 @@ impl Player {
                 "Applied proxy LuckPerms permissions"
             );
         }
-        self.permissions_cache = Some(PlayerPermissionsCache::from_proxy(
-            group,
-            prefix,
-            permissions,
-        ));
+        self.permissions_cache = Some(PlayerPermissionsCache::from_proxy(group, prefix, permissions));
         self.next_permissions_refresh = Instant::now() + std::time::Duration::from_secs(25);
         if !self.permissions_initialized {
             self.permissions_initialized = true;
@@ -1054,9 +1002,7 @@ impl Player {
     }
 
     pub fn numeric_permission_limit(&self, prefix: &str) -> Option<usize> {
-        self.permissions_cache
-            .as_ref()
-            .and_then(|cache| cache.numeric_limit(prefix))
+        self.permissions_cache.as_ref().and_then(|cache| cache.numeric_limit(prefix))
     }
 
     pub fn compilation_budget_multiplier(&self) -> usize {
@@ -1072,18 +1018,14 @@ impl Player {
         match owner {
             Some(owner) => {
                 let (x, z) = plot;
-                owner == self.uuid
-                    || crate::plot::database::is_plot_member(x, z, self.uuid)
-                    || self.has_permission("plots.admin.interact.other")
+                owner == self.uuid || crate::plot::database::is_plot_member(x, z, self.uuid) || self.has_permission("plots.admin.interact.other")
             }
             None => self.has_permission("plots.admin.interact.unowned"),
         }
     }
 
     pub fn can_build_action(&self, action: &str, owner: Option<u128>, plot: (i32, i32)) -> bool {
-        self.can_edit_plot(owner, plot)
-            && (!permissions::dedicated_permissions()
-                || self.has_permission(&format!("mchprs.build.{action}")))
+        self.can_edit_plot(owner, plot) && (!permissions::dedicated_permissions() || self.has_permission(&format!("mchprs.build.{action}")))
     }
 
     pub fn chat_prefix(&self) -> Option<&str> {
@@ -1095,10 +1037,7 @@ impl Player {
                 .as_ref()
                 .and_then(|cache| cache.rank_profile.as_ref())
                 .map_or(Rank::Player.default_prefix(), |profile| {
-                    profile
-                        .prefix
-                        .as_deref()
-                        .unwrap_or_else(|| profile.rank.default_prefix())
+                    profile.prefix.as_deref().unwrap_or_else(|| profile.rank.default_prefix())
                 }),
         )
     }
@@ -1111,12 +1050,7 @@ impl Player {
             .is_some_and(|value| value > 0)
     }
 
-    pub fn open_container(
-        &mut self,
-        pos: BlockPos,
-        inventory: &[InventoryEntry],
-        container_type: ContainerType,
-    ) {
+    pub fn open_container(&mut self, pos: BlockPos, inventory: &[InventoryEntry], container_type: ContainerType) {
         self.next_window_id = self.next_window_id % 100 + 1;
         let title = match container_type {
             ContainerType::Barrel => "container.barrel",
@@ -1158,10 +1092,7 @@ impl Player {
         let window_items = CWindowItems {
             window_id: menu.window_id,
             state_id: menu.state_id,
-            slot_data: slots
-                .iter()
-                .map(|s| s.as_ref().map(crate::container::slot_data))
-                .collect(),
+            slot_data: slots.iter().map(|s| s.as_ref().map(crate::container::slot_data)).collect(),
             carried_item: menu.cursor.as_ref().map(crate::container::slot_data),
         }
         .encode();
@@ -1173,21 +1104,12 @@ impl Player {
         let mut menu = self.open_container.take()?;
         let indices: Vec<_> = (9..45).collect();
         crate::container::insert(&mut self.inventory, &mut menu.cursor, &indices);
-        self.client.send_packet(
-            &CCloseWindow {
-                window_id: menu.window_id,
-            }
-            .encode(),
-        );
+        self.client.send_packet(&CCloseWindow { window_id: menu.window_id }.encode());
         self.client.send_packet(
             &CWindowItems {
                 window_id: 0,
                 state_id: 0,
-                slot_data: self
-                    .inventory
-                    .iter()
-                    .map(|s| s.as_ref().map(crate::container::slot_data))
-                    .collect(),
+                slot_data: self.inventory.iter().map(|s| s.as_ref().map(crate::container::slot_data)).collect(),
                 carried_item: None,
             }
             .encode(),
@@ -1284,10 +1206,7 @@ mod coordinate_security_tests {
         let player = Player::from_data(data, 1, "SavedCat".into(), conn.player);
         assert!(player.small_model.is_some());
         assert_eq!(player.small_animal, SmallAnimal::BabyOcelot);
-        assert_ne!(
-            player.entity_id,
-            player.small_model.as_ref().unwrap().entity_id
-        );
+        assert_ne!(player.entity_id, player.small_model.as_ref().unwrap().entity_id);
 
         let version4_payload = &payload[..payload.len() - 4];
         let (data, legacy) = PlayerData::decode(envelope(4, version4_payload)).unwrap();
@@ -1296,10 +1215,7 @@ mod coordinate_security_tests {
         assert!(!legacy);
 
         let old_payload = &payload[..payload.len() - 5];
-        for (bytes, expected_legacy) in [
-            (old_payload.to_vec(), true),
-            (envelope(3, old_payload), false),
-        ] {
+        for (bytes, expected_legacy) in [(old_payload.to_vec(), true), (envelope(3, old_payload), false)] {
             let (data, legacy) = PlayerData::decode(bytes).unwrap();
             assert!(!data.small);
             assert_eq!(data.small_animal, SmallAnimal::Ocelot);
@@ -1317,21 +1233,12 @@ mod coordinate_security_tests {
     }
     #[test]
     fn offline_uuid_matches_java_name_uuid() {
-        assert_eq!(
-            Player::generate_offline_uuid("Notch"),
-            0xb50ad385_829d_3141_a216_7e7d7539ba7f
-        );
+        assert_eq!(Player::generate_offline_uuid("Notch"), 0xb50ad385_829d_3141_a216_7e7d7539ba7f);
     }
 
     #[test]
     fn player_coordinates_reject_nonfinite_and_extreme_positions() {
-        for value in [
-            f64::NAN,
-            f64::INFINITY,
-            f64::NEG_INFINITY,
-            30_000_001.0,
-            -30_000_001.0,
-        ] {
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 30_000_001.0, -30_000_001.0] {
             assert!(!PlayerPos::new(value, 64.0, 0.0).is_valid());
             assert!(!PlayerPos::new(0.0, 64.0, value).is_valid());
         }

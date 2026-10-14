@@ -9,8 +9,7 @@ use crate::server::Message;
 use mchprs_network::PlayerPacketSender;
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::{
-    CDeclareCommands, CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser,
-    CTabComplete, CTabCompleteMatch, ClientBoundPacket,
+    CDeclareCommands, CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser, CTabComplete, CTabCompleteMatch, ClientBoundPacket,
 };
 use mchprs_save_data::plot_data::{Tps, WorldSendRate};
 use once_cell::sync::Lazy;
@@ -26,10 +25,7 @@ trait RelativeCoordinate: FromStr {
 }
 
 /// Stop dispatch as soon as a command transfers the indexed player away.
-pub(super) fn run_command_queue(
-    commands: Vec<String>,
-    mut handle: impl FnMut(&str, Vec<&str>) -> bool,
-) -> bool {
+pub(super) fn run_command_queue(commands: Vec<String>, mut handle: impl FnMut(&str, Vec<&str>) -> bool) -> bool {
     for input in &commands {
         let mut parts = input.split_whitespace();
         let Some(command) = parts.next() else {
@@ -99,19 +95,12 @@ impl RelativeCoordinate for f64 {
     }
 }
 
-fn parse_relative_coord<F: RelativeCoordinate>(
-    coord: &str,
-    ref_coord: F,
-) -> Result<F, &'static str> {
+fn parse_relative_coord<F: RelativeCoordinate>(coord: &str, ref_coord: F) -> Result<F, &'static str> {
     if coord == "~" {
         Ok(ref_coord)
     } else if let Some(offset_str) = coord.strip_prefix('~') {
-        let offset = offset_str
-            .parse::<F>()
-            .map_err(|_| messages::INVALID_COORDINATE)?;
-        ref_coord
-            .checked_offset(offset)
-            .ok_or(messages::COORDINATE_OVERFLOW)
+        let offset = offset_str.parse::<F>().map_err(|_| messages::INVALID_COORDINATE)?;
+        ref_coord.checked_offset(offset).ok_or(messages::COORDINATE_OVERFLOW)
     } else {
         coord.parse::<F>().map_err(|_| messages::INVALID_COORDINATE)
     }
@@ -130,19 +119,13 @@ fn parse_teleport_coord(coord: &str, reference: f64, center: bool) -> Result<f64
     }
 }
 
-pub(crate) fn complete_teleport<'a>(
-    id: i32,
-    text: &str,
-    names: impl Iterator<Item = &'a str>,
-) -> Option<CTabComplete> {
+pub(crate) fn complete_teleport<'a>(id: i32, text: &str, names: impl Iterator<Item = &'a str>) -> Option<CTabComplete> {
     let (command, prefix) = text.split_once(' ')?;
     if !matches!(command, "/tp" | "/teleport") {
         return None;
     }
     let normalized_prefix = prefix.to_ascii_lowercase();
-    let mut names: Vec<_> = names
-        .filter(|name| name.to_ascii_lowercase().starts_with(&normalized_prefix))
-        .collect();
+    let mut names: Vec<_> = names.filter(|name| name.to_ascii_lowercase().starts_with(&normalized_prefix)).collect();
     names.sort_unstable();
     Some(CTabComplete {
         id,
@@ -159,10 +142,7 @@ pub(crate) fn complete_teleport<'a>(
 }
 
 fn valid_warp_name(name: &str) -> bool {
-    (1..=32).contains(&name.len())
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    (1..=32).contains(&name.len()) && name.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
 fn advance_bounded(ticks: u32, mut step: impl FnMut() -> bool) -> u32 {
@@ -216,13 +196,7 @@ impl AdvanceUnit {
 impl Plot {
     /// Teleports an indexed player, transferring to another plot through the
     /// normal routing when the destination lies there.
-    pub(super) fn teleport_player_to(
-        &mut self,
-        player: usize,
-        pos: PlayerPos,
-        yaw: f32,
-        pitch: f32,
-    ) -> bool {
+    pub(super) fn teleport_player_to(&mut self, player: usize, pos: PlayerPos, yaw: f32, pitch: f32) -> bool {
         self.close_open_container(player);
         self.players[player].yaw = yaw;
         self.players[player].pitch = pitch;
@@ -274,9 +248,7 @@ impl Plot {
                             self.players[player].send_error_message(messages::PLOT_HOME_UNCLAIMED);
                         }
                     }
-                    Err(error) => {
-                        self.players[player].send_error_message(&messages::plot_read_failed(error))
-                    }
+                    Err(error) => self.players[player].send_error_message(&messages::plot_read_failed(error)),
                 }
             }
             "add" | "remove" => {
@@ -296,41 +268,27 @@ impl Plot {
                 );
                 use database::MembershipResult;
                 match result {
-                    Ok(MembershipResult::Changed { name, .. }) => self.players[player]
-                        .send_system_message(&if add {
-                            messages::plot_member_added(name, self.world.x, self.world.z)
-                        } else {
-                            messages::plot_member_removed(name, self.world.x, self.world.z)
-                        }),
-                    Ok(MembershipResult::Unchanged) => {
-                        self.players[player].send_system_message(if add {
-                            messages::PLOT_MEMBER_ALREADY_ADDED
-                        } else {
-                            messages::PLOT_MEMBER_NOT_ADDED
-                        })
-                    }
-                    Ok(MembershipResult::UnknownPlayer) => self.players[player]
-                        .send_error_message(messages::PLOT_MEMBER_UNKNOWN_PLAYER),
-                    Ok(MembershipResult::AmbiguousPlayer) => self.players[player]
-                        .send_error_message(messages::PLOT_MEMBER_AMBIGUOUS_PLAYER),
-                    Ok(MembershipResult::PlotUnclaimed) => {
-                        self.players[player].send_error_message(messages::PLOT_UNCLAIMED)
-                    }
-                    Ok(MembershipResult::NotOwner) => {
-                        self.players[player].send_no_permission_message()
-                    }
-                    Ok(MembershipResult::IsOwner) => {
-                        self.players[player].send_error_message(messages::PLOT_MEMBER_IS_OWNER)
-                    }
-                    Err(error) => self.players[player]
-                        .send_error_message(&messages::plot_members_update_failed(error)),
+                    Ok(MembershipResult::Changed { name, .. }) => self.players[player].send_system_message(&if add {
+                        messages::plot_member_added(name, self.world.x, self.world.z)
+                    } else {
+                        messages::plot_member_removed(name, self.world.x, self.world.z)
+                    }),
+                    Ok(MembershipResult::Unchanged) => self.players[player].send_system_message(if add {
+                        messages::PLOT_MEMBER_ALREADY_ADDED
+                    } else {
+                        messages::PLOT_MEMBER_NOT_ADDED
+                    }),
+                    Ok(MembershipResult::UnknownPlayer) => self.players[player].send_error_message(messages::PLOT_MEMBER_UNKNOWN_PLAYER),
+                    Ok(MembershipResult::AmbiguousPlayer) => self.players[player].send_error_message(messages::PLOT_MEMBER_AMBIGUOUS_PLAYER),
+                    Ok(MembershipResult::PlotUnclaimed) => self.players[player].send_error_message(messages::PLOT_UNCLAIMED),
+                    Ok(MembershipResult::NotOwner) => self.players[player].send_no_permission_message(),
+                    Ok(MembershipResult::IsOwner) => self.players[player].send_error_message(messages::PLOT_MEMBER_IS_OWNER),
+                    Err(error) => self.players[player].send_error_message(&messages::plot_members_update_failed(error)),
                 }
             }
             "info" | "i" => {
                 if let Some(owner) = database::get_plot_owner(plot_x, plot_z) {
-                    self.players[player].send_system_message(&messages::plot_owner(
-                        database::get_cached_username(owner.clone()).unwrap_or(owner),
-                    ));
+                    self.players[player].send_system_message(&messages::plot_owner(database::get_cached_username(owner.clone()).unwrap_or(owner)));
                 } else {
                     self.players[player].send_system_message(messages::PLOT_UNCLAIMED);
                 }
@@ -348,8 +306,7 @@ impl Plot {
                             return;
                         }
                         None => {
-                            self.players[player]
-                                .send_error_message(messages::PLOT_CLAIMS_READ_FAILED);
+                            self.players[player].send_error_message(messages::PLOT_CLAIMS_READ_FAILED);
                             return;
                         }
                     }
@@ -394,12 +351,10 @@ impl Plot {
                         let center = Plot::get_center(plot_x, plot_z);
                         self.players[player].teleport(PlayerPos::new(center.0, 64.0, center.1));
                     } else {
-                        self.players[player]
-                            .send_system_message(&messages::plot_index_range(plots.len()));
+                        self.players[player].send_system_message(&messages::plot_index_range(plots.len()));
                     }
                 } else {
-                    self.players[player]
-                        .send_system_message(&messages::player_has_no_plots(args[0]));
+                    self.players[player].send_system_message(&messages::player_has_no_plots(args[0]));
                 }
             }
             "teleport" | "tp" => {
@@ -456,8 +411,7 @@ impl Plot {
         match command {
             "analyze" => {
                 if self.redpiler.is_active() {
-                    self.players[player]
-                        .send_error_message("Reset Redpiler before analyzing live geometry.");
+                    self.players[player].send_error_message("Reset Redpiler before analyzing live geometry.");
                     return;
                 }
                 let ticks: Vec<_> = self.world.scheduler().iter_entries().collect();
@@ -475,8 +429,7 @@ impl Plot {
                     }
                 };
                 if args.contains(&"--export-json") {
-                    options.budget_multiplier =
-                        self.players[player].compilation_budget_multiplier();
+                    options.budget_multiplier = self.players[player].compilation_budget_multiplier();
                     let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
                     let result = crate::redpiler::analysis::export_json::prepare_and_write(
                         &self.world,
@@ -484,9 +437,7 @@ impl Plot {
                         &ticks,
                         &options,
                         &monitor,
-                        crate::redpiler::analysis::AnalysisLimits::for_budget(
-                            options.budget_multiplier,
-                        ),
+                        crate::redpiler::analysis::AnalysisLimits::for_budget(options.budget_multiplier),
                         Path::new("./redpiler-exports"),
                         self.world.x,
                         self.world.z,
@@ -494,15 +445,16 @@ impl Plot {
                     match result {
                         Ok((path, counts)) => self.players[player].send_system_message(&format!(
                             "Graph JSON v1 callback_draft written to {} ({} nodes, {} power links, {} sites, {} guards, {} resources)",
-                            path.display(), counts.nodes, counts.power_links, counts.sites,
-                            counts.guards, counts.resources,
+                            path.display(),
+                            counts.nodes,
+                            counts.power_links,
+                            counts.sites,
+                            counts.guards,
+                            counts.resources,
                         )),
                         Err(error) => {
                             warn!(code = error.code, error = %error, "Redpiler graph JSON export failed");
-                            self.players[player].send_error_message(&format!(
-                                "Graph JSON export failed ({}): {}",
-                                error.code, error,
-                            ));
+                            self.players[player].send_error_message(&format!("Graph JSON export failed ({}): {}", error.code, error,));
                         }
                     }
                     return;
@@ -537,9 +489,7 @@ impl Plot {
                     self.world.get_corners(),
                     &ticks,
                     &Default::default(),
-                    crate::redpiler::analysis::AnalysisLimits::for_budget(
-                        self.players[player].compilation_budget_multiplier(),
-                    ),
+                    crate::redpiler::analysis::AnalysisLimits::for_budget(self.players[player].compilation_budget_multiplier()),
                 ) {
                     Ok(report) => {
                         self.players[player].send_system_message(&report.summary());
@@ -547,24 +497,16 @@ impl Plot {
                         // Stage the same backend as compile, then drop it without
                         // activating it or transferring any interpreter work.
                         let mut compiler = crate::redpiler::Compiler::default();
-                        match compiler.compile(
-                            &self.world,
-                            self.world.get_corners(),
-                            options,
-                            ticks,
-                            Default::default(),
-                        ) {
+                        match compiler.compile(&self.world, self.world.get_corners(), options, ticks, Default::default()) {
                             Ok(()) => {
                                 if let Some(stats) = compiler.stats() {
                                     for line in stats.summary_lines() {
                                         self.players[player].send_system_message(&line);
                                     }
                                 }
-                                self.players[player]
-                                    .send_system_message("This plot can compile with these flags.");
+                                self.players[player].send_system_message("This plot can compile with these flags.");
                             }
-                            Err(error) => self.players[player]
-                                .send_error_message(&format!("Redpiler: {error}")),
+                            Err(error) => self.players[player].send_error_message(&format!("Redpiler: {error}")),
                         }
                     }
                     Err(error) => self.players[player].send_error_message(&error.to_string()),
@@ -589,13 +531,7 @@ impl Plot {
             }
             "inspect" | "i" => {
                 let player = &self.players[player];
-                let pos = worldedit::ray_trace_block(
-                    &self.world,
-                    player.eye_position(),
-                    player.pitch as f64,
-                    player.yaw as f64,
-                    10.0,
-                );
+                let pos = worldedit::ray_trace_block(&self.world, player.eye_position(), player.pitch as f64, player.yaw as f64, 10.0);
                 let Some(pos) = pos else {
                     player.send_error_message(messages::BLOCK_TRACE_FAILED);
                     return;
@@ -610,21 +546,14 @@ impl Plot {
     }
 
     // Returns true if packets should stop being handled
-    pub(super) fn handle_command(
-        &mut self,
-        player: usize,
-        command: &str,
-        mut args: Vec<&str>,
-    ) -> bool {
+    pub(super) fn handle_command(&mut self, player: usize, command: &str, mut args: Vec<&str>) -> bool {
         let span = tracing::info_span!("command", player = %self.players[player].username,
             uuid = %format_args!("{:032x}", self.players[player].uuid),
             plot_x = self.world.x, plot_z = self.world.z, command,
             arguments = ?args.join(" ").chars().take(1024).collect::<String>());
         let _entered = span.enter();
         info!("Command requested");
-        if self.git_checkout_locked()
-            && !matches!(command, "/git" | "/rv" | "/help" | "/serverinfo")
-        {
+        if self.git_checkout_locked() && !matches!(command, "/git" | "/rv" | "/help" | "/serverinfo") {
             warn!("Command denied: plot checkout locked");
             let message = self.git_lock_message();
             self.players[player].send_error_message(message);
@@ -636,11 +565,8 @@ impl Plot {
             return false;
         }
         if crate::permissions::dedicated_permissions()
-            && (native_command_permission(command, &args)
-                .is_some_and(|node| !self.players[player].has_permission(&node))
-                || (changes_plot(command, &args)
-                    && !self.players[player]
-                        .can_edit_plot(self.owner, (self.world.x, self.world.z))))
+            && (native_command_permission(command, &args).is_some_and(|node| !self.players[player].has_permission(&node))
+                || (changes_plot(command, &args) && !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z))))
         {
             warn!("Command denied: permission or plot ownership");
             self.players[player].send_no_permission_message();
@@ -686,22 +612,12 @@ impl Plot {
                         "Visual settings: pistons {}; update rate {} Hz; display-only {}.",
                         self.piston_animation,
                         self.world_send_rate.0,
-                        if self.world.screen_only() {
-                            "on"
-                        } else {
-                            "off"
-                        },
+                        if self.world.screen_only() { "on" } else { "off" },
                     )),
-                    ["pistons"] => {
-                        self.players[player].send_system_message(&messages::piston_animation(
-                            self.piston_animation,
-                            if self.world.fast_rendering {
-                                "off"
-                            } else {
-                                "on"
-                            },
-                        ))
-                    }
+                    ["pistons"] => self.players[player].send_system_message(&messages::piston_animation(
+                        self.piston_animation,
+                        if self.world.fast_rendering { "off" } else { "on" },
+                    )),
                     ["pistons", mode] => {
                         self.piston_animation = match *mode {
                             "auto" => mchprs_save_data::plot_data::PistonAnimation::Auto,
@@ -715,42 +631,30 @@ impl Plot {
                         self.update_render_mode();
                         self.players[player].send_system_message(&messages::piston_animation(
                             self.piston_animation,
-                            if self.world.fast_rendering {
-                                "off"
-                            } else {
-                                "on"
-                            },
+                            if self.world.fast_rendering { "off" } else { "on" },
                         ));
                     }
                     ["rate"] => {
-                        self.players[player].send_system_message(&messages::world_send_rate(
-                            self.world_send_rate.0,
-                            self.effective_send_rate(),
-                        ))
+                        self.players[player].send_system_message(&messages::world_send_rate(self.world_send_rate.0, self.effective_send_rate()))
                     }
                     ["rate", rate] => {
                         let Ok(hertz) = rate.parse::<u32>() else {
-                            self.players[player]
-                                .send_error_message(messages::UNABLE_PARSE_SEND_RATE);
+                            self.players[player].send_error_message(messages::UNABLE_PARSE_SEND_RATE);
                             return false;
                         };
                         if hertz > 1000 {
-                            self.players[player]
-                                .send_error_message(messages::WORLD_SEND_RATE_CANNOT_GO_HIGHER);
+                            self.players[player].send_error_message(messages::WORLD_SEND_RATE_CANNOT_GO_HIGHER);
                             return false;
                         }
                         self.world_send_rate = WorldSendRate(hertz);
                         self.reset_timings();
-                        self.players[player]
-                            .send_system_message(messages::WORLD_SEND_RATE_WAS_SUCCESSFULLY_SET);
+                        self.players[player].send_system_message(messages::WORLD_SEND_RATE_WAS_SUCCESSFULLY_SET);
                     }
-                    ["displayonly"] => {
-                        self.players[player].send_system_message(if self.world.screen_only() {
-                            messages::SCREEN_ONLY_ON
-                        } else {
-                            messages::SCREEN_ONLY_OFF
-                        })
-                    }
+                    ["displayonly"] => self.players[player].send_system_message(if self.world.screen_only() {
+                        messages::SCREEN_ONLY_ON
+                    } else {
+                        messages::SCREEN_ONLY_OFF
+                    }),
                     ["displayonly", enabled] => {
                         let enabled = match *enabled {
                             "on" => true,
@@ -760,25 +664,16 @@ impl Plot {
                                 return false;
                             }
                         };
-                        if self.owner != Some(self.players[player].uuid)
-                            && !self.players[player].has_permission("plots.worldedit.bypass")
-                        {
+                        if self.owner != Some(self.players[player].uuid) && !self.players[player].has_permission("plots.worldedit.bypass") {
                             self.players[player].send_no_permission_message();
                             return false;
                         }
-                        if let Err(error) =
-                            database::set_screen_only(self.world.x, self.world.z, enabled)
-                        {
-                            self.players[player]
-                                .send_error_message(&messages::visual_setting_save_failed(error));
+                        if let Err(error) = database::set_screen_only(self.world.x, self.world.z, enabled) {
+                            self.players[player].send_error_message(&messages::visual_setting_save_failed(error));
                             return false;
                         }
                         self.world.set_screen_only(enabled);
-                        self.players[player].send_system_message(if enabled {
-                            messages::SCREEN_ONLY_ON
-                        } else {
-                            messages::SCREEN_ONLY_OFF
-                        });
+                        self.players[player].send_system_message(if enabled { messages::SCREEN_ONLY_ON } else { messages::SCREEN_ONLY_OFF });
                     }
                     _ => self.players[player].send_error_message(messages::USAGE_VISUAL),
                 }
@@ -789,33 +684,23 @@ impl Plot {
                 } else if let Some(page) = super::help::page(args.first().copied()) {
                     if page == messages::HELP_GIT {
                         for line in page.lines() {
-                            self.players[player]
-                                .send_color_message(crate::chat::ColorCode::Gray, line);
+                            self.players[player].send_color_message(crate::chat::ColorCode::Gray, line);
                         }
                     } else {
                         self.players[player].send_system_message(page);
                     }
                 } else {
-                    self.players[player]
-                        .send_error_message(messages::UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS);
+                    self.players[player].send_error_message(messages::UNKNOWN_HELP_TOPIC_USE_HELP_TOPICS);
                 }
             }
             "/tellraw" | "/say" => {
-                let permission = if command == "/say" {
-                    "commands.say"
-                } else {
-                    "commands.tellraw"
-                };
+                let permission = if command == "/say" { "commands.say" } else { "commands.tellraw" };
                 if !self.players[player].has_permission(permission) {
                     self.players[player].send_no_permission_message();
                     return false;
                 }
                 let source = &self.players[player].username;
-                match crate::chat_commands::parse(
-                    &format!("{command} {}", args.join(" ")),
-                    source,
-                    Some(source),
-                ) {
+                match crate::chat_commands::parse(&format!("{command} {}", args.join(" ")), source, Some(source)) {
                     Ok(message) => {
                         for player in &self.players {
                             if message.recipient.matches(&player.username) {
@@ -839,11 +724,7 @@ impl Plot {
                         match PlayerProfile::lookup_by_username(&username).await {
                             Ok(profile) => {
                                 let message = if add {
-                                    Message::WhitelistAdd(
-                                        profile.uuid.0,
-                                        profile.username,
-                                        packet_sender,
-                                    )
+                                    Message::WhitelistAdd(profile.uuid.0, profile.username, packet_sender)
                                 } else {
                                     Message::WhitelistRemove(profile.uuid.0, packet_sender)
                                 };
@@ -856,8 +737,7 @@ impl Plot {
                     });
                 }
                 _ => {
-                    self.players[player]
-                        .send_error_message(messages::USAGE_WHITELIST_ADD_REMOVE_USERNAME);
+                    self.players[player].send_error_message(messages::USAGE_WHITELIST_ADD_REMOVE_USERNAME);
                     return false;
                 }
             },
@@ -871,18 +751,10 @@ impl Plot {
                     if let Some(report) = report {
                         self.players[player].send_chat_message(
                             0,
-                            &ChatComponent::from_legacy_text(&messages::rtps_report(
-                                report.two_s,
-                                report.ten_s,
-                                report.one_m,
-                                self.tps,
-                            )),
+                            &ChatComponent::from_legacy_text(&messages::rtps_report(report.two_s, report.ten_s, report.one_m, self.tps)),
                         );
                     } else {
-                        self.players[player].send_chat_message(
-                            0,
-                            &ChatComponent::from_legacy_text(&messages::rtps_no_data(self.tps)),
-                        );
+                        self.players[player].send_chat_message(0, &ChatComponent::from_legacy_text(&messages::rtps_no_data(self.tps)));
                     }
 
                     return false;
@@ -934,14 +806,13 @@ impl Plot {
                 }
             }
             "/adv" => {
-                let (unit, ticks) =
-                    match AdvanceUnit::parse(&args, crate::config::CONFIG.max_command_ticks) {
-                        Ok(request) => request,
-                        Err(error) => {
-                            self.players[player].send_error_message(&error);
-                            return false;
-                        }
-                    };
+                let (unit, ticks) = match AdvanceUnit::parse(&args, crate::config::CONFIG.max_command_ticks) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        self.players[player].send_error_message(&error);
+                        return false;
+                    }
+                };
                 let start_time = Instant::now();
                 if unit != AdvanceUnit::Game {
                     if self.redpiler.is_active() {
@@ -953,8 +824,7 @@ impl Plot {
                         return false;
                     }
                     if self.world.history.enabled() {
-                        self.players[player]
-                            .send_error_message(messages::DISABLE_TICK_HISTORY_BEFORE_NANO_PICO);
+                        self.players[player].send_error_message(messages::DISABLE_TICK_HISTORY_BEFORE_NANO_PICO);
                         return false;
                     }
                 }
@@ -976,8 +846,7 @@ impl Plot {
                     self.world.flush_block_changes();
                 }
                 let progress = messages::advance_progress(advanced, ticks, unit.label());
-                self.players[player]
-                    .send_system_message(&messages::plot_advanced(progress, start_time.elapsed()));
+                self.players[player].send_system_message(&messages::plot_advanced(progress, start_time.elapsed()));
             }
 
             "/toggleautorp" => {
@@ -1014,11 +883,8 @@ impl Plot {
             "/warp" if !crate::redbox::enabled() => {
                 if args.is_empty() {
                     match database::warp_names() {
-                        Ok(names) if names.is_empty() => {
-                            self.players[player].send_system_message(messages::NO_WARPS)
-                        }
-                        Ok(names) => self.players[player]
-                            .send_system_message(&messages::warp_list(names.join(", "))),
+                        Ok(names) if names.is_empty() => self.players[player].send_system_message(messages::NO_WARPS),
+                        Ok(names) => self.players[player].send_system_message(&messages::warp_list(names.join(", "))),
                         Err(error) => {
                             warn!("Could not list warps: {error}");
                             self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
@@ -1037,16 +903,13 @@ impl Plot {
                 match database::get_warp(name) {
                     Ok(Some(warp)) => {
                         if !warp.is_valid() {
-                            self.players[player]
-                                .send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                            self.players[player].send_error_message(messages::INVALID_TELEPORT_COORDINATES);
                             return false;
                         }
                         self.players[player].send_system_message(&messages::warp_teleport(name));
                         return self.teleport_player_to(player, warp.pos, warp.yaw, warp.pitch);
                     }
-                    Ok(None) => {
-                        self.players[player].send_error_message(&messages::warp_not_found(name))
-                    }
+                    Ok(None) => self.players[player].send_error_message(&messages::warp_not_found(name)),
                     Err(error) => {
                         warn!("Could not read warp {name}: {error}");
                         self.players[player].send_error_message(messages::WARP_STORAGE_FAILED);
@@ -1065,14 +928,11 @@ impl Plot {
                     self.players[player].send_system_message(&messages::teleport_player(args[0]));
                     let uuid = self.players[player].uuid;
                     let player = self.leave_plot(uuid);
-                    let _ = self
-                        .message_sender
-                        .send(Message::PlayerTeleportOther(player, args[0].to_owned()));
+                    let _ = self.message_sender.send(Message::PlayerTeleportOther(player, args[0].to_owned()));
                     return true;
                 }
                 if args.len() != 3 + usize::from(highlight) {
-                    self.players[player]
-                        .send_error_message(messages::INVALID_NUMBER_ARGUMENTS_TELEPORT_COMMAND);
+                    self.players[player].send_error_message(messages::INVALID_NUMBER_ARGUMENTS_TELEPORT_COMMAND);
                     return false;
                 }
                 if highlight {
@@ -1111,8 +971,7 @@ impl Plot {
                     return false;
                 }
                 if !highlight_only {
-                    self.players[player]
-                        .send_system_message(&messages::teleport_coordinates(x, y, z));
+                    self.players[player].send_system_message(&messages::teleport_coordinates(x, y, z));
                     self.players[player].teleport(destination);
                 }
                 if highlight {
@@ -1172,9 +1031,7 @@ impl Plot {
                         return false;
                     }
                     if speed_arg > 10.0 {
-                        self.players[player].send_error_message(
-                            messages::PERFORMANCE_REASONS_PLAYER_SPEED_CANNOT_HIGHER,
-                        );
+                        self.players[player].send_error_message(messages::PERFORMANCE_REASONS_PLAYER_SPEED_CANNOT_HIGHER);
                         return false;
                     }
                     if speed_arg.is_nan() {
@@ -1184,8 +1041,7 @@ impl Plot {
                     self.players[player].fly_speed = speed_arg;
                     self.players[player].update_player_abilities();
                     let username = self.players[player].username.clone();
-                    self.players[player]
-                        .send_system_message(&messages::flying_speed(speed_arg, username));
+                    self.players[player].send_system_message(&messages::flying_speed(speed_arg, username));
                 } else {
                     self.players[player].send_error_message(messages::UNABLE_PARSE_SPEED_VALUE);
                 }
@@ -1216,8 +1072,7 @@ impl Plot {
                 } else {
                     self.world.is_cursed = true;
                     self.auto_redpiler = false;
-                    self.players[player]
-                        .send_system_message(messages::WORLD_BEEN_CURSED_REDPILER_DISABLED_BLESS);
+                    self.players[player].send_system_message(messages::WORLD_BEEN_CURSED_REDPILER_DISABLED_BLESS);
                 }
                 return false;
             }
@@ -1226,8 +1081,7 @@ impl Plot {
                     self.world.is_cursed = false;
                     self.players[player].send_system_message(messages::WORLD_BEEN_BLESSED);
                 } else {
-                    self.players[player]
-                        .send_system_message(messages::WORLD_NOT_CURSED_CURSE_CURSE);
+                    self.players[player].send_system_message(messages::WORLD_NOT_CURSED_CURSE_CURSE);
                 }
                 return false;
             }
@@ -1253,14 +1107,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/whitelist" => "whitelist".to_owned(),
         "/tellraw" => "tellraw".to_owned(),
         "/say" => "say".to_owned(),
-        "/tps" => format!(
-            "rtps.{}",
-            if args.is_empty() || args == ["timings"] {
-                "view"
-            } else {
-                "set"
-            }
-        ),
+        "/tps" => format!("rtps.{}", if args.is_empty() || args == ["timings"] { "view" } else { "set" }),
         "/visual" => format!("visual.{}", if args.len() > 1 { "set" } else { "view" }),
         "/adv" => "radvance".to_owned(),
         "/toggleautorp" => "toggleautorp".to_owned(),
@@ -1306,19 +1153,13 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
     let mut nodes = vec![
         // Root Node
         Node::root(&[
-            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56,
-            58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101, 106, 107, 108, 109, 110, 111, 113,
-            115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167,
+            1, 2, 7, 8, 10, 12, 14, 15, 16, 17, 18, 19, 20, 22, 25, 27, 29, 31, 42, 44, 48, 55, 56, 58, 60, 61, 62, 69, 70, 77, 78, 80, 86, 96, 101,
+            106, 107, 108, 109, 110, 111, 113, 115, 119, 126, 130, 131, 138, 139, 140, 141, 142, 146, 153, 154, 157, 158, 167,
         ]),
         // /stop
         Node::literal("stop", &[]).executable(),
         // /plot
-        Node::literal(
-            "plot",
-            &[
-                3, 4, 5, 6, 33, 34, 35, 36, 38, 39, 41, 53, 54, 75, 76, 120, 121, 122, 124,
-            ],
-        ),
+        Node::literal("plot", &[3, 4, 5, 6, 33, 34, 35, 36, 38, 39, 41, 53, 54, 75, 76, 120, 121, 122, 124]),
         // /plot info
         Node::literal("info", &[]).executable(),
         // /plot i
@@ -1494,21 +1335,11 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // tick history and whole-game-tick rewind
         Node::literal("rhistory", &[97, 99, 100, 103]).executable(),
         Node::literal("on", &[98]).executable(),
-        Node::argument(
-            messages::ADV_GAME_TICKS_LABEL,
-            Parser::Integer(1, i32::MAX),
-            &[],
-        )
-        .executable(),
+        Node::argument(messages::ADV_GAME_TICKS_LABEL, Parser::Integer(1, i32::MAX), &[]).executable(),
         Node::literal("off", &[]).executable(),
         Node::literal("status", &[]).executable(),
         Node::literal("rev", &[102]).executable(),
-        Node::argument(
-            messages::ADV_GAME_TICKS_LABEL,
-            Parser::Integer(1, i32::MAX),
-            &[],
-        )
-        .executable(),
+        Node::argument(messages::ADV_GAME_TICKS_LABEL, Parser::Integer(1, i32::MAX), &[]).executable(),
         // server history memory limit, in MiB
         Node::literal("limit", &[104]).executable(),
         Node::argument("MiB", Parser::Integer(0, i32::MAX), &[]).executable(),
@@ -1634,43 +1465,25 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
     let visual_help = nodes.len();
     nodes.push(Node::literal("visual", &[]).executable());
 
-    nodes[visual].children =
-        Box::leak(vec![pistons as i32, rate as i32, displayonly as i32].into_boxed_slice());
-    nodes[pistons].children =
-        Box::leak(vec![auto as i32, piston_on as i32, piston_off as i32].into_boxed_slice());
+    nodes[visual].children = Box::leak(vec![pistons as i32, rate as i32, displayonly as i32].into_boxed_slice());
+    nodes[pistons].children = Box::leak(vec![auto as i32, piston_on as i32, piston_off as i32].into_boxed_slice());
     nodes[rate].children = Box::leak(vec![hertz as i32].into_boxed_slice());
-    nodes[displayonly].children =
-        Box::leak(vec![display_on as i32, display_off as i32].into_boxed_slice());
+    nodes[displayonly].children = Box::leak(vec![display_on as i32, display_off as i32].into_boxed_slice());
 
     // Keep the final `/help visual` topic linked if earlier command nodes move.
-    let help = nodes
-        .iter()
-        .position(|node| node.name == Some("help"))
-        .unwrap();
+    let help = nodes.iter().position(|node| node.name == Some("help")).unwrap();
     let mut help_children = nodes[help].children.to_vec();
     help_children.push(visual_help as i32);
     nodes[help].children = Box::leak(help_children.into_boxed_slice());
 
     let redbox = crate::redbox::enabled();
     let mut root_children = nodes[0].children.to_vec();
-    let history = nodes
-        .iter()
-        .position(|node| node.name == Some("rhistory"))
-        .unwrap();
+    let history = nodes.iter().position(|node| node.name == Some("rhistory")).unwrap();
     let mut history_children = nodes[history].children.to_vec();
     let rewind = nodes.len() as i32;
     let rewind_ticks = rewind + 1;
-    nodes.push(
-        Node::literal("rewind", Box::leak(vec![rewind_ticks].into_boxed_slice())).executable(),
-    );
-    nodes.push(
-        Node::argument(
-            messages::ADV_GAME_TICKS_LABEL,
-            Parser::Integer(1, i32::MAX),
-            &[],
-        )
-        .executable(),
-    );
+    nodes.push(Node::literal("rewind", Box::leak(vec![rewind_ticks].into_boxed_slice())).executable());
+    nodes.push(Node::argument(messages::ADV_GAME_TICKS_LABEL, Parser::Integer(1, i32::MAX), &[]).executable());
     history_children.push(rewind);
     nodes[history].children = Box::leak(history_children.into_boxed_slice());
 
@@ -1679,9 +1492,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
     } else {
         let warp = nodes.len() as i32;
         let warp_name = warp + 1;
-        nodes.push(
-            Node::literal("warp", Box::leak(vec![warp_name].into_boxed_slice())).executable(),
-        );
+        nodes.push(Node::literal("warp", Box::leak(vec![warp_name].into_boxed_slice())).executable());
         nodes.push(
             Node::argument("name", Parser::String(0), &[])
                 .executable()
@@ -1689,10 +1500,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         );
         let setwarp = nodes.len() as i32;
         let setwarp_name = setwarp + 1;
-        nodes.push(Node::literal(
-            "setwarp",
-            Box::leak(vec![setwarp_name].into_boxed_slice()),
-        ));
+        nodes.push(Node::literal("setwarp", Box::leak(vec![setwarp_name].into_boxed_slice())));
         nodes.push(
             Node::argument("name", Parser::String(0), &[])
                 .executable()
@@ -1734,11 +1542,7 @@ mod security_tests {
         use std::io::Read;
 
         let (mut plot, mut actor_peer) = super::super::client_sync_tests::fixture(false);
-        plot.players[0].set_test_permissions(&[
-            "mchprs.access.commands",
-            "commands.say",
-            "commands.tellraw",
-        ]);
+        plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.say", "commands.tellraw"]);
         let viewer = connection(false).unwrap();
         let mut viewer_peer = viewer.peer;
         let mut player = crate::player::Player::test_player(viewer.player);
@@ -1751,16 +1555,8 @@ mod security_tests {
         let (sender, receiver) = std::sync::mpsc::channel();
         plot.message_sender = sender;
 
-        for (command, args) in [
-            ("/say", vec!["hello"]),
-            ("/tellraw", vec!["@a", "{\"text\":\"hello\"}"]),
-        ] {
-            let expected = crate::chat_commands::parse(
-                &format!("{command} {}", args.join(" ")),
-                "SyncTest",
-                Some("SyncTest"),
-            )
-            .unwrap();
+        for (command, args) in [("/say", vec!["hello"]), ("/tellraw", vec!["@a", "{\"text\":\"hello\"}"])] {
+            let expected = crate::chat_commands::parse(&format!("{command} {}", args.join(" ")), "SyncTest", Some("SyncTest")).unwrap();
             let packet = CChatMessage {
                 message: expected.message,
                 position: 1,
@@ -1781,10 +1577,7 @@ mod security_tests {
         assert!(receiver.try_recv().is_err());
         for peer in [&mut actor_peer, &mut viewer_peer, &mut other_peer] {
             peer.set_nonblocking(true).unwrap();
-            assert_eq!(
-                peer.read(&mut [0]).unwrap_err().kind(),
-                std::io::ErrorKind::WouldBlock
-            );
+            assert_eq!(peer.read(&mut [0]).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
         }
     }
 
@@ -1798,11 +1591,7 @@ mod security_tests {
             plot.players[0].crouching = crouching;
             plot.players[0].small_model = small.then(crate::player::SmallModel::new);
             let before = plot.players[0].pos;
-            assert!(!plot.handle_command(
-                0,
-                "/tp",
-                vec!["33.5", "21.5", "35.5", "--highlight-only"],
-            ));
+            assert!(!plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5", "--highlight-only"],));
             let after = plot.players[0].pos;
             assert_eq!((after.x, after.y, after.z), (before.x, before.y, before.z));
             assert!(!plot.players[0].awaiting_teleport());
@@ -1853,60 +1642,30 @@ mod security_tests {
             native_command_permission("/tp", &["33.5", "21.5", "35.5", "--highlight"]).as_deref(),
             Some("commands.teleport")
         );
-        assert!(!changes_plot(
-            "/tp",
-            &["33.5", "21.5", "35.5", "--highlight"]
-        ));
+        assert!(!changes_plot("/tp", &["33.5", "21.5", "35.5", "--highlight"]));
         let nodes = declared_command_nodes();
-        let inspect = nodes
-            .iter()
-            .find(|node| node.name == Some("inspect"))
-            .unwrap();
+        let inspect = nodes.iter().find(|node| node.name == Some("inspect")).unwrap();
         assert!(inspect.children.is_empty());
     }
 
     #[test]
     fn small_and_cat_commands_have_permissions_and_completion() {
-        assert_eq!(
-            native_command_permission("/small", &["on"]).as_deref(),
-            Some("commands.small")
-        );
-        assert_eq!(
-            native_command_permission("/gm", &["cat"]).as_deref(),
-            Some("commands.gamemode")
-        );
+        assert_eq!(native_command_permission("/small", &["on"]).as_deref(), Some("commands.small"));
+        assert_eq!(native_command_permission("/gm", &["cat"]).as_deref(), Some("commands.gamemode"));
         assert!(!changes_plot("/small", &["on"]));
         let nodes = declared_command_nodes();
-        let small = nodes
-            .iter()
-            .find(|node| node.name == Some("small"))
-            .unwrap();
+        let small = nodes.iter().find(|node| node.name == Some("small")).unwrap();
         assert_eq!(
-            small
-                .children
-                .iter()
-                .map(|&id| nodes[id as usize].name.unwrap())
-                .collect::<Vec<_>>(),
+            small.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
             ["on", "off", "wolf", "fox", "cat", "ocelot", "baby"]
         );
-        let gm = nodes
-            .iter()
-            .find(|node| node.name == Some("gamemode"))
-            .unwrap();
-        assert!(
-            gm.children
-                .iter()
-                .any(|&id| nodes[id as usize].name == Some("cat"))
-        );
+        let gm = nodes.iter().find(|node| node.name == Some("gamemode")).unwrap();
+        assert!(gm.children.iter().any(|&id| nodes[id as usize].name == Some("cat")));
     }
     #[test]
     fn teleport_declarations_follow_the_redbox_setting_and_plot_teleport_remains() {
         let nodes = declared_command_nodes();
-        let root_names: Vec<_> = nodes[0]
-            .children
-            .iter()
-            .filter_map(|&id| nodes[id as usize].name)
-            .collect();
+        let root_names: Vec<_> = nodes[0].children.iter().filter_map(|&id| nodes[id as usize].name).collect();
         assert_eq!(root_names.contains(&"teleport"), !crate::redbox::enabled());
         assert_eq!(root_names.contains(&"tp"), !crate::redbox::enabled());
         let plot = nodes.iter().find(|node| node.name == Some("plot")).unwrap();
@@ -1936,14 +1695,7 @@ mod security_tests {
             assert_eq!(response.id, 42);
             assert_eq!(response.start, start as i32);
             assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
-            assert_eq!(
-                response
-                    .matches
-                    .into_iter()
-                    .map(|item| item.match_)
-                    .collect::<Vec<_>>(),
-                expected
-            );
+            assert_eq!(response.matches.into_iter().map(|item| item.match_).collect::<Vec<_>>(), expected);
         }
     }
     #[test]
@@ -1965,35 +1717,21 @@ mod security_tests {
             );
             assert!(!changes_plot(&format!("/{command}"), &["spawn"]));
             if let Some(node) = node {
-                assert_eq!(
-                    nodes[node.children[0] as usize].suggestions_type,
-                    Some("minecraft:ask_server")
-                );
+                assert_eq!(nodes[node.children[0] as usize].suggestions_type, Some("minecraft:ask_server"));
             }
         }
     }
     #[test]
     fn serverinfo_autocomplete_declares_subcommands_and_numeric_arguments() {
         let nodes = declared_command_nodes();
-        let serverinfo = nodes
-            .iter()
-            .find(|node| node.name == Some("serverinfo"))
-            .unwrap();
+        let serverinfo = nodes.iter().find(|node| node.name == Some("serverinfo")).unwrap();
         assert_eq!(
-            serverinfo
-                .children
-                .iter()
-                .map(|&id| nodes[id as usize].name.unwrap())
-                .collect::<Vec<_>>(),
+            serverinfo.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
             ["plots", "plot", "settings"]
         );
         for &id in serverinfo.children {
             let node = &nodes[id as usize];
-            assert_eq!(
-                node.flags & 0x07,
-                0x05,
-                "subcommands must be executable literals"
-            );
+            assert_eq!(node.flags & 0x07, 0x05, "subcommands must be executable literals");
         }
         let plots = &nodes[serverinfo.children[0] as usize];
         let page = &nodes[plots.children[0] as usize];
@@ -2004,10 +1742,7 @@ mod security_tests {
         let z = &nodes[x.children[0] as usize];
         assert_eq!((x.name, z.name), (Some("x"), Some("z")));
         for node in [x, z] {
-            assert!(matches!(
-                node.parser,
-                Some(Parser::Integer(i32::MIN, i32::MAX))
-            ));
+            assert!(matches!(node.parser, Some(Parser::Integer(i32::MIN, i32::MAX))));
         }
         assert_eq!(x.flags & 0x04, 0);
         assert_eq!(z.flags & 0x04, 0x04);
@@ -2015,20 +1750,13 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(
-            nodes.len(),
-            if crate::redbox::enabled() { 189 } else { 193 }
-        );
+        assert_eq!(nodes.len(), if crate::redbox::enabled() { 189 } else { 193 });
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
             }
         }
-        let names: Vec<_> = nodes[0]
-            .children
-            .iter()
-            .filter_map(|index| nodes[*index as usize].name)
-            .collect();
+        let names: Vec<_> = nodes[0].children.iter().filter_map(|index| nodes[*index as usize].name).collect();
         for removed in ["rtps", "radv", "radvance", "rback"] {
             assert!(!nodes.iter().any(|node| node.name == Some(removed)));
             let command = format!("/{removed}");
@@ -2036,22 +1764,9 @@ mod security_tests {
             assert!(!changes_plot(&command, &["1"]));
         }
         for proxied in ["warp", "setwarp", "tp", "teleport"] {
-            assert_eq!(
-                names.contains(&proxied),
-                !crate::redbox::enabled(),
-                "incorrect declaration for {proxied}"
-            );
+            assert_eq!(names.contains(&proxied), !crate::redbox::enabled(), "incorrect declaration for {proxied}");
         }
-        for retained in [
-            "tps",
-            "adv",
-            "rhistory",
-            "redpiler",
-            "rp",
-            "gm",
-            "serverinfo",
-            "wire",
-        ] {
+        for retained in ["tps", "adv", "rhistory", "redpiler", "rp", "gm", "serverinfo", "wire"] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
         assert!(names.contains(&"rev"));
@@ -2066,24 +1781,14 @@ mod security_tests {
             ("/wire", "wire"),
         ] {
             let node = nodes.iter().find(|node| node.name == Some(alias)).unwrap();
-            assert_eq!(
-                nodes[node.redirect_node.unwrap() as usize].name,
-                Some(target)
-            );
+            assert_eq!(nodes[node.redirect_node.unwrap() as usize].name, Some(target));
         }
         let wire = nodes.iter().find(|node| node.name == Some("wire")).unwrap();
         assert_eq!(
-            wire.children
-                .iter()
-                .map(|&id| nodes[id as usize].name.unwrap())
-                .collect::<Vec<_>>(),
+            wire.children.iter().map(|&id| nodes[id as usize].name.unwrap()).collect::<Vec<_>>(),
             ["free", "plane", "off"]
         );
-        assert!(
-            wire.children
-                .iter()
-                .all(|&id| nodes[id as usize].flags & 0x04 != 0)
-        );
+        assert!(wire.children.iter().all(|&id| nodes[id as usize].flags & 0x04 != 0));
         assert_eq!(NO_COMMANDS.packet_id, 0x10);
     }
     #[test]
@@ -2097,40 +1802,22 @@ mod security_tests {
             assert_eq!(AdvanceUnit::parse(&args, 10), Ok(expected));
         }
         for args in [vec![], vec!["game", "1"], vec!["nano", "1", "extra"]] {
-            assert_eq!(
-                AdvanceUnit::parse(&args, 10).unwrap_err(),
-                messages::USAGE_ADV
-            );
+            assert_eq!(AdvanceUnit::parse(&args, 10).unwrap_err(), messages::USAGE_ADV);
         }
-        for args in [
-            vec!["nano"],
-            vec!["11"],
-            vec!["-1"],
-            vec!["pico", "invalid"],
-            vec!["nano", "4294967296"],
-        ] {
-            assert_eq!(
-                AdvanceUnit::parse(&args, 10).unwrap_err(),
-                messages::advance_tick_count_limit(10)
-            );
+        for args in [vec!["nano"], vec!["11"], vec!["-1"], vec!["pico", "invalid"], vec!["nano", "4294967296"]] {
+            assert_eq!(AdvanceUnit::parse(&args, 10).unwrap_err(), messages::advance_tick_count_limit(10));
         }
     }
 
     #[test]
     fn queued_commands_stop_when_the_actor_leaves() {
         let mut calls = Vec::new();
-        assert!(run_command_queue(
-            vec!["/tp Admin".into(), "/stop".into()],
-            |command, _| {
-                calls.push(command.to_owned());
-                command == "/tp"
-            }
-        ));
+        assert!(run_command_queue(vec!["/tp Admin".into(), "/stop".into()], |command, _| {
+            calls.push(command.to_owned());
+            command == "/tp"
+        }));
         assert_eq!(calls, ["/tp"]);
-        assert!(!run_command_queue(
-            vec!["  ".into(), "/help".into()],
-            |_, _| false
-        ));
+        assert!(!run_command_queue(vec!["  ".into(), "/help".into()], |_, _| false));
     }
     #[test]
     fn teleport_coordinates_center_blocks_and_keep_precision() {
@@ -2165,10 +1852,7 @@ mod security_tests {
             ("/tp", "/teleport", vec!["Admin"]),
             ("/gm", "/gamemode", vec!["2"]),
         ] {
-            assert_eq!(
-                native_command_permission(alias, &args),
-                native_command_permission(canonical, &args)
-            );
+            assert_eq!(native_command_permission(alias, &args), native_command_permission(canonical, &args));
             assert_eq!(changes_plot(alias, &args), changes_plot(canonical, &args));
         }
     }
@@ -2203,8 +1887,7 @@ mod security_tests {
                     lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
                 },
             );
-            plot.world
-                .set_block(output, Block::RedstoneLamp { lit: true });
+            plot.world.set_block(output, Block::RedstoneLamp { lit: true });
             let before = [plot.world.get_block(control), plot.world.get_block(output)];
             let mut messages = |last: &str| {
                 let mut messages = Vec::new();
@@ -2236,35 +1919,16 @@ mod security_tests {
                 plot.handle_redpiler_command(0, "analyze", &args);
                 let lines = messages("Transformations: none configured.");
                 assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
-                assert!(
-                    lines
-                        .iter()
-                        .any(|line| line.starts_with("Graph after required preparation:"))
-                );
-                assert!(
-                    lines
-                        .iter()
-                        .any(|line| line == "Transformations: none configured.")
-                );
+                assert!(lines.iter().any(|line| line.starts_with("Graph after required preparation:")));
+                assert!(lines.iter().any(|line| line == "Transformations: none configured."));
                 assert!(!plot.redpiler.is_active());
             }
             plot.handle_redpiler_command(0, "analyze", &[]);
             let lines = messages("This plot can compile with these flags.");
-            assert!(
-                lines
-                    .iter()
-                    .any(|line| line.contains(" pistons, ") && line.contains(" admission issues"))
-            );
-            assert!(
-                lines
-                    .iter()
-                    .any(|line| line.starts_with("Compile:") && line.contains("backend nodes"))
-            );
+            assert!(lines.iter().any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
+            assert!(lines.iter().any(|line| line.starts_with("Compile:") && line.contains("backend nodes")));
             assert!(!plot.redpiler.is_active());
-            assert_eq!(
-                [plot.world.get_block(control), plot.world.get_block(output)],
-                before
-            );
+            assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
         }
     }
 
@@ -2273,32 +1937,24 @@ mod security_tests {
         let nodes = declared_command_nodes();
         for command in ["compile", "analyze"] {
             let node = nodes.iter().find(|n| n.name == Some(command)).unwrap();
-            assert!(node.children.iter().any(|&id| {
-                nodes[id as usize].suggestions_type == Some("minecraft:ask_server")
-            }));
+            assert!(
+                node.children
+                    .iter()
+                    .any(|&id| { nodes[id as usize].suggestions_type == Some("minecraft:ask_server") })
+            );
         }
-        assert!(nodes.iter().any(|node| {
-            node.name == Some("c")
-                && node
-                    .redirect_node
-                    .is_some_and(|target| nodes[target as usize].name == Some("compile"))
-        }));
+        assert!(
+            nodes
+                .iter()
+                .any(|node| { node.name == Some("c") && node.redirect_node.is_some_and(|target| nodes[target as usize].name == Some("compile")) })
+        );
         for (text, expected) in [
             ("/rp compile --ass", vec![]),
             ("/redpiler c --optimize --i", vec!["--io-only"]),
             ("/rp analyze --graph --o", vec!["--optimize"]),
             (
                 "/rp compile -",
-                vec![
-                    "--optimize",
-                    "--io-only",
-                    "--update",
-                    "-o",
-                    "-i",
-                    "-u",
-                    "-O0",
-                    "-O1",
-                ],
+                vec!["--optimize", "--io-only", "--update", "-o", "-i", "-u", "-O0", "-O1"],
             ),
             ("/rp analyze --ex", vec!["--export-json"]),
             ("/rp compile --unknown", vec![]),
@@ -2308,20 +1964,9 @@ mod security_tests {
             assert_eq!(response.id, 42);
             assert_eq!(response.start, text[..start].encode_utf16().count() as i32);
             assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
-            assert_eq!(
-                response
-                    .matches
-                    .iter()
-                    .map(|m| m.match_.as_str())
-                    .collect::<Vec<_>>(),
-                expected
-            );
+            assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
             for item in response.matches {
-                assert!(
-                    item.match_ == "--graph"
-                        || item.match_ == "--export-json"
-                        || CompilerOptions::parse(&item.match_).is_ok()
-                );
+                assert!(item.match_ == "--graph" || item.match_ == "--export-json" || CompilerOptions::parse(&item.match_).is_ok());
             }
         }
         let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();

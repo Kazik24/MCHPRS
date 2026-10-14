@@ -13,12 +13,7 @@ fn overlapping_stacks_use_one_source_and_restore_original_entities() {
         for (x, kind, power) in [(5, ContainerType::Chest, 15), (7, ContainerType::Barrel, 3)] {
             let item = ItemStack::container_with_ss(kind, SignalStrength::new(power).unwrap());
             let block = Block::from_name(item.item_type.get_name()).unwrap();
-            crate::interaction::place_in_world(
-                block,
-                &mut world,
-                BlockPos::new(x, 30, 4),
-                &item.nbt,
-            );
+            crate::interaction::place_in_world(block, &mut world, BlockPos::new(x, 30, 4), &item.nbt);
         }
         world.set_block(BlockPos::new(8, 30, 4), Block::Sand {});
         let positions: Vec<_> = (4..=8).map(|x| BlockPos::new(x, 30, 4)).collect();
@@ -39,11 +34,7 @@ fn overlapping_stacks_use_one_source_and_restore_original_entities() {
             Some(ContainerType::Chest)
         );
         assert_eq!(
-            crate::redstone::comparator::get_override(
-                world.get_block(BlockPos::new(7, 30, 4)),
-                &world,
-                BlockPos::new(7, 30, 4)
-            ),
+            crate::redstone::comparator::get_override(world.get_block(BlockPos::new(7, 30, 4)), &world, BlockPos::new(7, 30, 4)),
             15
         );
         let after = snapshot(&world, &positions);
@@ -65,9 +56,7 @@ fn snapshot(world: &PlotWorld, positions: &[BlockPos]) -> Vec<(u32, Option<Vec<u
         .map(|&position| {
             (
                 world.get_block_raw(position),
-                world
-                    .get_block_entity(position)
-                    .map(|entity| bincode::serialize(entity).unwrap()),
+                world.get_block_entity(position).map(|entity| bincode::serialize(entity).unwrap()),
             )
         })
         .collect()

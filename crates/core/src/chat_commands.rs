@@ -45,9 +45,7 @@ fn component_array(values: &[Value], depth: usize) -> Result<Value, String> {
         Some(value) => component(value, depth + 1)?,
         None => json!({"text": ""}),
     };
-    let remaining = values
-        .map(|value| component(value, depth + 1))
-        .collect::<Result<Vec<_>, _>>()?;
+    let remaining = values.map(|value| component(value, depth + 1)).collect::<Result<Vec<_>, _>>()?;
     if remaining.is_empty() {
         return Ok(first);
     }
@@ -68,13 +66,7 @@ fn component_object(object: &Map<String, Value>, depth: usize) -> Result<Value, 
     let mut result = Map::new();
     result.insert("text".into(), text.into());
 
-    for key in [
-        "bold",
-        "italic",
-        "underlined",
-        "strikethrough",
-        "obfuscated",
-    ] {
+    for key in ["bold", "italic", "underlined", "strikethrough", "obfuscated"] {
         if let Some(value) = object.get(key).and_then(Value::as_bool) {
             result.insert(key.into(), value.into());
         }
@@ -88,10 +80,7 @@ fn component_object(object: &Map<String, Value>, depth: usize) -> Result<Value, 
 
     if let Some(Value::Array(extra)) = object.get("extra") {
         if !extra.is_empty() {
-            let children = extra
-                .iter()
-                .map(|value| component(value, depth + 1))
-                .collect::<Result<Vec<_>, _>>()?;
+            let children = extra.iter().map(|value| component(value, depth + 1)).collect::<Result<Vec<_>, _>>()?;
             result.insert("extra".into(), Value::Array(children));
         }
     }
@@ -146,16 +135,10 @@ fn target<'a>(input: &'a str, player: Option<&str>) -> Result<(Recipient, &'a st
     Ok((recipient, input[end..].trim_start()))
 }
 
-pub(crate) fn parse(
-    command: &str,
-    source: &str,
-    player: Option<&str>,
-) -> Result<ChatCommand, String> {
+pub(crate) fn parse(command: &str, source: &str, player: Option<&str>) -> Result<ChatCommand, String> {
     let command = command.trim_start();
     let command = command.strip_prefix('/').unwrap_or(command);
-    let (name, args) = command
-        .split_once(char::is_whitespace)
-        .unwrap_or((command, ""));
+    let (name, args) = command.split_once(char::is_whitespace).unwrap_or((command, ""));
     let args = args.trim_start();
     match name {
         "say" if !args.is_empty() => Ok(ChatCommand {
@@ -164,8 +147,7 @@ pub(crate) fn parse(
         }),
         "tellraw" => {
             let (recipient, text) = target(args, player)?;
-            let value = serde_json::from_str(text)
-                .map_err(|_| messages::USAGE_TELLRAW_TARGET_JSON_TEXT.to_owned())?;
+            let value = serde_json::from_str(text).map_err(|_| messages::USAGE_TELLRAW_TARGET_JSON_TEXT.to_owned())?;
             Ok(ChatCommand {
                 recipient,
                 message: component(&value, 0)?.to_string(),
@@ -182,29 +164,16 @@ mod tests {
 
     #[test]
     fn selectors_and_literal_say_preserve_text() {
-        let command = parse(
-            "/tellraw @a[distance=..300, name=ignored] \"hello\"",
-            "@",
-            None,
-        )
-        .unwrap();
+        let command = parse("/tellraw @a[distance=..300, name=ignored] \"hello\"", "@", None).unwrap();
         assert_eq!(command.recipient, Recipient::All);
         assert_eq!(command.message, "{\"text\":\"hello\"}");
         assert_eq!(
-            parse("tellraw @s \"hi\"", "Bob", Some("Bob"))
-                .unwrap()
-                .recipient,
+            parse("tellraw @s \"hi\"", "Bob", Some("Bob")).unwrap().recipient,
             Recipient::Name("Bob".into())
         );
-        assert_eq!(
-            parse("tellraw @s \"hi\"", "@", None).unwrap().recipient,
-            Recipient::Nobody
-        );
+        assert_eq!(parse("tellraw @s \"hi\"", "@", None).unwrap().recipient, Recipient::Nobody);
         assert!(Recipient::Name("Bob".into()).matches("bOB"));
-        assert_eq!(
-            parse("say  a  b &c!", "Bob", None).unwrap().message,
-            "{\"text\":\"[Bob] a  b &c!\"}"
-        );
+        assert_eq!(parse("say  a  b &c!", "Bob", None).unwrap().message, "{\"text\":\"[Bob] a  b &c!\"}");
         for command in [
             "say",
             "tellraw",
@@ -248,10 +217,7 @@ mod tests {
 
         text = Value::Array(vec![text]);
         let input = format!("tellraw @a {text}");
-        assert_eq!(
-            parse(&input, "@", None).unwrap_err(),
-            messages::TEXT_COMPONENT_NESTING_TOO_DEEP
-        );
+        assert_eq!(parse(&input, "@", None).unwrap_err(), messages::TEXT_COMPONENT_NESTING_TOO_DEEP);
     }
 
     #[test]
@@ -264,10 +230,7 @@ mod tests {
             let component = json!({"text": text, "bold": false, "extra": [{"text": text}]});
             let tellraw = parse(&format!("tellraw @s {component}"), "Bob", Some("Bob")).unwrap();
             assert_eq!(tellraw.recipient, Recipient::Name("Bob".into()));
-            assert_eq!(
-                serde_json::from_str::<Value>(&tellraw.message).unwrap(),
-                component
-            );
+            assert_eq!(serde_json::from_str::<Value>(&tellraw.message).unwrap(), component);
         }
     }
 
@@ -287,11 +250,7 @@ mod tests {
         assert_eq!(value["extra"][1]["extra"][0]["text"], "kept");
         assert!(!command.message.contains("score"));
         assert!(!command.message.contains("Event"));
-        for input in [
-            r#"tellraw @a []"#,
-            r#"tellraw @a ["hello"]"#,
-            r#"tellraw @a {"text":"hello","extra":[]}"#,
-        ] {
+        for input in [r#"tellraw @a []"#, r#"tellraw @a ["hello"]"#, r#"tellraw @a {"text":"hello","extra":[]}"#] {
             assert!(!parse(input, "@", None).unwrap().message.contains("extra"));
         }
     }

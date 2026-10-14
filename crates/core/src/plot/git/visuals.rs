@@ -12,14 +12,8 @@ use std::time::{Duration, Instant};
 
 impl Plot {
     pub(super) fn clear_git_inspection(&mut self, player: usize) {
-        if let Some((_, entity_id, _, _)) = self.git.inspections.remove(&self.players[player].uuid)
-        {
-            self.players[player].send_packet(
-                &CDestroyEntities {
-                    entity_ids: vec![entity_id],
-                }
-                .encode(),
-            );
+        if let Some((_, entity_id, _, _)) = self.git.inspections.remove(&self.players[player].uuid) {
+            self.players[player].send_packet(&CDestroyEntities { entity_ids: vec![entity_id] }.encode());
         }
     }
 
@@ -27,23 +21,13 @@ impl Plot {
         self.show_block_highlight(player, pos, true);
     }
 
-    pub(in crate::plot) fn show_block_highlight(
-        &mut self,
-        player: usize,
-        pos: mchprs_blocks::BlockPos,
-        requires_git_access: bool,
-    ) {
+    pub(in crate::plot) fn show_block_highlight(&mut self, player: usize, pos: mchprs_blocks::BlockPos, requires_git_access: bool) {
         self.clear_git_inspection(player);
         let viewer = &self.players[player];
         let entity_id = preview::spawn_marker(viewer, pos, 4);
         self.git.inspections.insert(
             viewer.uuid,
-            (
-                pos,
-                entity_id,
-                Instant::now() + Duration::from_secs(3),
-                requires_git_access,
-            ),
+            (pos, entity_id, Instant::now() + Duration::from_secs(3), requires_git_access),
         );
     }
 
@@ -65,30 +49,15 @@ impl Plot {
         }
     }
 
-    pub(super) fn replace_git_markers(
-        &mut self,
-        player: usize,
-        markers: Vec<Marker>,
-        center: PlayerPos,
-    ) {
+    pub(super) fn replace_git_markers(&mut self, player: usize, markers: Vec<Marker>, center: PlayerPos) {
         let viewer = &self.players[player];
-        let Some(session) = self
-            .git
-            .sessions
-            .get_mut(&viewer.uuid)
-            .filter(|s| s.enabled)
-        else {
+        let Some(session) = self.git.sessions.get_mut(&viewer.uuid).filter(|s| s.enabled) else {
             return;
         };
         let wanted: HashMap<_, _> = markers
             .into_iter()
             .filter(|m| {
-                Self::get_chunk_distance(
-                    m.pos.x >> 4,
-                    m.pos.z >> 4,
-                    viewer.last_chunk_x,
-                    viewer.last_chunk_z,
-                ) <= CONFIG.view_distance.max(0) as u32
+                Self::get_chunk_distance(m.pos.x >> 4, m.pos.z >> 4, viewer.last_chunk_x, viewer.last_chunk_z) <= CONFIG.view_distance.max(0) as u32
             })
             .map(|m| (m.pos, m.kind))
             .collect();
@@ -96,10 +65,7 @@ impl Plot {
         let complete = preview::reconcile_markers(viewer, &mut session.markers, &wanted, 32);
         if complete && session.last_pos.is_none() {
             let total: u64 = session.diff.counts.iter().sum();
-            viewer.send_color_message(
-                crate::chat::ColorCode::Gray,
-                messages::git_glow_status(session.markers.len(), total),
-            );
+            viewer.send_color_message(crate::chat::ColorCode::Gray, messages::git_glow_status(session.markers.len(), total));
         }
         session.last_pos = complete.then_some(center);
         session.next_update = Instant::now() + Duration::from_secs(1);

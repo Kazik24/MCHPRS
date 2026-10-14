@@ -146,10 +146,7 @@ pub(crate) enum Incoming {
 impl Incoming {
     pub(crate) fn uuid(&self) -> u128 {
         match self {
-            Self::Teleport { uuid, .. }
-            | Self::Gamemode { uuid, .. }
-            | Self::Permissions { uuid, .. }
-            | Self::PtRun { uuid, .. } => *uuid,
+            Self::Teleport { uuid, .. } | Self::Gamemode { uuid, .. } | Self::Permissions { uuid, .. } | Self::PtRun { uuid, .. } => *uuid,
         }
     }
 }
@@ -191,11 +188,7 @@ pub(crate) fn decode(data: &[u8]) -> Result<Incoming, String> {
         }
         PT_RUN => {
             let command = read_utf(&mut data)?;
-            if command.is_empty()
-                || command.len() > 1024
-                || command.chars().any(char::is_control)
-                || command.starts_with('/')
-            {
+            if command.is_empty() || command.len() > 1024 || command.chars().any(char::is_control) || command.starts_with('/') {
                 return Err("Invalid RedBox powertool command".into());
             }
             Incoming::PtRun { uuid, command }
@@ -344,9 +337,7 @@ fn read_utf(data: &mut &[u8]) -> Result<String, String> {
                 if second & 0xc0 != 0x80 || third & 0xc0 != 0x80 {
                     return Err("Invalid modified UTF-8 continuation".into());
                 }
-                let unit = (u16::from(first & 0x0f) << 12)
-                    | (u16::from(second & 0x3f) << 6)
-                    | u16::from(third & 0x3f);
+                let unit = (u16::from(first & 0x0f) << 12) | (u16::from(second & 0x3f) << 6) | u16::from(third & 0x3f);
                 if unit < 0x800 {
                     return Err("Overlong modified UTF-8".into());
                 }
@@ -434,10 +425,7 @@ mod tests {
     #[test]
     fn permissions_round_trip() {
         let request = encode_permissions_request(test_uuid());
-        assert_eq!(
-            &request[..2],
-            &(("PERMISSIONS_REQUEST".len() as u16).to_be_bytes())
-        );
+        assert_eq!(&request[..2], &(("PERMISSIONS_REQUEST".len() as u16).to_be_bytes()));
 
         let payload = encode(PERMISSIONS, |data| {
             write_utf(data, &HyphenatedUUID(test_uuid()).to_string());
@@ -445,11 +433,7 @@ mod tests {
             write_utf(data, "[VIP] ");
             write_utf(data, "");
             data.extend_from_slice(&3_i32.to_be_bytes());
-            for (node, value) in [
-                ("mchprs.build", 1u8),
-                ("mchprs.*", 1u8),
-                ("mchprs.admin", 0u8),
-            ] {
+            for (node, value) in [("mchprs.build", 1u8), ("mchprs.*", 1u8), ("mchprs.admin", 0u8)] {
                 write_utf(data, node);
                 data.push(value);
             }
@@ -470,11 +454,7 @@ mod tests {
         assert_eq!(suffix, "");
         assert_eq!(
             permissions,
-            vec![
-                ("mchprs.build".into(), true),
-                ("mchprs.*".into(), true),
-                ("mchprs.admin".into(), false),
-            ]
+            vec![("mchprs.build".into(), true), ("mchprs.*".into(), true), ("mchprs.admin".into(), false),]
         );
 
         // A truncated count or a missing boolean is rejected.
@@ -557,9 +537,7 @@ mod tests {
         let mut trailing = valid.clone();
         trailing.push(0);
         assert!(decode(&trailing).is_err());
-        let unknown = encode("NOPE", |data| {
-            write_utf(data, &HyphenatedUUID(test_uuid()).to_string())
-        });
+        let unknown = encode("NOPE", |data| write_utf(data, &HyphenatedUUID(test_uuid()).to_string()));
         assert!(decode(&unknown).is_err());
     }
 }

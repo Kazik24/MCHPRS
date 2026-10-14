@@ -30,10 +30,7 @@ impl Budget {
             return None;
         }
         usage.used = total;
-        Some(Reservation {
-            budget: self.clone(),
-            bytes,
-        })
+        Some(Reservation { budget: self.clone(), bytes })
     }
 
     pub(crate) fn set_limit<T>(

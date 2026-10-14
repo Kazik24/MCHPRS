@@ -9,15 +9,11 @@ use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::analysis::AnalysisLimits;
 use crate::redpiler::components::{NodeState, NodeType};
-use crate::redpiler::program_graph::{
-    CircuitNodeKind, ComponentState, Guard, GuardId, InputPort, PowerPort, ResourceState, StateTest,
-};
+use crate::redpiler::program_graph::{CircuitNodeKind, ComponentState, Guard, GuardId, InputPort, PowerPort, ResourceState, StateTest};
 use crate::redpiler::{CompileError, Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
-use mchprs_blocks::blocks::{
-    Block, ComparatorMode, RedstoneComparator, RedstonePiston, RedstoneRepeater,
-};
+use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneComparator, RedstonePiston, RedstoneRepeater};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, TickPriority};
 use serde_json::{Value, json};
@@ -39,21 +35,14 @@ fn preparation_memory_limit_reports_stage_and_estimate() {
     );
 }
 
-use super::electrical::{
-    self, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink, ElectricalTarget,
-    WireRelationKind,
-};
-use super::geometry::{
-    GeometryError, GeometryIssue, GeometryResult, GeometryView, prepare_geometry,
-};
+use super::electrical::{self, ComparatorOverride, ElectricalDraft, ElectricalError, ElectricalLink, ElectricalTarget, WireRelationKind};
+use super::geometry::{GeometryError, GeometryIssue, GeometryResult, GeometryView, prepare_geometry};
 
 fn empty() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -108,25 +97,11 @@ fn analysis_limits_and_cancellation_are_errors() {
     let monitor = TaskMonitor::default();
     monitor.cancel();
     assert_eq!(
-        analyze(
-            &world,
-            world.get_corners(),
-            &[],
-            &monitor,
-            Default::default()
-        )
-        .unwrap_err(),
+        analyze(&world, world.get_corners(), &[], &monitor, Default::default()).unwrap_err(),
         AnalysisError::Cancelled
     );
     assert_eq!(
-        analyze(
-            &world,
-            (BASE, BlockPos::new(42, -1, 42)),
-            &[],
-            &Default::default(),
-            Default::default()
-        )
-        .unwrap_err(),
+        analyze(&world, (BASE, BlockPos::new(42, -1, 42)), &[], &Default::default(), Default::default()).unwrap_err(),
         AnalysisError::InvalidBounds
     );
     assert_eq!(
@@ -193,40 +168,15 @@ fn piston_head_moving_piston_and_unsafe_entry_state_are_admission_blockers() {
             },
         },
     );
-    world.set_block(
-        BASE + BlockPos::new(1, 0, 0),
-        Block::MovingPiston {
-            moving: Default::default(),
-        },
-    );
-    world.set_block(
-        BASE + BlockPos::new(2, 0, 0),
-        Block::PistonHead {
-            head: Default::default(),
-        },
-    );
+    world.set_block(BASE + BlockPos::new(1, 0, 0), Block::MovingPiston { moving: Default::default() });
+    world.set_block(BASE + BlockPos::new(2, 0, 0), Block::PistonHead { head: Default::default() });
     world.piston_state_mut().phase = AdvancePhase::PistonEvents;
 
     let report = analyze_world(&world);
     assert_eq!(report.pistons[0], BASE);
-    assert!(
-        report
-            .issues
-            .iter()
-            .any(|i| matches!(i, AdmissionIssue::MovingPiston { .. }))
-    );
-    assert!(
-        report
-            .issues
-            .iter()
-            .any(|i| matches!(i, AdmissionIssue::UnownedPistonHead { .. }))
-    );
-    assert!(
-        report
-            .issues
-            .iter()
-            .any(|i| matches!(i, AdmissionIssue::EntryPhase { .. }))
-    );
+    assert!(report.issues.iter().any(|i| matches!(i, AdmissionIssue::MovingPiston { .. })));
+    assert!(report.issues.iter().any(|i| matches!(i, AdmissionIssue::UnownedPistonHead { .. })));
+    assert!(report.issues.iter().any(|i| matches!(i, AdmissionIssue::EntryPhase { .. })));
 }
 
 #[test]
@@ -289,38 +239,20 @@ fn piston_entry_rejection_preserves_the_interpreter_world() {
     let before = world.get_block(BASE);
     let mut compiler = Compiler::default();
     let error = compiler
-        .compile(
-            &world,
-            world.get_corners(),
-            Default::default(),
-            Vec::new(),
-            Default::default(),
-        )
+        .compile(&world, world.get_corners(), Default::default(), Vec::new(), Default::default())
         .unwrap_err();
     assert!(matches!(&error, CompileError::RichGraph(error)
         if error.to_string().contains("1 pending piston events")));
     assert!(!compiler.is_active());
     assert!(compiler.stats().is_none());
     assert_eq!(world.get_block(BASE), before);
-    assert_eq!(
-        world
-            .piston_state()
-            .events
-            .iter()
-            .copied()
-            .collect::<Vec<_>>(),
-        vec![queued]
-    );
+    assert_eq!(world.piston_state().events.iter().copied().collect::<Vec<_>>(), vec![queued]);
 }
 
 #[test]
 fn selected_hoppers_and_trapdoors_are_rejected_before_compiler_publication() {
     for (name, block, reason) in [
-        (
-            "hopper",
-            Block::from_name("hopper").unwrap(),
-            "inventory and comparator behavior",
-        ),
+        ("hopper", Block::from_name("hopper").unwrap(), "inventory and comparator behavior"),
         (
             "iron_trapdoor",
             Block::IronTrapdoor {
@@ -336,13 +268,7 @@ fn selected_hoppers_and_trapdoors_are_rejected_before_compiler_publication() {
         let before = world.get_block_raw(BASE);
         let mut compiler = Compiler::default();
         let error = compiler
-            .compile(
-                &world,
-                (BASE, BASE),
-                CompilerOptions::default(),
-                Vec::new(),
-                Default::default(),
-            )
+            .compile(&world, (BASE, BASE), CompilerOptions::default(), Vec::new(), Default::default())
             .unwrap_err();
         let message = error.to_string();
         assert!(message.contains(name), "{message}");
@@ -358,20 +284,12 @@ fn selected_hoppers_and_trapdoors_are_rejected_before_compiler_publication() {
 #[test]
 fn ordinary_compile_and_reset_still_work() {
     let mut world = empty();
-    let lever = Block::Lever {
-        lever: Default::default(),
-    };
+    let lever = Block::Lever { lever: Default::default() };
     world.set_block(BASE, lever);
     let bounds = world.get_corners();
     let mut compiler = Compiler::default();
     compiler
-        .compile(
-            &world,
-            bounds,
-            CompilerOptions::default(),
-            Vec::new(),
-            Default::default(),
-        )
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Default::default())
         .unwrap();
     assert!(compiler.is_active());
     compiler.on_use_block(BASE);
@@ -395,10 +313,7 @@ fn prepare_geometry_for(world: &PlotWorld) -> Result<geometry::GeometryResult, G
     prepare_geometry_with_bounds(world, world.get_corners())
 }
 
-fn prepare_geometry_with_bounds(
-    world: &PlotWorld,
-    bounds: (BlockPos, BlockPos),
-) -> Result<geometry::GeometryResult, GeometryError> {
+fn prepare_geometry_with_bounds(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Result<geometry::GeometryResult, GeometryError> {
     prepare_geometry(
         world,
         bounds,
@@ -410,66 +325,36 @@ fn prepare_geometry_with_bounds(
 
 fn prepare_electrical_for(world: &PlotWorld) -> (GeometryResult, ElectricalDraft) {
     let geometry = prepare_geometry_for(world).unwrap();
-    let electrical = electrical::prepare_electrical(
-        world,
-        geometry.report.bounds,
-        &geometry.draft,
-        &Default::default(),
-    )
-    .unwrap();
+    let electrical = electrical::prepare_electrical(world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
     (geometry, electrical)
 }
 
-fn assert_dynamic_override_outside_inventory(
-    world: &PlotWorld,
-    bounds: (BlockPos, BlockPos),
-    comparator: BlockPos,
-    source: BlockPos,
-) {
+fn assert_dynamic_override_outside_inventory(world: &PlotWorld, bounds: (BlockPos, BlockPos), comparator: BlockPos, source: BlockPos) {
     let geometry = prepare_geometry_with_bounds(world, bounds).unwrap();
-    let error =
-        match electrical::prepare_electrical(world, bounds, &geometry.draft, &Default::default()) {
-            Err(error) => error,
-            Ok(_) => panic!("external dynamic override must reject electrical preparation"),
-        };
-    assert_eq!(
-        error,
-        ElectricalError::DynamicComparatorOverrideNotInventoried { comparator, source }
-    );
+    let error = match electrical::prepare_electrical(world, bounds, &geometry.draft, &Default::default()) {
+        Err(error) => error,
+        Ok(_) => panic!("external dynamic override must reject electrical preparation"),
+    };
+    assert_eq!(error, ElectricalError::DynamicComparatorOverrideNotInventoried { comparator, source });
     let message = error.to_string();
     assert!(message.contains(&format!("{comparator:?}")));
     assert!(message.contains(&format!("{source:?}")));
 }
 
-fn lamp_node_at(
-    draft: &ElectricalDraft,
-    position: BlockPos,
-) -> crate::redpiler::program_graph::NodeId {
+fn lamp_node_at(draft: &ElectricalDraft, position: BlockPos) -> crate::redpiler::program_graph::NodeId {
     draft
         .nodes
         .iter()
-        .position(|node| {
-            node.position == Some(position)
-                && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp))
-        })
+        .position(|node| node.position == Some(position) && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp)))
         .map(|index| crate::redpiler::program_graph::NodeId::new(index as u32))
         .unwrap_or_else(|| panic!("no lamp node at {position:?}"))
 }
 
-fn comparator_node_at(
-    draft: &ElectricalDraft,
-    position: BlockPos,
-) -> crate::redpiler::program_graph::NodeId {
+fn comparator_node_at(draft: &ElectricalDraft, position: BlockPos) -> crate::redpiler::program_graph::NodeId {
     draft
         .nodes
         .iter()
-        .position(|node| {
-            node.position == Some(position)
-                && matches!(
-                    node.kind,
-                    CircuitNodeKind::Electrical(NodeType::Comparator { .. })
-                )
-        })
+        .position(|node| node.position == Some(position) && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })))
         .map(|index| crate::redpiler::program_graph::NodeId::new(index as u32))
         .unwrap_or_else(|| panic!("no comparator node at {position:?}"))
 }
@@ -498,20 +383,12 @@ fn electrical_guard_holds(
         Guard::Always => true,
         Guard::State(StateTest::PistonExtended(piston)) => pistons[piston.index()].extended,
         Guard::State(StateTest::PistonHeadPresent(piston)) => pistons[piston.index()].head_present,
-        Guard::State(StateTest::PistonAvailability { piston, is }) => {
-            pistons[piston.index()].availability == *is
-        }
-        Guard::State(StateTest::ResourceAt { resource, contact }) => {
-            resources[resource.index()].at == *contact
-        }
+        Guard::State(StateTest::PistonAvailability { piston, is }) => pistons[piston.index()].availability == *is,
+        Guard::State(StateTest::ResourceAt { resource, contact }) => resources[resource.index()].at == *contact,
         Guard::State(StateTest::ResourceEnabled(resource)) => resources[resource.index()].enabled,
         Guard::Not(other) => !electrical_guard_holds(draft, *other, pistons, resources),
-        Guard::All(children) => children
-            .iter()
-            .all(|child| electrical_guard_holds(draft, *child, pistons, resources)),
-        Guard::Any(children) => children
-            .iter()
-            .any(|child| electrical_guard_holds(draft, *child, pistons, resources)),
+        Guard::All(children) => children.iter().all(|child| electrical_guard_holds(draft, *child, pistons, resources)),
+        Guard::Any(children) => children.iter().any(|child| electrical_guard_holds(draft, *child, pistons, resources)),
         Guard::Site { .. } => panic!("site guard is outside this resource-state check"),
     }
 }
@@ -533,14 +410,13 @@ fn electrical_channels_preserve_direction_and_one_cube_conduction() {
                     port: InputPort::Main,
                 }
     });
+    assert!(weak.is_some(), "redstone block weak power must reach the east-facing query");
     assert!(
-        weak.is_some(),
-        "redstone block weak power must reach the east-facing query"
+        !draft
+            .links
+            .iter()
+            .any(|link| { electrical_source_pos(&draft, link) == source && matches!(link.from_port, PowerPort::Strong(_)) })
     );
-    assert!(!draft.links.iter().any(|link| {
-        electrical_source_pos(&draft, link) == source
-            && matches!(link.from_port, PowerPort::Strong(_))
-    }));
     assert!(draft.nodes.iter().any(|node| {
         node.position == Some(source)
             && matches!(
@@ -685,12 +561,7 @@ fn electrical_comparator_side_tracks_resource_contact_alternatives() {
     ));
     let mut at_side = geometry.draft.initial_resources.clone();
     at_side[0].at = side_contact;
-    assert!(electrical_guard_holds(
-        &draft,
-        side_link.guard,
-        &geometry.draft.initial_pistons,
-        &at_side,
-    ));
+    assert!(electrical_guard_holds(&draft, side_link.guard, &geometry.draft.initial_pistons, &at_side,));
     at_side[0].at = geometry.draft.initial_resources[0].at;
     assert!(!electrical_guard_holds(
         &draft,
@@ -716,9 +587,7 @@ fn electrical_wire_conductor_reads_exclude_dust_self_feedback() {
     let wire_node = draft
         .nodes
         .iter()
-        .position(|node| {
-            node.position == Some(BASE) && matches!(node.kind, CircuitNodeKind::Wire(_))
-        })
+        .position(|node| node.position == Some(BASE) && matches!(node.kind, CircuitNodeKind::Wire(_)))
         .map(|index| crate::redpiler::program_graph::NodeId::new(index as u32))
         .unwrap();
     let cube_site = draft
@@ -729,10 +598,7 @@ fn electrical_wire_conductor_reads_exclude_dust_self_feedback() {
         .unwrap();
     assert!(draft.links.iter().any(|link| {
         link.from == cube_site
-            && link.from_port
-                == PowerPort::Conducted {
-                    include_dust: false,
-                }
+            && link.from_port == PowerPort::Conducted { include_dust: false }
             && link.to
                 == ElectricalTarget::Input {
                     node: wire_node,
@@ -768,23 +634,12 @@ fn electrical_diode_wire_inputs_use_stored_strength() {
     };
     repeater_world.set_block(BASE, Block::RedstoneRepeater { repeater });
     let rear = BASE.offset(BlockFace::South);
-    repeater_world.set_block(
-        rear,
-        Block::RedstoneWire {
-            wire: Default::default(),
-        },
-    );
+    repeater_world.set_block(rear, Block::RedstoneWire { wire: Default::default() });
     let (_, repeater_draft) = prepare_electrical_for(&repeater_world);
     let repeater_node = repeater_draft
         .nodes
         .iter()
-        .position(|node| {
-            node.position == Some(BASE)
-                && matches!(
-                    node.kind,
-                    CircuitNodeKind::Electrical(NodeType::Repeater { .. })
-                )
-        })
+        .position(|node| node.position == Some(BASE) && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. })))
         .map(|index| crate::redpiler::program_graph::NodeId::new(index as u32))
         .unwrap();
     assert!(repeater_draft.links.iter().any(|link| {
@@ -804,12 +659,7 @@ fn electrical_diode_wire_inputs_use_stored_strength() {
     let rear = BASE.offset(BlockFace::South);
     let side = BASE.offset(BlockFace::East);
     for position in [rear, side] {
-        comparator_world.set_block(
-            position,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        comparator_world.set_block(position, Block::RedstoneWire { wire: Default::default() });
     }
     let (_, comparator_draft) = prepare_electrical_for(&comparator_world);
     let comparator_node = comparator_node_at(&comparator_draft, BASE);
@@ -817,11 +667,7 @@ fn electrical_diode_wire_inputs_use_stored_strength() {
         assert!(comparator_draft.links.iter().any(|link| {
             electrical_source_pos(&comparator_draft, link) == position
                 && link.from_port == PowerPort::Stored
-                && link.to
-                    == ElectricalTarget::Input {
-                        node: comparator_node,
-                        port,
-                    }
+                && link.to == ElectricalTarget::Input { node: comparator_node, port }
                 && link.attenuation == 0
         }));
     }
@@ -868,12 +714,7 @@ fn electrical_piston_qc_is_a_separate_sampled_channel() {
                             port: InputPort::Quasi
                         } if node == piston
                     )
-                    && electrical_guard_holds(
-                        draft,
-                        link.guard,
-                        &geometry.draft.initial_pistons,
-                        &geometry.draft.initial_resources,
-                    )
+                    && electrical_guard_holds(draft, link.guard, &geometry.draft.initial_pistons, &geometry.draft.initial_resources)
             })
             .map(|_| 15)
             .max()
@@ -926,12 +767,7 @@ fn electrical_resource_guards_gate_emission_and_conduction() {
                             node: lamp,
                             port: InputPort::Main,
                         }
-                    && electrical_guard_holds(
-                        &draft,
-                        link.guard,
-                        &geometry.draft.initial_pistons,
-                        resources,
-                    )
+                    && electrical_guard_holds(&draft, link.guard, &geometry.draft.initial_pistons, resources)
             })
             .map(|_| 15)
             .max()
@@ -951,21 +787,13 @@ fn electrical_resource_guards_gate_emission_and_conduction() {
     let mut conductor_world = empty();
     conductor_world.set_block(BASE, piston_block(BlockFace::South, true, false));
     conductor_world.set_block(near, Block::from_name("white_wool").unwrap());
-    conductor_world.set_block(
-        near.offset(BlockFace::East),
-        Block::RedstoneLamp { lit: false },
-    );
+    conductor_world.set_block(near.offset(BlockFace::East), Block::RedstoneLamp { lit: false });
     let torch = near.offset(BlockFace::Bottom);
     conductor_world.set_block(torch, Block::RedstoneTorch { lit: true });
     conductor_world.set_block(torch.offset(BlockFace::Bottom), Block::Stone {});
     let (geometry, draft) = prepare_electrical_for(&conductor_world);
     let lamp = lamp_node_at(&draft, near.offset(BlockFace::East));
-    let contact = geometry
-        .draft
-        .contacts
-        .iter()
-        .position(|contact| contact.position == near)
-        .unwrap();
+    let contact = geometry.draft.contacts.iter().position(|contact| contact.position == near).unwrap();
     let conductor_site = draft
         .sites
         .iter()
@@ -1040,12 +868,7 @@ fn electrical_dust_keeps_vertices_routes_and_attenuation() {
     let south = BASE.offset(BlockFace::South);
     let down = south.offset(BlockFace::Bottom);
     for position in [BASE, east, up, south, down] {
-        world.set_block(
-            position,
-            Block::RedstoneWire {
-                wire: Default::default(),
-            },
-        );
+        world.set_block(position, Block::RedstoneWire { wire: Default::default() });
     }
     let (_, draft) = prepare_electrical_for(&world);
     assert_eq!(draft.wires.len(), 5);
@@ -1056,21 +879,11 @@ fn electrical_dust_keeps_vertices_routes_and_attenuation() {
     let root_wire = draft
         .nodes
         .iter()
-        .position(|node| {
-            node.position == Some(BASE) && matches!(node.kind, CircuitNodeKind::Wire(_))
-        })
+        .position(|node| node.position == Some(BASE) && matches!(node.kind, CircuitNodeKind::Wire(_)))
         .unwrap();
     let root_wire = crate::redpiler::program_graph::NodeId::new(root_wire as u32);
-    let root_plan = draft
-        .wires
-        .iter()
-        .find(|plan| plan.node == root_wire)
-        .unwrap();
-    for (actual, canonical) in root_plan
-        .canonical_neighbors
-        .iter()
-        .zip(crate::world::wire_cache::positions(BASE))
-    {
+    let root_plan = draft.wires.iter().find(|plan| plan.node == root_wire).unwrap();
+    for (actual, canonical) in root_plan.canonical_neighbors.iter().zip(crate::world::wire_cache::positions(BASE)) {
         assert_eq!(draft.sites[actual.index()].position, canonical);
     }
     let east_site = draft
@@ -1090,14 +903,10 @@ fn electrical_dust_keeps_vertices_routes_and_attenuation() {
             && link.attenuation == 1
     }));
     assert!(draft.wire_relations.iter().any(|relation| {
-        relation.from == root_wire
-            && relation.kind == WireRelationKind::Ascend
-            && draft.sites[relation.to.index()].position == up
+        relation.from == root_wire && relation.kind == WireRelationKind::Ascend && draft.sites[relation.to.index()].position == up
     }));
     assert!(draft.wire_relations.iter().any(|relation| {
-        relation.from == root_wire
-            && relation.kind == WireRelationKind::Descend
-            && draft.sites[relation.to.index()].position == down
+        relation.from == root_wire && relation.kind == WireRelationKind::Descend && draft.sites[relation.to.index()].position == down
     }));
     assert_eq!(electrical::attenuate_power(15, 14), 1);
     assert_eq!(electrical::attenuate_power(15, 15), 0);
@@ -1146,10 +955,7 @@ fn electrical_comparator_overrides_replace_rear_power_in_order() {
         .iter()
         .find(|plan| container_draft.nodes[plan.node.index()].position == Some(BASE))
         .unwrap();
-    assert_eq!(
-        container.direct_override,
-        Some(ComparatorOverride::Literal(12))
-    );
+    assert_eq!(container.direct_override, Some(ComparatorOverride::Literal(12)));
 
     let mut far_world = empty();
     far_world.set_block(BASE, Block::RedstoneComparator { comparator });
@@ -1162,10 +968,7 @@ fn electrical_comparator_overrides_replace_rear_power_in_order() {
         .find(|plan| far_draft.nodes[plan.node.index()].position == Some(BASE))
         .unwrap();
     assert_eq!(far.direct_override, None);
-    assert_eq!(
-        far.far_override.map(|(_, value, _)| value),
-        Some(ComparatorOverride::Literal(2))
-    );
+    assert_eq!(far.far_override.map(|(_, value, _)| value), Some(ComparatorOverride::Literal(2)));
     assert_eq!(far.far_threshold, 15);
     assert!(far_draft.links.iter().any(|link| {
         link.from_port == PowerPort::Conducted { include_dust: true }
@@ -1204,9 +1007,7 @@ fn electrical_rejects_hopper_comparator_overrides_outside_selection() {
         );
 
         let geometry = prepare_geometry_with_bounds(&world, bounds).unwrap();
-        let error =
-            electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default())
-                .unwrap_err();
+        let error = electrical::prepare_electrical(&world, bounds, &geometry.draft, &Default::default()).unwrap_err();
         assert!(
             matches!(
                 error,
@@ -1218,41 +1019,28 @@ fn electrical_rejects_hopper_comparator_overrides_outside_selection() {
         let message = error.to_string();
         assert!(message.contains("hopper"), "{message}");
         assert!(message.contains(&format!("{hopper:?}")), "{message}");
-        assert!(
-            message.contains("inventory and comparator behavior"),
-            "{message}"
-        );
+        assert!(message.contains("inventory and comparator behavior"), "{message}");
     }
 }
 
 #[test]
 fn electrical_dynamic_comparator_overrides_read_live_component_output() {
     let comparator = RedstoneComparator::new(BlockDirection::South, ComparatorMode::Compare, false);
-    for block in [
-        Block::from_name("copper_bulb").unwrap(),
-        Block::from_name("command_block").unwrap(),
-    ] {
+    for block in [Block::from_name("copper_bulb").unwrap(), Block::from_name("command_block").unwrap()] {
         let mut world = empty();
         world.set_block(BASE, Block::RedstoneComparator { comparator });
         let source = BASE.offset(BlockFace::South);
         world.set_block(source, block);
         let (_, mut draft) = prepare_electrical_for(&world);
         let comparator_node = comparator_node_at(&draft, BASE);
-        let plan = draft
-            .comparators
-            .iter()
-            .find(|plan| plan.node == comparator_node)
-            .unwrap();
+        let plan = draft.comparators.iter().find(|plan| plan.node == comparator_node).unwrap();
         let source_node = draft
             .nodes
             .iter()
             .position(|node| node.position == Some(source))
             .map(|index| crate::redpiler::program_graph::NodeId::new(index as u32))
             .unwrap();
-        assert_eq!(
-            plan.direct_override,
-            Some(ComparatorOverride::LiveComponentOutput(source_node))
-        );
+        assert_eq!(plan.direct_override, Some(ComparatorOverride::LiveComponentOutput(source_node)));
         assert_eq!(
             comparator_override_value(&draft, plan.direct_override.unwrap()),
             match &draft.nodes[source_node.index()].state {
@@ -1261,8 +1049,7 @@ fn electrical_dynamic_comparator_overrides_read_live_component_output() {
             }
         );
 
-        draft.nodes[source_node.index()].state =
-            ComponentState::Electrical(NodeState::with_strength(11));
+        draft.nodes[source_node.index()].state = ComponentState::Electrical(NodeState::with_strength(11));
         assert_eq!(
             comparator_override_value(&draft, plan.direct_override.unwrap()),
             11,
@@ -1297,15 +1084,8 @@ fn electrical_boundary_far_dynamic_override_returns_rejection() {
 
 fn geometry_io_fixture(name: &str) -> PlotWorld {
     let directory = root().join("test_data/instant-pistons-io");
-    let manifest: Value =
-        serde_json::from_slice(&std::fs::read(directory.join("download-manifest.json")).unwrap())
-            .unwrap();
-    let entry = manifest["files"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|entry| entry["name"] == name)
-        .unwrap();
+    let manifest: Value = serde_json::from_slice(&std::fs::read(directory.join("download-manifest.json")).unwrap()).unwrap();
+    let entry = manifest["files"].as_array().unwrap().iter().find(|entry| entry["name"] == name).unwrap();
     let bytes = std::fs::read(directory.join(name)).unwrap();
     assert_eq!(entry["bytes"].as_u64().unwrap() as usize, bytes.len());
     assert_eq!(entry["sha256"], format!("{:x}", Sha256::digest(&bytes)));
@@ -1330,22 +1110,12 @@ fn geometry_requires_matching_heads_for_extended_pistons_and_rejects_conflicts()
             extended: true,
         };
         world.set_block(BASE, Block::Piston { piston });
-        world.set_block(
-            BASE.offset(facing),
-            Block::PistonHead {
-                head: piston.into(),
-            },
-        );
+        world.set_block(BASE.offset(facing), Block::PistonHead { head: piston.into() });
         let parsed = prepare_geometry_for(&world).unwrap();
         assert_eq!(parsed.draft.pistons[0].facing, facing);
         assert!(parsed.draft.initial_pistons[0].extended);
         assert!(parsed.draft.initial_pistons[0].head_present);
-        let base = parsed
-            .draft
-            .contacts
-            .iter()
-            .find(|contact| contact.position == BASE)
-            .unwrap();
+        let base = parsed.draft.contacts.iter().find(|contact| contact.position == BASE).unwrap();
         assert!(base.variants.iter().any(|variant| {
             variant.view
                 == GeometryView::PistonBase {
@@ -1353,9 +1123,11 @@ fn geometry_requires_matching_heads_for_extended_pistons_and_rejects_conflicts()
                     extended: true,
                 }
         }));
-        assert!(base.variants.iter().any(|variant| {
-            variant.view == GeometryView::MovingPistonBase(parsed.draft.pistons[0].id)
-        }));
+        assert!(
+            base.variants
+                .iter()
+                .any(|variant| { variant.view == GeometryView::MovingPistonBase(parsed.draft.pistons[0].id) })
+        );
 
         let mut headless = empty();
         headless.set_block(BASE, Block::Piston { piston });
@@ -1374,11 +1146,7 @@ fn geometry_requires_matching_heads_for_extended_pistons_and_rejects_conflicts()
         malformed.set_block(
             BASE.offset(facing),
             Block::PistonHead {
-                head: RedstonePiston {
-                    sticky: false,
-                    ..piston
-                }
-                .into(),
+                head: RedstonePiston { sticky: false, ..piston }.into(),
             },
         );
         let malformed = prepare_geometry_for(&malformed).unwrap_err();
@@ -1402,12 +1170,7 @@ fn extended_piston_head_guard_matches_its_valid_initial_state() {
         extended: true,
     };
     world.set_block(BASE, Block::Piston { piston });
-    world.set_block(
-        BASE.offset(BlockFace::East),
-        Block::PistonHead {
-            head: piston.into(),
-        },
-    );
+    world.set_block(BASE.offset(BlockFace::East), Block::PistonHead { head: piston.into() });
     let (geometry, electrical) = prepare_electrical_for(&world);
     let near = geometry.draft.pistons[0].near;
     let contact = &electrical.contacts[near.index()];
@@ -1424,25 +1187,13 @@ fn extended_piston_head_guard_matches_its_valid_initial_state() {
     let air = contact
         .variants
         .iter()
-        .find(|variant| {
-            Block::from_id(electrical.profiles[variant.profile.index()].raw_state) == Block::Air
-        })
+        .find(|variant| Block::from_id(electrical.profiles[variant.profile.index()].raw_state) == Block::Air)
         .unwrap();
     let resources = &geometry.draft.initial_resources;
     let initial = &geometry.draft.initial_pistons;
     assert!(initial[0].head_present);
-    assert!(electrical_guard_holds(
-        &electrical,
-        head.when,
-        initial,
-        resources
-    ));
-    assert!(!electrical_guard_holds(
-        &electrical,
-        air.when,
-        initial,
-        resources
-    ));
+    assert!(electrical_guard_holds(&electrical, head.when, initial, resources));
+    assert!(!electrical_guard_holds(&electrical, air.when, initial, resources));
 }
 
 #[test]
@@ -1456,22 +1207,12 @@ fn geometry_includes_both_stationary_base_profiles_for_either_entry_pose() {
         };
         world.set_block(BASE, Block::Piston { piston });
         if initially_extended {
-            world.set_block(
-                BASE.offset(BlockFace::South),
-                Block::PistonHead {
-                    head: piston.into(),
-                },
-            );
+            world.set_block(BASE.offset(BlockFace::South), Block::PistonHead { head: piston.into() });
         }
 
         let parsed = prepare_geometry_for(&world).unwrap();
         assert_eq!(parsed.draft.initial_pistons[0].extended, initially_extended);
-        let base = parsed
-            .draft
-            .contacts
-            .iter()
-            .find(|contact| contact.position == BASE)
-            .unwrap();
+        let base = parsed.draft.contacts.iter().find(|contact| contact.position == BASE).unwrap();
         for extended in [false, true] {
             let variant = base
                 .variants
@@ -1503,19 +1244,10 @@ fn geometry_keeps_empty_ordinary_far_as_fixed_context() {
     world.set_block(far, observer);
 
     let parsed = prepare_geometry_for(&world).unwrap();
-    assert_eq!(
-        parsed.draft.pistons[0].lane,
-        crate::redpiler::program_graph::PistonLane::Empty
-    );
-    let far_contact = parsed
-        .draft
-        .contacts
-        .iter()
-        .find(|contact| contact.position == far)
-        .unwrap();
+    assert_eq!(parsed.draft.pistons[0].lane, crate::redpiler::program_graph::PistonLane::Empty);
+    let far_contact = parsed.draft.contacts.iter().find(|contact| contact.position == far).unwrap();
     assert!(far_contact.variants.iter().any(|variant| {
-        variant.view == GeometryView::Fixed
-            && Block::from_id(parsed.draft.profiles[variant.profile.index()].raw_state) == observer
+        variant.view == GeometryView::Fixed && Block::from_id(parsed.draft.profiles[variant.profile.index()].raw_state) == observer
     }));
     assert!(parsed.report.issues.is_empty());
 }
@@ -1555,10 +1287,7 @@ fn geometry_rejects_an_ordinary_push_after_perpendicular_shared_transfer() {
     blocked.set_block(ordinary, piston_block(BlockFace::South, false, false));
     blocked.set_block(sticky, piston_block(BlockFace::East, true, false));
     blocked.set_block(source, Block::RedstoneBlock {});
-    blocked.set_block(
-        ordinary + BlockPos::new(0, 0, 2),
-        Block::from_name("chest").unwrap(),
-    );
+    blocked.set_block(ordinary + BlockPos::new(0, 0, 2), Block::from_name("chest").unwrap());
     assert!(prepare_geometry_for(&blocked).is_ok());
 
     let mut world = empty();
@@ -1587,18 +1316,8 @@ fn geometry_rejects_an_ordinary_push_after_perpendicular_shared_transfer() {
         sticky: false,
         extended: true,
     };
-    changing_head.set_block(
-        head_base,
-        Block::Piston {
-            piston: head_piston,
-        },
-    );
-    changing_head.set_block(
-        head_base.offset(BlockFace::East),
-        Block::PistonHead {
-            head: head_piston.into(),
-        },
-    );
+    changing_head.set_block(head_base, Block::Piston { piston: head_piston });
+    changing_head.set_block(head_base.offset(BlockFace::East), Block::PistonHead { head: head_piston.into() });
     assert!(matches!(
         prepare_geometry_for(&changing_head),
         Err(GeometryError::Rejected(GeometryIssue::ChangingBlocker {
@@ -1614,11 +1333,7 @@ fn geometry_inventories_shared_or_and_adder_payloads_from_frozen_fixtures() {
         let world = geometry_io_fixture(name);
         let parsed = prepare_geometry_for(&world).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert!(
-            parsed
-                .draft
-                .resources
-                .iter()
-                .any(|resource| resource.spec.contacts.len() > 1),
+            parsed.draft.resources.iter().any(|resource| resource.spec.contacts.len() > 1),
             "{name} did not expose a shared payload group"
         );
     }
@@ -1728,18 +1443,11 @@ fn geometry_rejects_support_loss_and_leaves_all_entry_state_untouched() {
     world.set_block(BASE, piston_block(BlockFace::South, true, false));
     let near = BASE + BlockPos::new(0, 0, 1);
     world.set_block(near, Block::RedstoneBlock {});
-    world.set_block(
-        near + BlockPos::new(0, 1, 0),
-        Block::RedstoneWire {
-            wire: Default::default(),
-        },
-    );
+    world.set_block(near + BlockPos::new(0, 1, 0), Block::RedstoneWire { wire: Default::default() });
     let bounds = (BASE, BASE + BlockPos::new(0, 1, 2));
     let snapshot = || {
-        let blocks = [BASE, near, near + BlockPos::new(0, 1, 0)]
-            .map(|position| world.get_block_raw(position));
-        let entities = [BASE, near, near + BlockPos::new(0, 1, 0)]
-            .map(|position| format!("{:?}", world.get_block_entity(position)));
+        let blocks = [BASE, near, near + BlockPos::new(0, 1, 0)].map(|position| world.get_block_raw(position));
+        let entities = [BASE, near, near + BlockPos::new(0, 1, 0)].map(|position| format!("{:?}", world.get_block_entity(position)));
         (
             blocks,
             entities,
@@ -1748,13 +1456,7 @@ fn geometry_rejects_support_loss_and_leaves_all_entry_state_untouched() {
         )
     };
     let before = snapshot();
-    let result = prepare_geometry(
-        &world,
-        bounds,
-        &[],
-        &TaskMonitor::default(),
-        AnalysisLimits::default(),
-    );
+    let result = prepare_geometry(&world, bounds, &[], &TaskMonitor::default(), AnalysisLimits::default());
     assert!(
         matches!(
             &result,
@@ -1782,13 +1484,7 @@ fn geometry_rejects_support_loss_and_leaves_all_entry_state_untouched() {
         ..AnalysisLimits::default()
     };
     assert!(matches!(
-        prepare_geometry(
-            &world,
-            (BASE, BASE + BlockPos::new(0, 0, 2)),
-            &[],
-            &TaskMonitor::default(),
-            budget,
-        ),
+        prepare_geometry(&world, (BASE, BASE + BlockPos::new(0, 0, 2)), &[], &TaskMonitor::default(), budget,),
         Err(GeometryError::Rejected(GeometryIssue::ContactLimit))
     ));
     assert_eq!(snapshot(), before);
@@ -1803,11 +1499,7 @@ fn geometry_preserves_scheduled_ticks_and_saved_piston_pose() {
     let Block::Piston { piston } = world.get_block(BASE) else {
         unreachable!();
     };
-    assert!(crate::redstone::piston::should_piston_extend(
-        &world,
-        piston.facing,
-        BASE
-    ));
+    assert!(crate::redstone::piston::should_piston_extend(&world, piston.facing, BASE));
 
     let parsed = prepare_geometry_for(&world).unwrap();
     assert!(!parsed.draft.initial_pistons[0].extended);
@@ -1818,12 +1510,7 @@ fn geometry_preserves_scheduled_ticks_and_saved_piston_pose() {
 fn geometry_rejects_moving_cells_and_missing_motion_metadata() {
     let position = BASE + BlockPos::new(0, 0, 1);
     let mut missing = empty();
-    missing.set_block(
-        position,
-        Block::MovingPiston {
-            moving: Default::default(),
-        },
-    );
+    missing.set_block(position, Block::MovingPiston { moving: Default::default() });
     assert!(matches!(
         prepare_geometry_for(&missing),
         Err(GeometryError::Rejected(GeometryIssue::MissingMotionMetadata { position: found }))
@@ -1831,27 +1518,16 @@ fn geometry_rejects_moving_cells_and_missing_motion_metadata() {
     ));
 
     let mut moving = empty();
-    moving.set_block(
-        position,
-        Block::MovingPiston {
-            moving: Default::default(),
-        },
-    );
-    moving.set_block_entity(
-        position,
-        mchprs_blocks::block_entities::BlockEntity::MovingPiston(Default::default()),
-    );
-    moving
-        .piston_state_mut()
-        .motions
-        .push_back(mchprs_world::PistonMotion {
-            pos: position,
-            identity: 1,
-            progress: 0.0,
-            previous_progress: 0.0,
-            last_tick: 0,
-            carried_entity: None,
-        });
+    moving.set_block(position, Block::MovingPiston { moving: Default::default() });
+    moving.set_block_entity(position, mchprs_blocks::block_entities::BlockEntity::MovingPiston(Default::default()));
+    moving.piston_state_mut().motions.push_back(mchprs_world::PistonMotion {
+        pos: position,
+        identity: 1,
+        progress: 0.0,
+        previous_progress: 0.0,
+        last_tick: 0,
+        carried_entity: None,
+    });
     assert!(matches!(
         prepare_geometry_for(&moving),
         Err(GeometryError::Entry(AdmissionIssue::MovingPiston { pos })) if pos == position

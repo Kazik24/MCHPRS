@@ -96,11 +96,7 @@ impl Plot {
     pub(super) fn set_small(&mut self, player: usize, enabled: bool) -> bool {
         let current = &self.players[player];
         if current.small_model.is_some() == enabled {
-            current.send_system_message(if enabled {
-                messages::SMALL_ENABLED
-            } else {
-                messages::SMALL_DISABLED
-            });
+            current.send_system_message(if enabled { messages::SMALL_ENABLED } else { messages::SMALL_DISABLED });
             return true;
         }
         if !enabled
@@ -130,22 +126,14 @@ impl Plot {
         let equipment = current.entity_equipment_packet();
         for (index, viewer) in self.players.iter().enumerate() {
             viewer.send_packet(&scale);
-            viewer.send_packet(if index == player {
-                &own_metadata
-            } else {
-                &metadata
-            });
+            viewer.send_packet(if index == player { &own_metadata } else { &metadata });
             // A proxy in the owner's camera would intercept their block clicks.
             if index != player {
                 viewer.send_packet(&equipment);
                 spawn_model(viewer, current);
             }
         }
-        current.send_system_message(if enabled {
-            messages::SMALL_ENABLED
-        } else {
-            messages::SMALL_DISABLED
-        });
+        current.send_system_message(if enabled { messages::SMALL_ENABLED } else { messages::SMALL_DISABLED });
         true
     }
 
@@ -156,22 +144,14 @@ impl Plot {
                 let Some(model) = &mut player.small_model else {
                     continue;
                 };
-                let pose = [
-                    player.pos.x,
-                    player.pos.y,
-                    player.pos.z,
-                    f64::from(player.yaw),
-                    f64::from(player.pitch),
-                ];
+                let pose = [player.pos.x, player.pos.y, player.pos.z, f64::from(player.yaw), f64::from(player.pitch)];
                 let moved = model.last_pose != Some(pose);
                 if moved {
                     model.last_pose = Some(pose);
                 }
                 let mouth_changed = if player.small_animal == SmallAnimal::Fox {
                     let item = player.inventory[player.selected_slot as usize + 36].as_ref();
-                    let signature = item
-                        .map(crate::container::item_components)
-                        .unwrap_or_default();
+                    let signature = item.map(crate::container::item_components).unwrap_or_default();
                     if model.last_mouth_item.as_ref() == Some(&signature) {
                         false
                     } else {

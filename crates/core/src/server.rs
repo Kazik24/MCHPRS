@@ -11,13 +11,10 @@ use backtrace::Backtrace;
 use bus::Bus;
 use mchprs_network::packets::PacketEncoderExt;
 use mchprs_network::packets::clientbound::{
-    CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginPluginRequest, CLoginSuccess, CPlayerInfo,
-    CPlayerInfoAddPlayer, CPlayerInfoAddPlayerProperty, CPluginMessage, CPong, CResponse,
-    CSetCompression, CTimeUpdate, CWindowItems, ClientBoundPacket,
+    CDisconnectLogin, CHeldItemChange, CJoinGame, CLoginPluginRequest, CLoginSuccess, CPlayerInfo, CPlayerInfoAddPlayer,
+    CPlayerInfoAddPlayerProperty, CPluginMessage, CPong, CResponse, CSetCompression, CTimeUpdate, CWindowItems, ClientBoundPacket,
 };
-use mchprs_network::packets::serverbound::{
-    SHandshake, SLoginPluginResponse, SLoginStart, SPing, SRequest, ServerBoundPacketHandler,
-};
+use mchprs_network::packets::serverbound::{SHandshake, SLoginPluginResponse, SLoginStart, SPing, SRequest, ServerBoundPacketHandler};
 use mchprs_network::{NetworkServer, NetworkState, PlayerPacketSender};
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -219,20 +216,14 @@ impl MinecraftServer {
             if !Path::new("whitelist.json").exists() {
                 File::create("whitelist.json").expect("Failed to create whitelist.json");
             }
-            serde_json::from_reader(
-                File::open("whitelist.json").expect("Failed to open whitelist.json"),
-            )
-            .unwrap_or_default()
+            serde_json::from_reader(File::open("whitelist.json").expect("Failed to open whitelist.json")).unwrap_or_default()
         });
 
         if let Some(permissions_config) = &CONFIG.luckperms {
             permissions::init(permissions_config.clone()).unwrap();
         }
         if let Some(config) = &CONFIG.velocity {
-            assert!(
-                !CONFIG.bungeecord,
-                "Velocity and legacy BungeeCord forwarding are mutually exclusive"
-            );
+            assert!(!CONFIG.bungeecord, "Velocity and legacy BungeeCord forwarding are mutually exclusive");
             velocity::init(config).expect("Cannot initialize Velocity forwarding");
         }
 
@@ -251,15 +242,7 @@ impl MinecraftServer {
         // Load the spawn area plot on server start
         // This plot should be always active
         let (spawn_tx, spawn_rx) = mpsc::channel();
-        Plot::load_and_run(
-            0,
-            0,
-            server.broadcaster.add_rx(),
-            server.plot_sender.clone(),
-            spawn_rx,
-            true,
-            None,
-        );
+        Plot::load_and_run(0, 0, server.broadcaster.add_rx(), server.plot_sender.clone(), spawn_rx, true, None);
         server.running_plots.push(PlotListEntry {
             plot_x: 0,
             plot_z: 0,
@@ -286,10 +269,7 @@ impl MinecraftServer {
     /// Removes the plot entry from the `running_plots` list
     fn handle_plot_unload(&mut self, plot_x: i32, plot_z: i32) {
         info!(plot_x, plot_z, "Plot unloaded");
-        let index = self
-            .running_plots
-            .iter()
-            .position(|p| p.plot_x == plot_x && p.plot_z == plot_z);
+        let index = self.running_plots.iter().position(|p| p.plot_x == plot_x && p.plot_z == plot_z);
         if let Some(index) = index {
             self.running_plots.remove(index);
         }
@@ -334,14 +314,9 @@ impl MinecraftServer {
             self.update_player_entry(player.uuid, plot_x, plot_z);
         }
 
-        let plot = self
-            .running_plots
-            .iter()
-            .find(|p| p.plot_x == plot_x && p.plot_z == plot_z);
+        let plot = self.running_plots.iter().find(|p| p.plot_x == plot_x && p.plot_z == plot_z);
         if let Some(plot) = plot {
-            let _ = plot
-                .priv_message_sender
-                .send(PrivMessage::PlayerEnterPlot(player));
+            let _ = plot.priv_message_sender.send(PrivMessage::PlayerEnterPlot(player));
         } else {
             let (priv_tx, priv_rx) = mpsc::channel();
             info!(plot_x, plot_z, "Loading plot");
@@ -412,9 +387,7 @@ impl MinecraftServer {
             }
         }
 
-        let uuid = clients[client_idx]
-            .uuid
-            .unwrap_or_else(|| Player::generate_offline_uuid(&username));
+        let uuid = clients[client_idx].uuid.unwrap_or_else(|| Player::generate_offline_uuid(&username));
 
         let login_success = CLoginSuccess {
             uuid,
@@ -461,10 +434,7 @@ impl MinecraftServer {
         player.skin_parts = skin_parts;
         // With the proxy permission source the cache arrives after login; the
         // join gate runs once it is applied instead.
-        if permissions::dedicated_permissions()
-            && !player.proxy_permissions_pending()
-            && !player.has_permission("mchprs.access.join")
-        {
+        if permissions::dedicated_permissions() && !player.proxy_permissions_pending() && !player.has_permission("mchprs.access.join") {
             player.kick(json!({"text": messages::PERMISSION_DENIED}).to_string());
             player.client.close_connection();
             return;
@@ -493,9 +463,7 @@ impl MinecraftServer {
         let mut loading = Vec::new();
         loading.write_unsigned_byte(13);
         loading.write_float(0.0);
-        player
-            .client
-            .send_packet(&mchprs_network::packets::PacketEncoder::new(loading, 34));
+        player.client.send_packet(&mchprs_network::packets::PacketEncoder::new(loading, 34));
 
         // Sends the custom brand name to the player
         // (This can be seen in the f3 debug menu in-game)
@@ -575,9 +543,7 @@ impl MinecraftServer {
 
         player.update_player_abilities();
 
-        self.plot_sender
-            .send(Message::PlayerJoined(player))
-            .unwrap();
+        self.plot_sender.send(Message::PlayerJoined(player)).unwrap();
     }
 
     /// Routes a proxy message to the plot thread that currently owns the player.
@@ -586,34 +552,18 @@ impl MinecraftServer {
             return;
         };
         let (plot_x, plot_z) = (entry.plot_x, entry.plot_z);
-        if let Some(plot) = self
-            .running_plots
-            .iter()
-            .find(|plot| plot.plot_x == plot_x && plot.plot_z == plot_z)
-        {
+        if let Some(plot) = self.running_plots.iter().find(|plot| plot.plot_x == plot_x && plot.plot_z == plot_z) {
             let _ = plot.priv_message_sender.send(message);
         }
     }
 
     fn handle_message(&mut self, message: Message) {
         match message {
-            Message::ServerInfo {
-                sender,
-                page,
-                plot,
-                span,
-            } => {
+            Message::ServerInfo { sender, page, plot, span } => {
                 let _entered = span.enter();
                 if let Some((x, z)) = plot {
-                    if let Some(plot) = self
-                        .running_plots
-                        .iter()
-                        .find(|p| p.plot_x == x && p.plot_z == z)
-                    {
-                        if let Err(error) = plot
-                            .priv_message_sender
-                            .send(PrivMessage::Diagnostics(sender, tracing::Span::current()))
-                        {
+                    if let Some(plot) = self.running_plots.iter().find(|p| p.plot_x == x && p.plot_z == z) {
+                        if let Err(error) = plot.priv_message_sender.send(PrivMessage::Diagnostics(sender, tracing::Span::current())) {
                             if let PrivMessage::Diagnostics(sender, _) = error.0 {
                                 sender.send_error_message("Plot is not running");
                             }
@@ -663,51 +613,38 @@ impl MinecraftServer {
                     properties: player.profile_properties.clone(),
                     gamemode: player.gamemode,
                 };
-                if let Err(error) =
-                    database::ensure_user(&format!("{:032x}", player.uuid), &player.username)
-                {
+                if let Err(error) = database::ensure_user(&format!("{:032x}", player.uuid), &player.username) {
                     tracing::error!("Could not register plot user: {error}");
                     player.client.close_connection();
                     return;
                 }
-                self.broadcaster
-                    .broadcast(BroadcastMessage::PlayerJoinedInfo(player_join_info));
+                self.broadcaster.broadcast(BroadcastMessage::PlayerJoinedInfo(player_join_info));
                 self.send_player_to_plot(player, true);
             }
             Message::PlayerLeft(uuid) => {
                 if let Some((_, player)) = self.online_players.remove_entry(&uuid) {
                     info!(player = %player.username, uuid = %format_args!("{uuid:032x}"), "Player left");
                     if CONFIG.native_chat && !crate::redbox::enabled() {
-                        self.broadcaster.broadcast(BroadcastMessage::Chat(
-                            0,
-                            ChatComponent::player_left(&player.username),
-                        ));
+                        self.broadcaster
+                            .broadcast(BroadcastMessage::Chat(0, ChatComponent::player_left(&player.username)));
                     }
                 }
-                self.broadcaster
-                    .broadcast(BroadcastMessage::PlayerLeft(uuid));
+                self.broadcaster.broadcast(BroadcastMessage::PlayerLeft(uuid));
             }
             Message::PlotUnload(plot_x, plot_z) => self.handle_plot_unload(plot_x, plot_z),
             Message::PlotLoadFailed(x, z, reason, initial_player, queued) => {
-                error!(
-                    "Could not load plot {},{}: {}. Original save preserved.",
-                    x, z, reason
-                );
+                error!("Could not load plot {},{}: {}. Original save preserved.", x, z, reason);
                 // Drop the sender before draining: no player can be queued after this point.
                 self.handle_plot_unload(x, z);
-                let players = initial_player
-                    .into_iter()
-                    .chain(queued.try_iter().filter_map(|message| match message {
-                        PrivMessage::PlayerEnterPlot(player) => Some(player),
-                        PrivMessage::Diagnostics(sender, _) => {
-                            sender.send_error_message("Plot failed to load");
-                            None
-                        }
-                        PrivMessage::PlayerTeleportOther(player, _) => Some(player),
-                        PrivMessage::RedBoxTeleport { .. }
-                        | PrivMessage::RedBoxGamemode(..)
-                        | PrivMessage::RedBoxPermissions { .. } => None,
-                    }));
+                let players = initial_player.into_iter().chain(queued.try_iter().filter_map(|message| match message {
+                    PrivMessage::PlayerEnterPlot(player) => Some(player),
+                    PrivMessage::Diagnostics(sender, _) => {
+                        sender.send_error_message("Plot failed to load");
+                        None
+                    }
+                    PrivMessage::PlayerTeleportOther(player, _) => Some(player),
+                    PrivMessage::RedBoxTeleport { .. } | PrivMessage::RedBoxGamemode(..) | PrivMessage::RedBoxPermissions { .. } => None,
+                }));
                 for mut player in players {
                     player.kick(json!({"text": messages::plot_load_failed(x, z)}).to_string());
                     player.client.close_connection();
@@ -724,30 +661,18 @@ impl MinecraftServer {
                     .get(&uuid)
                     .and_then(|player| player.chat_prefix.as_deref())
                     .map_or_else(
-                        || {
-                            ChatComponent::from_legacy_text(
-                                &CONFIG
-                                    .chat_format
-                                    .replace("{username}", &username)
-                                    .replace("{message}", &message),
-                            )
-                        },
+                        || ChatComponent::from_legacy_text(&CONFIG.chat_format.replace("{username}", &username).replace("{message}", &message)),
                         |prefix| ChatComponent::ranked_message(prefix, &username, &message),
                     );
-                self.broadcaster
-                    .broadcast(BroadcastMessage::Chat(uuid, components));
+                self.broadcaster.broadcast(BroadcastMessage::Chat(uuid, components));
             }
             Message::PlayerLeavePlot(player) => {
                 self.send_player_to_plot(player, false);
             }
             Message::CompletePlayerNames(sender, id, text) => {
-                if let Some(response) = plot::commands::complete_teleport(
-                    id,
-                    &text,
-                    self.online_players
-                        .values()
-                        .map(|player| player.username.as_str()),
-                ) {
+                if let Some(response) =
+                    plot::commands::complete_teleport(id, &text, self.online_players.values().map(|player| player.username.as_str()))
+                {
                     sender.send_packet(&response.encode());
                 }
             }
@@ -761,10 +686,7 @@ impl MinecraftServer {
                     let plot_x = other_player.plot_x;
                     let plot_z = other_player.plot_z;
                     let target_username = other_player.username.clone();
-                    let plot_index = self
-                        .running_plots
-                        .iter()
-                        .position(|p| p.plot_x == plot_x && p.plot_z == plot_z);
+                    let plot_index = self.running_plots.iter().position(|p| p.plot_x == plot_x && p.plot_z == plot_z);
                     if let Some(index) = plot_index {
                         self.update_player_entry(player.uuid, plot_x, plot_z);
                         let _ = self.running_plots[index]
@@ -808,8 +730,7 @@ impl MinecraftServer {
                 if let Some(player) = self.online_players.get_mut(&uuid) {
                     player.gamemode = gamemode;
                 }
-                self.broadcaster
-                    .broadcast(BroadcastMessage::PlayerUpdateGamemode(uuid, gamemode));
+                self.broadcaster.broadcast(BroadcastMessage::PlayerUpdateGamemode(uuid, gamemode));
             }
             Message::WhitelistAdd(uuid, username, sender) => {
                 if let Some(whitelist) = &mut self.whitelist {
@@ -818,10 +739,7 @@ impl MinecraftServer {
                     let uuid = HyphenatedUUID(uuid);
                     debug!("Added to whitelist: {} ({})", &username, uuid.to_string());
 
-                    whitelist.push(WhitelistEntry {
-                        name: username,
-                        uuid,
-                    });
+                    whitelist.push(WhitelistEntry { name: username, uuid });
                 } else {
                     sender.send_error_message(messages::WHITELIST_NOT_ENABLED);
                 }
@@ -834,10 +752,7 @@ impl MinecraftServer {
                         if matches {
                             let msg = messages::whitelist_removed(&entry.name);
                             sender.send_system_message(&msg);
-                            debug!(
-                                "Removed from whitelist: {}",
-                                HyphenatedUUID(uuid).to_string()
-                            );
+                            debug!("Removed from whitelist: {}", HyphenatedUUID(uuid).to_string());
                             found = true;
                         }
                         !matches
@@ -881,21 +796,13 @@ impl MinecraftServer {
 }
 
 impl ServerBoundPacketHandler for MinecraftServer {
-    fn handle_client_settings(
-        &mut self,
-        packet: mchprs_network::packets::serverbound::SClientSettings,
-        idx: usize,
-    ) {
+    fn handle_client_settings(&mut self, packet: mchprs_network::packets::serverbound::SClientSettings, idx: usize) {
         self.network.handshaking_clients[idx].displayed_skin_parts = packet.displayed_skin_parts;
     }
     /// RedBox may answer before the player reaches the play phase (for example a
     /// cross-server `/warp` teleport sent on Velocity's server-connected event).
     /// Buffer those messages and apply them when the player finishes logging in.
-    fn handle_plugin_message(
-        &mut self,
-        packet: mchprs_network::packets::serverbound::SPluginMessage,
-        idx: usize,
-    ) {
+    fn handle_plugin_message(&mut self, packet: mchprs_network::packets::serverbound::SPluginMessage, idx: usize) {
         if packet.channel != crate::redbox::CHANNEL || !crate::redbox::enabled() {
             return;
         }
@@ -903,9 +810,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
             return;
         };
         match crate::redbox::decode(&packet.data) {
-            Ok(message) if message.uuid() == uuid => {
-                self.pending_redbox.entry(uuid).or_default().push(message)
-            }
+            Ok(message) if message.uuid() == uuid => self.pending_redbox.entry(uuid).or_default().push(message),
             Ok(_) => warn!("Rejected RedBox message for another player during login"),
             Err(error) => warn!(%error, "Rejected malformed RedBox message during login"),
         }
@@ -942,11 +847,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
             }
         }
     }
-    fn handle_login_acknowledged(
-        &mut self,
-        _: mchprs_network::packets::serverbound::SLoginAcknowledged,
-        idx: usize,
-    ) {
+    fn handle_login_acknowledged(&mut self, _: mchprs_network::packets::serverbound::SLoginAcknowledged, idx: usize) {
         let c = &mut self.network.handshaking_clients[idx];
         if c.protocol_phase != 1 {
             c.close_connection();
@@ -959,11 +860,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
         c.send_packet(&mchprs_network::packets::PacketEncoder::new(flags, 0x0c));
         c.send_packet(&mchprs_network::packets::PacketEncoder::new(vec![0], 0x0e));
     }
-    fn handle_known_packs(
-        &mut self,
-        _: mchprs_network::packets::serverbound::SKnownPacks,
-        idx: usize,
-    ) {
+    fn handle_known_packs(&mut self, _: mchprs_network::packets::serverbound::SKnownPacks, idx: usize) {
         let c = &mut self.network.handshaking_clients[idx];
         if c.protocol_phase != 2 {
             c.close_connection();
@@ -973,10 +870,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
         let mut data = mchprs_network::generated::REGISTRIES;
         while !data.is_empty() {
             let n = u32::from_be_bytes(data[..4].try_into().unwrap()) as usize;
-            c.send_packet(&mchprs_network::packets::PacketEncoder::new(
-                data[5..4 + n].to_vec(),
-                7,
-            ));
+            c.send_packet(&mchprs_network::packets::PacketEncoder::new(data[5..4 + n].to_vec(), 7));
             data = &data[4 + n..];
         }
         c.send_packet(&mchprs_network::packets::PacketEncoder::new(
@@ -985,11 +879,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
         ));
         c.send_packet(&mchprs_network::packets::PacketEncoder::new(vec![], 3));
     }
-    fn handle_configuration_finished(
-        &mut self,
-        _: mchprs_network::packets::serverbound::SConfigurationFinished,
-        idx: usize,
-    ) {
+    fn handle_configuration_finished(&mut self, _: mchprs_network::packets::serverbound::SConfigurationFinished, idx: usize) {
         if self.network.handshaking_clients[idx].protocol_phase != 3 {
             self.network.handshaking_clients[idx].close_connection();
             return;
@@ -1061,10 +951,7 @@ impl ServerBoundPacketHandler for MinecraftServer {
 
     fn handle_ping(&mut self, ping: SPing, client_idx: usize) {
         let client = &mut self.network.handshaking_clients[client_idx];
-        let pong = CPong {
-            payload: ping.payload,
-        }
-        .encode();
+        let pong = CPong { payload: ping.payload }.encode();
         client.send_packet(&pong);
     }
 

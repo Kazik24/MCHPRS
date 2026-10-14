@@ -1,6 +1,6 @@
 # Optimization 02 — replace eligible dust execution with compiled transitions
 
-Status: first query-contraction milestone implemented and awaiting human review. The pass remains experimental and requires `--experimental-dust-paths` with O1; ordinary `-O` does not enable it. This is not the full transition-table/callback-contraction scope below. Every declined candidate retains ordinary Graph/Turbo execution.
+Status: first query-contraction milestone implemented. The pass now runs in the default O1 pipeline with the other graph passes. This is not the full transition-table/callback-contraction scope below. Every declined candidate retains ordinary Graph/Turbo execution.
 
 ## Implemented first milestone
 

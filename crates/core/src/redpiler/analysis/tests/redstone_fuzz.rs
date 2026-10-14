@@ -4,9 +4,7 @@ use super::*;
 use crate::redpiler::BackendKind;
 use mchprs_blocks::BlockDirection;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{
-    ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneRepeater, RedstoneWire,
-};
+use mchprs_blocks::blocks::{ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneRepeater, RedstoneWire};
 use rand::RngExt;
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -90,13 +88,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
     let blocks = circuit(&mut rng);
     let warmup = rng.random_range(0..=16);
     let actions: Vec<_> = (0..64)
-        .map(|_| {
-            (
-                rng.random_range(0..DEPTH),
-                rng.random::<bool>(),
-                rng.random_range(0..=8),
-            )
-        })
+        .map(|_| (rng.random_range(0..DEPTH), rng.random::<bool>(), rng.random_range(0..=8)))
         .collect();
     let mut native = load(&blocks, warmup);
     let mut compiled = load(&blocks, warmup);
@@ -114,9 +106,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
     ) {
         Ok(()) => (),
         Err(error) => {
-            return Err(format!(
-                "seed={seed} optimize={optimize} compile error: {error}"
-            ));
+            return Err(format!("seed={seed} optimize={optimize} compile error: {error}"));
         }
     }
     compiled.clear_scheduled_ticks();
@@ -136,8 +126,7 @@ fn compare(seed: u64, optimize: bool) -> Result<(), String> {
             compiler.flush(&mut compiled);
             for (pos, actual) in compiler.ordinary_sources() {
                 if matches!(native.get_block(pos), Block::RedstoneComparator { .. }) {
-                    let expected =
-                        crate::redstone::source_strength(native.get_block(pos), &native, pos);
+                    let expected = crate::redstone::source_strength(native.get_block(pos), &native, pos);
                     if actual != expected {
                         return Err(format!(
                             "seed={seed} optimize={optimize} warmup={warmup} step={step} tick={tick} comparator strength at {pos:?} actual={actual} expected={expected}; circuit={blocks:?}; actions={:?}",
@@ -227,10 +216,7 @@ fn repeated_lamp_off_requests_keep_the_interpreter_deadline() {
     for _ in 0..3 {
         tick(&mut interpreted, &mut compiled, &mut compiler);
     }
-    assert_eq!(
-        interpreted.get_block(lamp),
-        Block::RedstoneLamp { lit: false }
-    );
+    assert_eq!(interpreted.get_block(lamp), Block::RedstoneLamp { lit: false });
     assert_eq!(compiled.get_block(lamp), interpreted.get_block(lamp));
 
     toggle(&mut interpreted, &mut compiler); // On at t=5.
@@ -334,10 +320,7 @@ fn normal_redstone_matches_interpreter() {
     let cases = std::env::var("MCHPRS_REDSTONE_FUZZ_CASES")
         .map(|value| value.parse::<u64>().expect("invalid fuzz case count"))
         .unwrap_or(64);
-    assert!(
-        cases > 0,
-        "the fuzz campaign must execute at least one case"
-    );
+    assert!(cases > 0, "the fuzz campaign must execute at least one case");
 
     let mut failures = 0;
     for offset in 0..cases {
@@ -352,15 +335,10 @@ fn normal_redstone_matches_interpreter() {
             }
         }
         if (offset + 1) % 1000 == 0 {
-            eprintln!(
-                "Fuzz progress: {} circuits checked, {failures} failing runs",
-                offset + 1
-            );
+            eprintln!("Fuzz progress: {} circuits checked, {failures} failing runs", offset + 1);
         }
     }
-    eprintln!(
-        "Fuzz summary: {cases} circuits, optimization off/on, {failures} failing runs (compile errors count as failures)"
-    );
+    eprintln!("Fuzz summary: {cases} circuits, optimization off/on, {failures} failing runs (compile errors count as failures)");
     assert_eq!(failures, 0, "see the replayable failures above");
 }
 
@@ -403,22 +381,17 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
                     let statistics = compiler.stats().unwrap();
                     let transformations = &statistics.graph.transformations;
-                    let enabled_transformations = transformations
-                        .iter()
-                        .filter(|pass| pass.enabled)
-                        .collect::<Vec<_>>();
-                    assert_eq!(enabled_transformations.len(), if optimize { 1 } else { 0 });
+                    let enabled_transformations = transformations.iter().filter(|pass| pass.enabled).collect::<Vec<_>>();
+                    assert_eq!(enabled_transformations.len(), if optimize { 3 } else { 0 });
                     if optimize {
                         assert_eq!(
-                            enabled_transformations[0].name,
-                            "guard-and-update-reduction"
+                            enabled_transformations.iter().map(|pass| pass.name).collect::<Vec<_>>(),
+                            ["guard-and-update-reduction", "index-turbo-callbacks", "contract-static-dust-paths"]
                         );
                     }
                     compiled.clear_scheduled_ticks();
                     compiler.on_use_block(control);
-                    let Block::Lever { lever } = native.get_block(control) else {
-                        panic!()
-                    };
+                    let Block::Lever { lever } = native.get_block(control) else { panic!() };
                     lever_action(&mut native, control, !lever.powered);
                     for tick in 1..=reset_at {
                         native.tick_interpreted();
@@ -431,29 +404,14 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                             compiler.flush(&mut compiled);
                         }
                         for (pos, strength) in compiler.ordinary_sources() {
-                            assert_eq!(
-                                strength,
-                                crate::redstone::source_strength(
-                                    native.get_block(pos),
-                                    &native,
-                                    pos
-                                )
-                            );
+                            assert_eq!(strength, crate::redstone::source_strength(native.get_block(pos), &native, pos));
                         }
                     }
                     compiler.reset(&mut compiled, bounds);
                     for &(pos, _) in &blocks {
+                        assert_eq!(compiled.get_block(pos), native.get_block(pos), "reset at {pos:?}");
                         assert_eq!(
-                            compiled.get_block(pos),
-                            native.get_block(pos),
-                            "reset at {pos:?}"
-                        );
-                        assert_eq!(
-                            crate::redstone::source_strength(
-                                compiled.get_block(pos),
-                                &compiled,
-                                pos
-                            ),
+                            crate::redstone::source_strength(compiled.get_block(pos), &compiled, pos),
                             crate::redstone::source_strength(native.get_block(pos), &native, pos)
                         );
                     }
@@ -495,8 +453,7 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
             );
         }
         for pos in [BASE.offset(BlockFace::Top), BASE + BlockPos::new(1, 1, 0)] {
-            let wire =
-                crate::redstone::wire::get_regulated_sides(RedstoneWire::default(), &world, pos);
+            let wire = crate::redstone::wire::get_regulated_sides(RedstoneWire::default(), &world, pos);
             world.set_block(pos, Block::RedstoneWire { wire });
             crate::redstone::update(world.get_block(pos), &mut world, pos, None);
         }
@@ -534,15 +491,8 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
                 }
                 changes += usize::from(previous != native.get_block(torch));
                 previous = native.get_block(torch);
-                let (_, actual) = compiler
-                    .ordinary_sources()
-                    .into_iter()
-                    .find(|(pos, _)| *pos == torch)
-                    .unwrap();
-                assert_eq!(
-                    actual,
-                    crate::redstone::source_strength(native.get_block(torch), &native, torch)
-                );
+                let (_, actual) = compiler.ordinary_sources().into_iter().find(|(pos, _)| *pos == torch).unwrap();
+                assert_eq!(actual, crate::redstone::source_strength(native.get_block(torch), &native, torch));
             }
             assert!(changes >= 8, "fixture must be a live oscillator");
             compiler.reset(&mut compiled, bounds);
@@ -553,15 +503,8 @@ fn torch_oscillator_compiles_and_keeps_oscillating_after_reset() {
             for _ in 0..16 {
                 native.tick_interpreted();
                 compiled.tick_interpreted();
-                for offset in [
-                    BlockPos::new(1, 0, 0),
-                    BlockPos::new(0, 1, 0),
-                    BlockPos::new(1, 1, 0),
-                ] {
-                    assert_eq!(
-                        compiled.get_block(BASE + offset),
-                        native.get_block(BASE + offset)
-                    );
+                for offset in [BlockPos::new(1, 0, 0), BlockPos::new(0, 1, 0), BlockPos::new(1, 1, 0)] {
+                    assert_eq!(compiled.get_block(BASE + offset), native.get_block(BASE + offset));
                 }
             }
         }
@@ -589,14 +532,8 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
         ),
         (plate, Block::StonePressurePlate { powered: false }),
         (command, Block::from_name("command_block").unwrap()),
-        (
-            BASE + BlockPos::new(3, 0, 1),
-            Block::RedstoneLamp { lit: false },
-        ),
-        (
-            BASE + BlockPos::new(3, 0, 3),
-            Block::RedstoneLamp { lit: false },
-        ),
+        (BASE + BlockPos::new(3, 0, 1), Block::RedstoneLamp { lit: false }),
+        (BASE + BlockPos::new(3, 0, 3), Block::RedstoneLamp { lit: false }),
         (
             BASE + BlockPos::new(1, 0, -1),
             Block::Observer {
@@ -606,10 +543,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
                 },
             },
         ),
-        (
-            BASE + BlockPos::new(1, 0, -2),
-            Block::RedstoneLamp { lit: false },
-        ),
+        (BASE + BlockPos::new(1, 0, -2), Block::RedstoneLamp { lit: false }),
     ];
     for z in [0, 3] {
         blocks.push((
@@ -621,11 +555,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
         blocks.push((
             BASE + BlockPos::new(2, 0, z),
             Block::RedstoneComparator {
-                comparator: RedstoneComparator::new(
-                    BlockDirection::West,
-                    ComparatorMode::Compare,
-                    false,
-                ),
+                comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Compare, false),
             },
         ));
     }
@@ -668,10 +598,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
                     native.set_block(button, Block::StoneButton { button: state });
                     native.schedule_tick(button, 10, TickPriority::Normal);
                     crate::redstone::update_surrounding_blocks(&mut native, button);
-                    crate::redstone::update_surrounding_blocks(
-                        &mut native,
-                        button.offset(BlockFace::Bottom),
-                    );
+                    crate::redstone::update_surrounding_blocks(&mut native, button.offset(BlockFace::Bottom));
                 }
             }
             if [3, 8, 25, 29].contains(&tick) {
@@ -679,10 +606,7 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
                 compiler.set_pressure_plate(plate, powered);
                 native.set_block(plate, Block::StonePressurePlate { powered });
                 crate::redstone::update_surrounding_blocks(&mut native, plate);
-                crate::redstone::update_surrounding_blocks(
-                    &mut native,
-                    plate.offset(BlockFace::Bottom),
-                );
+                crate::redstone::update_surrounding_blocks(&mut native, plate.offset(BlockFace::Bottom));
             }
             if tick > 0 {
                 native.tick_interpreted();
@@ -690,22 +614,11 @@ fn native_controls_observers_and_command_outputs_match_interpreter() {
             }
             compiler.flush(&mut compiled);
             for &(pos, _) in &blocks {
-                assert_eq!(
-                    compiled.get_block(pos),
-                    native.get_block(pos),
-                    "tick={tick} pos={pos:?}"
-                );
+                assert_eq!(compiled.get_block(pos), native.get_block(pos), "tick={tick} pos={pos:?}");
             }
-            assert_eq!(
-                compiled.command_output().collect::<Vec<_>>(),
-                native.command_output().collect::<Vec<_>>()
-            );
+            assert_eq!(compiled.command_output().collect::<Vec<_>>(), native.command_output().collect::<Vec<_>>());
         }
-        assert_eq!(
-            compiled.command_output().count(),
-            2,
-            "both button pulses must execute the command"
-        );
+        assert_eq!(compiled.command_output().count(), 2, "both button pulses must execute the command");
         let before = compiled.command_output().count();
         compiler.reset(&mut compiled, bounds);
         assert_eq!(compiled.command_output().count(), before);
@@ -722,12 +635,7 @@ fn graph_compilation_errors_preserve_world_and_scheduler() {
         comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Subtract, false),
     };
     let mut world = load(&[(BASE, block)], 0);
-    world.set_block_entity(
-        BASE,
-        BlockEntity::Comparator {
-            output_strength: 16,
-        },
-    );
+    world.set_block_entity(BASE, BlockEntity::Comparator { output_strength: 16 });
     world.schedule_tick(BASE, 1, TickPriority::High);
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
     let mut compiler = Compiler::default();
@@ -756,10 +664,7 @@ fn coalesced_repeaters_preserve_display_and_pending_work_on_reset() {
     let control = BASE;
     let dust = BASE + BlockPos::new(1, 0, 0);
     let repeaters = [dust.offset(BlockFace::North), dust.offset(BlockFace::South)];
-    let lamps = [
-        repeaters[0].offset(BlockFace::North),
-        repeaters[1].offset(BlockFace::South),
-    ];
+    let lamps = [repeaters[0].offset(BlockFace::North), repeaters[1].offset(BlockFace::South)];
     let blocks = [
         (
             control,
@@ -838,11 +743,7 @@ fn coalesced_repeaters_preserve_display_and_pending_work_on_reset() {
                 }
                 compiler.reset(&mut compiled, bounds);
                 for pos in repeaters.into_iter().chain(lamps) {
-                    assert_eq!(
-                        compiled.get_block(pos),
-                        native.get_block(pos),
-                        "reset at {pos:?}"
-                    );
+                    assert_eq!(compiled.get_block(pos), native.get_block(pos), "reset at {pos:?}");
                 }
                 lever_action(&mut native, control, false);
                 lever_action(&mut compiled, control, false);

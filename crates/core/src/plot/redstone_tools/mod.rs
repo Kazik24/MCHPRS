@@ -93,9 +93,7 @@ impl ToolNotice {
         let (text, color) = match self {
             Self::Error(error) => (error, "red"),
             Self::SelectionEnabled => (messages::SELECTION_SIDEBAR_ENABLED.into(), "light_purple"),
-            Self::SelectionDisabled => {
-                (messages::SELECTION_SIDEBAR_DISABLED.into(), "light_purple")
-            }
+            Self::SelectionDisabled => (messages::SELECTION_SIDEBAR_DISABLED.into(), "light_purple"),
             Self::ItemGiven => (messages::TOOL_ITEM_GIVEN.into(), "light_purple"),
             Self::Stacked(count) => (messages::copies_stacked(count), "light_purple"),
             Self::AutoStackEnabled => (messages::AUTO_STACK_ENABLED.into(), "light_purple"),
@@ -134,12 +132,8 @@ struct SelectionBounds {
 
 impl SelectionBounds {
     fn from_player(player: &Player, world: &PlotWorld) -> Result<Self> {
-        let first = player
-            .first_position
-            .ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_FIRST))?;
-        let second = player
-            .second_position
-            .ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_SECOND))?;
+        let first = player.first_position.ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_FIRST))?;
+        let second = player.second_position.ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_SECOND))?;
         Self::new(first.min(second), first.max(second), world)
     }
 
@@ -160,23 +154,15 @@ impl SelectionBounds {
 
 impl PlotWorld {
     pub(crate) fn contains_position(&self, pos: BlockPos) -> bool {
-        (0..PLOT_BLOCK_HEIGHT).contains(&pos.y)
-            && Plot::in_plot_bounds(self.x, self.z, pos.x, pos.z)
+        (0..PLOT_BLOCK_HEIGHT).contains(&pos.y) && Plot::in_plot_bounds(self.x, self.z, pos.x, pos.z)
     }
 }
 
 impl Plot {
-    pub(super) fn handle_redstone_tools_command(
-        &mut self,
-        player: usize,
-        command: &str,
-        args: &[&str],
-    ) -> bool {
+    pub(super) fn handle_redstone_tools_command(&mut self, player: usize, command: &str, args: &[&str]) -> bool {
         if let Some(tool) = ToolCommand::help_topic(command, args) {
             match self.check_tool_access(player, tool) {
-                Ok(()) => self.players[player].send_system_message(
-                    super::help::page(Some("tools")).expect("tools help page"),
-                ),
+                Ok(()) => self.players[player].send_system_message(super::help::page(Some("tools")).expect("tools help page")),
                 Err(error) => {
                     ToolNotice::Error(error.to_string()).send(&self.players[player]);
                 }
@@ -198,9 +184,7 @@ impl Plot {
             ToolNotice::AutoStackDisabled.send(&self.players[player]);
             return true;
         }
-        let result = self
-            .check_tool_access(player, tool)
-            .and_then(|()| self.execute_tool(player, tool, args));
+        let result = self.check_tool_access(player, tool).and_then(|()| self.execute_tool(player, tool, args));
         if let Err(error) = result {
             ToolNotice::Error(error.to_string()).send(&self.players[player]);
         }
@@ -214,18 +198,13 @@ impl Plot {
         }
         if matches!(
             command,
-            ToolCommand::Wire
-                | ToolCommand::Find
-                | ToolCommand::SignSearch
-                | ToolCommand::RStack
-                | ToolCommand::AutoStack
+            ToolCommand::Wire | ToolCommand::Find | ToolCommand::SignSearch | ToolCommand::RStack | ToolCommand::AutoStack
         ) && if crate::permissions::dedicated_permissions() {
             !player.can_edit_plot(self.owner, (self.world.x, self.world.z))
         } else {
             !player.has_permission("plots.worldedit.bypass")
                 && self.owner != Some(player.uuid)
-                && !(self.owner.is_some()
-                    && super::database::is_plot_member(self.world.x, self.world.z, player.uuid))
+                && !(self.owner.is_some() && super::database::is_plot_member(self.world.x, self.world.z, player.uuid))
         } {
             bail!(messages::YOU_CAN_ONLY_USE_WORLDEDIT_ON);
         }

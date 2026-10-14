@@ -29,28 +29,18 @@ struct BlockSound {
     pitch: f32,
 }
 static BLOCKS: Lazy<HashMap<String, BlockSound>> = Lazy::new(|| {
-    serde_json::from_str::<Vec<BlockSound>>(include_str!(
-        "../../../mc_data/1.21.5/block_sounds.json"
-    ))
-    .expect("Invalid checked-in block sounds")
-    .into_iter()
-    .map(|profile| (profile.name.clone(), profile))
-    .collect()
+    serde_json::from_str::<Vec<BlockSound>>(include_str!("../../../mc_data/1.21.5/block_sounds.json"))
+        .expect("Invalid checked-in block sounds")
+        .into_iter()
+        .map(|profile| (profile.name.clone(), profile))
+        .collect()
 });
 
 pub fn event_id(name: &str) -> i32 {
-    *IDS.get(name)
-        .expect("Sound missing from the pinned 1.21.5 registry")
+    *IDS.get(name).expect("Sound missing from the pinned 1.21.5 registry")
 }
 
-pub fn play(
-    world: &mut impl World,
-    pos: BlockPos,
-    name: &str,
-    volume: f32,
-    pitch: f32,
-    excluded: Option<u128>,
-) {
+pub fn play(world: &mut impl World, pos: BlockPos, name: &str, volume: f32, pitch: f32, excluded: Option<u128>) {
     world.play_sound_for_action(pos, event_id(name), 4, volume, pitch, excluded);
 }
 pub fn placed(world: &mut impl World, pos: BlockPos, block: Block, player: u128) {
@@ -71,22 +61,8 @@ pub fn placed(world: &mut impl World, pos: BlockPos, block: Block, player: u128)
 /// Only genuine control transitions make sounds; powered buttons are idempotent.
 pub fn control_used(world: &mut impl World, pos: BlockPos, block: Block, player: u128) {
     match block {
-        Block::Lever { lever } => play(
-            world,
-            pos,
-            "block.lever.click",
-            0.3,
-            if lever.powered { 0.5 } else { 0.6 },
-            Some(player),
-        ),
-        Block::StoneButton { button } if !button.powered => play(
-            world,
-            pos,
-            "block.stone_button.click_on",
-            1.0,
-            1.0,
-            Some(player),
-        ),
+        Block::Lever { lever } => play(world, pos, "block.lever.click", 0.3, if lever.powered { 0.5 } else { 0.6 }, Some(player)),
+        Block::StoneButton { button } if !button.powered => play(world, pos, "block.stone_button.click_on", 1.0, 1.0, Some(player)),
         Block::RedstoneComparator { comparator } => play(
             world,
             pos,
@@ -113,28 +89,10 @@ pub(crate) struct Emission {
     seed: i64,
 }
 impl Emission {
-    pub fn new(
-        pos: BlockPos,
-        sound_id: i32,
-        category: i32,
-        volume: f32,
-        pitch: f32,
-        excluded: Option<u128>,
-    ) -> Option<Self> {
-        (pos.x
-            .checked_mul(8)
-            .and_then(|x| x.checked_add(4))
-            .is_some()
-            && pos
-                .y
-                .checked_mul(8)
-                .and_then(|y| y.checked_add(4))
-                .is_some()
-            && pos
-                .z
-                .checked_mul(8)
-                .and_then(|z| z.checked_add(4))
-                .is_some()
+    pub fn new(pos: BlockPos, sound_id: i32, category: i32, volume: f32, pitch: f32, excluded: Option<u128>) -> Option<Self> {
+        (pos.x.checked_mul(8).and_then(|x| x.checked_add(4)).is_some()
+            && pos.y.checked_mul(8).and_then(|y| y.checked_add(4)).is_some()
+            && pos.z.checked_mul(8).and_then(|z| z.checked_add(4)).is_some()
             && (0..i32::MAX).contains(&sound_id)
             && (0..=9).contains(&category)
             && volume.is_finite()

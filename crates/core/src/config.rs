@@ -18,8 +18,7 @@ pub(crate) fn save_history_limit(mib: i64) -> Result<(), String> {
     let text = fs::read_to_string(&*CONFIG_PATH).map_err(|e| e.to_string())?;
     let mut doc = text.parse::<Document>().map_err(|e| e.to_string())?;
     doc["rhistory_memory_limit_mib"] = value(mib);
-    mchprs_save_data::atomic::write(&CONFIG_PATH, doc.to_string().as_bytes())
-        .map_err(messages::history_limit_save_failed)
+    mchprs_save_data::atomic::write(&CONFIG_PATH, doc.to_string().as_bytes()).map_err(messages::history_limit_save_failed)
 }
 
 trait ConfigSerializeDefault {
@@ -47,9 +46,8 @@ impl ConfigSerializeDefault for u32 {
 }
 impl ConfigSerializeDefault for u64 {
     fn fix_config(self, name: &str, doc: &mut Document) {
-        doc.entry(name).or_insert_with(|| {
-            value(i64::try_from(self).expect("Config default exceeds TOML integer range"))
-        });
+        doc.entry(name)
+            .or_insert_with(|| value(i64::try_from(self).expect("Config default exceeds TOML integer range")));
     }
 }
 
@@ -148,10 +146,7 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            let path = std::env::temp_dir().join(format!(
-                "mchprs-chat-migration-{}-{index}.toml",
-                std::process::id()
-            ));
+            let path = std::env::temp_dir().join(format!("mchprs-chat-migration-{}-{index}.toml", std::process::id()));
             fs::write(&path, text).unwrap();
             assert_eq!(ServerConfig::load(&path).native_chat, expected);
             let patched = fs::read_to_string(&path).unwrap();
@@ -163,19 +158,9 @@ mod tests {
 
     #[test]
     fn reads_and_patches_the_selected_config_file() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "mchprs-config-{}-{unique}.toml",
-            std::process::id()
-        ));
-        fs::write(
-            &path,
-            "motd = \"Selected container config\"\nfast_render_send_rate = 10\n",
-        )
-        .unwrap();
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("mchprs-config-{}-{unique}.toml", std::process::id()));
+        fs::write(&path, "motd = \"Selected container config\"\nfast_render_send_rate = 10\n").unwrap();
         let config = ServerConfig::load(&path);
         let patched = fs::read_to_string(&path).unwrap();
         fs::remove_file(&path).unwrap();
@@ -195,10 +180,7 @@ mod tests {
 
     #[test]
     fn preserves_configured_schematic_save_prefix() {
-        let path = std::env::temp_dir().join(format!(
-            "mchprs-schematic-prefix-{}.toml",
-            std::process::id()
-        ));
+        let path = std::env::temp_dir().join(format!("mchprs-schematic-prefix-{}.toml", std::process::id()));
         for prefix in ["./mroww/", "aaa@", "./mroww/aaa@"] {
             fs::write(&path, format!("schematic_save_prefix = {prefix:?}\n")).unwrap();
             assert_eq!(ServerConfig::load(&path).schematic_save_prefix, prefix);

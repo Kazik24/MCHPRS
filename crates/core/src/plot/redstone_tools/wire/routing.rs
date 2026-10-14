@@ -37,14 +37,10 @@ struct Reservation {
 
 impl Reservation {
     fn new(bytes: usize) -> Result<Self, String> {
-        let budget = SNAPSHOT_BUDGET.reserve(bytes).ok_or_else(|| {
-            "Wire snapshot memory budget reached; try again after another route finishes."
-                .to_owned()
-        })?;
-        Ok(Self {
-            bytes,
-            _budget: budget,
-        })
+        let budget = SNAPSHOT_BUDGET
+            .reserve(bytes)
+            .ok_or_else(|| "Wire snapshot memory budget reached; try again after another route finishes.".to_owned())?;
+        Ok(Self { bytes, _budget: budget })
     }
 
     fn grow(&mut self, bytes: usize) -> Result<(), String> {
@@ -52,14 +48,9 @@ impl Reservation {
             .bytes
             .checked_add(bytes)
             .filter(|&total| total <= MAX_SNAPSHOT_BYTES)
-            .ok_or_else(|| {
-                "Wire snapshot memory budget reached; place a shorter segment.".to_owned()
-            })?;
+            .ok_or_else(|| "Wire snapshot memory budget reached; place a shorter segment.".to_owned())?;
         if !self._budget.grow(bytes) {
-            return Err(
-                "Wire snapshot memory budget reached; try again after another route finishes."
-                    .into(),
-            );
+            return Err("Wire snapshot memory budget reached; try again after another route finishes.".into());
         }
         self.bytes = total;
         Ok(())
@@ -95,12 +86,7 @@ impl Data {
     fn position(&self, i: usize) -> BlockPos {
         let x = i % self.size.x as usize;
         let yz = i / self.size.x as usize;
-        self.bounds.0
-            + BlockPos::new(
-                x as i32,
-                (yz / self.size.z as usize) as i32,
-                (yz % self.size.z as usize) as i32,
-            )
+        self.bounds.0 + BlockPos::new(x as i32, (yz / self.size.z as usize) as i32, (yz % self.size.z as usize) as i32)
     }
 
     fn index(&self, p: BlockPos) -> Option<usize> {
@@ -134,10 +120,7 @@ impl Data {
         }
         if self.tails.len() == self.tails.capacity() {
             let old = self.tails.capacity();
-            let capacity = old
-                .max(4)
-                .saturating_mul(2)
-                .min(MAX_CELLS - self.blocks.len());
+            let capacity = old.max(4).saturating_mul(2).min(MAX_CELLS - self.blocks.len());
             // Reserve before allocation. This includes Vec entries plus a hash
             // table's keys, values, control bytes, and power-of-two rounding.
             self._reservation.grow((capacity - old) * 96)?;
@@ -151,15 +134,8 @@ impl Data {
 }
 
 enum CaptureRay {
-    Inward {
-        pos: BlockPos,
-        boundary: BlockPos,
-        face: BlockFace,
-    },
-    Outward {
-        pos: BlockPos,
-        face: BlockFace,
-    },
+    Inward { pos: BlockPos, boundary: BlockPos, face: BlockFace },
+    Outward { pos: BlockPos, face: BlockFace },
 }
 
 pub(super) struct Capture {
@@ -176,19 +152,10 @@ impl Capture {
     pub(super) fn new(world: &PlotWorld, start: BlockPos, end: BlockPos) -> Result<Self, String> {
         let world_bounds = world.get_corners();
         if world.is_cursed() {
-            return Err(
-                "Wire routing requires ordinary placement rules (cursed plots are unsupported)."
-                    .into(),
-            );
+            return Err("Wire routing requires ordinary placement rules (cursed plots are unsupported).".into());
         }
-        if !contains(world_bounds, start)
-            || !contains(world_bounds, end)
-            || start.y == 0
-            || end.y == 0
-        {
-            return Err(
-                "Both wire endpoints must be inside the plot with room for support.".into(),
-            );
+        if !contains(world_bounds, start) || !contains(world_bounds, end) || start.y == 0 || end.y == 0 {
+            return Err("Both wire endpoints must be inside the plot with room for support.".into());
         }
         let padding = BlockPos::new(4, 2, 4);
         let route_bounds = (
@@ -196,10 +163,7 @@ impl Capture {
             (start.max(end) + padding).min(world_bounds.1),
         );
         let halo = BlockPos::new(MOTION_REACH, MOTION_REACH + 1, MOTION_REACH);
-        let bounds = (
-            (route_bounds.0 - halo).max(world_bounds.0),
-            (route_bounds.1 + halo).min(world_bounds.1),
-        );
+        let bounds = ((route_bounds.0 - halo).max(world_bounds.0), (route_bounds.1 + halo).min(world_bounds.1));
         let size = bounds.1 - bounds.0 + BlockPos::new(1, 1, 1);
         let cells = size.x as usize * size.y as usize * size.z as usize;
         if cells > MAX_CELLS {
@@ -208,9 +172,7 @@ impl Capture {
         let mut versions = Vec::new();
         for x in bounds.0.x.div_euclid(16)..=bounds.1.x.div_euclid(16) {
             for z in bounds.0.z.div_euclid(16)..=bounds.1.z.div_euclid(16) {
-                let chunk = world
-                    .get_chunk(x, z)
-                    .ok_or("Wire routing requires loaded safety context.")?;
+                let chunk = world.get_chunk(x, z).ok_or("Wire routing requires loaded safety context.")?;
                 versions.push((x, z, chunk.routing_snapshot_version()));
             }
         }
@@ -256,17 +218,11 @@ impl Capture {
         }
         // Electrical context stays rectangular. Only occupied mechanical rays
         // which can reach mutable cells need context beyond that rectangle.
-        while self.next == data.blocks.len()
-            && self.face < 6
-            && visited < 1024
-            && started.elapsed() < SLICE_TIME
-        {
+        while self.next == data.blocks.len() && self.face < 6 && visited < 1024 && started.elapsed() < SLICE_TIME {
             visited += 1;
             self.reads += 1;
             if self.reads > MAX_VISITS {
-                return Err(
-                    "Wire mechanical snapshot budget reached; place a shorter segment.".into(),
-                );
+                return Err("Wire mechanical snapshot budget reached; place a shorter segment.".into());
             }
             let faces = [
                 BlockFace::West,
@@ -280,19 +236,10 @@ impl Capture {
             let axis = self.face / 2;
             if let Some(ray) = self.ray.take() {
                 match ray {
-                    CaptureRay::Inward {
-                        pos,
-                        boundary,
-                        face,
-                    } => {
+                    CaptureRay::Inward { pos, boundary, face } => {
                         let block = Block::from_id(data.cell(pos).unwrap());
-                        let mutable = (
-                            data.route_bounds.0.offset(BlockFace::Bottom),
-                            data.route_bounds.1,
-                        );
-                        if contains(mutable, pos)
-                            && matches!(block, Block::Air {} | Block::RedstoneWire { .. })
-                        {
+                        let mutable = (data.route_bounds.0.offset(BlockFace::Bottom), data.route_bounds.1);
+                        if contains(mutable, pos) && matches!(block, Block::Air {} | Block::RedstoneWire { .. }) {
                             let pos = boundary.offset(face);
                             if contains(data.world_bounds, pos) {
                                 self.ray = Some(CaptureRay::Outward { pos, face });
@@ -300,24 +247,10 @@ impl Capture {
                         } else if !motion_barrier(block) {
                             let pos = pos.offset(face.opposite());
                             let coord = [pos.x, pos.y, pos.z][axis];
-                            let far = if self.face % 2 == 0 {
-                                mutable.1
-                            } else {
-                                mutable.0
-                            };
+                            let far = if self.face % 2 == 0 { mutable.1 } else { mutable.0 };
                             let far = [far.x, far.y, far.z][axis];
-                            if contains(data.bounds, pos)
-                                && if self.face % 2 == 0 {
-                                    coord <= far
-                                } else {
-                                    coord >= far
-                                }
-                            {
-                                self.ray = Some(CaptureRay::Inward {
-                                    pos,
-                                    boundary,
-                                    face,
-                                });
+                            if contains(data.bounds, pos) && if self.face % 2 == 0 { coord <= far } else { coord >= far } {
+                                self.ray = Some(CaptureRay::Inward { pos, boundary, face });
                             }
                         }
                     }
@@ -327,14 +260,8 @@ impl Capture {
                         } else {
                             let key = (pos.x.div_euclid(16), pos.z.div_euclid(16));
                             if !self.versions.iter().any(|&(x, z, _)| (x, z) == key) {
-                                let chunk = world
-                                    .get_chunk(key.0, key.1)
-                                    .ok_or("Wire routing requires loaded mechanical context.")?;
-                                self.versions.push((
-                                    key.0,
-                                    key.1,
-                                    chunk.routing_snapshot_version(),
-                                ));
+                                let chunk = world.get_chunk(key.0, key.1).ok_or("Wire routing requires loaded mechanical context.")?;
+                                self.versions.push((key.0, key.1, chunk.routing_snapshot_version()));
                             }
                             let id = geometry(world.get_block(pos));
                             data.insert_tail(pos, id)?;
@@ -355,16 +282,8 @@ impl Capture {
                 1 => [0, 2],
                 _ => [0, 1],
             };
-            let min = [
-                data.route_bounds.0.x,
-                data.route_bounds.0.y - 1,
-                data.route_bounds.0.z,
-            ];
-            let max = [
-                data.route_bounds.1.x,
-                data.route_bounds.1.y,
-                data.route_bounds.1.z,
-            ];
+            let min = [data.route_bounds.0.x, data.route_bounds.0.y - 1, data.route_bounds.0.z];
+            let max = [data.route_bounds.1.x, data.route_bounds.1.y, data.route_bounds.1.z];
             let width = (max[other[0]] - min[other[0]] + 1) as usize;
             let height = (max[other[1]] - min[other[1]] + 1) as usize;
             if self.seed == width * height {
@@ -372,11 +291,7 @@ impl Capture {
                 self.seed = 0;
                 continue;
             }
-            let bound = if self.face % 2 == 0 {
-                data.bounds.0
-            } else {
-                data.bounds.1
-            };
+            let bound = if self.face % 2 == 0 { data.bounds.0 } else { data.bounds.1 };
             let mut coords = [bound.x, bound.y, bound.z];
             coords[other[0]] = min[other[0]] + (self.seed % width) as i32;
             coords[other[1]] = min[other[1]] + (self.seed / width) as i32;
@@ -409,11 +324,10 @@ impl Snapshot {
     pub(super) fn is_current(&self, world: &PlotWorld) -> bool {
         !world.is_cursed()
             && self.data.world_bounds == world.get_corners()
-            && self.versions.iter().all(|&(x, z, version)| {
-                world
-                    .get_chunk(x, z)
-                    .is_some_and(|chunk| chunk.routing_snapshot_version() == version)
-            })
+            && self
+                .versions
+                .iter()
+                .all(|&(x, z, version)| world.get_chunk(x, z).is_some_and(|chunk| chunk.routing_snapshot_version() == version))
     }
 
     #[cfg(test)]
@@ -487,11 +401,7 @@ impl GeometryCheck {
         while self.next < data.cells() && inspected < 1024 && started.elapsed() < SLICE_TIME {
             let (p, old) = data.proof_cell(self.next);
             self.next += 1;
-            if self
-                .dirty
-                .contains(&(p.x.div_euclid(16), p.z.div_euclid(16)))
-                && geometry(world.get_block(p)) != old
-            {
+            if self.dirty.contains(&(p.x.div_euclid(16), p.z.div_euclid(16))) && geometry(world.get_block(p)) != old {
                 return Some(false);
             }
             inspected += 1;
@@ -541,11 +451,7 @@ struct Budget<'a> {
 }
 
 impl<'a> Budget<'a> {
-    fn new(
-        snapshot: &Snapshot,
-        start: BlockPos,
-        cancel: &'a AtomicBool,
-    ) -> Result<Self, SearchResult> {
+    fn new(snapshot: &Snapshot, start: BlockPos, cancel: &'a AtomicBool) -> Result<Self, SearchResult> {
         let mut budget = Self {
             cancel,
             started: Instant::now(),
@@ -564,13 +470,7 @@ impl<'a> Budget<'a> {
                 if block.is_solid() {
                     for strong_face in BlockFace::values() {
                         let source = neighbor.offset(strong_face);
-                        if power::emits_strong_power(
-                            before.original(source),
-                            &before,
-                            source,
-                            strong_face,
-                            true,
-                        ) {
+                        if power::emits_strong_power(before.original(source), &before, source, strong_face, true) {
                             sources.insert(source);
                         }
                     }
@@ -579,17 +479,10 @@ impl<'a> Budget<'a> {
                 }
             }
             if matches!(before.original(start), Block::RedstoneWire { .. }) {
-                for direction in [
-                    BlockFace::North,
-                    BlockFace::South,
-                    BlockFace::East,
-                    BlockFace::West,
-                ] {
+                for direction in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
                     for dy in [-1, 0, 1] {
                         let source = start.offset(direction) + BlockPos::new(0, dy, 0);
-                        if matches!(before.original(source), Block::RedstoneWire { .. })
-                            && connects(&before, source, start)
-                        {
+                        if matches!(before.original(source), Block::RedstoneWire { .. }) && connects(&before, source, start) {
                             sources.insert(source);
                         }
                     }
@@ -610,9 +503,7 @@ impl<'a> Budget<'a> {
             return Err(SearchResult::BudgetExceeded);
         }
         if self.missing.get() {
-            return Err(SearchResult::Invalid(
-                "Routing needs safety context outside the captured region.".into(),
-            ));
+            return Err(SearchResult::Invalid("Routing needs safety context outside the captured region.".into()));
         }
         Ok(())
     }
@@ -651,11 +542,7 @@ impl<'a> View<'a> {
 // The view is read-only; mutable World operations are deliberately unreachable.
 impl World for View<'_> {
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
-        self.edits
-            .get(&pos)
-            .copied()
-            .unwrap_or_else(|| self.original(pos))
-            .get_id()
+        self.edits.get(&pos).copied().unwrap_or_else(|| self.original(pos)).get_id()
     }
     fn set_block_raw(&mut self, _: BlockPos, _: u32) -> bool {
         unreachable!("read-only routing view")
@@ -717,10 +604,7 @@ fn connects(view: &View<'_>, from: BlockPos, to: BlockPos) -> bool {
     let neighbor = BlockPos::new(to.x, from.y, to.z);
     match d.y {
         0 => true,
-        1 => {
-            !view.get_block(from.offset(BlockFace::Top)).is_solid()
-                && !view.get_block(neighbor).is_transparent()
-        }
+        1 => !view.get_block(from.offset(BlockFace::Top)).is_solid() && !view.get_block(neighbor).is_transparent(),
         -1 => !view.get_block(neighbor).is_solid(),
         _ => false,
     }
@@ -729,10 +613,7 @@ fn connects(view: &View<'_>, from: BlockPos, to: BlockPos) -> bool {
 fn motion_barrier(block: Block) -> bool {
     matches!(
         block,
-        Block::Air {}
-            | Block::Piston { .. }
-            | Block::PistonHead { .. }
-            | Block::MovingPiston { .. }
+        Block::Air {} | Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. }
     ) || mchprs_blocks::block_entities::ContainerType::from_block(block).is_some()
 }
 
@@ -768,9 +649,7 @@ fn immutable_failure(view: &View<'_>, pos: BlockPos, is_dust: bool) -> Option<St
                     return Some(format!("Piston movement can reach the route at {pos}."));
                 }
                 Block::MovingPiston { .. } | Block::PistonHead { .. } => {
-                    return Some(format!(
-                        "Moving geometry near {pos} cannot be certified safe."
-                    ));
+                    return Some(format!("Moving geometry near {pos} cannot be certified safe."));
                 }
                 _ => {}
             }
@@ -796,9 +675,7 @@ fn immutable_failure(view: &View<'_>, pos: BlockPos, is_dust: bool) -> Option<St
                 view.original(p),
                 Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. }
             ) {
-                return Some(format!(
-                    "Dust placement would notify piston geometry at {p} (including BUD/QC)."
-                ));
+                return Some(format!("Dust placement would notify piston geometry at {p} (including BUD/QC)."));
             }
         }
     } else {
@@ -808,16 +685,11 @@ fn immutable_failure(view: &View<'_>, pos: BlockPos, is_dust: bool) -> Option<St
                 view.original(p),
                 Block::Piston { .. } | Block::PistonHead { .. } | Block::MovingPiston { .. }
             ) {
-                return Some(format!(
-                    "Support placement would notify piston geometry at {p}."
-                ));
+                return Some(format!("Support placement would notify piston geometry at {p}."));
             }
             for vertical in [BlockFace::Top, BlockFace::Bottom] {
                 let p = p.offset(vertical);
-                if matches!(
-                    view.original(p),
-                    Block::PistonHead { .. } | Block::MovingPiston { .. }
-                ) {
+                if matches!(view.original(p), Block::PistonHead { .. } | Block::MovingPiston { .. }) {
                     return Some(format!("Support placement touches moving geometry at {p}."));
                 }
             }
@@ -833,20 +705,13 @@ fn potential_input(view: &View<'_>, pos: BlockPos) -> bool {
         if block.is_solid() {
             for strong_face in BlockFace::values() {
                 let source = p.offset(strong_face);
-                if power::emits_strong_power(
-                    view.get_block(source),
-                    view,
-                    source,
-                    strong_face,
-                    false,
-                ) && !view.budget.selected_sources.contains(&source)
+                if power::emits_strong_power(view.get_block(source), view, source, strong_face, false)
+                    && !view.budget.selected_sources.contains(&source)
                 {
                     return true;
                 }
             }
-        } else if power::emits_weak_power(block, view, p, face, false)
-            && !view.budget.selected_sources.contains(&p)
-        {
+        } else if power::emits_weak_power(block, view, p, face, false) && !view.budget.selected_sources.contains(&p) {
             return true;
         }
     }
@@ -856,12 +721,7 @@ fn potential_input(view: &View<'_>, pos: BlockPos) -> bool {
 /// Original sources beside a required conductor cannot be removed by a later
 /// prefix. Cache emission faces, while keeping all proposed-geometry checks in
 /// the final validator and all source identity exclusions specific to this job.
-fn original_support_input(
-    view: &View<'_>,
-    pos: BlockPos,
-    start: BlockPos,
-    end: BlockPos,
-) -> Option<BlockPos> {
+fn original_support_input(view: &View<'_>, pos: BlockPos, start: BlockPos, end: BlockPos) -> Option<BlockPos> {
     let cached = view.budget.strong_inputs.borrow().get(&pos).copied();
     let mask = cached.unwrap_or_else(|| {
         let before = View::new(view.snapshot, view.budget);
@@ -877,27 +737,16 @@ fn original_support_input(
         }
         mask
     });
-    BlockFace::values()
-        .into_iter()
-        .enumerate()
-        .find_map(|(index, face)| {
-            let source = pos.offset(face);
-            (mask & (1 << index) != 0
-                && source != start
-                && source != end
-                && !view.budget.selected_sources.contains(&source))
-            .then_some(source)
-        })
+    BlockFace::values().into_iter().enumerate().find_map(|(index, face)| {
+        let source = pos.offset(face);
+        (mask & (1 << index) != 0 && source != start && source != end && !view.budget.selected_sources.contains(&source)).then_some(source)
+    })
 }
 
 /// A required edge fixes this endpoint side in every valid completion. An
 /// original endpoint may remain beside machinery only if that side stays exact;
 /// unrelated side changes remain the completed overlay validator's responsibility.
-fn endpoint_edge_failure(
-    view: &View<'_>,
-    endpoint: BlockPos,
-    neighbor: BlockPos,
-) -> Option<String> {
+fn endpoint_edge_failure(view: &View<'_>, endpoint: BlockPos, neighbor: BlockPos) -> Option<String> {
     let Block::RedstoneWire { wire: original } = view.original(endpoint) else {
         return None;
     };
@@ -916,13 +765,7 @@ fn endpoint_edge_failure(
         .flatten()
 }
 
-fn receives(
-    view: &View<'_>,
-    consumer: Block,
-    at: BlockPos,
-    source: BlockPos,
-    any_heading: bool,
-) -> bool {
+fn receives(view: &View<'_>, consumer: Block, at: BlockPos, source: BlockPos, any_heading: bool) -> bool {
     let mut roots = consumer_roots(consumer, at);
     if matches!(consumer, Block::Hopper { .. }) {
         roots.extend(BlockFace::values().map(|face| (at.offset(face), face, ConsumerInput::Main)));
@@ -932,11 +775,7 @@ fn receives(
             if face != BlockFace::from(piston.facing) {
                 roots.push((at.offset(face), face, ConsumerInput::Main));
             }
-            roots.push((
-                at.offset(BlockFace::Top).offset(face),
-                face,
-                ConsumerInput::Main,
-            ));
+            roots.push((at.offset(BlockFace::Top).offset(face), face, ConsumerInput::Main));
         }
     }
     for (root, face, input) in roots {
@@ -970,11 +809,7 @@ fn receives(
 
 fn recipients(pos: BlockPos) -> impl Iterator<Item = BlockPos> {
     (-3i32..=3).flat_map(move |x| {
-        (-3i32..=3).flat_map(move |y| {
-            (-3i32..=3).filter_map(move |z| {
-                (x.abs() + y.abs() + z.abs() <= 3).then_some(pos + BlockPos::new(x, y, z))
-            })
-        })
+        (-3i32..=3).flat_map(move |y| (-3i32..=3).filter_map(move |z| (x.abs() + y.abs() + z.abs() <= 3).then_some(pos + BlockPos::new(x, y, z))))
     })
 }
 
@@ -1035,11 +870,7 @@ fn passive_support(block: Block) -> Block {
 
 /// Prefixes and completed routes use the same block assignments. A staircase's
 /// higher support must be opaque for dust to transmit in both directions.
-fn proposed<'a>(
-    snapshot: &'a Snapshot,
-    path: &[BlockPos],
-    budget: &'a Budget<'a>,
-) -> Result<Proposed<'a>, String> {
+fn proposed<'a>(snapshot: &'a Snapshot, path: &[BlockPos], budget: &'a Budget<'a>) -> Result<Proposed<'a>, String> {
     let start = path[0];
     let end = *path.last().unwrap();
     let positions: FxHashSet<_> = path.iter().copied().collect();
@@ -1048,16 +879,7 @@ fn proposed<'a>(
     }
     let raised: FxHashSet<_> = path
         .windows(2)
-        .filter_map(|pair| {
-            (pair[0].y != pair[1].y).then(|| {
-                if pair[0].y > pair[1].y {
-                    pair[0]
-                } else {
-                    pair[1]
-                }
-                .offset(BlockFace::Bottom)
-            })
-        })
+        .filter_map(|pair| (pair[0].y != pair[1].y).then(|| if pair[0].y > pair[1].y { pair[0] } else { pair[1] }.offset(BlockFace::Bottom)))
         .collect();
     let mut view = View::new(snapshot, budget);
     let mut supports = Vec::new();
@@ -1068,9 +890,7 @@ fn proposed<'a>(
             return Err("The route leaves the search corridor.".into());
         }
         let old = view.original(pos);
-        if !matches!(old, Block::Air {})
-            && !(matches!(old, Block::RedstoneWire { .. }) && (pos == start || pos == end))
-        {
+        if !matches!(old, Block::Air {}) && !(matches!(old, Block::RedstoneWire { .. }) && (pos == start || pos == end)) {
             return Err(format!("The route would overwrite a block at {pos}."));
         }
         let below = pos.offset(BlockFace::Bottom);
@@ -1103,11 +923,7 @@ fn proposed<'a>(
 
 /// Check a complete overlay. Invalid candidate geometry never blacklists cells
 /// for sibling paths: planned supports and approach direction are part of state.
-fn make_plan(
-    snapshot: &Snapshot,
-    path: &[BlockPos],
-    budget: &Budget<'_>,
-) -> Result<Result<Plan, String>, SearchResult> {
+fn make_plan(snapshot: &Snapshot, path: &[BlockPos], budget: &Budget<'_>) -> Result<Result<Plan, String>, SearchResult> {
     budget.check()?;
     let Proposed {
         view,
@@ -1119,9 +935,7 @@ fn make_plan(
         Err(reason) => return Ok(Err(reason)),
     };
     if supports.len() + dust.len() > MAX_PLACEMENTS {
-        return Ok(Err(
-            "The route needs too many placements; place a shorter segment.".into(),
-        ));
+        return Ok(Err("The route needs too many placements; place a shorter segment.".into()));
     }
     let before = View::new(snapshot, budget);
     let support_view = View {
@@ -1138,19 +952,8 @@ fn make_plan(
                 let source = pos.offset(face);
                 if !positions.contains(&source)
                     && !budget.selected_sources.contains(&source)
-                    && (power::emits_strong_power(
-                        view.original(source),
-                        &before,
-                        source,
-                        face,
-                        true,
-                    ) || power::emits_strong_power(
-                        view.original(source),
-                        &view,
-                        source,
-                        face,
-                        true,
-                    ))
+                    && (power::emits_strong_power(view.original(source), &before, source, face, true)
+                        || power::emits_strong_power(view.original(source), &view, source, face, true))
                 {
                     return Ok(Err(format!(
                         "The staircase support at {pos} would conduct an unselected source at {source}."
@@ -1162,16 +965,11 @@ fn make_plan(
                     continue;
                 }
                 if let Block::RedstoneWire { wire: original } = view.original(p) {
-                    let original =
-                        wire::get_raw_sides_from(original, p, |pos| before.get_block(pos));
-                    if original
-                        != wire::get_raw_sides_from(original, p, |pos| support_view.get_block(pos))
-                        || original
-                            != wire::get_raw_sides_from(original, p, |pos| view.get_block(pos))
+                    let original = wire::get_raw_sides_from(original, p, |pos| before.get_block(pos));
+                    if original != wire::get_raw_sides_from(original, p, |pos| support_view.get_block(pos))
+                        || original != wire::get_raw_sides_from(original, p, |pos| view.get_block(pos))
                     {
-                        return Ok(Err(format!(
-                            "The staircase support at {pos} would change unselected dust at {p}."
-                        )));
+                        return Ok(Err(format!("The staircase support at {pos} would change unselected dust at {p}.")));
                     }
                 }
             }
@@ -1179,22 +977,14 @@ fn make_plan(
         for face in BlockFace::values() {
             let neighbor = pos.offset(face);
             let before = view.original(neighbor);
-            if !positions.contains(&neighbor)
-                && interaction::is_valid_position(before, &view, neighbor) == false
-            {
-                return Ok(Err(format!(
-                    "Support placement invalidates an attachment at {neighbor}."
-                )));
+            if !positions.contains(&neighbor) && interaction::is_valid_position(before, &view, neighbor) == false {
+                return Ok(Err(format!("Support placement invalidates an attachment at {neighbor}.")));
             }
             if matches!(before, Block::NoteBlock { .. }) && face == BlockFace::Top {
-                return Ok(Err(format!(
-                    "Support placement changes a note block instrument at {neighbor}."
-                )));
+                return Ok(Err(format!("Support placement changes a note block instrument at {neighbor}.")));
             }
             if matches!(before, Block::NoteBlock { .. }) && face == BlockFace::Bottom {
-                return Ok(Err(format!(
-                    "Support placement would mute the note block at {neighbor}."
-                )));
+                return Ok(Err(format!("Support placement would mute the note block at {neighbor}.")));
             }
         }
     }
@@ -1203,59 +993,38 @@ fn make_plan(
         if !interaction::is_valid_position(plain_wire(), &view, pos) {
             return Ok(Err(format!("Invalid dust support at {pos}.")));
         }
-        if index > 0
-            && (!connects(&view, path[index - 1], pos) || !connects(&view, pos, path[index - 1]))
-        {
-            return Ok(Err(format!(
-                "Dust cannot connect across the step at {pos}."
-            )));
+        if index > 0 && (!connects(&view, path[index - 1], pos) || !connects(&view, pos, path[index - 1])) {
+            return Ok(Err(format!("Dust cannot connect across the step at {pos}.")));
         }
         for (other_index, &other) in path.iter().enumerate() {
-            if index.abs_diff(other_index) > 1
-                && (connects(&view, pos, other) || connects(&view, other, pos))
-            {
-                return Ok(Err(format!(
-                    "The route makes an unintended junction at {pos}."
-                )));
+            if index.abs_diff(other_index) > 1 && (connects(&view, pos, other) || connects(&view, other, pos)) {
+                return Ok(Err(format!("The route makes an unintended junction at {pos}.")));
             }
         }
         if !matches!(view.original(pos), Block::Air {}) {
             continue;
         }
-        if matches!(
-            view.original(pos.offset(BlockFace::Bottom)),
-            Block::NoteBlock { .. }
-        ) {
-            return Ok(Err(format!(
-                "Dust placement would mute the note block below {pos}."
-            )));
+        if matches!(view.original(pos.offset(BlockFace::Bottom)), Block::NoteBlock { .. }) {
+            return Ok(Err(format!("Dust placement would mute the note block below {pos}.")));
         }
         if let Some(reason) = failure(&view, pos, true) {
             return Ok(Err(reason));
         }
         if potential_input(&view, pos) {
-            return Ok(Err(format!(
-                "An existing power source can inject into the wire at {pos}."
-            )));
+            return Ok(Err(format!("An existing power source can inject into the wire at {pos}.")));
         }
         for p in crate::world::wire_cache::positions(pos) {
             if positions.contains(&p) {
                 continue;
             }
-            if matches!(view.original(p), Block::RedstoneWire { .. })
-                && (connects(&view, pos, p) || connects(&view, p, pos))
-            {
-                return Ok(Err(format!(
-                    "The route would merge with an unselected wire at {p}."
-                )));
+            if matches!(view.original(p), Block::RedstoneWire { .. }) && (connects(&view, pos, p) || connects(&view, p, pos)) {
+                return Ok(Err(format!("The route would merge with an unselected wire at {p}.")));
             }
         }
         // A QC receiver can be three faces away through an above-base conductor.
         for p in recipients(pos) {
             if receives(&view, view.original(p), p, pos, true) {
-                return Ok(Err(format!(
-                    "The route adds an unintended input to the circuit at {p}."
-                )));
+                return Ok(Err(format!("The route adds an unintended input to the circuit at {p}.")));
             }
         }
     }
@@ -1265,10 +1034,8 @@ fn make_plan(
             let original = wire::get_regulated_sides(old, &before, pos);
             let new = wire::get_regulated_sides(old, &view, pos);
             let intermediate = wire::get_regulated_sides(old, &support_view, pos);
-            if geometry(Block::RedstoneWire { wire: new })
-                != geometry(Block::RedstoneWire { wire: original })
-                || geometry(Block::RedstoneWire { wire: intermediate })
-                    != geometry(Block::RedstoneWire { wire: original })
+            if geometry(Block::RedstoneWire { wire: new }) != geometry(Block::RedstoneWire { wire: original })
+                || geometry(Block::RedstoneWire { wire: intermediate }) != geometry(Block::RedstoneWire { wire: original })
             {
                 if let Some(reason) = failure(&view, pos, true) {
                     return Ok(Err(reason));
@@ -1279,12 +1046,8 @@ fn make_plan(
             for p in recipients(pos) {
                 let consumer = view.original(p);
                 let original = receives(&before, consumer, p, pos, false);
-                if original != receives(&view, consumer, p, pos, false)
-                    || original != receives(&support_view, consumer, p, pos, false)
-                {
-                    return Ok(Err(format!(
-                        "Connecting at {pos} would redirect an existing input at {p}."
-                    )));
+                if original != receives(&view, consumer, p, pos, false) || original != receives(&support_view, consumer, p, pos, false) {
+                    return Ok(Err(format!("Connecting at {pos} would redirect an existing input at {p}.")));
                 }
             }
         }
@@ -1320,19 +1083,10 @@ fn lower_bound(start: BlockPos, end: BlockPos) -> usize {
     (d.x.abs() + d.z.abs()).max(d.y.abs()) as usize
 }
 
-fn flat_segment(
-    path: &mut Vec<BlockPos>,
-    target: BlockPos,
-    x_first: bool,
-    budget: &Budget<'_>,
-) -> Result<(), SearchResult> {
+fn flat_segment(path: &mut Vec<BlockPos>, target: BlockPos, x_first: bool, budget: &Budget<'_>) -> Result<(), SearchResult> {
     let mut p = *path.last().unwrap();
     for axis_x in [x_first, !x_first] {
-        while if axis_x {
-            p.x != target.x
-        } else {
-            p.z != target.z
-        } {
+        while if axis_x { p.x != target.x } else { p.z != target.z } {
             budget.check()?;
             if axis_x {
                 p.x += (target.x - p.x).signum();
@@ -1345,13 +1099,7 @@ fn flat_segment(
     Ok(())
 }
 
-pub(super) fn search(
-    snapshot: Snapshot,
-    start: BlockPos,
-    end: BlockPos,
-    prefer_x: bool,
-    cancel: &AtomicBool,
-) -> SearchResult {
+pub(super) fn search(snapshot: Snapshot, start: BlockPos, end: BlockPos, prefer_x: bool, cancel: &AtomicBool) -> SearchResult {
     let budget = match Budget::new(&snapshot, start, cancel) {
         Ok(budget) => budget,
         Err(result) => return result,
@@ -1373,9 +1121,7 @@ pub(super) fn search(
                     return SearchResult::Invalid(reason);
                 }
                 if potential_input(&before, pos) {
-                    return SearchResult::Invalid(format!(
-                        "An existing power source can inject into the wire at {pos}."
-                    ));
+                    return SearchResult::Invalid(format!("An existing power source can inject into the wire at {pos}."));
                 }
                 let support = before.original(pos.offset(BlockFace::Bottom));
                 if matches!(support, Block::Air {}) {
@@ -1383,24 +1129,16 @@ pub(super) fn search(
                         return SearchResult::Invalid(reason);
                     }
                 }
-                if !matches!(support, Block::Air {})
-                    && !interaction::is_valid_position(plain_wire(), &before, pos)
-                {
+                if !matches!(support, Block::Air {}) && !interaction::is_valid_position(plain_wire(), &before, pos) {
                     return SearchResult::Invalid(format!("Invalid dust support at {pos}."));
                 }
-                if let Some(consumer) =
-                    recipients(pos).find(|&p| receives(&before, before.original(p), p, pos, true))
-                {
-                    return SearchResult::Invalid(format!(
-                        "The route adds an unintended input to the circuit at {consumer}."
-                    ));
+                if let Some(consumer) = recipients(pos).find(|&p| receives(&before, before.original(p), p, pos, true)) {
+                    return SearchResult::Invalid(format!("The route adds an unintended input to the circuit at {consumer}."));
                 }
             }
             Block::RedstoneWire { .. } => {}
             _ => {
-                return SearchResult::Invalid(format!(
-                    "The route would overwrite a block at {pos}."
-                ));
+                return SearchResult::Invalid(format!("The route would overwrite a block at {pos}."));
             }
         }
     }
@@ -1473,19 +1211,9 @@ pub(super) fn search(
     // equivalent height choices. Bend preference still breaks equal progress.
     let mut frontier = BinaryHeap::from([Reverse((estimate, estimate, 0usize, 0usize))]);
     let directions = if prefer_x {
-        [
-            BlockDirection::East,
-            BlockDirection::West,
-            BlockDirection::South,
-            BlockDirection::North,
-        ]
+        [BlockDirection::East, BlockDirection::West, BlockDirection::South, BlockDirection::North]
     } else {
-        [
-            BlockDirection::South,
-            BlockDirection::North,
-            BlockDirection::East,
-            BlockDirection::West,
-        ]
+        [BlockDirection::South, BlockDirection::North, BlockDirection::East, BlockDirection::West]
     };
     while let Some(Reverse((_, _, _, id))) = frontier.pop() {
         if let Err(result) = budget.check() {
@@ -1518,31 +1246,19 @@ pub(super) fn search(
                 if !contains(snapshot.data.route_bounds, pos) || path.contains(&pos) {
                     continue;
                 }
-                let old = snapshot
-                    .data
-                    .index(pos)
-                    .map(|i| Block::from_id(snapshot.data.blocks[i]))
-                    .unwrap();
-                if !matches!(old, Block::Air {})
-                    && !(pos == end && matches!(old, Block::RedstoneWire { .. }))
-                {
+                let old = snapshot.data.index(pos).map(|i| Block::from_id(snapshot.data.blocks[i])).unwrap();
+                if !matches!(old, Block::Air {}) && !(pos == end && matches!(old, Block::RedstoneWire { .. })) {
                     continue;
                 }
                 // Dust/support conflicts and self contacts can never be repaired
                 // by extending this prefix, so they are safe to prune early.
-                if path
-                    .iter()
-                    .any(|p| p.x == pos.x && p.z == pos.z && p.y.abs_diff(pos.y) == 1)
-                {
+                if path.iter().any(|p| p.x == pos.x && p.z == pos.z && p.y.abs_diff(pos.y) == 1) {
                     continue;
                 }
                 let mut prefix = path.clone();
                 prefix.push(pos);
                 let Proposed {
-                    view,
-                    supports,
-                    positions,
-                    ..
+                    view, supports, positions, ..
                 } = match proposed(&snapshot, &prefix, &budget) {
                     Ok(proposed) => proposed,
                     Err(error) => {
@@ -1551,17 +1267,15 @@ pub(super) fn search(
                     }
                 };
                 if !interaction::is_valid_position(plain_wire(), &view, pos)
-                    || prefix.windows(2).any(|pair| {
-                        !connects(&view, pair[0], pair[1]) || !connects(&view, pair[1], pair[0])
-                    })
+                    || prefix
+                        .windows(2)
+                        .any(|pair| !connects(&view, pair[0], pair[1]) || !connects(&view, pair[1], pair[0]))
                 {
                     continue;
                 }
-                if let Some(error) = endpoint_edge_failure(&view, start, prefix[1]).or_else(|| {
-                    (pos == end)
-                        .then(|| endpoint_edge_failure(&view, end, path[path.len() - 1]))
-                        .flatten()
-                }) {
+                if let Some(error) = endpoint_edge_failure(&view, start, prefix[1])
+                    .or_else(|| (pos == end).then(|| endpoint_edge_failure(&view, end, path[path.len() - 1])).flatten())
+                {
                     reason = Some(error);
                     continue;
                 }
@@ -1573,23 +1287,14 @@ pub(super) fn search(
                 }
                 if matches!(old, Block::Air {}) {
                     // Horizontal contact cannot be repaired by a later support.
-                    if [
-                        BlockFace::North,
-                        BlockFace::South,
-                        BlockFace::East,
-                        BlockFace::West,
-                    ]
-                    .into_iter()
-                    .any(|face| {
-                        let p = pos.offset(face);
-                        p != start
-                            && p != end
-                            && !positions.contains(&p)
-                            && matches!(view.original(p), Block::RedstoneWire { .. })
-                    }) {
-                        reason = Some(format!(
-                            "The route would merge with an unselected wire near {pos}."
-                        ));
+                    if [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West]
+                        .into_iter()
+                        .any(|face| {
+                            let p = pos.offset(face);
+                            p != start && p != end && !positions.contains(&p) && matches!(view.original(p), Block::RedstoneWire { .. })
+                        })
+                    {
+                        reason = Some(format!("The route would merge with an unselected wire near {pos}."));
                         continue;
                     }
                     if let Some(error) = failure(&view, pos, true) {
@@ -1597,20 +1302,14 @@ pub(super) fn search(
                         continue;
                     }
                     if potential_input(&view, pos) {
-                        reason = Some(format!(
-                            "An existing power source can inject into the wire at {pos}."
-                        ));
+                        reason = Some(format!("An existing power source can inject into the wire at {pos}."));
                         continue;
                     }
                     // Input roots persist in every valid completion. Checking
                     // all headings makes a detected consumer channel permanent
                     // even when later supports alter this dust's exact shape.
-                    if let Some(consumer) =
-                        recipients(pos).find(|&p| receives(&view, view.original(p), p, pos, true))
-                    {
-                        reason = Some(format!(
-                            "The route adds an unintended input to the circuit at {consumer}."
-                        ));
+                    if let Some(consumer) = recipients(pos).find(|&p| receives(&view, view.original(p), p, pos, true)) {
+                        reason = Some(format!("The route adds an unintended input to the circuit at {consumer}."));
                         continue;
                     }
                 }

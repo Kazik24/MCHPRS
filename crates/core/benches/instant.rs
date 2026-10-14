@@ -44,27 +44,14 @@ impl Workload {
 
     fn description(self) -> &'static str {
         match self {
-            Self::Random => {
-                "independent xorshift64 raw port masks; resample identical consecutive masks by flipping bit zero"
-            }
-            Self::RandomWalk => {
-                "xorshift64 chooses one input bit to flip per vector, including opcode bits"
-            }
-            Self::Sequence => {
-                "cycle 128 fixed raw port pairs (i, 127-i), i=0..127; opcode mask zero; seed independent"
-            }
+            Self::Random => "independent xorshift64 raw port masks; resample identical consecutive masks by flipping bit zero",
+            Self::RandomWalk => "xorshift64 chooses one input bit to flip per vector, including opcode bits",
+            Self::Sequence => "cycle 128 fixed raw port pairs (i, 127-i), i=0..127; opcode mask zero; seed independent",
         }
     }
 }
 
-fn input_stimuli(
-    workload: Workload,
-    initial: u64,
-    operand_bits: usize,
-    opcode_bits: usize,
-    seed: u64,
-    count: usize,
-) -> Vec<u64> {
+fn input_stimuli(workload: Workload, initial: u64, operand_bits: usize, opcode_bits: usize, seed: u64, count: usize) -> Vec<u64> {
     let width = operand_bits * 2 + opcode_bits;
     assert!((7..=31).contains(&operand_bits) && width < 64 && seed != 0);
     let mask = (1u64 << width) - 1;
@@ -97,21 +84,11 @@ fn check_workloads() {
         for workload in [Workload::Random, Workload::RandomWalk, Workload::Sequence] {
             let initial = 3;
             let words = input_stimuli(workload, initial, bits, opcode_bits, 7, 384);
-            assert_eq!(
-                words,
-                input_stimuli(workload, initial, bits, opcode_bits, 7, 384)
-            );
-            assert!(
-                words
-                    .iter()
-                    .all(|word| word >> (bits * 2 + opcode_bits) == 0)
-            );
+            assert_eq!(words, input_stimuli(workload, initial, bits, opcode_bits, 7, 384));
+            assert!(words.iter().all(|word| word >> (bits * 2 + opcode_bits) == 0));
             if workload == Workload::Sequence {
                 assert_eq!(&words[..128], &words[128..256]);
-                assert_eq!(
-                    words,
-                    input_stimuli(workload, 999, bits, opcode_bits, 11, 384)
-                );
+                assert_eq!(words, input_stimuli(workload, 999, bits, opcode_bits, 11, 384));
                 let mut unique = words[..128].to_vec();
                 unique.sort_unstable();
                 unique.dedup();
@@ -121,10 +98,7 @@ fn check_workloads() {
                     assert_eq!(word >> bits, (127 - index % 128) as u64);
                 }
             } else {
-                assert_ne!(
-                    words,
-                    input_stimuli(workload, initial, bits, opcode_bits, 11, 384)
-                );
+                assert_ne!(words, input_stimuli(workload, initial, bits, opcode_bits, 11, 384));
                 let mut previous = initial;
                 for word in words {
                     let flips = (previous ^ word).count_ones();
@@ -137,9 +111,7 @@ fn check_workloads() {
             }
         }
     }
-    println!(
-        "workload checks passed: deterministic random, one-bit random walk, 128-vector sequence"
-    );
+    println!("workload checks passed: deterministic random, one-bit random walk, 128-vector sequence");
 }
 
 fn main() -> Result<()> {
@@ -185,9 +157,7 @@ fn main() -> Result<()> {
             }
             _ => {}
         }
-        let value = args
-            .next()
-            .with_context(|| format!("{arg} requires a value"))?;
+        let value = args.next().with_context(|| format!("{arg} requires a value"))?;
         match arg.as_str() {
             "--component" => component = value,
             "--iterations" => iterations = value.parse()?,
@@ -215,31 +185,18 @@ fn main() -> Result<()> {
     ensure!(episodes > 0, "--episodes must be positive");
     ensure!(seed != 0, "--seed must be nonzero");
     ensure!(input_every > 0, "--input-every must be positive");
-    ensure!(
-        ticks >= 50_000 && ticks % 6 == 0,
-        "--ticks must be at least 50000 and divisible by six"
-    );
+    ensure!(ticks >= 50_000 && ticks % 6 == 0, "--ticks must be at least 50000 and divisible by six");
     ensure!(flush_every <= 1, "--flush-every must be zero or one");
+    ensure!(!interpreted || !optimize, "--optimize applies only to compiled execution");
     ensure!(
-        !interpreted || !optimize,
-        "--optimize applies only to compiled execution"
-    );
-    ensure!(
-        !interpreted
-            || matches!(
-                component.as_str(),
-                "counter_basic" | "pc_counter" | "fpu_divider" | "fpu_legal"
-            ),
+        !interpreted || matches!(component.as_str(), "counter_basic" | "pc_counter" | "fpu_divider" | "fpu_legal"),
         "unsupported interpreted component"
     );
     ensure!(
         !changing_inputs || matches!(component.as_str(), "fpu_legal" | "fpu_divider"),
         "--changing-inputs applies to fpu_legal or fpu_divider"
     );
-    ensure!(
-        component != "pc_counter" || interpreted,
-        "pc_counter benchmark requires --interpreted"
-    );
+    ensure!(component != "pc_counter" || interpreted, "pc_counter benchmark requires --interpreted");
     ensure!(
         component != "fpu_legal" || !interpreted || changing_inputs,
         "interpreted full FPU requires --changing-inputs or --workload"
@@ -250,9 +207,7 @@ fn main() -> Result<()> {
     );
     let frozen: Option<Value> = reference_path
         .as_ref()
-        .map(|path| -> Result<Value> {
-            Ok(serde_json::from_slice(&std::fs::read(root().join(path))?)?)
-        })
+        .map(|path| -> Result<Value> { Ok(serde_json::from_slice(&std::fs::read(root().join(path))?)?) })
         .transpose()?;
     let default_manifest_path = match component.as_str() {
         "counter_basic" => "test_data/instant-pistons-io/fixtures/counter_basic.json",
@@ -280,20 +235,14 @@ fn main() -> Result<()> {
         );
         if changing_inputs {
             ensure!(
-                component != "fpu_legal"
-                    || frozen["input_protocol_id"] == "fpu-green-trigger-cycled-off-inputs-on-v1",
+                component != "fpu_legal" || frozen["input_protocol_id"] == "fpu-green-trigger-cycled-off-inputs-on-v1",
                 "frozen FPU report uses a different trigger protocol"
             );
             ensure!(
                 frozen["episodes"] == episodes
                     && frozen["seed"] == seed
                     && frozen["workload"] == workload.name()
-                    && frozen["input_every_game_ticks"]
-                        == if component == "fpu_legal" {
-                            json!(input_every)
-                        } else {
-                            Value::Null
-                        },
+                    && frozen["input_every_game_ticks"] == if component == "fpu_legal" { json!(input_every) } else { Value::Null },
                 "frozen FPU workload parameters differ"
             );
         }
@@ -307,11 +256,7 @@ fn main() -> Result<()> {
     // Freeze native outputs or validate the compiled plan before timing stimulus and ticks.
     let mut reference_traces: Option<Vec<Vec<u16>>> = frozen
         .as_ref()
-        .map(|report| -> Result<_> {
-            Ok(serde_json::from_value(
-                report["per_game_tick_output_words"].clone(),
-            )?)
-        })
+        .map(|report| -> Result<_> { Ok(serde_json::from_value(report["per_game_tick_output_words"].clone())?) })
         .transpose()?;
     let mut captured_traces = None;
     let mut validation = None;
@@ -362,16 +307,8 @@ fn main() -> Result<()> {
     }
     let mut samples = Vec::new();
     let mut native_final_checkpoint = None;
-    let backend = if interpreted {
-        "interpreted"
-    } else {
-        "compiled"
-    };
-    let tick_operation = if interpreted {
-        "tick_interpreted"
-    } else {
-        "tick_with_world"
-    };
+    let backend = if interpreted { "interpreted" } else { "compiled" };
+    let tick_operation = if interpreted { "tick_interpreted" } else { "tick_with_world" };
     for index in 1..=iterations {
         println!("{backend} {component} sample {index}/{iterations}");
         let mut world = load(&descriptor)?;
@@ -395,17 +332,10 @@ fn main() -> Result<()> {
                 Default::default(),
             )
         });
-        let compile_seconds = if interpreted {
-            0.0
-        } else {
-            started.elapsed().as_secs_f64()
-        };
+        let compile_seconds = if interpreted { 0.0 } else { started.elapsed().as_secs_f64() };
         let mut sample = match admission {
             Err(error) => json!({"admitted": false, "error": error.to_string()}),
-            Ok(())
-                if component == "cpu_bubblesort"
-                    || (component == "fpu_legal" && !changing_inputs) =>
-            {
+            Ok(()) if component == "cpu_bubblesort" || (component == "fpu_legal" && !changing_inputs) => {
                 json!({"admitted": true, "measurement_kind": "admission_only"})
             }
             Ok(()) => {
@@ -429,13 +359,7 @@ fn main() -> Result<()> {
                 } else if component == "counter_basic" {
                     counter(&mut compiler, &mut world, &descriptor, ticks, flush_every)
                 } else {
-                    divider(
-                        &mut compiler,
-                        &mut world,
-                        &descriptor,
-                        episodes,
-                        flush_every,
-                    )
+                    divider(&mut compiler, &mut world, &descriptor, episodes, flush_every)
                 };
                 let mut result = if interpreted {
                     result?
@@ -449,19 +373,13 @@ fn main() -> Result<()> {
             }
         };
         if interpreted {
-            sample["instant_piston_cache_stats"] =
-                json!(world.instant_piston_cache().map(|cache| cache.stats()));
+            sample["instant_piston_cache_stats"] = json!(world.instant_piston_cache().map(|cache| cache.stats()));
             sample["final_checkpoint"] = json!(cpu_support::checkpoint(
                 &world,
                 if component == "pc_counter" {
                     4096
                 } else if changing_inputs {
-                    (episodes
-                        * if component == "fpu_legal" {
-                            input_every * 2
-                        } else {
-                            256
-                        }) as u32
+                    (episodes * if component == "fpu_legal" { input_every * 2 } else { 256 }) as u32
                 } else {
                     ticks
                 },
@@ -508,18 +426,10 @@ fn main() -> Result<()> {
         .collect();
     elapsed.sort_by(f64::total_cmp);
     let median = elapsed.get(elapsed.len() / 2).copied();
-    let mut input_elapsed: Vec<_> = samples
-        .iter()
-        .filter_map(|sample| sample["raw_seconds"].as_f64())
-        .collect();
+    let mut input_elapsed: Vec<_> = samples.iter().filter_map(|sample| sample["raw_seconds"].as_f64()).collect();
     input_elapsed.sort_by(f64::total_cmp);
     let input_median = input_elapsed.get(input_elapsed.len() / 2).copied();
-    let changing_game_ticks = episodes as u64
-        * if component == "fpu_legal" {
-            input_every as u64 * 2
-        } else {
-            256
-        };
+    let changing_game_ticks = episodes as u64 * if component == "fpu_legal" { input_every as u64 * 2 } else { 256 };
     let report = json!({
         "schema": 1, "backend": backend, "component": component, "manifest": manifest_path, "schematic_sha256": descriptor["sha256"],
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
@@ -584,11 +494,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn pc_counter(
-    world: &mut PlotWorld,
-    descriptor: &Value,
-    expected: Option<&[Vec<u16>]>,
-) -> Result<Value> {
+fn pc_counter(world: &mut PlotWorld, descriptor: &Value, expected: Option<&[Vec<u16>]>) -> Result<Value> {
     let origin = origin(descriptor);
     let mut levers = Vec::new();
     for y in 0..19 {
@@ -596,10 +502,7 @@ fn pc_counter(
             for x in 0..24 {
                 let pos = origin + BlockPos::new(x, y, z);
                 if let Block::Lever { lever } = world.get_block(pos) {
-                    ensure!(
-                        !lever.powered,
-                        "PC counter lever must initially be OFF at {pos:?}"
-                    );
+                    ensure!(!lever.powered, "PC counter lever must initially be OFF at {pos:?}");
                     levers.push(pos);
                 }
             }
@@ -636,11 +539,7 @@ fn pc_counter(
         elapsed += started.elapsed();
         let word = read(world)?;
         if let Some(expected) = expected {
-            ensure!(
-                word == expected[0][tick],
-                "PC counter output differs from baseline at tick {}",
-                tick + 1
-            );
+            ensure!(word == expected[0][tick], "PC counter output differs from baseline at tick {}", tick + 1);
         }
         if word == 0 && peak != 0 {
             peaks.push(peak);
@@ -656,21 +555,13 @@ fn pc_counter(
         peaks == (1..=682).collect::<Vec<u16>>() && words.last() == Some(&682),
         "PC counter must produce consecutive pulse peaks 1 through 682"
     );
-    Ok(
-        json!({"measurement_kind":"interpreted_pc_counter_runtime", "activity_confirmed":true,
+    Ok(json!({"measurement_kind":"interpreted_pc_counter_runtime", "activity_confirmed":true,
         "seconds":elapsed.as_secs_f64(), "game_ticks":4096,
         "peak_count":peaks.len(), "final_count":words.last(),
-        "every_game_tick_compared":expected.is_some(), "per_game_tick_output_words":[words]}),
-    )
+        "every_game_tick_compared":expected.is_some(), "per_game_tick_output_words":[words]}))
 }
 
-fn counter(
-    compiler: &mut Option<Compiler>,
-    world: &mut PlotWorld,
-    descriptor: &Value,
-    ticks: u32,
-    flush_every: u32,
-) -> Result<Value> {
+fn counter(compiler: &mut Option<Compiler>, world: &mut PlotWorld, descriptor: &Value, ticks: u32, flush_every: u32) -> Result<Value> {
     let origin = origin(descriptor);
     let trigger = origin + position(&descriptor["ports"]["inputs"]["trigger"]);
     let outputs: Vec<_> = descriptor["ports"]["observations"]["repeater"]
@@ -679,24 +570,18 @@ fn counter(
         .iter()
         .map(|pos| origin + position(pos))
         .collect();
-    ensure!(
-        outputs.len() == 16,
-        "Counter must have sixteen output repeaters"
-    );
+    ensure!(outputs.len() == 16, "Counter must have sixteen output repeaters");
     ensure!(
         matches!(world.get_block(trigger), Block::Lever { lever } if !lever.powered),
         "saved Counter release lever must be OFF"
     );
     let read = |world: &PlotWorld| -> Result<u16> {
-        outputs
-            .iter()
-            .enumerate()
-            .try_fold(0u16, |word, (bit, &pos)| {
-                let Block::RedstoneRepeater { repeater } = world.get_block(pos) else {
-                    bail!("missing output repeater at {pos:?}");
-                };
-                Ok(word | (u16::from(!repeater.powered) << bit))
-            })
+        outputs.iter().enumerate().try_fold(0u16, |word, (bit, &pos)| {
+            let Block::RedstoneRepeater { repeater } = world.get_block(pos) else {
+                bail!("missing output repeater at {pos:?}");
+            };
+            Ok(word | (u16::from(!repeater.powered) << bit))
+        })
     };
     read(world)?;
     for _ in 0..24 {
@@ -729,13 +614,7 @@ fn counter(
     )
 }
 
-fn divider(
-    compiler: &mut Option<Compiler>,
-    world: &mut PlotWorld,
-    descriptor: &Value,
-    episodes: usize,
-    flush_every: u32,
-) -> Result<Value> {
+fn divider(compiler: &mut Option<Compiler>, world: &mut PlotWorld, descriptor: &Value, episodes: usize, flush_every: u32) -> Result<Value> {
     let origin = origin(descriptor);
     let trigger = origin + position(&descriptor["protocol"]["trigger"]);
     let outputs: Vec<_> = descriptor["observations"]["output_msb_first"]
@@ -744,10 +623,7 @@ fn divider(
         .iter()
         .map(|pos| origin + position(pos))
         .collect();
-    ensure!(
-        outputs.len() == 10,
-        "divider must have ten output repeaters"
-    );
+    ensure!(outputs.len() == 10, "divider must have ten output repeaters");
     ensure!(
         matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered),
         "saved divider enable lever must be ON"
@@ -828,10 +704,7 @@ fn divider_phase(
 fn fpu_probes(world: &mut PlotWorld, descriptor: &Value) -> Result<Vec<BlockPos>> {
     let origin = origin(descriptor);
     if let Some(outputs) = descriptor["observations"]["output_repeaters"].as_array() {
-        ensure!(
-            outputs.len() == 16,
-            "full FPU must have sixteen native output repeaters"
-        );
+        ensure!(outputs.len() == 16, "full FPU must have sixteen native output repeaters");
         return outputs
             .iter()
             .map(|output| {
@@ -845,10 +718,7 @@ fn fpu_probes(world: &mut PlotWorld, descriptor: &Value) -> Result<Vec<BlockPos>
             .collect();
     }
     if let Some(outputs) = descriptor["observations"]["output_msb_first"].as_array() {
-        ensure!(
-            outputs.len() == 10,
-            "divider must have ten output repeaters"
-        );
+        ensure!(outputs.len() == 10, "divider must have ten output repeaters");
         return outputs
             .iter()
             .map(|output| {
@@ -864,10 +734,7 @@ fn fpu_probes(world: &mut PlotWorld, descriptor: &Value) -> Result<Vec<BlockPos>
     let outputs = descriptor["observations"]["output"]
         .as_array()
         .context("missing full-FPU output dust bank")?;
-    ensure!(
-        outputs.len() == 16,
-        "full FPU must have sixteen output ports"
-    );
+    ensure!(outputs.len() == 16, "full FPU must have sixteen output ports");
     let mut probes = Vec::with_capacity(outputs.len());
     for output in outputs {
         let pos = origin + position(output);
@@ -926,11 +793,7 @@ fn fpu_changing_inputs(
     } else {
         8
     };
-    let initial_ticks = if full_fpu && !cycled_full_fpu {
-        1024
-    } else {
-        64
-    };
+    let initial_ticks = if full_fpu && !cycled_full_fpu { 1024 } else { 64 };
     let episode_ticks = if cycled_full_fpu {
         input_every * 2
     } else if full_fpu {
@@ -939,10 +802,7 @@ fn fpu_changing_inputs(
         256
     };
     if let Some(expected) = expected {
-        ensure!(
-            expected.len() == episodes,
-            "full-FPU reference episode count changed"
-        );
+        ensure!(expected.len() == episodes, "full-FPU reference episode count changed");
         ensure!(
             expected.iter().all(|trace| trace.len() == episode_ticks),
             "full-FPU reference trace length changed"
@@ -951,10 +811,7 @@ fn fpu_changing_inputs(
     let operand_bits = if full_fpu { 16 } else { 10 };
     let opcode_bits = if full_fpu { 3 } else { 0 };
     let trigger = origin + position(&descriptor["observations"]["trigger"][0]);
-    let Block::Lever {
-        lever: trigger_lever,
-    } = world.get_block(trigger)
-    else {
+    let Block::Lever { lever: trigger_lever } = world.get_block(trigger) else {
         bail!("missing FPU trigger lever at {trigger:?}");
     };
     let trigger_support = match trigger_lever.face {
@@ -972,10 +829,7 @@ fn fpu_changing_inputs(
         "FPU trigger at {trigger:?} must be attached to green wool; found {:?} at {trigger_support:?}",
         world.get_block(trigger_support)
     );
-    ensure!(
-        full_fpu || trigger_lever.powered,
-        "saved divider trigger must be ON at {trigger:?}"
-    );
+    ensure!(full_fpu || trigger_lever.powered, "saved divider trigger must be ON at {trigger:?}");
     let mut inputs = Vec::with_capacity(operand_bits * 2 + opcode_bits);
     let banks: &[(&str, usize)] = if full_fpu {
         &[
@@ -986,19 +840,10 @@ fn fpu_changing_inputs(
     } else {
         &[("input_a_msb_first", 10), ("input_b_msb_first", 10)]
     };
-    let port_section = if full_fpu {
-        &descriptor["ports"]
-    } else {
-        &descriptor["observations"]
-    };
+    let port_section = if full_fpu { &descriptor["ports"] } else { &descriptor["observations"] };
     for &(key, count) in banks {
-        let bank = port_section[key]
-            .as_array()
-            .with_context(|| format!("missing full-FPU {key}"))?;
-        ensure!(
-            bank.len() == count,
-            "full-FPU {key} requires {count} levers"
-        );
+        let bank = port_section[key].as_array().with_context(|| format!("missing full-FPU {key}"))?;
+        ensure!(bank.len() == count, "full-FPU {key} requires {count} levers");
         inputs.extend(bank.iter().map(|pos| origin + position(pos)));
     }
     let read_inputs = |world: &PlotWorld| -> Result<u64> {
@@ -1022,14 +867,7 @@ fn fpu_changing_inputs(
     let mut current_inputs = read_inputs(world)?;
     // Generate all raw stimuli before the phase timers. Bit indices follow
     // manifest array order; this does not assert an IEEE operand representation.
-    let stimuli = input_stimuli(
-        workload,
-        current_inputs,
-        operand_bits,
-        opcode_bits,
-        seed,
-        warm_episodes + episodes,
-    );
+    let stimuli = input_stimuli(workload, current_inputs, operand_bits, opcode_bits, seed, warm_episodes + episodes);
     if full_fpu && trigger_lever.powered != cycled_full_fpu {
         use_lever(compiler, world, trigger);
     }
@@ -1051,11 +889,7 @@ fn fpu_changing_inputs(
         let mut trace = Vec::new();
         let mut phase_words = Vec::with_capacity(3);
         let mut boundary_tick = 0;
-        let before_output = if full_fpu && recording {
-            read_output(world)?
-        } else {
-            0
-        };
+        let before_output = if full_fpu && recording { read_output(world)? } else { 0 };
         let phases: &[usize] = if cycled_full_fpu {
             &[input_every, input_every]
         } else if full_fpu {
@@ -1090,8 +924,7 @@ fn fpu_changing_inputs(
                     native_elapsed += native_started.elapsed();
                 }
                 if compiler.is_none() && measured && !capture_trace {
-                    let expected =
-                        expected.context("native workload needs a captured reference")?;
+                    let expected = expected.context("native workload needs a captured reference")?;
                     ensure!(
                         read_output(world)? == expected[episode][boundary_tick + game_tick],
                         "native FPU episode {} game tick {} differs from baseline",
@@ -1106,11 +939,7 @@ fn fpu_changing_inputs(
                     trace.push(read_output(world)?);
                 }
             }
-            let duration = if compiler.is_none() {
-                native_elapsed
-            } else {
-                started.elapsed()
-            };
+            let duration = if compiler.is_none() { native_elapsed } else { started.elapsed() };
             if measured {
                 phase_times[phase] += duration;
             }
@@ -1120,10 +949,7 @@ fn fpu_changing_inputs(
                 flush(compiler, world);
             }
             let word = read_output(world)?;
-            ensure!(
-                read_inputs(world)? == stimulus,
-                "full-FPU input vector changed during a held phase"
-            );
+            ensure!(read_inputs(world)? == stimulus, "full-FPU input vector changed during a held phase");
             if full_fpu {
                 ensure!(
                     matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered == (cycled_full_fpu && phase == 1)),
@@ -1149,9 +975,7 @@ fn fpu_changing_inputs(
             input_flips += u64::from(flips);
             if recording {
                 if let Some(expected) = expected {
-                    for (game_tick, (&actual, &reference)) in
-                        trace.iter().zip(&expected[episode]).enumerate()
-                    {
+                    for (game_tick, (&actual, &reference)) in trace.iter().zip(&expected[episode]).enumerate() {
                         ensure!(
                             actual == reference,
                             "full-FPU episode {} game tick {} output {actual} differs from plain reference {reference}",
@@ -1161,15 +985,9 @@ fn fpu_changing_inputs(
                     }
                 }
                 latencies.push(if full_fpu {
-                    trace
-                        .iter()
-                        .position(|&word| word != before_output)
-                        .map(|tick| tick + 1)
+                    trace.iter().position(|&word| word != before_output).map(|tick| tick + 1)
                 } else {
-                    trace[64..192]
-                        .iter()
-                        .position(|&word| word != trace[63])
-                        .map(|tick| tick + 1)
+                    trace[64..192].iter().position(|&word| word != trace[63]).map(|tick| tick + 1)
                 });
                 traces.push(trace);
             }
@@ -1288,31 +1106,19 @@ fn use_lever(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockP
 }
 
 fn load(descriptor: &Value) -> Result<PlotWorld> {
-    let bytes = std::fs::read(
-        root().join(
-            descriptor["fixture"]
-                .as_str()
-                .context("missing schematic path")?,
-        ),
-    )?;
-    ensure!(
-        descriptor["sha256"] == format!("{:x}", Sha256::digest(&bytes)),
-        "schematic hash changed"
-    );
+    let bytes = std::fs::read(root().join(descriptor["fixture"].as_str().context("missing schematic path")?))?;
+    ensure!(descriptor["sha256"] == format!("{:x}", Sha256::digest(&bytes)), "schematic hash changed");
     let clipboard = load_schematic(std::io::Cursor::new(bytes))?;
     ensure!(
         descriptor["dimensions"] == json!([clipboard.size_x, clipboard.size_y, clipboard.size_z]),
         "schematic dimensions changed"
     );
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     paste_clipboard(
         &mut world,
         &clipboard,
-        origin(descriptor)
-            + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
+        origin(descriptor) + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
         false,
     );
     Ok(world)
@@ -1326,11 +1132,7 @@ fn position(value: &Value) -> BlockPos {
     )
 }
 fn origin(descriptor: &Value) -> BlockPos {
-    position(
-        descriptor
-            .get("origin")
-            .unwrap_or(&descriptor["coordinates"]["origin"]),
-    )
+    position(descriptor.get("origin").unwrap_or(&descriptor["coordinates"]["origin"]))
 }
 fn root() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))

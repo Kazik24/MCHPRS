@@ -5,44 +5,31 @@ fn io_pack() -> PathBuf {
     root().join("test_data/instant-pistons-io")
 }
 fn io_fixture(id: &str) -> Value {
-    manifests_at(&io_pack())
-        .into_iter()
-        .find(|m| m["id"] == id)
-        .unwrap()
+    manifests_at(&io_pack()).into_iter().find(|m| m["id"] == id).unwrap()
 }
 fn run(id: &str, name: &str, rotation: u32, capture: bool) -> Value {
     let m = io_fixture(id);
     episode(&m, &named_case(&m, name), rotation, "game", capture)
 }
 fn extended(v: &Value) -> bool {
-    assert!(matches!(
-        v["name"].as_str(),
-        Some("piston" | "sticky_piston")
-    ));
+    assert!(matches!(v["name"].as_str(), Some("piston" | "sticky_piston")));
     v["properties"]["extended"] == "true"
 }
 fn repeater_bits(v: &Value) -> u16 {
     if let Some(bank) = v.as_array() {
-        return bank
-            .iter()
-            .enumerate()
-            .fold(0, |n, (i, b)| n | (repeater_bits(b) << i));
+        return bank.iter().enumerate().fold(0, |n, (i, b)| n | (repeater_bits(b) << i));
     }
     assert_eq!(v["name"], "repeater");
     (v["properties"]["powered"] == "false") as u16
 }
 fn memory_bits(bank: &Value) -> Option<u16> {
-    bank.as_array()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .try_fold(0, |n, (i, b)| {
-            if b["name"] == "moving_piston" {
-                None
-            } else {
-                Some(n | ((!extended(b)) as u16) << i)
-            }
-        })
+    bank.as_array().unwrap().iter().enumerate().try_fold(0, |n, (i, b)| {
+        if b["name"] == "moving_piston" {
+            None
+        } else {
+            Some(n | ((!extended(b)) as u16) << i)
+        }
+    })
 }
 
 #[test]
@@ -54,12 +41,7 @@ fn strict_io_imports_remain_quiescent_and_preserve_saved_state() {
         for _ in 0..24 {
             w.tick_interpreted();
         }
-        assert_eq!(
-            before,
-            physical(&w, &watch)["cells"],
-            "{} saved idle",
-            m["id"]
-        );
+        assert_eq!(before, physical(&w, &watch)["cells"], "{} saved idle", m["id"]);
         assert!(quiet(&w));
         assert!(!observe(&w, &m, d, 0).as_object().unwrap().is_empty());
     }
@@ -154,21 +136,15 @@ fn lever_chain_propagates_through_nested_callbacks_in_one_tick() {
         .collect();
     let first = entries
         .iter()
-        .position(|e| {
-            e["kind"] == "event_execute" && e["data"]["pos"] == json!(BlockPos::new(40, 31, 45))
-        })
+        .position(|e| e["kind"] == "event_execute" && e["data"]["pos"] == json!(BlockPos::new(40, 31, 45)))
         .unwrap();
     let request = entries
         .iter()
-        .position(|e| {
-            e["kind"] == "event_enqueue" && e["data"]["pos"] == json!(BlockPos::new(40, 31, 48))
-        })
+        .position(|e| e["kind"] == "event_enqueue" && e["data"]["pos"] == json!(BlockPos::new(40, 31, 48)))
         .unwrap();
     let second = entries
         .iter()
-        .position(|e| {
-            e["kind"] == "event_execute" && e["data"]["pos"] == json!(BlockPos::new(40, 31, 48))
-        })
+        .position(|e| e["kind"] == "event_execute" && e["data"]["pos"] == json!(BlockPos::new(40, 31, 48)))
         .unwrap();
     assert!(first < request && request < second);
     assert_eq!(entries[first]["tick"], 2);
@@ -207,9 +183,7 @@ fn output_stage_rejects_pending_retraction_after_inhibition_becomes_effective() 
     assert!(
         entries[i_exec..o_exec]
             .iter()
-            .any(|e| e["kind"] == "callback"
-                && e["data"]["pos"] == output
-                && e["data"]["piston_power"] == true)
+            .any(|e| e["kind"] == "callback" && e["data"]["pos"] == output && e["data"]["piston_power"] == true)
     );
     assert!(
         !entries
@@ -224,12 +198,7 @@ fn new_or_output_stage_preserves_shared_payload_and_illegal_reset_starvation() {
     for id in ["or_1", "or_interpreter_illigal"] {
         let m = io_fixture(id);
         let y = if id == "or_1" { 1 } else { 2 };
-        for name in [
-            "events-10-12",
-            "events-01-12",
-            "events-11-12",
-            "events-11-21",
-        ] {
+        for name in ["events-10-12", "events-01-12", "events-11-12", "events-11-21"] {
             let t = run(id, name, 0, true);
             let indices: Vec<_> = [[0, y, 7], [1, y, 7], [0, y, 8]]
                 .into_iter()
@@ -250,16 +219,10 @@ fn new_or_output_stage_preserves_shared_payload_and_illegal_reset_starvation() {
                 let payloads = indices
                     .iter()
                     .filter(|i| {
-                        cells[i]["name"] == "redstone_block"
-                            || cells[i]["entity"]["MovingPiston"]["block_state"]
-                                == Block::RedstoneBlock {}.get_id()
+                        cells[i]["name"] == "redstone_block" || cells[i]["entity"]["MovingPiston"]["block_state"] == Block::RedstoneBlock {}.get_id()
                     })
                     .count();
-                assert_eq!(
-                    payloads, 1,
-                    "{id} {name} tick{} operation{}",
-                    s["tick"], s["operation"]
-                );
+                assert_eq!(payloads, 1, "{id} {name} tick{} operation{}", s["tick"], s["operation"]);
             }
             assert_eq!(repeater_bits(&t["projections"][4]["repeater"]), 1);
             if id == "or_interpreter_illigal" && name.starts_with("events-11") {
@@ -270,12 +233,11 @@ fn new_or_output_stage_preserves_shared_payload_and_illegal_reset_starvation() {
                 for _ in 0..6 {
                     w.tick_interpreted();
                 }
-                let restored = [[0,2,9],[2,2,7]].into_iter().filter(|p|
-                    matches!(w.get_block(BlockPos::new(40+p[0],30+p[1],40+p[2])),Block::Piston{piston} if piston.extended)).count();
-                assert_eq!(
-                    restored, 1,
-                    "one owner takes the reset supply from the other participant"
-                );
+                let restored = [[0, 2, 9], [2, 2, 7]]
+                    .into_iter()
+                    .filter(|p| matches!(w.get_block(BlockPos::new(40+p[0],30+p[1],40+p[2])),Block::Piston{piston} if piston.extended))
+                    .count();
+                assert_eq!(restored, 1, "one owner takes the reset supply from the other participant");
             }
         }
     }
@@ -301,26 +263,12 @@ fn gate_consumers_have_a_delayed_projection_and_preserve_history_and_reset_effec
                 _ => unreachable!(),
             };
             let t = episode(&m, c, 0, "game", false);
-            assert_eq!(
-                repeater_bits(&t["projections"][4]["repeater"]),
-                expected as u16,
-                "{id} {}",
-                c["id"]
-            );
-            assert_eq!(
-                t["projections"][8]["lamp"]["properties"]["lit"],
-                if expected { "false" } else { "true" }
-            );
+            assert_eq!(repeater_bits(&t["projections"][4]["repeater"]), expected as u16, "{id} {}", c["id"]);
+            assert_eq!(t["projections"][8]["lamp"]["properties"]["lit"], if expected { "false" } else { "true" });
         }
     }
-    assert_eq!(
-        repeater_bits(&run("and_3", "events-11-12", 0, false)["projections"][4]["repeater"]),
-        0
-    );
-    assert_eq!(
-        repeater_bits(&run("and_3", "events-11-21", 0, false)["projections"][4]["repeater"]),
-        1
-    );
+    assert_eq!(repeater_bits(&run("and_3", "events-11-12", 0, false)["projections"][4]["repeater"]), 0);
+    assert_eq!(repeater_bits(&run("and_3", "events-11-21", 0, false)["projections"][4]["repeater"]), 1);
     let reset = run("xor_simple", "events-11-12", 0, false);
     assert_eq!(repeater_bits(&reset["projections"][4]["repeater"]), 0);
     assert_eq!(repeater_bits(&reset["projections"][8]["repeater"]), 1);
@@ -367,20 +315,8 @@ fn lever_torch_delay_and_held_levels_do_not_create_additional_root_computations(
     }
     for id in ["instant_torch", "instant_down_torch_reset"] {
         let t = run(id, "reuse-after-quiescence", 0, true);
-        assert!(
-            t["readiness_checks"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|r| r["quiet"] == true)
-        );
-        assert!(
-            applied(&t)
-                .iter()
-                .filter(|e| e["data"]["action"] == "Retract")
-                .count()
-                >= 2
-        );
+        assert!(t["readiness_checks"].as_array().unwrap().iter().all(|r| r["quiet"] == true));
+        assert!(applied(&t).iter().filter(|e| e["data"]["action"] == "Retract").count() >= 2);
     }
 }
 
@@ -388,12 +324,7 @@ fn lever_torch_delay_and_held_levels_do_not_create_additional_root_computations(
 fn lever_prepared_adders_match_math_at_payload_and_consumer_windows() {
     for id in ["adder_1bit", "adder_11bits"] {
         let m = io_fixture(id);
-        for c in m["cases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|c| c["expectation"].is_object())
-        {
+        for c in m["cases"].as_array().unwrap().iter().filter(|c| c["expectation"].is_object()) {
             let t = episode(&m, c, 0, "game", false);
             let expected = c["expectation"]["sum"].as_u64().unwrap() as u16;
             for i in 1..=3 {
@@ -408,12 +339,7 @@ fn lever_prepared_adders_match_math_at_payload_and_consumer_windows() {
                 } else {
                     bit(payload)
                 };
-                assert_eq!(
-                    actual,
-                    Some(expected),
-                    "{id} {} payload boundary {i}",
-                    c["id"]
-                );
+                assert_eq!(actual, Some(expected), "{id} {} payload boundary {i}", c["id"]);
             }
             for i in 3..=7 {
                 assert_eq!(
@@ -439,10 +365,7 @@ fn lever_prepared_adders_match_math_at_payload_and_consumer_windows() {
 fn counter_memory_and_repeater_bank_have_distinct_valid_count_windows() {
     let t = run("counter_basic", "release", 0, false);
     for n in 1..=16usize {
-        assert_eq!(
-            memory_bits(&t["projections"][6 * n]["memory"]),
-            Some(n as u16)
-        );
+        assert_eq!(memory_bits(&t["projections"][6 * n]["memory"]), Some(n as u16));
         for i in 6 * n + 5..=(6 * n + 8).min(102) {
             assert_eq!(
                 repeater_bits(&t["projections"][i]["repeater"]),
@@ -459,12 +382,7 @@ fn counter_memory_and_repeater_bank_have_distinct_valid_count_windows() {
 fn io_episodes_agree_at_completed_boundaries_under_game_nano_and_pico_inspection() {
     for m in manifests_at(&io_pack()) {
         for c in m["cases"].as_array().unwrap() {
-            for r in m["rotations"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|r| r.as_u64().unwrap() as u32)
-            {
+            for r in m["rotations"].as_array().unwrap().iter().map(|r| r.as_u64().unwrap() as u32) {
                 let game = episode(&m, c, r, "game", false);
                 for mode in ["nano", "pico"] {
                     let fine = episode(&m, c, r, mode, false);

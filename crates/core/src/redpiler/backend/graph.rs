@@ -16,9 +16,7 @@ use crate::redpiler::program_graph::*;
 use crate::redpiler::{GraphCallbackProfile, GraphExecutionProfile, GraphProfileMetric};
 use crate::world::{BlockAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType, MovingPistonEntity};
-use mchprs_blocks::blocks::{
-    Block, ComparatorMode, RedstonePiston, RedstoneWire, RedstoneWireSide,
-};
+use mchprs_blocks::blocks::{Block, ComparatorMode, RedstonePiston, RedstoneWire, RedstoneWireSide};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{PistonEvent, TickEntry, TickPriority};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -65,37 +63,15 @@ pub(crate) enum GraphBackendError {
     Callbacks(callbacks::CallbackError),
     PassPipeline(passes::PassPipelineError),
     Graph(GraphBuildError),
-    MissingBlockState {
-        node: NodeId,
-    },
-    MissingComponentSite {
-        node: NodeId,
-    },
-    MissingNoteBlockSite {
-        node: NodeId,
-        position: BlockPos,
-    },
-    IncompleteWireNeighborhood {
-        node: NodeId,
-        position: BlockPos,
-    },
-    TickOutsideScheduler {
-        delay: u32,
-    },
-    InvalidZeroDelayPriority {
-        priority: TickPriority,
-    },
-    UnsupportedTickTarget {
-        position: BlockPos,
-        block_type: u32,
-    },
-    UnknownTickTarget {
-        position: BlockPos,
-    },
-    UnsupportedComponent {
-        position: Option<BlockPos>,
-        kind: &'static str,
-    },
+    MissingBlockState { node: NodeId },
+    MissingComponentSite { node: NodeId },
+    MissingNoteBlockSite { node: NodeId, position: BlockPos },
+    IncompleteWireNeighborhood { node: NodeId, position: BlockPos },
+    TickOutsideScheduler { delay: u32 },
+    InvalidZeroDelayPriority { priority: TickPriority },
+    UnsupportedTickTarget { position: BlockPos, block_type: u32 },
+    UnknownTickTarget { position: BlockPos },
+    UnsupportedComponent { position: Option<BlockPos>, kind: &'static str },
 }
 
 impl fmt::Display for GraphBackendError {
@@ -109,43 +85,26 @@ impl fmt::Display for GraphBackendError {
             Self::PassPipeline(error) => error.fmt(f),
             Self::Graph(error) => error.fmt(f),
             Self::MissingBlockState { node } => {
-                write!(
-                    f,
-                    "component node {} has no original block state",
-                    node.index()
-                )
+                write!(f, "component node {} has no original block state", node.index())
             }
             Self::MissingComponentSite { node } => {
-                write!(
-                    f,
-                    "wire node {} has no compiled component site",
-                    node.index()
-                )
+                write!(f, "wire node {} has no compiled component site", node.index())
             }
             Self::MissingNoteBlockSite { node, position } => write!(
                 f,
                 "noteblock node {} at {position:?} is missing its compiled support or above site",
                 node.index()
             ),
-            Self::IncompleteWireNeighborhood { node, position } => write!(
-                f,
-                "wire node {} is missing compiled query site at {position:?}",
-                node.index()
-            ),
-            Self::TickOutsideScheduler { delay } => write!(
-                f,
-                "imported tick delay {delay} exceeds the graph scheduler ring"
-            ),
+            Self::IncompleteWireNeighborhood { node, position } => {
+                write!(f, "wire node {} is missing compiled query site at {position:?}", node.index())
+            }
+            Self::TickOutsideScheduler { delay } => write!(f, "imported tick delay {delay} exceeds the graph scheduler ring"),
             Self::InvalidZeroDelayPriority { priority } => {
                 write!(f, "zero-delay graph tick has invalid priority {priority:?}")
             }
-            Self::UnsupportedTickTarget {
-                position,
-                block_type,
-            } => write!(
-                f,
-                "graph cannot dispatch tick for uncompiled block type {block_type} at {position:?}"
-            ),
+            Self::UnsupportedTickTarget { position, block_type } => {
+                write!(f, "graph cannot dispatch tick for uncompiled block type {block_type} at {position:?}")
+            }
             Self::UnknownTickTarget { position } => write!(
                 f,
                 "graph cannot classify imported tick target at {position:?} because its chunk was unavailable"
@@ -244,27 +203,11 @@ struct DeferredResourceEvent {
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum GraphObservedOperation {
-    Callback {
-        target: BlockPos,
-        direction: Option<BlockFace>,
-    },
-    Sample {
-        actor: BlockPos,
-        extended: bool,
-        powered: bool,
-    },
-    Request {
-        actor: BlockPos,
-        action: mchprs_world::PistonAction,
-    },
-    AcceptanceAttempt {
-        actor: BlockPos,
-        action: mchprs_world::PistonAction,
-    },
-    Accepted {
-        actor: BlockPos,
-        action: mchprs_world::PistonAction,
-    },
+    Callback { target: BlockPos, direction: Option<BlockFace> },
+    Sample { actor: BlockPos, extended: bool, powered: bool },
+    Request { actor: BlockPos, action: mchprs_world::PistonAction },
+    AcceptanceAttempt { actor: BlockPos, action: mchprs_world::PistonAction },
+    Accepted { actor: BlockPos, action: mchprs_world::PistonAction },
 }
 
 enum PresentationEffect {
@@ -285,10 +228,7 @@ enum PresentationEffect {
 /// A runtime failure that requires falling back from graph execution.
 pub enum GraphExecutionError {
     /// The selected component kind has no graph execution implementation.
-    UnsupportedComponent {
-        position: Option<BlockPos>,
-        kind: &'static str,
-    },
+    UnsupportedComponent { position: Option<BlockPos>, kind: &'static str },
     /// Scheduled command block work reached execution without a world command host.
     CommandHostUnavailable { position: BlockPos },
 }
@@ -299,10 +239,9 @@ impl fmt::Display for GraphExecutionError {
             Self::UnsupportedComponent { position, kind } => {
                 write!(f, "graph execution does not support {kind} at {position:?}")
             }
-            Self::CommandHostUnavailable { position } => write!(
-                f,
-                "graph command block at {position:?} needs a host before its scheduled work can run"
-            ),
+            Self::CommandHostUnavailable { position } => {
+                write!(f, "graph command block at {position:?} needs a host before its scheduled work can run")
+            }
         }
     }
 }
@@ -395,13 +334,82 @@ pub(crate) struct GraphBackend {
     observed_operations: Vec<GraphObservedOperation>,
 }
 
+#[inline]
+fn first_turbo_delivery(
+    deliveries: &[RouteDelivery],
+    target: SiteId,
+    observed: &ObservedSite,
+    mut guard_matches: impl FnMut(GuardId, SiteId, &ObservedSite) -> bool,
+    mut inspect: impl FnMut(RouteDelivery),
+) -> Option<RouteDelivery> {
+    for delivery in deliveries.iter().copied() {
+        inspect(delivery);
+        if delivery.target == target
+            && delivery.receiver.is_some()
+            && delivery.view == OperandView::Captured
+            && guard_matches(delivery.guard, target, observed)
+        {
+            return Some(delivery);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod turbo_callback_selection_tests {
+    use super::*;
+
+    fn delivery(target: SiteId, guard: u32, view: OperandView, receiver: Option<CallbackReceiver>, sequence: u32) -> RouteDelivery {
+        RouteDelivery {
+            target,
+            kind: DeliveryKind::Update { direction: None },
+            guard: GuardId::new(guard),
+            view,
+            sequence,
+            receiver,
+        }
+    }
+
+    #[test]
+    fn indexed_and_linear_selection_keep_the_same_first_passing_row() {
+        let receiver = CallbackReceiver::Component(NodeId::new(7));
+        let target = SiteId::new(200);
+        let other_targets: Vec<_> = (0..10).map(|slot| SiteId::new(slot * 11 + 3)).collect();
+        let mut route = other_targets
+            .iter()
+            .map(|&site| delivery(site, 9, OperandView::Captured, Some(receiver), 17))
+            .collect::<Vec<_>>();
+        route.extend([
+            delivery(target, 9, OperandView::Captured, None, 30),
+            delivery(target, 9, OperandView::Live, Some(receiver), 30),
+            delivery(target, 8, OperandView::Captured, Some(receiver), 90),
+            delivery(target, 9, OperandView::Captured, Some(receiver), 90),
+        ]);
+        let observed = ObservedSite {
+            profile: None,
+            receiver: Some(receiver),
+            properties: ObservedProperties::Passive,
+        };
+        let matches_guard = |guard, _, observed: &ObservedSite| guard == GuardId::new(9) && observed.receiver == Some(receiver);
+        let mut linear_rows = 0;
+        let linear = first_turbo_delivery(&route, target, &observed, matches_guard, |_| linear_rows += 1);
+        let mut indexed_rows = 0;
+        let indexed = first_turbo_delivery(&route[10..], target, &observed, matches_guard, |_| indexed_rows += 1);
+        assert_eq!(linear, indexed);
+        assert_eq!(linear, Some(route[13]));
+        assert_eq!((linear_rows, indexed_rows), (14, 4));
+
+        let miss_guard = |_, _, _: &ObservedSite| false;
+        let linear_miss = first_turbo_delivery(&route, target, &observed, miss_guard, |_| {});
+        let indexed_miss = first_turbo_delivery(&route[10..], target, &observed, miss_guard, |_| {});
+        assert_eq!(linear_miss, indexed_miss);
+        assert_eq!(linear_miss, None);
+    }
+}
+
 impl GraphBackend {
     #[cfg(test)]
-    pub(crate) fn new(
-        program: CircuitProgram,
-        state: CircuitState,
-        logical_tick: u64,
-    ) -> Result<Self, GraphBackendError> {
+    pub(crate) fn new(program: CircuitProgram, state: CircuitState, logical_tick: u64) -> Result<Self, GraphBackendError> {
         let positions = program.position_index();
         Self::new_with_positions(program, state, logical_tick, positions)
     }
@@ -414,40 +422,21 @@ impl GraphBackend {
         monitor: Arc<TaskMonitor>,
     ) -> Result<Self, GraphBackendError> {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
-        let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits)
-            .map_err(map_preparation_error)?;
+        let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits).map_err(map_preparation_error)?;
         let options = crate::redpiler::CompilerOptions::default();
         let pipeline = passes::default_graph_pipeline(&options);
-        passes::run_graph_pipeline(
-            &mut prepared.graph,
-            &options,
-            &prepared.entry,
-            &pipeline,
-            &monitor,
-        )
-        .map_err(GraphBackendError::PassPipeline)?;
+        passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).map_err(GraphBackendError::PassPipeline)?;
         prepared.finish_pipeline_statistics(&monitor);
         let lowered = prepared.lower(&monitor).map_err(GraphBackendError::Graph)?;
         Self::from_lowered(lowered, &monitor)
     }
 
-    pub(crate) fn from_lowered(
-        lowered: LoweredCircuit,
-        monitor: &TaskMonitor,
-    ) -> Result<Self, GraphBackendError> {
+    pub(crate) fn from_lowered(lowered: LoweredCircuit, monitor: &TaskMonitor) -> Result<Self, GraphBackendError> {
         Self::validate_supported(&lowered.program)?;
-        let mut backend = Self::new_with_positions(
-            lowered.program,
-            lowered.state,
-            lowered.logical_tick,
-            lowered.positions,
-        )?;
+        let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
         #[cfg(feature = "graph-profile")]
         for (length, position) in monitor.take_dust_candidate_wires() {
-            let node = *backend
-                .positions
-                .get(&position)
-                .expect("long candidate wire position survives lowering");
+            let node = *backend.positions.get(&position).expect("long candidate wire position survives lowering");
             backend.dust_candidate_length_by_node[node.index()] = Some(length);
         }
         backend.import_ticks(lowered.imported_ticks)?;
@@ -513,11 +502,7 @@ impl GraphBackend {
             let facing = command_facing(block);
             for (neighbor, only_chain, required) in [
                 (position.offset(facing), true, true),
-                (
-                    position.offset(facing.opposite()),
-                    false,
-                    block.property("conditional") == Some("true"),
-                ),
+                (position.offset(facing.opposite()), false, block.property("conditional") == Some("true")),
             ] {
                 if !required {
                     continue;
@@ -528,9 +513,7 @@ impl GraphBackend {
                     .find(|site| site.position == neighbor)
                     .and_then(|site| match site.source {
                         SiteSource::Constant(profile) => program.profile_block(profile),
-                        SiteSource::Component(component) => {
-                            program.nodes()[component.index()].block
-                        }
+                        SiteSource::Component(component) => program.nodes()[component.index()].block,
                         SiteSource::Contact(contact) => program.contacts()[contact.index()]
                             .variants
                             .iter()
@@ -540,9 +523,10 @@ impl GraphBackend {
                     .is_some_and(|neighbor_block| {
                         neighbor_block.is_command_block()
                             && (!only_chain || neighbor_block.get_name() == "chain_command_block")
-                            && !program.command_blocks().iter().any(|plan| {
-                                program.nodes()[plan.node.index()].position == Some(neighbor)
-                            })
+                            && !program
+                                .command_blocks()
+                                .iter()
+                                .any(|plan| program.nodes()[plan.node.index()].position == Some(neighbor))
                     });
                 if uncompiled_command {
                     return Err(GraphBackendError::UnsupportedComponent {
@@ -553,13 +537,8 @@ impl GraphBackend {
             }
         }
         for (index, node) in program.nodes().iter().enumerate() {
-            if matches!(
-                node.kind,
-                CircuitNodeKind::Electrical(NodeType::NoteBlock { .. })
-            ) && !program
-                .note_blocks()
-                .iter()
-                .any(|plan| plan.node.index() == index)
+            if matches!(node.kind, CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }))
+                && !program.note_blocks().iter().any(|plan| plan.node.index() == index)
             {
                 return Err(GraphBackendError::MissingNoteBlockSite {
                     node: NodeId::new(index as u32),
@@ -575,11 +554,7 @@ impl GraphBackend {
                 let SiteSource::Constant(profile) = site.source else {
                     return None;
                 };
-                matches!(
-                    program.profile_block(profile),
-                    Some(Block::RedstoneWire { .. })
-                )
-                .then_some(SiteId::new(index as u32))
+                matches!(program.profile_block(profile), Some(Block::RedstoneWire { .. })).then_some(SiteId::new(index as u32))
             })
             .collect();
         let mut conducted_users: FxHashMap<PowerTarget, Vec<PowerTarget>> = FxHashMap::default();
@@ -594,12 +569,7 @@ impl GraphBackend {
                     .or_default()
                     .push(link.to);
             }
-            if external_wires.contains(&link.from)
-                && matches!(
-                    link.from_port,
-                    PowerPort::Weak(_) | PowerPort::Strong(_) | PowerPort::Stored
-                )
-            {
+            if external_wires.contains(&link.from) && matches!(link.from_port, PowerPort::Weak(_) | PowerPort::Strong(_) | PowerPort::Stored) {
                 pending.push((link.to, link.from));
             }
         }
@@ -616,13 +586,7 @@ impl GraphBackend {
                     });
                 }
                 PowerTarget::Conductor { .. } => {
-                    pending.extend(
-                        conducted_users
-                            .get(&target)
-                            .into_iter()
-                            .flatten()
-                            .map(|user| (*user, wire)),
-                    );
+                    pending.extend(conducted_users.get(&target).into_iter().flatten().map(|user| (*user, wire)));
                 }
             }
         }
@@ -640,9 +604,7 @@ impl GraphBackend {
             let id = NodeId::try_from_index(index).expect("graph node count was validated");
             if matches!(
                 node.kind,
-                CircuitNodeKind::Electrical(_)
-                    | CircuitNodeKind::Observer { .. }
-                    | CircuitNodeKind::Wire(_)
+                CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
             ) {
                 if node.raw_state.is_none() {
                     return Err(GraphBackendError::MissingBlockState { node: id });
@@ -658,17 +620,11 @@ impl GraphBackend {
             let Some(root_site) = component_sites[wire.node.index()] else {
                 return Err(GraphBackendError::MissingComponentSite { node: wire.node });
             };
-            let position = program.nodes()[wire.node.index()]
-                .position
-                .expect("wire nodes have positions");
+            let position = program.nodes()[wire.node.index()].position.expect("wire nodes have positions");
             if program.sites()[root_site.index()].position != position {
                 return Err(GraphBackendError::MissingComponentSite { node: wire.node });
             }
-            for (site, expected) in wire
-                .canonical_neighbors
-                .iter()
-                .zip(crate::world::wire_cache::positions(position))
-            {
+            for (site, expected) in wire.canonical_neighbors.iter().zip(crate::world::wire_cache::positions(position)) {
                 if program.sites()[site.index()].position != expected {
                     return Err(GraphBackendError::IncompleteWireNeighborhood {
                         node: wire.node,
@@ -735,15 +691,11 @@ impl GraphBackend {
                 return Err(GraphBackendError::TickOutsideScheduler { delay: tick.delay });
             }
             if tick.delay == 0 && tick.priority != TickPriority::NanoTick {
-                return Err(GraphBackendError::InvalidZeroDelayPriority {
-                    priority: tick.priority,
-                });
+                return Err(GraphBackendError::InvalidZeroDelayPriority { priority: tick.priority });
             }
-            let current_registry_type =
-                tick.current_registry_type
-                    .ok_or(GraphBackendError::UnknownTickTarget {
-                        position: tick.position,
-                    })?;
+            let current_registry_type = tick
+                .current_registry_type
+                .ok_or(GraphBackendError::UnknownTickTarget { position: tick.position })?;
             let node = tick.target;
             if let Some(node) = node {
                 let Some(spec) = self.program.nodes().get(node.index()) else {
@@ -763,10 +715,7 @@ impl GraphBackend {
                 }
             }
             let registry_type = tick.block_type.unwrap_or(current_registry_type);
-            if node.is_none()
-                && registry_type == current_registry_type
-                && current_registry_type != Block::Air.registry_id()
-            {
+            if node.is_none() && registry_type == current_registry_type && current_registry_type != Block::Air.registry_id() {
                 return Err(GraphBackendError::UnsupportedTickTarget {
                     position: tick.position,
                     block_type: current_registry_type,
@@ -779,18 +728,14 @@ impl GraphBackend {
                 registry_type,
                 current_registry_type,
             };
-            self.scheduler
-                .schedule_half_tick(scheduled, tick.delay as usize, tick.priority);
+            self.scheduler.schedule_half_tick(scheduled, tick.delay as usize, tick.priority);
             *self.pending.entry(scheduled.into()).or_default() += 1;
         }
         Ok(())
     }
 
     fn registry_type(&self, node: NodeId) -> u32 {
-        self.program.nodes()[node.index()]
-            .block
-            .unwrap()
-            .registry_id()
+        self.program.nodes()[node.index()].block.unwrap().registry_id()
     }
 
     fn schedule(&mut self, node: NodeId, delay: usize, priority: TickPriority) {
@@ -801,13 +746,7 @@ impl GraphBackend {
         self.schedule_with(node, delay, priority, false);
     }
 
-    fn schedule_with(
-        &mut self,
-        node: NodeId,
-        delay: usize,
-        priority: TickPriority,
-        _game_tick_delay: bool,
-    ) {
+    fn schedule_with(&mut self, node: NodeId, delay: usize, priority: TickPriority, _game_tick_delay: bool) {
         #[cfg(feature = "graph-profile")]
         {
             self.callback_profile.borrow_mut().tick_schedule_attempts += 1;
@@ -839,11 +778,7 @@ impl GraphBackend {
                 "schedule {:?} +{} {} {priority:?}",
                 node,
                 if _game_tick_delay { delay / 2 } else { delay },
-                if _game_tick_delay {
-                    "ticks"
-                } else {
-                    "half-ticks"
-                }
+                if _game_tick_delay { "ticks" } else { "half-ticks" }
             )
         );
     }
@@ -872,17 +807,11 @@ impl GraphBackend {
         self.tick_with_host(None)
     }
 
-    pub(crate) fn tick_with_world<W: World>(
-        &mut self,
-        world: &mut W,
-    ) -> Result<(), GraphExecutionError> {
+    pub(crate) fn tick_with_world<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
         self.tick_with_host(Some(world))
     }
 
-    fn tick_with_host<'h>(
-        &mut self,
-        mut host: Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
+    fn tick_with_host<'h>(&mut self, mut host: Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
@@ -913,10 +842,7 @@ impl GraphBackend {
                     && tick.node.is_some_and(|node| {
                         matches!(
                             self.program.nodes()[node.index()].kind,
-                            CircuitNodeKind::Electrical(NodeType::CommandBlock {
-                                chain: false,
-                                ..
-                            })
+                            CircuitNodeKind::Electrical(NodeType::CommandBlock { chain: false, .. })
                         )
                     })
             })
@@ -942,10 +868,7 @@ impl GraphBackend {
         })
     }
 
-    fn tick_phases<'h>(
-        &mut self,
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
+    fn tick_phases<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         self.counts.ticks += 1;
         self.clock.logical_tick += 1;
         if let Some(host) = host.as_mut() {
@@ -1013,10 +936,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn drain_current_ticks<'h>(
-        &mut self,
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
+    fn drain_current_ticks<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         while let Some(tick) = self.scheduler.this_tick().pop_first() {
             self.popped(tick);
             if tick.registry_type != tick.current_registry_type {
@@ -1066,11 +986,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    pub(crate) fn set_pressure_plate(
-        &mut self,
-        position: BlockPos,
-        powered: bool,
-    ) -> Result<(), GraphExecutionError> {
+    pub(crate) fn set_pressure_plate(&mut self, position: BlockPos, powered: bool) -> Result<(), GraphExecutionError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
@@ -1079,11 +995,7 @@ impl GraphBackend {
         result
     }
 
-    fn set_pressure_plate_inner(
-        &mut self,
-        position: BlockPos,
-        powered: bool,
-    ) -> Result<(), GraphExecutionError> {
+    fn set_pressure_plate_inner(&mut self, position: BlockPos, powered: bool) -> Result<(), GraphExecutionError> {
         let Some(&node) = self.positions.get(&position) else {
             return Ok(());
         };
@@ -1102,21 +1014,13 @@ impl GraphBackend {
         }
     }
 
-    fn tick_component<'h>(
-        &mut self,
-        node: NodeId,
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
+    fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Wire(_) => Ok(()),
             CircuitNodeKind::Observer { .. } => self.tick_observer(node),
             CircuitNodeKind::Electrical(NodeType::Torch) => self.tick_torch(node),
-            CircuitNodeKind::Electrical(NodeType::Repeater { delay, .. }) => {
-                self.tick_repeater(node, delay)
-            }
-            CircuitNodeKind::Electrical(NodeType::Comparator {
-                mode, facing_diode, ..
-            }) => self.tick_comparator(node, mode, facing_diode),
+            CircuitNodeKind::Electrical(NodeType::Repeater { delay, .. }) => self.tick_repeater(node, delay),
+            CircuitNodeKind::Electrical(NodeType::Comparator { mode, facing_diode, .. }) => self.tick_comparator(node, mode, facing_diode),
             CircuitNodeKind::Electrical(NodeType::Lamp) => self.tick_lamp(node),
             CircuitNodeKind::Electrical(NodeType::Button) => {
                 if self.node_state(node).powered {
@@ -1137,33 +1041,21 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Observer { .. } | NodeType::Wire) => {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
             }
-            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => {
-                self.tick_command_block(node, host)
-            }
+            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => self.tick_command_block(node, host),
             CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => Ok(()),
-            CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
-                Err(self.unsupported(node, "trapdoor"))
-            }
+            CircuitNodeKind::Electrical(NodeType::Trapdoor) => Err(self.unsupported(node, "trapdoor")),
             CircuitNodeKind::Piston(piston) => self.sample_piston(piston),
             CircuitNodeKind::Contact(_) => Ok(()),
         }
     }
 
-    fn update_component(
-        &mut self,
-        node: NodeId,
-        kind: DeliveryKind,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn update_component(&mut self, node: NodeId, kind: DeliveryKind, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         #[cfg(feature = "graph-profile")]
         self.record_handler_invocation(node);
         let direction = match kind {
             DeliveryKind::Update { direction } => direction,
             DeliveryKind::Shape { direction } => {
-                return if matches!(
-                    self.program.nodes()[node.index()].kind,
-                    CircuitNodeKind::Wire(_)
-                ) {
+                return if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)) {
                     self.update_wire_shape(node, direction, captured)
                 } else {
                     Ok(())
@@ -1177,27 +1069,17 @@ impl GraphBackend {
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Observer { .. } => self.update_observer(node, direction, captured),
             CircuitNodeKind::Electrical(NodeType::Torch) => self.update_torch(node, captured),
-            CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => {
-                self.update_repeater(node, captured)
-            }
-            CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => {
-                self.update_comparator(node)
-            }
+            CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => self.update_repeater(node, captured),
+            CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => self.update_comparator(node),
             CircuitNodeKind::Electrical(NodeType::Lamp) => self.update_lamp(node, captured),
             CircuitNodeKind::Electrical(NodeType::CopperBulb) => self.update_bulb(node),
             CircuitNodeKind::Wire(_) => self.evaluate_seed(node, captured),
-            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => {
-                self.update_command_power(node)
-            }
+            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => self.update_command_power(node),
             CircuitNodeKind::Electrical(NodeType::NoteBlock { .. }) => self.update_note(node),
-            CircuitNodeKind::Electrical(NodeType::Trapdoor) => {
-                Err(self.unsupported(node, "trapdoor"))
-            }
+            CircuitNodeKind::Electrical(NodeType::Trapdoor) => Err(self.unsupported(node, "trapdoor")),
             CircuitNodeKind::Piston(piston) => self.sample_piston(piston),
             CircuitNodeKind::Contact(_) => Ok(()),
-            CircuitNodeKind::Electrical(
-                NodeType::Lever | NodeType::Button | NodeType::PressurePlate,
-            ) => Ok(()),
+            CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate) => Ok(()),
             CircuitNodeKind::Electrical(NodeType::Constant) => Ok(()),
             CircuitNodeKind::Electrical(NodeType::Observer { .. } | NodeType::Wire) => {
                 Err(self.unsupported(node, "invalid generic observer or wire"))
@@ -1228,10 +1110,7 @@ impl GraphBackend {
         let powered = self.input_strength(node, InputPort::Main) > 0;
         let (repeating, chain, automatic) = match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Electrical(NodeType::CommandBlock {
-                repeating,
-                chain,
-                automatic,
-                ..
+                repeating, chain, automatic, ..
             }) => (repeating, chain, automatic),
             _ => return Err(self.unsupported(node, "invalid command block binding")),
         };
@@ -1251,8 +1130,7 @@ impl GraphBackend {
         let should_schedule = !chain && (should_start || should_repeat) && !self.is_pending(node);
         let condition_met = should_schedule.then(|| self.command_condition_met(node));
         let position = self.position(node);
-        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index())
-        else {
+        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index()) else {
             return Err(GraphExecutionError::UnsupportedComponent {
                 position: Some(position),
                 kind: "command block state",
@@ -1270,10 +1148,7 @@ impl GraphBackend {
             entity.condition_met = condition_met;
         }
         #[cfg(feature = "graph-profile")]
-        if missing_entity
-            || changed
-            || condition_met.is_some_and(|value| value != previous_condition_met)
-        {
+        if missing_entity || changed || condition_met.is_some_and(|value| value != previous_condition_met) {
             self.callback_profile.borrow_mut().component_state_changes += 1;
         }
         if missing_entity || should_schedule || changed {
@@ -1285,11 +1160,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn tick_command_block<'h>(
-        &mut self,
-        node: NodeId,
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
+    fn tick_command_block<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         if self.command_plan(node).is_none() {
             return Err(self.unsupported(node, "command block plan"));
         }
@@ -1303,11 +1174,7 @@ impl GraphBackend {
             return Ok(());
         }
         let mut current = node;
-        let mut may_continue = self
-            .node_state(node)
-            .command_entity
-            .as_ref()
-            .is_some_and(|entity| entity.condition_met);
+        let mut may_continue = self.node_state(node).command_entity.as_ref().is_some_and(|entity| entity.condition_met);
         for _ in 0..256 {
             if !may_continue {
                 break;
@@ -1328,10 +1195,7 @@ impl GraphBackend {
         }
         if matches!(
             self.program.nodes()[node.index()].kind,
-            CircuitNodeKind::Electrical(NodeType::CommandBlock {
-                repeating: true,
-                ..
-            })
+            CircuitNodeKind::Electrical(NodeType::CommandBlock { repeating: true, .. })
         ) && self
             .node_state(node)
             .command_entity
@@ -1343,11 +1207,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn execute_command<'h>(
-        &mut self,
-        node: NodeId,
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<bool, GraphExecutionError> {
+    fn execute_command<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<bool, GraphExecutionError> {
         let position = self.position(node);
         let Some(mut entity) = self.node_state(node).command_entity.clone() else {
             return Ok(false);
@@ -1378,16 +1238,12 @@ impl GraphBackend {
                 Ok(()) => {
                     entity.success_count = 1;
                     if entity.track_output {
-                        entity.last_output = Some(
-                            serde_json::json!({"text":crate::messages::COMMAND_BLOCK_EXECUTED})
-                                .to_string(),
-                        );
+                        entity.last_output = Some(serde_json::json!({"text":crate::messages::COMMAND_BLOCK_EXECUTED}).to_string());
                     }
                 }
                 Err(error) => {
                     if entity.track_output {
-                        entity.last_output =
-                            Some(serde_json::json!({"text":error,"color":"red"}).to_string());
+                        entity.last_output = Some(serde_json::json!({"text":error,"color":"red"}).to_string());
                     }
                 }
             }
@@ -1400,8 +1256,7 @@ impl GraphBackend {
             self.callback_profile.borrow_mut().component_state_changes += 1;
         }
         let success_count = entity.success_count.clamp(0, 15) as u8;
-        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index())
-        else {
+        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index()) else {
             return Err(GraphExecutionError::UnsupportedComponent {
                 position: Some(position),
                 kind: "command block state",
@@ -1432,16 +1287,11 @@ impl GraphBackend {
                 .ok_or_else(|| self.unsupported(node, "noteblock support site"))?
                 .block,
         );
-        let unblocked = self
-            .resolve_site(plan.above, None)
-            .is_some_and(|site| site.block == Block::Air);
-        let CircuitNodeKind::Electrical(NodeType::NoteBlock { note, .. }) =
-            &self.program.nodes()[node.index()].kind
-        else {
+        let unblocked = self.resolve_site(plan.above, None).is_some_and(|site| site.block == Block::Air);
+        let CircuitNodeKind::Electrical(NodeType::NoteBlock { note, .. }) = &self.program.nodes()[node.index()].kind else {
             return Err(self.unsupported(node, "invalid noteblock binding"));
         };
-        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index())
-        else {
+        let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index()) else {
             return Err(self.unsupported(node, "noteblock state"));
         };
         state.powered = powered;
@@ -1477,45 +1327,34 @@ impl GraphBackend {
 
     fn sample_piston_inner(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
-        let powered = self.input_strength(spec.node, InputPort::Main) > 0
-            || self.input_strength(spec.node, InputPort::Quasi) > 0;
+        let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
         let state = self.state.pistons[piston.index()];
         if state.availability.base_pending() {
             #[cfg(feature = "graph-profile")]
             {
-                self.callback_profile
-                    .borrow_mut()
-                    .piston_samples_skipped_base_pending += 1;
+                self.callback_profile.borrow_mut().piston_samples_skipped_base_pending += 1;
             }
             return Ok(());
         }
         self.counts.piston_samples += 1;
         #[cfg(test)]
         if self.test_recording {
-            self.observed_operations
-                .push(GraphObservedOperation::Sample {
-                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                    extended: state.extended,
-                    powered,
-                });
+            self.observed_operations.push(GraphObservedOperation::Sample {
+                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                extended: state.extended,
+                powered,
+            });
         }
         let action = match (powered, state.extended) {
-            (true, false) if self.piston_lane_available(piston) => {
-                mchprs_world::PistonAction::Extend
-            }
+            (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
             (false, true) => {
                 let early_resource_retraction = match spec.lane {
                     PistonLane::SingleResource { far } => self
                         .piston_resource_at(piston, far)
-                        .and_then(|resource| {
-                            self.pending_resource_extension(resource, far, spec.facing)
-                        })
+                        .and_then(|resource| self.pending_resource_extension(resource, far, spec.facing))
                         .is_some_and(|event| {
                             event.due_tick > self.clock.logical_tick
-                                || matches!(
-                                    self.clock.phase,
-                                    GraphPhase::ScheduledTicks | GraphPhase::PistonActions
-                                )
+                                || matches!(self.clock.phase, GraphPhase::ScheduledTicks | GraphPhase::PistonActions)
                         }),
                     PistonLane::Empty => false,
                 };
@@ -1539,20 +1378,15 @@ impl GraphBackend {
         {
             #[cfg(test)]
             if self.test_recording {
-                self.observed_operations
-                    .push(GraphObservedOperation::Request {
-                        actor: self.program.nodes()
-                            [self.program.pistons()[request.piston.index()].node.index()]
+                self.observed_operations.push(GraphObservedOperation::Request {
+                    actor: self.program.nodes()[self.program.pistons()[request.piston.index()].node.index()]
                         .position
                         .unwrap(),
-                        action: request.action,
-                    });
+                    action: request.action,
+                });
             }
             #[cfg(test)]
-            graph_test_trace!(
-                self,
-                format!("piston request {:?} {:?}", request.piston, request.action)
-            );
+            graph_test_trace!(self, format!("piston request {:?} {:?}", request.piston, request.action));
             self.piston_requests.push_back(request);
         }
     }
@@ -1569,72 +1403,49 @@ impl GraphBackend {
         let state = self.state.pistons[request.piston.index()];
         #[cfg(test)]
         if self.test_recording {
-            self.observed_operations
-                .push(GraphObservedOperation::AcceptanceAttempt {
-                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                    action: request.action,
-                });
+            self.observed_operations.push(GraphObservedOperation::AcceptanceAttempt {
+                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                action: request.action,
+            });
         }
-        let powered = self.input_strength(spec.node, InputPort::Main) > 0
-            || self.input_strength(spec.node, InputPort::Quasi) > 0;
+        let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
         match request.action {
             mchprs_world::PistonAction::Extend
-                if powered
-                    && !state.extended
-                    && state.availability == PistonAvailability::Ready
-                    && self.piston_lane_available(request.piston) =>
+                if powered && !state.extended && state.availability == PistonAvailability::Ready && self.piston_lane_available(request.piston) =>
             {
                 #[cfg(test)]
-                graph_test_trace!(
-                    self,
-                    format!("piston accept {:?} {:?}", request.piston, request.action)
-                );
+                graph_test_trace!(self, format!("piston accept {:?} {:?}", request.piston, request.action));
                 self.extend_connections(request.piston)?;
                 self.accepted(request, state.extended);
                 #[cfg(test)]
                 if self.test_recording {
-                    self.observed_operations
-                        .push(GraphObservedOperation::Accepted {
-                            actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                            action: request.action,
-                        });
+                    self.observed_operations.push(GraphObservedOperation::Accepted {
+                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                        action: request.action,
+                    });
                 }
             }
-            mchprs_world::PistonAction::Retract
-            | mchprs_world::PistonAction::RetractWithoutPull
+            mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull
                 if !powered
                     && state.extended
                     && !state.availability.base_pending()
-                    && self.piston_retraction_available(
-                        request.piston,
-                        request.action == mchprs_world::PistonAction::RetractWithoutPull,
-                    ) =>
+                    && self.piston_retraction_available(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull) =>
             {
                 #[cfg(test)]
-                graph_test_trace!(
-                    self,
-                    format!("piston accept {:?} {:?}", request.piston, request.action)
-                );
-                self.retract_connections(
-                    request.piston,
-                    request.action == mchprs_world::PistonAction::RetractWithoutPull,
-                )?;
+                graph_test_trace!(self, format!("piston accept {:?} {:?}", request.piston, request.action));
+                self.retract_connections(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)?;
                 self.accepted(request, state.extended);
                 #[cfg(test)]
                 if self.test_recording {
-                    self.observed_operations
-                        .push(GraphObservedOperation::Accepted {
-                            actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                            action: request.action,
-                        });
+                    self.observed_operations.push(GraphObservedOperation::Accepted {
+                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                        action: request.action,
+                    });
                 }
             }
             _ => {
                 #[cfg(test)]
-                graph_test_trace!(
-                    self,
-                    format!("piston cancelled {:?} {:?}", request.piston, request.action)
-                );
+                graph_test_trace!(self, format!("piston cancelled {:?} {:?}", request.piston, request.action));
             }
         }
         Ok(())
@@ -1656,21 +1467,14 @@ impl GraphBackend {
         });
     }
 
-    fn set_resource_contact(
-        &mut self,
-        resource: ResourceId,
-        contact: ContactId,
-        enabled: bool,
-    ) -> Option<(ResourceId, u64)> {
+    fn set_resource_contact(&mut self, resource: ResourceId, contact: ContactId, enabled: bool) -> Option<(ResourceId, u64)> {
         let index = resource.index();
         debug_assert!(self.program.resources()[index].contacts.contains(&contact));
         debug_assert!(
             self.program
                 .resources_at_contact(contact)
                 .iter()
-                .all(|other| {
-                    other.index() == index || self.state.resources[other.index()].at != contact
-                })
+                .all(|other| { other.index() == index || self.state.resources[other.index()].at != contact })
         );
         let state = &mut self.state.resources[index];
         if state.at == contact && state.enabled == enabled {
@@ -1691,12 +1495,7 @@ impl GraphBackend {
         (self.state.resources[resource.index()].at == contact).then_some(resource)
     }
 
-    fn pending_resource_extension(
-        &self,
-        resource_id: ResourceId,
-        contact: ContactId,
-        facing: BlockFace,
-    ) -> Option<&DeferredPistonEvent> {
+    fn pending_resource_extension(&self, resource_id: ResourceId, contact: ContactId, facing: BlockFace) -> Option<&DeferredPistonEvent> {
         let state = self.state.resources[resource_id.index()];
         if state.enabled || state.at != contact {
             return None;
@@ -1704,20 +1503,13 @@ impl GraphBackend {
         self.deferred_pistons.iter().find(|event| {
             event.extending
                 && self.program.pistons()[event.piston.index()].facing == facing
-                && event.resource.is_some_and(|resource| {
-                    resource.resource == resource_id
-                        && resource.revision == state.revision
-                        && resource.contact == contact
-                })
+                && event
+                    .resource
+                    .is_some_and(|resource| resource.resource == resource_id && resource.revision == state.revision && resource.contact == contact)
         })
     }
 
-    fn resource_contact_available(
-        &self,
-        resource: ResourceId,
-        contact: ContactId,
-        vacated_head: Option<PistonId>,
-    ) -> bool {
+    fn resource_contact_available(&self, resource: ResourceId, contact: ContactId, vacated_head: Option<PistonId>) -> bool {
         let Some(spec) = self.program.resources().get(resource.index()) else {
             return false;
         };
@@ -1729,10 +1521,7 @@ impl GraphBackend {
                 .program
                 .resources_at_contact(contact)
                 .iter()
-                .any(|other| {
-                    other.index() != resource.index()
-                        && self.state.resources[other.index()].at == contact
-                })
+                .any(|other| other.index() != resource.index() && self.state.resources[other.index()].at == contact)
         {
             return false;
         }
@@ -1746,9 +1535,7 @@ impl GraphBackend {
             let head_is_present = state.head_present
                 && matches!(
                     state.availability,
-                    PistonAvailability::Ready
-                        | PistonAvailability::HeadPending
-                        | PistonAvailability::BasePendingHeadPresent
+                    PistonAvailability::Ready | PistonAvailability::HeadPending | PistonAvailability::BasePendingHeadPresent
                 );
             if head_is_present && vacated_head != Some(id) {
                 return false;
@@ -1772,9 +1559,7 @@ impl GraphBackend {
             return true;
         };
         let state = self.state.resources[resource.index()];
-        let matching_extension = self
-            .pending_resource_extension(resource, far, spec.facing)
-            .is_some();
+        let matching_extension = self.pending_resource_extension(resource, far, spec.facing).is_some();
         if !state.enabled {
             !matching_extension || self.resource_contact_available(resource, far, None)
         } else {
@@ -1796,9 +1581,7 @@ impl GraphBackend {
     fn piston_lane_available(&self, piston: PistonId) -> bool {
         let spec = self.program.pistons()[piston.index()];
         let near = self.contact_block(spec.near);
-        if ContainerType::from_block(near).is_some()
-            || matches!(near, Block::MovingPiston { .. } | Block::PistonHead { .. })
-        {
+        if ContainerType::from_block(near).is_some() || matches!(near, Block::MovingPiston { .. } | Block::PistonHead { .. }) {
             return false;
         }
         let Some(resource) = self.piston_resource_at(piston, spec.near) else {
@@ -1809,11 +1592,7 @@ impl GraphBackend {
             return false;
         };
         state.enabled
-            && near
-                == self
-                    .program
-                    .profile_block(self.program.resources()[resource.index()].material)
-                    .unwrap()
+            && near == self.program.profile_block(self.program.resources()[resource.index()].material).unwrap()
             && self.resource_contact_available(resource, far, None)
     }
 
@@ -1828,8 +1607,7 @@ impl GraphBackend {
     fn extend_connections(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
         let resource_to_move = self.piston_resource_at(piston, spec.near);
-        if let (Some(resource), PistonLane::SingleResource { far }) = (resource_to_move, spec.lane)
-        {
+        if let (Some(resource), PistonLane::SingleResource { far }) = (resource_to_move, spec.lane) {
             debug_assert!(self.resource_contact_available(resource, far, None));
         }
         let revision = {
@@ -1840,9 +1618,7 @@ impl GraphBackend {
             state.revision
         };
         let resource = match (resource_to_move, spec.lane) {
-            (Some(resource), PistonLane::SingleResource { far }) => {
-                self.set_resource_contact(resource, far, false)
-            }
+            (Some(resource), PistonLane::SingleResource { far }) => self.set_resource_contact(resource, far, false),
             _ => None,
         };
         let deferred_resource = resource.map(|(resource, revision)| DeferredResourceEvent {
@@ -1873,31 +1649,21 @@ impl GraphBackend {
         self.state.pistons[piston.index()].extended = true;
         self.deliver_route(spec.routes.base_changed, None)?;
         #[cfg(test)]
-        graph_test_trace!(
-            self,
-            format!("piston extend {:?} revision={revision}", piston)
-        );
+        graph_test_trace!(self, format!("piston extend {:?} revision={revision}", piston));
         Ok(())
     }
 
-    fn retract_connections(
-        &mut self,
-        piston: PistonId,
-        without_pull: bool,
-    ) -> Result<(), GraphExecutionError> {
+    fn retract_connections(&mut self, piston: PistonId, without_pull: bool) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
         let resource_at_far = match spec.lane {
             PistonLane::SingleResource { far } => self.piston_resource_at(piston, far),
             PistonLane::Empty => None,
         };
         let matching_extension = match (resource_at_far, spec.lane) {
-            (Some(resource), PistonLane::SingleResource { far }) => self
-                .pending_resource_extension(resource, far, spec.facing)
-                .is_some(),
+            (Some(resource), PistonLane::SingleResource { far }) => self.pending_resource_extension(resource, far, spec.facing).is_some(),
             _ => false,
         };
-        let resource_enabled =
-            resource_at_far.is_some_and(|resource| self.state.resources[resource.index()].enabled);
+        let resource_enabled = resource_at_far.is_some_and(|resource| self.state.resources[resource.index()].enabled);
         let restore_far = matching_extension;
         let pull_resource = !without_pull && resource_enabled;
         if let (Some(resource), PistonLane::SingleResource { far }) = (resource_at_far, spec.lane) {
@@ -1909,8 +1675,7 @@ impl GraphBackend {
                 true
             });
         }
-        let interrupted_head =
-            self.state.pistons[piston.index()].availability == PistonAvailability::HeadPending;
+        let interrupted_head = self.state.pistons[piston.index()].availability == PistonAvailability::HeadPending;
         let revision = {
             let state = &mut self.state.pistons[piston.index()];
             state.revision = state.revision.wrapping_add(1);
@@ -1946,9 +1711,7 @@ impl GraphBackend {
             self.deliver_route(route, None)?;
         }
         let resource = match (pull_resource, resource_at_far, spec.lane) {
-            (true, Some(resource), PistonLane::SingleResource { .. }) => {
-                self.set_resource_contact(resource, spec.near, false)
-            }
+            (true, Some(resource), PistonLane::SingleResource { .. }) => self.set_resource_contact(resource, spec.near, false),
             _ => None,
         };
         if !without_pull && resource.is_some() {
@@ -1970,10 +1733,7 @@ impl GraphBackend {
             extending: false,
         });
         #[cfg(test)]
-        graph_test_trace!(
-            self,
-            format!("piston retract {:?} revision={revision}", piston)
-        );
+        graph_test_trace!(self, format!("piston retract {:?} revision={revision}", piston));
         Ok(())
     }
 
@@ -1990,10 +1750,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn apply_deferred_event(
-        &mut self,
-        event: DeferredPistonEvent,
-    ) -> Result<(), GraphExecutionError> {
+    fn apply_deferred_event(&mut self, event: DeferredPistonEvent) -> Result<(), GraphExecutionError> {
         let state = self.state.pistons[event.piston.index()];
         let spec = self.program.pistons()[event.piston.index()];
         let actor_valid = state.revision == event.revision;
@@ -2007,13 +1764,7 @@ impl GraphBackend {
                 self.deliver_route(spec.routes.head_restored, None)?;
             } else {
                 #[cfg(test)]
-                graph_test_trace!(
-                    self,
-                    format!(
-                        "piston stale {:?} revision={}",
-                        event.piston, event.revision
-                    )
-                );
+                graph_test_trace!(self, format!("piston stale {:?} revision={}", event.piston, event.revision));
             }
         } else {
             if actor_valid {
@@ -2023,32 +1774,16 @@ impl GraphBackend {
                 self.deliver_route(spec.routes.base_restored, None)?;
             } else {
                 #[cfg(test)]
-                graph_test_trace!(
-                    self,
-                    format!(
-                        "piston stale {:?} revision={}",
-                        event.piston, event.revision
-                    )
-                );
+                graph_test_trace!(self, format!("piston stale {:?} revision={}", event.piston, event.revision));
             }
             self.apply_deferred_resource(event, spec)?;
         }
         #[cfg(test)]
-        graph_test_trace!(
-            self,
-            format!(
-                "piston restored {:?} revision={}",
-                event.piston, event.revision
-            )
-        );
+        graph_test_trace!(self, format!("piston restored {:?} revision={}", event.piston, event.revision));
         Ok(())
     }
 
-    fn apply_deferred_resource(
-        &mut self,
-        event: DeferredPistonEvent,
-        spec: PistonSpec,
-    ) -> Result<(), GraphExecutionError> {
+    fn apply_deferred_resource(&mut self, event: DeferredPistonEvent, spec: PistonSpec) -> Result<(), GraphExecutionError> {
         let Some(resource_event) = event.resource else {
             return Ok(());
         };
@@ -2056,19 +1791,12 @@ impl GraphBackend {
         if current.revision != resource_event.revision
             || current.at != resource_event.contact
             || current.enabled
-            || !self.resource_contact_available(
-                resource_event.resource,
-                resource_event.contact,
-                None,
-            )
+            || !self.resource_contact_available(resource_event.resource, resource_event.contact, None)
         {
             #[cfg(test)]
             graph_test_trace!(
                 self,
-                format!(
-                    "resource stale {:?} revision={}",
-                    resource_event.resource, resource_event.revision
-                )
+                format!("resource stale {:?} revision={}", resource_event.resource, resource_event.revision)
             );
             return Ok(());
         }
@@ -2120,12 +1848,7 @@ impl GraphBackend {
         graph_test_trace!(self, format!("wire state {node:?} {old:?} -> {wire:?}"));
     }
 
-    fn update_wire_shape(
-        &mut self,
-        node: NodeId,
-        direction: BlockFace,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn update_wire_shape(&mut self, node: NodeId, direction: BlockFace, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let wire = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Wire(wire) => Some(wire),
@@ -2144,11 +1867,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn evaluate_seed(
-        &mut self,
-        node: NodeId,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn evaluate_seed(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let mut wire = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Wire(wire) => Some(wire),
@@ -2192,23 +1911,10 @@ impl GraphBackend {
                 (path.input_site, path.input_face, index == 0, adjacent)
             })
         } {
-            let block_power = if is_input {
-                self.power_no_dust(input_site, input_face, None)
-            } else {
-                0
-            };
-            let wire_power = adjacent
-                .into_iter()
-                .flatten()
-                .map(|node| self.wire_state(node).power)
-                .max()
-                .unwrap_or(0);
+            let block_power = if is_input { self.power_no_dust(input_site, input_face, None) } else { 0 };
+            let wire_power = adjacent.into_iter().flatten().map(|node| self.wire_state(node).power).max().unwrap_or(0);
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
-            return (
-                block_power.max(wire_power.saturating_sub(1)),
-                block_power,
-                wire_power,
-            );
+            return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
         }
         self.seed_power_general(plan)
     }
@@ -2236,26 +1942,18 @@ impl GraphBackend {
             }
             if let (Some(above), Some(below)) = (above, below) {
                 if !up_solid && !neighbor.transparent {
-                    if let Block::RedstoneWire { wire } =
-                        self.site_block(plan.canonical_neighbors[above])
-                    {
+                    if let Block::RedstoneWire { wire } = self.site_block(plan.canonical_neighbors[above]) {
                         wire_power = wire_power.max(wire.power);
                     }
                 }
                 if !neighbor.solid {
-                    if let Block::RedstoneWire { wire } =
-                        self.site_block(plan.canonical_neighbors[below])
-                    {
+                    if let Block::RedstoneWire { wire } = self.site_block(plan.canonical_neighbors[below]) {
                         wire_power = wire_power.max(wire.power);
                     }
                 }
             }
         }
-        (
-            block_power.max(wire_power.saturating_sub(1)),
-            block_power,
-            wire_power,
-        )
+        (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power)
     }
 
     fn site_block(&self, site: SiteId) -> Block {
@@ -2263,8 +1961,7 @@ impl GraphBackend {
     }
 
     fn live_site(&self, site: SiteId) -> ResolvedSite {
-        self.resolve_site(site, None)
-            .expect("wire query site was validated during preparation")
+        self.resolve_site(site, None).expect("wire query site was validated during preparation")
     }
 
     fn raw_wire_sides(&self, plan: &WirePlan, wire: RedstoneWire) -> RedstoneWire {
@@ -2282,10 +1979,7 @@ impl GraphBackend {
             }
         }
         let fixed_component = matches!(resolved.receiver, Some(CallbackReceiver::Component(_)));
-        let selectable_contact = matches!(
-            self.program.sites()[site.index()].source,
-            SiteSource::Contact(_)
-        );
+        let selectable_contact = matches!(self.program.sites()[site.index()].source, SiteSource::Contact(_));
         if selectable_contact && !fixed_component {
             return self.contact_or_boundary_strength(site, resolved);
         }
@@ -2305,12 +1999,7 @@ impl GraphBackend {
         }
     }
 
-    fn power_no_dust(
-        &self,
-        site: SiteId,
-        face: BlockFace,
-        captured_emitter: Option<&ObservedSite>,
-    ) -> u8 {
+    fn power_no_dust(&self, site: SiteId, face: BlockFace, captured_emitter: Option<&ObservedSite>) -> u8 {
         let resolved = self
             .resolve_site(site, captured_emitter)
             .expect("wire query site was validated during preparation");
@@ -2321,11 +2010,7 @@ impl GraphBackend {
             return 0;
         }
         let strength = self.site_source_strength(site, &resolved);
-        if strength > 0 && emits_weak(resolved.block, face) {
-            strength
-        } else {
-            0
-        }
+        if strength > 0 && emits_weak(resolved.block, face) { strength } else { 0 }
     }
 
     fn strong_power_at(&self, site: SiteId) -> u8 {
@@ -2363,22 +2048,18 @@ impl GraphBackend {
         );
     }
 
-    fn identify_wire_neighbors(&mut self, node: NodeId, walk: &mut WireWalk) -> [SiteId; 24] {
+    fn identify_wire_neighbors(&mut self, node: NodeId, walk: &mut WireWalk) -> [(usize, SiteId); 24] {
         let plan = self.wire_plan(node).clone();
-        let root = self.component_sites[node.index()]
-            .expect("wire root site was validated during preparation");
+        let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
         self.capture_walk_site(walk, root);
         if let Some(heading) = walk.sites[&root].heading {
-            return crate::redstone::wire::TURBO_ORDER[heading as usize]
-                .map(|index| plan.canonical_neighbors[index]);
+            return crate::redstone::wire::TURBO_ORDER[heading as usize].map(|slot| (slot, plan.canonical_neighbors[slot]));
         }
         for site in plan.canonical_neighbors {
             self.capture_walk_site(walk, site);
         }
 
-        let visited = plan
-            .canonical_neighbors
-            .map(|site| walk.sites[&site].visited);
+        let visited = plan.canonical_neighbors.map(|site| walk.sites[&site].visited);
         let from_west = visited[0] || visited[7] || visited[8];
         let from_east = visited[1] || visited[12] || visited[13];
         let from_north = visited[4] || visited[17] || visited[20];
@@ -2411,45 +2092,42 @@ impl GraphBackend {
         }
         walk.sites.get_mut(&root).unwrap().heading = Some(heading as u8);
         #[cfg(test)]
-        graph_test_trace!(
-            self,
-            format!("wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}")
-        );
-        crate::redstone::wire::TURBO_ORDER[heading].map(|index| plan.canonical_neighbors[index])
+        graph_test_trace!(self, format!("wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}"));
+        crate::redstone::wire::TURBO_ORDER[heading].map(|slot| (slot, plan.canonical_neighbors[slot]))
     }
 
-    fn wire_route_delivery(
-        &self,
-        route: RouteId,
-        target: SiteId,
-        observed: &ObservedSite,
-    ) -> Option<RouteDelivery> {
+    fn wire_route_delivery(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> Option<RouteDelivery> {
         #[cfg(feature = "graph-profile")]
         {
             self.callback_profile.borrow_mut().turbo_route_lookups += 1;
         }
-        let mut matched = None;
-        for delivery in self.program.routes()[route.index()]
-            .deliveries
-            .iter()
-            .copied()
+        let deliveries = &self.program.routes()[route.index()].deliveries;
+        let index = self.program.turbo_callback_index(wire_index);
+        #[cfg(feature = "graph-profile")]
         {
-            #[cfg(feature = "graph-profile")]
-            {
-                let target_matches = delivery.target == target;
-                let mut profile = self.callback_profile.borrow_mut();
-                profile.turbo_candidate_entries_scanned += 1;
-                profile.turbo_target_entries_scanned += u64::from(target_matches);
-            }
-            if delivery.target == target
-                && delivery.receiver.is_some()
-                && delivery.view == OperandView::Captured
-                && self.guard_matches_for_site(delivery.guard, target, observed)
-            {
-                matched = Some(delivery);
-                break;
-            }
+            let mut profile = self.callback_profile.borrow_mut();
+            profile.turbo_indexed_lookups += u64::from(index.is_some());
+            profile.turbo_fallback_lookups += u64::from(index.is_none());
         }
+        let candidates = index.map_or(deliveries.as_ref(), |index| {
+            &deliveries[index.offsets[slot] as usize..index.offsets[slot + 1] as usize]
+        });
+        let matched = first_turbo_delivery(
+            candidates,
+            target,
+            observed,
+            |guard, target, observed| self.guard_matches_for_site(guard, target, observed),
+            |delivery| {
+                #[cfg(feature = "graph-profile")]
+                {
+                    let mut profile = self.callback_profile.borrow_mut();
+                    profile.turbo_candidate_entries_scanned += 1;
+                    profile.turbo_target_entries_scanned += u64::from(delivery.target == target);
+                }
+                #[cfg(not(feature = "graph-profile"))]
+                let _ = (delivery, target);
+            },
+        );
         #[cfg(feature = "graph-profile")]
         {
             let mut profile = self.callback_profile.borrow_mut();
@@ -2467,8 +2145,11 @@ impl GraphBackend {
         let Some(route) = plan.turbo_route else {
             return;
         };
+        let CircuitNodeKind::Wire(wire_index) = self.program.nodes()[node.index()].kind else {
+            unreachable!("Turbo callback lookup received a non-wire node");
+        };
         let ordered = self.identify_wire_neighbors(node, walk);
-        for &site in &ordered {
+        for &(slot, site) in &ordered {
             let next_layer = layer + 1;
             let changed = {
                 let neighbor = walk.sites.get_mut(&site).unwrap();
@@ -2481,13 +2162,13 @@ impl GraphBackend {
             };
             if changed
                 && self
-                    .wire_route_delivery(route, site, &walk.sites[&site].observed)
+                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[&site].observed)
                     .is_some()
             {
                 walk.queues[1].push_back(site);
             }
         }
-        for &site in &ordered[..4] {
+        for &(slot, site) in &ordered[..4] {
             let next_layer = layer + 2;
             let changed = {
                 let neighbor = walk.sites.get_mut(&site).unwrap();
@@ -2500,7 +2181,7 @@ impl GraphBackend {
             };
             if changed
                 && self
-                    .wire_route_delivery(route, site, &walk.sites[&site].observed)
+                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[&site].observed)
                     .is_some()
             {
                 walk.queues[2].push_back(site);
@@ -2524,8 +2205,7 @@ impl GraphBackend {
     }
 
     fn evaluate_turbo_wire_inner(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        let root = self.component_sites[node.index()]
-            .expect("wire root site was validated during preparation");
+        let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
         let mut walk = WireWalk::new();
         self.capture_walk_site(&mut walk, root);
         walk.sites.get_mut(&root).unwrap().visited = true;
@@ -2548,11 +2228,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn dispatch_turbo_site(
-        &mut self,
-        site: SiteId,
-        walk: &mut WireWalk,
-    ) -> Result<(), GraphExecutionError> {
+    fn dispatch_turbo_site(&mut self, site: SiteId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
         let observed = walk.sites[&site].observed.clone();
         let Some(receiver) = observed.receiver else {
             return Ok(());
@@ -2567,11 +2243,10 @@ impl GraphBackend {
             && !matches!(receiver, CallbackReceiver::Component(node)
                 if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
         {
-            self.observed_operations
-                .push(GraphObservedOperation::Callback {
-                    target: self.program.sites()[site.index()].position,
-                    direction: None,
-                });
+            self.observed_operations.push(GraphObservedOperation::Callback {
+                target: self.program.sites()[site.index()].position,
+                direction: None,
+            });
         }
         #[cfg(test)]
         graph_test_trace!(
@@ -2583,39 +2258,21 @@ impl GraphBackend {
             )
         );
         match receiver {
-            CallbackReceiver::Component(node)
-                if matches!(
-                    self.program.nodes()[node.index()].kind,
-                    CircuitNodeKind::Wire(_)
-                ) =>
-            {
+            CallbackReceiver::Component(node) if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)) => {
                 self.evaluate_turbo_wire_node(node, walk)
             }
-            CallbackReceiver::Component(node) => self.update_component(
-                node,
-                DeliveryKind::Update { direction: None },
-                Some(&observed),
-            ),
-            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
-                self.sample_piston(piston)
-            }
+            CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(&observed)),
+            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => self.sample_piston(piston),
             CallbackReceiver::Contact(_) => Ok(()),
         }
     }
 
-    fn evaluate_turbo_wire_node(
-        &mut self,
-        node: NodeId,
-        walk: &mut WireWalk,
-    ) -> Result<(), GraphExecutionError> {
+    fn evaluate_turbo_wire_node(&mut self, node: NodeId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
         #[cfg(feature = "graph-profile")]
         {
-            self.callback_profile
-                .borrow_mut()
-                .turbo_wire_node_evaluations += 1;
+            self.callback_profile.borrow_mut().turbo_wire_node_evaluations += 1;
         }
-        let root = self.component_sites[node.index()]
-            .expect("wire root site was validated during preparation");
+        let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
         self.capture_walk_site(walk, root);
         walk.sites.get_mut(&root).unwrap().visited = true;
         let ordered = self.identify_wire_neighbors(node, walk);
@@ -2645,23 +2302,12 @@ impl GraphBackend {
         walk.sites.get_mut(&root).unwrap().observed.properties = ObservedProperties::Wire(wire);
         self.set_wire(node, wire);
         #[cfg(test)]
-        graph_test_trace!(
-            self,
-            format!(
-                "wire strength {node:?} layer={} {old_power} -> {new_power}",
-                walk.layer
-            )
-        );
+        graph_test_trace!(self, format!("wire strength {node:?} layer={} {old_power} -> {new_power}", walk.layer));
         self.propagate_wire_changes(node, walk, walk.layer);
         Ok(())
     }
 
-    fn turbo_wire_power(
-        &mut self,
-        plan: &WirePlan,
-        ordered: &[SiteId; 24],
-        walk: &WireWalk,
-    ) -> (u8, u8, u8) {
+    fn turbo_wire_power(&mut self, plan: &WirePlan, ordered: &[(usize, SiteId); 24], walk: &WireWalk) -> (u8, u8, u8) {
         if let Some((input_site, input_face, is_input, adjacent)) = {
             self.program.dust_path_for_wire(plan.node).map(|path| {
                 let index = path
@@ -2677,11 +2323,7 @@ impl GraphBackend {
             })
         } {
             let input_power = if is_input {
-                let captured = &walk
-                    .sites
-                    .get(&input_site)
-                    .expect("wire walk captured its certified input")
-                    .observed;
+                let captured = &walk.sites.get(&input_site).expect("wire walk captured its certified input").observed;
                 self.power_no_dust(input_site, input_face, Some(captured))
             } else {
                 0
@@ -2689,8 +2331,7 @@ impl GraphBackend {
             let mut wire_power = 0;
             if input_power < 15 {
                 for neighbor in adjacent.into_iter().flatten() {
-                    let site = self.component_sites[neighbor.index()]
-                        .expect("certified neighboring wire has a root site");
+                    let site = self.component_sites[neighbor.index()].expect("certified neighboring wire has a root site");
                     let Some(observed) = walk.sites.get(&site).map(|site| &site.observed) else {
                         return self.turbo_wire_power_general(plan, ordered, walk);
                     };
@@ -2701,21 +2342,12 @@ impl GraphBackend {
                 }
             }
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
-            return (
-                input_power.max(wire_power.saturating_sub(1)),
-                wire_power,
-                input_power,
-            );
+            return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
         }
         self.turbo_wire_power_general(plan, ordered, walk)
     }
 
-    fn turbo_wire_power_general(
-        &mut self,
-        plan: &WirePlan,
-        ordered: &[SiteId; 24],
-        walk: &WireWalk,
-    ) -> (u8, u8, u8) {
+    fn turbo_wire_power_general(&mut self, plan: &WirePlan, ordered: &[(usize, SiteId); 24], walk: &WireWalk) -> (u8, u8, u8) {
         #[cfg(feature = "graph-profile")]
         self.record_dust_candidate_power_samples(plan.node);
         let mut wire_power = 0;
@@ -2726,32 +2358,27 @@ impl GraphBackend {
         }
         let mut block_power = 0;
         if wire_power < 15 {
-            let center_up_solid = self.walk_site(ordered[1], walk).solid;
+            let center_up_solid = self.walk_site(ordered[1].1, walk).solid;
             let horizontal = [4, 5, 6, 7];
             let down = [8, 10, 12, 14];
             let up = [9, 11, 13, 15];
             for index in 0..4 {
-                let neighbor = ordered[horizontal[index]];
+                let neighbor = ordered[horizontal[index]].1;
                 let neighbor_site = self.walk_site(neighbor, walk);
                 block_power = self.walk_wire_strength(neighbor, walk, block_power);
                 if !neighbor_site.solid {
-                    block_power = self.walk_wire_strength(ordered[down[index]], walk, block_power);
+                    block_power = self.walk_wire_strength(ordered[down[index]].1, walk, block_power);
                 } else if !center_up_solid && !neighbor_site.transparent {
-                    block_power = self.walk_wire_strength(ordered[up[index]], walk, block_power);
+                    block_power = self.walk_wire_strength(ordered[up[index]].1, walk, block_power);
                 }
             }
         }
-        (
-            wire_power.max(block_power.saturating_sub(1)),
-            block_power,
-            wire_power,
-        )
+        (wire_power.max(block_power.saturating_sub(1)), block_power, wire_power)
     }
 
     fn walk_site(&self, site: SiteId, walk: &WireWalk) -> ResolvedSite {
         let observed = &walk.sites[&site].observed;
-        self.resolve_site(site, Some(observed))
-            .expect("captured wire site is valid")
+        self.resolve_site(site, Some(observed)).expect("captured wire site is valid")
     }
 
     fn walk_wire_strength(&self, site: SiteId, walk: &WireWalk, strength: u8) -> u8 {
@@ -2761,12 +2388,7 @@ impl GraphBackend {
         }
     }
 
-    fn update_observer(
-        &mut self,
-        node: NodeId,
-        direction: Option<BlockFace>,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn update_observer(&mut self, node: NodeId, direction: Option<BlockFace>, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let facing = match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Observer { facing, .. } => facing,
             _ => unreachable!(),
@@ -2795,11 +2417,7 @@ impl GraphBackend {
         self.set_node(node, !powered, u8::from(!powered) * 15, None, true)
     }
 
-    fn update_torch(
-        &mut self,
-        node: NodeId,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn update_torch(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let lit = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Electrical { powered, .. } => Some(powered),
@@ -2821,11 +2439,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn update_repeater(
-        &mut self,
-        node: NodeId,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn update_repeater(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let current = self.node_state(node);
         let (powered, locked) = captured
             .and_then(|site| match site.properties {
@@ -2835,23 +2449,14 @@ impl GraphBackend {
             .unwrap_or((current.powered, current.repeater_locked));
         let should_lock = self.repeater_locked(node);
         if locked != should_lock {
-            self.set_node(
-                node,
-                powered,
-                u8::from(powered) * 15,
-                Some(should_lock),
-                false,
-            )?;
+            self.set_node(node, powered, u8::from(powered) * 15, Some(should_lock), false)?;
         }
         if !should_lock && !self.is_pending(node) {
             let should_power = self.input_strength(node, InputPort::Main) > 0;
             if should_power != powered {
                 let facing_diode = matches!(
                     self.program.nodes()[node.index()].kind,
-                    CircuitNodeKind::Electrical(NodeType::Repeater {
-                        facing_diode: true,
-                        ..
-                    })
+                    CircuitNodeKind::Electrical(NodeType::Repeater { facing_diode: true, .. })
                 );
                 let priority = if facing_diode {
                     TickPriority::Highest
@@ -2908,30 +2513,14 @@ impl GraphBackend {
         if strength != current.output_strength || powered != current.powered {
             let facing_diode = matches!(
                 self.program.nodes()[node.index()].kind,
-                CircuitNodeKind::Electrical(NodeType::Comparator {
-                    facing_diode: true,
-                    ..
-                })
+                CircuitNodeKind::Electrical(NodeType::Comparator { facing_diode: true, .. })
             );
-            self.schedule(
-                node,
-                1,
-                if facing_diode {
-                    TickPriority::High
-                } else {
-                    TickPriority::Normal
-                },
-            );
+            self.schedule(node, 1, if facing_diode { TickPriority::High } else { TickPriority::Normal });
         }
         Ok(())
     }
 
-    fn tick_comparator(
-        &mut self,
-        node: NodeId,
-        mode: ComparatorMode,
-        _facing_diode: bool,
-    ) -> Result<(), GraphExecutionError> {
+    fn tick_comparator(&mut self, node: NodeId, mode: ComparatorMode, _facing_diode: bool) -> Result<(), GraphExecutionError> {
         let strength = self.comparator_output(node);
         let current = self.node_state(node);
         if strength != current.output_strength || mode == ComparatorMode::Compare {
@@ -3010,11 +2599,7 @@ impl GraphBackend {
         }
     }
 
-    fn update_lamp(
-        &mut self,
-        node: NodeId,
-        captured: Option<&ObservedSite>,
-    ) -> Result<(), GraphExecutionError> {
+    fn update_lamp(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let lit = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Electrical { powered, .. } => Some(powered),
@@ -3076,8 +2661,7 @@ impl GraphBackend {
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]
-            self.power_links_examined
-                .set(self.power_links_examined.get() + 1);
+            self.power_links_examined.set(self.power_links_examined.get() + 1);
             if !self.guard_matches(link.guard, None) {
                 continue;
             }
@@ -3087,8 +2671,7 @@ impl GraphBackend {
     }
 
     fn link_strength(&self, link: &PowerLink) -> u8 {
-        self.site_power(link.from, link.from_port)
-            .saturating_sub(link.attenuation)
+        self.site_power(link.from, link.from_port).saturating_sub(link.attenuation)
     }
 
     fn site_power(&self, site: SiteId, port: PowerPort) -> u8 {
@@ -3101,12 +2684,9 @@ impl GraphBackend {
                 ComponentState::Wire(wire) => wire.power,
                 ComponentState::Specialized => 0,
             },
-            Some(
-                CallbackReceiver::PistonBase(_)
-                | CallbackReceiver::PistonHead(_)
-                | CallbackReceiver::Contact(_),
-            )
-            | None => self.contact_or_boundary_strength(site, &resolved),
+            Some(CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) | CallbackReceiver::Contact(_)) | None => {
+                self.contact_or_boundary_strength(site, &resolved)
+            }
         };
         match port {
             PowerPort::Output | PowerPort::Stored => stored,
@@ -3129,10 +2709,7 @@ impl GraphBackend {
     }
 
     fn contact_or_boundary_strength(&self, site: SiteId, resolved: &ResolvedSite) -> u8 {
-        if matches!(
-            self.program.sites()[site.index()].source,
-            SiteSource::Constant(_)
-        ) {
+        if matches!(self.program.sites()[site.index()].source, SiteSource::Constant(_)) {
             return self.program.sites()[site.index()].source_strength;
         }
         let Some(profile) = resolved.profile else {
@@ -3156,22 +2733,15 @@ impl GraphBackend {
         }
         let SiteSource::Component(node) = self.program.sites()[site.index()].source else {
             // shortcut: moved wire contacts lack per-position plans until Step 08.
-            return crate::redstone::wire::get_current_side(
-                wire,
-                side.unwrap_direction().opposite(),
-            ) != RedstoneWireSide::None;
+            return crate::redstone::wire::get_current_side(wire, side.unwrap_direction().opposite()) != RedstoneWireSide::None;
         };
         let CircuitNodeKind::Wire(_) = self.program.nodes()[node.index()].kind else {
-            return crate::redstone::wire::get_current_side(
-                wire,
-                side.unwrap_direction().opposite(),
-            ) != RedstoneWireSide::None;
+            return crate::redstone::wire::get_current_side(wire, side.unwrap_direction().opposite()) != RedstoneWireSide::None;
         };
         let plan = self.wire_plan(node);
         let raw = self.raw_wire_sides(plan, wire);
         let regulated = crate::redstone::wire::regulate_sides(wire, raw);
-        crate::redstone::wire::get_current_side(regulated, side.unwrap_direction().opposite())
-            != RedstoneWireSide::None
+        crate::redstone::wire::get_current_side(regulated, side.unwrap_direction().opposite()) != RedstoneWireSide::None
     }
 
     fn emits_strong(&self, site: SiteId, block: Block, side: BlockFace) -> bool {
@@ -3208,12 +2778,7 @@ impl GraphBackend {
         matched
     }
 
-    fn guard_matches_using(
-        &self,
-        id: GuardId,
-        captured: Option<&[Option<ObservedSite>]>,
-        captured_site: Option<(SiteId, &ObservedSite)>,
-    ) -> bool {
+    fn guard_matches_using(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>, captured_site: Option<(SiteId, &ObservedSite)>) -> bool {
         #[cfg(feature = "graph-profile")]
         {
             let kind = match &self.program.guards()[id.index()] {
@@ -3230,18 +2795,10 @@ impl GraphBackend {
             Guard::Always => true,
             Guard::State(test) => match *test {
                 StateTest::PistonExtended(piston) => self.state.pistons[piston.index()].extended,
-                StateTest::PistonHeadPresent(piston) => {
-                    self.state.pistons[piston.index()].head_present
-                }
-                StateTest::PistonAvailability { piston, is } => {
-                    self.state.pistons[piston.index()].availability == is
-                }
-                StateTest::ResourceAt { resource, contact } => {
-                    self.state.resources[resource.index()].at == contact
-                }
-                StateTest::ResourceEnabled(resource) => {
-                    self.state.resources[resource.index()].enabled
-                }
+                StateTest::PistonHeadPresent(piston) => self.state.pistons[piston.index()].head_present,
+                StateTest::PistonAvailability { piston, is } => self.state.pistons[piston.index()].availability == is,
+                StateTest::ResourceAt { resource, contact } => self.state.resources[resource.index()].at == contact,
+                StateTest::ResourceEnabled(resource) => self.state.resources[resource.index()].enabled,
             },
             Guard::Site { site, view, test } => {
                 #[cfg(feature = "graph-profile")]
@@ -3249,30 +2806,20 @@ impl GraphBackend {
                     captured_site
                         .filter(|(captured_id, _)| captured_id == site)
                         .map(|(_, observed)| observed)
-                        .or_else(|| {
-                            captured
-                                .and_then(|sites| sites.get(site.index()))
-                                .and_then(Option::as_ref)
-                        })
+                        .or_else(|| captured.and_then(|sites| sites.get(site.index())).and_then(Option::as_ref))
                 } else {
                     None
                 };
                 #[cfg(feature = "graph-profile")]
                 if *view == OperandView::Captured && captured_operand.is_none() {
-                    self.callback_profile
-                        .borrow_mut()
-                        .missing_captured_guard_operands += 1;
+                    self.callback_profile.borrow_mut().missing_captured_guard_operands += 1;
                 }
                 let resolved = match view {
                     OperandView::Live => self.resolve_site(*site, None),
                     OperandView::Captured => captured_site
                         .filter(|(captured_id, _)| captured_id == site)
                         .map(|(_, observed)| observed)
-                        .or_else(|| {
-                            captured
-                                .and_then(|sites| sites.get(site.index()))
-                                .and_then(Option::as_ref)
-                        })
+                        .or_else(|| captured.and_then(|sites| sites.get(site.index())).and_then(Option::as_ref))
                         .and_then(|observed| self.resolve_observed_site(observed)),
                 };
                 let Some(resolved) = resolved else {
@@ -3286,12 +2833,8 @@ impl GraphBackend {
                 }
             }
             Guard::Not(child) => !self.guard_matches_using(*child, captured, captured_site),
-            Guard::All(children) => children
-                .iter()
-                .all(|child| self.guard_matches_using(*child, captured, captured_site)),
-            Guard::Any(children) => children
-                .iter()
-                .any(|child| self.guard_matches_using(*child, captured, captured_site)),
+            Guard::All(children) => children.iter().all(|child| self.guard_matches_using(*child, captured, captured_site)),
+            Guard::Any(children) => children.iter().any(|child| self.guard_matches_using(*child, captured, captured_site)),
         }
     }
 
@@ -3325,16 +2868,9 @@ impl GraphBackend {
         }
     }
 
-    fn resolve_profile(
-        &self,
-        profile: ProfileId,
-        receiver: Option<CallbackReceiver>,
-    ) -> ResolvedSite {
+    fn resolve_profile(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ResolvedSite {
         let facts = self.program.profiles()[profile.index()];
-        let block = self
-            .program
-            .profile_block(profile)
-            .expect("validated profile");
+        let block = self.program.profile_block(profile).expect("validated profile");
         ResolvedSite {
             profile: Some(profile),
             receiver,
@@ -3348,9 +2884,7 @@ impl GraphBackend {
     fn resolve_observed_site(&self, observed: &ObservedSite) -> Option<ResolvedSite> {
         let block = if let Some(receiver) = observed.receiver {
             match receiver {
-                CallbackReceiver::Component(node) => {
-                    self.node_block_with_properties(node, &observed.properties)
-                }
+                CallbackReceiver::Component(node) => self.node_block_with_properties(node, &observed.properties),
                 _ => self.block_for_profile(observed.profile?)?,
             }
         } else {
@@ -3376,17 +2910,11 @@ impl GraphBackend {
         self.program.profile_block(profile)
     }
 
-    fn contact_properties(
-        &self,
-        receiver: Option<CallbackReceiver>,
-        block: Block,
-    ) -> ObservedProperties {
+    fn contact_properties(&self, receiver: Option<CallbackReceiver>, block: Block) -> ObservedProperties {
         match receiver {
-            Some(CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston)) => {
-                ObservedProperties::Piston {
-                    extended: self.state.pistons[piston.index()].extended,
-                }
-            }
+            Some(CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston)) => ObservedProperties::Piston {
+                extended: self.state.pistons[piston.index()].extended,
+            },
             _ => match block {
                 Block::RedstoneWire { wire } => ObservedProperties::Wire(wire),
                 _ => ObservedProperties::Passive,
@@ -3396,12 +2924,10 @@ impl GraphBackend {
 
     fn node_properties(&self, node: NodeId) -> ObservedProperties {
         match &self.state.components[node.index()] {
-            ComponentState::Electrical(state) if self.is_bulb(node) => {
-                ObservedProperties::CopperBulb {
-                    powered: state.powered,
-                    lit: state.output_strength > 0,
-                }
-            }
+            ComponentState::Electrical(state) if self.is_bulb(node) => ObservedProperties::CopperBulb {
+                powered: state.powered,
+                lit: state.output_strength > 0,
+            },
             ComponentState::Electrical(state) => ObservedProperties::Electrical {
                 powered: state.powered,
                 locked: state.repeater_locked,
@@ -3422,10 +2948,7 @@ impl GraphBackend {
 
     fn node_block_with_properties(&self, node: NodeId, properties: &ObservedProperties) -> Block {
         let mut block = self.program.nodes()[node.index()].block.unwrap();
-        if matches!(
-            self.program.nodes()[node.index()].kind,
-            CircuitNodeKind::Wire(_)
-        ) {
+        if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)) {
             let wire = match properties {
                 ObservedProperties::Wire(wire) => *wire,
                 _ => self.wire_state(node),
@@ -3443,9 +2966,7 @@ impl GraphBackend {
         match &mut block {
             Block::Lever { lever } => lever.powered = state.powered,
             Block::StoneButton { button } => button.powered = state.powered,
-            Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => {
-                *lit = state.powered
-            }
+            Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => *lit = state.powered,
             Block::RedstoneRepeater { repeater } => {
                 repeater.powered = state.powered;
                 repeater.locked = state.repeater_locked;
@@ -3453,11 +2974,7 @@ impl GraphBackend {
             Block::RedstoneComparator { comparator } => comparator.powered = state.powered,
             Block::RedstoneLamp { lit } => *lit = state.powered,
             Block::Observer { observer } => observer.powered = state.powered,
-            Block::NoteBlock {
-                instrument,
-                powered,
-                ..
-            } => {
+            Block::NoteBlock { instrument, powered, .. } => {
                 *powered = state.powered;
                 if let CircuitNodeKind::Electrical(NodeType::NoteBlock {
                     instrument: initial_instrument,
@@ -3481,9 +2998,7 @@ impl GraphBackend {
                     repeater.locked = *locked;
                 }
                 Block::RedstoneComparator { comparator } => comparator.powered = *powered,
-                Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => {
-                    *lit = *powered
-                }
+                Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => *lit = *powered,
                 Block::RedstoneLamp { lit } => *lit = *powered,
                 Block::Observer { observer } => observer.powered = *powered,
                 _ => {}
@@ -3512,33 +3027,27 @@ impl GraphBackend {
     fn has_semantic_callback(&self, receiver: CallbackReceiver) -> bool {
         match receiver {
             CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => true,
-            CallbackReceiver::Component(node) => self.program.nodes()[node.index()]
-                .block
-                .is_some_and(|block| {
-                    matches!(
-                        block.get_name(),
-                        "redstone_wire"
-                            | "redstone_torch"
-                            | "redstone_wall_torch"
-                            | "redstone_repeater"
-                            | "redstone_comparator"
-                            | "redstone_lamp"
-                            | "observer"
-                            | "copper_bulb"
-                            | "note_block"
-                            | "iron_trapdoor"
-                    )
-                }),
+            CallbackReceiver::Component(node) => self.program.nodes()[node.index()].block.is_some_and(|block| {
+                matches!(
+                    block.get_name(),
+                    "redstone_wire"
+                        | "redstone_torch"
+                        | "redstone_wall_torch"
+                        | "redstone_repeater"
+                        | "redstone_comparator"
+                        | "redstone_lamp"
+                        | "observer"
+                        | "copper_bulb"
+                        | "note_block"
+                        | "iron_trapdoor"
+                )
+            }),
             CallbackReceiver::Contact(_) => false,
         }
     }
 
     #[inline(always)]
-    fn deliver_route(
-        &mut self,
-        route: RouteId,
-        captured: Option<&[Option<ObservedSite>]>,
-    ) -> Result<(), GraphExecutionError> {
+    fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
         #[cfg(feature = "graph-profile")]
         let started = Instant::now();
         #[cfg(feature = "graph-profile")]
@@ -3549,11 +3058,7 @@ impl GraphBackend {
         result
     }
 
-    fn deliver_route_inner(
-        &mut self,
-        route: RouteId,
-        captured: Option<&[Option<ObservedSite>]>,
-    ) -> Result<(), GraphExecutionError> {
+    fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
         let delivery_count = self.program.routes()[route.index()].deliveries.len();
         #[cfg(feature = "graph-profile")]
         let route_role = self.route_roles[route.index()];
@@ -3569,39 +3074,28 @@ impl GraphBackend {
                 continue;
             }
             let observed = if delivery.view == OperandView::Captured {
-                captured
-                    .and_then(|sites| sites.get(delivery.target.index()))
-                    .and_then(Option::as_ref)
+                captured.and_then(|sites| sites.get(delivery.target.index())).and_then(Option::as_ref)
             } else {
                 None
             };
             if delivery.view == OperandView::Captured && observed.is_none() {
                 #[cfg(feature = "graph-profile")]
                 {
-                    self.callback_profile
-                        .borrow_mut()
-                        .missing_captured_delivery_operands += 1;
+                    self.callback_profile.borrow_mut().missing_captured_delivery_operands += 1;
                 }
                 continue;
             }
             // Inert component updates still visit their no-op handler in native order.
-            let receiver = delivery.receiver.or_else(|| {
-                match (
-                    self.program.sites()[delivery.target.index()].source,
-                    delivery.kind,
-                ) {
-                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => {
-                        Some(CallbackReceiver::Component(node))
-                    }
+            let receiver = delivery
+                .receiver
+                .or_else(|| match (self.program.sites()[delivery.target.index()].source, delivery.kind) {
+                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
                     _ => None,
-                }
-            });
+                });
             let Some(receiver) = receiver else {
                 #[cfg(feature = "graph-profile")]
                 {
-                    self.callback_profile
-                        .borrow_mut()
-                        .deliveries_without_effective_receiver += 1;
+                    self.callback_profile.borrow_mut().deliveries_without_effective_receiver += 1;
                 }
                 continue;
             };
@@ -3609,29 +3103,17 @@ impl GraphBackend {
             #[cfg(feature = "graph-profile")]
             self.record_callback_dispatch(receiver, delivery.kind, route_role);
             #[cfg(test)]
-            if self.test_recording
-                && self.has_semantic_callback(receiver)
-                && matches!(delivery.kind, DeliveryKind::Update { .. })
-            {
-                self.observed_operations
-                    .push(GraphObservedOperation::Callback {
-                        target: self.program.sites()[delivery.target.index()].position,
-                        direction: match delivery.kind {
-                            DeliveryKind::Update { direction } => direction,
-                            DeliveryKind::Shape { direction } => Some(direction),
-                        },
-                    });
+            if self.test_recording && self.has_semantic_callback(receiver) && matches!(delivery.kind, DeliveryKind::Update { .. }) {
+                self.observed_operations.push(GraphObservedOperation::Callback {
+                    target: self.program.sites()[delivery.target.index()].position,
+                    direction: match delivery.kind {
+                        DeliveryKind::Update { direction } => direction,
+                        DeliveryKind::Shape { direction } => Some(direction),
+                    },
+                });
             }
             #[cfg(test)]
-            graph_test_trace!(
-                self,
-                format!(
-                    "route {}:{} {:?}",
-                    route.index(),
-                    delivery.sequence,
-                    delivery.kind
-                )
-            );
+            graph_test_trace!(self, format!("route {}:{} {:?}", route.index(), delivery.sequence, delivery.kind));
             match receiver {
                 CallbackReceiver::Component(node) => {
                     self.update_component(node, delivery.kind, observed)?;
@@ -3645,20 +3127,12 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn set_node(
-        &mut self,
-        node: NodeId,
-        powered: bool,
-        output_strength: u8,
-        locked: Option<bool>,
-        notify: bool,
-    ) -> Result<(), GraphExecutionError> {
+    fn set_node(&mut self, node: NodeId, powered: bool, output_strength: u8, locked: Option<bool>, notify: bool) -> Result<(), GraphExecutionError> {
         let ComponentState::Electrical(state) = &mut self.state.components[node.index()] else {
             return Err(self.unsupported(node, "specialized component state"));
         };
-        let changed = state.powered != powered
-            || state.output_strength != output_strength
-            || locked.is_some_and(|locked| state.repeater_locked != locked);
+        let changed =
+            state.powered != powered || state.output_strength != output_strength || locked.is_some_and(|locked| state.repeater_locked != locked);
         state.powered = powered;
         state.output_strength = output_strength;
         state.pending_tick = false;
@@ -3672,13 +3146,7 @@ impl GraphBackend {
             }
             self.dirty[node.index()] = true;
             #[cfg(test)]
-            graph_test_trace!(
-                self,
-                format!(
-                    "state {:?} powered={powered} strength={output_strength}",
-                    node
-                )
-            );
+            graph_test_trace!(self, format!("state {:?} powered={powered} strength={output_strength}", node));
             if notify {
                 self.fire_route(node)?;
             }
@@ -3694,16 +3162,11 @@ impl GraphBackend {
     }
 
     fn position(&self, node: NodeId) -> BlockPos {
-        self.program.nodes()[node.index()]
-            .position
-            .expect("component has a position")
+        self.program.nodes()[node.index()].position.expect("component has a position")
     }
 
     fn is_bulb(&self, node: NodeId) -> bool {
-        matches!(
-            self.program.nodes()[node.index()].kind,
-            CircuitNodeKind::Electrical(NodeType::CopperBulb)
-        )
+        matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Electrical(NodeType::CopperBulb))
     }
 
     pub(crate) fn execution_counts(&self) -> GraphExecutionCounts {
@@ -3731,12 +3194,7 @@ impl GraphBackend {
     }
 
     #[cfg(feature = "graph-profile")]
-    fn record_callback_dispatch(
-        &self,
-        receiver: CallbackReceiver,
-        kind: DeliveryKind,
-        role: usize,
-    ) {
+    fn record_callback_dispatch(&self, receiver: CallbackReceiver, kind: DeliveryKind, role: usize) {
         let kind = match kind {
             DeliveryKind::Update { .. } => 0,
             DeliveryKind::Shape { .. } => 1,
@@ -3752,10 +3210,7 @@ impl GraphBackend {
         profile.dispatches_by_receiver_and_kind[receiver_family][kind] += 1;
         profile.dispatches_by_role_and_kind[role][kind] += 1;
         profile.dispatches_by_phase_and_role[phase][role] += 1;
-        if matches!(
-            receiver,
-            CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_)
-        ) {
+        if matches!(receiver, CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_)) {
             profile.handler_invocations_by_family[10] += 1;
         }
     }
@@ -3763,9 +3218,7 @@ impl GraphBackend {
     #[cfg(feature = "graph-profile")]
     fn record_handler_invocation(&self, node: NodeId) {
         let family = handler_family_index(&self.program.nodes()[node.index()].kind);
-        self.callback_profile
-            .borrow_mut()
-            .handler_invocations_by_family[family] += 1;
+        self.callback_profile.borrow_mut().handler_invocations_by_family[family] += 1;
     }
 
     #[cfg(feature = "graph-profile")]
@@ -3787,10 +3240,7 @@ impl GraphBackend {
     #[cfg(feature = "graph-profile")]
     fn record_dust_candidate_power_samples(&mut self, node: NodeId) {
         if let Some(Some(length)) = self.dust_candidate_length_by_node.get(node.index()) {
-            *self
-                .dust_candidate_power_samples
-                .entry(*length)
-                .or_default() += 6;
+            *self.dust_candidate_power_samples.entry(*length).or_default() += 6;
         }
     }
 
@@ -3822,9 +3272,7 @@ impl GraphBackend {
             .filter_map(|(index, node)| {
                 if !matches!(
                     node.kind,
-                    CircuitNodeKind::Electrical(
-                        NodeType::Torch | NodeType::Repeater { .. } | NodeType::Comparator { .. }
-                    )
+                    CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. } | NodeType::Comparator { .. })
                 ) {
                     return None;
                 }
@@ -3893,9 +3341,7 @@ impl GraphBackend {
         for effect in self.effects.drain(..) {
             match effect {
                 PresentationEffect::BlockAction { .. } if io_only => {}
-                PresentationEffect::BlockAction { position, action } => {
-                    world.block_action(position, action)
-                }
+                PresentationEffect::BlockAction { position, action } => world.block_action(position, action),
                 PresentationEffect::Sound {
                     position,
                     id,
@@ -3920,9 +3366,7 @@ impl GraphBackend {
     }
 
     fn cell_owned_by_node(&self, position: BlockPos) -> bool {
-        self.positions
-            .get(&position)
-            .is_some_and(|&node| self.owns_cell(node))
+        self.positions.get(&position).is_some_and(|&node| self.owns_cell(node))
     }
 
     fn write_node<W: World>(&self, world: &mut W, node: NodeId) {
@@ -3934,10 +3378,7 @@ impl GraphBackend {
             return;
         }
         world.set_block(position, self.node_block(node));
-        if matches!(
-            spec.kind,
-            CircuitNodeKind::Electrical(NodeType::Comparator { .. })
-        ) {
+        if matches!(spec.kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
             world.set_block_entity(
                 position,
                 BlockEntity::Comparator {
@@ -3945,10 +3386,8 @@ impl GraphBackend {
                 },
             );
         }
-        if matches!(
-            spec.kind,
-            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-        ) && let Some(entity) = self.node_state(node).command_entity.clone()
+        if matches!(spec.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }))
+            && let Some(entity) = self.node_state(node).command_entity.clone()
         {
             world.set_block_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
         }
@@ -3988,9 +3427,7 @@ impl GraphBackend {
         for index in 0..self.program.contacts().len() {
             let contact = ContactId::new(index as u32);
             let position = self.program.contacts()[index].position;
-            if self.cell_owned_by_node(position)
-                || motions.iter().any(|motion| motion.position == position)
-            {
+            if self.cell_owned_by_node(position) || motions.iter().any(|motion| motion.position == position) {
                 continue;
             }
             let block = self.contact_block(contact);
@@ -4036,50 +3473,33 @@ impl GraphBackend {
                 extended: false,
             };
             let remaining = event.due_tick.saturating_sub(self.clock.logical_tick);
-            debug_assert!(
-                (1..=2).contains(&remaining),
-                "deferred event outside its window"
-            );
+            debug_assert!((1..=2).contains(&remaining), "deferred event outside its window");
             let position = |contact: ContactId| self.program.contacts()[contact.index()].position;
-            let actor =
-                (self.state.pistons[event.piston.index()].revision == event.revision).then(|| {
-                    MotionProjection {
-                        position: position(if event.extending {
-                            spec.near
-                        } else {
-                            spec.base
-                        }),
-                        actor: piston,
-                        carried: if event.extending {
-                            Block::PistonHead {
-                                head: piston.into(),
-                            }
-                        } else {
-                            Block::Piston { piston }
-                        },
-                        extending: event.extending,
-                        source: true,
-                        remaining,
-                    }
-                });
+            let actor = (self.state.pistons[event.piston.index()].revision == event.revision).then(|| MotionProjection {
+                position: position(if event.extending { spec.near } else { spec.base }),
+                actor: piston,
+                carried: if event.extending {
+                    Block::PistonHead { head: piston.into() }
+                } else {
+                    Block::Piston { piston }
+                },
+                extending: event.extending,
+                source: true,
+                remaining,
+            });
             let resource = event.resource.and_then(|transfer| {
                 let state = self.state.resources[transfer.resource.index()];
-                (state.revision == transfer.revision
-                    && state.at == transfer.contact
-                    && !state.enabled)
-                    .then(|| MotionProjection {
-                        position: position(transfer.contact),
-                        actor: piston,
-                        carried: self
-                            .program
-                            .profile_block(
-                                self.program.resources()[transfer.resource.index()].material,
-                            )
-                            .expect("resource material profile was validated"),
-                        extending: event.extending,
-                        source: false,
-                        remaining,
-                    })
+                (state.revision == transfer.revision && state.at == transfer.contact && !state.enabled).then(|| MotionProjection {
+                    position: position(transfer.contact),
+                    actor: piston,
+                    carried: self
+                        .program
+                        .profile_block(self.program.resources()[transfer.resource.index()].material)
+                        .expect("resource material profile was validated"),
+                    extending: event.extending,
+                    source: false,
+                    remaining,
+                })
             });
             // Native extension installs the payload before the head; retraction
             // moves the base before the pulled payload.
@@ -4147,12 +3567,7 @@ impl MotionProjection {
         let advances = 3.0 - self.remaining as f32;
         let progress = (advances * 0.5).min(1.0);
         let previous_progress = (advances - 1.0) * 0.5;
-        world.set_block(
-            self.position,
-            Block::MovingPiston {
-                moving: self.actor.into(),
-            },
-        );
+        world.set_block(self.position, Block::MovingPiston { moving: self.actor.into() });
         let mut entity = MovingPistonEntity {
             facing: self.actor.facing.into(),
             progress: 0,
@@ -4266,10 +3681,7 @@ fn handler_family_index(kind: &CircuitNodeKind) -> usize {
 }
 
 #[cfg(feature = "graph-profile")]
-fn callback_research_inventory(
-    program: &CircuitProgram,
-    route_roles: &[usize],
-) -> serde_json::Value {
+fn callback_research_inventory(program: &CircuitProgram, route_roles: &[usize]) -> serde_json::Value {
     use std::collections::{BTreeMap, HashSet};
     use std::hash::{Hash, Hasher};
 
@@ -4330,10 +3742,9 @@ fn callback_research_inventory(
         let role = GraphCallbackProfile::ROUTE_ROLES[route_roles[route_index]];
         let owner = &program.nodes()[route.source.index()];
         let block_type = owner.block.map_or("specialized", |block| block.get_name());
-        let position = owner.position.map_or_else(
-            || "unknown position".to_owned(),
-            |position| format!("{position:?}"),
-        );
+        let position = owner
+            .position
+            .map_or_else(|| "unknown position".to_owned(), |position| format!("{position:?}"));
         let owner_label = format!("{role} / {block_type}");
         let role_entry = role_totals.entry(role.to_owned()).or_default();
         role_entry.0 += 1;
@@ -4342,13 +3753,7 @@ fn callback_research_inventory(
         owner_entry.0 += 1;
         owner_entry.1 += route.deliveries.len() as u64;
         *route_sizes.entry(route.deliveries.len()).or_default() += 1;
-        largest_routes.push((
-            route.deliveries.len(),
-            route_index,
-            role,
-            block_type,
-            position.clone(),
-        ));
+        largest_routes.push((route.deliveries.len(), route_index, role, block_type, position.clone()));
 
         let mut branches = vec![Vec::new(); route.native_event_count];
         let mut route_sequence_rows = BTreeMap::<u32, u64>::new();
@@ -4367,40 +3772,22 @@ fn callback_research_inventory(
             }] += 1;
             literal_receiver_none += u64::from(delivery.receiver.is_none());
             route_literal_none += u64::from(delivery.receiver.is_none());
-            let effective_receiver = delivery.receiver.or_else(|| {
-                match (
-                    program.sites()[delivery.target.index()].source,
-                    delivery.kind,
-                ) {
-                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => {
-                        Some(CallbackReceiver::Component(node))
-                    }
+            let effective_receiver = delivery
+                .receiver
+                .or_else(|| match (program.sites()[delivery.target.index()].source, delivery.kind) {
+                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
                     _ => None,
-                }
-            });
+                });
             route_effective_none += u64::from(effective_receiver.is_none());
             let (receiver_family, receiver_type) = match effective_receiver {
                 Some(CallbackReceiver::Component(node)) => {
                     let component = &program.nodes()[node.index()];
-                    let component_type = component
-                        .block
-                        .map_or("component_other", |block| block.get_name())
-                        .to_owned();
+                    let component_type = component.block.map_or("component_other", |block| block.get_name()).to_owned();
                     let family = handler_family_index(&component.kind);
-                    (
-                        format!(
-                            "component_{}",
-                            GraphCallbackProfile::HANDLER_FAMILIES[family]
-                        ),
-                        component_type,
-                    )
+                    (format!("component_{}", GraphCallbackProfile::HANDLER_FAMILIES[family]), component_type)
                 }
-                Some(CallbackReceiver::PistonBase(_)) => {
-                    ("piston_base".to_owned(), "piston_base".to_owned())
-                }
-                Some(CallbackReceiver::PistonHead(_)) => {
-                    ("piston_head".to_owned(), "piston_head".to_owned())
-                }
+                Some(CallbackReceiver::PistonBase(_)) => ("piston_base".to_owned(), "piston_base".to_owned()),
+                Some(CallbackReceiver::PistonHead(_)) => ("piston_head".to_owned(), "piston_head".to_owned()),
                 Some(CallbackReceiver::Contact(_)) => ("contact".to_owned(), "contact".to_owned()),
                 None => ("none".to_owned(), "none".to_owned()),
             };
@@ -4411,22 +3798,20 @@ fn callback_research_inventory(
             }
         }
 
-        representative_routes
-            .entry(owner_label)
-            .or_insert_with(|| {
-                serde_json::json!({
-                    "route": route_index,
-                    "role": role,
-                    "owner_type": block_type,
-                    "owner_position": position,
-                    "native_event_occurrences": route.native_event_count,
-                    "retained_delivery_rows": route.deliveries.len(),
-                    "literal_receiver_none_rows": route_literal_none,
-                    "effective_receiver_none_rows": route_effective_none,
-                    "empty_native_occurrences": route.native_event_count.saturating_sub(route_sequence_rows.len()),
-                    "rows_by_native_sequence": route_sequence_rows,
-                })
-            });
+        representative_routes.entry(owner_label).or_insert_with(|| {
+            serde_json::json!({
+                "route": route_index,
+                "role": role,
+                "owner_type": block_type,
+                "owner_position": position,
+                "native_event_occurrences": route.native_event_count,
+                "retained_delivery_rows": route.deliveries.len(),
+                "literal_receiver_none_rows": route_literal_none,
+                "effective_receiver_none_rows": route_effective_none,
+                "empty_native_occurrences": route.native_event_count.saturating_sub(route_sequence_rows.len()),
+                "rows_by_native_sequence": route_sequence_rows,
+            })
+        });
 
         for group in &branches {
             *branch_histogram.entry(group.len()).or_default() += 1;
@@ -4445,24 +3830,15 @@ fn callback_research_inventory(
             let mut selected_profiles = HashSet::new();
             let mut has_contact = false;
             for delivery in group {
-                let SiteSource::Contact(contact_id) =
-                    program.sites()[delivery.target.index()].source
-                else {
+                let SiteSource::Contact(contact_id) = program.sites()[delivery.target.index()].source else {
                     continue;
                 };
                 has_contact = true;
                 let contact = &program.contacts()[contact_id.index()];
                 for variant in &contact.variants {
                     let selected = match delivery.view {
-                        OperandView::Live => {
-                            guard_contains(program.guards(), delivery.guard, variant.when)
-                        }
-                        OperandView::Captured => guard_contains_profile(
-                            program.guards(),
-                            delivery.guard,
-                            delivery.target,
-                            variant.profile,
-                        ),
+                        OperandView::Live => guard_contains(program.guards(), delivery.guard, variant.when),
+                        OperandView::Captured => guard_contains_profile(program.guards(), delivery.guard, delivery.target, variant.profile),
                     };
                     if selected {
                         selected_profiles.insert(variant.profile.index());
@@ -4477,9 +3853,7 @@ fn callback_research_inventory(
                 if selected_profiles.is_empty() {
                     unresolved_contact_branches += group.len() as u64;
                 }
-                *profile_histogram
-                    .entry(selected_profiles.len())
-                    .or_default() += 1;
+                *profile_histogram.entry(selected_profiles.len()).or_default() += 1;
             }
         }
     }
@@ -4611,12 +3985,7 @@ fn guard_contains(guards: &[Guard], root: GuardId, expected: GuardId) -> bool {
 }
 
 #[cfg(feature = "graph-profile")]
-fn guard_contains_profile(
-    guards: &[Guard],
-    root: GuardId,
-    site: SiteId,
-    profile: ProfileId,
-) -> bool {
+fn guard_contains_profile(guards: &[Guard], root: GuardId, site: SiteId, profile: ProfileId) -> bool {
     let mut stack = vec![root];
     let mut visited = FxHashSet::default();
     while let Some(current) = stack.pop() {
@@ -4648,17 +4017,12 @@ fn guard_expression_sizes(guards: &[Guard]) -> Vec<usize> {
             Guard::All(children) | Guard::Any(children) => children,
             Guard::Always | Guard::State(_) | Guard::Site { .. } => &[],
         };
-        let result = 1 + children
-            .iter()
-            .map(|child| size(child.index(), guards, memo))
-            .sum::<usize>();
+        let result = 1 + children.iter().map(|child| size(child.index(), guards, memo)).sum::<usize>();
         memo[index] = Some(result);
         result
     }
     let mut memo = vec![None; guards.len()];
-    (0..guards.len())
-        .map(|index| size(index, guards, &mut memo))
-        .collect()
+    (0..guards.len()).map(|index| size(index, guards, &mut memo)).collect()
 }
 
 #[cfg(test)]
@@ -4681,10 +4045,7 @@ fn emits_weak(block: Block, side: BlockFace) -> bool {
     match block {
         Block::RedstoneTorch { .. } => side != BlockFace::Top,
         Block::RedstoneWallTorch { facing, .. } => facing.block_face() != side,
-        Block::RedstoneBlock
-        | Block::Lever { .. }
-        | Block::StoneButton { .. }
-        | Block::StonePressurePlate { .. } => true,
+        Block::RedstoneBlock | Block::Lever { .. } | Block::StoneButton { .. } | Block::StonePressurePlate { .. } => true,
         block if block.pressure_plate_powered().is_some() => true,
         Block::RedstoneRepeater { repeater } => repeater.facing.block_face() == side,
         Block::RedstoneComparator { comparator } => comparator.facing.block_face() == side,
@@ -4692,10 +4053,7 @@ fn emits_weak(block: Block, side: BlockFace) -> bool {
         Block::RedstoneWire { wire } => match side {
             BlockFace::Top => true,
             BlockFace::Bottom => false,
-            _ => {
-                crate::redstone::wire::get_current_side(wire, side.unwrap_direction().opposite())
-                    != RedstoneWireSide::None
-            }
+            _ => crate::redstone::wire::get_current_side(wire, side.unwrap_direction().opposite()) != RedstoneWireSide::None,
         },
         _ => false,
     }
@@ -4717,10 +4075,9 @@ fn emits_strong(block: Block, side: BlockFace) -> bool {
         },
         Block::StonePressurePlate { .. } => side == BlockFace::Top,
         block if block.pressure_plate_powered().is_some() => side == BlockFace::Top,
-        Block::RedstoneWire { .. }
-        | Block::RedstoneRepeater { .. }
-        | Block::RedstoneComparator { .. }
-        | Block::Observer { .. } => emits_weak(block, side),
+        Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::Observer { .. } => {
+            emits_weak(block, side)
+        }
         _ => false,
     }
 }

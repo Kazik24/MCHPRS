@@ -3,9 +3,7 @@ use mchprs_blocks::BlockFacing;
 use mchprs_blocks::blocks::RedstonePiston;
 
 fn world() -> PlotWorld {
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
 fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
@@ -25,8 +23,7 @@ fn copy_saved(world: &mut PlotWorld) -> PlotWorld {
         .enumerate()
         .map(|(i, c)| Chunk::load(i as i32 / PLOT_WIDTH, i as i32 % PLOT_WIDTH, c))
         .collect();
-    let mut resumed =
-        PlotWorld::from_chunks(0, 0, chunks, data.pending_ticks.into_iter().collect());
+    let mut resumed = PlotWorld::from_chunks(0, 0, chunks, data.pending_ticks.into_iter().collect());
     resumed.piston_state = data.piston_state;
     resumed.invalidate_interpreter_caches();
     resumed
@@ -41,22 +38,9 @@ fn motion_removal_preserves_order_and_removes_all_legacy_duplicates() {
     // Test front, middle and back removal, then the legacy duplicate fallback.
     for x in [0, 31, 63, 1, 2] {
         let pos = BlockPos::new(x, 30, 40);
-        let expected: Vec<_> = w
-            .piston_state
-            .motions
-            .iter()
-            .filter(|m| m.pos != pos)
-            .map(|m| m.identity)
-            .collect();
+        let expected: Vec<_> = w.piston_state.motions.iter().filter(|m| m.pos != pos).map(|m| m.identity).collect();
         w.remove_motions_at(pos);
-        assert_eq!(
-            w.piston_state
-                .motions
-                .iter()
-                .map(|m| m.identity)
-                .collect::<Vec<_>>(),
-            expected
-        );
+        assert_eq!(w.piston_state.motions.iter().map(|m| m.identity).collect::<Vec<_>>(), expected);
         for (i, m) in w.piston_state.motions.iter().enumerate() {
             assert_eq!(w.piston_motion_index(m.pos, Some(m.identity)), Some(i));
         }
@@ -64,18 +48,10 @@ fn motion_removal_preserves_order_and_removes_all_legacy_duplicates() {
     let duplicate = w.piston_state.motions[5].clone();
     w.piston_state_mut().motions.push_back(duplicate.clone());
     w.remove_motions_at(duplicate.pos);
-    assert!(
-        w.piston_state
-            .motions
-            .iter()
-            .all(|m| m.pos != duplicate.pos)
-    );
+    assert!(w.piston_state.motions.iter().all(|m| m.pos != duplicate.pos));
     w.register_motion(duplicate.pos, 0.5);
     assert_eq!(w.piston_state.motions.back().unwrap().pos, duplicate.pos);
-    assert_ne!(
-        w.piston_state.motions.back().unwrap().identity,
-        duplicate.identity
-    );
+    assert_ne!(w.piston_state.motions.back().unwrap().identity, duplicate.identity);
 }
 
 #[test]
@@ -90,19 +66,13 @@ fn persistent_wire_addresses_observe_block_changes_and_plot_boundaries() {
     }
     let changed = p.offset(BlockFace::East);
     w.set_block(changed, Block::Stone {});
-    assert!(std::sync::Arc::ptr_eq(
-        &cached,
-        &w.wire_neighborhood(p).unwrap()
-    ));
+    assert!(std::sync::Arc::ptr_eq(&cached, &w.wire_neighborhood(p).unwrap()));
     assert_eq!(w.get_block(changed), Block::Stone {});
     w.set_block(changed, Block::Air);
     assert_eq!(w.get_block(changed), Block::Air);
     let edge = w.wire_neighborhood(BlockPos::new(0, 0, 0)).unwrap();
     assert!(edge.iter().any(|n| n.cell.is_none()));
-    assert_eq!(
-        w.wire_location(BlockPos::new(255, 255, 255)),
-        Some(16_777_215)
-    );
+    assert_eq!(w.wire_location(BlockPos::new(255, 255, 255)), Some(16_777_215));
 
     let chunks = (0..PLOT_WIDTH)
         .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x + 16, z - 16)))
@@ -151,10 +121,7 @@ fn clearing_interpreter_caches_preserves_pending_motion_events_and_ticks() {
     let identity = cleared.piston_state.motions[0].identity;
     assert_eq!(cleared.piston_motion_index(pos, Some(identity)), Some(0));
     cleared.clear_interpreter_caches();
-    assert!(!std::sync::Arc::ptr_eq(
-        &cached,
-        &cleared.wire_neighborhood(pos).unwrap()
-    ));
+    assert!(!std::sync::Arc::ptr_eq(&cached, &cleared.wire_neighborhood(pos).unwrap()));
     assert_eq!(cleared.piston_motion_index(pos, Some(identity)), Some(0));
     assert_same(&mut original, &mut cleared);
     for _ in 0..8 {
@@ -169,16 +136,11 @@ fn assert_same(a: &mut PlotWorld, b: &mut PlotWorld) {
         let pos = BlockPos::new(x, 30, 40);
         assert_eq!(a.get_block_raw(pos), b.get_block_raw(pos));
         assert_eq!(
-            a.get_block_entity(pos)
-                .map(|e| bincode::serialize(e).unwrap()),
-            b.get_block_entity(pos)
-                .map(|e| bincode::serialize(e).unwrap())
+            a.get_block_entity(pos).map(|e| bincode::serialize(e).unwrap()),
+            b.get_block_entity(pos).map(|e| bincode::serialize(e).unwrap())
         );
     }
-    assert_eq!(
-        bincode::serialize(&a.piston_state).unwrap(),
-        bincode::serialize(&b.piston_state).unwrap()
-    );
+    assert_eq!(bincode::serialize(&a.piston_state).unwrap(), bincode::serialize(&b.piston_state).unwrap());
     assert_eq!(
         a.scheduler().iter_entries().collect::<Vec<_>>(),
         b.scheduler().iter_entries().collect::<Vec<_>>()
@@ -191,15 +153,9 @@ fn snapshot_state(chunk: &CChunkData, pos: BlockPos) -> u32 {
     let index = (((pos.y & 15) << 8) | ((pos.z & 15) << 4) | (pos.x & 15)) as usize;
     let value = match 64usize.checked_div(bits) {
         None => 0,
-        Some(entries_per_long) => {
-            (container.data_array[index / entries_per_long] >> ((index % entries_per_long) * bits))
-                & ((1 << bits) - 1)
-        }
+        Some(entries_per_long) => (container.data_array[index / entries_per_long] >> ((index % entries_per_long) * bits)) & ((1 << bits) - 1),
     };
-    container
-        .palette
-        .as_ref()
-        .map_or(value as u32, |palette| palette[value as usize] as u32)
+    container.palette.as_ref().map_or(value as u32, |palette| palette[value as usize] as u32)
 }
 
 #[test]
@@ -229,10 +185,7 @@ fn fast_rendering_projects_snapshots_without_changing_piston_timing() {
     assert!(projected.block_entities.is_empty());
     for x in [41, 42] {
         let pos = BlockPos::new(x, 30, 40);
-        assert!(matches!(
-            Block::from_id(snapshot_state(&ordinary, pos)),
-            Block::MovingPiston { .. }
-        ));
+        assert!(matches!(Block::from_id(snapshot_state(&ordinary, pos)), Block::MovingPiston { .. }));
         let carried = match fast.get_block_entity(pos).unwrap() {
             BlockEntity::MovingPiston(entity) => entity.block_state,
             _ => unreachable!(),

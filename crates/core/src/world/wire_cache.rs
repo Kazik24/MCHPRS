@@ -79,33 +79,19 @@ impl Topology {
         self.entries = 0;
     }
 
-    pub fn neighborhood(
-        &mut self,
-        cell: u32,
-        pos: BlockPos,
-        location: impl Fn(BlockPos) -> Option<u32>,
-    ) -> Neighborhood {
+    pub fn neighborhood(&mut self, cell: u32, pos: BlockPos, location: impl Fn(BlockPos) -> Option<u32>) -> Neighborhood {
         let section = (cell >> 12) as usize;
         let local = (cell & 4095) as usize;
-        if let Some(cached) = self
-            .sections
-            .get(section)
-            .and_then(|s| s.as_ref())
-            .and_then(|s| s[local].as_ref())
-        {
+        if let Some(cached) = self.sections.get(section).and_then(|s| s.as_ref()).and_then(|s| s[local].as_ref()) {
             return cached.clone();
         }
-        let value = Arc::new(positions(pos).map(|pos| Neighbor {
-            pos,
-            cell: location(pos),
-        }));
+        let value = Arc::new(positions(pos).map(|pos| Neighbor { pos, cell: location(pos) }));
         // Bound persistent retention; saturation only disables further admissions.
         if self.entries < 1_048_576 {
             if self.sections.len() <= section {
                 self.sections.resize_with(section + 1, || None);
             }
-            let section = self.sections[section]
-                .get_or_insert_with(|| Box::new(std::array::from_fn(|_| None)));
+            let section = self.sections[section].get_or_insert_with(|| Box::new(std::array::from_fn(|_| None)));
             section[local] = Some(value.clone());
             self.entries += 1;
         }
@@ -122,17 +108,12 @@ pub(crate) struct Facts {
 }
 
 fn uncached_facts(block: Block) -> Facts {
-    let connections = [
-        BlockDirection::North,
-        BlockDirection::South,
-        BlockDirection::East,
-        BlockDirection::West,
-    ]
-    .into_iter()
-    .enumerate()
-    .fold(0, |mask, (i, side)| {
-        mask | (u8::from(crate::redstone::wire::can_connect_to_uncached(block, side)) << i)
-    });
+    let connections = [BlockDirection::North, BlockDirection::South, BlockDirection::East, BlockDirection::West]
+        .into_iter()
+        .enumerate()
+        .fold(0, |mask, (i, side)| {
+            mask | (u8::from(crate::redstone::wire::can_connect_to_uncached(block, side)) << i)
+        });
     Facts {
         solid: block.is_solid(),
         transparent: block.is_transparent(),
@@ -174,10 +155,7 @@ mod tests {
             let block = Block::from_id(id);
             assert_eq!(facts(block), uncached_facts(block), "state {id}");
         }
-        assert_eq!(
-            facts(Block::Unknown { id: u32::MAX }),
-            uncached_facts(Block::Unknown { id: u32::MAX })
-        );
+        assert_eq!(facts(Block::Unknown { id: u32::MAX }), uncached_facts(Block::Unknown { id: u32::MAX }));
     }
 
     #[test]

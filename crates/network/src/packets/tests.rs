@@ -44,23 +44,16 @@ fn play_teleport_confirmations_dispatch_in_order_and_reject_invalid_ids() {
     for id in [1, 2, 1, 2, i32::MAX, 0] {
         let mut data = Vec::new();
         data.write_varint(id);
-        PacketEncoder::new(data, 0x00)
-            .write_uncompressed(&mut bytes)
-            .unwrap();
+        PacketEncoder::new(data, 0x00).write_uncompressed(&mut bytes).unwrap();
     }
     let mut reader = Cursor::new(bytes);
     let mut state = NetworkState::Play;
     let mut handler = Handler::default();
     let compression = Arc::new(AtomicBool::new(false));
     for _ in 0..6 {
-        read_packet(&mut reader, &compression, &mut state)
-            .unwrap()
-            .handle(&mut handler, 7);
+        read_packet(&mut reader, &compression, &mut state).unwrap().handle(&mut handler, 7);
     }
-    assert_eq!(
-        handler.0,
-        [(7, 1), (7, 2), (7, 1), (7, 2), (7, i32::MAX), (7, 0)]
-    );
+    assert_eq!(handler.0, [(7, 1), (7, 2), (7, 1), (7, 2), (7, i32::MAX), (7, 0)]);
     assert_eq!(state, NetworkState::Play);
     let mut invalid = Vec::new();
     invalid.write_varint(-1);
@@ -86,9 +79,7 @@ fn clean_connection_closes_are_distinct_from_truncated_packet_frames() {
             PacketDecodeError::Io(error) => assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof),
             PacketDecodeError::Packet { packet_id, source } => {
                 assert_eq!(packet_id, 1);
-                assert!(
-                    matches!(*source, PacketDecodeError::Io(ref error) if error.kind() == io::ErrorKind::UnexpectedEof)
-                );
+                assert!(matches!(*source, PacketDecodeError::Io(ref error) if error.kind() == io::ErrorKind::UnexpectedEof));
             }
             _ => panic!("truncated frame must remain a decode error: {error:?}"),
         }
@@ -131,13 +122,8 @@ fn fragmented_and_interrupted_reads_preserve_frames_and_clean_closes() {
     handshake.write_unsigned_short(25565);
     handshake.write_varint(1);
     let mut bytes = vec![];
-    PacketEncoder::new(handshake, 0)
-        .write_uncompressed(&mut bytes)
-        .unwrap();
-    CPong { payload: 123456789 }
-        .encode()
-        .write_uncompressed(&mut bytes)
-        .unwrap();
+    PacketEncoder::new(handshake, 0).write_uncompressed(&mut bytes).unwrap();
+    CPong { payload: 123456789 }.encode().write_uncompressed(&mut bytes).unwrap();
     let mut reader = Fragmented {
         data: Cursor::new(bytes),
         interrupt: true,
@@ -145,15 +131,11 @@ fn fragmented_and_interrupted_reads_preserve_frames_and_clean_closes() {
     let mut state = NetworkState::Handshake;
     let compression = Arc::new(AtomicBool::new(false));
     let mut handler = Handler::default();
-    read_packet(&mut reader, &compression, &mut state)
-        .unwrap()
-        .handle(&mut handler, 0);
+    read_packet(&mut reader, &compression, &mut state).unwrap().handle(&mut handler, 0);
     assert_eq!(state, NetworkState::Status);
     assert_eq!(handler.address, address);
     reader.interrupt = true;
-    read_packet(&mut reader, &compression, &mut state)
-        .unwrap()
-        .handle(&mut handler, 0);
+    read_packet(&mut reader, &compression, &mut state).unwrap().handle(&mut handler, 0);
     assert_eq!(handler.ping, 123456789);
     assert!(matches!(
         read_packet(&mut reader, &compression, &mut state),
@@ -164,14 +146,8 @@ fn fragmented_and_interrupted_reads_preserve_frames_and_clean_closes() {
 #[test]
 fn compressed_payload_errors_retain_packet_identity() {
     let mut bytes = vec![];
-    PacketEncoder::new(vec![0], 1)
-        .write_compressed(&mut bytes)
-        .unwrap();
-    let error = match read_packet(
-        &mut Cursor::new(bytes),
-        &Arc::new(AtomicBool::new(true)),
-        &mut NetworkState::Status,
-    ) {
+    PacketEncoder::new(vec![0], 1).write_compressed(&mut bytes).unwrap();
+    let error = match read_packet(&mut Cursor::new(bytes), &Arc::new(AtomicBool::new(true)), &mut NetworkState::Status) {
         Err(error) => error,
         Ok(_) => panic!("short Ping was accepted"),
     };
@@ -187,11 +163,7 @@ fn forwarding_response_keeps_login_state_until_acknowledgement() {
         data: Vec<u8>,
     }
     impl serverbound::ServerBoundPacketHandler for Handler {
-        fn handle_login_plugin_response(
-            &mut self,
-            packet: serverbound::SLoginPluginResponse,
-            _: usize,
-        ) {
+        fn handle_login_plugin_response(&mut self, packet: serverbound::SLoginPluginResponse, _: usize) {
             assert_eq!(packet.message_id, 0);
             assert!(packet.successful);
             self.data = packet.data;
@@ -245,9 +217,7 @@ fn container_click_hashes_dispatch_and_validate_without_accepting_item_data() {
     bytes.write_bool(false);
     let mut handler = Handler::default();
     let mut cursor = Cursor::new(&bytes);
-    read_decompressed(&mut cursor, &mut NetworkState::Play)
-        .unwrap()
-        .handle(&mut handler, 0);
+    read_decompressed(&mut cursor, &mut NetworkState::Play).unwrap().handle(&mut handler, 0);
     assert_eq!(cursor.position() as usize, bytes.len());
     bytes.pop();
     assert!(read_decompressed(&mut Cursor::new(bytes), &mut NetworkState::Play).is_err());
@@ -313,15 +283,11 @@ fn pick_packets_dispatch_and_reject_truncated_payloads() {
     block.write_long(0);
     assert!(read_decompressed(&mut Cursor::new(&block), &mut state).is_err());
     block.write_bool(true);
-    read_decompressed(&mut Cursor::new(block), &mut state)
-        .unwrap()
-        .handle(&mut handler, 0);
+    read_decompressed(&mut Cursor::new(block), &mut state).unwrap().handle(&mut handler, 0);
     let mut entity = vec![0x23];
     entity.write_varint(123);
     entity.write_bool(false);
-    read_decompressed(&mut Cursor::new(entity), &mut state)
-        .unwrap()
-        .handle(&mut handler, 0);
+    read_decompressed(&mut Cursor::new(entity), &mut state).unwrap().handle(&mut handler, 0);
     assert!(handler.block && handler.entity);
 }
 
@@ -331,10 +297,7 @@ fn use_item_packet_dispatches_hand_sequence_and_rotation() {
     struct Handler(bool);
     impl ServerBoundPacketHandler for Handler {
         fn handle_use_item(&mut self, packet: SUseItem, _: usize) {
-            self.0 = packet.hand == 1
-                && packet.sequence == 123
-                && packet.yaw == 90.0
-                && packet.pitch == -30.0;
+            self.0 = packet.hand == 1 && packet.sequence == 123 && packet.yaw == 90.0 && packet.pitch == -30.0;
         }
     }
     let mut payload = vec![0x3f];
@@ -345,9 +308,7 @@ fn use_item_packet_dispatches_hand_sequence_and_rotation() {
     assert!(read_decompressed(&mut Cursor::new(&payload), &mut state).is_err());
     payload.write_float(-30.0);
     let mut handler = Handler(false);
-    read_decompressed(&mut Cursor::new(payload), &mut state)
-        .unwrap()
-        .handle(&mut handler, 0);
+    read_decompressed(&mut Cursor::new(payload), &mut state).unwrap().handle(&mut handler, 0);
     assert!(handler.0);
 }
 
@@ -446,10 +407,7 @@ fn nested_container_patch_and_invalid_components() {
     encoded.write_slot_data(&slot);
     assert_eq!(encoded, bytes);
     let entity = slot.unwrap().nbt.unwrap();
-    assert!(matches!(
-        entity.get("BlockEntityTag"),
-        Some(nbt::Value::Compound(_))
-    ));
+    assert!(matches!(entity.get("BlockEntityTag"), Some(nbt::Value::Compound(_))));
     assert!(components::read_slot(&mut Cursor::new(vec![1, 1, 1, 0, 127])).is_err());
     assert!(components::read_slot(&mut Cursor::new(vec![1, 1, 1, 0, 5, 8])).is_err());
     assert!(components::read_untrusted_slot(&mut Cursor::new(vec![1, 1, 1, 0, 4, 1, 0])).is_err());
@@ -475,25 +433,15 @@ fn target_nbt_and_position_packet_layouts() {
     assert_eq!(cursor.read_double().unwrap(), 1.0);
     assert_eq!(packet.buffer.len(), 2 + 6 * 8 + 2 * 4 + 4);
     for coords in [(-1, 0, -1), (-33554432, -2048, 33554431), (123, 255, -456)] {
-        assert_eq!(
-            PackedPos::new(coords.0, coords.1, coords.2).coords(),
-            coords
-        );
+        assert_eq!(PackedPos::new(coords.0, coords.1, coords.2).coords(), coords);
     }
 }
 #[test]
 fn compressed_status_framing_round_trips() {
     for size in [0, 254, 255, 256, 2000] {
         let mut data = vec![];
-        PacketEncoder::new(vec![0; size], 0)
-            .write_compressed(&mut data)
-            .unwrap();
+        PacketEncoder::new(vec![0; size], 0).write_compressed(&mut data).unwrap();
         let mut state = NetworkState::Status;
-        read_packet(
-            &mut Cursor::new(data),
-            &Arc::new(AtomicBool::new(true)),
-            &mut state,
-        )
-        .unwrap();
+        read_packet(&mut Cursor::new(data), &Arc::new(AtomicBool::new(true)), &mut state).unwrap();
     }
 }

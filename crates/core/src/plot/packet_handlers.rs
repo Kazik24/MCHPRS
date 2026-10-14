@@ -37,11 +37,7 @@ fn relative_movement(old: PlayerPos, new: PlayerPos) -> Option<[i16; 3]> {
 }
 
 impl Plot {
-    fn handle_signed_velocity_result(
-        &mut self,
-        result: anyhow::Result<Option<String>>,
-        player: usize,
-    ) {
+    fn handle_signed_velocity_result(&mut self, result: anyhow::Result<Option<String>>, player: usize) {
         match result {
             Ok(Some(message)) => self.handle_approved_chat_message(message, player),
             Ok(None) => {}
@@ -58,10 +54,7 @@ impl Plot {
             return;
         }
         let max_length = if command { 32767 } else { 256 };
-        if message.encode_utf16().count() > max_length
-            || message.chars().any(|c| c.is_control())
-            || !self.players[player].accept_chat_message()
-        {
+        if message.encode_utf16().count() > max_length || message.chars().any(|c| c.is_control()) || !self.players[player].accept_chat_message() {
             return;
         }
         if command {
@@ -71,9 +64,7 @@ impl Plot {
             self.players[player].command_queue.push(message);
         } else {
             let player = &mut self.players[player];
-            if crate::permissions::dedicated_permissions()
-                && !player.has_permission("mchprs.access.chat")
-            {
+            if crate::permissions::dedicated_permissions() && !player.has_permission("mchprs.access.chat") {
                 player.send_no_permission_message();
                 return;
             }
@@ -87,8 +78,7 @@ impl Plot {
                 player.client.send_packet(&packet);
                 return;
             }
-            let broadcast_message =
-                Message::ChatInfo(player.uuid, player.username.clone(), message);
+            let broadcast_message = Message::ChatInfo(player.uuid, player.username.clone(), message);
             self.message_sender.send(broadcast_message).unwrap();
         }
     }
@@ -101,11 +91,7 @@ impl Plot {
         }
         let packet = CPluginMessage {
             channel: crate::redbox::CHANNEL.to_owned(),
-            data: crate::redbox::encode_pt_click(
-                self.players[player].uuid,
-                button,
-                self.players[player].held_item_name(),
-            ),
+            data: crate::redbox::encode_pt_click(self.players[player].uuid, button, self.players[player].held_item_name()),
         }
         .encode();
         self.players[player].client.send_packet(&packet);
@@ -121,19 +107,11 @@ impl Plot {
         }
     }
 
-    fn update_player_position(
-        &mut self,
-        player: usize,
-        new: PlayerPos,
-        on_ground: bool,
-        rotation: Option<(f32, f32)>,
-    ) {
+    fn update_player_position(&mut self, player: usize, new: PlayerPos, on_ground: bool, rotation: Option<(f32, f32)>) {
         if self.players[player].awaiting_teleport() {
             return;
         }
-        if !new.is_valid()
-            || rotation.is_some_and(|(yaw, pitch)| !yaw.is_finite() || !pitch.is_finite())
-        {
+        if !new.is_valid() || rotation.is_some_and(|(yaw, pitch)| !yaw.is_finite() || !pitch.is_finite()) {
             warn!(
                 player = %self.players[player].username,
                 position = ?new,
@@ -296,23 +274,14 @@ impl Plot {
             let block = self.world.get_block(block_pos);
             let lever_or_button = matches!(block, Block::Lever { .. } | Block::StoneButton { .. });
             if lever_or_button && !self.players[player].crouching {
-                if !self.players[player].can_build_action(
-                    "interact",
-                    self.owner,
-                    (self.world.x, self.world.z),
-                ) {
+                if !self.players[player].can_build_action("interact", self.owner, (self.world.x, self.world.z)) {
                     self.players[player].send_no_permission_message();
                     cancel(self);
                     return;
                 }
                 self.redpiler.on_use_block(block_pos);
                 self.redpiler.flush(&mut self.world);
-                crate::sound::control_used(
-                    &mut self.world,
-                    block_pos,
-                    block,
-                    self.players[player].uuid,
-                );
+                crate::sound::control_used(&mut self.world, block_pos, block, self.players[player].uuid);
                 self.world.flush_block_changes();
                 return;
             } else {
@@ -352,13 +321,7 @@ impl Plot {
 
         let block = self.world.get_block(block_pos);
         if !self.players[player].crouching {
-            interaction::on_use(
-                block,
-                &mut self.world,
-                &mut self.players[player],
-                block_pos,
-                None,
-            );
+            interaction::on_use(block, &mut self.world, &mut self.players[player], block_pos, None);
             self.world.flush_block_changes();
         }
     }
@@ -383,9 +346,7 @@ impl Plot {
         }
         if self.git_checkout_locked() {
             let pos = BlockPos::from_packed(player_digging.pos);
-            if Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z)
-                && (0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y)
-            {
+            if Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) && (0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y) {
                 self.send_block_change(pos, self.world.get_block_raw(pos));
             }
             return;
@@ -396,17 +357,13 @@ impl Plot {
                 self.restore_neighbor_chunk(player, block_pos);
                 return;
             }
-            if !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y)
-                || !self.container_in_reach(player, block_pos)
-            {
+            if !(0..super::PLOT_BLOCK_HEIGHT).contains(&block_pos.y) || !self.container_in_reach(player, block_pos) {
                 return;
             }
             let block = self.world.get_block(block_pos);
 
             // This worldedit wand stuff should probably be done in another file. It's good enough for now.
-            let item_in_hand = self.players[player].inventory
-                [self.players[player].selected_slot as usize + 36]
-                .clone();
+            let item_in_hand = self.players[player].inventory[self.players[player].selected_slot as usize + 36].clone();
             if let Some(item) = item_in_hand {
                 if item.item_type.get_name().ends_with("_sword") {
                     return;
@@ -424,11 +381,7 @@ impl Plot {
                 }
             }
 
-            if !self.players[player].can_build_action(
-                "break",
-                self.owner,
-                (self.world.x, self.world.z),
-            ) {
+            if !self.players[player].can_build_action("break", self.owner, (self.world.x, self.world.z)) {
                 self.players[player].send_no_permission_message();
                 self.send_block_change(block_pos, block.get_id());
                 return;
@@ -503,8 +456,7 @@ impl Plot {
         };
         let actor = &self.players[player];
         if !actor.has_permission("plots.claim")
-            || (self.owner != Some(actor.uuid)
-                && !actor.has_permission("plots.admin.interact.other"))
+            || (self.owner != Some(actor.uuid) && !actor.has_permission("plots.admin.interact.other"))
             || prefix.chars().any(char::is_whitespace)
         {
             return Some(response);
@@ -519,14 +471,9 @@ impl Plot {
                 let prefix = prefix.to_lowercase();
                 response.matches = names
                     .into_iter()
-                    .filter(|name| {
-                        name.to_lowercase().starts_with(&prefix) && name != &actor.username
-                    })
+                    .filter(|name| name.to_lowercase().starts_with(&prefix) && name != &actor.username)
                     .take(100)
-                    .map(|name| CTabCompleteMatch {
-                        match_: name,
-                        tooltip: None,
-                    })
+                    .map(|name| CTabCompleteMatch { match_: name, tooltip: None })
                     .collect();
             }
             Err(error) => error!("Could not complete plot member names: {error}"),
@@ -547,8 +494,7 @@ impl Plot {
             length: prefix.encode_utf16().count() as i32,
             matches: Vec::new(),
         };
-        if (crate::permissions::dedicated_permissions()
-            && !self.players[player].has_permission(permission))
+        if (crate::permissions::dedicated_permissions() && !self.players[player].has_permission(permission))
             || prefix.chars().any(char::is_whitespace)
         {
             return Some(response);
@@ -560,10 +506,7 @@ impl Plot {
                     .into_iter()
                     .filter(|name| name.to_ascii_lowercase().starts_with(&prefix))
                     .take(100)
-                    .map(|name| CTabCompleteMatch {
-                        match_: name,
-                        tooltip: None,
-                    })
+                    .map(|name| CTabCompleteMatch { match_: name, tooltip: None })
                     .collect();
             }
             Err(error) => error!("Could not complete warp names: {error}"),
@@ -622,14 +565,7 @@ impl ServerBoundPacketHandler for Plot {
         let mut block = Block::from_name(name).unwrap();
         block.set_properties(std::collections::HashMap::from([
             ("facing", old.property("facing").unwrap_or("north")),
-            (
-                "conditional",
-                if packet.flags & 2 != 0 {
-                    "true"
-                } else {
-                    "false"
-                },
-            ),
+            ("conditional", if packet.flags & 2 != 0 { "true" } else { "false" }),
         ]));
         let mut entity = match self.world.get_block_entity(pos) {
             Some(BlockEntity::CommandBlock(entity)) => (**entity).clone(),
@@ -643,22 +579,16 @@ impl ServerBoundPacketHandler for Plot {
         entity.last_execution = -1;
         self.world.set_block(pos, block);
         self.world.flush_block_changes();
-        self.world
-            .set_block_entity(pos, BlockEntity::CommandBlock(Box::new(entity)));
+        self.world.set_block_entity(pos, BlockEntity::CommandBlock(Box::new(entity)));
         crate::redstone::command_block::update(&mut self.world, pos);
         self.players[player].send_system_message(messages::COMMAND_BLOCK_UPDATED);
     }
 
     fn handle_pick_item_from_block(&mut self, packet: SPickItemFromBlock, player: usize) {
-        if crate::permissions::dedicated_permissions()
-            && !self.players[player].has_permission("mchprs.inventory.creative")
-        {
+        if crate::permissions::dedicated_permissions() && !self.players[player].has_permission("mchprs.inventory.creative") {
             return;
         }
-        if !matches!(
-            self.players[player].gamemode,
-            crate::player::Gamemode::Creative
-        ) {
+        if !matches!(self.players[player].gamemode, crate::player::Gamemode::Creative) {
             return;
         }
         let pos = BlockPos::from_packed(packet.pos);
@@ -668,16 +598,11 @@ impl ServerBoundPacketHandler for Plot {
         {
             return;
         }
-        let Some(picked) = super::picking::picked_stack(&self.world, pos, packet.include_data)
-        else {
+        let Some(picked) = super::picking::picked_stack(&self.world, pos, packet.include_data) else {
             return;
         };
         let player_data = &mut self.players[player];
-        let changed = super::picking::pick_into_inventory(
-            &mut player_data.inventory,
-            &mut player_data.selected_slot,
-            picked,
-        );
+        let changed = super::picking::pick_into_inventory(&mut player_data.inventory, &mut player_data.selected_slot, picked);
         for slot in changed {
             let item = player_data.inventory[slot].clone();
             player_data.set_inventory_slot(slot as u32, item);
@@ -700,33 +625,24 @@ impl ServerBoundPacketHandler for Plot {
                 ));
                 return;
             }
-            if let Some(completion) =
-                self.complete_warps(player_idx, packet.transaction_id, &packet.text)
-            {
+            if let Some(completion) = self.complete_warps(player_idx, packet.transaction_id, &packet.text) {
                 self.players[player_idx].send_packet(&completion.encode());
                 return;
             }
         }
-        if let Some(completion) =
-            super::commands::complete_redpiler(packet.transaction_id, &packet.text)
-        {
+        if let Some(completion) = super::commands::complete_redpiler(packet.transaction_id, &packet.text) {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }
-        if let Some(completion) = self.complete_git(player_idx, packet.transaction_id, &packet.text)
-        {
+        if let Some(completion) = self.complete_git(player_idx, packet.transaction_id, &packet.text) {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }
-        if let Some(completion) =
-            self.complete_plot_members(player_idx, packet.transaction_id, &packet.text)
-        {
+        if let Some(completion) = self.complete_plot_members(player_idx, packet.transaction_id, &packet.text) {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }
-        if let Some(completion) =
-            self.complete_redstone_tools(player_idx, packet.transaction_id, &packet.text)
-        {
+        if let Some(completion) = self.complete_redstone_tools(player_idx, packet.transaction_id, &packet.text) {
             self.players[player_idx].send_packet(&completion.encode());
             return;
         }
@@ -752,15 +668,7 @@ impl ServerBoundPacketHandler for Plot {
         };
 
         match super::worldedit::complete_schematic_names(&path, current) {
-            Ok(names) => {
-                res.matches = names
-                    .into_iter()
-                    .map(|name| CTabCompleteMatch {
-                        match_: name,
-                        tooltip: None,
-                    })
-                    .collect()
-            }
+            Ok(names) => res.matches = names.into_iter().map(|name| CTabCompleteMatch { match_: name, tooltip: None }).collect(),
             Err(err) => error!("Error while tab completing: {err:?}"),
         }
 
@@ -771,23 +679,14 @@ impl ServerBoundPacketHandler for Plot {
         self.players[player_idx].last_keep_alive_received = Instant::now();
     }
 
-    fn handle_creative_inventory_action(
-        &mut self,
-        creative_inventory_action: SCreativeInventoryAction,
-        player: usize,
-    ) {
-        if !matches!(
-            self.players[player].gamemode,
-            crate::player::Gamemode::Creative
-        ) {
+    fn handle_creative_inventory_action(&mut self, creative_inventory_action: SCreativeInventoryAction, player: usize) {
+        if !matches!(self.players[player].gamemode, crate::player::Gamemode::Creative) {
             return;
         }
         if !(0..46).contains(&creative_inventory_action.slot) {
             return;
         }
-        if crate::permissions::dedicated_permissions()
-            && !self.players[player].has_permission("mchprs.inventory.creative")
-        {
+        if crate::permissions::dedicated_permissions() && !self.players[player].has_permission("mchprs.inventory.creative") {
             return;
         }
         if let Some(slot_data) = creative_inventory_action.clicked_item {
@@ -806,9 +705,7 @@ impl ServerBoundPacketHandler for Plot {
                     if player == other_player {
                         continue;
                     };
-                    self.players[other_player]
-                        .client
-                        .send_packet(&entity_equipment);
+                    self.players[other_player].client.send_packet(&entity_equipment);
                 }
             }
         } else {
@@ -859,17 +756,12 @@ impl ServerBoundPacketHandler for Plot {
             if player == other_player {
                 continue;
             };
-            self.players[other_player]
-                .client
-                .send_packet(&entity_animation);
+            self.players[other_player].client.send_packet(&entity_animation);
         }
     }
 
     fn handle_use_item(&mut self, packet: SUseItem, player: usize) {
-        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
-            &self.players[player].client,
-            packet.sequence,
-        );
+        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(&self.players[player].client, packet.sequence);
         self.send_powertool_click(player, 1);
         if self.use_wire_tool(player, packet.hand, packet.yaw, packet.pitch) {
             return;
@@ -880,15 +772,8 @@ impl ServerBoundPacketHandler for Plot {
         self.use_compass(player, packet.hand, packet.yaw, packet.pitch);
     }
 
-    fn handle_player_block_placement(
-        &mut self,
-        player_block_placement: SPlayerBlockPlacemnt,
-        player: usize,
-    ) {
-        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
-            &self.players[player].client,
-            player_block_placement.sequence,
-        );
+    fn handle_player_block_placement(&mut self, player_block_placement: SPlayerBlockPlacemnt, player: usize) {
+        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(&self.players[player].client, player_block_placement.sequence);
         self.send_powertool_click(player, 1);
         let previous = self.world.set_authoritative_updates(true);
         let pos = BlockPos::from_packed(player_block_placement.pos);
@@ -909,16 +794,13 @@ impl ServerBoundPacketHandler for Plot {
         if crate::redbox::enabled() || CONFIG.velocity.is_none() {
             self.handle_approved_chat_message(chat_message.message, player);
         } else {
-            let result = self.players[player]
-                .signed_velocity
-                .submit(chat_message.message);
+            let result = self.players[player].signed_velocity.submit(chat_message.message);
             self.handle_signed_velocity_result(result, player);
         }
     }
 
     fn handle_client_settings(&mut self, client_settings: SClientSettings, player: usize) {
-        self.players[player].skin_parts =
-            SkinParts::from_bits_truncate(client_settings.displayed_skin_parts as u32);
+        self.players[player].skin_parts = SkinParts::from_bits_truncate(client_settings.displayed_skin_parts as u32);
         for (index, viewer) in self.players.iter().enumerate() {
             viewer.send_packet(&self.players[player].entity_metadata_packet(index == player));
         }
@@ -928,9 +810,7 @@ impl ServerBoundPacketHandler for Plot {
         if plugin_message.channel == crate::signed_velocity::CHANNEL {
             if CONFIG.velocity.is_some() {
                 let sender = &mut self.players[player];
-                let result = sender
-                    .signed_velocity
-                    .receive(&plugin_message.data, sender.uuid);
+                let result = sender.signed_velocity.receive(&plugin_message.data, sender.uuid);
                 self.handle_signed_velocity_result(result, player);
             }
             return;
@@ -950,15 +830,11 @@ impl ServerBoundPacketHandler for Plot {
                 }
                 match incoming {
                     crate::redbox::Incoming::Teleport { uuid, position } => {
-                        let _ = self
-                            .message_sender
-                            .send(Message::RedBoxTeleport { uuid, position });
+                        let _ = self.message_sender.send(Message::RedBoxTeleport { uuid, position });
                     }
                     crate::redbox::Incoming::Gamemode { uuid, mode } => {
                         if let Some(gamemode) = crate::redbox::gamemode_from_id(mode) {
-                            let _ = self
-                                .message_sender
-                                .send(Message::RedBoxGamemode(uuid, gamemode));
+                            let _ = self.message_sender.send(Message::RedBoxGamemode(uuid, gamemode));
                         } else {
                             warn!(mode, "Ignored unsupported RedBox gamemode");
                         }
@@ -994,11 +870,7 @@ impl ServerBoundPacketHandler for Plot {
         self.update_player_position(player, new, player_position.on_ground, None);
     }
 
-    fn handle_player_position_and_rotation(
-        &mut self,
-        player_position_and_rotation: SPlayerPositionAndRotation,
-        player: usize,
-    ) {
+    fn handle_player_position_and_rotation(&mut self, player_position_and_rotation: SPlayerPositionAndRotation, player: usize) {
         let new = PlayerPos::new(
             player_position_and_rotation.x,
             player_position_and_rotation.y,
@@ -1008,10 +880,7 @@ impl ServerBoundPacketHandler for Plot {
             player,
             new,
             player_position_and_rotation.on_ground,
-            Some((
-                player_position_and_rotation.yaw,
-                player_position_and_rotation.pitch,
-            )),
+            Some((player_position_and_rotation.yaw, player_position_and_rotation.pitch)),
         );
     }
 
@@ -1056,10 +925,7 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_player_digging(&mut self, player_digging: SPlayerDigging, player: usize) {
-        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(
-            &self.players[player].client,
-            player_digging.sequence,
-        );
+        let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(&self.players[player].client, player_digging.sequence);
         let previous = self.world.set_authoritative_updates(true);
         let pos = BlockPos::from_packed(player_digging.pos);
         let predicts_block = (0..=2).contains(&player_digging.status);
@@ -1101,9 +967,7 @@ impl ServerBoundPacketHandler for Plot {
             if player == other_player {
                 continue;
             };
-            self.players[other_player]
-                .client
-                .send_packet(&entity_equipment);
+            self.players[other_player].client.send_packet(&entity_equipment);
         }
     }
 
@@ -1152,17 +1016,10 @@ mod movement_tests {
             for (source, input, decision, replacement) in [
                 ("CHAT_RESULT", "blocked", "CANCEL", None),
                 ("CHAT_RESULT", "original", "MODIFY", Some("approved")),
-                (
-                    "COMMAND_RESULT",
-                    "/help",
-                    "MODIFY",
-                    Some("/load build.schem"),
-                ),
+                ("COMMAND_RESULT", "/help", "MODIFY", Some("/load build.schem")),
                 ("COMMAND_RESULT", "/say blocked", "CANCEL", None),
             ] {
-                let message = SChatMessage {
-                    message: input.into(),
-                };
+                let message = SChatMessage { message: input.into() };
                 let decision = SPluginMessage {
                     channel: crate::signed_velocity::CHANNEL.into(),
                     data: payload(uuid, source, decision, replacement),
@@ -1183,24 +1040,10 @@ mod movement_tests {
                 })
                 .collect();
             if CONFIG.velocity.is_some() {
-                assert_eq!(
-                    chat,
-                    if CONFIG.native_chat {
-                        vec!["approved"]
-                    } else {
-                        vec![]
-                    }
-                );
+                assert_eq!(chat, if CONFIG.native_chat { vec!["approved"] } else { vec![] });
                 assert_eq!(plot.players[0].command_queue, ["//load build.schem"]);
             } else {
-                assert_eq!(
-                    chat,
-                    if CONFIG.native_chat {
-                        vec!["blocked", "original"]
-                    } else {
-                        vec![]
-                    }
-                );
+                assert_eq!(chat, if CONFIG.native_chat { vec!["blocked", "original"] } else { vec![] });
                 assert_eq!(plot.players[0].command_queue, ["/help", "/say blocked"]);
             }
         }
@@ -1223,10 +1066,7 @@ mod movement_tests {
         plot.handle_signed_velocity_result(result, 0);
         assert!(receiver.try_recv().is_err());
 
-        for (source, original, replacement) in [
-            ("CHAT_RESULT", "original", "approved"),
-            ("COMMAND_RESULT", "/help", "adv 1"),
-        ] {
+        for (source, original, replacement) in [("CHAT_RESULT", "original", "approved"), ("COMMAND_RESULT", "/help", "adv 1")] {
             let result = plot.players[0]
                 .signed_velocity
                 .receive(&payload(uuid, source, "MODIFY", Some(replacement)), uuid);
@@ -1235,17 +1075,13 @@ mod movement_tests {
             plot.handle_signed_velocity_result(result, 0);
         }
         if CONFIG.native_chat {
-            assert!(
-                matches!(receiver.try_recv().unwrap(), Message::ChatInfo(id, _, text) if id == uuid && text == "approved")
-            );
+            assert!(matches!(receiver.try_recv().unwrap(), Message::ChatInfo(id, _, text) if id == uuid && text == "approved"));
         } else {
             assert!(receiver.try_recv().is_err());
         }
         assert_eq!(plot.players[0].command_queue, ["/adv 1"]);
 
-        let result = plot.players[0]
-            .signed_velocity
-            .submit("/say blocked".into());
+        let result = plot.players[0].signed_velocity.submit("/say blocked".into());
         plot.handle_signed_velocity_result(result, 0);
         let result = plot.players[0]
             .signed_velocity
@@ -1256,9 +1092,7 @@ mod movement_tests {
 
         plot.handle_approved_chat_message("native".into(), 0);
         if CONFIG.native_chat {
-            assert!(
-                matches!(receiver.try_recv().unwrap(), Message::ChatInfo(_, _, text) if text == "native")
-            );
+            assert!(matches!(receiver.try_recv().unwrap(), Message::ChatInfo(_, _, text) if text == "native"));
         } else {
             assert!(receiver.try_recv().is_err());
         }
@@ -1266,10 +1100,7 @@ mod movement_tests {
 
     #[test]
     fn relative_movement_accumulates_fractional_steps_without_drift() {
-        for initial in [
-            PlayerPos::new(32.5, 21.0, 35.5),
-            PlayerPos::new(-32.5, -21.0, -35.5),
-        ] {
+        for initial in [PlayerPos::new(32.5, 21.0, 35.5), PlayerPos::new(-32.5, -21.0, -35.5)] {
             let mut old = initial;
             let mut received = [0i64; 3];
             for step in 1..=2048 {
@@ -1279,10 +1110,7 @@ mod movement_tests {
                     initial.z - f64::from(step) * 0.03137,
                 );
                 let deltas = relative_movement(old, new).unwrap();
-                for (axis, distance) in [new.x - initial.x, new.y - initial.y, new.z - initial.z]
-                    .into_iter()
-                    .enumerate()
-                {
+                for (axis, distance) in [new.x - initial.x, new.y - initial.y, new.z - initial.z].into_iter().enumerate() {
                     received[axis] += i64::from(deltas[axis]);
                     assert!(
                         (received[axis] as f64 / 4096.0 - distance).abs() <= 1.0 / 4096.0,
@@ -1311,12 +1139,7 @@ mod movement_tests {
                 let result = relative_movement(old, new);
                 assert_eq!(result.map(|deltas| deltas[axis]), expected);
                 if let Some(deltas) = result {
-                    assert!(
-                        deltas
-                            .iter()
-                            .enumerate()
-                            .all(|(i, &value)| i == axis || value == 0)
-                    );
+                    assert!(deltas.iter().enumerate().all(|(i, &value)| i == axis || value == 0));
                 }
             }
         }

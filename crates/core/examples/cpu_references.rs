@@ -9,17 +9,10 @@ use std::{
 };
 
 fn main() {
-    let destination = PathBuf::from(
-        std::env::args()
-            .nth(1)
-            .expect("usage: cpu_references <new-output-directory> [cpu-name]"),
-    );
+    let destination = PathBuf::from(std::env::args().nth(1).expect("usage: cpu_references <new-output-directory> [cpu-name]"));
     let selected = std::env::args().nth(2);
     if let Some(name) = &selected {
-        assert!(
-            CPUS.iter().any(|cpu| cpu.name == name),
-            "unknown CPU {name}"
-        );
+        assert!(CPUS.iter().any(|cpu| cpu.name == name), "unknown CPU {name}");
     }
     std::fs::create_dir_all(&destination).unwrap();
     for cpu in CPUS {
@@ -27,16 +20,9 @@ fn main() {
             continue;
         }
         let path = destination.join(format!("{}.json", cpu.name));
-        assert!(
-            !path.exists(),
-            "refusing to replace reference {}",
-            path.display()
-        );
+        assert!(!path.exists(), "refusing to replace reference {}", path.display());
         if cpu.name == "anpu_pong" {
-            assert!(
-                !destination.join("anpu_screen.json").exists(),
-                "refusing to replace screen reference"
-            );
+            assert!(!destination.join("anpu_screen.json").exists(), "refusing to replace screen reference");
         }
         let mut world = load_cpu(cpu);
         let mut trace = Vec::new();
@@ -82,11 +68,7 @@ fn main() {
         std::fs::write(path, serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
         if cpu.name == "anpu_pong" {
             println!("screen: {} distinct frames", frames.len());
-            std::fs::write(
-                destination.join("anpu_screen.json"),
-                serde_json::to_vec_pretty(&frames).unwrap(),
-            )
-            .unwrap();
+            std::fs::write(destination.join("anpu_screen.json"), serde_json::to_vec_pretty(&frames).unwrap()).unwrap();
         }
         println!("{}: tick-only time {elapsed:?}", cpu.name);
     }

@@ -3,11 +3,7 @@ use mchprs_blocks::blocks::{Block, RedstoneRepeater};
 use mchprs_blocks::{BlockDirection, BlockPos};
 use mchprs_world::TickPriority;
 
-pub fn get_state_for_placement(
-    world: &impl World,
-    pos: BlockPos,
-    facing: BlockDirection,
-) -> RedstoneRepeater {
+pub fn get_state_for_placement(world: &impl World, pos: BlockPos, facing: BlockDirection) -> RedstoneRepeater {
     RedstoneRepeater {
         delay: 1,
         facing,
@@ -32,12 +28,7 @@ fn get_power_on_side(world: &impl World, pos: BlockPos, side: BlockDirection) ->
     }
 }
 
-fn schedule_tick(
-    rep: RedstoneRepeater,
-    world: &mut impl World,
-    pos: BlockPos,
-    should_be_powered: bool,
-) {
+fn schedule_tick(rep: RedstoneRepeater, world: &mut impl World, pos: BlockPos, should_be_powered: bool) {
     let front_block = world.get_block(pos.offset(rep.facing.opposite().block_face()));
     let priority = if super::is_diode(front_block) {
         TickPriority::Highest

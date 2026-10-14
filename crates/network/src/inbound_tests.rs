@@ -15,8 +15,7 @@ fn saturated_reader() -> Reader {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
     peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
-    peer.set_write_timeout(Some(Duration::from_secs(3)))
-        .unwrap();
+    peer.set_write_timeout(Some(Duration::from_secs(3))).unwrap();
     let (stream, _) = listener.accept().unwrap();
     let (sender, packets) = mpsc::sync_channel(64);
     // Stand in for a plot that has not drained its existing packets yet.
@@ -42,20 +41,14 @@ fn play_preamble(bytes: &mut Vec<u8>) {
     handshake.write_string(255, "localhost");
     handshake.write_unsigned_short(25565);
     handshake.write_varint(2);
-    PacketEncoder::new(handshake, 0)
-        .write_uncompressed(&mut *bytes)
-        .unwrap();
+    PacketEncoder::new(handshake, 0).write_uncompressed(&mut *bytes).unwrap();
     let mut login = Vec::new();
     login.write_string(16, "queue_test");
     login.write_uuid(1);
-    PacketEncoder::new(login, 0)
-        .write_uncompressed(&mut *bytes)
-        .unwrap();
+    PacketEncoder::new(login, 0).write_uncompressed(&mut *bytes).unwrap();
     // Login acknowledgement, known-packs response, configuration finish.
     for (id, payload) in [(3, vec![]), (7, vec![0]), (3, vec![])] {
-        PacketEncoder::new(payload, id)
-            .write_uncompressed(&mut *bytes)
-            .unwrap();
+        PacketEncoder::new(payload, id).write_uncompressed(&mut *bytes).unwrap();
     }
 }
 
@@ -117,9 +110,7 @@ fn full_incoming_queue_waits_then_delivers_play_actions_in_order() {
                 0x27
             }
         };
-        PacketEncoder::new(payload, packet_id)
-            .write_uncompressed(&mut bytes)
-            .unwrap();
+        PacketEncoder::new(payload, packet_id).write_uncompressed(&mut bytes).unwrap();
     }
     reader.peer.write_all(&bytes).unwrap();
     reader.peer.shutdown(Shutdown::Write).unwrap();
@@ -138,15 +129,9 @@ fn full_incoming_queue_waits_then_delivers_play_actions_in_order() {
             .handle(&mut handler, 0);
     }
     assert_eq!(handler.0, expected);
-    reader
-        .finished
-        .recv_timeout(Duration::from_secs(3))
-        .unwrap();
+    reader.finished.recv_timeout(Duration::from_secs(3)).unwrap();
     reader.worker.join().unwrap();
-    assert!(matches!(
-        reader.packets.try_recv(),
-        Err(mpsc::TryRecvError::Disconnected)
-    ));
+    assert!(matches!(reader.packets.try_recv(), Err(mpsc::TryRecvError::Disconnected)));
 }
 
 #[test]
@@ -160,10 +145,7 @@ fn dropping_a_full_queue_wakes_its_reader_and_closes_the_socket() {
         Err(mpsc::RecvTimeoutError::Timeout)
     ));
     drop(reader.packets);
-    reader
-        .finished
-        .recv_timeout(Duration::from_secs(3))
-        .unwrap();
+    reader.finished.recv_timeout(Duration::from_secs(3)).unwrap();
     reader.worker.join().unwrap();
     // The TCP peer may report reset because unread preamble bytes were discarded.
     match reader.peer.read(&mut [0]) {

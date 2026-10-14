@@ -8,17 +8,9 @@ use std::{
 pub fn backup(path: &Path) -> io::Result<PathBuf> {
     let mut n = 0;
     loop {
-        let suffix = if n == 0 {
-            "bak".to_owned()
-        } else {
-            format!("bak.{n}")
-        };
+        let suffix = if n == 0 { "bak".to_owned() } else { format!("bak.{n}") };
         let target = path.with_extension(suffix);
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&target)
-        {
+        match OpenOptions::new().write(true).create_new(true).open(&target) {
             Ok(mut out) => {
                 let mut input = fs::File::open(path)?;
                 io::copy(&mut input, &mut out)?;
@@ -32,16 +24,9 @@ pub fn backup(path: &Path) -> io::Result<PathBuf> {
 }
 pub fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
-    let temp = path.with_extension(format!(
-        "tmp.{}.{}",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
+    let temp = path.with_extension(format!("tmp.{}.{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed)));
     let result = (|| {
-        let mut out = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)?;
+        let mut out = OpenOptions::new().write(true).create_new(true).open(&temp)?;
         out.write_all(bytes)?;
         out.sync_all()?;
         drop(out);

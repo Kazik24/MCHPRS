@@ -40,9 +40,7 @@ pub fn try_fix<const NUM_SECTIONS: usize>(
                 piston_state: mchprs_world::PistonState,
             }
             let data = fs::read(&path)?;
-            if data.len() < 16
-                || u32::from_le_bytes(data[12..16].try_into().unwrap()) != super::MC_DATA_VERSION
-            {
+            if data.len() < 16 || u32::from_le_bytes(data[12..16].try_into().unwrap()) != super::MC_DATA_VERSION {
                 return Err(PlotLoadError::ConversionFailed(4));
             }
             let old: PlotV4<NUM_SECTIONS> = bincode::deserialize(&data[16..])?;
@@ -57,9 +55,7 @@ pub fn try_fix<const NUM_SECTIONS: usize>(
         }
         FixInfo::OldVersion { version: 3 } => {
             let data = fs::read(&path)?;
-            if data.len() < 16
-                || u32::from_le_bytes(data[12..16].try_into().unwrap()) != super::MC_DATA_VERSION
-            {
+            if data.len() < 16 || u32::from_le_bytes(data[12..16].try_into().unwrap()) != super::MC_DATA_VERSION {
                 return Err(PlotLoadError::ConversionFailed(3));
             }
             Some(legacy_1_21_5::decode(&data[16..])?)

@@ -4,15 +4,11 @@ use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::{World, storage::Chunk};
 use std::io::Cursor;
 
-const ADDER: &[u8] =
-    include_bytes!("../../../../../../../test_data/instant-pistons/ADDER_11BITS.schem");
+const ADDER: &[u8] = include_bytes!("../../../../../../../test_data/instant-pistons/ADDER_11BITS.schem");
 
 #[test]
 fn supplied_minesweeper_loads_plain_items_and_reports_discarded_components() {
-    let (cb, warnings) = load_schematic_with_warnings(Cursor::new(include_bytes!(
-        "../../../../../../../test_data/Q2CK_minesweeper.schem"
-    )))
-    .unwrap();
+    let (cb, warnings) = load_schematic_with_warnings(Cursor::new(include_bytes!("../../../../../../../test_data/Q2CK_minesweeper.schem"))).unwrap();
     assert_eq!((cb.size_x, cb.size_y, cb.size_z), (126, 39, 126));
     assert_eq!(warnings.simplified_stacks, 12_288);
     assert_eq!(warnings.removed_stacks, 0);
@@ -33,10 +29,7 @@ fn supplied_minesweeper_loads_plain_items_and_reports_discarded_components() {
     assert_eq!(capsules, 12_288);
     assert!(matches!(
         cb.block_entities[&BlockPos::new(11, 19, 2)],
-        BlockEntity::Container {
-            comparator_override: 13,
-            ..
-        }
+        BlockEntity::Container { comparator_override: 13, .. }
     ));
     assert_roundtrip(&cb);
 }
@@ -64,10 +57,7 @@ fn imports_strip_custom_data_remove_unknown_items_and_apply_vanilla_stack_limits
                         "components".into(),
                         Value::Compound(Compound::from([
                             ("minecraft:max_stack_size".into(), Value::Int(16)),
-                            (
-                                "mod:unknown_component".into(),
-                                Value::String("anything".into()),
-                            ),
+                            ("mod:unknown_component".into(), Value::String("anything".into())),
                         ])),
                     ),
                 ),
@@ -75,41 +65,13 @@ fn imports_strip_custom_data_remove_unknown_items_and_apply_vanilla_stack_limits
                     1,
                     "minecraft:wooden_shovel",
                     64,
-                    (
-                        "tag".into(),
-                        Value::Compound(Compound::from([("Damage".into(), Value::Int(5))])),
-                    ),
+                    ("tag".into(), Value::Compound(Compound::from([("Damage".into(), Value::Int(5))]))),
                 ),
-                item(
-                    2,
-                    "mod:stone",
-                    1,
-                    ("tag".into(), Value::Compound(Compound::new())),
-                ),
-                item(
-                    3,
-                    "minecraft:missing",
-                    1,
-                    ("components".into(), Value::Int(42)),
-                ),
-                item(
-                    4,
-                    "minecraft:redstone",
-                    64,
-                    ("components".into(), Value::String("malformed".into())),
-                ),
-                item(
-                    5,
-                    "minecraft:air",
-                    1,
-                    ("components".into(), Value::Compound(Compound::new())),
-                ),
-                item(
-                    6,
-                    "minecraft:stone",
-                    64,
-                    ("tag".into(), Value::Compound(Compound::new())),
-                ),
+                item(2, "mod:stone", 1, ("tag".into(), Value::Compound(Compound::new()))),
+                item(3, "minecraft:missing", 1, ("components".into(), Value::Int(42))),
+                item(4, "minecraft:redstone", 64, ("components".into(), Value::String("malformed".into()))),
+                item(5, "minecraft:air", 1, ("components".into(), Value::Compound(Compound::new()))),
+                item(6, "minecraft:stone", 64, ("tag".into(), Value::Compound(Compound::new()))),
             ]),
         )]);
         let mut envelope = Compound::from([
@@ -121,10 +83,7 @@ fn imports_strip_custom_data_remove_unknown_items_and_apply_vanilla_stack_limits
         } else {
             envelope.extend(entity);
         }
-        blocks(&mut blob).insert(
-            "BlockEntities".into(),
-            Value::List(vec![Value::Compound(envelope)]),
-        );
+        blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(envelope)]));
         let mut bytes = Vec::new();
         blob.to_gzip_writer(&mut bytes).unwrap();
         let (cb, warnings) = load_schematic_with_warnings(Cursor::new(bytes)).unwrap();
@@ -195,29 +154,19 @@ fn all_container_states_and_plain_items_survive_schematic_round_trip() {
             let dest = BlockPos::new(8, 30, 4);
             paste_clipboard(&mut world, &restored, dest, false);
             assert_eq!(world.get_block_raw(dest), id);
-            assert_eq!(
-                crate::redstone::comparator::get_override(world.get_block(dest), &world, dest),
-                15
-            );
-            let Some(BlockEntity::Container { inventory, .. }) = world.get_block_entity(dest)
-            else {
+            assert_eq!(crate::redstone::comparator::get_override(world.get_block(dest), &world, dest), 15);
+            let Some(BlockEntity::Container { inventory, .. }) = world.get_block_entity(dest) else {
                 panic!()
             };
             let items = crate::container::inventory_slots(inventory, ty.num_slots() as usize);
-            assert_eq!(
-                crate::container::signature(&slots, &None),
-                crate::container::signature(&items, &None)
-            );
+            assert_eq!(crate::container::signature(&slots, &None), crate::container::signature(&items, &None));
         }
     }
 }
 
 #[test]
 fn supplied_potados_preserves_all_command_blocks_and_supported_messages() {
-    let cb = load_schematic(Cursor::new(include_bytes!(
-        "../../../../../../../test_data/potados_27072024.schem"
-    )))
-    .unwrap();
+    let cb = load_schematic(Cursor::new(include_bytes!("../../../../../../../test_data/potados_27072024.schem"))).unwrap();
     let mut count = 0;
     let mut supported = 0;
     for entity in cb.block_entities.values() {
@@ -233,9 +182,7 @@ fn supplied_potados_preserves_all_command_blocks_and_supported_messages() {
     let mut world = PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     );
     let pos = BlockPos::new(40, 30, 40);
@@ -251,28 +198,17 @@ fn supplied_potados_preserves_all_command_blocks_and_supported_messages() {
         copied.last_execution = -1;
         world.set_block(pos, Block::from_name("command_block").unwrap());
         world.set_block_entity(pos, BlockEntity::CommandBlock(Box::new(copied)));
-        world.set_block(
-            pos.offset(mchprs_blocks::BlockFace::Bottom),
-            Block::RedstoneBlock {},
-        );
+        world.set_block(pos.offset(mchprs_blocks::BlockFace::Bottom), Block::RedstoneBlock {});
         crate::redstone::command_block::update(&mut world, pos);
         world.tick_interpreted();
         world.tick_interpreted();
     }
     assert_eq!(world.command_messages.len(), 29);
+    assert!(world.command_messages.iter().any(|message| message.message.contains("div by zero")));
     assert!(
-        world
-            .command_messages
-            .iter()
-            .any(|message| message.message.contains("div by zero"))
-    );
-    assert!(
-        world
-            .command_messages
-            .iter()
-            .all(|message| !message.message.contains("clickEvent")
-                && !message.message.contains("hoverEvent")
-                && !message.message.contains("\"score\""))
+        world.command_messages.iter().all(|message| !message.message.contains("clickEvent")
+            && !message.message.contains("hoverEvent")
+            && !message.message.contains("\"score\""))
     );
     assert_roundtrip(&cb);
 }
@@ -303,10 +239,7 @@ fn sponge_v2_and_v3_command_entities_keep_text_flags_and_validate_types() {
         } else {
             entity
         };
-        blocks(&mut blob).insert(
-            "BlockEntities".into(),
-            Value::List(vec![Value::Compound(entity)]),
-        );
+        blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(entity)]));
         let cb = load_blob(&blob).unwrap();
         let BlockEntity::CommandBlock(entity) = cb.block_entities.values().next().unwrap() else {
             panic!()
@@ -317,9 +250,7 @@ fn sponge_v2_and_v3_command_entities_keep_text_flags_and_validate_types() {
         let mut world = PlotWorld::from_chunks(
             0,
             0,
-            (0..PLOT_WIDTH)
-                .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-                .collect(),
+            (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
             Default::default(),
         );
         paste_clipboard(
@@ -374,20 +305,10 @@ fn assert_roundtrip(cb: &WorldEditClipboard) {
     let nbt = nbt::Blob::from_gzip_reader(&mut Cursor::new(&bytes)).unwrap();
     assert!(matches!(nbt.get("Version"), Some(Value::Int(2))));
     let again = load_schematic(Cursor::new(bytes)).unwrap();
-    assert_eq!(
-        (cb.size_x, cb.size_y, cb.size_z),
-        (again.size_x, again.size_y, again.size_z)
-    );
-    assert_eq!(
-        (cb.offset_x, cb.offset_y, cb.offset_z),
-        (again.offset_x, again.offset_y, again.offset_z)
-    );
+    assert_eq!((cb.size_x, cb.size_y, cb.size_z), (again.size_x, again.size_y, again.size_z));
+    assert_eq!((cb.offset_x, cb.offset_y, cb.offset_z), (again.offset_x, again.offset_y, again.offset_z));
     for i in 0..cb.data.entries() {
-        assert_eq!(
-            cb.data.get_entry(i),
-            again.data.get_entry(i),
-            "state at {i}"
-        );
+        assert_eq!(cb.data.get_entry(i), again.data.get_entry(i), "state at {i}");
     }
     assert_eq!(cb.block_entities.len(), again.block_entities.len());
     for (pos, entity) in &cb.block_entities {
@@ -445,15 +366,10 @@ fn all_existing_v2_fixtures_import_and_export() {
 
 #[test]
 fn mixed_sign_rows_paste_and_roundtrip_without_encoding_failure() {
-    let cb = load_schematic(Cursor::new(include_bytes!(
-        "../../../../../../../test_data/sign_mixed_text_v2.schem"
-    )))
-    .unwrap();
+    let cb = load_schematic(Cursor::new(include_bytes!("../../../../../../../test_data/sign_mixed_text_v2.schem"))).unwrap();
     assert_eq!((cb.size_x, cb.size_y, cb.size_z), (16, 8, 33));
     assert_eq!(cb.block_entities.len(), 2);
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     let origin = BlockPos::new(100, 60, 100);
     // set_block_entity encodes the same update packet even with no connected players.
@@ -463,9 +379,7 @@ fn mixed_sign_rows_paste_and_roundtrip_without_encoding_failure() {
         let Some(BlockEntity::Sign(sign)) = world.get_block_entity(at) else {
             panic!("missing pasted sign at {at:?}");
         };
-        let BlockEntity::Sign(expected) = entity else {
-            panic!("not a sign")
-        };
+        let BlockEntity::Sign(expected) = entity else { panic!("not a sign") };
         assert_eq!(sign.rows, expected.rows);
         assert_eq!(sign.back_rows, expected.back_rows);
     }
@@ -474,29 +388,18 @@ fn mixed_sign_rows_paste_and_roundtrip_without_encoding_failure() {
 #[test]
 fn paste_capture_restore_and_reapply_keep_adder_blocks_offsets_and_sign_positions() {
     let cb = load_schematic(Cursor::new(ADDER)).unwrap();
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     let origin = BlockPos::new(100, 30, 100);
     let start = origin - BlockPos::new(cb.offset_x, cb.offset_y, cb.offset_z);
-    let end = start
-        + BlockPos::new(
-            cb.size_x as i32 - 1,
-            cb.size_y as i32 - 1,
-            cb.size_z as i32 - 1,
-        );
+    let end = start + BlockPos::new(cb.size_x as i32 - 1, cb.size_y as i32 - 1, cb.size_z as i32 - 1);
     let before = create_clipboard(&mut world, origin, start, end);
     paste_clipboard(&mut world, &cb, origin, false);
     for y in 0..cb.size_y as i32 {
         for z in 0..cb.size_z as i32 {
             for x in 0..cb.size_x as i32 {
-                let i =
-                    (x + z * cb.size_x as i32 + y * cb.size_x as i32 * cb.size_z as i32) as usize;
-                assert_eq!(
-                    world.get_block_raw(start + BlockPos::new(x, y, z)),
-                    cb.data.get_entry(i)
-                );
+                let i = (x + z * cb.size_x as i32 + y * cb.size_x as i32 * cb.size_z as i32) as usize;
+                assert_eq!(world.get_block_raw(start + BlockPos::new(x, y, z)), cb.data.get_entry(i));
             }
         }
     }
@@ -582,10 +485,7 @@ fn malformed_schema_palette_data_and_envelopes_return_errors() {
             "minecraft:stone junk",
         ] {
             let mut blob = base(version);
-            blocks(&mut blob).insert(
-                "Palette".into(),
-                Value::Compound(Compound::from([(name.into(), Value::Int(128))])),
-            );
+            blocks(&mut blob).insert("Palette".into(), Value::Compound(Compound::from([(name.into(), Value::Int(128))])));
             assert!(load_blob(&blob).is_err(), "{name}");
         }
         let mut blob = base(version);
@@ -621,19 +521,13 @@ fn spatial_order_sparse_varints_and_export_above_127() {
                 .collect(),
         ),
     );
-    blocks(&mut blob).insert(
-        "Data".into(),
-        Value::ByteArray([0, 127, -128, 1, -128, -128, 1].repeat(3)),
-    );
+    blocks(&mut blob).insert("Data".into(), Value::ByteArray([0, 127, -128, 1, -128, -128, 1].repeat(3)));
     let cb = load_blob(&blob).unwrap();
     for y in 0..2 {
         for z in 0..3 {
             for x in 0..2 {
                 let i = x + z * 2 + y * 6;
-                assert_eq!(
-                    cb.data.get_entry(i),
-                    parse_block(names[i % 4]).unwrap().get_id()
-                );
+                assert_eq!(cb.data.get_entry(i), parse_block(names[i % 4]).unwrap().get_id());
             }
         }
     }
@@ -659,16 +553,11 @@ fn signs_preserve_both_sides_and_reject_malformed_messages() {
         ("id".into(), Value::String("minecraft:sign".into())),
         ("Text1".into(), Value::String("{\"text\":\"old\"}".into())),
     ]);
-    assert!(
-        matches!(BlockEntity::from_nbt(&sign).unwrap(),BlockEntity::Sign(s) if s.rows[0].contains("old"))
-    );
+    assert!(matches!(BlockEntity::from_nbt(&sign).unwrap(),BlockEntity::Sign(s) if s.rows[0].contains("old")));
     sign.insert(
         "front_text".into(),
         Value::Compound(Compound::from([
-            (
-                "messages".into(),
-                Value::List(vec![Value::String("{\"text\":\"front\"}".into()); 4]),
-            ),
+            ("messages".into(), Value::List(vec![Value::String("{\"text\":\"front\"}".into()); 4])),
             ("color".into(), Value::String("red".into())),
             ("has_glowing_text".into(), Value::Byte(1)),
         ])),
@@ -682,9 +571,7 @@ fn signs_preserve_both_sides_and_reject_malformed_messages() {
     );
     sign.insert("is_waxed".into(), Value::Byte(1));
     let parsed = BlockEntity::from_nbt(&sign).unwrap();
-    assert!(
-        matches!(&parsed,BlockEntity::Sign(s) if s.waxed && s.front_glow && s.front_color=="red" && s.back_rows[0].contains("back"))
-    );
+    assert!(matches!(&parsed,BlockEntity::Sign(s) if s.waxed && s.front_glow && s.front_color=="red" && s.back_rows[0].contains("back")));
     assert_eq!(
         parsed.to_nbt(false).unwrap().content,
         BlockEntity::from_nbt(&parsed.to_nbt(false).unwrap().content)
@@ -720,13 +607,8 @@ fn v3_entity_envelopes_defaults_authoritative_ids_and_errors() {
             ("Text1".into(), Value::String("{\"text\":\"kept\"}".into())),
         ])),
     );
-    blocks(&mut blob).insert(
-        "BlockEntities".into(),
-        Value::List(vec![Value::Compound(envelope.clone())]),
-    );
-    assert!(
-        matches!(load_blob(&blob).unwrap().block_entities.get(&BlockPos::new(0,0,0)),Some(BlockEntity::Sign(s)) if s.rows[0].contains("kept"))
-    );
+    blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(envelope.clone())]));
+    assert!(matches!(load_blob(&blob).unwrap().block_entities.get(&BlockPos::new(0,0,0)),Some(BlockEntity::Sign(s)) if s.rows[0].contains("kept")));
     for id in [
         "minecraft:sign",
         "minecraft:comparator",
@@ -736,10 +618,7 @@ fn v3_entity_envelopes_defaults_authoritative_ids_and_errors() {
     ] {
         envelope.remove("Data");
         envelope.insert("Id".into(), Value::String(id.into()));
-        blocks(&mut blob).insert(
-            "BlockEntities".into(),
-            Value::List(vec![Value::Compound(envelope.clone())]),
-        );
+        blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(envelope.clone())]));
         assert_eq!(load_blob(&blob).unwrap().block_entities.len(), 1);
     }
     let state = Compound::from([
@@ -761,27 +640,18 @@ fn v3_entity_envelopes_defaults_authoritative_ids_and_errors() {
     ]);
     envelope.insert("Id".into(), Value::String("minecraft:piston".into()));
     envelope.insert("Data".into(), Value::Compound(piston));
-    blocks(&mut blob).insert(
-        "BlockEntities".into(),
-        Value::List(vec![Value::Compound(envelope.clone())]),
-    );
+    blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(envelope.clone())]));
     assert_roundtrip(&load_blob(&blob).unwrap());
     for invalid in [Value::Int(1), Value::String("bad".into())] {
         envelope.insert("Data".into(), invalid);
-        blocks(&mut blob).insert(
-            "BlockEntities".into(),
-            Value::List(vec![Value::Compound(envelope.clone())]),
-        );
+        blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(envelope.clone())]));
         assert!(load_blob(&blob).is_err());
     }
     envelope.remove("Data");
     envelope.insert("Id".into(), Value::String("minecraft:sign".into()));
     for position in [vec![0, 0], vec![1, 0, 0], vec![0, -1, 0]] {
         envelope.insert("Pos".into(), Value::IntArray(position));
-        blocks(&mut blob).insert(
-            "BlockEntities".into(),
-            Value::List(vec![Value::Compound(envelope.clone())]),
-        );
+        blocks(&mut blob).insert("BlockEntities".into(), Value::List(vec![Value::Compound(envelope.clone())]));
         assert!(load_blob(&blob).is_err());
     }
 }

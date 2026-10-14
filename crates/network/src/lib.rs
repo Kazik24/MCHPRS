@@ -32,13 +32,11 @@ impl PlayerPacketSender {
     }
 
     pub fn send_packet(&self, data: &PacketEncoder) {
-        self.outbound
-            .packet(data, self.compressed.load(Ordering::Relaxed));
+        self.outbound.packet(data, self.compressed.load(Ordering::Relaxed));
     }
 
     pub fn send_block_changes(&self, data: &packets::clientbound::CMultiBlockChange) {
-        self.outbound
-            .blocks(data, self.compressed.load(Ordering::Relaxed));
+        self.outbound.blocks(data, self.compressed.load(Ordering::Relaxed));
     }
 
     pub fn send_stats(&self) -> SendStats {
@@ -80,9 +78,7 @@ mod acknowledgement_tests {
         for compressed in [false, true] {
             let listener = TcpListener::bind("127.0.0.1:0").unwrap();
             let mut incoming = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-            incoming
-                .set_read_timeout(Some(std::time::Duration::from_secs(3)))
-                .unwrap();
+            incoming.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
             let (outgoing, _) = listener.accept().unwrap();
             let sender = PlayerPacketSender {
                 outbound: outbound::Outbound::new(outgoing),
@@ -184,10 +180,7 @@ pub mod test_support {
         })
     }
 
-    pub fn read_frame(
-        peer: &mut TcpStream,
-        compressed: bool,
-    ) -> DecodeResult<(i32, Cursor<Vec<u8>>)> {
+    pub fn read_frame(peer: &mut TcpStream, compressed: bool) -> DecodeResult<(i32, Cursor<Vec<u8>>)> {
         let length = peer.read_varint()?;
         if !(1..=2_097_152).contains(&length) {
             return Err(io::Error::from(io::ErrorKind::InvalidData).into());
@@ -200,9 +193,7 @@ pub mod test_support {
                     return Err(io::Error::from(io::ErrorKind::InvalidData).into());
                 }
                 let mut data = Vec::new();
-                flate2::read::ZlibDecoder::new(frame)
-                    .take(size as u64 + 1)
-                    .read_to_end(&mut data)?;
+                flate2::read::ZlibDecoder::new(frame).take(size as u64 + 1).read_to_end(&mut data)?;
                 if data.len() != size as usize {
                     return Err(io::Error::from(io::ErrorKind::InvalidData).into());
                 }
@@ -240,17 +231,10 @@ mod connection_cleanup_tests {
     use super::*;
     use std::io::Read;
 
-    fn client(
-        id: u32,
-    ) -> (
-        HandshakingConn,
-        mpsc::SyncSender<Box<dyn ServerBoundPacket>>,
-        TcpStream,
-    ) {
+    fn client(id: u32) -> (HandshakingConn, mpsc::SyncSender<Box<dyn ServerBoundPacket>>, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-        peer.set_read_timeout(Some(std::time::Duration::from_secs(3)))
-            .unwrap();
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(3))).unwrap();
         let (stream, _) = listener.accept().unwrap();
         let (sender, packets) = mpsc::sync_channel(64);
         (
@@ -382,11 +366,7 @@ pub struct NetworkClient {
 }
 
 impl NetworkClient {
-    fn listen(
-        mut stream: TcpStream,
-        sender: mpsc::SyncSender<Box<dyn ServerBoundPacket>>,
-        compressed: Arc<AtomicBool>,
-    ) {
+    fn listen(mut stream: TcpStream, sender: mpsc::SyncSender<Box<dyn ServerBoundPacket>>, compressed: Arc<AtomicBool>) {
         let mut state = NetworkState::Handshake;
         let peer = stream.peer_addr().ok();
         loop {
@@ -433,8 +413,7 @@ impl NetworkClient {
     }
 
     pub fn send_packet(&self, data: &PacketEncoder) {
-        self.outbound
-            .packet(data, self.compressed.load(Ordering::Relaxed));
+        self.outbound.packet(data, self.compressed.load(Ordering::Relaxed));
     }
 
     pub fn close_connection(&self) {

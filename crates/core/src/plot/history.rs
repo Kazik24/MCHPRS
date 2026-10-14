@@ -80,9 +80,7 @@ impl TickHistory {
     }
 
     pub fn memory_bytes(&self) -> usize {
-        self.slots.capacity() * size_of::<Option<Encoded>>()
-            + self.heap_bytes
-            + self.dictionary.as_ref().map_or(0, |d| d.data.capacity())
+        self.slots.capacity() * size_of::<Option<Encoded>>() + self.heap_bytes + self.dictionary.as_ref().map_or(0, |d| d.data.capacity())
     }
 
     fn dictionary(&self) -> &[u8] {
@@ -111,9 +109,7 @@ impl TickHistory {
         let bytes = capacity
             .checked_mul(size_of::<Option<Encoded>>())
             .ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
-        let reservation = budget
-            .reserve(bytes)
-            .ok_or_else(|| messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned())?;
+        let reservation = budget.reserve(bytes).ok_or_else(|| messages::HISTORY_MEMORY_LIMIT_REACHED.to_owned())?;
         let mut slots = Vec::new();
         slots
             .try_reserve_exact(capacity)
@@ -197,28 +193,17 @@ impl TickHistory {
 }
 
 impl PlotWorld {
-    pub(super) fn enable_history(
-        &mut self,
-        capacity: usize,
-        unlimited: bool,
-    ) -> Result<usize, String> {
+    pub(super) fn enable_history(&mut self, capacity: usize, unlimited: bool) -> Result<usize, String> {
         validate_tick_limit(capacity, unlimited)?;
         self.require_tick_boundary()?;
-        let mut history = TickHistory::prepare(
-            capacity,
-            self.history.budget.clone(),
-            self.history.work.clone(),
-        )?;
+        let mut history = TickHistory::prepare(capacity, self.history.budget.clone(), self.history.work.clone())?;
         let raw = capture_raw(self, &history.work)?;
         // LZ4 references the last 64 KiB. Keep the dictionary unchanged throughout the session.
         let start = raw.data.len().saturating_sub(65535);
         history.dictionary = Some(Bytes::copy(&history.budget, &raw.data[start..])?);
         let sample = Encoded::encode(raw, history.dictionary(), &history.work)?;
         let stored = sample.bytes.data.len();
-        let minimum = history
-            .memory_bytes()
-            .checked_add(stored)
-            .ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
+        let minimum = history.memory_bytes().checked_add(stored).ok_or(messages::HISTORY_SIZE_OVERFLOW)?;
         if minimum > history.budget.stats().1 {
             return Err(messages::ONE_COMPRESSED_SNAPSHOT_CANNOT_FIT_HISTORY.into());
         }
@@ -301,9 +286,7 @@ impl Plot {
         }
         let (limit, permission) = if crate::permissions::dedicated_permissions() {
             (
-                player
-                    .numeric_permission_limit("mchprs.history.limit.")
-                    .unwrap_or(0),
+                player.numeric_permission_limit("mchprs.history.limit.").unwrap_or(0),
                 "mchprs.plots.admin.rewind.unlimited",
             )
         } else {
@@ -315,12 +298,7 @@ impl Plot {
         Ok(())
     }
 
-    fn authorize_history(
-        &self,
-        player: usize,
-        permission: &str,
-        mutating: bool,
-    ) -> Result<(), String> {
+    fn authorize_history(&self, player: usize, permission: &str, mutating: bool) -> Result<(), String> {
         let player = &self.players[player];
         if !player.has_permission(permission) {
             return Err(messages::COMMAND_PERMISSION_DENIED.into());
@@ -331,11 +309,7 @@ impl Plot {
         Ok(())
     }
 
-    pub(super) fn control_history(
-        &mut self,
-        player: usize,
-        args: &[&str],
-    ) -> Result<String, String> {
+    pub(super) fn control_history(&mut self, player: usize, args: &[&str]) -> Result<String, String> {
         if crate::permissions::dedicated_permissions() {
             let action = match args {
                 [] | ["status"] => "status",
@@ -357,10 +331,7 @@ impl Plot {
             [] | ["status"] => Ok(self.world.history.status()),
             ["limit"] => {
                 let (used, limit) = self.world.history.budget.stats();
-                Ok(messages::server_history_usage(
-                    format_memory(used),
-                    format_memory(limit),
-                ))
+                Ok(messages::server_history_usage(format_memory(used), format_memory(limit)))
             }
             ["limit", value] => {
                 if !self.players[player].has_explicit_permission(MEMORY_PERMISSION) {
@@ -386,23 +357,18 @@ impl Plot {
                     return Err(messages::TICK_HISTORY_ONLY_AVAILABLE_DURING_INTERPRETED.into());
                 }
                 let capacity = match args.get(1) {
-                    Some(value) => value.parse::<usize>().map_err(|_| {
-                        messages::SPECIFY_POSITIVE_HISTORY_CAPACITY_GAME_TICKS.to_owned()
-                    })?,
+                    Some(value) => value
+                        .parse::<usize>()
+                        .map_err(|_| messages::SPECIFY_POSITIVE_HISTORY_CAPACITY_GAME_TICKS.to_owned())?,
                     None => DEFAULT_HISTORY_TICKS,
                 };
-                let unlimited =
-                    self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
+                let unlimited = self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
                 self.validate_player_history_limit(player, capacity)?;
-                let projected = self.world.enable_history(
-                    capacity,
-                    unlimited || crate::permissions::dedicated_permissions(),
-                )?;
+                let projected = self
+                    .world
+                    .enable_history(capacity, unlimited || crate::permissions::dedicated_permissions())?;
                 self.reset_timings();
-                Ok(messages::history_enabled(
-                    capacity,
-                    format_memory(projected),
-                ))
+                Ok(messages::history_enabled(capacity, format_memory(projected)))
             }
             _ => Err(messages::USAGE_RHISTORY_ON_TICKS_OFF_STATUS.into()),
         }
@@ -422,10 +388,7 @@ impl Plot {
         }
         let unlimited = self.players[player].has_explicit_permission(UNLIMITED_HISTORY_PERMISSION);
         self.validate_player_history_limit(player, ticks)?;
-        self.world.rewind_ticks(
-            ticks,
-            unlimited || crate::permissions::dedicated_permissions(),
-        )?;
+        self.world.rewind_ticks(ticks, unlimited || crate::permissions::dedicated_permissions())?;
         self.close_all_containers();
         self.tps = Tps::Limited(0);
         self.sleep_time = sleep_time_for_tps(self.tps);
@@ -446,19 +409,13 @@ impl Plot {
                 .players
                 .iter()
                 .filter(|player| {
-                    Self::get_chunk_distance(
-                        chunk.x,
-                        chunk.z,
-                        player.last_chunk_x,
-                        player.last_chunk_z,
-                    ) <= CONFIG.view_distance.max(0) as u32
+                    Self::get_chunk_distance(chunk.x, chunk.z, player.last_chunk_x, player.last_chunk_z) <= CONFIG.view_distance.max(0) as u32
                 })
                 .collect();
             if visible.is_empty() {
                 continue;
             }
-            let packet = chunk
-                .encode_packet_for_client(self.world.fast_rendering || self.world.screen_only());
+            let packet = chunk.encode_packet_for_client(self.world.fast_rendering || self.world.screen_only());
             for player in visible {
                 player.client.send_packet(&packet);
             }

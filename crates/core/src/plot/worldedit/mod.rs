@@ -33,12 +33,7 @@ pub use schematic::*;
 
 // Attempts to execute a worldedit command. Returns true of the command was handled.
 // The command is not handled if it is not found in the worldedit commands and alias lists.
-pub fn execute_command(
-    plot: &mut Plot,
-    player_idx: usize,
-    command: &str,
-    args: &mut Vec<&str>,
-) -> bool {
+pub fn execute_command(plot: &mut Plot, player_idx: usize, command: &str, args: &mut Vec<&str>) -> bool {
     let player = &mut plot.players[player_idx];
     let (command_name, command) = if let Some(definition) = COMMANDS.get(command) {
         (command, definition)
@@ -56,8 +51,7 @@ pub fn execute_command(
     } else {
         player.has_permission("plots.worldedit.bypass")
             || plot.owner == Some(player.uuid)
-            || (plot.owner.is_some()
-                && super::database::is_plot_member(plot.world.x, plot.world.z, player.uuid))
+            || (plot.owner.is_some() && super::database::is_plot_member(plot.world.x, plot.world.z, player.uuid))
     };
     if !allowed {
         player.send_no_permission_message();
@@ -78,9 +72,7 @@ pub fn execute_command(
         }
         let first_pos = player.first_position.unwrap();
         let second_pos = player.second_position.unwrap();
-        if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y)
-            || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y)
-        {
+        if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y) || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y) {
             player.send_error_message(messages::SELECTION_OUTSIDE_WORLD_HEIGHT);
             return true;
         }
@@ -156,22 +148,14 @@ pub fn execute_command(
             }
         }
     }
-    if let Err(error) = safety::validate_request(
-        &plot.world,
-        &plot.players[player_idx],
-        command_name,
-        command,
-        &arguments,
-    ) {
+    if let Err(error) = safety::validate_request(&plot.world, &plot.players[player_idx], command_name, command, &arguments) {
         plot.players[player_idx].send_error_message(&error);
         return true;
     }
     if command.mutates_world {
         plot.reset_redpiler();
     }
-    let previous = command
-        .mutates_world
-        .then(|| plot.world.set_authoritative_updates(true));
+    let previous = command.mutates_world.then(|| plot.world.set_authoritative_updates(true));
     let ctx = CommandExecuteContext {
         plot: &mut plot.world,
         player: &mut plot.players[player_idx],
@@ -284,18 +268,11 @@ impl Argument {
         match arg_type {
             ArgumentType::Direction => Argument::parse(player, desc, Some("me")),
             ArgumentType::UnsignedInteger => Ok(Argument::UnsignedInteger(1)),
-            _ => Err(ArgumentParseError::new(
-                arg_type,
-                messages::ARGUMENT_CANNOT_INFER,
-            )),
+            _ => Err(ArgumentParseError::new(arg_type, messages::ARGUMENT_CANNOT_INFER)),
         }
     }
 
-    fn parse(
-        player: &Player,
-        desc: &ArgumentDescription,
-        arg: Option<&str>,
-    ) -> ArgumentParseResult {
+    fn parse(player: &Player, desc: &ArgumentDescription, arg: Option<&str>) -> ArgumentParseResult {
         if arg.is_none() {
             return Argument::get_default(player, desc);
         }
@@ -315,19 +292,13 @@ impl Argument {
                     "l" | "left" => player_facing.rotate_ccw(),
                     "r" | "right" => player_facing.rotate(),
                     _ => {
-                        return Err(ArgumentParseError::new(
-                            arg_type,
-                            messages::ARGUMENT_UNKNOWN_DIRECTION,
-                        ));
+                        return Err(ArgumentParseError::new(arg_type, messages::ARGUMENT_UNKNOWN_DIRECTION));
                     }
                 }))
             }
             ArgumentType::UnsignedInteger => match arg.parse::<u32>() {
                 Ok(num) => Ok(Argument::UnsignedInteger(num)),
-                Err(_) => Err(ArgumentParseError::new(
-                    arg_type,
-                    messages::ARGUMENT_INVALID_UINT,
-                )),
+                Err(_) => Err(ArgumentParseError::new(arg_type, messages::ARGUMENT_INVALID_UINT)),
             },
             ArgumentType::Pattern => match WorldEditPattern::from_str(arg) {
                 Ok(pattern) => Ok(Argument::Pattern(pattern)),
@@ -341,10 +312,7 @@ impl Argument {
             ArgumentType::String => Ok(Argument::String(arg.to_owned())),
             ArgumentType::ContainerType => match arg.parse::<ContainerType>() {
                 Ok(ty) => Ok(Argument::ContainerType(ty)),
-                Err(_) => Err(ArgumentParseError::new(
-                    arg_type,
-                    messages::ARGUMENT_INVALID_CONTAINER,
-                )),
+                Err(_) => Err(ArgumentParseError::new(arg_type, messages::ARGUMENT_INVALID_CONTAINER)),
             },
         }
     }
@@ -771,11 +739,7 @@ pub struct WorldEditClipboard {
 impl WorldEditClipboard {
     /// Destination bounds for a clipboard whose geometry has already been validated.
     fn bounds_at(&self, pos: BlockPos) -> (BlockPos, BlockPos) {
-        let first = BlockPos::new(
-            pos.x - self.offset_x,
-            pos.y - self.offset_y,
-            pos.z - self.offset_z,
-        );
+        let first = BlockPos::new(pos.x - self.offset_x, pos.y - self.offset_y, pos.z - self.offset_z);
         let second = BlockPos::new(
             first.x + self.size_x as i32 - 1,
             first.y + self.size_y as i32 - 1,
@@ -813,16 +777,10 @@ impl WorldEditUndo {
 }
 
 /// Capture sparse tool edits without saving the untouched space between them.
-pub(in crate::plot) fn capture_positions(
-    world: &mut PlotWorld,
-    positions: impl IntoIterator<Item = BlockPos>,
-) -> WorldEditUndo {
+pub(in crate::plot) fn capture_positions(world: &mut PlotWorld, positions: impl IntoIterator<Item = BlockPos>) -> WorldEditUndo {
     let origin = BlockPos::zero();
     WorldEditUndo {
-        clipboards: positions
-            .into_iter()
-            .map(|pos| create_clipboard(world, origin, pos, pos))
-            .collect(),
+        clipboards: positions.into_iter().map(|pos| create_clipboard(world, origin, pos, pos)).collect(),
         pos: origin,
         plot_x: world.x,
         plot_z: world.z,
@@ -831,13 +789,7 @@ pub(in crate::plot) fn capture_positions(
 
 /// Bound retained undo/redo across repeated commands, including redstone stacks.
 pub(in crate::plot) fn trim_history(player: &mut Player) {
-    let entries = |history: &[WorldEditUndo]| -> u64 {
-        history
-            .iter()
-            .flat_map(|undo| &undo.clipboards)
-            .map(|cb| cb.data.entries() as u64)
-            .sum()
-    };
+    let entries = |history: &[WorldEditUndo]| -> u64 { history.iter().flat_map(|undo| &undo.clipboards).map(|cb| cb.data.entries() as u64).sum() };
     let mut blocks = entries(&player.worldedit_undo) + entries(&player.worldedit_redo);
     while blocks > crate::config::CONFIG.worldedit_history_blocks {
         let history = if !player.worldedit_undo.is_empty() {
@@ -846,11 +798,7 @@ pub(in crate::plot) fn trim_history(player: &mut Player) {
             &mut player.worldedit_redo
         };
         let removed = history.remove(0);
-        blocks -= removed
-            .clipboards
-            .iter()
-            .map(|cb| cb.data.entries() as u64)
-            .sum::<u64>();
+        blocks -= removed.clipboards.iter().map(|cb| cb.data.entries() as u64).sum::<u64>();
     }
 }
 
@@ -863,12 +811,8 @@ pub enum PatternParseError {
 impl fmt::Display for PatternParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            PatternParseError::UnknownBlock(block) => {
-                f.write_str(&messages::unknown_pattern_block(block))
-            }
-            PatternParseError::InvalidPattern(pattern) => {
-                f.write_str(&messages::invalid_pattern(pattern))
-            }
+            PatternParseError::UnknownBlock(block) => f.write_str(&messages::unknown_pattern_block(block)),
+            PatternParseError::InvalidPattern(pattern) => f.write_str(&messages::invalid_pattern(pattern)),
         }
     }
 }
@@ -898,13 +842,10 @@ impl FromStr for WorldEditPattern {
                 Regex::new(r"^(([0-9]+(\.[0-9]+)?)%)?(=)?([0-9]+|(minecraft:)?[a-zA-Z_]+)(:([0-9]+)|\[(([a-zA-Z_]+=[a-zA-Z0-9]+,?)+?)\])?((\|([^|]*?)){1,4})?$").unwrap()
             });
 
-            let pattern_match = RE
-                .captures(part)
-                .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
+            let pattern_match = RE.captures(part).ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
 
             let block_name = pattern_match.get(5).unwrap().as_str();
-            let explicit_state = pattern_match.get(4).is_some()
-                || block_name.bytes().all(|byte| byte.is_ascii_digit());
+            let explicit_state = pattern_match.get(4).is_some() || block_name.bytes().all(|byte| byte.is_ascii_digit());
             let mut block = if explicit_state {
                 let id = block_name
                     .parse::<u32>()
@@ -915,14 +856,12 @@ impl FromStr for WorldEditPattern {
                 Block::from_id(id)
             } else {
                 let block_name = block_name.trim_start_matches("minecraft:");
-                Block::from_name(block_name)
-                    .ok_or_else(|| PatternParseError::UnknownBlock(part.to_owned()))?
+                Block::from_name(block_name).ok_or_else(|| PatternParseError::UnknownBlock(part.to_owned()))?
             };
 
             if let Some(props) = pattern_match.get(9) {
-                block =
-                    schematic::parse_block(&format!("{}[{}]", block.get_name(), props.as_str()))
-                        .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
+                block = schematic::parse_block(&format!("{}[{}]", block.get_name(), props.as_str()))
+                    .ok_or_else(|| PatternParseError::InvalidPattern(part.to_owned()))?;
             }
 
             let weight = pattern_match
@@ -953,11 +892,9 @@ impl FromStr for WorldEditPattern {
 impl WorldEditPattern {
     pub fn matches(&self, block: Block) -> bool {
         let block_id = block.get_id();
-        self.parts.iter().any(|part| {
-            part.block_id == block_id
-                || (part.match_block_type
-                    && Block::from_id(part.block_id).registry_id() == block.registry_id())
-        })
+        self.parts
+            .iter()
+            .any(|part| part.block_id == block_id || (part.match_block_type && Block::from_id(part.block_id).registry_id() == block.registry_id()))
     }
 
     pub fn pick(&self) -> Block {
@@ -995,10 +932,8 @@ impl WorldEditPattern {
 
 #[test]
 fn container_patterns_apply_properties_and_split_only_between_blocks() {
-    let pattern = WorldEditPattern::from_str(
-        "25%hopper[facing=east,enabled=false],75%furnace[facing=west,lit=true]",
-    )
-    .unwrap_or_else(|e| panic!("{e}"));
+    let pattern =
+        WorldEditPattern::from_str("25%hopper[facing=east,enabled=false],75%furnace[facing=west,lit=true]").unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(pattern.parts.len(), 2);
     assert_eq!(pattern.parts[0].block_id, 10043);
     assert_eq!(pattern.parts[1].block_id, 4362);
@@ -1011,12 +946,7 @@ fn container_patterns_apply_properties_and_split_only_between_blocks() {
 
 #[test]
 fn bare_block_masks_match_all_states_and_explicit_states_stay_exact() {
-    for name in [
-        "moving_piston",
-        "minecraft:moving_piston",
-        "sticky_piston",
-        "hopper",
-    ] {
+    for name in ["moving_piston", "minecraft:moving_piston", "sticky_piston", "hopper"] {
         let mask: WorldEditPattern = name.parse().unwrap();
         let state_id = mask.parts[0].block_id;
         let exact: WorldEditPattern = format!("={state_id}").parse().unwrap();
@@ -1027,14 +957,10 @@ fn bare_block_masks_match_all_states_and_explicit_states_stay_exact() {
             .map(|(key, value)| format!("{key}={value}"))
             .collect::<Vec<_>>()
             .join(",");
-        let properties: WorldEditPattern =
-            format!("{}[{props}]", block.get_name()).parse().unwrap();
+        let properties: WorldEditPattern = format!("{}[{props}]", block.get_name()).parse().unwrap();
         for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
             let candidate = Block::from_id(id);
-            assert_eq!(
-                mask.matches(candidate),
-                candidate.get_name() == block.get_name()
-            );
+            assert_eq!(mask.matches(candidate), candidate.get_name() == block.get_name());
             for exact in [&exact, &numeric, &properties] {
                 assert_eq!(exact.matches(candidate), id == state_id);
             }
@@ -1053,10 +979,7 @@ fn numeric_patterns_match_names_and_explicit_state_ids() {
             assert_eq!(numeric.pick(), named.pick());
         }
     }
-    assert_eq!(
-        "0".parse::<WorldEditPattern>().unwrap().pick(),
-        Block::Air {}
-    );
+    assert_eq!("0".parse::<WorldEditPattern>().unwrap().pick(), Block::Air {});
     let mixed: WorldEditPattern = "25%0,75%stone".parse().unwrap();
     assert_eq!(mixed.parts[0].block_id, 0);
     assert_eq!(mixed.parts[0].weight, 0.25);
@@ -1100,13 +1023,7 @@ fn for_each_selected_position(first: BlockPos, second: BlockPos, mut visit: impl
 }
 
 /// Trace from the player's eye position, including their current scale and pose.
-pub fn ray_trace_block(
-    world: &impl World,
-    mut pos: PlayerPos,
-    start_pitch: f64,
-    start_yaw: f64,
-    max_distance: f64,
-) -> Option<BlockPos> {
+pub fn ray_trace_block(world: &impl World, mut pos: PlayerPos, start_pitch: f64, start_yaw: f64, max_distance: f64) -> Option<BlockPos> {
     let check_distance = 0.2;
 
     let rot_x = (start_yaw + 90.0) % 360.0;
@@ -1136,12 +1053,7 @@ pub fn ray_trace_block(
     None
 }
 
-fn create_clipboard(
-    plot: &mut PlotWorld,
-    origin: BlockPos,
-    first_pos: BlockPos,
-    second_pos: BlockPos,
-) -> WorldEditClipboard {
+fn create_clipboard(plot: &mut PlotWorld, origin: BlockPos, first_pos: BlockPos, second_pos: BlockPos) -> WorldEditClipboard {
     let start_pos = first_pos.min(second_pos);
     let end_pos = first_pos.max(second_pos);
     let size_x = (end_pos.x - start_pos.x) as u32 + 1;
@@ -1167,8 +1079,7 @@ fn create_clipboard(
                 let block = plot.get_block(BlockPos::new(x, y, z));
                 if block.has_block_entity() {
                     if let Some(block_entity) = plot.get_block_entity(pos) {
-                        cb.block_entities
-                            .insert(pos - start_pos, block_entity.clone());
+                        cb.block_entities.insert(pos - start_pos, block_entity.clone());
                     }
                 }
                 cb.data.set_entry(i, id);
@@ -1202,12 +1113,7 @@ fn clear_area(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: BlockPos) {
     }
 }
 
-pub fn paste_clipboard(
-    plot: &mut PlotWorld,
-    cb: &WorldEditClipboard,
-    pos: BlockPos,
-    ignore_air: bool,
-) {
+pub fn paste_clipboard(plot: &mut PlotWorld, cb: &WorldEditClipboard, pos: BlockPos, ignore_air: bool) {
     let previous = plot.set_authoritative_updates(true);
     let offset_x = pos.x - cb.offset_x;
     let offset_y = pos.y - cb.offset_y;
@@ -1286,12 +1192,7 @@ pub(super) fn stack_prepared(
     undo
 }
 
-fn capture_undo(
-    plot: &mut PlotWorld,
-    player: &mut Player,
-    first_pos: BlockPos,
-    second_pos: BlockPos,
-) {
+fn capture_undo(plot: &mut PlotWorld, player: &mut Player, first_pos: BlockPos, second_pos: BlockPos) {
     let origin = first_pos.min(second_pos);
     let cb = create_clipboard(plot, origin, first_pos, second_pos);
     let undo = WorldEditUndo {
@@ -1348,20 +1249,14 @@ fn update(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: BlockPos) {
     }
 }
 
-fn update_selection(
-    plot: &mut PlotWorld,
-    first_pos: BlockPos,
-    second_pos: BlockPos,
-) -> Result<(), &'static str> {
+fn update_selection(plot: &mut PlotWorld, first_pos: BlockPos, second_pos: BlockPos) -> Result<(), &'static str> {
     if !Plot::in_plot_bounds(plot.x, plot.z, first_pos.x, first_pos.z) {
         return Err(messages::FIRST_POSITION_OUTSIDE_PLOT_BOUNDS);
     }
     if !Plot::in_plot_bounds(plot.x, plot.z, second_pos.x, second_pos.z) {
         return Err(messages::SECOND_POSITION_OUTSIDE_PLOT_BOUNDS);
     }
-    if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y)
-        || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y)
-    {
+    if !(0..super::PLOT_BLOCK_HEIGHT).contains(&first_pos.y) || !(0..super::PLOT_BLOCK_HEIGHT).contains(&second_pos.y) {
         return Err(messages::UPDATE_SELECTION_OUTSIDE_HEIGHT);
     }
     crate::world::for_each_block_mut_optimized(plot, first_pos, second_pos, |plot, pos| {

@@ -73,9 +73,7 @@ impl FromStr for SignalStrength {
             "d" => 13,
             "e" => 14,
             "f" => 15,
-            _ => token
-                .parse::<u8>()
-                .context("Power must be 0..15 or lowercase a..f")?,
+            _ => token.parse::<u8>().context("Power must be 0..15 or lowercase a..f")?,
         };
         Self::new(value)
     }
@@ -259,9 +257,9 @@ impl CommandBlockEntity {
         let text = |key: &str| -> Result<Option<String>> {
             match data.get(key) {
                 None => Ok(None),
-                Some(
-                    value @ (nbt::Value::String(_) | nbt::Value::Compound(_) | nbt::Value::List(_)),
-                ) => Ok(Some(mchprs_network::text::to_json(value))),
+                Some(value @ (nbt::Value::String(_) | nbt::Value::Compound(_) | nbt::Value::List(_))) => {
+                    Ok(Some(mchprs_network::text::to_json(value)))
+                }
                 _ => bail!("{key}: expected text component"),
             }
         };
@@ -293,9 +291,7 @@ impl CommandBlockEntity {
             "UpdateLastExecution" => Value::Byte(self.update_last_execution as i8)
         });
         if let Some(output) = &self.last_output {
-            result
-                .insert("LastOutput", mchprs_network::text::from_json(output))
-                .unwrap();
+            result.insert("LastOutput", mchprs_network::text::from_json(output)).unwrap();
         }
         result
     }
@@ -342,29 +338,21 @@ impl BlockEntity {
         let mut inventory = ThinVec::with_capacity(slots_nbt.len());
         for item in slots_nbt {
             let item_compound = nbt_unwrap_val!(Some(item), Value::Compound);
-            let count = match item_compound
-                .get("count")
-                .or_else(|| item_compound.get("Count"))
-            {
+            let count = match item_compound.get("count").or_else(|| item_compound.get("Count")) {
                 Some(Value::Byte(n)) => *n,
                 Some(Value::Int(n)) if (1..=127).contains(n) => *n as i8,
                 _ => bail!("invalid container item count"),
             };
             if let Some(value) = item_compound.get("components") {
                 if !matches!(value,Value::Compound(c) if c.is_empty()) {
-                    bail!(
-                        "modern persisted inventory components are not supported by this schematic importer"
-                    );
+                    bail!("modern persisted inventory components are not supported by this schematic importer");
                 }
             }
             let slot = *nbt_unwrap_val!(item_compound.get("Slot"), Value::Byte);
             if slot < 0 || slot as u8 >= num_slots || !seen_slots.insert(slot) || count <= 0 {
                 bail!("invalid container slot or count");
             }
-            let namespaced_name = nbt_unwrap_val!(
-                item_compound.get("Id").or_else(|| item_compound.get("id")),
-                Value::String
-            );
+            let namespaced_name = nbt_unwrap_val!(item_compound.get("Id").or_else(|| item_compound.get("id")), Value::String);
             let item_type = Item::from_name(
                 namespaced_name
                     .split(':')
@@ -383,10 +371,7 @@ impl BlockEntity {
                 }
                 _ => None,
             };
-            let max_stack = mchprs_network::packets::components::max_stack_size(
-                &tag_blob,
-                item_type.map_or(64, Item::max_stack_size) as u8,
-            );
+            let max_stack = mchprs_network::packets::components::max_stack_size(&tag_blob, item_type.map_or(64, Item::max_stack_size) as u8);
             let tag = tag_blob.map(|blob| {
                 let mut data = Vec::new();
                 blob.to_writer(&mut data).expect("validated inventory tag");
@@ -395,17 +380,14 @@ impl BlockEntity {
             inventory.push(InventoryEntry {
                 slot,
                 count,
-                id: item_type
-                    .ok_or_else(|| anyhow::anyhow!("unknown item {namespaced_name}"))?
-                    .get_id(),
+                id: item_type.ok_or_else(|| anyhow::anyhow!("unknown item {namespaced_name}"))?.get_id(),
                 nbt: tag,
             });
 
             fullness_sum += count as f32 / max_stack as f32;
         }
         Ok(BlockEntity::Container {
-            comparator_override: (if fullness_sum > 0.0 { 1.0 } else { 0.0 }
-                + (fullness_sum / num_slots as f32) * 14.0)
+            comparator_override: (if fullness_sum > 0.0 { 1.0 } else { 0.0 } + (fullness_sum / num_slots as f32) * 14.0)
                 .floor()
                 .min(15.0) as u8,
             inventory,
@@ -417,9 +399,7 @@ impl BlockEntity {
         use nbt::Value;
         let id = nbt_unwrap_val!(nbt.get("Id").or_else(|| nbt.get("id")), Value::String);
         match id.as_ref() {
-            "minecraft:command_block" => Ok(BlockEntity::CommandBlock(Box::new(
-                CommandBlockEntity::from_nbt(nbt)?,
-            ))),
+            "minecraft:command_block" => Ok(BlockEntity::CommandBlock(Box::new(CommandBlockEntity::from_nbt(nbt)?))),
             "minecraft:comparator" => {
                 let output_strength = match nbt.get("OutputSignal") {
                     None => 0,
@@ -445,18 +425,8 @@ impl BlockEntity {
             "minecraft:sign" => Ok({
                 let mut sign = SignBlockEntity::default();
                 for (side, rows, color, glow) in [
-                    (
-                        "front_text",
-                        &mut sign.rows,
-                        &mut sign.front_color,
-                        &mut sign.front_glow,
-                    ),
-                    (
-                        "back_text",
-                        &mut sign.back_rows,
-                        &mut sign.back_color,
-                        &mut sign.back_glow,
-                    ),
+                    ("front_text", &mut sign.rows, &mut sign.front_color, &mut sign.front_glow),
+                    ("back_text", &mut sign.back_rows, &mut sign.back_color, &mut sign.back_glow),
                 ] {
                     match nbt.get(side) {
                         Some(Value::Compound(text)) => {
@@ -468,10 +438,7 @@ impl BlockEntity {
                                     bail!("{side}.messages: expected exactly four text components");
                                 }
                                 for (dst, src) in rows.iter_mut().zip(messages) {
-                                    if !matches!(
-                                        src,
-                                        Value::String(_) | Value::Compound(_) | Value::List(_)
-                                    ) {
+                                    if !matches!(src, Value::String(_) | Value::Compound(_) | Value::List(_)) {
                                         bail!("{side}.messages: invalid text component");
                                     }
                                     *dst = mchprs_network::text::to_json(src);
@@ -490,10 +457,7 @@ impl BlockEntity {
                         }
                         None if side == "front_text" => {
                             for (i, row) in rows.iter_mut().enumerate() {
-                                match nbt
-                                    .get(&format!("Text{}", i + 1))
-                                    .or_else(|| nbt.get(&format!("text{}", i + 1)))
-                                {
+                                match nbt.get(&format!("Text{}", i + 1)).or_else(|| nbt.get(&format!("text{}", i + 1))) {
                                     None => (),
                                     Some(Value::String(s)) => *row = s.clone(),
                                     _ => bail!("Text{}: expected String", i + 1),
@@ -512,16 +476,10 @@ impl BlockEntity {
                 BlockEntity::Sign(Box::new(sign))
             }),
             MovingPistonEntity::ID | "minecraft:moving_piston" => Ok({
-                let state = nbt_unwrap_val!(
-                    nbt.get("BlockState").or_else(|| nbt.get("blockState")),
-                    Value::Compound
-                );
-                let name = nbt_unwrap_val!(
-                    state.get("Name").or_else(|| state.get("name")),
-                    Value::String
-                );
-                let mut block = Block::from_name(name.trim_start_matches("minecraft:"))
-                    .ok_or_else(|| anyhow::anyhow!("unknown carried block {name}"))?;
+                let state = nbt_unwrap_val!(nbt.get("BlockState").or_else(|| nbt.get("blockState")), Value::Compound);
+                let name = nbt_unwrap_val!(state.get("Name").or_else(|| state.get("name")), Value::String);
+                let mut block =
+                    Block::from_name(name.trim_start_matches("minecraft:")).ok_or_else(|| anyhow::anyhow!("unknown carried block {name}"))?;
                 if let Some(Value::Compound(props)) = state.get("Properties") {
                     block.set_properties(
                         props
@@ -538,29 +496,17 @@ impl BlockEntity {
                 }
                 let block_state = block.get_id();
 
-                let facing =
-                    *nbt_unwrap_val!(nbt.get("Facing").or_else(|| nbt.get("facing")), Value::Int)
-                        as u32;
-                let facing = BlockFace::try_from_id(facing).ok_or(anyhow::anyhow!(
-                    "Unknown block face in moving piston block entity: {facing}"
-                ))?;
+                let facing = *nbt_unwrap_val!(nbt.get("Facing").or_else(|| nbt.get("facing")), Value::Int) as u32;
+                let facing = BlockFace::try_from_id(facing).ok_or(anyhow::anyhow!("Unknown block face in moving piston block entity: {facing}"))?;
 
-                let extending = *nbt_unwrap_val!(
-                    nbt.get("Extending").or_else(|| nbt.get("extending")),
-                    Value::Byte
-                ) != 0;
+                let extending = *nbt_unwrap_val!(nbt.get("Extending").or_else(|| nbt.get("extending")), Value::Byte) != 0;
 
-                let progress = *nbt_unwrap_val!(
-                    nbt.get("Progress").or_else(|| nbt.get("progress")),
-                    Value::Float
-                );
+                let progress = *nbt_unwrap_val!(nbt.get("Progress").or_else(|| nbt.get("progress")), Value::Float);
                 if !progress.is_finite() || !(0.0..=1.0).contains(&progress) {
                     bail!("Invalid moving piston progress: {progress}");
                 }
                 let progress = MovingPistonEntity::progress_to_u8(progress);
-                let source =
-                    *nbt_unwrap_val!(nbt.get("Source").or_else(|| nbt.get("source")), Value::Byte)
-                        != 0;
+                let source = *nbt_unwrap_val!(nbt.get("Source").or_else(|| nbt.get("source")), Value::Byte) != 0;
 
                 BlockEntity::MovingPiston(MovingPistonEntity {
                     block_state,

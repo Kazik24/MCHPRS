@@ -9,17 +9,13 @@ use tracing_subscriber::fmt::writer::MakeWriterExt;
 mod logging;
 
 fn main() {
-    if std::env::args()
-        .skip(1)
-        .any(|arg| arg == "--version" || arg == "-v")
-    {
+    if std::env::args().skip(1).any(|arg| arg == "--version" || arg == "-v") {
         println!("{}", mchprs_core::server::version_string());
         return;
     }
     // Setup logging
     fs::create_dir_all("./logs").expect("Cannot create log directory");
-    let logfile = logging::Log::open(Path::new("./logs/mchprs.log"), 16 * 1024 * 1024)
-        .expect("Cannot open server log");
+    let logfile = logging::Log::open(Path::new("./logs/mchprs.log"), 16 * 1024 * 1024).expect("Cannot open server log");
     let env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .with_env_var("MCHPRS_LOG")

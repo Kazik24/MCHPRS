@@ -21,14 +21,11 @@ type Compound = std::collections::HashMap<String, nbt::Value>;
 const MAX_BLOCKS: u32 = 67_108_864;
 
 pub(super) fn parse_block(input: &str) -> Option<Block> {
-    static RE: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^(?:minecraft:)?([a-z_0-9]+)(?:\[([a-z_0-9]+=[a-z_0-9]+(?:,[a-z_0-9]+=[a-z_0-9]+)*)\])?$").unwrap()
-    });
+    static RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^(?:minecraft:)?([a-z_0-9]+)(?:\[([a-z_0-9]+=[a-z_0-9]+(?:,[a-z_0-9]+=[a-z_0-9]+)*)\])?$").unwrap());
     let captures = RE.captures(input)?;
     let name = captures.get(1)?.as_str();
-    let registry = mchprs_blocks::generated::BLOCKS
-        .iter()
-        .find(|b| b.0 == name)?;
+    let registry = mchprs_blocks::generated::BLOCKS.iter().find(|b| b.0 == name)?;
     let mut properties = std::collections::HashMap::new();
     if let Some(list) = captures.get(2) {
         for pair in list.as_str().split(',') {
@@ -42,36 +39,25 @@ pub(super) fn parse_block(input: &str) -> Option<Block> {
     // name already carries that property; accept only a consistent legacy flag.
     if matches!(name, "piston" | "sticky_piston") {
         if let Some(sticky) = properties.remove("sticky") {
-            if sticky
-                != if name == "sticky_piston" {
-                    "true"
-                } else {
-                    "false"
-                }
-            {
+            if sticky != if name == "sticky_piston" { "true" } else { "false" } {
                 return None;
             }
         }
     }
     let defaults = mchprs_blocks::generated::STATE_PROPERTIES[registry.4 as usize];
-    if properties
-        .keys()
-        .any(|k| !defaults.iter().any(|p| p.0 == *k))
-    {
+    if properties.keys().any(|k| !defaults.iter().any(|p| p.0 == *k)) {
         return None;
     }
     // Resolve the complete target state, retaining properties the simulation model
     // does not represent (for example waterlogging) as an opaque registry state.
     let id = (registry.2..=registry.3).find(|id| {
-        mchprs_blocks::generated::STATE_PROPERTIES[*id as usize]
-            .iter()
-            .all(|(key, value)| {
-                properties
-                    .get(key)
-                    .copied()
-                    .unwrap_or_else(|| defaults.iter().find(|p| p.0 == *key).unwrap().1)
-                    == *value
-            })
+        mchprs_blocks::generated::STATE_PROPERTIES[*id as usize].iter().all(|(key, value)| {
+            properties
+                .get(key)
+                .copied()
+                .unwrap_or_else(|| defaults.iter().find(|p| p.0 == *key).unwrap().1)
+                == *value
+        })
     })?;
     Some(Block::from_id(id))
 }
@@ -106,11 +92,7 @@ impl<'a> Schema<'a> {
     fn read(nbt: &'a nbt::Blob) -> Result<Self> {
         use nbt::Value;
         let wrapped = nbt.get("Schematic").is_some();
-        let root = if wrapped {
-            compound(&nbt.content, "Schematic")?
-        } else {
-            &nbt.content
-        };
+        let root = if wrapped { compound(&nbt.content, "Schematic")? } else { &nbt.content };
         let version = integer(root, "Version")?;
         if version != 2 && version != 3 {
             bail!(messages::schematic_unsupported_version(version));
@@ -138,11 +120,7 @@ impl<'a> Schema<'a> {
         let legacy_present = metadata.is_some_and(|m| keys.iter().any(|k| m.contains_key(*k)));
         let displacement = if version == 2 && legacy_present {
             let m = metadata.unwrap();
-            [
-                integer(m, keys[0])?,
-                integer(m, keys[1])?,
-                integer(m, keys[2])?,
-            ]
+            [integer(m, keys[0])?, integer(m, keys[1])?, integer(m, keys[2])?]
         } else if root.contains_key("Offset") {
             vector(root, "Offset")?
         } else {
@@ -150,9 +128,7 @@ impl<'a> Schema<'a> {
         };
         let mut offset = [0; 3];
         for i in 0..3 {
-            offset[i] = displacement[i]
-                .checked_neg()
-                .context(messages::SCHEMATIC_OFFSET_DISPLACEMENT_OVERFLOW)?;
+            offset[i] = displacement[i].checked_neg().context(messages::SCHEMATIC_OFFSET_DISPLACEMENT_OVERFLOW)?;
         }
         let container = if version == 3 {
             compound(root, "Blocks").context(messages::SCHEMATIC_BLOCK_CONTENT_REQUIRED)?
@@ -202,9 +178,8 @@ pub struct SchematicImportWarnings {
 
 impl SchematicImportWarnings {
     pub fn notification(&self) -> Option<String> {
-        (self.simplified_stacks > 0 || self.removed_stacks > 0).then(|| {
-            messages::schematic_items_simplified(self.simplified_stacks, self.removed_stacks)
-        })
+        (self.simplified_stacks > 0 || self.removed_stacks > 0)
+            .then(|| messages::schematic_items_simplified(self.simplified_stacks, self.removed_stacks))
     }
 }
 
@@ -220,9 +195,7 @@ fn simplify_inventory(entity: &mut Compound, warnings: &mut SchematicImportWarni
         let vanilla = match item.get("Id").or_else(|| item.get("id")) {
             Some(Value::String(name)) => {
                 let name = name.strip_prefix("minecraft:").unwrap_or(name);
-                (!name.contains(':'))
-                    .then(|| Item::from_name(name))
-                    .flatten()
+                (!name.contains(':')).then(|| Item::from_name(name)).flatten()
             }
             _ => None,
         };
@@ -236,11 +209,7 @@ fn simplify_inventory(entity: &mut Compound, warnings: &mut SchematicImportWarni
                 simplified |= !matches!(value, Value::Compound(ref data) if data.is_empty());
             }
         }
-        let count_key = if item.contains_key("count") {
-            "count"
-        } else {
-            "Count"
-        };
+        let count_key = if item.contains_key("count") { "count" } else { "Count" };
         if let Some(count) = item.get_mut(count_key) {
             match count {
                 Value::Int(n) if *n > vanilla.max_stack_size() as i32 => {
@@ -263,23 +232,15 @@ pub fn load_schematic(file: impl Read) -> Result<WorldEditClipboard> {
     load_schematic_with_warnings(file).map(|(clipboard, _)| clipboard)
 }
 
-pub fn load_schematic_with_warnings(
-    mut file: impl Read,
-) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
-    let nbt =
-        nbt::Blob::from_gzip_reader(&mut file).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
+pub fn load_schematic_with_warnings(mut file: impl Read) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
+    let nbt = nbt::Blob::from_gzip_reader(&mut file).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
     let schema = Schema::read(&nbt).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
     tracing::debug!(
         "Importing Sponge v{} with source Minecraft DataVersion {}",
         schema.version,
         schema.data_version
     );
-    decode_schematic(&schema).with_context(|| {
-        format!(
-            "Sponge v{} DataVersion {}",
-            schema.version, schema.data_version
-        )
-    })
+    decode_schematic(&schema).with_context(|| format!("Sponge v{} DataVersion {}", schema.version, schema.data_version))
 }
 fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
     use nbt::Value;
@@ -300,8 +261,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
         if *id < 0 || palette.contains_key(&(*id as u32)) {
             bail!(messages::schematic_palette_invalid_index(name, id));
         }
-        let state =
-            parse_block(name).with_context(|| messages::schematic_palette_unknown_state(name))?;
+        let state = parse_block(name).with_context(|| messages::schematic_palette_unknown_state(name))?;
         palette.insert(*id as u32, state.get_id());
     }
     let mut data = PalettedBitBuffer::new(entries as usize, 9);
@@ -310,11 +270,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
         let mut id = 0u32;
         let mut complete = false;
         for shift in 0..5 {
-            let byte = *schema
-                .encoded
-                .get(at)
-                .with_context(|| messages::schematic_truncated_varint(i))?
-                as u8;
+            let byte = *schema.encoded.get(at).with_context(|| messages::schematic_truncated_varint(i))? as u8;
             at += 1;
             if shift == 4 && byte & 0xf8 != 0 {
                 bail!(messages::schematic_overflowing_varint(i));
@@ -328,12 +284,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
         if !complete {
             bail!(messages::schematic_unterminated_varint(i));
         }
-        data.set_entry(
-            i,
-            *palette
-                .get(&id)
-                .with_context(|| messages::schematic_missing_palette_index(id, i))?,
-        );
+        data.set_entry(i, *palette.get(&id).with_context(|| messages::schematic_missing_palette_index(id, i))?);
     }
     if at != schema.encoded.len() {
         bail!(messages::schematic_trailing_block_bytes(entries));
@@ -345,13 +296,9 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
         let Value::Compound(envelope) = entry else {
             bail!(messages::schematic_entity_expected_compound(index))
         };
-        let coords = vector(envelope, "Pos")
-            .with_context(|| messages::schematic_entity_position_context(index))?;
+        let coords = vector(envelope, "Pos").with_context(|| messages::schematic_entity_position_context(index))?;
         let pos = BlockPos::new(coords[0], coords[1], coords[2]);
-        if !(0..size_x as i32).contains(&pos.x)
-            || !(0..size_y as i32).contains(&pos.y)
-            || !(0..size_z as i32).contains(&pos.z)
-        {
+        if !(0..size_x as i32).contains(&pos.x) || !(0..size_y as i32).contains(&pos.y) || !(0..size_z as i32).contains(&pos.z) {
             bail!(messages::schematic_entity_outside_bounds(index, pos));
         }
         let id = match envelope.get("Id").or_else(|| envelope.get("id")) {
@@ -407,8 +354,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
                 | "minecraft:piston"
                 | "minecraft:moving_piston"
         ) {
-            let parsed = BlockEntity::from_nbt(&entity)
-                .with_context(|| messages::schematic_entity_context(index, id, pos))?;
+            let parsed = BlockEntity::from_nbt(&entity).with_context(|| messages::schematic_entity_context(index, id, pos))?;
             if parsed_block_entities.insert(pos, parsed).is_some() {
                 bail!(messages::schematic_duplicate_entity_position(index, pos));
             }
@@ -417,10 +363,7 @@ fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, Schemati
         }
     }
     if !unsupported.is_empty() {
-        tracing::warn!(
-            "Schematic: skipped unsupported block entities: {:?}",
-            unsupported
-        );
+        tracing::warn!("Schematic: skipped unsupported block entities: {:?}", unsupported);
     }
     let [offset_x, offset_y, offset_z] = schema.offset;
     if let Some(message) = warnings.notification() {
@@ -452,29 +395,15 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
     let size_x = clipboard.size_x;
     let size_y = clipboard.size_y;
     let size_z = clipboard.size_z;
-    let offset_x = clipboard
-        .offset_x
-        .checked_neg()
-        .context(messages::SCHEMATIC_OFFSET_X_OVERFLOW)?;
-    let offset_y = clipboard
-        .offset_y
-        .checked_neg()
-        .context(messages::SCHEMATIC_OFFSET_Y_OVERFLOW)?;
-    let offset_z = clipboard
-        .offset_z
-        .checked_neg()
-        .context(messages::SCHEMATIC_OFFSET_Z_OVERFLOW)?;
+    let offset_x = clipboard.offset_x.checked_neg().context(messages::SCHEMATIC_OFFSET_X_OVERFLOW)?;
+    let offset_y = clipboard.offset_y.checked_neg().context(messages::SCHEMATIC_OFFSET_Y_OVERFLOW)?;
+    let offset_z = clipboard.offset_z.checked_neg().context(messages::SCHEMATIC_OFFSET_Z_OVERFLOW)?;
     let blocks = &clipboard.data;
     let volume = size_x
         .checked_mul(size_y)
         .and_then(|n| n.checked_mul(size_z))
         .context(messages::SCHEMATIC_CLIPBOARD_VOLUME_OVERFLOW)?;
-    if [size_x, size_y, size_z]
-        .iter()
-        .any(|n| *n == 0 || *n > u16::MAX as u32)
-        || volume > MAX_BLOCKS
-        || blocks.entries() != volume as usize
-    {
+    if [size_x, size_y, size_z].iter().any(|n| *n == 0 || *n > u16::MAX as u32) || volume > MAX_BLOCKS || blocks.entries() != volume as usize {
         bail!(messages::SCHEMATIC_INVALID_CLIPBOARD_GEOMETRY);
     }
 
@@ -490,10 +419,7 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
             .get(entry as usize)
             .context(messages::SCHEMATIC_INVALID_BLOCK_STATE)?;
         let full_name = if !props.is_empty() {
-            let props_strs: Vec<String> = props
-                .iter()
-                .map(|(name, val)| format!("{}={}", name, val))
-                .collect();
+            let props_strs: Vec<String> = props.iter().map(|(name, val)| format!("{}={}", name, val)).collect();
             format!("{}[{}]", name, props_strs.join(","))
         } else {
             name
@@ -578,10 +504,7 @@ mod tests {
             encoded: &encoded,
             entities: &[],
         };
-        assert_eq!(
-            decode_schematic(&schema).unwrap().0.data.entries(),
-            67_108_864
-        );
+        assert_eq!(decode_schematic(&schema).unwrap().0.data.entries(), 67_108_864);
         schema.dimensions[1] += 1;
         assert!(decode_schematic(&schema).is_err());
     }
@@ -594,10 +517,7 @@ mod tests {
         root.insert("Version", version).unwrap();
         root.insert("DataVersion", 4325i32).unwrap();
         let mut palette = std::collections::HashMap::new();
-        palette.insert(
-            "minecraft:piston[facing=east,extended=true]".into(),
-            Value::Int(128),
-        );
+        palette.insert("minecraft:piston[facing=east,extended=true]".into(), Value::Int(128));
         if version == 2 {
             root.insert("Palette", Value::Compound(palette)).unwrap();
             root.insert("BlockData", Value::ByteArray(encoded)).unwrap();
@@ -606,12 +526,8 @@ mod tests {
             blocks.insert("Palette".into(), Value::Compound(palette));
             blocks.insert("Data".into(), Value::ByteArray(encoded));
             root.insert("Blocks", Value::Compound(blocks)).unwrap();
-            root.insert("Offset", Value::IntArray(vec![-2, 3, -4]))
-                .unwrap();
-            root = nbt::Blob::with_content(std::collections::HashMap::from([(
-                "Schematic".into(),
-                Value::Compound(root.content),
-            )]));
+            root.insert("Offset", Value::IntArray(vec![-2, 3, -4])).unwrap();
+            root = nbt::Blob::with_content(std::collections::HashMap::from([("Schematic".into(), Value::Compound(root.content))]));
         }
         let mut bytes = vec![];
         root.to_gzip_writer(&mut bytes).unwrap();
@@ -620,17 +536,13 @@ mod tests {
     #[test]
     fn sponge_v2_and_v3_preserve_target_piston_properties() {
         for version in [2, 3] {
-            let schematic =
-                load_schematic(std::io::Cursor::new(encode(version, vec![-128, 1]))).unwrap();
+            let schematic = load_schematic(std::io::Cursor::new(encode(version, vec![-128, 1]))).unwrap();
             let block = Block::from_id(schematic.data.get_entry(0));
             assert_eq!(block.get_name(), "piston");
             assert_eq!(block.properties().get("facing").unwrap(), "east");
             assert_eq!(block.properties().get("extended").unwrap(), "true");
             if version == 3 {
-                assert_eq!(
-                    (schematic.offset_x, schematic.offset_y, schematic.offset_z),
-                    (2, -3, 4)
-                );
+                assert_eq!((schematic.offset_x, schematic.offset_y, schematic.offset_z), (2, -3, 4));
             }
             for invalid in [vec![-128], vec![0], vec![-128, 1, 0], vec![-1; 5]] {
                 assert!(load_schematic(std::io::Cursor::new(encode(version, invalid))).is_err());

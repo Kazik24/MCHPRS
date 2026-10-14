@@ -554,10 +554,7 @@ impl Item {
         crate::generated::LEGACY_ITEMS[self.legacy_id() as usize]
     }
     pub fn from_id(id: u32) -> Self {
-        let legacy = crate::generated::TARGET_TO_LEGACY_ITEMS
-            .get(id as usize)
-            .copied()
-            .unwrap_or(u32::MAX);
+        let legacy = crate::generated::TARGET_TO_LEGACY_ITEMS.get(id as usize).copied().unwrap_or(u32::MAX);
         if legacy == u32::MAX {
             Self::Unknown { id }
         } else {
@@ -574,9 +571,7 @@ impl Item {
             .map(|i| Self::from_id(i as u32))
     }
     pub fn get_name(self) -> &'static str {
-        crate::generated::ITEMS
-            .get(self.get_id() as usize)
-            .map_or("air", |i| i.0)
+        crate::generated::ITEMS.get(self.get_id() as usize).map_or("air", |i| i.0)
     }
 }
 
@@ -588,14 +583,8 @@ mod registry_tests {
         for id in 0..crate::generated::ITEMS.len() as u32 {
             assert_eq!(Item::from_id(id).get_id(), id, "item {id}");
         }
-        assert_eq!(
-            Item::from_name("piston").unwrap(),
-            Item::Piston { sticky: false }
-        );
-        assert_eq!(
-            Item::from_name("sticky_piston").unwrap(),
-            Item::Piston { sticky: true }
-        );
+        assert_eq!(Item::from_name("piston").unwrap(), Item::Piston { sticky: false });
+        assert_eq!(Item::from_name("sticky_piston").unwrap(), Item::Piston { sticky: true });
         assert_eq!(Item::from_name("stone").unwrap().get_id(), 1);
         assert_eq!(Item::from_name("compass"), Some(Item::Compass));
         assert_eq!(Item::from_id(Item::Compass.get_id()), Item::Compass);

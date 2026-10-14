@@ -5,9 +5,7 @@ fn world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,
         0,
-        (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect(),
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
         Default::default(),
     )
 }
@@ -22,10 +20,7 @@ fn command_blocks_cannot_dispatch_privileged_commands_or_flood_output() {
         "function attack",
         "whitelist add Fake",
     ] {
-        assert!(
-            world.execute_command_block(command, "@").is_err(),
-            "{command}"
-        );
+        assert!(world.execute_command_block(command, "@").is_err(), "{command}");
     }
     for _ in 0..64 {
         world.execute_command_block("say hello", "@").unwrap();
@@ -43,20 +38,9 @@ fn offline_replay_retains_all_output_without_enabling_other_commands() {
     }
     assert_eq!(world.command_output().count(), 1_535);
     assert!(world.execute_command_block("stop", "@").is_err());
-    assert!(
-        world
-            .execute_command_block(&"x".repeat(131_069), "@")
-            .is_err()
-    );
+    assert!(world.execute_command_block(&"x".repeat(131_069), "@").is_err());
 }
-fn place(
-    world: &mut PlotWorld,
-    pos: BlockPos,
-    name: &str,
-    command: &str,
-    auto: bool,
-    conditional: bool,
-) {
+fn place(world: &mut PlotWorld, pos: BlockPos, name: &str, command: &str, auto: bool, conditional: bool) {
     let mut block = Block::from_name(name).unwrap();
     block.set_properties(std::collections::HashMap::from([
         ("facing", "east"),
@@ -147,14 +131,7 @@ fn compiled_repeating_chain_outputs_match_interpreter_and_preserve_reset_deadlin
     let (mut compiled, _, _) = output_fixture("repeating_command_block", true);
     let chain = pos.offset(BlockFace::East);
     for world in [&mut reference, &mut compiled] {
-        place(
-            world,
-            chain,
-            "chain_command_block",
-            "tellraw @a \"chain\"",
-            true,
-            true,
-        );
+        place(world, chain, "chain_command_block", "tellraw @a \"chain\"", true, true);
         redstone::command_block::update(world, pos);
     }
     let mut compiler = compile_outputs(&mut compiled, true);
@@ -166,10 +143,7 @@ fn compiled_repeating_chain_outputs_match_interpreter_and_preserve_reset_deadlin
             compiled.command_output().collect::<Vec<_>>()
         );
         assert_eq!(success(&compiled, chain), 1);
-        assert_eq!(
-            reference.piston_state.logical_tick,
-            compiled.piston_state.logical_tick
-        );
+        assert_eq!(reference.piston_state.logical_tick, compiled.piston_state.logical_tick);
     }
     let bounds = compiled.get_corners();
     compiler.reset(&mut compiled, bounds);
@@ -251,10 +225,7 @@ fn command_success_changes_notify_comparators_through_a_solid_block() {
     world.set_block(lamp, Block::RedstoneLamp { lit: false });
     redstone::command_block::update(&mut world, pos);
     advance(&mut world, 4);
-    assert_eq!(
-        redstone::source_strength(world.get_block(comparator), &world, comparator),
-        1
-    );
+    assert_eq!(redstone::source_strength(world.get_block(comparator), &world, comparator), 1);
     assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true });
 
     let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) else {
@@ -265,10 +236,7 @@ fn command_success_changes_notify_comparators_through_a_solid_block() {
     redstone::command_block::update(&mut world, pos);
     advance(&mut world, 12);
     assert_eq!(success(&world, pos), 0);
-    assert_eq!(
-        redstone::source_strength(world.get_block(comparator), &world, comparator),
-        0
-    );
+    assert_eq!(redstone::source_strength(world.get_block(comparator), &world, comparator), 0);
     assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: false });
 }
 
@@ -276,14 +244,7 @@ fn command_success_changes_notify_comparators_through_a_solid_block() {
 fn command_block_impulse_runs_once_per_edge_and_survives_short_pulses() {
     let mut world = world();
     let pos = BlockPos::new(40, 30, 40);
-    place(
-        &mut world,
-        pos,
-        "command_block",
-        "say impulse",
-        false,
-        false,
-    );
+    place(&mut world, pos, "command_block", "say impulse", false, false);
     world.set_block(pos.offset(BlockFace::Bottom), Block::RedstoneBlock {});
     redstone::command_block::update(&mut world, pos);
     redstone::command_block::update(&mut world, pos);
@@ -309,14 +270,7 @@ fn command_block_impulse_runs_once_per_edge_and_survives_short_pulses() {
 fn command_block_repeating_stops_and_stale_ticks_cannot_execute_replacements() {
     let mut world = world();
     let pos = BlockPos::new(40, 30, 40);
-    place(
-        &mut world,
-        pos,
-        "repeating_command_block",
-        "tellraw @a \"repeating\"",
-        false,
-        false,
-    );
+    place(&mut world, pos, "repeating_command_block", "tellraw @a \"repeating\"", false, false);
     world.set_block(pos.offset(BlockFace::Bottom), Block::RedstoneBlock {});
     redstone::command_block::update(&mut world, pos);
     advance(&mut world, 6);
@@ -339,14 +293,7 @@ fn command_block_conditional_chains_and_unsupported_commands_are_bounded() {
     let pos = BlockPos::new(40, 30, 40);
     let chain = pos.offset(BlockFace::East);
     place(&mut world, pos, "command_block", "say first", true, false);
-    place(
-        &mut world,
-        chain,
-        "chain_command_block",
-        "say second",
-        true,
-        true,
-    );
+    place(&mut world, chain, "chain_command_block", "say second", true, true);
     place(
         &mut world,
         chain.offset(BlockFace::East),
@@ -368,19 +315,10 @@ fn command_block_conditional_chains_and_unsupported_commands_are_bounded() {
     assert_eq!(world.command_messages.len(), 2);
     assert_eq!(success(&world, chain), 1);
     assert_eq!(success(&world, chain.offset(BlockFace::East)), 0);
-    assert_eq!(
-        success(
-            &world,
-            chain.offset(BlockFace::East).offset(BlockFace::East)
-        ),
-        0
-    );
+    assert_eq!(success(&world, chain.offset(BlockFace::East).offset(BlockFace::East)), 0);
     advance(&mut world, 4);
     assert_eq!(world.command_messages.len(), 2);
-    assert_eq!(
-        redstone::comparator::get_override(world.get_block(pos), &world, pos),
-        1
-    );
+    assert_eq!(redstone::comparator::get_override(world.get_block(pos), &world, pos), 1);
     assert!(!world.chunks.iter().any(Chunk::requires_interpreter));
 }
 
@@ -388,14 +326,7 @@ fn command_block_conditional_chains_and_unsupported_commands_are_bounded() {
 fn command_block_automatic_repeat_and_pending_ticks_survive_restart() {
     let mut world = world();
     let pos = BlockPos::new(40, 30, 40);
-    place(
-        &mut world,
-        pos,
-        "repeating_command_block",
-        "say auto",
-        true,
-        false,
-    );
+    place(&mut world, pos, "repeating_command_block", "say auto", true, false);
     redstone::command_block::update(&mut world, pos);
     advance(&mut world, 2);
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
@@ -428,14 +359,7 @@ fn looping_chain_stops_at_the_command_limit() {
         (BlockPos::new(41, 30, 41), "west"),
         (BlockPos::new(40, 30, 41), "north"),
     ] {
-        place(
-            &mut world,
-            pos,
-            "chain_command_block",
-            "say loop",
-            true,
-            false,
-        );
+        place(&mut world, pos, "chain_command_block", "say loop", true, false);
         let mut block = world.get_block(pos);
         block.set_properties(std::collections::HashMap::from([("facing", face)]));
         world.set_block(pos, block);
@@ -455,30 +379,9 @@ fn failed_conditional_source_skips_chain_and_activation_latches_condition() {
     let mut world = world();
     let pos = BlockPos::new(40, 30, 40);
     let previous = pos.offset(BlockFace::West);
-    place(
-        &mut world,
-        previous,
-        "command_block",
-        "say previous",
-        false,
-        false,
-    );
-    place(
-        &mut world,
-        pos,
-        "command_block",
-        "say conditional",
-        true,
-        true,
-    );
-    place(
-        &mut world,
-        pos.offset(BlockFace::East),
-        "chain_command_block",
-        "say chain",
-        true,
-        false,
-    );
+    place(&mut world, previous, "command_block", "say previous", false, false);
+    place(&mut world, pos, "command_block", "say conditional", true, true);
+    place(&mut world, pos.offset(BlockFace::East), "chain_command_block", "say chain", true, false);
     redstone::command_block::update(&mut world, pos);
     advance(&mut world, 1);
     assert!(world.command_messages.is_empty());
@@ -493,9 +396,5 @@ fn failed_conditional_source_skips_chain_and_activation_latches_condition() {
     };
     entity.success_count = 0;
     advance(&mut world, 1);
-    assert_eq!(
-        world.command_messages.len(),
-        2,
-        "activation retains the condition observed at scheduling"
-    );
+    assert_eq!(world.command_messages.len(), 2, "activation retains the condition observed at scheduling");
 }

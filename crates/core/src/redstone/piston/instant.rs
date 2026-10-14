@@ -16,18 +16,8 @@ fn reset_geometry(world: &impl World, base: BlockPos) -> bool {
         && world.get_block_entity(cap).is_none()
 }
 
-pub(crate) fn candidate_retract(
-    world: &impl World,
-    piston: RedstonePiston,
-    base: BlockPos,
-    action: PistonAction,
-) -> bool {
-    if action != PistonAction::Retract
-        || !piston.sticky
-        || !piston.extended
-        || piston.facing == BlockFacing::Up
-        || !reset_geometry(world, base)
-    {
+pub(crate) fn candidate_retract(world: &impl World, piston: RedstonePiston, base: BlockPos, action: PistonAction) -> bool {
+    if action != PistonAction::Retract || !piston.sticky || !piston.extended || piston.facing == BlockFacing::Up || !reset_geometry(world, base) {
         return false;
     }
     let face = piston.facing.into();
@@ -36,9 +26,9 @@ pub(crate) fn candidate_retract(
     if !matches!(world.get_block(base), Block::Piston { piston: current } if current == piston)
         || !matching_head(world.get_block(head), face)
         || world.get_block(far) != Block::RedstoneBlock
-        || [base, head, far].into_iter().any(|pos| {
-            world.get_block_entity(pos).is_some() || world.piston_motion_index(pos, None).is_some()
-        })
+        || [base, head, far]
+            .into_iter()
+            .any(|pos| world.get_block_entity(pos).is_some() || world.piston_motion_index(pos, None).is_some())
     {
         return false;
     }
@@ -96,14 +86,11 @@ pub(crate) fn reset_driven(world: &impl World, base: BlockPos, face: BlockFace) 
     // An unpowered alternate cap writer can become active during this reset.
     if SHAPE_NEIGHBORS.into_iter().any(|side| {
         let source = cap.offset(side);
-        source != observer
-            && power::emits_strong_power(world.get_block(source), world, source, side, true)
+        source != observer && power::emits_strong_power(world.get_block(source), world, source, side, true)
     }) {
         return false;
     }
-    power_positions(base, face).all(|(source, side)| {
-        source == cap || !has_redstone_power(world.get_block(source), world, source, side)
-    })
+    power_positions(base, face).all(|(source, side)| source == cap || !has_redstone_power(world.get_block(source), world, source, side))
 }
 
 fn matching_base(block: Block, face: BlockFace, extended: bool) -> bool {
@@ -116,14 +103,7 @@ fn matching_head(block: Block, face: BlockFace) -> bool {
         if head.sticky && !head.short && BlockFace::from(head.facing) == face)
 }
 
-fn companion(
-    world: &impl World,
-    pos: BlockPos,
-    face: BlockFace,
-    extending: bool,
-    source: bool,
-    carried: impl Fn(Block) -> bool,
-) -> bool {
+fn companion(world: &impl World, pos: BlockPos, face: BlockFace, extending: bool, source: bool, carried: impl Fn(Block) -> bool) -> bool {
     if let Some(BlockEntity::MovingPiston(entity)) = world.get_block_entity(pos) {
         matches!(world.get_block(pos), Block::MovingPiston { moving }
             if moving.sticky && BlockFace::from(moving.facing) == face)
@@ -140,40 +120,25 @@ fn companion(
                     (true, false) => (pos.offset(face.opposite()).offset(face.opposite()), 1),
                 };
                 motion.carried_entity.is_none()
-                    && world.instant_piston_cache().is_some_and(|cache| {
-                        cache.tracks(base, face, slot, motion.identity, extending)
-                    })
+                    && world
+                        .instant_piston_cache()
+                        .is_some_and(|cache| cache.tracks(base, face, slot, motion.identity, extending))
             })
     } else {
         world.get_block_entity(pos).is_none() && carried(world.get_block(pos))
     }
 }
 
-pub(crate) fn completed(
-    world: &mut impl World,
-    pos: BlockPos,
-    entity: MovingPistonEntity,
-    identity: u64,
-    interrupted: bool,
-) {
-    if !world
-        .instant_piston_cache()
-        .is_some_and(|cache| !cache.is_empty())
-    {
+pub(crate) fn completed(world: &mut impl World, pos: BlockPos, entity: MovingPistonEntity, identity: u64, interrupted: bool) {
+    if !world.instant_piston_cache().is_some_and(|cache| !cache.is_empty()) {
         return;
     }
     let face = entity.facing;
-    let (base, slot) = match (
-        entity.extending,
-        entity.source,
-        Block::from_id(entity.block_state),
-    ) {
+    let (base, slot) = match (entity.extending, entity.source, Block::from_id(entity.block_state)) {
         (false, true, Block::Piston { .. }) => (pos, 0),
         (false, false, Block::RedstoneBlock) => (pos.offset(face.opposite()), 1),
         (true, true, Block::PistonHead { .. }) => (pos.offset(face.opposite()), 0),
-        (true, false, Block::RedstoneBlock) => {
-            (pos.offset(face.opposite()).offset(face.opposite()), 1)
-        }
+        (true, false, Block::RedstoneBlock) => (pos.offset(face.opposite()).offset(face.opposite()), 1),
         _ => return,
     };
     if !world
@@ -198,18 +163,12 @@ pub(crate) fn completed(
         && if entity.extending {
             matching_base(world.get_block(base), face, true)
                 && world.get_block_entity(base).is_none()
-                && companion(world, head, face, true, true, |block| {
-                    matching_head(block, face)
-                })
-                && companion(world, far, face, true, false, |block| {
-                    block == Block::RedstoneBlock
-                })
+                && companion(world, head, face, true, true, |block| matching_head(block, face))
+                && companion(world, far, face, true, false, |block| block == Block::RedstoneBlock)
         } else {
-            companion(world, base, face, false, true, |block| {
-                matching_base(block, face, false)
-            }) && companion(world, head, face, false, false, |block| {
-                block == Block::RedstoneBlock
-            }) && world.get_block(far) == Block::Air
+            companion(world, base, face, false, true, |block| matching_base(block, face, false))
+                && companion(world, head, face, false, false, |block| block == Block::RedstoneBlock)
+                && world.get_block(far) == Block::Air
                 && world.get_block_entity(far).is_none()
         };
     if let Some(cache) = world.instant_piston_cache_mut() {
@@ -225,9 +184,7 @@ mod tests {
     use mchprs_blocks::blocks::RedstoneObserver;
 
     fn cell() -> (PlotWorld, BlockPos, RedstonePiston) {
-        let chunks = (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect();
+        let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
         let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
         let base = BlockPos::new(4, 8, 4);
         let piston = RedstonePiston {
@@ -236,16 +193,8 @@ mod tests {
             extended: true,
         };
         world.set_block(base, Block::Piston { piston });
-        world.set_block(
-            base.offset(BlockFace::East),
-            Block::PistonHead {
-                head: piston.into(),
-            },
-        );
-        world.set_block(
-            base.offset(BlockFace::East).offset(BlockFace::East),
-            Block::RedstoneBlock,
-        );
+        world.set_block(base.offset(BlockFace::East), Block::PistonHead { head: piston.into() });
+        world.set_block(base.offset(BlockFace::East).offset(BlockFace::East), Block::RedstoneBlock);
         world.set_block(
             base.offset(BlockFace::Top),
             Block::Observer {
@@ -255,28 +204,15 @@ mod tests {
                 },
             },
         );
-        world.set_block(
-            base.offset(BlockFace::Top).offset(BlockFace::Top),
-            Block::Stone {},
-        );
+        world.set_block(base.offset(BlockFace::Top).offset(BlockFace::Top), Block::Stone {});
         (world, base, piston)
     }
 
     #[test]
     fn qualification_rejects_drop_retraction_and_shared_payload() {
         let (mut world, base, piston) = cell();
-        assert!(candidate_retract(
-            &world,
-            piston,
-            base,
-            PistonAction::Retract
-        ));
-        assert!(!candidate_retract(
-            &world,
-            piston,
-            base,
-            PistonAction::RetractWithoutPull
-        ));
+        assert!(candidate_retract(&world, piston, base, PistonAction::Retract));
+        assert!(!candidate_retract(&world, piston, base, PistonAction::RetractWithoutPull));
         let other = base
             .offset(BlockFace::East)
             .offset(BlockFace::East)
@@ -291,12 +227,7 @@ mod tests {
                 },
             },
         );
-        assert!(!candidate_retract(
-            &world,
-            piston,
-            base,
-            PistonAction::Retract
-        ));
+        assert!(!candidate_retract(&world, piston, base, PistonAction::Retract));
     }
 
     #[test]
@@ -376,12 +307,7 @@ mod tests {
         let mut entities: Vec<_> = world
             .get_chunks()
             .iter()
-            .flat_map(|chunk| {
-                chunk
-                    .block_entities
-                    .iter()
-                    .map(move |(pos, entity)| (chunk.x, chunk.z, *pos, entity))
-            })
+            .flat_map(|chunk| chunk.block_entities.iter().map(move |(pos, entity)| (chunk.x, chunk.z, *pos, entity)))
             .collect();
         entities.sort_by_key(|(x, z, pos, _)| (*x, *z, pos.x, pos.y, pos.z));
         serde_json::json!({"blocks":blocks,"entities":entities,
@@ -391,42 +317,20 @@ mod tests {
 
     fn source(world: &mut PlotWorld, base: BlockPos, powered: bool) {
         let pos = base.offset(BlockFace::West);
-        world.set_block(
-            pos,
-            if powered {
-                Block::RedstoneBlock
-            } else {
-                Block::Air
-            },
-        );
+        world.set_block(pos, if powered { Block::RedstoneBlock } else { Block::Air });
         super::super::notify(world, pos);
     }
 
-    fn paired_tick(
-        cached: &mut PlotWorld,
-        native: &mut PlotWorld,
-    ) -> Vec<super::super::trace::Entry> {
+    fn paired_tick(cached: &mut PlotWorld, native: &mut PlotWorld) -> Vec<super::super::trace::Entry> {
         native.instant_piston_cache_mut().unwrap().clear();
         let actual = super::super::trace::capture(|| cached.tick_interpreted());
         let expected = super::super::trace::capture(|| native.tick_interpreted());
-        assert_eq!(
-            actual, expected,
-            "ordered native samples and accepted events"
-        );
-        assert_eq!(
-            native_state(cached),
-            native_state(native),
-            "complete physical state"
-        );
+        assert_eq!(actual, expected, "ordered native samples and accepted events");
+        assert_eq!(native_state(cached), native_state(native), "complete physical state");
         actual
     }
 
-    fn paired_source(
-        cached: &mut PlotWorld,
-        native: &mut PlotWorld,
-        base: BlockPos,
-        powered: bool,
-    ) {
+    fn paired_source(cached: &mut PlotWorld, native: &mut PlotWorld, base: BlockPos, powered: bool) {
         native.instant_piston_cache_mut().unwrap().clear();
         let actual = super::super::trace::capture(|| source(cached, base, powered));
         let expected = super::super::trace::capture(|| source(native, base, powered));
@@ -520,10 +424,7 @@ mod tests {
         paired_source(&mut cached, &mut native, base, false);
         paired_tick(&mut cached, &mut native);
         let head = base.offset(BlockFace::East);
-        assert!(matches!(
-            cached.get_block_entity(head),
-            Some(BlockEntity::MovingPiston(_))
-        ));
+        assert!(matches!(cached.get_block_entity(head), Some(BlockEntity::MovingPiston(_))));
         assert_eq!(cached.instant_piston_cache().unwrap().stats().1, 1);
         cached.delete_block_entity(head);
         native.delete_block_entity(head);
@@ -562,20 +463,11 @@ mod tests {
         paired_source(&mut cached, &mut native, base, false);
         for _ in 0..12 {
             paired_tick(&mut cached, &mut native);
-            if cached
-                .instant_piston_cache()
-                .unwrap()
-                .awaiting_reset(base, BlockFace::East)
-            {
+            if cached.instant_piston_cache().unwrap().awaiting_reset(base, BlockFace::East) {
                 break;
             }
         }
-        assert!(
-            cached
-                .instant_piston_cache()
-                .unwrap()
-                .awaiting_reset(base, BlockFace::East)
-        );
+        assert!(cached.instant_piston_cache().unwrap().awaiting_reset(base, BlockFace::East));
         let far = base.offset(BlockFace::East).offset(BlockFace::East);
         cached.set_block(far, Block::Stone {});
         native.set_block(far, Block::Stone {});
@@ -593,15 +485,9 @@ mod tests {
             }
             assert_eq!(cached.instant_piston_cache().unwrap().stats().1, 0);
         }
-        assert!(
-            reset_seen,
-            "the native observer must still execute its reset"
-        );
+        assert!(reset_seen, "the native observer must still execute its reset");
         assert_eq!(cached.get_block(far), Block::RedstoneBlock);
-        assert_eq!(
-            cached.get_block(far.offset(BlockFace::East)),
-            Block::Stone {}
-        );
+        assert_eq!(cached.get_block(far.offset(BlockFace::East)), Block::Stone {});
     }
 
     #[test]
@@ -629,10 +515,7 @@ mod tests {
             }
             assert!(reset_seen, "native observer must initiate the reset");
             let stats = cached.instant_piston_cache().unwrap().stats();
-            assert_eq!(
-                stats.1, 1,
-                "cycle {cycle} must finish its paired reset motions"
-            );
+            assert_eq!(stats.1, 1, "cycle {cycle} must finish its paired reset motions");
             if cycle == 1 {
                 assert!(stats.2 > 0, "subsequent samples must use proven routes");
             }
@@ -653,10 +536,7 @@ mod tests {
             paired_tick(&mut cached, &mut native);
             learned |= cached.instant_piston_cache().unwrap().stats().1 != 0;
         }
-        assert!(
-            learned,
-            "native observer reset must complete and establish proof"
-        );
+        assert!(learned, "native observer reset must complete and establish proof");
         assert!(
             cached.instant_piston_cache().unwrap().stats().2 > 0,
             "later native cycles must reuse proven routes"

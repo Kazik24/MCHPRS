@@ -1,8 +1,6 @@
 use super::*;
 use mchprs_blocks::BlockFacing;
-use mchprs_blocks::blocks::{
-    Lever, LeverFace, RedstoneComparator, RedstoneObserver, RedstonePiston, RedstoneRepeater,
-};
+use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneComparator, RedstoneObserver, RedstonePiston, RedstoneRepeater};
 
 fn snapshot(bounds: (BlockPos, BlockPos), blocks: &[(BlockPos, Block)]) -> Snapshot {
     let halo = BlockPos::new(14, 14, 14);
@@ -57,11 +55,7 @@ fn flat_wire_has_no_repeaters_or_range_limit() {
     let plan = candidate(&path, &[]).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(plan.path, path);
     assert_eq!(plan.placements.len(), 40);
-    assert!(
-        plan.placements
-            .iter()
-            .all(|(_, b)| matches!(b, Block::RedstoneWire { .. }))
-    );
+    assert!(plan.placements.iter().all(|(_, b)| matches!(b, Block::RedstoneWire { .. })));
 }
 
 #[test]
@@ -101,11 +95,7 @@ fn new_staircase_supports_are_opaque_and_work_in_both_directions() {
 #[test]
 fn vertical_targets_route_to_a_safe_staircase_within_the_budget() {
     let start = BlockPos::new(24, 24, 24);
-    for delta in [
-        BlockPos::new(4, 4, 0),
-        BlockPos::new(4, -4, 0),
-        BlockPos::new(0, 3, 0),
-    ] {
+    for delta in [BlockPos::new(4, 4, 0), BlockPos::new(4, -4, 0), BlockPos::new(0, 3, 0)] {
         let end = start + delta;
         let padding = BlockPos::new(4, 2, 4);
         let snapshot = snapshot((start.min(end) - padding, start.max(end) + padding), &[]);
@@ -115,11 +105,7 @@ fn vertical_targets_route_to_a_safe_staircase_within_the_budget() {
         };
         assert_eq!(plan.path.first(), Some(&start));
         assert_eq!(plan.path.last(), Some(&end));
-        assert!(
-            plan.placements
-                .iter()
-                .any(|(_, block)| matches!(block, Block::Wool { .. }))
-        );
+        assert!(plan.placements.iter().any(|(_, block)| matches!(block, Block::Wool { .. })));
     }
 }
 
@@ -129,8 +115,7 @@ fn constructed_staircase_transmits_native_power_in_both_directions() {
     let start = BlockPos::new(32, 20, 32);
     let end = BlockPos::new(35, 23, 32);
     let snapshot = capture_world(&world, start, end);
-    let SearchResult::Found(plan) = search(snapshot, start, end, true, &AtomicBool::new(false))
-    else {
+    let SearchResult::Found(plan) = search(snapshot, start, end, true, &AtomicBool::new(false)) else {
         panic!("Could not route a native staircase")
     };
     for &(pos, block) in &plan.placements {
@@ -150,12 +135,7 @@ fn constructed_staircase_transmits_native_power_in_both_directions() {
     };
     assert_eq!(output.power, 12);
     interaction::destroy(Block::RedstoneBlock {}, &mut world, source);
-    interaction::place_in_world(
-        Block::RedstoneBlock {},
-        &mut world,
-        end.offset(BlockFace::East),
-        &None,
-    );
+    interaction::place_in_world(Block::RedstoneBlock {}, &mut world, end.offset(BlockFace::East), &None);
     let Block::RedstoneWire { wire: output } = world.get_block(start) else {
         panic!("Missing lower endpoint")
     };
@@ -173,15 +153,9 @@ fn new_opaque_stair_supports_cannot_conduct_a_dormant_source() {
             ..Default::default()
         },
     };
-    let error = candidate(
-        &path,
-        &[
-            (source, repeater),
-            (source.offset(BlockFace::Bottom), Block::Glass {}),
-        ],
-    )
-    .err()
-    .unwrap();
+    let error = candidate(&path, &[(source, repeater), (source.offset(BlockFace::Bottom), Block::Glass {})])
+        .err()
+        .unwrap();
     assert!(error.contains("conduct an unselected"), "{error}");
 }
 
@@ -196,10 +170,7 @@ fn a_new_stair_conductor_cannot_add_a_comparator_or_qc_input() {
     };
     let error = candidate(
         &path,
-        &[
-            (BlockPos::new(21, 20, 21), comparator),
-            (BlockPos::new(21, 19, 21), Block::Glass {}),
-        ],
+        &[(BlockPos::new(21, 20, 21), comparator), (BlockPos::new(21, 19, 21), Block::Glass {})],
     )
     .err()
     .unwrap();
@@ -234,23 +205,14 @@ fn new_supports_sample_passive_start_material_and_preserve_color() {
         let blocks: Vec<_> = path
             .iter()
             .enumerate()
-            .map(|(i, p)| {
-                (
-                    p.offset(BlockFace::Bottom),
-                    if i == 0 { material } else { Block::Air {} },
-                )
-            })
+            .map(|(i, p)| (p.offset(BlockFace::Bottom), if i == 0 { material } else { Block::Air {} }))
             .collect();
         let plan = candidate(&path, &blocks).unwrap_or_else(|e| panic!("{e}"));
         for p in &path[1..] {
-            assert!(
-                plan.placements
-                    .contains(&(p.offset(BlockFace::Bottom), material))
-            );
+            assert!(plan.placements.contains(&(p.offset(BlockFace::Bottom), material)));
         }
         let raised = [path[0], path[1].offset(BlockFace::Top)];
-        let plan = candidate(&raised, &[(path[0].offset(BlockFace::Bottom), material)])
-            .unwrap_or_else(|e| panic!("{e}"));
+        let plan = candidate(&raised, &[(path[0].offset(BlockFace::Bottom), material)]).unwrap_or_else(|e| panic!("{e}"));
         assert!(plan.placements.contains(&(path[1], material)));
     }
 }
@@ -305,9 +267,7 @@ fn dormant_sources_and_strong_power_through_a_conductor_are_rejected() {
             powered: false,
         },
     };
-    let error = candidate(&line(), &[(conductor, Block::Stone {}), (source, lever)])
-        .err()
-        .unwrap();
+    let error = candidate(&line(), &[(conductor, Block::Stone {}), (source, lever)]).err().unwrap();
     assert!(error.contains("inject"), "{error}");
 }
 
@@ -320,10 +280,7 @@ fn merging_unselected_dust_is_rejected_but_parallel_lanes_at_spacing_two_work() 
         .iter()
         .flat_map(|p| {
             let wire = *p + BlockPos::new(0, 0, 2);
-            [
-                (wire, plain_wire()),
-                (wire.offset(BlockFace::Bottom), Block::Glass {}),
-            ]
+            [(wire, plain_wire()), (wire.offset(BlockFace::Bottom), Block::Glass {})]
         })
         .collect();
     assert!(candidate(&line(), &blocks).is_ok());
@@ -332,16 +289,7 @@ fn merging_unselected_dust_is_rejected_but_parallel_lanes_at_spacing_two_work() 
 #[test]
 fn only_selected_endpoint_dust_may_join_the_route() {
     let path = line();
-    assert!(
-        candidate(
-            &path,
-            &[
-                (path[0], plain_wire()),
-                (*path.last().unwrap(), plain_wire())
-            ]
-        )
-        .is_ok()
-    );
+    assert!(candidate(&path, &[(path[0], plain_wire()), (*path.last().unwrap(), plain_wire())]).is_ok());
     assert!(candidate(&path, &[(path[1], plain_wire())]).is_err());
 }
 
@@ -353,9 +301,7 @@ fn observer_watch_and_independent_piston_notifications_are_rejected() {
             powered: false,
         },
     };
-    let error = candidate(&line(), &[(BlockPos::new(21, 20, 21), observer)])
-        .err()
-        .unwrap();
+    let error = candidate(&line(), &[(BlockPos::new(21, 20, 21), observer)]).err().unwrap();
     assert!(error.contains("observer"), "{error}");
     let piston = Block::Piston {
         piston: RedstonePiston {
@@ -364,13 +310,8 @@ fn observer_watch_and_independent_piston_notifications_are_rejected() {
             extended: false,
         },
     };
-    let error = candidate(&line(), &[(BlockPos::new(21, 18, 20), piston)])
-        .err()
-        .unwrap();
-    assert!(
-        error.contains("piston") || error.contains("Piston"),
-        "{error}"
-    );
+    let error = candidate(&line(), &[(BlockPos::new(21, 18, 20), piston)]).err().unwrap();
+    assert!(error.contains("piston") || error.contains("Piston"), "{error}");
 }
 
 #[test]
@@ -383,15 +324,9 @@ fn qc_power_through_an_above_base_conductor_is_rejected_without_a_notification()
             extended: false,
         },
     };
-    let error = candidate(
-        &line(),
-        &[
-            (conductor, Block::Stone {}),
-            (BlockPos::new(21, 19, 22), piston),
-        ],
-    )
-    .err()
-    .unwrap();
+    let error = candidate(&line(), &[(conductor, Block::Stone {}), (BlockPos::new(21, 19, 22), piston)])
+        .err()
+        .unwrap();
     assert!(error.contains("unintended input"), "{error}");
 }
 
@@ -426,9 +361,7 @@ fn dust_cannot_mute_an_existing_note_block() {
         note: 0,
         powered: false,
     };
-    let error = candidate(&line(), &[(BlockPos::new(21, 19, 20), block)])
-        .err()
-        .unwrap();
+    let error = candidate(&line(), &[(BlockPos::new(21, 19, 20), block)]).err().unwrap();
     assert!(error.contains("mute"), "{error}");
 }
 
@@ -439,26 +372,15 @@ fn a_new_glass_support_cannot_mute_an_existing_note_block() {
         note: 0,
         powered: false,
     };
-    let error = candidate(
-        &line(),
-        &[
-            (BlockPos::new(21, 19, 20), Block::Air {}),
-            (BlockPos::new(21, 18, 20), block),
-        ],
-    )
-    .err()
-    .unwrap();
+    let error = candidate(&line(), &[(BlockPos::new(21, 19, 20), Block::Air {}), (BlockPos::new(21, 18, 20), block)])
+        .err()
+        .unwrap();
     assert!(error.contains("mute"), "{error}");
 }
 
 #[test]
 fn registry_bulb_and_pressure_plate_outputs_do_not_change_geometry() {
-    for name in [
-        "copper_bulb",
-        "waxed_exposed_copper_bulb",
-        "oak_pressure_plate",
-        "cherry_pressure_plate",
-    ] {
+    for name in ["copper_bulb", "waxed_exposed_copper_bulb", "oak_pressure_plate", "cherry_pressure_plate"] {
         let original = Block::from_name(name).unwrap();
         let powered = if original.is_copper_bulb() {
             original.with_copper_bulb_state(true, true).unwrap()
@@ -470,22 +392,14 @@ fn registry_bulb_and_pressure_plate_outputs_do_not_change_geometry() {
         assert_eq!(normalized.get_name(), powered.get_name());
         for (property, value) in powered.properties() {
             if property != "powered" && property != "lit" {
-                assert_eq!(
-                    normalized.properties()[property],
-                    value,
-                    "{name}: {property}"
-                );
+                assert_eq!(normalized.properties()[property], value, "{name}: {property}");
             }
         }
     }
     let trapdoor = Block::from_name("oak_trapdoor").unwrap();
     let mut changed = trapdoor;
     changed.set_properties(std::collections::HashMap::from([("powered", "true")]));
-    assert_ne!(
-        geometry(trapdoor),
-        geometry(changed),
-        "unsupported powered states must remain exact"
-    );
+    assert_ne!(geometry(trapdoor), geometry(changed), "unsupported powered states must remain exact");
 }
 
 #[test]
@@ -515,10 +429,7 @@ fn empty_world() -> PlotWorld {
 
 fn generated_world(layers: i32) -> PlotWorld {
     let chunks = (0..crate::plot::PLOT_WIDTH)
-        .flat_map(|x| {
-            (0..crate::plot::PLOT_WIDTH)
-                .map(move |z| crate::plot::Plot::generate_chunk(layers, x, z))
-        })
+        .flat_map(|x| (0..crate::plot::PLOT_WIDTH).map(move |z| crate::plot::Plot::generate_chunk(layers, x, z)))
         .collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
@@ -535,11 +446,7 @@ fn straight_wire_on_the_real_generated_floor_is_found() {
             panic!("Generated-floor line of {distance} blocks was not found")
         };
         assert_eq!(plan.path.len(), distance as usize + 1);
-        assert!(
-            plan.placements
-                .iter()
-                .all(|(_, block)| matches!(block, Block::RedstoneWire { .. }))
-        );
+        assert!(plan.placements.iter().all(|(_, block)| matches!(block, Block::RedstoneWire { .. })));
     }
 }
 
@@ -553,13 +460,7 @@ fn mixed_xyz_clear_routes_make_progress_before_enumerating_height_prefixes() {
     }
     let snapshot = capture_world(&world, start, end);
     for prefer_x in [true, false] {
-        let plan = match search(
-            snapshot.clone(),
-            start,
-            end,
-            prefer_x,
-            &AtomicBool::new(false),
-        ) {
+        let plan = match search(snapshot.clone(), start, end, prefer_x, &AtomicBool::new(false)) {
             SearchResult::Found(plan) => plan,
             SearchResult::BudgetExceeded => panic!("Clear XYZ route exhausted its budget"),
             SearchResult::Invalid(reason) => panic!("Clear XYZ route was refused: {reason}"),
@@ -659,17 +560,8 @@ fn selected_power_sources_feed_routes_away_and_along_the_same_emitter() {
         let mut world = generated_world(8);
         world.set_block(start.offset(BlockFace::Bottom), Block::Glass {});
         world.set_block(BlockPos::new(20, 20, 21), Block::RedstoneBlock {});
-        let result = search(
-            capture_world(&world, start, end),
-            start,
-            end,
-            true,
-            &AtomicBool::new(false),
-        );
-        assert!(
-            matches!(result, SearchResult::Found(_)),
-            "Selected source was refused for {end}"
-        );
+        let result = search(capture_world(&world, start, end), start, end, true, &AtomicBool::new(false));
+        assert!(matches!(result, SearchResult::Found(_)), "Selected source was refused for {end}");
     }
 }
 
@@ -688,25 +580,10 @@ fn selected_support_powered_by_dust_does_not_allow_other_sources() {
             wire: wire::get_state_for_placement(&world, source),
         },
     );
-    let result = search(
-        capture_world(&world, start, end),
-        start,
-        end,
-        true,
-        &AtomicBool::new(false),
-    );
-    assert!(
-        matches!(result, SearchResult::Found(_)),
-        "Selected powered support was refused"
-    );
+    let result = search(capture_world(&world, start, end), start, end, true, &AtomicBool::new(false));
+    assert!(matches!(result, SearchResult::Found(_)), "Selected powered support was refused");
     world.set_block(end.offset(BlockFace::East), Block::RedstoneBlock {});
-    let result = search(
-        capture_world(&world, start, end),
-        start,
-        end,
-        true,
-        &AtomicBool::new(false),
-    );
+    let result = search(capture_world(&world, start, end), start, end, true, &AtomicBool::new(false));
     assert!(matches!(result, SearchResult::Invalid(ref reason) if reason.contains("inject")));
 }
 
@@ -739,10 +616,7 @@ fn selected_incoming_step_dust_does_not_expand_to_the_whole_net() {
     let budget = Budget::new(&snapshot, start, &cancel).unwrap_or_else(|_| panic!("budget"));
     assert!(budget.selected_sources.contains(&incoming));
     assert!(!budget.selected_sources.contains(&unrelated));
-    assert!(matches!(
-        search(snapshot, start, end, true, &cancel),
-        SearchResult::Found(_)
-    ));
+    assert!(matches!(search(snapshot, start, end, true, &cancel), SearchResult::Found(_)));
 }
 
 #[test]
@@ -805,58 +679,18 @@ fn pm1_short_connections_from_selected_sources_have_bounded_precise_results() {
     let cases = [
         (BlockPos::new(118, 34, 30), BlockPos::new(115, 34, 30), None),
         (BlockPos::new(124, 34, 30), BlockPos::new(127, 34, 30), None),
-        (
-            BlockPos::new(170, 34, 36),
-            BlockPos::new(170, 34, 33),
-            Some("geometry"),
-        ),
-        (
-            BlockPos::new(190, 34, 40),
-            BlockPos::new(193, 34, 40),
-            Some("Piston movement"),
-        ),
-        (
-            BlockPos::new(64, 34, 85),
-            BlockPos::new(64, 34, 82),
-            Some("Moving geometry"),
-        ),
-        (
-            BlockPos::new(100, 34, 103),
-            BlockPos::new(100, 34, 106),
-            Some("Moving geometry"),
-        ),
+        (BlockPos::new(170, 34, 36), BlockPos::new(170, 34, 33), Some("geometry")),
+        (BlockPos::new(190, 34, 40), BlockPos::new(193, 34, 40), Some("Piston movement")),
+        (BlockPos::new(64, 34, 85), BlockPos::new(64, 34, 82), Some("Moving geometry")),
+        (BlockPos::new(100, 34, 103), BlockPos::new(100, 34, 106), Some("Moving geometry")),
         (BlockPos::new(165, 64, 71), BlockPos::new(165, 64, 74), None),
         (BlockPos::new(157, 64, 72), BlockPos::new(157, 64, 75), None),
-        (
-            BlockPos::new(145, 153, 107),
-            BlockPos::new(148, 153, 107),
-            None,
-        ),
-        (
-            BlockPos::new(149, 176, 107),
-            BlockPos::new(152, 176, 107),
-            None,
-        ),
-        (
-            BlockPos::new(157, 213, 108),
-            BlockPos::new(160, 213, 108),
-            None,
-        ),
-        (
-            BlockPos::new(160, 213, 108),
-            BlockPos::new(163, 213, 108),
-            None,
-        ),
-        (
-            BlockPos::new(167, 52, 12),
-            BlockPos::new(170, 52, 12),
-            Some("BUD/QC"),
-        ),
-        (
-            BlockPos::new(192, 96, 70),
-            BlockPos::new(195, 96, 70),
-            Some("unintended input"),
-        ),
+        (BlockPos::new(145, 153, 107), BlockPos::new(148, 153, 107), None),
+        (BlockPos::new(149, 176, 107), BlockPos::new(152, 176, 107), None),
+        (BlockPos::new(157, 213, 108), BlockPos::new(160, 213, 108), None),
+        (BlockPos::new(160, 213, 108), BlockPos::new(163, 213, 108), None),
+        (BlockPos::new(167, 52, 12), BlockPos::new(170, 52, 12), Some("BUD/QC")),
+        (BlockPos::new(192, 96, 70), BlockPos::new(195, 96, 70), Some("unintended input")),
     ];
     let mut failures = Vec::new();
     for (local_start, local_end, expected) in cases {
@@ -876,14 +710,9 @@ fn pm1_short_connections_from_selected_sources_have_bounded_precise_results() {
         let d = end - start;
         let length = d.x.abs() + d.z.abs();
         let step = BlockPos::new(d.x.signum(), 0, d.z.signum());
-        let direct: Vec<_> = (0..=length)
-            .map(|n| start + BlockPos::new(step.x * n, 0, step.z * n))
-            .collect();
+        let direct: Vec<_> = (0..=length).map(|n| start + BlockPos::new(step.x * n, 0, step.z * n)).collect();
         if let Ok(Err(reason)) = make_plan(&snapshot, &direct, &budget) {
-            eprintln!(
-                "PM1 direct {local_start}: selected={:?}; {reason}",
-                budget.selected_sources
-            );
+            eprintln!("PM1 direct {local_start}: selected={:?}; {reason}", budget.selected_sources);
         }
         let began = Instant::now();
         let result = search(snapshot, start, end, true, &AtomicBool::new(false));
@@ -924,13 +753,9 @@ fn consecutive_native_segments_extend_and_turn_along_existing_glass_supports() {
     ] {
         let snapshot = capture_world(&world, start, end);
         let path: Vec<_> = if start.z == end.z {
-            (start.x..=end.x)
-                .map(|x| BlockPos::new(x, start.y, start.z))
-                .collect()
+            (start.x..=end.x).map(|x| BlockPos::new(x, start.y, start.z)).collect()
         } else {
-            (start.z..=end.z)
-                .map(|z| BlockPos::new(start.x, start.y, z))
-                .collect()
+            (start.z..=end.z).map(|z| BlockPos::new(start.x, start.y, z)).collect()
         };
         let cancel = AtomicBool::new(false);
         let budget = Budget::new(&snapshot, start, &cancel).unwrap_or_else(|_| panic!("budget"));
@@ -1011,19 +836,11 @@ fn a_piston_beyond_the_old_halo_still_blocks_an_occupied_payload_ray() {
     );
     let snapshot = capture_world(&world, start, end);
     assert!(snapshot.data.index(piston).is_none());
-    assert!(matches!(
-        Block::from_id(snapshot.data.cell(piston).unwrap()),
-        Block::Piston { .. }
-    ));
-    let path: Vec<_> = (start.x..=end.x)
-        .map(|x| BlockPos::new(x, start.y, start.z))
-        .collect();
+    assert!(matches!(Block::from_id(snapshot.data.cell(piston).unwrap()), Block::Piston { .. }));
+    let path: Vec<_> = (start.x..=end.x).map(|x| BlockPos::new(x, start.y, start.z)).collect();
     let cancel = AtomicBool::new(false);
     let budget = Budget::new(&snapshot, start, &cancel).unwrap_or_else(|_| panic!("budget"));
-    let error = make_plan(&snapshot, &path, &budget)
-        .unwrap_or_else(|_| panic!("budget"))
-        .err()
-        .unwrap();
+    let error = make_plan(&snapshot, &path, &budget).unwrap_or_else(|_| panic!("budget")).err().unwrap();
     assert!(error.contains("Piston movement"), "{error}");
 }
 
@@ -1088,8 +905,7 @@ fn irrelevant_same_chunk_geometry_changes_refresh_the_commit_stamp() {
 #[test]
 fn incremental_capture_cannot_certify_a_mixed_time_world() {
     let mut world = empty_world();
-    let mut capture =
-        Capture::new(&world, BlockPos::new(20, 20, 20), BlockPos::new(23, 20, 20)).unwrap();
+    let mut capture = Capture::new(&world, BlockPos::new(20, 20, 20), BlockPos::new(23, 20, 20)).unwrap();
     let first = capture.data.as_ref().unwrap().bounds.0;
     assert!(capture.step(&world).unwrap().is_none());
     world.set_block(first, Block::Stone {});
@@ -1125,12 +941,7 @@ fn oracle(snapshot: &Snapshot, path: &mut Vec<BlockPos>, end: BlockPos) -> bool 
         let budget = Budget::new(snapshot, path[0], &cancel).unwrap_or_else(|_| panic!("budget"));
         return matches!(make_plan(snapshot, path, &budget), Ok(Ok(_)));
     }
-    for side in [
-        BlockFace::East,
-        BlockFace::West,
-        BlockFace::North,
-        BlockFace::South,
-    ] {
+    for side in [BlockFace::East, BlockFace::West, BlockFace::North, BlockFace::South] {
         let next = pos.offset(side);
         if !contains(snapshot.data.route_bounds, next) || path.contains(&next) {
             continue;
@@ -1165,22 +976,9 @@ fn astar_matches_exhaustive_tiny_world_oracle_for_every_obstacle_layout() {
         let snapshot = snapshot((start, end), &obstacles);
         let expected = oracle(&snapshot, &mut vec![start], end);
         for prefer_x in [false, true] {
-            let result = search(
-                snapshot.clone(),
-                start,
-                end,
-                prefer_x,
-                &AtomicBool::new(false),
-            );
-            assert!(
-                !matches!(result, SearchResult::BudgetExceeded),
-                "tiny layout {mask} exceeded budget"
-            );
-            assert_eq!(
-                matches!(result, SearchResult::Found(_)),
-                expected,
-                "layout {mask}, prefer_x {prefer_x}"
-            );
+            let result = search(snapshot.clone(), start, end, prefer_x, &AtomicBool::new(false));
+            assert!(!matches!(result, SearchResult::BudgetExceeded), "tiny layout {mask} exceeded budget");
+            assert_eq!(matches!(result, SearchResult::Found(_)), expected, "layout {mask}, prefer_x {prefer_x}");
         }
     }
 }
@@ -1191,12 +989,8 @@ fn astar_routes_around_unselected_wire_contacts_and_consumer_inputs() {
     let end = BlockPos::new(25, 20, 22);
     let obstacle = BlockPos::new(22, 20, 22);
     for block in [plain_wire(), Block::RedstoneLamp { lit: false }] {
-        let snapshot = snapshot(
-            (BlockPos::new(20, 20, 20), BlockPos::new(25, 20, 24)),
-            &[(obstacle, block)],
-        );
-        let SearchResult::Found(plan) = search(snapshot, start, end, true, &AtomicBool::new(false))
-        else {
+        let snapshot = snapshot((BlockPos::new(20, 20, 20), BlockPos::new(25, 20, 24)), &[(obstacle, block)]);
+        let SearchResult::Found(plan) = search(snapshot, start, end, true, &AtomicBool::new(false)) else {
             panic!("No safe detour around {block:?}")
         };
         assert!(plan.path.iter().all(|&p| {
@@ -1214,30 +1008,20 @@ fn oversized_direct_candidate_does_not_hide_a_supported_detour() {
     let gaps: Vec<_> = (start.x + 1..end.x)
         .map(|x| (BlockPos::new(x, start.y - 1, start.z), Block::Air {}))
         .collect();
-    let snapshot = snapshot(
-        (start - BlockPos::new(0, 0, 1), end + BlockPos::new(0, 0, 1)),
-        &gaps,
-    );
+    let snapshot = snapshot((start - BlockPos::new(0, 0, 1), end + BlockPos::new(0, 0, 1)), &gaps);
     let cancel = AtomicBool::new(false);
     let budget = Budget::new(&snapshot, start, &cancel).unwrap_or_else(|_| panic!("budget"));
-    let direct: Vec<_> = (start.x..=end.x)
-        .map(|x| BlockPos::new(x, start.y, start.z))
-        .collect();
+    let direct: Vec<_> = (start.x..=end.x).map(|x| BlockPos::new(x, start.y, start.z)).collect();
     let direct = proposed(&snapshot, &direct, &budget).unwrap();
     assert!(direct.supports.len() + direct.dust.len() > MAX_PLACEMENTS);
 
     let mut detour = vec![start];
     detour.extend((start.x..=end.x).map(|x| BlockPos::new(x, start.y, start.z + 1)));
     detour.push(end);
-    let plan = make_plan(&snapshot, &detour, &budget)
-        .unwrap_or_else(|_| panic!("budget"))
-        .unwrap();
+    let plan = make_plan(&snapshot, &detour, &budget).unwrap_or_else(|_| panic!("budget")).unwrap();
     assert_eq!(plan.placements.len(), 260);
 
-    assert!(matches!(
-        search(snapshot, start, end, true, &cancel),
-        SearchResult::Found(_)
-    ));
+    assert!(matches!(search(snapshot, start, end, true, &cancel), SearchResult::Found(_)));
 }
 
 #[test]
@@ -1245,24 +1029,12 @@ fn cancellation_and_placement_budget_have_distinct_results() {
     let start = BlockPos::new(20, 20, 20);
     let end = BlockPos::new(23, 20, 20);
     assert!(matches!(
-        search(
-            snapshot((start, end), &[]),
-            start,
-            end,
-            true,
-            &AtomicBool::new(true)
-        ),
+        search(snapshot((start, end), &[]), start, end, true, &AtomicBool::new(true)),
         SearchResult::Cancelled
     ));
     let far = BlockPos::new(22 + MAX_PLACEMENTS as i32, 20, 20);
     assert!(matches!(
-        search(
-            snapshot((start, end), &[]),
-            start,
-            far,
-            true,
-            &AtomicBool::new(false)
-        ),
+        search(snapshot((start, end), &[]), start, far, true, &AtomicBool::new(false)),
         SearchResult::BudgetExceeded
     ));
 }

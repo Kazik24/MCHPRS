@@ -5,9 +5,7 @@ use crate::world::storage::Chunk;
 use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneRepeater, RedstoneWire, SlabType};
 
 fn world() -> PlotWorld {
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
 
@@ -47,10 +45,7 @@ fn threshold_power_matches_analog_queries_for_every_registry_state_and_face() {
                     },
                 },
             );
-            assert_eq!(
-                get_redstone_power(Block::Stone {}, &w, pos, BlockFace::Top),
-                255
-            );
+            assert_eq!(get_redstone_power(Block::Stone {}, &w, pos, BlockFace::Top), 255);
         }
         for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
             let block = Block::from_id(id);
@@ -95,27 +90,12 @@ fn wire_shape_keeps_raw_cross_guard_and_climbing_connection() {
     assert_eq!(wire::get_regulated_sides(dot, &w, pos), straight);
     // Recomputing the raw south side yields None, even though regulation adds
     // a south arm. The original cross must be retained in this case.
-    assert_eq!(
-        wire::on_neighbor_changed(cross, &w, pos, BlockFace::North),
-        cross
-    );
-    assert_eq!(
-        wire::on_neighbor_changed(cross, &w, pos, BlockFace::South),
-        straight
-    );
+    assert_eq!(wire::on_neighbor_changed(cross, &w, pos, BlockFace::North), cross);
+    assert_eq!(wire::on_neighbor_changed(cross, &w, pos, BlockFace::South), straight);
     w.set_block(north, Block::Stone {});
-    w.set_block(
-        north.offset(BlockFace::Top),
-        Block::RedstoneWire { wire: dot },
-    );
-    let climbing = RedstoneWire {
-        north: Up,
-        ..straight
-    };
-    assert_eq!(
-        wire::on_neighbor_changed(cross, &w, pos, BlockFace::South),
-        climbing
-    );
+    w.set_block(north.offset(BlockFace::Top), Block::RedstoneWire { wire: dot });
+    let climbing = RedstoneWire { north: Up, ..straight };
+    assert_eq!(wire::on_neighbor_changed(cross, &w, pos, BlockFace::South), climbing);
     w.set_block(pos.offset(BlockFace::Top), Block::Stone {});
     assert_eq!(wire::get_regulated_sides(dot, &w, pos), dot);
 }
@@ -142,11 +122,7 @@ fn repeater_short_pulse_ends_after_selected_delay() {
             world.tick_interpreted();
             trace.push(matches!(world.get_block(pos), Block::RedstoneRepeater { repeater } if repeater.powered));
         }
-        assert_eq!(
-            trace.iter().filter(|&&v| v).count(),
-            delay as usize * 2,
-            "delay {delay}: {trace:?}"
-        );
+        assert_eq!(trace.iter().filter(|&&v| v).count(), delay as usize * 2, "delay {delay}: {trace:?}");
         assert_eq!(trace.last(), Some(&false));
     }
 }
@@ -189,15 +165,8 @@ fn compiled_handoff_preserves_pending_short_pulse() {
             compiler.flush(&mut world);
             trace.push(world.get_block(output) == Block::RedstoneLamp { lit: true });
         }
-        assert!(
-            trace.contains(&true),
-            "pulse was optimized away: {options}: {trace:?}"
-        );
-        assert_eq!(
-            trace.last(),
-            Some(&false),
-            "pulse stuck on: {options}: {trace:?}"
-        );
+        assert!(trace.contains(&true), "pulse was optimized away: {options}: {trace:?}");
+        assert_eq!(trace.last(), Some(&false), "pulse stuck on: {options}: {trace:?}");
     }
 }
 
@@ -253,14 +222,8 @@ fn all_binary_plate_variants_power_and_survive_compiler_flush() {
         assert_eq!(plate.pressure_plate_powered(), Some(false), "{name}");
         let powered = plate.with_pressure_plate_power(true).unwrap();
         assert_eq!(powered.get_name(), name);
-        assert_eq!(
-            get_weak_power(powered, &world, pos, BlockFace::West, false),
-            15
-        );
-        assert_eq!(
-            get_strong_power(powered, &world, pos, BlockFace::Top, false),
-            15
-        );
+        assert_eq!(get_weak_power(powered, &world, pos, BlockFace::West, false), 15);
+        assert_eq!(get_strong_power(powered, &world, pos, BlockFace::Top, false), 15);
         world.set_block(pos, plate);
         let mut compiler = Compiler::default();
         compiler
@@ -274,11 +237,7 @@ fn all_binary_plate_variants_power_and_survive_compiler_flush() {
             .unwrap();
         compiler.set_pressure_plate(pos, true);
         compiler.flush(&mut world);
-        assert_eq!(
-            world.get_block(pos).pressure_plate_powered(),
-            Some(true),
-            "{name}"
-        );
+        assert_eq!(world.get_block(pos).pressure_plate_powered(), Some(true), "{name}");
         assert_eq!(world.get_block(pos).get_name(), name);
     }
 }
@@ -323,30 +282,16 @@ fn slab_tops_support_dust_without_conducting_to_the_lamp_below() {
         "cut_copper_slab",
         "tuff_slab",
     ] {
-        let slab = Block::from_name(name)
-            .unwrap()
-            .with_slab_type(SlabType::Top)
-            .unwrap();
+        let slab = Block::from_name(name).unwrap().with_slab_type(SlabType::Top).unwrap();
         world.set_block(support, slab);
-        assert!(
-            crate::interaction::is_valid_position(world.get_block(dust), &world, dust),
-            "{name}"
-        );
-        assert_eq!(
-            get_redstone_power(slab, &world, support, BlockFace::Bottom),
-            0,
-            "{name}"
-        );
+        assert!(crate::interaction::is_valid_position(world.get_block(dust), &world, dust), "{name}");
+        assert_eq!(get_redstone_power(slab, &world, support, BlockFace::Bottom), 0, "{name}");
         assert!(!redstone_lamp_should_be_lit(&world, lamp), "{name}");
     }
     for name in ["iron_block", "dirt", "netherite_block"] {
         let block = Block::from_name(name).unwrap();
         world.set_block(support, block);
-        assert_eq!(
-            get_redstone_power(block, &world, support, BlockFace::Bottom),
-            15,
-            "{name}"
-        );
+        assert_eq!(get_redstone_power(block, &world, support, BlockFace::Bottom), 15, "{name}");
         assert!(redstone_lamp_should_be_lit(&world, lamp), "{name}");
     }
 }
@@ -356,12 +301,7 @@ fn downward_piston_dust_step_only_transmits_upward() {
     use mchprs_blocks::blocks::RedstonePiston;
     // Exercise ordinary power calculation at placement and the subsequent Turbo
     // walk, for all horizontal directions and both piston variants/states.
-    for direction in [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::West,
-        BlockFace::East,
-    ] {
+    for direction in [BlockFace::North, BlockFace::South, BlockFace::West, BlockFace::East] {
         for sticky in [false, true] {
             for extended in [false, true] {
                 for upward in [false, true] {
@@ -399,11 +339,7 @@ fn downward_piston_dust_step_only_transmits_upward() {
                             wire: wire::get_state_for_placement(&world, output),
                         },
                     );
-                    assert!(crate::interaction::is_valid_position(
-                        world.get_block(high),
-                        &world,
-                        high
-                    ));
+                    assert!(crate::interaction::is_valid_position(world.get_block(high), &world, high));
                     let expected = if upward { 14 } else { 0 };
                     assert!(
                         matches!(world.get_block(output), Block::RedstoneWire { wire } if wire.power == expected),
@@ -415,12 +351,7 @@ fn downward_piston_dust_step_only_transmits_upward() {
                         world.set_block(source, power);
                         update(world.get_block(input), &mut world, input, None);
                         assert_eq!(
-                            get_redstone_power(
-                                world.get_block(step),
-                                &world,
-                                step,
-                                BlockFace::Bottom
-                            ),
+                            get_redstone_power(world.get_block(step), &world, step, BlockFace::Bottom),
                             0,
                             "the piston must not conduct dust power through its base"
                         );
@@ -503,11 +434,7 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
                     "{name}: {backend}"
                 );
             }
-            assert_eq!(
-                world.get_block(lamp),
-                Block::RedstoneLamp { lit: true },
-                "{name}: {backend}"
-            );
+            assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true }, "{name}: {backend}");
         }
     }
 }

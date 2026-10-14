@@ -96,11 +96,7 @@ impl PlotWorld {
             for pos in moving {
                 let state = self.screen_state(pos);
                 if Block::from_id(state).is_screen() {
-                    self.screen_updates
-                        .as_mut()
-                        .unwrap()
-                        .visible
-                        .insert(pos, state);
+                    self.screen_updates.as_mut().unwrap().visible.insert(pos, state);
                 }
             }
         }
@@ -144,8 +140,7 @@ impl PlotWorld {
             };
             for pos in positions {
                 let state = self.screen_state(pos);
-                if updates.forced.remove(&pos) || updates.visible.get(&pos).copied() != Some(state)
-                {
+                if updates.forced.remove(&pos) || updates.visible.get(&pos).copied() != Some(state) {
                     packet.records.push(C3BMultiBlockChangeRecord {
                         block_id: state,
                         x: (pos.x & 15) as u8,
@@ -183,9 +178,7 @@ mod tests {
     use crate::plot::client_test_utils::{read_ack, read_blocks};
     use crate::world::storage::Chunk;
     use mchprs_blocks::blocks::{RedstoneMovingPiston, RedstoneWire};
-    use mchprs_network::{
-        BlockActionAcknowledgement, PlayerPacketSender, test_support::connection,
-    };
+    use mchprs_network::{BlockActionAcknowledgement, PlayerPacketSender, test_support::connection};
 
     #[test]
     fn external_placement_and_removal_reach_clients_before_ack_in_screen_mode() {
@@ -193,12 +186,7 @@ mod tests {
             let mut w = world();
             let wire = BlockPos::new(5, 5, 5);
             let edited = BlockPos::new(32, 20, 32);
-            w.set_block(
-                wire,
-                Block::RedstoneWire {
-                    wire: Default::default(),
-                },
-            );
+            w.set_block(wire, Block::RedstoneWire { wire: Default::default() });
             w.set_screen_only(true);
             let conn = connection(compressed).unwrap();
             let mut peer = conn.peer;
@@ -225,10 +213,7 @@ mod tests {
                 w.flush_block_changes();
                 w.set_authoritative_updates(previous);
                 drop(ack);
-                assert_eq!(
-                    read_blocks(&mut peer, compressed),
-                    [(edited, block.get_id())]
-                );
+                assert_eq!(read_blocks(&mut peer, compressed), [(edited, block.get_id())]);
                 read_ack(&mut peer, compressed, sequence);
             }
 
@@ -253,9 +238,7 @@ mod tests {
         PlotWorld::from_chunks(
             0,
             0,
-            (0..PLOT_WIDTH)
-                .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-                .collect(),
+            (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
             Default::default(),
         )
     }
@@ -272,14 +255,8 @@ mod tests {
             let next = bulb.with_copper_bulb_state(lit, powered).unwrap();
             world.set_block(pos, next);
             world.flush_block_changes();
-            assert_eq!(
-                world.visual_update_counts(),
-                (previous.0 + 1, previous.1 + 1, previous.2 + 1)
-            );
-            assert_eq!(
-                world.screen_updates.as_ref().unwrap().visible[&pos],
-                next.get_id()
-            );
+            assert_eq!(world.visual_update_counts(), (previous.0 + 1, previous.1 + 1, previous.2 + 1));
+            assert_eq!(world.screen_updates.as_ref().unwrap().visible[&pos], next.get_id());
         }
     }
 
@@ -310,14 +287,8 @@ mod tests {
         assert_eq!(w.visual_update_counts(), before);
         w.set_block(lamp, Block::RedstoneLamp { lit: true });
         w.flush_block_changes();
-        assert_eq!(
-            w.visual_update_counts(),
-            (before.0 + 1, before.1 + 1, before.2 + 1)
-        );
-        assert_eq!(
-            w.screen_updates.as_ref().unwrap().visible[&lamp],
-            w.get_block_raw(lamp)
-        );
+        assert_eq!(w.visual_update_counts(), (before.0 + 1, before.1 + 1, before.2 + 1));
+        assert_eq!(w.screen_updates.as_ref().unwrap().visible[&lamp], w.get_block_raw(lamp));
         assert_eq!(
             w.get_block(wire),
             Block::RedstoneWire {

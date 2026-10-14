@@ -1,4 +1,4 @@
-//! Opt-in local power queries for a private two- or three-wire horizontal path.
+//! Local power queries for a private two- or three-wire horizontal path.
 //!
 //! Why: seed and Turbo recalculation repeatedly sample all six neighbors and then
 //! inspect up to eight extra wire sites. What: attach an immutable path certificate
@@ -16,15 +16,13 @@
 //! last by default and later enabled passes invalidate its certificates. Cost: one
 //! bounded scan of wire components and their compiled neighborhoods per compile;
 //! each accepted seed/Turbo query replaces six site-power samples with one. This
-//! pass is experimental: it is an O1 entry selected only with
-//! `--experimental-dust-paths`, never by `--optimize` alone.
+//! pass runs with the other O1 transformations.
 
 use super::{GraphPass, PassContext};
 use crate::redpiler::PreparationTableStatistics;
 use crate::redpiler::program_graph::{
-    CallbackReceiver, CircuitNodeKind, ComparatorOverride, CompileGraph, ComponentState,
-    DeliveryKind, DustPathPlan, EntryState, Guard, InputPort, PowerPort, PowerTarget,
-    ProfileElectrical, SiteId, SiteSource, WireRelationKind,
+    CallbackReceiver, CircuitNodeKind, ComparatorOverride, CompileGraph, ComponentState, DeliveryKind, DustPathPlan, EntryState, Guard, InputPort,
+    PowerPort, PowerTarget, ProfileElectrical, SiteId, SiteSource, WireRelationKind,
 };
 use mchprs_blocks::BlockFace;
 use mchprs_blocks::blocks::Block;
@@ -40,20 +38,14 @@ impl GraphPass for ContractDustPaths {
     }
 
     fn validate_input(&self, graph: &CompileGraph) -> Result<(), String> {
-        graph
-            .validate()
-            .map_err(|error| format!("dust path input graph is invalid: {error}"))
+        graph.validate().map_err(|error| format!("dust path input graph is invalid: {error}"))
     }
 
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
         let mut report = CandidateReport::default();
         let candidates = discover_wire_components(graph);
         report.candidates = candidates.len();
-        let already_assigned: FxHashSet<_> = graph
-            .dust_paths
-            .iter()
-            .flat_map(|path| path.wires.iter().copied())
-            .collect();
+        let already_assigned: FxHashSet<_> = graph.dust_paths.iter().flat_map(|path| path.wires.iter().copied()).collect();
         let mut accepted = Vec::new();
 
         for (index, component) in candidates.into_iter().enumerate() {
@@ -66,10 +58,7 @@ impl GraphPass for ContractDustPaths {
                 #[cfg(feature = "graph-profile")]
                 context.monitor.record_dust_candidate_wires(
                     component_len,
-                    &component
-                        .iter()
-                        .filter_map(|node| graph.nodes[node.index()].position)
-                        .collect::<Vec<_>>(),
+                    &component.iter().filter_map(|node| graph.nodes[node.index()].position).collect::<Vec<_>>(),
                 );
             }
             if component.iter().any(|node| already_assigned.contains(node)) {
@@ -82,10 +71,7 @@ impl GraphPass for ContractDustPaths {
             match certify_candidate(graph, &context.entry, component) {
                 Ok(plan) if plan.wires.len() > 3 => {
                     // Keep the current runtime bound while measuring the wider proof's coverage.
-                    *report
-                        .long_otherwise_eligible
-                        .entry(plan.wires.len())
-                        .or_default() += 1;
+                    *report.long_otherwise_eligible.entry(plan.wires.len()).or_default() += 1;
                     report.decline(DeclineReason::TooLong);
                     report.decline_long(component_len, DeclineReason::TooLong);
                 }
@@ -110,6 +96,14 @@ impl GraphPass for ContractDustPaths {
         report.record(context.monitor);
         graph.dust_paths.extend(accepted);
         Ok(())
+    }
+
+    fn preserves_dust_paths(&self) -> bool {
+        true
+    }
+
+    fn preserves_turbo_callback_indices(&self) -> bool {
+        true
     }
 }
 
@@ -138,41 +132,23 @@ impl CandidateReport {
             report_table("candidate groups", self.candidates),
             report_table("accepted paths", self.accepted),
             report_table("covered wires", self.covered_wires),
-            report_table(
-                "long paths passing all other checks",
-                self.long_otherwise_eligible.values().sum(),
-            ),
+            report_table("long paths passing all other checks", self.long_otherwise_eligible.values().sum()),
             report_table(
                 "wires in those long paths",
-                self.long_otherwise_eligible
-                    .iter()
-                    .map(|(length, count)| length * count)
-                    .sum(),
+                self.long_otherwise_eligible.iter().map(|(length, count)| length * count).sum(),
             ),
         ];
         for (&length, &count) in &self.long_candidates {
-            tables.push(report_table(
-                format!("long candidate length {length}"),
-                count,
-            ));
+            tables.push(report_table(format!("long candidate length {length}"), count));
         }
         for (&length, &count) in &self.long_otherwise_eligible {
-            tables.push(report_table(
-                format!("otherwise eligible length {length}"),
-                count,
-            ));
+            tables.push(report_table(format!("otherwise eligible length {length}"), count));
         }
         for (&(length, reason), &count) in &self.long_declines {
-            tables.push(report_table(
-                format!("length {length}: {}", reason.table()),
-                count,
-            ));
+            tables.push(report_table(format!("length {length}: {}", reason.table()), count));
         }
         for reason in DeclineReason::ALL {
-            tables.push(report_table(
-                reason.table(),
-                self.declines.get(&reason).copied().unwrap_or(0),
-            ));
+            tables.push(report_table(reason.table(), self.declines.get(&reason).copied().unwrap_or(0)));
         }
         monitor.record_preparation_tables(tables);
     }
@@ -250,24 +226,16 @@ impl DeclineReason {
     }
 }
 
-fn discover_wire_components(
-    graph: &CompileGraph,
-) -> Vec<Vec<crate::redpiler::program_graph::NodeId>> {
+fn discover_wire_components(graph: &CompileGraph) -> Vec<Vec<crate::redpiler::program_graph::NodeId>> {
     let mut wire_at = FxHashMap::default();
     for (index, node) in graph.nodes.iter().enumerate() {
         if matches!(node.kind, CircuitNodeKind::Wire(_)) {
             if let Some(position) = node.position {
-                wire_at.insert(
-                    position,
-                    crate::redpiler::program_graph::NodeId::new(index as u32),
-                );
+                wire_at.insert(position, crate::redpiler::program_graph::NodeId::new(index as u32));
             }
         }
     }
-    let mut starts: Vec<_> = wire_at
-        .iter()
-        .map(|(position, node)| (*position, *node))
-        .collect();
+    let mut starts: Vec<_> = wire_at.iter().map(|(position, node)| (*position, *node)).collect();
     starts.sort_by_key(|(position, _)| (position.y, position.z, position.x));
     let mut visited = FxHashSet::default();
     let mut components = Vec::new();
@@ -280,12 +248,7 @@ fn discover_wire_components(
         while let Some(node) = queue.pop_front() {
             component.push(node);
             let position = graph.nodes[node.index()].position.unwrap();
-            for face in [
-                BlockFace::North,
-                BlockFace::South,
-                BlockFace::East,
-                BlockFace::West,
-            ] {
+            for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
                 if let Some(next) = wire_at.get(&position.offset(face)).copied()
                     && visited.insert(next)
                 {
@@ -319,22 +282,13 @@ fn certify_candidate(
     let mut adjacency: FxHashMap<NodeId, Vec<NodeId>> = FxHashMap::default();
     for &node in &component {
         let position = graph.nodes[node.index()].position.unwrap();
-        let neighbors: Vec<_> = [
-            BlockFace::North,
-            BlockFace::South,
-            BlockFace::East,
-            BlockFace::West,
-        ]
-        .into_iter()
-        .filter_map(|face| positions.get(&position.offset(face)).copied())
-        .collect();
+        let neighbors: Vec<_> = [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West]
+            .into_iter()
+            .filter_map(|face| positions.get(&position.offset(face)).copied())
+            .collect();
         adjacency.insert(node, neighbors);
     }
-    let endpoints: Vec<_> = component
-        .iter()
-        .copied()
-        .filter(|node| adjacency[node].len() == 1)
-        .collect();
+    let endpoints: Vec<_> = component.iter().copied().filter(|node| adjacency[node].len() == 1).collect();
     if endpoints.len() != 2 || adjacency.values().any(|neighbors| neighbors.len() > 2) {
         return Err(DeclineReason::BranchOrBend);
     }
@@ -344,10 +298,7 @@ fn certify_candidate(
     let mut current = endpoints[0];
     while ordered.len() < component.len() {
         ordered.push(current);
-        let next = adjacency[&current]
-            .iter()
-            .copied()
-            .find(|node| Some(*node) != previous);
+        let next = adjacency[&current].iter().copied().find(|node| Some(*node) != previous);
         let Some(next) = next else { break };
         previous = Some(current);
         current = next;
@@ -369,8 +320,7 @@ fn certify_candidate(
     for pair in ordered.windows(2) {
         let a = graph.nodes[pair[0].index()].position.unwrap();
         let b = graph.nodes[pair[1].index()].position.unwrap();
-        if (axis == 0 && (a.y != b.y || (b.x - a.x).abs() != 1 || a.z != b.z))
-            || (axis == 1 && (a.y != b.y || (b.z - a.z).abs() != 1 || a.x != b.x))
+        if (axis == 0 && (a.y != b.y || (b.x - a.x).abs() != 1 || a.z != b.z)) || (axis == 1 && (a.y != b.y || (b.z - a.z).abs() != 1 || a.x != b.x))
         {
             return Err(DeclineReason::BranchOrBend);
         }
@@ -386,9 +336,7 @@ fn certify_candidate(
         for &site in &wire.canonical_neighbors {
             neighborhood.insert(site);
             let site_position = graph.sites[site.index()].position;
-            let direct_distance = (position.x - site_position.x).abs()
-                + (position.y - site_position.y).abs()
-                + (position.z - site_position.z).abs();
+            let direct_distance = (position.x - site_position.x).abs() + (position.y - site_position.y).abs() + (position.z - site_position.z).abs();
             match graph.sites[site.index()].source {
                 SiteSource::Contact(_) => return Err(DeclineReason::DynamicContact),
                 SiteSource::Component(other) if !members.contains(&other) => {
@@ -402,10 +350,7 @@ fn certify_candidate(
                     if matches!(block, Block::RedstoneWire { .. }) {
                         return Err(DeclineReason::NearbyWire);
                     }
-                    if direct_distance == 1
-                        && (profile.electrical != ProfileElectrical::None
-                            || graph.sites[site.index()].source_strength > 0)
-                    {
+                    if direct_distance == 1 && (profile.electrical != ProfileElectrical::None || graph.sites[site.index()].source_strength > 0) {
                         return Err(DeclineReason::ExtraComponent);
                     }
                 }
@@ -422,9 +367,8 @@ fn certify_candidate(
         };
         for &site in &graph.wires[wire_index].canonical_neighbors {
             let site_position = graph.sites[site.index()].position;
-            let distance = (wire_position.x - site_position.x).abs()
-                + (wire_position.y - site_position.y).abs()
-                + (wire_position.z - site_position.z).abs();
+            let distance =
+                (wire_position.x - site_position.x).abs() + (wire_position.y - site_position.y).abs() + (wire_position.z - site_position.z).abs();
             if distance != 1 {
                 continue;
             }
@@ -439,17 +383,11 @@ fn certify_candidate(
         return Err(DeclineReason::NoSingleInput);
     }
     let (&input_node, &input_site) = direct_component_sites.iter().next().unwrap();
-    if !matches!(
-        graph.nodes[input_node.index()].kind,
-        CircuitNodeKind::Electrical(_)
-    ) || graph.nodes[input_node.index()].raw_state.is_none()
-    {
+    if !matches!(graph.nodes[input_node.index()].kind, CircuitNodeKind::Electrical(_)) || graph.nodes[input_node.index()].raw_state.is_none() {
         return Err(DeclineReason::NoSingleInput);
     }
 
-    let input_position = graph.nodes[input_node.index()]
-        .position
-        .ok_or(DeclineReason::NoSingleInput)?;
+    let input_position = graph.nodes[input_node.index()].position.ok_or(DeclineReason::NoSingleInput)?;
     let mut input_candidates = Vec::new();
     for &endpoint in &endpoints {
         let position = graph.nodes[endpoint.index()].position.unwrap();
@@ -466,15 +404,7 @@ fn certify_candidate(
     if ordered[0] != root {
         ordered.reverse();
     }
-    certify_power_inputs(
-        graph,
-        &members,
-        &neighborhood,
-        root,
-        input_node,
-        input_site,
-        input_face,
-    )?;
+    certify_power_inputs(graph, &members, &neighborhood, root, input_node, input_site, input_face)?;
     certify_external_readers(graph, &members, &neighborhood)?;
     certify_callbacks(graph, &members, root, input_node)?;
     certify_wire_geometry(graph, &ordered)?;
@@ -512,31 +442,22 @@ fn certify_power_inputs(
                             || link.attenuation != 1
                             || graph.guards.get(link.guard.index()) != Some(&Guard::Always)
                             || b.offset(link.face) != a
-                            || ![
-                                BlockFace::North,
-                                BlockFace::South,
-                                BlockFace::East,
-                                BlockFace::West,
-                            ]
-                            .into_iter()
-                            .any(|face| a.offset(face) == b)
+                            || ![BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West]
+                                .into_iter()
+                                .any(|face| a.offset(face) == b)
                         {
                             return Err(DeclineReason::OtherPowerInput);
                         }
                     }
                     SiteSource::Constant(_)
-                        if matches!(
-                            link.from_port,
-                            PowerPort::Conducted {
-                                include_dust: false
-                            }
-                        ) && !graph.power_links.iter().any(|candidate| {
-                            candidate.to
-                                == (PowerTarget::Conductor {
-                                    site: link.from,
-                                    include_dust: false,
-                                })
-                        }) =>
+                        if matches!(link.from_port, PowerPort::Conducted { include_dust: false })
+                            && !graph.power_links.iter().any(|candidate| {
+                                candidate.to
+                                    == (PowerTarget::Conductor {
+                                        site: link.from,
+                                        include_dust: false,
+                                    })
+                            }) =>
                     {
                         // The compiled support-block conductor has no incoming power links.
                     }
@@ -562,15 +483,10 @@ fn certify_power_inputs(
                     return Err(DeclineReason::ExternalPowerReader);
                 }
             }
-            PowerTarget::Conductor { site, .. }
-                if neighborhood.contains(&site)
-                    && !graph.sites[link.from.index()].source.is_path_node(members) =>
-            {
+            PowerTarget::Conductor { site, .. } if neighborhood.contains(&site) && !graph.sites[link.from.index()].source.is_path_node(members) => {
                 return Err(DeclineReason::ConductedInput);
             }
-            PowerTarget::Conductor { .. }
-                if graph.sites[link.from.index()].source.is_path_node(members) =>
-            {
+            PowerTarget::Conductor { .. } if graph.sites[link.from.index()].source.is_path_node(members) => {
                 return Err(DeclineReason::ExternalPowerReader);
             }
             _ => {}
@@ -625,9 +541,7 @@ fn certify_callbacks(
         for delivery in route.deliveries.iter() {
             let source = graph.sites[delivery.target.index()].source;
             let receiver = delivery.receiver.or_else(|| match (source, delivery.kind) {
-                (SiteSource::Component(node), DeliveryKind::Update { .. }) => {
-                    Some(CallbackReceiver::Component(node))
-                }
+                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
                 _ => None,
             });
             if route.source == input_node
@@ -638,9 +552,7 @@ fn certify_callbacks(
             }
             match receiver {
                 Some(CallbackReceiver::Component(node)) if members.contains(&node) => {
-                    if !source_is_path && route.source != input_node
-                        || matches!(delivery.kind, DeliveryKind::Shape { .. })
-                    {
+                    if !source_is_path && route.source != input_node || matches!(delivery.kind, DeliveryKind::Shape { .. }) {
                         return Err(DeclineReason::ExternalCallback);
                     }
                 }
@@ -650,11 +562,7 @@ fn certify_callbacks(
                         return Err(DeclineReason::ExternalCallback);
                     }
                 }
-                Some(
-                    CallbackReceiver::PistonBase(_)
-                    | CallbackReceiver::PistonHead(_)
-                    | CallbackReceiver::Contact(_),
-                ) if source_is_path => {
+                Some(CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) | CallbackReceiver::Contact(_)) if source_is_path => {
                     return Err(DeclineReason::DynamicContact);
                 }
                 _ => {}
@@ -667,10 +575,7 @@ fn certify_callbacks(
     Ok(())
 }
 
-fn certify_wire_geometry(
-    graph: &CompileGraph,
-    ordered: &[crate::redpiler::program_graph::NodeId],
-) -> Result<(), DeclineReason> {
+fn certify_wire_geometry(graph: &CompileGraph, ordered: &[crate::redpiler::program_graph::NodeId]) -> Result<(), DeclineReason> {
     let members: FxHashSet<_> = ordered.iter().copied().collect();
     let mut profile_blocks = Vec::with_capacity(graph.profiles.len());
     for profile in &graph.profiles {
@@ -680,10 +585,8 @@ fn certify_wire_geometry(
         if !members.contains(&relation.from) {
             continue;
         }
-        if matches!(
-            relation.kind,
-            WireRelationKind::Ascend | WireRelationKind::Descend
-        ) && matches!(graph.sites[relation.to.index()].source, SiteSource::Component(node) if members.contains(&node))
+        if matches!(relation.kind, WireRelationKind::Ascend | WireRelationKind::Descend)
+            && matches!(graph.sites[relation.to.index()].source, SiteSource::Component(node) if members.contains(&node))
         {
             return Err(DeclineReason::NearbyWire);
         }
@@ -704,12 +607,10 @@ fn certify_wire_geometry(
         for (index, &site) in wire_plan.canonical_neighbors.iter().enumerate() {
             neighbors[index] = match graph.sites[site.index()].source {
                 SiteSource::Constant(profile) => profile_blocks[profile.index()],
-                SiteSource::Component(other) if members.contains(&other) => {
-                    match graph.nodes[other.index()].state {
-                        ComponentState::Wire(wire) => Block::RedstoneWire { wire },
-                        _ => return Err(DeclineReason::BranchOrBend),
-                    }
-                }
+                SiteSource::Component(other) if members.contains(&other) => match graph.nodes[other.index()].state {
+                    ComponentState::Wire(wire) => Block::RedstoneWire { wire },
+                    _ => return Err(DeclineReason::BranchOrBend),
+                },
                 SiteSource::Component(other) => graph.nodes[other.index()]
                     .raw_state
                     .map(Block::from_id)
@@ -742,21 +643,11 @@ fn certify_entry_state(
             return Err(DeclineReason::StaleWireState);
         }
     }
-    let wire_positions: FxHashMap<_, _> = ordered
-        .iter()
-        .map(|node| (graph.nodes[node.index()].position.unwrap(), *node))
-        .collect();
+    let wire_positions: FxHashMap<_, _> = ordered.iter().map(|node| (graph.nodes[node.index()].position.unwrap(), *node)).collect();
     for tick in &entry.pending_ticks {
         if let Some(&node) = wire_positions.get(&tick.tick.pos) {
-            let expected = graph.nodes[node.index()]
-                .raw_state
-                .map(|state| Block::from_id(state).registry_id());
-            if tick.current_registry_type != expected
-                || tick
-                    .tick
-                    .block_type
-                    .is_some_and(|block_type| Some(block_type) != expected)
-            {
+            let expected = graph.nodes[node.index()].raw_state.map(|state| Block::from_id(state).registry_id());
+            if tick.current_registry_type != expected || tick.tick.block_type.is_some_and(|block_type| Some(block_type) != expected) {
                 return Err(DeclineReason::UnsupportedPendingWork);
             }
         }
@@ -785,8 +676,7 @@ mod tests {
     use crate::world::storage::Chunk;
     use mchprs_blocks::block_entities::BlockEntity;
     use mchprs_blocks::blocks::{
-        ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver, RedstonePiston,
-        RedstoneWire, RedstoneWireSide,
+        ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver, RedstonePiston, RedstoneWire, RedstoneWireSide,
     };
     use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 
@@ -836,26 +726,16 @@ mod tests {
         world.set_block(
             INPUT,
             Block::RedstoneComparator {
-                comparator: RedstoneComparator::new(
-                    BlockDirection::West,
-                    ComparatorMode::Compare,
-                    false,
-                ),
+                comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Compare, false),
             },
         );
-        world.set_block_entity(
-            INPUT,
-            BlockEntity::Comparator {
-                output_strength: 15,
-            },
-        );
+        world.set_block_entity(INPUT, BlockEntity::Comparator { output_strength: 15 });
         world
     }
 
     fn run_pass(world: &PlotWorld, ticks: Vec<mchprs_world::TickEntry>) -> rich::PreparedGraph {
         let monitor = TaskMonitor::default();
-        let mut prepared = rich::prepare(world, BOUNDS, ticks, &monitor, AnalysisLimits::default())
-            .expect("dust fixture should parse");
+        let mut prepared = rich::prepare(world, BOUNDS, ticks, &monitor, AnalysisLimits::default()).expect("dust fixture should parse");
         let options = CompilerOptions::default();
         ContractDustPaths
             .run(
@@ -871,11 +751,7 @@ mod tests {
         prepared
     }
 
-    fn compile_path(
-        world: &PlotWorld,
-        optimization_level: Option<usize>,
-        dust_paths: bool,
-    ) -> Compiler {
+    fn compile_path(world: &PlotWorld, optimization_level: Option<usize>) -> Compiler {
         let mut compiler = Compiler::default();
         compiler
             .compile(
@@ -883,7 +759,6 @@ mod tests {
                 BOUNDS,
                 CompilerOptions {
                     optimization_level,
-                    experimental_dust_paths: dust_paths,
                     ..Default::default()
                 },
                 world.scheduler().iter_entries().collect(),
@@ -914,11 +789,7 @@ mod tests {
             FIRST_WIRE + BlockPos::new(1, 0, 0),
             FIRST_WIRE + BlockPos::new(2, 0, 0),
         ] {
-            assert_eq!(
-                actual.get_block(position),
-                expected.get_block(position),
-                "{position:?}"
-            );
+            assert_eq!(actual.get_block(position), expected.get_block(position), "{position:?}");
         }
     }
 
@@ -963,24 +834,16 @@ mod tests {
     }
 
     #[test]
-    fn opted_in_pipeline_export_contains_the_certified_path() {
+    fn default_pipeline_export_contains_the_certified_path() {
         let world = path_world();
         let options = CompilerOptions {
             optimization_level: Some(1),
-            experimental_dust_paths: true,
             ..Default::default()
         };
-        let export = crate::redpiler::analysis::export_json::prepare(
-            &world,
-            BOUNDS,
-            &[],
-            &options,
-            &TaskMonitor::default(),
-            AnalysisLimits::default(),
-        )
-        .unwrap();
-        let document: serde_json::Value =
-            serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
+        let export =
+            crate::redpiler::analysis::export_json::prepare(&world, BOUNDS, &[], &options, &TaskMonitor::default(), AnalysisLimits::default())
+                .unwrap();
+        let document: serde_json::Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
         assert!(
             document["capabilities"]
                 .as_array()
@@ -991,6 +854,58 @@ mod tests {
         let paths = document["graph"]["dust_paths"].as_array().unwrap();
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0]["wires"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn turbo_indices_and_dust_metadata_compose_in_either_order_after_opt01() {
+        use crate::redpiler::passes::{
+            PassEntry, PassPipeline, index_turbo_callbacks::IndexTurboCallbacks, run_graph_pipeline, simplify_guards::GuardAndUpdateReduction,
+        };
+
+        let compile_order = |index_first| {
+            let monitor = TaskMonitor::default();
+            let options = CompilerOptions {
+                optimization_level: Some(1),
+                ..Default::default()
+            };
+            let mut prepared = rich::prepare(&path_world(), BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+            let mut entries = vec![PassEntry {
+                pass: Box::new(GuardAndUpdateReduction),
+                enabled: true,
+            }];
+            if index_first {
+                entries.push(PassEntry {
+                    pass: Box::new(IndexTurboCallbacks),
+                    enabled: true,
+                });
+                entries.push(PassEntry {
+                    pass: Box::new(ContractDustPaths),
+                    enabled: true,
+                });
+            } else {
+                entries.push(PassEntry {
+                    pass: Box::new(ContractDustPaths),
+                    enabled: true,
+                });
+                entries.push(PassEntry {
+                    pass: Box::new(IndexTurboCallbacks),
+                    enabled: true,
+                });
+            }
+            run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &PassPipeline::new(entries), &monitor).unwrap();
+            prepared.graph
+        };
+
+        let index_first = compile_order(true);
+        let dust_first = compile_order(false);
+        for graph in [&index_first, &dust_first] {
+            assert_eq!(graph.dust_paths.len(), 1);
+            assert_eq!(graph.turbo_callback_indices.len(), graph.wires.len());
+            assert!(graph.turbo_callback_indices.iter().any(Option::is_some));
+            graph.validate().unwrap();
+        }
+        assert_eq!(index_first.dust_paths, dust_first.dust_paths);
+        assert_eq!(index_first.turbo_callback_indices, dust_first.turbo_callback_indices);
     }
 
     #[test]
@@ -1095,10 +1010,7 @@ mod tests {
         assert_eq!(prepared.graph.dust_paths.len(), 1);
         assert_eq!(prepared.entry.pending_ticks.len(), 1);
         assert_eq!(prepared.entry.pending_ticks[0].tick.ticks_left, 3);
-        assert_eq!(
-            prepared.entry.pending_ticks[0].tick.tick_priority,
-            mchprs_world::TickPriority::Normal
-        );
+        assert_eq!(prepared.entry.pending_ticks[0].tick.tick_priority, mchprs_world::TickPriority::Normal);
 
         let mut mismatched = tick;
         mismatched.block_type = Some(Block::Stone {}.registry_id());
@@ -1113,30 +1025,14 @@ mod tests {
         let mut interpreted = path_world();
         let mut general_world = path_world();
         let mut disabled_world = path_world();
-        let o1_world = path_world();
         let mut specialized_world = path_world();
-        let mut general = compile_path(&general_world, Some(0), false);
-        let mut disabled = compile_path(&disabled_world, Some(0), true);
-        let o1_without_experimental_flag = compile_path(&o1_world, None, false);
-        let mut specialized = compile_path(&specialized_world, None, true);
-        assert_eq!(
-            o1_without_experimental_flag
-                .stats()
-                .unwrap()
-                .graph
-                .transformations
-                .iter()
-                .map(|pass| pass.name)
-                .collect::<Vec<_>>(),
-            ["guard-and-update-reduction"]
-        );
+        let mut general = compile_path(&general_world, Some(0));
+        let mut disabled = compile_path(&disabled_world, Some(0));
+        let mut specialized = compile_path(&specialized_world, None);
         let transformations = &specialized.stats().unwrap().graph.transformations;
         assert_eq!(
-            transformations
-                .iter()
-                .map(|pass| pass.name)
-                .collect::<Vec<_>>(),
-            ["guard-and-update-reduction", "contract-static-dust-paths"]
+            transformations.iter().map(|pass| pass.name).collect::<Vec<_>>(),
+            ["guard-and-update-reduction", "index-turbo-callbacks", "contract-static-dust-paths"]
         );
         let disabled_dust_pass = disabled
             .stats()
@@ -1145,8 +1041,17 @@ mod tests {
             .transformations
             .iter()
             .find(|pass| pass.name == "contract-static-dust-paths")
-            .expect("the O1 dust entry is visible in pipeline statistics");
+            .expect("the O1 dust pass is visible in pipeline statistics");
         assert!(!disabled_dust_pass.enabled);
+        let disabled_index_pass = disabled
+            .stats()
+            .unwrap()
+            .graph
+            .transformations
+            .iter()
+            .find(|pass| pass.name == "index-turbo-callbacks")
+            .expect("the O1 index entry is visible in pipeline statistics");
+        assert!(!disabled_index_pass.enabled);
 
         general.reset(&mut general_world, BOUNDS);
         disabled.reset(&mut disabled_world, BOUNDS);
@@ -1154,9 +1059,9 @@ mod tests {
         assert_path_worlds_match(&interpreted, &general_world);
         assert_path_worlds_match(&interpreted, &disabled_world);
         assert_path_worlds_match(&interpreted, &specialized_world);
-        general = compile_path(&general_world, Some(0), false);
-        disabled = compile_path(&disabled_world, Some(0), true);
-        specialized = compile_path(&specialized_world, None, true);
+        general = compile_path(&general_world, Some(0));
+        disabled = compile_path(&disabled_world, Some(0));
+        specialized = compile_path(&specialized_world, None);
 
         let mut previous_power = true;
         let mut history = vec![false, true, false, false, true];
@@ -1186,27 +1091,9 @@ mod tests {
                 assert_path_worlds_match(&interpreted, &specialized_world);
             }
         }
-        assert!(
-            specialized
-                .graph_execution_counts()
-                .unwrap()
-                .dust_path_power_samples_elided
-                > 0
-        );
-        assert_eq!(
-            general
-                .graph_execution_counts()
-                .unwrap()
-                .dust_path_power_samples_elided,
-            0
-        );
-        assert_eq!(
-            disabled
-                .graph_execution_counts()
-                .unwrap()
-                .dust_path_power_samples_elided,
-            0
-        );
+        assert!(specialized.graph_execution_counts().unwrap().dust_path_power_samples_elided > 0);
+        assert_eq!(general.graph_execution_counts().unwrap().dust_path_power_samples_elided, 0);
+        assert_eq!(disabled.graph_execution_counts().unwrap().dust_path_power_samples_elided, 0);
 
         general.reset(&mut general_world, BOUNDS);
         disabled.reset(&mut disabled_world, BOUNDS);
@@ -1224,9 +1111,8 @@ mod tests {
             assert_path_worlds_match(&interpreted, &specialized_world);
         }
 
-        let mut resumed = compile_path(&specialized_world, None, true);
-        let was_powered =
-            matches!(specialized_world.get_block(INPUT), Block::Lever { lever } if lever.powered);
+        let mut resumed = compile_path(&specialized_world, None);
+        let was_powered = matches!(specialized_world.get_block(INPUT), Block::Lever { lever } if lever.powered);
         set_interpreted_lever(&mut interpreted, !was_powered);
         resumed.on_use_block(INPUT);
         interpreted.tick_interpreted();
@@ -1269,7 +1155,6 @@ mod tests {
                 BOUNDS,
                 CompilerOptions {
                     optimization_level: Some(1),
-                    experimental_dust_paths: true,
                     ..Default::default()
                 },
                 vec![],
@@ -1278,11 +1163,9 @@ mod tests {
             .unwrap();
         let tables = &compiler.stats().unwrap().graph.preparation_tables;
         assert!(
-            tables.iter().any(|table| {
-                table.stage == "dust contraction"
-                    && table.table == "otherwise eligible length 4"
-                    && table.entries == 1
-            }),
+            tables
+                .iter()
+                .any(|table| { table.stage == "dust contraction" && table.table == "otherwise eligible length 4" && table.entries == 1 }),
             "{tables:?}"
         );
 
@@ -1290,17 +1173,7 @@ mod tests {
         compiler.on_use_block(INPUT);
         compiler.tick_with_world(&mut world).unwrap();
         let samples = compiler.dust_candidate_power_samples().unwrap();
-        assert!(
-            samples
-                .iter()
-                .any(|(length, count)| *length == 4 && *count > 0)
-        );
-        assert_eq!(
-            compiler
-                .graph_execution_counts()
-                .unwrap()
-                .dust_path_power_samples_elided,
-            0
-        );
+        assert!(samples.iter().any(|(length, count)| *length == 4 && *count > 0));
+        assert_eq!(compiler.graph_execution_counts().unwrap().dust_path_power_samples_elided, 0);
     }
 }

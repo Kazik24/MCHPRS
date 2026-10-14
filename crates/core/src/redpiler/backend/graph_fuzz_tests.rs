@@ -5,9 +5,7 @@ use crate::redstone;
 use crate::redstone::instant_piston_tests::capture_at;
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{
-    Block, Lever, LeverFace, RedstoneObserver, RedstonePiston, RedstonePistonHead,
-};
+use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstoneObserver, RedstonePiston, RedstonePistonHead};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{PistonAction, PistonEvent, TickPriority};
 use serde_json::Value;
@@ -65,18 +63,9 @@ enum NotifyTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Action {
-    SetControl {
-        input: Input,
-        powered: bool,
-        delivery: Delivery,
-    },
-    Notify {
-        target: NotifyTarget,
-        direction: Option<BlockFace>,
-    },
-    Tick {
-        count: u8,
-    },
+    SetControl { input: Input, powered: bool, delivery: Delivery },
+    Notify { target: NotifyTarget, direction: Option<BlockFace> },
+    Tick { count: u8 },
 }
 
 #[derive(Debug, Clone)]
@@ -86,18 +75,11 @@ struct Protocol {
 }
 
 fn set(input: Input, powered: bool, delivery: Delivery) -> Action {
-    Action::SetControl {
-        input,
-        powered,
-        delivery,
-    }
+    Action::SetControl { input, powered, delivery }
 }
 
 fn notify(target: NotifyTarget) -> Action {
-    Action::Notify {
-        target,
-        direction: None,
-    }
+    Action::Notify { target, direction: None }
 }
 
 fn tick(count: u8) -> Action {
@@ -116,47 +98,23 @@ fn protocols() -> Vec<Protocol> {
         },
         Protocol {
             id: "pulse_one",
-            actions: vec![
-                set(normal, true, use_input),
-                tick(1),
-                set(normal, false, use_input),
-                tick(8),
-            ],
+            actions: vec![set(normal, true, use_input), tick(1), set(normal, false, use_input), tick(8)],
         },
         Protocol {
             id: "pulse_two",
-            actions: vec![
-                set(normal, true, use_input),
-                tick(2),
-                set(normal, false, use_input),
-                tick(8),
-            ],
+            actions: vec![set(normal, true, use_input), tick(2), set(normal, false, use_input), tick(8)],
         },
         Protocol {
             id: "pulse_three",
-            actions: vec![
-                set(normal, true, use_input),
-                tick(3),
-                set(normal, false, use_input),
-                tick(8),
-            ],
+            actions: vec![set(normal, true, use_input), tick(3), set(normal, false, use_input), tick(8)],
         },
         Protocol {
             id: "held",
-            actions: vec![
-                set(normal, true, use_input),
-                tick(8),
-                set(normal, false, use_input),
-                tick(8),
-            ],
+            actions: vec![set(normal, true, use_input), tick(8), set(normal, false, use_input), tick(8)],
         },
         Protocol {
             id: "cancel_before_acceptance",
-            actions: vec![
-                set(normal, true, use_input),
-                set(normal, false, silent),
-                tick(1),
-            ],
+            actions: vec![set(normal, true, use_input), set(normal, false, silent), tick(1)],
         },
         Protocol {
             id: "qc_data_then_sample",
@@ -254,15 +212,7 @@ fn fixture(template: Template) -> Fixture {
     if let Some(payload) = template.form.payload() {
         blocks.push((if template.extended { far } else { near }, payload));
     }
-    let watched = vec![
-        base,
-        near,
-        far,
-        normal,
-        normal_support,
-        quasi,
-        quasi_support,
-    ];
+    let watched = vec![base, near, far, normal, normal_support, quasi, quasi_support];
     Fixture {
         template,
         base,
@@ -289,27 +239,11 @@ fn load_fixture(fixture: &Fixture) -> PlotWorld {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Operation {
-    Callback {
-        target: BlockPos,
-        direction: Option<BlockFace>,
-    },
-    Sample {
-        actor: BlockPos,
-        extended: bool,
-        powered: bool,
-    },
-    Request {
-        actor: BlockPos,
-        action: PistonAction,
-    },
-    AcceptanceAttempt {
-        actor: BlockPos,
-        action: PistonAction,
-    },
-    Accepted {
-        actor: BlockPos,
-        action: PistonAction,
-    },
+    Callback { target: BlockPos, direction: Option<BlockFace> },
+    Sample { actor: BlockPos, extended: bool, powered: bool },
+    Request { actor: BlockPos, action: PistonAction },
+    AcceptanceAttempt { actor: BlockPos, action: PistonAction },
+    Accepted { actor: BlockPos, action: PistonAction },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -512,12 +446,7 @@ fn update_native_lever(world: &mut PlotWorld, position: BlockPos, powered: bool,
     }
 }
 
-fn set_graph_control(
-    backend: &mut GraphBackend,
-    position: BlockPos,
-    powered: bool,
-    delivery: Delivery,
-) -> Result<(), GraphExecutionError> {
+fn set_graph_control(backend: &mut GraphBackend, position: BlockPos, powered: bool, delivery: Delivery) -> Result<(), GraphExecutionError> {
     let node = backend.positions[&position];
     let state = backend.node_state(node);
     if state.powered == powered {
@@ -535,11 +464,7 @@ fn set_graph_control(
     }
 }
 
-fn graph_notify(
-    backend: &mut GraphBackend,
-    position: BlockPos,
-    direction: Option<BlockFace>,
-) -> Result<(), GraphExecutionError> {
+fn graph_notify(backend: &mut GraphBackend, position: BlockPos, direction: Option<BlockFace>) -> Result<(), GraphExecutionError> {
     let site = backend
         .program
         .sites()
@@ -556,20 +481,14 @@ fn graph_notify(
             if backend.has_semantic_callback(receiver) {
                 backend
                     .observed_operations
-                    .push(GraphObservedOperation::Callback {
-                        target: position,
-                        direction,
-                    });
+                    .push(GraphObservedOperation::Callback { target: position, direction });
             }
             backend.update_component(node, DeliveryKind::Update { direction }, None)
         }
         Some(CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston)) => {
             backend
                 .observed_operations
-                .push(GraphObservedOperation::Callback {
-                    target: position,
-                    direction,
-                });
+                .push(GraphObservedOperation::Callback { target: position, direction });
             backend.sample_piston(piston)
         }
         Some(CallbackReceiver::Contact(_)) | None => Ok(()),
@@ -577,9 +496,7 @@ fn graph_notify(
 }
 
 fn native_channels(world: &PlotWorld, base: BlockPos, facing: BlockFace) -> (u8, u8) {
-    let is_powered = |position: BlockPos, side: BlockFace| {
-        redstone::get_redstone_power(world.get_block(position), world, position, side)
-    };
+    let is_powered = |position: BlockPos, side: BlockFace| redstone::get_redstone_power(world.get_block(position), world, position, side);
     let normal = BlockFace::values()
         .into_iter()
         .filter(|&side| side != facing)
@@ -623,11 +540,7 @@ fn native_resource(world: &PlotWorld, fixture: &Fixture) -> Option<ResourceObser
         let block = world.get_block(position);
         if block == material {
             return Some(ResourceObservation {
-                source: if fixture.template.extended {
-                    fixture.far
-                } else {
-                    fixture.near
-                },
+                source: if fixture.template.extended { fixture.far } else { fixture.near },
                 contact: Some(position),
                 enabled: true,
             });
@@ -636,11 +549,7 @@ fn native_resource(world: &PlotWorld, fixture: &Fixture) -> Option<ResourceObser
             if let Some(BlockEntity::MovingPiston(entity)) = world.get_block_entity(position) {
                 if Block::from_id(entity.block_state) == material && !entity.source {
                     return Some(ResourceObservation {
-                        source: if fixture.template.extended {
-                            fixture.far
-                        } else {
-                            fixture.near
-                        },
+                        source: if fixture.template.extended { fixture.far } else { fixture.near },
                         contact: Some(position),
                         enabled: false,
                     });
@@ -674,17 +583,11 @@ fn graph_resource(backend: &GraphBackend, fixture: &Fixture) -> Option<ResourceO
         .resources()
         .iter()
         .enumerate()
-        .find(|(_, resource)| {
-            resource.contacts.contains(&near) && resource.contacts.contains(&far)
-        })?;
+        .find(|(_, resource)| resource.contacts.contains(&near) && resource.contacts.contains(&far))?;
     let state = backend.state.resources[index];
     let contact = backend.program.contacts()[state.at.index()].position;
     Some(ResourceObservation {
-        source: if fixture.template.extended {
-            fixture.far
-        } else {
-            fixture.near
-        },
+        source: if fixture.template.extended { fixture.far } else { fixture.near },
         contact: Some(contact),
         enabled: state.enabled,
     })
@@ -712,9 +615,7 @@ fn graph_block(backend: &GraphBackend, position: BlockPos) -> Block {
         .sites()
         .iter()
         .enumerate()
-        .find(|(_, site)| {
-            site.position == position && matches!(site.source, SiteSource::Contact(_))
-        })
+        .find(|(_, site)| site.position == position && matches!(site.source, SiteSource::Contact(_)))
     {
         return backend
             .resolve_site(SiteId::new(index as u32), None)
@@ -730,11 +631,7 @@ fn graph_block(backend: &GraphBackend, position: BlockPos) -> Block {
         .iter()
         .enumerate()
         .filter(|(_, site)| site.position == position)
-        .find_map(|(index, _)| {
-            backend
-                .resolve_site(SiteId::new(index as u32), None)
-                .map(|site| site.block)
-        })
+        .find_map(|(index, _)| backend.resolve_site(SiteId::new(index as u32), None).map(|site| site.block))
         .unwrap_or(Block::Air)
 }
 
@@ -895,49 +792,31 @@ fn graph_deadlines(backend: &GraphBackend, fixture: &Fixture) -> Vec<Deadline> {
     deadlines
 }
 
-pub(super) fn graph_operations_since(
-    backend: &GraphBackend,
-    start: usize,
-    watched: &[BlockPos],
-) -> Vec<Operation> {
+pub(super) fn graph_operations_since(backend: &GraphBackend, start: usize, watched: &[BlockPos]) -> Vec<Operation> {
     backend.observed_operations[start..]
         .iter()
         .filter_map(|operation| match operation {
-            GraphObservedOperation::Callback { target, direction } if watched.contains(target) => {
-                Some(Operation::Callback {
-                    target: *target,
-                    direction: *direction,
-                })
-            }
-            GraphObservedOperation::Sample {
-                actor,
-                extended,
-                powered,
-            } if watched.contains(actor) => Some(Operation::Sample {
+            GraphObservedOperation::Callback { target, direction } if watched.contains(target) => Some(Operation::Callback {
+                target: *target,
+                direction: *direction,
+            }),
+            GraphObservedOperation::Sample { actor, extended, powered } if watched.contains(actor) => Some(Operation::Sample {
                 actor: *actor,
                 extended: *extended,
                 powered: *powered,
             }),
-            GraphObservedOperation::Request { actor, action } if watched.contains(actor) => {
-                Some(Operation::Request {
-                    actor: *actor,
-                    action: *action,
-                })
-            }
-            GraphObservedOperation::AcceptanceAttempt { actor, action }
-                if watched.contains(actor) =>
-            {
-                Some(Operation::AcceptanceAttempt {
-                    actor: *actor,
-                    action: *action,
-                })
-            }
-            GraphObservedOperation::Accepted { actor, action } if watched.contains(actor) => {
-                Some(Operation::Accepted {
-                    actor: *actor,
-                    action: *action,
-                })
-            }
+            GraphObservedOperation::Request { actor, action } if watched.contains(actor) => Some(Operation::Request {
+                actor: *actor,
+                action: *action,
+            }),
+            GraphObservedOperation::AcceptanceAttempt { actor, action } if watched.contains(actor) => Some(Operation::AcceptanceAttempt {
+                actor: *actor,
+                action: *action,
+            }),
+            GraphObservedOperation::Accepted { actor, action } if watched.contains(actor) => Some(Operation::Accepted {
+                actor: *actor,
+                action: *action,
+            }),
             _ => None,
         })
         .collect()
@@ -951,15 +830,8 @@ fn callback_operations(operations: &[Operation]) -> Vec<Operation> {
         .collect()
 }
 
-fn observe_native(
-    world: &PlotWorld,
-    fixture: &Fixture,
-    ordinal: usize,
-    action: usize,
-    operations: Vec<Operation>,
-) -> Boundary {
-    let (normal_strength, quasi_strength) =
-        native_channels(world, fixture.base, fixture.template.facing.into());
+fn observe_native(world: &PlotWorld, fixture: &Fixture, ordinal: usize, action: usize, operations: Vec<Operation>) -> Boundary {
+    let (normal_strength, quasi_strength) = native_channels(world, fixture.base, fixture.template.facing.into());
     Boundary {
         tick: world.piston_state().logical_tick,
         ordinal,
@@ -968,16 +840,10 @@ fn observe_native(
         quasi_strength,
         pose: native_pose(world, fixture),
         availability: native_availability(world, fixture),
-        cells: [
-            fixture.base,
-            fixture.near,
-            fixture.far,
-            fixture.normal,
-            fixture.quasi,
-        ]
-        .into_iter()
-        .map(|position| (position, native_cell(world, position)))
-        .collect(),
+        cells: [fixture.base, fixture.near, fixture.far, fixture.normal, fixture.quasi]
+            .into_iter()
+            .map(|position| (position, native_cell(world, position)))
+            .collect(),
         resource: native_resource(world, fixture),
         pending_ticks: pending_ticks(world),
         requests: native_requests(world),
@@ -986,13 +852,7 @@ fn observe_native(
     }
 }
 
-fn observe_graph(
-    backend: &GraphBackend,
-    fixture: &Fixture,
-    ordinal: usize,
-    action: usize,
-    operations: Vec<Operation>,
-) -> Boundary {
+fn observe_graph(backend: &GraphBackend, fixture: &Fixture, ordinal: usize, action: usize, operations: Vec<Operation>) -> Boundary {
     let (spec, state) = graph_piston(backend, fixture.base);
     Boundary {
         tick: backend.clock.logical_tick,
@@ -1002,16 +862,10 @@ fn observe_graph(
         quasi_strength: backend.input_strength(spec.node, InputPort::Quasi),
         pose: (!state.availability.base_pending()).then_some(state.extended),
         availability: state.availability,
-        cells: [
-            fixture.base,
-            fixture.near,
-            fixture.far,
-            fixture.normal,
-            fixture.quasi,
-        ]
-        .into_iter()
-        .map(|position| (position, graph_cell(backend, fixture, position)))
-        .collect(),
+        cells: [fixture.base, fixture.near, fixture.far, fixture.normal, fixture.quasi]
+            .into_iter()
+            .map(|position| (position, graph_cell(backend, fixture, position)))
+            .collect(),
         resource: graph_resource(backend, fixture),
         pending_ticks: graph_pending_ticks(backend),
         requests: graph_requests(backend),
@@ -1022,11 +876,7 @@ fn observe_graph(
 
 fn native_action(world: &mut PlotWorld, fixture: &Fixture, action: &Action) {
     match *action {
-        Action::SetControl {
-            input,
-            powered,
-            delivery,
-        } => {
+        Action::SetControl { input, powered, delivery } => {
             let position = match input {
                 Input::Normal => fixture.normal,
                 Input::Quasi => fixture.quasi,
@@ -1043,17 +893,9 @@ fn native_action(world: &mut PlotWorld, fixture: &Fixture, action: &Action) {
     }
 }
 
-fn graph_action(
-    backend: &mut GraphBackend,
-    fixture: &Fixture,
-    action: &Action,
-) -> Result<(), GraphExecutionError> {
+fn graph_action(backend: &mut GraphBackend, fixture: &Fixture, action: &Action) -> Result<(), GraphExecutionError> {
     match *action {
-        Action::SetControl {
-            input,
-            powered,
-            delivery,
-        } => {
+        Action::SetControl { input, powered, delivery } => {
             let position = match input {
                 Input::Normal => fixture.normal,
                 Input::Quasi => fixture.quasi,
@@ -1075,8 +917,7 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
     let mut native = load_fixture(&fixture);
     let graph_world = load_fixture(&fixture);
     let ticks = native.scheduler().iter_entries().collect();
-    let mut backend = GraphBackend::compile(&graph_world, BOUNDS, ticks, Arc::default())
-        .map_err(|error| format!("compile: {error}"))?;
+    let mut backend = GraphBackend::compile(&graph_world, BOUNDS, ticks, Arc::default()).map_err(|error| format!("compile: {error}"))?;
     backend.set_test_recording(true);
     let mut ordinal = 0usize;
     let mut first_failure = None;
@@ -1103,20 +944,8 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
                     }
                     let native_ops = native_operations(&native_entries, &fixture.watched);
                     let graph_ops = graph_operations_since(&backend, graph_start, &fixture.watched);
-                    let expected = observe_native(
-                        &native,
-                        &fixture,
-                        ordinal,
-                        action_number,
-                        native_ops.clone(),
-                    );
-                    let actual = observe_graph(
-                        &backend,
-                        &fixture,
-                        ordinal,
-                        action_number,
-                        graph_ops.clone(),
-                    );
+                    let expected = observe_native(&native, &fixture, ordinal, action_number, native_ops.clone());
+                    let actual = observe_graph(&backend, &fixture, ordinal, action_number, graph_ops.clone());
                     if !actual.deadlines.is_empty() {
                         coverage.pending_publication_boundaries += 1;
                     }
@@ -1154,15 +983,11 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
             _ => {
                 ordinal += 1;
                 let graph_start = backend.observed_operations.len();
-                let native_entries = capture_at(&fixture.watched, || {
-                    native_action(&mut native, &fixture, action)
-                });
-                graph_action(&mut backend, &fixture, action)
-                    .map_err(|error| format!("input execution at boundary {ordinal}: {error}"))?;
+                let native_entries = capture_at(&fixture.watched, || native_action(&mut native, &fixture, action));
+                graph_action(&mut backend, &fixture, action).map_err(|error| format!("input execution at boundary {ordinal}: {error}"))?;
                 let native_ops = native_operations(&native_entries, &fixture.watched);
                 let graph_ops = graph_operations_since(&backend, graph_start, &fixture.watched);
-                let expected =
-                    observe_native(&native, &fixture, ordinal, action_number, native_ops);
+                let expected = observe_native(&native, &fixture, ordinal, action_number, native_ops);
                 let actual = observe_graph(&backend, &fixture, ordinal, action_number, graph_ops);
                 if !actual.deadlines.is_empty() {
                     coverage.pending_publication_boundaries += 1;
@@ -1177,10 +1002,7 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
                     writeln!(
                         &mut qc_trace,
                         "boundary {ordinal} after {action:?}: main={}, qc={}, ops={:?}, requests={:?}",
-                        actual.normal_strength,
-                        actual.quasi_strength,
-                        actual.operations,
-                        actual.requests
+                        actual.normal_strength, actual.quasi_strength, actual.operations, actual.requests
                     )
                     .unwrap();
                 }
@@ -1193,9 +1015,7 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
     }
     for operation in &backend.observed_operations {
         match operation {
-            GraphObservedOperation::Sample {
-                extended, powered, ..
-            } => {
+            GraphObservedOperation::Sample { extended, powered, .. } => {
                 coverage.samples += 1;
                 coverage.same_value_samples += usize::from(extended == powered);
             }
@@ -1203,9 +1023,7 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
             GraphObservedOperation::AcceptanceAttempt { .. } => coverage.attempts += 1,
             GraphObservedOperation::Accepted { action, .. } => match action {
                 PistonAction::Extend => coverage.accepted_extensions += 1,
-                PistonAction::Retract | PistonAction::RetractWithoutPull => {
-                    coverage.accepted_retractions += 1
-                }
+                PistonAction::Retract | PistonAction::RetractWithoutPull => coverage.accepted_retractions += 1,
             },
             GraphObservedOperation::Callback { .. } => {}
         }
@@ -1237,13 +1055,9 @@ fn templates() -> Vec<Template> {
     forms
         .into_iter()
         .flat_map(|form| {
-            facings.into_iter().flat_map(move |facing| {
-                [false, true].into_iter().map(move |extended| Template {
-                    form,
-                    facing,
-                    extended,
-                })
-            })
+            facings
+                .into_iter()
+                .flat_map(move |facing| [false, true].into_iter().map(move |extended| Template { form, facing, extended }))
         })
         .collect()
 }
@@ -1372,8 +1186,7 @@ fn isolated_piston_baselines_match_interpreter() {
                     campaign_coverage.attempts += result.coverage.attempts;
                     campaign_coverage.accepted_extensions += result.coverage.accepted_extensions;
                     campaign_coverage.accepted_retractions += result.coverage.accepted_retractions;
-                    campaign_coverage.pending_publication_boundaries +=
-                        result.coverage.pending_publication_boundaries;
+                    campaign_coverage.pending_publication_boundaries += result.coverage.pending_publication_boundaries;
                     if example_trace.is_none() {
                         example_trace = result.trace;
                     }
@@ -1383,14 +1196,9 @@ fn isolated_piston_baselines_match_interpreter() {
                     if let Some(witness) = result.divergence {
                         protocol_divergences[protocol_index] += 1;
                         divergent += 1;
-                        *divergence_fields
-                            .entry(difference_field(&witness))
-                            .or_insert(0usize) += 1;
+                        *divergence_fields.entry(difference_field(&witness)).or_insert(0usize) += 1;
                         if first_divergence.is_none() {
-                            first_divergence = Some(format!(
-                                "case={template:?}/{} witness={witness}; {}",
-                                protocol.id, result.descriptor
-                            ));
+                            first_divergence = Some(format!("case={template:?}/{} witness={witness}; {}", protocol.id, result.descriptor));
                         }
                     }
                 }
@@ -1415,9 +1223,9 @@ fn isolated_piston_baselines_match_interpreter() {
         campaign_coverage.attempts,
         campaign_coverage.accepted_extensions,
         campaign_coverage.accepted_retractions,
-        campaign_coverage.attempts.saturating_sub(
-            campaign_coverage.accepted_extensions + campaign_coverage.accepted_retractions
-        ),
+        campaign_coverage
+            .attempts
+            .saturating_sub(campaign_coverage.accepted_extensions + campaign_coverage.accepted_retractions),
         campaign_coverage.pending_publication_boundaries,
     );
     eprintln!(
@@ -1451,11 +1259,7 @@ fn isolated_piston_baselines_match_interpreter() {
         "positive baseline unexpectedly rejected; first: {:?}",
         rejected.first()
     );
-    assert!(
-        incomplete.is_empty(),
-        "baseline execution incomplete; first: {:?}",
-        incomplete.first()
-    );
+    assert!(incomplete.is_empty(), "baseline execution incomplete; first: {:?}", incomplete.first());
     assert!(
         divergent == 0,
         "native/graph baseline has {divergent} divergent episodes; first: {}",
@@ -1465,11 +1269,7 @@ fn isolated_piston_baselines_match_interpreter() {
 
 fn assert_replay_matches_interpreter(template: Template, protocol: Protocol) {
     let result = replay(template, &protocol).expect("fixture should compile and replay");
-    assert_eq!(
-        result.divergence, None,
-        "{}: {}",
-        protocol.id, result.descriptor
-    );
+    assert_eq!(result.divergence, None, "{}: {}", protocol.id, result.descriptor);
 }
 
 #[test]
@@ -1479,10 +1279,7 @@ fn extension_publication_does_not_resample_the_installing_head() {
         facing: BlockFacing::North,
         extended: false,
     };
-    let protocol = protocols()
-        .into_iter()
-        .find(|protocol| protocol.id == "pulse_one")
-        .unwrap();
+    let protocol = protocols().into_iter().find(|protocol| protocol.id == "pulse_one").unwrap();
 
     assert_replay_matches_interpreter(template, protocol);
 }
@@ -1551,9 +1348,7 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
             extended: false,
         });
         let consumer = fixture.far.offset(BlockFace::North);
-        fixture
-            .blocks
-            .push((consumer.offset(BlockFace::Bottom), Block::Stone {}));
+        fixture.blocks.push((consumer.offset(BlockFace::Bottom), Block::Stone {}));
         fixture.blocks.push((
             consumer,
             Block::Observer {
@@ -1575,9 +1370,7 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         backend.use_block(fixture.normal).unwrap();
         native.tick_interpreted();
         backend.tick().unwrap();
-        assert!(
-            matches!(native.get_block(fixture.base), Block::Piston { piston } if piston.extended)
-        );
+        assert!(matches!(native.get_block(fixture.base), Block::Piston { piston } if piston.extended));
         assert!(graph_piston(&backend, fixture.base).1.extended);
         update_native_lever(&mut native, fixture.normal, false, false);
         backend.use_block(fixture.normal).unwrap();
@@ -1599,8 +1392,7 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         let mut failure = None;
         let native_restored = matches!(native.get_block(fixture.base), Block::Piston { piston } if !piston.extended)
             && native.get_block(fixture.far) == form.payload().unwrap();
-        let graph_restored = graph_resource(&backend, &fixture)
-            .is_some_and(|resource| resource.contact == Some(fixture.far) && resource.enabled)
+        let graph_restored = graph_resource(&backend, &fixture).is_some_and(|resource| resource.contact == Some(fixture.far) && resource.enabled)
             && graph_piston(&backend, fixture.base).1.availability == PistonAvailability::Ready
             && !graph_piston(&backend, fixture.base).1.extended;
         if !native_restored || !graph_restored {
@@ -1614,25 +1406,12 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         }
 
         let input_start = backend.observed_operations.len();
-        let native_input = capture_at(&fixture.watched, || {
-            update_native_lever(&mut native, fixture.normal, true, false)
-        });
+        let native_input = capture_at(&fixture.watched, || update_native_lever(&mut native, fixture.normal, true, false));
         backend.use_block(fixture.normal).unwrap();
         let expected_input = native_operations(&native_input, &fixture.watched);
         let actual_input = graph_operations_since(&backend, input_start, &fixture.watched);
-        assert!(
-            native
-                .piston_state()
-                .events
-                .iter()
-                .any(|event| { event.action == PistonAction::Extend })
-        );
-        assert!(
-            backend
-                .piston_requests
-                .iter()
-                .any(|request| request.action == PistonAction::Extend)
-        );
+        assert!(native.piston_state().events.iter().any(|event| { event.action == PistonAction::Extend }));
+        assert!(backend.piston_requests.iter().any(|request| request.action == PistonAction::Extend));
         if expected_input != actual_input && failure.is_none() {
             failure = Some(format!(
                 "{form:?} re-extension input operations differ: native={expected_input:?}, graph={actual_input:?}"
@@ -1652,14 +1431,11 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
             .into_iter()
             .filter(|operation| matches!(operation, Operation::Callback { target, .. } if *target == consumer))
             .count();
-        let reextended = matches!(native.get_block(fixture.base), Block::Piston { piston } if piston.extended)
-            && graph_piston(&backend, fixture.base).1.extended;
+        let reextended =
+            matches!(native.get_block(fixture.base), Block::Piston { piston } if piston.extended) && graph_piston(&backend, fixture.base).1.extended;
         let resource_still_live = native.get_block(fixture.far) == form.payload().unwrap()
-            && graph_resource(&backend, &fixture)
-                .is_some_and(|resource| resource.contact == Some(fixture.far) && resource.enabled);
-        if (!reextended || !resource_still_live || native_observer_calls != graph_observer_calls)
-            && failure.is_none()
-        {
+            && graph_resource(&backend, &fixture).is_some_and(|resource| resource.contact == Some(fixture.far) && resource.enabled);
+        if (!reextended || !resource_still_live || native_observer_calls != graph_observer_calls) && failure.is_none() {
             failure = Some(format!(
                 "{form:?} second extension failed or changed/re-notified the dropped Far resource: reextended={reextended}, native_far={:?}, graph_resource={:?}, observer_callbacks(native/graph)={native_observer_calls}/{graph_observer_calls}, trace(native/graph)={expected_tick:?}/{actual_tick:?}",
                 native.get_block(fixture.far),

@@ -11,11 +11,7 @@ pub(super) struct TeleportState {
 
 impl TeleportState {
     pub fn begin(&mut self, now: Instant) -> i32 {
-        self.next_id = if self.next_id == i32::MAX {
-            0
-        } else {
-            self.next_id + 1
-        };
+        self.next_id = if self.next_id == i32::MAX { 0 } else { self.next_id + 1 };
         self.pending = Some((self.next_id, now));
         self.next_id
     }

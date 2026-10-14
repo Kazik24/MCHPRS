@@ -3,9 +3,7 @@ use crate::player::{PacketSender, allocate_entity_id};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockColorVariant, BlockPos};
 use mchprs_network::packets::PacketEncoderExt;
-use mchprs_network::packets::clientbound::{
-    CDestroyEntities, CEntityMetadata, CEntityMetadataEntry, CSpawnEntity, ClientBoundPacket,
-};
+use mchprs_network::packets::clientbound::{CDestroyEntities, CEntityMetadata, CEntityMetadataEntry, CSpawnEntity, ClientBoundPacket};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -31,11 +29,7 @@ pub(in crate::plot) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
         4 => (BlockColorVariant::White, 0xffffff),
         _ => (BlockColorVariant::Yellow, 0xffe23d),
     };
-    let entry = |index, metadata_type, value| CEntityMetadataEntry {
-        index,
-        metadata_type,
-        value,
-    };
+    let entry = |index, metadata_type, value| CEntityMetadataEntry { index, metadata_type, value };
     CEntityMetadata {
         entity_id,
         metadata: vec![
@@ -47,11 +41,7 @@ pub(in crate::plot) fn metadata(entity_id: i32, kind: u8) -> CEntityMetadata {
             entry(16, 1, varint((15 << 4) | (15 << 20))), // Full block/sky brightness.
             entry(17, 3, 2.0f32.to_be_bytes().to_vec()),
             entry(22, 1, varint(glow_color)),
-            entry(
-                23,
-                14,
-                varint(Block::StainedGlass { color }.get_id() as i32),
-            ),
+            entry(23, 14, varint(Block::StainedGlass { color }.get_id() as i32)),
         ],
     }
 }
@@ -102,9 +92,7 @@ pub(in crate::plot) fn reconcile_markers(
         viewer.send_packet(&CDestroyEntities { entity_ids }.encode());
     }
     for (&pos, &kind) in wanted {
-        if changes >= max_changes
-            || (changes > 0 && started.elapsed() >= Duration::from_micros(500))
-        {
+        if changes >= max_changes || (changes > 0 && started.elapsed() >= Duration::from_micros(500)) {
             break;
         }
         match markers.get_mut(&pos) {
@@ -120,16 +108,10 @@ pub(in crate::plot) fn reconcile_markers(
             _ => {}
         }
     }
-    markers.len() == wanted.len()
-        && markers
-            .iter()
-            .all(|(pos, &(_, kind))| wanted.get(pos) == Some(&kind))
+    markers.len() == wanted.len() && markers.iter().all(|(pos, &(_, kind))| wanted.get(pos) == Some(&kind))
 }
 
-pub(in crate::plot) fn clear_markers(
-    viewer: &impl PacketSender,
-    markers: &mut HashMap<BlockPos, (i32, u8)>,
-) {
+pub(in crate::plot) fn clear_markers(viewer: &impl PacketSender, markers: &mut HashMap<BlockPos, (i32, u8)>) {
     if markers.is_empty() {
         return;
     }
@@ -138,12 +120,7 @@ pub(in crate::plot) fn clear_markers(
 }
 
 /// Returns whether the overlay needs rebuilding after a client chunk unload.
-pub(in crate::plot) fn unload_markers(
-    viewer: &impl PacketSender,
-    markers: &mut HashMap<BlockPos, (i32, u8)>,
-    chunk_x: i32,
-    chunk_z: i32,
-) -> bool {
+pub(in crate::plot) fn unload_markers(viewer: &impl PacketSender, markers: &mut HashMap<BlockPos, (i32, u8)>, chunk_x: i32, chunk_z: i32) -> bool {
     let positions: Vec<_> = markers
         .keys()
         .filter(|pos| pos.x >> 4 == chunk_x && pos.z >> 4 == chunk_z)
@@ -196,10 +173,7 @@ mod tests {
         let packets = viewer.0.borrow();
         assert_eq!(packets.len(), 1);
         assert_eq!(packets[0].packet_id, 0x5c);
-        assert_eq!(
-            Cursor::new(&packets[0].buffer).read_varint().unwrap(),
-            entity_id
-        );
+        assert_eq!(Cursor::new(&packets[0].buffer).read_varint().unwrap(), entity_id);
         drop(packets);
         viewer.0.borrow_mut().clear();
         assert!(reconcile_markers(&viewer, &mut markers, &wanted, 1));
@@ -210,13 +184,7 @@ mod tests {
         assert!(!unload_markers(&viewer, &mut markers, 1, 0));
         clear_markers(&viewer, &mut markers);
         assert!(markers.is_empty());
-        assert!(
-            viewer
-                .0
-                .borrow()
-                .iter()
-                .all(|packet| packet.packet_id == 0x46)
-        );
+        assert!(viewer.0.borrow().iter().all(|packet| packet.packet_id == 0x46));
 
         // A newer target replaces unfinished work rather than finishing stale additions.
         assert!(!reconcile_markers(&viewer, &mut markers, &wanted, 1));

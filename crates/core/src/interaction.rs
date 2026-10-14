@@ -13,13 +13,7 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
 use mchprs_world::TickPriority;
 
-pub fn on_use(
-    block: Block,
-    world: &mut impl World,
-    player: &mut Player,
-    pos: BlockPos,
-    item_in_hand: Option<Item>,
-) -> ActionResult {
+pub fn on_use(block: Block, world: &mut impl World, player: &mut Player, pos: BlockPos, item_in_hand: Option<Item>) -> ActionResult {
     if crate::permissions::dedicated_permissions() {
         let action = if block.is_sign() {
             "sign"
@@ -36,10 +30,7 @@ pub fn on_use(
     }
     if item_in_hand == Some(Item::Stick) {
         //debug info about blocks
-        player.send_color_message(
-            ColorCode::DarkAqua,
-            messages::block_debug(pos.x, pos.y, pos.z, block),
-        );
+        player.send_color_message(ColorCode::DarkAqua, messages::block_debug(pos.x, pos.y, pos.z, block));
 
         let power_desc = BlockFace::values()
             .map(|face| {
@@ -84,10 +75,7 @@ pub fn on_use(
                 LeverFace::Floor => {
                     redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
                 }
-                LeverFace::Wall => redstone::update_surrounding_blocks(
-                    world,
-                    pos.offset(lever.facing.opposite().block_face()),
-                ),
+                LeverFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(lever.facing.opposite().block_face())),
             }
             ActionResult::Success
         }
@@ -105,10 +93,7 @@ pub fn on_use(
                     ButtonFace::Floor => {
                         redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
                     }
-                    ButtonFace::Wall => redstone::update_surrounding_blocks(
-                        world,
-                        pos.offset(button.facing.opposite().block_face()),
-                    ),
+                    ButtonFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(button.facing.opposite().block_face())),
                 }
             }
             ActionResult::Success
@@ -121,21 +106,12 @@ pub fn on_use(
         Block::SeaPickle { pickles } => {
             if let Some(Item::SeaPickle) = item_in_hand {
                 if pickles < 4 {
-                    world.set_block(
-                        pos,
-                        Block::SeaPickle {
-                            pickles: pickles + 1,
-                        },
-                    );
+                    world.set_block(pos, Block::SeaPickle { pickles: pickles + 1 });
                 }
             }
             ActionResult::Success
         }
-        Block::NoteBlock {
-            instrument,
-            note,
-            powered,
-        } => {
+        Block::NoteBlock { instrument, note, powered } => {
             world.set_block(
                 pos,
                 Block::NoteBlock {
@@ -182,10 +158,7 @@ pub fn on_use(
                             _ => return ActionResult::Pass,
                         }
                     } else {
-                        properties
-                            .get("rotation")
-                            .and_then(|rotation| rotation.parse::<u8>().ok())
-                            .unwrap_or(0)
+                        properties.get("rotation").and_then(|rotation| rotation.parse::<u8>().ok()).unwrap_or(0)
                     };
                     let angle = f64::from(rotation) * std::f64::consts::TAU / 16.0;
                     let dx = player.pos.x - pos.x as f64 - 0.5;
@@ -205,8 +178,7 @@ pub fn on_use(
             // Open container
             if let Some(ty) = ContainerType::from_block(b) {
                 // Repair containers from plots saved before empty inventories existed.
-                if !matches!(world.get_block_entity(pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty)
-                {
+                if !matches!(world.get_block_entity(pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty) {
                     world.set_block_entity(
                         pos,
                         BlockEntity::Container {
@@ -231,12 +203,7 @@ pub fn on_use(
     }
 }
 
-pub fn get_state_for_placement(
-    world: &impl World,
-    pos: BlockPos,
-    item: Item,
-    context: &UseOnBlockContext<'_>,
-) -> Block {
+pub fn get_state_for_placement(world: &impl World, pos: BlockPos, item: Item, context: &UseOnBlockContext<'_>) -> Block {
     let block = match item {
         Item::Stone => Block::Stone {},
         Item::Glass => Block::Glass {},
@@ -303,26 +270,16 @@ pub fn get_state_for_placement(
         Item::ColoredTerracotta { color } => Block::ColoredTerracotta { color },
         Item::Concrete { color } => Block::Concrete { color },
         Item::Repeater => Block::RedstoneRepeater {
-            repeater: redstone::repeater::get_state_for_placement(
-                world,
-                pos,
-                context.player.get_direction().opposite(),
-            ),
+            repeater: redstone::repeater::get_state_for_placement(world, pos, context.player.get_direction().opposite()),
         },
         Item::Comparator => Block::RedstoneComparator {
-            comparator: RedstoneComparator::new(
-                context.player.get_direction().opposite(),
-                ComparatorMode::Compare,
-                false,
-            ),
+            comparator: RedstoneComparator::new(context.player.get_direction().opposite(), ComparatorMode::Compare, false),
         },
         Item::Sign { sign_type } => match context.block_face {
             BlockFace::Bottom => Block::Air {},
             BlockFace::Top => Block::Sign {
                 sign_type,
-                rotation: ((180.0 + context.player.yaw).rem_euclid(360.0) * 16.0 / 360.0).round()
-                    as u8
-                    & 15,
+                rotation: ((180.0 + context.player.yaw).rem_euclid(360.0) * 16.0 / 360.0).round() as u8 & 15,
             },
             _ => Block::WallSign {
                 sign_type,
@@ -396,11 +353,7 @@ pub fn get_state_for_placement(
                 short: true,
             },
         },
-        item if matches!(
-            item.get_name(),
-            "bamboo_sign" | "cherry_sign" | "mangrove_sign"
-        ) =>
-        {
+        item if matches!(item.get_name(), "bamboo_sign" | "cherry_sign" | "mangrove_sign") => {
             if context.block_face == BlockFace::Bottom {
                 return Block::Air;
             }
@@ -412,20 +365,11 @@ pub fn get_state_for_placement(
             };
             let mut block = Block::from_name(&name).unwrap();
             if context.block_face == BlockFace::Top {
-                let rotation = (((180.0 + context.player.yaw).rem_euclid(360.0) * 16.0 / 360.0)
-                    .round() as u8
-                    & 15)
-                    .to_string();
-                block.set_properties(std::collections::HashMap::from([(
-                    "rotation",
-                    rotation.as_str(),
-                )]));
+                let rotation = (((180.0 + context.player.yaw).rem_euclid(360.0) * 16.0 / 360.0).round() as u8 & 15).to_string();
+                block.set_properties(std::collections::HashMap::from([("rotation", rotation.as_str())]));
             } else {
                 let facing = format!("{:?}", context.block_face.unwrap_direction()).to_lowercase();
-                block.set_properties(std::collections::HashMap::from([(
-                    "facing",
-                    facing.as_str(),
-                )]));
+                block.set_properties(std::collections::HashMap::from([("facing", facing.as_str())]));
             }
             block
         }
@@ -437,19 +381,10 @@ pub fn get_state_for_placement(
         },
         _ => Block::from_name(item.get_name()).unwrap_or(Block::Air {}),
     };
-    if is_valid_position(block, world, pos) {
-        block
-    } else {
-        Block::Air {}
-    }
+    if is_valid_position(block, world, pos) { block } else { Block::Air {} }
 }
 
-pub fn place_in_world(
-    block: Block,
-    world: &mut impl World,
-    pos: BlockPos,
-    nbt: &Option<nbt::Blob>,
-) {
+pub fn place_in_world(block: Block, world: &mut impl World, pos: BlockPos, nbt: &Option<nbt::Blob>) {
     let previous = world.get_block(pos);
     if block.has_block_entity() {
         if let Some(nbt) = nbt {
@@ -500,14 +435,8 @@ pub fn destroy(block: Block, world: &mut impl World, pos: BlockPos) {
                     redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
                 }
                 LeverFace::Wall => {
-                    change_surrounding_blocks(
-                        world,
-                        pos.offset(lever.facing.opposite().block_face()),
-                    );
-                    redstone::update_surrounding_blocks(
-                        world,
-                        pos.offset(lever.facing.opposite().block_face()),
-                    );
+                    change_surrounding_blocks(world, pos.offset(lever.facing.opposite().block_face()));
+                    redstone::update_surrounding_blocks(world, pos.offset(lever.facing.opposite().block_face()));
                 }
             }
         }
@@ -560,9 +489,7 @@ pub(crate) fn attachment_support(block: Block, pos: BlockPos) -> Option<(BlockPo
             | Block::RedstoneRepeater { .. }
             | Block::Sign { .. }
             | Block::RedstoneTorch { .. } => BlockFace::Top,
-            Block::RedstoneWallTorch { facing, .. } | Block::WallSign { facing, .. } => {
-                facing.block_face()
-            }
+            Block::RedstoneWallTorch { facing, .. } | Block::WallSign { facing, .. } => facing.block_face(),
             Block::TripwireHook { direction, .. } => direction.block_face(),
             Block::Lever { lever } => match lever.face {
                 LeverFace::Floor => BlockFace::Top,
@@ -669,19 +596,11 @@ pub enum ItemUseResult {
 }
 
 /// Distinguishes successful placement from interaction and rejected placement.
-pub fn use_item_on_block(
-    item: &ItemStack,
-    world: &mut PlotWorld,
-    ctx: UseOnBlockContext<'_>,
-) -> ItemUseResult {
+pub fn use_item_on_block(item: &ItemStack, world: &mut PlotWorld, ctx: UseOnBlockContext<'_>) -> ItemUseResult {
     let use_pos = ctx.block_pos;
     let use_block = world.get_block(use_pos);
-    if let Some((transformed, sound, event)) =
-        redstone::copper_bulb::item_transform(use_block, item.item_type.get_name())
-    {
-        if crate::permissions::dedicated_permissions()
-            && !ctx.player.has_permission("mchprs.build.interact")
-        {
+    if let Some((transformed, sound, event)) = redstone::copper_bulb::item_transform(use_block, item.item_type.get_name()) {
+        if crate::permissions::dedicated_permissions() && !ctx.player.has_permission("mchprs.build.interact") {
             ctx.player.send_no_permission_message();
             return ItemUseResult::Cancelled;
         }
@@ -695,31 +614,16 @@ pub fn use_item_on_block(
     let block_pos = ctx.block_pos.offset(ctx.block_face);
     let player_pos = ctx.player.pos.block_pos();
     let top_y = (ctx.player.pos.y + 1.8 * ctx.player.scale() - 1e-9).floor() as i32;
-    if block_pos.x == player_pos.x
-        && block_pos.z == player_pos.z
-        && (player_pos.y..=top_y).contains(&block_pos.y)
-        && !CONFIG.block_in_hitbox
-    {
+    if block_pos.x == player_pos.x && block_pos.z == player_pos.z && (player_pos.y..=top_y).contains(&block_pos.y) && !CONFIG.block_in_hitbox {
         return ItemUseResult::Used;
     }
     let can_place = item.item_type.is_block() && world.get_block(block_pos).can_place_block_in();
-    if !ctx.player.crouching
-        && on_use(
-            use_block,
-            world,
-            ctx.player,
-            ctx.block_pos,
-            Some(item.item_type),
-        )
-        .is_success()
-    {
+    if !ctx.player.crouching && on_use(use_block, world, ctx.player, ctx.block_pos, Some(item.item_type)).is_success() {
         return ItemUseResult::Used;
     }
 
     if can_place && world.contains_position(block_pos) {
-        if crate::permissions::dedicated_permissions()
-            && !ctx.player.has_permission("mchprs.build.place")
-        {
+        if crate::permissions::dedicated_permissions() && !ctx.player.has_permission("mchprs.build.place") {
             ctx.player.send_no_permission_message();
             return ItemUseResult::Cancelled;
         }
@@ -727,12 +631,7 @@ pub fn use_item_on_block(
         let block = apply_item_properties(block, &item.nbt);
 
         place_in_world(block, world, block_pos, &item.nbt);
-        if block.is_sign()
-            && !item
-                .nbt
-                .as_ref()
-                .is_some_and(|blob| blob.content.contains_key("BlockEntityTag"))
-        {
+        if block.is_sign() && !item.nbt.as_ref().is_some_and(|blob| blob.content.contains_key("BlockEntityTag")) {
             // The client needs the sign block entity before it can open its editor.
             world.flush_block_changes();
             ctx.player.send_packet(
@@ -751,9 +650,7 @@ pub fn use_item_on_block(
 }
 
 fn apply_item_properties(mut block: Block, nbt: &Option<nbt::Blob>) -> Block {
-    if let Some(nbt::Value::Compound(properties)) =
-        nbt.as_ref().and_then(|blob| blob.get("BlockStateTag"))
-    {
+    if let Some(nbt::Value::Compound(properties)) = nbt.as_ref().and_then(|blob| blob.get("BlockStateTag")) {
         block.set_properties(
             properties
                 .iter()
@@ -794,22 +691,17 @@ mod slab_placement_tests {
 
     #[test]
     fn saved_slab_properties_cannot_override_top_placement() {
-        let nbt = Some(nbt::Blob::with_content(std::collections::HashMap::from([
-            (
-                "BlockStateTag".into(),
-                nbt::Value::Compound(std::collections::HashMap::from([
-                    ("type".into(), nbt::Value::String("bottom".into())),
-                    ("waterlogged".into(), nbt::Value::String("true".into())),
-                ])),
-            ),
-        ])));
+        let nbt = Some(nbt::Blob::with_content(std::collections::HashMap::from([(
+            "BlockStateTag".into(),
+            nbt::Value::Compound(std::collections::HashMap::from([
+                ("type".into(), nbt::Value::String("bottom".into())),
+                ("waterlogged".into(), nbt::Value::String("true".into())),
+            ])),
+        )])));
         let block = Block::from_name("oak_slab").unwrap();
         let placed = apply_item_properties(block, &nbt);
         assert_eq!(placed.slab_type(), Some(SlabType::Top));
         assert_eq!(placed.property("waterlogged"), Some("true"));
-        assert_eq!(
-            apply_item_properties(Block::Stone {}, &None),
-            Block::Stone {}
-        );
+        assert_eq!(apply_item_properties(Block::Stone {}, &None), Block::Stone {});
     }
 }

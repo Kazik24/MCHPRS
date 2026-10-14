@@ -18,11 +18,7 @@ pub(super) fn static_pistons(mode: PistonAnimation, tps: Tps, threshold: i64) ->
 }
 
 pub(super) fn send_rate(configured: u32, fast: bool, cap: i64) -> u32 {
-    if fast {
-        configured.min(cap.clamp(1, 1000) as u32)
-    } else {
-        configured
-    }
+    if fast { configured.min(cap.clamp(1, 1000) as u32) } else { configured }
 }
 
 pub(super) fn visual_send_rate(configured: u32, tps: Tps, threshold: i64, cap: i64) -> u32 {
@@ -36,11 +32,7 @@ mod tests {
     fn rendering_threshold_and_rate_preserve_user_limits() {
         assert!(!static_pistons(PistonAnimation::On, Tps::Unlimited, 100));
         assert!(static_pistons(PistonAnimation::Off, Tps::Limited(20), 0));
-        assert!(!static_pistons(
-            PistonAnimation::Auto,
-            Tps::Limited(20),
-            100
-        ));
+        assert!(!static_pistons(PistonAnimation::Auto, Tps::Limited(20), 100));
         assert!(!fast_rendering(Tps::Limited(100), 100));
         assert!(fast_rendering(Tps::Limited(101), 100));
         assert!(fast_rendering(Tps::Unlimited, 100));

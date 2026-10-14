@@ -128,10 +128,7 @@ pub fn checkpoint(world: &PlotWorld, tick: u32, chat: &[(u32, String)]) -> Check
                     for x in 0..16 {
                         let id = chunk.get_block(x, section_y as u32 * 16 + y, z);
                         blocks.update(id.to_le_bytes());
-                        lit_lamps += usize::from(matches!(
-                            Block::from_id(id),
-                            Block::RedstoneLamp { lit: true }
-                        ));
+                        lit_lamps += usize::from(matches!(Block::from_id(id), Block::RedstoneLamp { lit: true }));
                     }
                 }
             }
@@ -144,13 +141,9 @@ pub fn checkpoint(world: &PlotWorld, tick: u32, chat: &[(u32, String)]) -> Check
                 if let BlockEntity::Container { inventory, .. } = &mut entity {
                     for item in inventory {
                         if let Some(bytes) = &mut item.nbt {
-                            let blob =
-                                nbt::Blob::from_reader(&mut std::io::Cursor::new(&*bytes)).unwrap();
+                            let blob = nbt::Blob::from_reader(&mut std::io::Cursor::new(&*bytes)).unwrap();
                             // Compound field order has no meaning; import reserializes HashMaps.
-                            *bytes = serde_json::to_vec(&canonical_nbt(&nbt::Value::Compound(
-                                blob.content,
-                            )))
-                            .unwrap();
+                            *bytes = serde_json::to_vec(&canonical_nbt(&nbt::Value::Compound(blob.content))).unwrap();
                         }
                     }
                 }
@@ -177,10 +170,7 @@ fn canonical_nbt(value: &nbt::Value) -> serde_json::Value {
     use serde_json::json;
     match value {
         Value::Compound(values) => {
-            let values: std::collections::BTreeMap<_, _> = values
-                .iter()
-                .map(|(name, value)| (name, canonical_nbt(value)))
-                .collect();
+            let values: std::collections::BTreeMap<_, _> = values.iter().map(|(name, value)| (name, canonical_nbt(value))).collect();
             json!(["compound", values])
         }
         Value::List(values) => {
@@ -204,9 +194,7 @@ fn digest(value: &(impl Serialize + ?Sized)) -> String {
 }
 
 pub fn load_cpu(cpu: Cpu) -> PlotWorld {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test_data")
-        .join(cpu.schematic);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
     assert_eq!(
         format!("{:x}", Sha256::digest(std::fs::read(path).unwrap())),
         cpu.sha256,
@@ -229,19 +217,13 @@ pub fn load_cpu(cpu: Cpu) -> PlotWorld {
         wait_quiet(&mut world);
         click_cpu(&mut world, cpu, BlockPos::new(166, 7, 158));
         wait_quiet(&mut world);
-        assert_eq!(
-            world.piston_state().logical_tick,
-            364,
-            "frozen load/reset protocol"
-        );
+        assert_eq!(world.piston_state().logical_tick, 364, "frozen load/reset protocol");
     }
     world
 }
 
 fn quiet(world: &PlotWorld) -> bool {
-    world.scheduler().iter_entries().next().is_none()
-        && world.piston_state().events.is_empty()
-        && world.piston_state().motions.is_empty()
+    world.scheduler().iter_entries().next().is_none() && world.piston_state().events.is_empty() && world.piston_state().motions.is_empty()
 }
 
 fn wait_quiet(world: &mut PlotWorld) {
@@ -260,12 +242,7 @@ pub fn click_cpu(world: &mut PlotWorld, cpu: Cpu, local: BlockPos) {
     click(world, local + cpu.origin - BlockPos::new(8, 8, 8));
 }
 
-pub fn collect_ram(
-    world: &PlotWorld,
-    cpu: Cpu,
-    tick: u32,
-    trace: &mut Vec<(u32, Vec<Option<u16>>)>,
-) {
+pub fn collect_ram(world: &PlotWorld, cpu: Cpu, tick: u32, trace: &mut Vec<(u32, Vec<Option<u16>>)>) {
     if cpu.name != "cpu_bubblesort" {
         return;
     }
@@ -287,11 +264,7 @@ pub fn collect_ram(
 }
 
 pub fn collect_chat(world: &PlotWorld, tick: u32, trace: &mut Vec<(u32, String)>) {
-    let new: Vec<_> = world
-        .command_output()
-        .skip(trace.len())
-        .map(|text| (tick, text.to_owned()))
-        .collect();
+    let new: Vec<_> = world.command_output().skip(trace.len()).map(|text| (tick, text.to_owned())).collect();
     trace.extend(new);
 }
 
@@ -325,10 +298,7 @@ pub fn reference(cpu: Cpu) -> Reference {
         schema: u32,
         cpus: std::collections::BTreeMap<String, Vec<BlockPatch>>,
     }
-    let migration: Migration = serde_json::from_str(include_str!(
-        "../../../../test_data/cpu-references/piston-shape-checkpoints.json"
-    ))
-    .unwrap();
+    let migration: Migration = serde_json::from_str(include_str!("../../../../test_data/cpu-references/piston-shape-checkpoints.json")).unwrap();
     assert_eq!(migration.schema, 1);
     for patch in migration.cpus.get(cpu.name).into_iter().flatten() {
         let checkpoint = reference
@@ -351,12 +321,7 @@ pub struct RunTiming {
     pub instant_piston_cache_stats: Option<(usize, usize, u64)>,
 }
 
-pub fn replay_with_visuals(
-    cpu: Cpu,
-    expected: &Reference,
-    screen_only: bool,
-    flush_every: u32,
-) -> RunTiming {
+pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, flush_every: u32) -> RunTiming {
     let mut world = load_cpu(cpu);
     if flush_every != 0 {
         // Flush imported initial blocks outside timing in both modes.
@@ -371,12 +336,7 @@ pub fn replay_with_visuals(
     if cpu.name == "anpu_pong" {
         collect_screen(&world, 0, &mut screen_trace);
     }
-    assert_eq!(
-        checkpoint(&world, 0, &trace),
-        expected.checkpoints[0],
-        "{} initial state",
-        cpu.name
-    );
+    assert_eq!(checkpoint(&world, 0, &trace), expected.checkpoints[0], "{} initial state", cpu.name);
     click_cpu(&mut world, cpu, cpu.start);
     let mut elapsed = Duration::ZERO;
     let active_ticks = cpu.active_ticks;
@@ -396,11 +356,7 @@ pub fn replay_with_visuals(
         collect_chat(&world, tick, &mut trace);
         collect_ram(&world, cpu, tick, &mut ram_trace);
         if cpu.name == "cpu_bubblesort" && tick >= active_ticks {
-            assert_eq!(
-                quiet(&world),
-                tick > active_ticks,
-                "BubbleSort stop boundary at {tick}"
-            );
+            assert_eq!(quiet(&world), tick > active_ticks, "BubbleSort stop boundary at {tick}");
         }
         if cpu.name == "anpu_pong" {
             collect_screen(&world, tick, &mut screen_trace);
@@ -430,54 +386,27 @@ pub fn replay_with_visuals(
         next_checkpoint += 1;
     }
     assert_eq!(next_checkpoint, expected.checkpoints.len());
-    assert_eq!(
-        ram_trace, expected.ram_trace,
-        "{} per-tick RAM transitions",
-        cpu.name
-    );
+    assert_eq!(ram_trace, expected.ram_trace, "{} per-tick RAM transitions", cpu.name);
     if cpu.name == "cpu_bubblesort" {
         let initial = &ram_trace[0].1;
         let final_words = &ram_trace.last().unwrap().1;
-        assert_eq!(
-            &initial[..48],
-            &final_words[..48],
-            "program and unused banks"
-        );
+        assert_eq!(&initial[..48], &final_words[..48], "program and unused banks");
         assert_eq!(&final_words[48..], (0..16).map(Some).collect::<Vec<_>>());
     }
-    assert_eq!(
-        trace, expected.chat_trace,
-        "{} ordered, tick-stamped command output",
-        cpu.name
-    );
+    assert_eq!(trace, expected.chat_trace, "{} ordered, tick-stamped command output", cpu.name);
     if cpu.name == "pm1_sort" {
         assert_eq!(trace.len(), 1535); // Includes the manual stop message after SORT halted.
-        assert!(
-            trace
-                .iter()
-                .any(|(tick, text)| *tick == 12_051 && text.contains("shut"))
-        );
+        assert!(trace.iter().any(|(tick, text)| *tick == 12_051 && text.contains("shut")));
     }
     if cpu.name == "anpu_pong" {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../test_data/cpu-references/anpu_screen.json");
-        let frames: Vec<ScreenFrame> =
-            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json");
+        let frames: Vec<ScreenFrame> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert!(frames.len() > 1, "Pong must draw on its screen");
-        assert_eq!(
-            screen_trace, frames,
-            "ANPU exact per-game-tick screen output"
-        );
+        assert_eq!(screen_trace, frames, "ANPU exact per-game-tick screen output");
     }
     // A disconnected start button must not pass merely by reaching an idle final state.
-    assert_ne!(
-        expected.checkpoints[0].blocks,
-        expected.checkpoints[3].blocks
-    );
-    assert_ne!(
-        expected.checkpoints[2].blocks,
-        expected.checkpoints[3].blocks
-    );
+    assert_ne!(expected.checkpoints[0].blocks, expected.checkpoints[3].blocks);
+    assert_ne!(expected.checkpoints[2].blocks, expected.checkpoints[3].blocks);
     RunTiming {
         total: elapsed,
         active,
@@ -495,23 +424,15 @@ pub fn replay_with_visuals(
 }
 
 fn load_at(name: &str, origin: BlockPos) -> PlotWorld {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../test_data")
-        .join(name);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(name);
     let mut clip = load_schematic(File::open(path).unwrap()).unwrap();
     // Place the entire selection independent of WorldEdit's player origin.
     clip.offset_x = 0;
     clip.offset_y = 0;
     clip.offset_z = 0;
     assert!(origin.x >= 0 && origin.y >= 0 && origin.z >= 0);
-    assert!(
-        clip.size_x as i32 + origin.x <= 256
-            && clip.size_z as i32 + origin.z <= 256
-            && clip.size_y as i32 + origin.y <= 256
-    );
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    assert!(clip.size_x as i32 + origin.x <= 256 && clip.size_z as i32 + origin.z <= 256 && clip.size_y as i32 + origin.y <= 256);
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     paste_clipboard(&mut world, &clip, origin, false);
     world

@@ -159,12 +159,7 @@ impl Cache {
             return;
         }
         while self.bytes + bytes > self.limit {
-            let oldest = *self
-                .entries
-                .iter()
-                .min_by_key(|(_, entry)| entry.used)
-                .unwrap()
-                .0;
+            let oldest = *self.entries.iter().min_by_key(|(_, entry)| entry.used).unwrap().0;
             let old = self.entries.remove(&oldest).unwrap();
             self.bytes -= old.packet.buffer.len() + 128;
         }
@@ -185,17 +180,9 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
     let path = root.join(format!("p{},{}", request.plot.0, request.plot.1));
     let stamp = file_stamp(&path)?;
     let template = root.join("pTEMPLATE");
-    let template_stamp = if stamp.is_none() {
-        file_stamp(&template)?
-    } else {
-        None
-    };
+    let template_stamp = if stamp.is_none() { file_stamp(&template)? } else { None };
     let claimed = super::database::is_claimed(request.plot.0, request.plot.1).unwrap_or(false);
-    let version = Version::Saved(
-        stamp.is_some(),
-        stamp.clone().or(template_stamp.clone()),
-        claimed,
-    );
+    let version = Version::Saved(stamp.is_some(), stamp.clone().or(template_stamp.clone()), claimed);
     let chunks: Vec<_> = request
         .chunks
         .iter()
@@ -212,20 +199,13 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
         if loaded.is_none() && (stamp.is_some() || template_stamp.is_some()) {
             let source = if stamp.is_some() { &path } else { &template };
             let data = PlotData::<PLOT_SECTIONS>::load_from_file(source, false)?;
-            anyhow::ensure!(
-                data.chunk_data.len() == NUM_CHUNKS,
-                "wrong plot chunk count"
-            );
+            anyhow::ensure!(data.chunk_data.len() == NUM_CHUNKS, "wrong plot chunk count");
             loaded = Some(data);
         }
         let mut chunk = if let Some(data) = &loaded {
             let x = coord.0.rem_euclid(PLOT_WIDTH);
             let z = coord.1.rem_euclid(PLOT_WIDTH);
-            Chunk::load(
-                coord.0,
-                coord.1,
-                data.chunk_data[(x * PLOT_WIDTH + z) as usize].clone(),
-            )
+            Chunk::load(coord.0, coord.1, data.chunk_data[(x * PLOT_WIDTH + z) as usize].clone())
         } else {
             Plot::generate_chunk(8, coord.0, coord.1)
         };
@@ -257,11 +237,7 @@ impl LiveSource {
     pub fn register(plot: Coord) -> Self {
         let (sender, requests) = mpsc::sync_channel(32);
         let registration = SERVICE.next_source.fetch_add(1, Ordering::Relaxed);
-        SERVICE
-            .sources
-            .lock()
-            .unwrap()
-            .insert(plot, (registration, sender));
+        SERVICE.sources.lock().unwrap().insert(plot, (registration, sender));
         Self {
             plot,
             requests,
@@ -293,8 +269,7 @@ impl LiveSource {
             if plot_for_chunk(coord) != self.plot {
                 continue;
             }
-            let index =
-                coord.0.rem_euclid(PLOT_WIDTH) * PLOT_WIDTH + coord.1.rem_euclid(PLOT_WIDTH);
+            let index = coord.0.rem_euclid(PLOT_WIDTH) * PLOT_WIDTH + coord.1.rem_euclid(PLOT_WIDTH);
             let Some(chunk) = chunks.get(index as usize) else {
                 continue;
             };
@@ -320,10 +295,7 @@ impl Drop for LiveSource {
     fn drop(&mut self) {
         let mut sources = SERVICE.sources.lock().unwrap();
         // An old plot can finish dropping just after its replacement registers.
-        if sources
-            .get(&self.plot)
-            .is_some_and(|(id, _)| *id == self.registration)
-        {
+        if sources.get(&self.plot).is_some_and(|(id, _)| *id == self.registration) {
             sources.remove(&self.plot);
         }
     }
@@ -381,46 +353,35 @@ impl Views {
         self.players.get(&player)?.get(&chunk)?.packet.clone()
     }
 
-    fn update(
-        &mut self,
-        now: Instant,
-        interval: Duration,
-        mut request: impl FnMut(Request),
-    ) -> Vec<(u128, Snapshot)> {
+    fn update(&mut self, now: Instant, interval: Duration, mut request: impl FnMut(Request)) -> Vec<(u128, Snapshot)> {
         self.dirty = false;
         let mut deliveries = Vec::new();
-        self.pending
-            .retain(|plot, pending| match pending.response.try_recv() {
-                Ok(packets) => {
-                    self.last_request.insert(*plot, now);
-                    for (coord, packet) in packets {
-                        for &(player, generation) in
-                            pending.recipients.get(&coord).into_iter().flatten()
-                        {
-                            let Some(slot) = self
-                                .players
-                                .get_mut(&player)
-                                .and_then(|chunks| chunks.get_mut(&coord))
-                            else {
-                                continue;
-                            };
-                            if slot.generation != generation {
-                                continue;
-                            }
-                            let changed = slot.packet.as_ref().is_none_or(|old| {
-                                old.packet_id != packet.packet_id || old.buffer != packet.buffer
-                            });
-                            if changed {
-                                slot.packet = Some(packet.clone());
-                                deliveries.push((player, packet.clone()));
-                            }
+        self.pending.retain(|plot, pending| match pending.response.try_recv() {
+            Ok(packets) => {
+                self.last_request.insert(*plot, now);
+                for (coord, packet) in packets {
+                    for &(player, generation) in pending.recipients.get(&coord).into_iter().flatten() {
+                        let Some(slot) = self.players.get_mut(&player).and_then(|chunks| chunks.get_mut(&coord)) else {
+                            continue;
+                        };
+                        if slot.generation != generation {
+                            continue;
+                        }
+                        let changed = slot
+                            .packet
+                            .as_ref()
+                            .is_none_or(|old| old.packet_id != packet.packet_id || old.buffer != packet.buffer);
+                        if changed {
+                            slot.packet = Some(packet.clone());
+                            deliveries.push((player, packet.clone()));
                         }
                     }
-                    false
                 }
-                Err(TryRecvError::Disconnected) => false,
-                Err(TryRecvError::Empty) => now.duration_since(pending.started) < REQUEST_TIMEOUT,
-            });
+                false
+            }
+            Err(TryRecvError::Disconnected) => false,
+            Err(TryRecvError::Empty) => now.duration_since(pending.started) < REQUEST_TIMEOUT,
+        });
         let mut interests: BTreeMap<Coord, HashMap<Coord, Vec<(u128, u64)>>> = BTreeMap::new();
         for (&player, chunks) in &self.players {
             for (&coord, slot) in chunks {
@@ -432,34 +393,21 @@ impl Views {
                     .push((player, slot.generation));
             }
         }
-        self.last_request
-            .retain(|plot, _| interests.contains_key(plot));
+        self.last_request.retain(|plot, _| interests.contains_key(plot));
         self.pending.retain(|plot, _| interests.contains_key(plot));
         for (plot, recipients) in interests {
             if self.pending.contains_key(&plot) {
                 continue;
             }
-            let initial = recipients.iter().any(|(coord, viewers)| {
-                viewers
-                    .iter()
-                    .any(|(player, _)| !self.players[player][coord].requested)
-            });
-            if !initial
-                && self
-                    .last_request
-                    .get(&plot)
-                    .is_some_and(|&last| now.duration_since(last) < interval)
-            {
+            let initial = recipients
+                .iter()
+                .any(|(coord, viewers)| viewers.iter().any(|(player, _)| !self.players[player][coord].requested));
+            if !initial && self.last_request.get(&plot).is_some_and(|&last| now.duration_since(last) < interval) {
                 continue;
             }
             for (coord, viewers) in &recipients {
                 for (player, _) in viewers {
-                    self.players
-                        .get_mut(player)
-                        .unwrap()
-                        .get_mut(coord)
-                        .unwrap()
-                        .requested = true;
+                    self.players.get_mut(player).unwrap().get_mut(coord).unwrap().requested = true;
                 }
             }
             let (reply, response) = mpsc::sync_channel(1);
@@ -473,11 +421,7 @@ impl Views {
                 },
             );
             self.last_request.insert(plot, now);
-            request(Request {
-                plot,
-                chunks,
-                reply,
-            });
+            request(Request { plot, chunks, reply });
         }
         deliveries
     }
@@ -491,25 +435,21 @@ impl Plot {
         let now = Instant::now();
         // Unlimited-TPS plots can execute this loop millions of times per second.
         // Poll viewers at 20 Hz, or immediately when visible chunks change.
-        if !self.neighbor_views.dirty
-            && self.neighbor_views.next_poll.is_some_and(|next| now < next)
-        {
+        if !self.neighbor_views.dirty && self.neighbor_views.next_poll.is_some_and(|next| now < next) {
             return;
         }
         self.neighbor_views.next_poll = Some(now + Duration::from_millis(50));
-        self.neighbor_views.players.retain(|uuid, _| {
-            self.players
-                .iter()
-                .any(|player| player.uuid == *uuid && player.client.alive())
-        });
+        self.neighbor_views
+            .players
+            .retain(|uuid, _| self.players.iter().any(|player| player.uuid == *uuid && player.client.alive()));
         if CONFIG.neighbor_update_interval_ms == 0 {
             return;
         }
-        let deliveries = self.neighbor_views.update(
-            now,
-            Duration::from_millis(CONFIG.neighbor_update_interval_ms),
-            |request| SERVICE.request(request),
-        );
+        let deliveries = self
+            .neighbor_views
+            .update(now, Duration::from_millis(CONFIG.neighbor_update_interval_ms), |request| {
+                SERVICE.request(request)
+            });
         for (uuid, packet) in deliveries {
             if let Some(player) = self.players.iter().find(|player| player.uuid == uuid) {
                 player.client.send_packet(&packet);
@@ -518,10 +458,7 @@ impl Plot {
     }
 
     pub(super) fn restore_neighbor_chunk(&mut self, player: usize, pos: mchprs_blocks::BlockPos) {
-        if let Some(packet) = self
-            .neighbor_views
-            .packet(self.players[player].uuid, (pos.x >> 4, pos.z >> 4))
-        {
+        if let Some(packet) = self.neighbor_views.packet(self.players[player].uuid, (pos.x >> 4, pos.z >> 4)) {
             self.players[player].client.send_packet(&packet);
         }
     }

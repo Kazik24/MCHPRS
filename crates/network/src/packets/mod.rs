@@ -64,46 +64,28 @@ impl From<std::string::FromUtf8Error> for PacketDecodeError {
 #[derive(Debug)]
 pub enum PacketEncodeError {}
 
-fn read_compressed<T: PacketDecoderExt>(
-    reader: &mut T,
-    network_state: &mut NetworkState,
-) -> DecodeResult<Box<dyn ServerBoundPacket>> {
+fn read_compressed<T: PacketDecoderExt>(reader: &mut T, network_state: &mut NetworkState) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let length = reader.read_varint()?;
     if !(0..=2097152).contains(&length) {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid compressed packet length",
-        )
-        .into());
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid compressed packet length").into());
     }
     let data = PacketDecoderExt::read_to_end(reader)?;
     if length == 0 {
         read_decompressed(&mut Cursor::new(data), network_state)
     } else {
         if length < 256 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "compressed packet below threshold",
-            )
-            .into());
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "compressed packet below threshold").into());
         }
         let mut decompressed = Vec::new();
         Read::take(ZlibDecoder::new(data.as_slice()), 2097153).read_to_end(&mut decompressed)?;
         if decompressed.len() != length as usize {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "compressed packet length mismatch",
-            )
-            .into());
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "compressed packet length mismatch").into());
         }
         read_decompressed(&mut Cursor::new(decompressed), network_state)
     }
 }
 
-fn read_decompressed<T: PacketDecoderExt>(
-    reader: &mut T,
-    state: &mut NetworkState,
-) -> DecodeResult<Box<dyn ServerBoundPacket>> {
+fn read_decompressed<T: PacketDecoderExt>(reader: &mut T, state: &mut NetworkState) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let packet_id = reader.read_varint()?;
     decode_packet(reader, state, packet_id).map_err(|source| PacketDecodeError::Packet {
         packet_id,
@@ -111,11 +93,7 @@ fn read_decompressed<T: PacketDecoderExt>(
     })
 }
 
-fn decode_packet<T: PacketDecoderExt>(
-    reader: &mut T,
-    state: &mut NetworkState,
-    packet_id: i32,
-) -> DecodeResult<Box<dyn ServerBoundPacket>> {
+fn decode_packet<T: PacketDecoderExt>(reader: &mut T, state: &mut NetworkState, packet_id: i32) -> DecodeResult<Box<dyn ServerBoundPacket>> {
     let unknown = || -> Box<dyn ServerBoundPacket> { Box::new(SUnknown) };
     Ok(match *state {
         NetworkState::Handshake if packet_id == 0 => {
@@ -124,11 +102,7 @@ fn decode_packet<T: PacketDecoderExt>(
                 1 => NetworkState::Status,
                 2 => NetworkState::Login,
                 _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "invalid handshake state",
-                    )
-                    .into());
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid handshake state").into());
                 }
             };
             Box::new(p)
@@ -143,9 +117,7 @@ fn decode_packet<T: PacketDecoderExt>(
             *state = NetworkState::LoginAcknowledgement;
             Box::new(p)
         }
-        NetworkState::LoginAcknowledgement if packet_id == 2 => {
-            Box::new(SLoginPluginResponse::decode(reader)?)
-        }
+        NetworkState::LoginAcknowledgement if packet_id == 2 => Box::new(SLoginPluginResponse::decode(reader)?),
         NetworkState::LoginAcknowledgement if packet_id == 3 => {
             *state = NetworkState::Configuration;
             Box::new(SLoginAcknowledged)
@@ -156,11 +128,7 @@ fn decode_packet<T: PacketDecoderExt>(
             7 if *state == NetworkState::Configuration => {
                 let count = reader.read_varint()?;
                 if count != 0 {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "unexpected known packs",
-                    )
-                    .into());
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, "unexpected known packs").into());
                 }
                 *state = NetworkState::ConfigurationFinish;
                 Box::new(SKnownPacks)
@@ -205,11 +173,7 @@ fn decode_packet<T: PacketDecoderExt>(
             _ => unknown(),
         },
         _ => {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "packet in invalid connection state",
-            )
-            .into());
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "packet in invalid connection state").into());
         }
     })
 }
@@ -248,11 +212,7 @@ impl PacketDecoderExt for TcpStream {}
 fn read_varint_with_first<T: PacketDecoderExt>(reader: &mut T, first: u8) -> DecodeResult<i32> {
     let mut result = 0u32;
     for n in 0..5 {
-        let byte = if n == 0 {
-            first
-        } else {
-            reader.read_unsigned_byte()?
-        };
+        let byte = if n == 0 { first } else { reader.read_unsigned_byte()? };
         if n == 4 && byte & 0xf0 != 0 {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "VarInt too big").into());
         }
@@ -365,8 +325,7 @@ pub struct PackedPos {
 
 impl PackedPos {
     pub const fn new(x: i32, y: i32, z: i32) -> Self {
-        let val =
-            ((x as i64 & 0x3FF_FFFF) << 38) | ((z as i64 & 0x3FF_FFFF) << 12) | (y as i64 & 0xFFF);
+        let val = ((x as i64 & 0x3FF_FFFF) << 38) | ((z as i64 & 0x3FF_FFFF) << 12) | (y as i64 & 0xFFF);
         Self { val }
     }
     pub const fn coords(self) -> (i32, i32, i32) {
@@ -536,8 +495,7 @@ impl PacketEncoder {
             let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
             encoder.write_all(&data)?;
             let compressed = encoder.finish().unwrap();
-            let packet_length =
-                PacketEncoder::varint((data_length.len() + compressed.len()) as i32);
+            let packet_length = PacketEncoder::varint((data_length.len() + compressed.len()) as i32);
 
             w.write_all(&packet_length)?;
             w.write_all(&data_length)?;

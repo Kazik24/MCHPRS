@@ -2,12 +2,7 @@ use super::{Plot, ToolCommand};
 use mchprs_network::packets::clientbound::{CTabComplete, CTabCompleteMatch};
 
 impl Plot {
-    pub(in crate::plot) fn complete_redstone_tools(
-        &mut self,
-        player: usize,
-        transaction: i32,
-        text: &str,
-    ) -> Option<CTabComplete> {
+    pub(in crate::plot) fn complete_redstone_tools(&mut self, player: usize, transaction: i32, text: &str) -> Option<CTabComplete> {
         let (command, tail) = text.split_once(' ')?;
         let tool = ToolCommand::parse(command)?;
         if !self.players[player].has_permission(tool.permission()) {
@@ -22,27 +17,21 @@ impl Plot {
         let prefix = &text[start..];
         let args: Vec<_> = tail.split_whitespace().collect();
         let mut choices: Vec<String> = match tool {
-            ToolCommand::Wire if !tail.trim_start().contains(char::is_whitespace) => {
-                ["free", "plane", "off"].map(str::to_owned).to_vec()
-            }
-            ToolCommand::Container if args.len() < 2 && !tail.contains(' ') => {
-                ["chest", "barrel", "hopper", "furnace"]
-                    .map(str::to_owned)
-                    .to_vec()
-            }
+            ToolCommand::Wire if !tail.trim_start().contains(char::is_whitespace) => ["free", "plane", "off"].map(str::to_owned).to_vec(),
+            ToolCommand::Container if args.len() < 2 && !tail.contains(' ') => ["chest", "barrel", "hopper", "furnace"].map(str::to_owned).to_vec(),
             ToolCommand::Container => (0..=15)
                 .map(|power| power.to_string())
                 .chain(["a", "b", "c", "d", "e", "f"].map(str::to_owned))
                 .collect(),
             ToolCommand::RStack => [
-                "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se", "sw",
-                "neu", "ned", "forward", "back", "left", "right", "-e", "-w", "-a",
+                "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se", "sw", "neu", "ned", "forward", "back", "left", "right", "-e",
+                "-w", "-a",
             ]
             .map(str::to_owned)
             .to_vec(),
             ToolCommand::AutoStack => [
-                "off", "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se",
-                "sw", "neu", "ned", "forward", "back", "left", "right", "-e",
+                "off", "me", "north", "south", "east", "west", "up", "down", "ne", "nw", "se", "sw", "neu", "ned", "forward", "back", "left",
+                "right", "-e",
             ]
             .map(str::to_owned)
             .to_vec(),
@@ -72,10 +61,7 @@ impl Plot {
             length: prefix.encode_utf16().count() as i32,
             matches: choices
                 .into_iter()
-                .map(|text| CTabCompleteMatch {
-                    match_: text,
-                    tooltip: None,
-                })
+                .map(|text| CTabCompleteMatch { match_: text, tooltip: None })
                 .collect(),
         })
     }
@@ -101,16 +87,9 @@ mod tests {
             let response = plot.complete_redstone_tools(0, 7, text).unwrap();
             assert_eq!(response.id, 7);
             assert_eq!(response.start, (text.rfind(' ').unwrap() + 1) as i32);
+            assert_eq!(response.length, (text.len() - response.start as usize) as i32);
             assert_eq!(
-                response.length,
-                (text.len() - response.start as usize) as i32
-            );
-            assert_eq!(
-                response
-                    .matches
-                    .iter()
-                    .map(|entry| entry.match_.as_str())
-                    .collect::<Vec<_>>(),
+                response.matches.iter().map(|entry| entry.match_.as_str()).collect::<Vec<_>>(),
                 expected,
                 "{text}"
             );

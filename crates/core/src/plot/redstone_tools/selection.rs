@@ -3,9 +3,7 @@ use crate::messages;
 use crate::player::{PacketSender, Player};
 use anyhow::{Result, bail};
 use mchprs_blocks::BlockPos;
-use mchprs_network::packets::clientbound::{
-    CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket,
-};
+use mchprs_network::packets::clientbound::{CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket};
 use serde_json::json;
 
 const OBJECTIVE: &str = "rf_selection";
@@ -49,9 +47,7 @@ pub(in crate::plot) fn update(player: &mut Player) {
             &CScoreboardObjective {
                 objective_name: OBJECTIVE.into(),
                 mode: 0,
-                objective_value:
-                    json!({"text": messages::SELECTION_SIDEBAR_TITLE, "color": "light_purple"})
-                        .to_string(),
+                objective_value: json!({"text": messages::SELECTION_SIDEBAR_TITLE, "color": "light_purple"}).to_string(),
                 ty: 0,
             }
             .encode(),
@@ -110,10 +106,7 @@ fn selection_lines(first: Option<BlockPos>, second: Option<BlockPos>) -> Vec<Str
         _ => "§c",
     };
     vec![
-        format!(
-            "§b{}",
-            messages::selection_sidebar_dimensions(width, height, depth)
-        ),
+        format!("§b{}", messages::selection_sidebar_dimensions(width, height, depth)),
         format!("{color}{}", messages::selection_sidebar_volume(volume)),
     ]
 }
@@ -126,16 +119,10 @@ mod tests {
     fn selection_dimensions_are_inclusive_and_order_independent() {
         let first = Some(BlockPos::new(3, 4, 5));
         let second = Some(BlockPos::new(1, 2, 3));
-        assert_eq!(
-            selection_lines(first, second),
-            selection_lines(second, first)
-        );
+        assert_eq!(selection_lines(first, second), selection_lines(second, first));
         assert!(selection_lines(first, second)[1].contains("27"));
         assert_eq!(selection_lines(first, first)[1], "§aVolume: 1");
-        assert_eq!(
-            selection_lines(first, None),
-            [messages::SELECTION_SIDEBAR_INCOMPLETE]
-        );
+        assert_eq!(selection_lines(first, None), [messages::SELECTION_SIDEBAR_INCOMPLETE]);
         selection_lines(
             Some(BlockPos::new(i32::MIN, i32::MIN, i32::MIN)),
             Some(BlockPos::new(i32::MAX, i32::MAX, i32::MAX)),

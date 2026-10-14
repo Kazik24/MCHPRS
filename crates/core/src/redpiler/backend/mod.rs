@@ -57,10 +57,7 @@ impl Runtime {
         backend.tick()
     }
 
-    pub(crate) fn tick_with_world(
-        &mut self,
-        world: &mut impl crate::world::World,
-    ) -> Result<(), graph::GraphExecutionError> {
+    pub(crate) fn tick_with_world(&mut self, world: &mut impl crate::world::World) -> Result<(), graph::GraphExecutionError> {
         let Self::Graph(backend) = self;
         backend.tick_with_world(world)
     }

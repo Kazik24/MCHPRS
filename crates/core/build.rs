@@ -4,13 +4,7 @@ fn main() {
     let manifest = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join("../../Cargo.toml");
     println!("cargo:rerun-if-changed={}", manifest.display());
     let content = fs::read_to_string(manifest).unwrap();
-    let package = content
-        .split("[package]")
-        .nth(1)
-        .unwrap()
-        .split('[')
-        .next()
-        .unwrap();
+    let package = content.split("[package]").nth(1).unwrap().split('[').next().unwrap();
     let version = package
         .lines()
         .find_map(|line| {

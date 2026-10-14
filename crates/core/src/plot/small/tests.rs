@@ -15,9 +15,7 @@ fn fixture(compressed: bool) -> (Plot, TcpStream, TcpStream) {
     let observer = connection(compressed).unwrap();
     let mut viewer = Player::test_player(observer.player);
     viewer.uuid = 2;
-    plot.world
-        .packet_senders
-        .push(PlayerPacketSender::new(&viewer.client));
+    plot.world.packet_senders.push(PlayerPacketSender::new(&viewer.client));
     plot.players.push(viewer);
     (plot, owner, observer.peer)
 }
@@ -53,11 +51,7 @@ fn proxy_type(peer: &mut TcpStream, compressed: bool) -> i32 {
     spawn.read_varint().unwrap()
 }
 
-fn proxy_held_item(
-    peer: &mut TcpStream,
-    entity: u32,
-    compressed: bool,
-) -> Option<mchprs_network::packets::SlotData> {
+fn proxy_held_item(peer: &mut TcpStream, entity: u32, compressed: bool) -> Option<mchprs_network::packets::SlotData> {
     let mut equipment = packet(peer, compressed, 0x5f);
     assert_eq!(equipment.read_varint().unwrap(), entity as i32);
     assert_eq!(equipment.read_unsigned_byte().unwrap(), 0);
@@ -79,26 +73,13 @@ fn enable(plot: &mut Plot, owner: &mut TcpStream, viewer: &mut TcpStream, compre
     let mut equipment = packet(viewer, compressed, 0x5f);
     assert_eq!(equipment.read_varint().unwrap(), entity as i32);
     for slot in 0..6 {
-        assert_eq!(
-            equipment.read_unsigned_byte().unwrap(),
-            slot | if slot == 5 { 0 } else { 0x80 }
-        );
-        assert_eq!(
-            equipment.read_varint().unwrap(),
-            0,
-            "hidden equipment must not float beside the ocelot"
-        );
+        assert_eq!(equipment.read_unsigned_byte().unwrap(), slot | if slot == 5 { 0 } else { 0x80 });
+        assert_eq!(equipment.read_varint().unwrap(), 0, "hidden equipment must not float beside the ocelot");
     }
     let mut spawn = packet(viewer, compressed, 0x01);
     assert_eq!(spawn.read_varint().unwrap(), model as i32);
-    assert_eq!(
-        spawn.read_uuid().unwrap(),
-        plot.players[0].small_model.as_ref().unwrap().uuid
-    );
-    assert_eq!(
-        spawn.read_varint().unwrap(),
-        mchprs_network::generated::OCELOT_ENTITY
-    );
+    assert_eq!(spawn.read_uuid().unwrap(), plot.players[0].small_model.as_ref().unwrap().uuid);
+    assert_eq!(spawn.read_varint().unwrap(), mchprs_network::generated::OCELOT_ENTITY);
     for expected in [32.5, 21.0, 35.5] {
         assert_eq!(spawn.read_double().unwrap(), expected);
     }
@@ -116,24 +97,16 @@ fn disguise_lifecycle_keeps_owner_interactive_and_restores_size_only_with_cleara
         assert!((plot.players[0].eye_position().y - 21.81).abs() < 1e-9);
         assert!(plot.set_small(0, true));
         packet(&mut owner, compressed, 0x72);
-        assert_eq!(
-            plot.players[0].small_model.as_ref().unwrap().entity_id,
-            model
-        );
+        assert_eq!(plot.players[0].small_model.as_ref().unwrap().entity_id, model);
 
         let ceiling = BlockPos::new(32, 22, 35);
         plot.world.set_block(ceiling, Block::Stone {});
         assert!(!plot.set_small(0, false));
         packet(&mut owner, compressed, 0x72);
-        assert_eq!(
-            plot.players[0].small_model.as_ref().unwrap().entity_id,
-            model
-        );
-        assert!(super::super::compass::body_clear(
-            plot.players[0].pos,
-            0.5,
-            &|p| Some(plot.world.get_block(p))
-        ));
+        assert_eq!(plot.players[0].small_model.as_ref().unwrap().entity_id, model);
+        assert!(super::super::compass::body_clear(plot.players[0].pos, 0.5, &|p| Some(
+            plot.world.get_block(p)
+        )));
         plot.world.set_block(ceiling, Block::Air);
         assert!(plot.set_small(0, false));
         for peer in [&mut owner, &mut viewer] {
@@ -223,14 +196,8 @@ fn new_viewers_receive_the_disguise_and_sneaking_keeps_invisibility() {
     packet(&mut peer, false, 0x5f);
     let mut spawn = packet(&mut peer, false, 0x01);
     assert_eq!(spawn.read_varint().unwrap(), model as i32);
-    assert_eq!(
-        spawn.read_uuid().unwrap(),
-        plot.players[0].small_model.as_ref().unwrap().uuid
-    );
-    assert_eq!(
-        spawn.read_varint().unwrap(),
-        mchprs_network::generated::OCELOT_ENTITY
-    );
+    assert_eq!(spawn.read_uuid().unwrap(), plot.players[0].small_model.as_ref().unwrap().uuid);
+    assert_eq!(spawn.read_varint().unwrap(), mchprs_network::generated::OCELOT_ENTITY);
     packet(&mut peer, false, 0x5c);
     let departed = plot.leave_plot(plot.players[0].uuid);
     assert!(departed.small_model.is_some());
@@ -275,9 +242,7 @@ fn small_players_place_break_and_use_worldedit_through_normal_handlers() {
     );
     assert_eq!(plot.world.get_block(placed), Block::Air);
     let mut args = Vec::new();
-    assert!(crate::plot::worldedit::execute_command(
-        &mut plot, 0, "/wand", &mut args
-    ));
+    assert!(crate::plot::worldedit::execute_command(&mut plot, 0, "/wand", &mut args));
     assert!(matches!(
         plot.players[0].inventory[36].as_ref().unwrap().item_type,
         mchprs_blocks::items::Item::WEWand {}
@@ -306,8 +271,7 @@ fn cat_gamemode_enables_creative_and_normal_gamemode_restores_size() {
     assert!(!plot.handle_command(0, "/gm", vec!["cat"]));
     assert!(matches!(plot.players[0].gamemode, Gamemode::Creative));
     assert!(plot.players[0].small_model.is_some());
-    plot.world
-        .set_block(BlockPos::new(32, 22, 35), Block::Stone {});
+    plot.world.set_block(BlockPos::new(32, 22, 35), Block::Stone {});
     plot.handle_command(0, "/gm", vec!["spectator"]);
     assert!(matches!(plot.players[0].gamemode, Gamemode::Creative));
     assert!(plot.players[0].small_model.is_some());
@@ -335,26 +299,10 @@ fn small_animal_commands_spawn_generated_models_and_update_fox_equipment() {
     });
 
     for (name, animal, expected_entity) in [
-        (
-            "wolf",
-            SmallAnimal::Wolf,
-            mchprs_network::generated::WOLF_ENTITY,
-        ),
-        (
-            "fox",
-            SmallAnimal::Fox,
-            mchprs_network::generated::FOX_ENTITY,
-        ),
-        (
-            "cat",
-            SmallAnimal::Cat,
-            mchprs_network::generated::CAT_ENTITY,
-        ),
-        (
-            "ocelot",
-            SmallAnimal::Ocelot,
-            mchprs_network::generated::OCELOT_ENTITY,
-        ),
+        ("wolf", SmallAnimal::Wolf, mchprs_network::generated::WOLF_ENTITY),
+        ("fox", SmallAnimal::Fox, mchprs_network::generated::FOX_ENTITY),
+        ("cat", SmallAnimal::Cat, mchprs_network::generated::CAT_ENTITY),
+        ("ocelot", SmallAnimal::Ocelot, mchprs_network::generated::OCELOT_ENTITY),
     ] {
         assert!(!plot.handle_command(0, "/small", vec![name]));
         assert_eq!(plot.players[0].small_animal, animal);
@@ -398,10 +346,7 @@ fn baby_ocelot_uses_its_model_and_quarter_size_hitbox() {
         scale(peer, false, plot.players[0].entity_id, 0.25);
     }
     packet(&mut owner, false, 0x72);
-    assert_eq!(
-        proxy_type(&mut viewer, false),
-        mchprs_network::generated::OCELOT_ENTITY
-    );
+    assert_eq!(proxy_type(&mut viewer, false), mchprs_network::generated::OCELOT_ENTITY);
 
     let mut metadata = packet(&mut viewer, false, 0x5c);
     assert_eq!(
@@ -416,13 +361,7 @@ fn baby_ocelot_uses_its_model_and_quarter_size_hitbox() {
     assert_eq!(metadata.read_unsigned_byte().unwrap(), 1);
     assert_eq!(metadata.read_unsigned_byte().unwrap(), 0xff);
 
-    let roof = |pos: BlockPos| {
-        Some(if pos.y == 21 {
-            Block::Stone {}
-        } else {
-            Block::Air {}
-        })
-    };
+    let roof = |pos: BlockPos| Some(if pos.y == 21 { Block::Stone {} } else { Block::Air {} });
     let feet = PlayerPos::new(32.5, 20.5, 35.5);
     assert!(!super::super::compass::body_clear(feet, 0.5, &roof));
     assert!(super::super::compass::body_clear(feet, 0.25, &roof));

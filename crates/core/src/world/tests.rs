@@ -34,9 +34,7 @@ fn block_walkers_cross_unaligned_boundaries_and_skip_empty_sections() {
 
 #[test]
 fn block_walkers_visit_every_selected_position_once_while_removing_blocks() {
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     let mut expected = HashSet::new();
     for x in 15..=17 {
@@ -61,9 +59,5 @@ fn block_walkers_visit_every_selected_position_once_while_removing_blocks() {
         world.set_block(pos, Block::Air {});
     });
     assert_eq!(mutated, visited);
-    assert!(
-        expected
-            .iter()
-            .all(|&pos| world.get_block(pos) == Block::Air {})
-    );
+    assert!(expected.iter().all(|&pos| world.get_block(pos) == Block::Air {}));
 }

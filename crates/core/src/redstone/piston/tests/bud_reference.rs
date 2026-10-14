@@ -34,18 +34,12 @@ fn sample(tick: u32, entries: &[trace::Entry], memory: &FxHashSet<BlockPos>) -> 
     if entries.is_empty() {
         return None;
     }
-    let samples = entries
-        .iter()
-        .filter(|entry| matches!(entry.operation, Operation::Sample { .. }))
-        .count();
+    let samples = entries.iter().filter(|entry| matches!(entry.operation, Operation::Sample { .. })).count();
     Some(BudTick {
         tick,
         samples,
         accepted: entries.len() - samples,
-        sha256: format!(
-            "{:x}",
-            Sha256::digest(serde_json::to_vec(&entries).unwrap())
-        ),
+        sha256: format!("{:x}", Sha256::digest(serde_json::to_vec(&entries).unwrap())),
     })
 }
 
@@ -61,20 +55,13 @@ struct BudReference {
 
 fn read(memory: &FxHashSet<BlockPos>) -> BudReference {
     let reference: BudReference = serde_json::from_slice(
-        &std::fs::read(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../test_data/cpu-references/anpu_bud_updates.json"),
-        )
-        .unwrap(),
+        &std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_bud_updates.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(reference.schema, 1);
     assert_eq!(reference.schematic_sha256, cpus::CPUS[1].sha256);
     assert_eq!(reference.game_ticks, 50_000);
-    assert_eq!(
-        reference.memory.iter().copied().collect::<FxHashSet<_>>(),
-        *memory
-    );
+    assert_eq!(reference.memory.iter().copied().collect::<FxHashSet<_>>(), *memory);
     reference
 }
 
@@ -86,10 +73,7 @@ fn capture_episode() -> BudReference {
     let (first, last) = world.get_corners();
     for_each_block_optimized(&world, first, last, |pos| {
         if matches!(world.get_block(pos), Block::Piston { piston } if piston.sticky && piston.facing == BlockFacing::Down)
-            && matches!(
-                world.get_block(pos.offset(BlockFace::Top)),
-                Block::NoteBlock { .. }
-            )
+            && matches!(world.get_block(pos.offset(BlockFace::Top)), Block::NoteBlock { .. })
         {
             memory.insert(pos);
         }
@@ -99,11 +83,7 @@ fn capture_episode() -> BudReference {
     let mut frames = Vec::new();
     cpus::collect_screen(&world, 0, &mut frames);
     assert_eq!(cpus::checkpoint(&world, 0, &[]), frozen.checkpoints[0]);
-    if let Some(entry) = sample(
-        0,
-        &trace::capture(|| cpus::click(&mut world, cpu.start)),
-        &memory,
-    ) {
+    if let Some(entry) = sample(0, &trace::capture(|| cpus::click(&mut world, cpu.start)), &memory) {
         updates.push(entry);
     }
     for tick in 1..=50_000 {
@@ -116,17 +96,10 @@ fn capture_episode() -> BudReference {
         }
     }
     let frozen_screen: Vec<cpus::ScreenFrame> = serde_json::from_slice(
-        &std::fs::read(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../test_data/cpu-references/anpu_screen.json"),
-        )
-        .unwrap(),
+        &std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json")).unwrap(),
     )
     .unwrap();
-    assert_eq!(
-        frames, frozen_screen,
-        "capture must preserve the existing screen baseline"
-    );
+    assert_eq!(frames, frozen_screen, "capture must preserve the existing screen baseline");
     let mut memory: Vec<_> = memory.into_iter().collect();
     memory.sort_by_key(|pos| (pos.x, pos.y, pos.z));
     BudReference {
@@ -145,10 +118,7 @@ fn anpu_interpreter_preserves_frozen_bud_updates_and_screen() {
     let captured = capture_episode();
     let memory = captured.memory.iter().copied().collect();
     let frozen = read(&memory);
-    assert_eq!(
-        captured.updates, frozen.updates,
-        "frozen ANPU BUD sampling/write pattern"
-    );
+    assert_eq!(captured.updates, frozen.updates, "frozen ANPU BUD sampling/write pattern");
     println!(
         "ANPU interpreter preserved {} active BUD sample ticks and the frozen screen/checkpoints",
         captured.updates.len()
@@ -158,23 +128,12 @@ fn anpu_interpreter_preserves_frozen_bud_updates_and_screen() {
 #[test]
 #[ignore = "explicit new-file baseline capture; requires MCHPRS_ANPU_BUD_CAPTURE"]
 fn capture_anpu_bud_reference_to_new_file() {
-    let destination = std::env::var("MCHPRS_ANPU_BUD_CAPTURE")
-        .expect("set MCHPRS_ANPU_BUD_CAPTURE to a new output file");
-    assert!(
-        !Path::new(&destination).exists(),
-        "refusing to replace a BUD reference"
-    );
+    let destination = std::env::var("MCHPRS_ANPU_BUD_CAPTURE").expect("set MCHPRS_ANPU_BUD_CAPTURE to a new output file");
+    assert!(!Path::new(&destination).exists(), "refusing to replace a BUD reference");
     let captured = capture_episode();
-    let output = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(destination)
-        .unwrap();
+    let output = std::fs::OpenOptions::new().write(true).create_new(true).open(destination).unwrap();
     serde_json::to_writer_pretty(output, &captured).unwrap();
-    println!(
-        "captured {} active BUD sample ticks",
-        captured.updates.len()
-    );
+    println!("captured {} active BUD sample ticks", captured.updates.len());
 }
 
 #[test]
@@ -185,14 +144,7 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
     let world = cpus::load_cpu(cpus::CPUS[1]);
     let before = cpus::checkpoint(&world, 0, &[]);
     let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
-    let report = analysis::analyze(
-        &world,
-        world.get_corners(),
-        &ticks,
-        &Default::default(),
-        AnalysisLimits::for_budget(8),
-    )
-    .unwrap();
+    let report = analysis::analyze(&world, world.get_corners(), &ticks, &Default::default(), AnalysisLimits::for_budget(8)).unwrap();
     println!(
         "ANPU live inventory: {}",
         serde_json::json!({
@@ -207,13 +159,7 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
             let mut options = CompilerOptions::parse(flags).unwrap();
             options.budget_multiplier = budget_multiplier;
             let error = compiler
-                .compile(
-                    &world,
-                    world.get_corners(),
-                    options,
-                    ticks.clone(),
-                    Default::default(),
-                )
+                .compile(&world, world.get_corners(), options, ticks.clone(), Default::default())
                 .unwrap_err();
             println!("ANPU admission budget={budget_multiplier}, flags={flags:?}: {error}");
             assert!(!compiler.is_active());

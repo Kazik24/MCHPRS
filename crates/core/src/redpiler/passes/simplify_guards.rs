@@ -18,8 +18,8 @@ use super::{GraphPass, PassContext};
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
-    CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, CompileGraph, DeliveryKind, Guard, GuardId,
-    LinkKind, OperandView, PowerLink, PowerPort, PowerTarget, RouteId, SiteSource, SiteTest,
+    CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, CompileGraph, DeliveryKind, Guard, GuardId, LinkKind, OperandView, PowerLink, PowerPort,
+    PowerTarget, RouteId, SiteSource, SiteTest,
 };
 #[cfg(test)]
 use crate::redpiler::program_graph::{InputPort, LinkSpec};
@@ -97,13 +97,7 @@ type CallbackLinkKey = (
     crate::redpiler::program_graph::NodeId,
     LinkKind,
 );
-type PowerKey = (
-    crate::redpiler::program_graph::SiteId,
-    PowerPort,
-    PowerTarget,
-    BlockFace,
-    GuardId,
-);
+type PowerKey = (crate::redpiler::program_graph::SiteId, PowerPort, PowerTarget, BlockFace, GuardId);
 
 fn normalize_guards(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<GuardRewrite, String> {
     let order = child_before_parent_order(&graph.guards, monitor)?;
@@ -164,10 +158,7 @@ fn normalize_guards(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Guard
     })
 }
 
-fn child_before_parent_order(
-    guards: &[Guard],
-    monitor: &TaskMonitor,
-) -> Result<Vec<usize>, String> {
+fn child_before_parent_order(guards: &[Guard], monitor: &TaskMonitor) -> Result<Vec<usize>, String> {
     let mut marks = vec![0u8; guards.len()];
     let mut order = Vec::with_capacity(guards.len());
     let mut stack = Vec::<(usize, usize)>::new();
@@ -221,22 +212,9 @@ enum JoinForm {
     New(Guard),
 }
 
-fn join_form(
-    children: &[GuardId],
-    is_all: bool,
-    old_to_new: &[GuardId],
-    facts: &[PredicateFact],
-) -> JoinForm {
-    let identity = if is_all {
-        PredicateFact::Always
-    } else {
-        PredicateFact::Never
-    };
-    let absorber = if is_all {
-        PredicateFact::Never
-    } else {
-        PredicateFact::Always
-    };
+fn join_form(children: &[GuardId], is_all: bool, old_to_new: &[GuardId], facts: &[PredicateFact]) -> JoinForm {
+    let identity = if is_all { PredicateFact::Always } else { PredicateFact::Never };
+    let absorber = if is_all { PredicateFact::Never } else { PredicateFact::Always };
     let mut normalized_children = Vec::with_capacity(children.len());
     for old_child in children {
         let child = old_to_new[old_child.index()];
@@ -253,22 +231,13 @@ fn join_form(
         [child] => JoinForm::Existing(*child),
         _ => {
             let children = normalized_children.into_boxed_slice();
-            let guard = if is_all {
-                Guard::All(children)
-            } else {
-                Guard::Any(children)
-            };
+            let guard = if is_all { Guard::All(children) } else { Guard::Any(children) };
             JoinForm::New(guard)
         }
     }
 }
 
-fn immutable_site_fact(
-    graph: &CompileGraph,
-    site: crate::redpiler::program_graph::SiteId,
-    view: OperandView,
-    test: SiteTest,
-) -> PredicateFact {
+fn immutable_site_fact(graph: &CompileGraph, site: crate::redpiler::program_graph::SiteId, view: OperandView, test: SiteTest) -> PredicateFact {
     if view != OperandView::Live {
         return PredicateFact::Unknown;
     }
@@ -279,17 +248,10 @@ fn immutable_site_fact(
     let matches = match test {
         SiteTest::Solid => profile.solid,
         SiteTest::Transparent => profile.transparent,
-        SiteTest::IsWire => matches!(
-            Block::from_id(profile.raw_state),
-            Block::RedstoneWire { .. }
-        ),
+        SiteTest::IsWire => matches!(Block::from_id(profile.raw_state), Block::RedstoneWire { .. }),
         SiteTest::Profile(expected) => profile_id == expected,
     };
-    if matches {
-        PredicateFact::Always
-    } else {
-        PredicateFact::Never
-    }
+    if matches { PredicateFact::Always } else { PredicateFact::Never }
 }
 
 struct GuardInterner {
@@ -336,8 +298,7 @@ impl GuardInterner {
             candidate = (next != u32::MAX).then_some(next);
         }
 
-        let index = u32::try_from(self.guards.len())
-            .map_err(|_| "normalized guard table exceeds typed ID range".to_owned())?;
+        let index = u32::try_from(self.guards.len()).map_err(|_| "normalized guard table exceeds typed ID range".to_owned())?;
         if index == u32::MAX {
             return Err("normalized guard table exceeds collision index range".into());
         }
@@ -356,11 +317,7 @@ fn guard_hash(guard: &Guard) -> u64 {
     hasher.finish()
 }
 
-fn reduce_power_links(
-    graph: &CompileGraph,
-    rewrite: &GuardRewrite,
-    monitor: &TaskMonitor,
-) -> Result<Vec<PowerLink>, String> {
+fn reduce_power_links(graph: &CompileGraph, rewrite: &GuardRewrite, monitor: &TaskMonitor) -> Result<Vec<PowerLink>, String> {
     let mut minimum = FxHashMap::<PowerKey, u8>::default();
     for link in &graph.power_links {
         if monitor.cancelled() {
@@ -399,15 +356,10 @@ fn power_key(link: PowerLink, guard: GuardId) -> PowerKey {
     (link.from, link.from_port, link.to, link.face, guard)
 }
 
-fn find_delivery_removals(
-    graph: &CompileGraph,
-    rewrite: &GuardRewrite,
-    monitor: &TaskMonitor,
-) -> Result<Vec<DeliveryRemoval>, String> {
+fn find_delivery_removals(graph: &CompileGraph, rewrite: &GuardRewrite, monitor: &TaskMonitor) -> Result<Vec<DeliveryRemoval>, String> {
     let mut removals = Vec::new();
     for (route_index, route) in graph.routes.iter().enumerate() {
-        let route_id = RouteId::try_from_index(route_index)
-            .ok_or_else(|| "route table exceeds typed ID range".to_owned())?;
+        let route_id = RouteId::try_from_index(route_index).ok_or_else(|| "route table exceeds typed ID range".to_owned())?;
         for (ordinal, delivery) in route.deliveries.iter().enumerate() {
             if monitor.cancelled() {
                 return Err("cancelled while classifying route deliveries".into());
@@ -421,8 +373,7 @@ fn find_delivery_removals(
             if let Some(reason) = reason {
                 removals.push(DeliveryRemoval {
                     route: route_id,
-                    ordinal: u32::try_from(ordinal)
-                        .map_err(|_| "route occurrence exceeds diagnostic range".to_owned())?,
+                    ordinal: u32::try_from(ordinal).map_err(|_| "route occurrence exceeds diagnostic range".to_owned())?,
                     original_sequence: delivery.sequence,
                     reason,
                 });
@@ -432,27 +383,17 @@ fn find_delivery_removals(
     Ok(removals)
 }
 
-fn identity_handler(
-    graph: &CompileGraph,
-    delivery: crate::redpiler::program_graph::RouteDelivery,
-) -> bool {
+fn identity_handler(graph: &CompileGraph, delivery: crate::redpiler::program_graph::RouteDelivery) -> bool {
     let source = graph.sites[delivery.target.index()].source;
     let receiver = delivery.receiver.or_else(|| match (source, delivery.kind) {
-        (SiteSource::Component(node), DeliveryKind::Update { .. }) => {
-            Some(CallbackReceiver::Component(node))
-        }
+        (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
         _ => None,
     });
     match (delivery.kind, receiver) {
         (DeliveryKind::Update { .. }, Some(CallbackReceiver::Component(node))) => {
             matches!(
                 graph.nodes[node.index()].kind,
-                CircuitNodeKind::Electrical(
-                    NodeType::Lever
-                        | NodeType::Button
-                        | NodeType::PressurePlate
-                        | NodeType::Constant
-                )
+                CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Constant)
             )
         }
         (DeliveryKind::Shape { .. }, None) => matches!(source, SiteSource::Constant(_)),
@@ -489,9 +430,7 @@ fn plan_link_removals(
     let mut available = FxHashMap::<CallbackLinkKey, usize>::default();
     for link in &graph.links {
         let kind = remap_link_kind(link.kind, &rewrite.old_to_new);
-        *available
-            .entry((link.callback, link.from, link.to, kind))
-            .or_default() += 1;
+        *available.entry((link.callback, link.from, link.to, kind)).or_default() += 1;
     }
     for (key, count) in &needed {
         if available.get(key).copied().unwrap_or_default() < *count {
@@ -501,15 +440,10 @@ fn plan_link_removals(
     Ok(needed)
 }
 
-fn receiver_node(
-    graph: &CompileGraph,
-    receiver: CallbackReceiver,
-) -> crate::redpiler::program_graph::NodeId {
+fn receiver_node(graph: &CompileGraph, receiver: CallbackReceiver) -> crate::redpiler::program_graph::NodeId {
     match receiver {
         CallbackReceiver::Component(node) => node,
-        CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
-            graph.pistons[piston.index()].node
-        }
+        CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => graph.pistons[piston.index()].node,
         CallbackReceiver::Contact(contact) => graph.contacts[contact.index()].node,
     }
 }
@@ -604,26 +538,25 @@ mod tests {
     use crate::redpiler::CompilerOptions;
     use crate::redpiler::components::NodeState;
     use crate::redpiler::program_graph::{
-        CircuitNodeDraft, ComponentState, EntryState, Profile, ProfileElectrical, Route,
-        RouteDelivery, SiteId, SiteSpec,
+        CircuitNodeDraft, ComponentState, EntryState, Profile, ProfileElectrical, Route, RouteDelivery, SiteId, SiteSpec,
     };
     use mchprs_blocks::BlockPos;
 
     #[test]
     fn optimization_levels_select_pass_tiers() {
         let unoptimized = super::super::default_graph_pipeline(&CompilerOptions::default());
-        assert_eq!(unoptimized.entries.len(), 1);
-        assert!(!unoptimized.entries[0].enabled);
+        assert_eq!(unoptimized.entries.len(), 3);
+        assert!(unoptimized.entries.iter().all(|entry| !entry.enabled));
 
         let optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: Some(1),
             ..Default::default()
         });
-        assert_eq!(optimized.entries.len(), 1);
-        assert!(optimized.entries[0].enabled);
+        assert_eq!(optimized.entries.len(), 3);
+        assert!(optimized.entries.iter().all(|entry| entry.enabled));
         assert_eq!(
-            optimized.entries[0].pass.name(),
-            "guard-and-update-reduction"
+            optimized.entries.iter().map(|entry| entry.pass.name()).collect::<Vec<_>>(),
+            ["guard-and-update-reduction", "index-turbo-callbacks", "contract-static-dust-paths"]
         );
 
         let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
@@ -701,22 +634,10 @@ mod tests {
         ];
         let rewrite = normalize_guards(&graph, &TaskMonitor::default()).unwrap();
         assert_eq!(rewrite.old_to_new[0], GuardId::new(0));
-        assert_eq!(
-            rewrite.facts[rewrite.old_to_new[2].index()],
-            PredicateFact::Never
-        );
-        assert_eq!(
-            rewrite.facts[rewrite.old_to_new[1].index()],
-            PredicateFact::Always
-        );
-        assert_eq!(
-            rewrite.facts[rewrite.old_to_new[3].index()],
-            PredicateFact::Unknown
-        );
-        assert_eq!(
-            rewrite.facts[rewrite.old_to_new[8].index()],
-            PredicateFact::Never
-        );
+        assert_eq!(rewrite.facts[rewrite.old_to_new[2].index()], PredicateFact::Never);
+        assert_eq!(rewrite.facts[rewrite.old_to_new[1].index()], PredicateFact::Always);
+        assert_eq!(rewrite.facts[rewrite.old_to_new[3].index()], PredicateFact::Unknown);
+        assert_eq!(rewrite.facts[rewrite.old_to_new[8].index()], PredicateFact::Never);
         assert_eq!(rewrite.old_to_new[6], rewrite.old_to_new[4]);
         assert_ne!(rewrite.old_to_new[5], rewrite.old_to_new[4]);
         assert_eq!(rewrite.old_to_new[12], rewrite.old_to_new[4]);
@@ -730,14 +651,8 @@ mod tests {
                 PredicateFact::Never
             }
         );
-        assert_eq!(
-            rewrite.facts[rewrite.old_to_new[10].index()],
-            PredicateFact::Never
-        );
-        assert_eq!(
-            rewrite.facts[rewrite.old_to_new[11].index()],
-            PredicateFact::Always
-        );
+        assert_eq!(rewrite.facts[rewrite.old_to_new[10].index()], PredicateFact::Never);
+        assert_eq!(rewrite.facts[rewrite.old_to_new[11].index()], PredicateFact::Always);
         assert!(matches!(
             rewrite.guards[rewrite.old_to_new[7].index()],
             Guard::All(ref children)
@@ -765,24 +680,16 @@ mod tests {
             guard: GuardId::new(0),
         };
         graph.power_links = vec![
-            PowerLink {
-                attenuation: 5,
-                ..base
-            },
+            PowerLink { attenuation: 5, ..base },
             base,
             base,
-            PowerLink {
-                attenuation: 15,
-                ..base
-            },
+            PowerLink { attenuation: 15, ..base },
             PowerLink {
                 from_port: PowerPort::Stored,
                 ..base
             },
             PowerLink {
-                from_port: PowerPort::Conducted {
-                    include_dust: false,
-                },
+                from_port: PowerPort::Conducted { include_dust: false },
                 ..base
             },
             PowerLink {
@@ -824,16 +731,8 @@ mod tests {
         assert_eq!(reduced.len(), 9);
         assert_eq!(reduced[0].attenuation, 2);
         assert_eq!(reduced[1].from_port, PowerPort::Stored);
-        assert_eq!(
-            reduced[2].from_port,
-            PowerPort::Conducted {
-                include_dust: false
-            }
-        );
-        assert_eq!(
-            reduced[3].from_port,
-            PowerPort::Conducted { include_dust: true }
-        );
+        assert_eq!(reduced[2].from_port, PowerPort::Conducted { include_dust: false });
+        assert_eq!(reduced[3].from_port, PowerPort::Conducted { include_dust: true });
         assert_eq!(
             reduced[4].to,
             PowerTarget::Input {
@@ -868,8 +767,7 @@ mod tests {
         let mut control = inert_graph(NodeType::Lever);
         let mut first = update_delivery(GuardId::new(0), 4);
         first.receiver = None;
-        control.routes[0].deliveries =
-            vec![first, update_delivery(GuardId::new(0), 7)].into_boxed_slice();
+        control.routes[0].deliveries = vec![first, update_delivery(GuardId::new(0), 7)].into_boxed_slice();
         control.links = vec![callback_link(&control.routes[0].deliveries[1])];
         control.validate().unwrap();
         run_pass(&mut control);
@@ -884,11 +782,7 @@ mod tests {
             update_delivery(GuardId::new(0), 9),
         ]
         .into_boxed_slice();
-        torch.links = torch.routes[0]
-            .deliveries
-            .iter()
-            .map(|delivery| callback_link(delivery))
-            .collect();
+        torch.links = torch.routes[0].deliveries.iter().map(|delivery| callback_link(delivery)).collect();
         torch.validate().unwrap();
         run_pass(&mut torch);
         assert_eq!(torch.routes[0].deliveries.len(), 2);
@@ -916,14 +810,7 @@ mod tests {
             pass: Box::new(GuardAndUpdateReduction),
             enabled: false,
         }]);
-        super::super::run_graph_pipeline(
-            &mut graph,
-            &options,
-            &entry,
-            &disabled,
-            &TaskMonitor::default(),
-        )
-        .unwrap();
+        super::super::run_graph_pipeline(&mut graph, &options, &entry, &disabled, &TaskMonitor::default()).unwrap();
         assert_eq!(graph, input);
 
         let enabled = PassPipeline::new(vec![PassEntry {
@@ -998,9 +885,7 @@ mod tests {
             guard,
             view: OperandView::Live,
             sequence,
-            receiver: Some(CallbackReceiver::Component(
-                crate::redpiler::program_graph::NodeId::new(0),
-            )),
+            receiver: Some(CallbackReceiver::Component(crate::redpiler::program_graph::NodeId::new(0))),
         }
     }
 
@@ -1044,6 +929,7 @@ mod tests {
                 #[cfg(feature = "graph-profile")]
                 native_event_count: 0,
             }],
+            turbo_callback_indices: vec![],
             wires: Vec::new(),
             dust_paths: Vec::new(),
             wire_relations: Vec::new(),

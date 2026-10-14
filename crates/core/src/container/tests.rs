@@ -4,8 +4,7 @@ use super::*;
 fn hopper_and_furnace_creation_locking_and_cake_bites() {
     use crate::world::{World, storage::Chunk};
     use mchprs_blocks::{BlockFace, block_entities::BlockEntity, blocks::Block};
-    let mut world =
-        crate::plot::PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+    let mut world = crate::plot::PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
     let pos = BlockPos::new(4, 30, 4);
     for name in ["hopper", "furnace"] {
         let block = Block::from_name(name).unwrap();
@@ -18,24 +17,15 @@ fn hopper_and_furnace_creation_locking_and_cake_bites() {
         assert!(world.get_block_entity(pos).is_none());
     }
     for face in BlockFace::values() {
-        assert_ne!(
-            mchprs_blocks::blocks::HopperFacing::for_placement(face).to_string(),
-            "up"
-        );
+        assert_ne!(mchprs_blocks::blocks::HopperFacing::for_placement(face).to_string(), "up");
     }
     world.set_block(pos, Block::from_name("hopper").unwrap());
     world.set_block(pos.offset(BlockFace::East), Block::RedstoneBlock {});
     crate::redstone::update(world.get_block(pos), &mut world, pos, None);
-    assert!(matches!(
-        world.get_block(pos),
-        Block::Hopper { enabled: false, .. }
-    ));
+    assert!(matches!(world.get_block(pos), Block::Hopper { enabled: false, .. }));
     world.set_block(pos.offset(BlockFace::East), Block::Air {});
     crate::redstone::update(world.get_block(pos), &mut world, pos, None);
-    assert!(matches!(
-        world.get_block(pos),
-        Block::Hopper { enabled: true, .. }
-    ));
+    assert!(matches!(world.get_block(pos), Block::Hopper { enabled: true, .. }));
     world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(pos, Block::Cake { bites: 0 });
     for bites in 0..7 {
@@ -57,33 +47,14 @@ fn hopper_and_furnace_menus_use_their_own_slot_boundaries() {
         let mut slots = vec![None; size + 36];
         let mut offhand = None;
         slots[size + 27] = stack(64);
-        click(
-            &mut menu,
-            &mut slots,
-            &mut offhand,
-            (size + 27) as i16,
-            0,
-            0,
-            true,
-        );
+        click(&mut menu, &mut slots, &mut offhand, (size + 27) as i16, 0, 0, true);
         click(&mut menu, &mut slots, &mut offhand, 0, 0, 0, true);
         assert_eq!(count(&slots[0]), 64);
-        assert_eq!(
-            comparator_strength(&slots[..size]),
-            if ty == ContainerType::Hopper { 3 } else { 5 }
-        );
+        assert_eq!(comparator_strength(&slots[..size]), if ty == ContainerType::Hopper { 3 } else { 5 });
         click(&mut menu, &mut slots, &mut offhand, 0, 0, 1, true);
         assert_eq!(count(slots.last().unwrap()), 64);
         assert_eq!(total(&slots, &menu), 64);
-        click(
-            &mut menu,
-            &mut slots,
-            &mut offhand,
-            (size + 35) as i16,
-            0,
-            3,
-            true,
-        );
+        click(&mut menu, &mut slots, &mut offhand, (size + 35) as i16, 0, 3, true);
         assert_eq!(count(&slots[size + 27]), 64);
     }
 }
@@ -156,11 +127,9 @@ fn barrel_creation_state_changes_removal_and_chunk_round_trip() {
     let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
     let pos = BlockPos::new(4, 30, 4);
     world.set_block(pos, Block::from_name("barrel").unwrap());
-    assert!(
-        matches!(world.get_block_entity(pos),Some(BlockEntity::Container {
+    assert!(matches!(world.get_block_entity(pos),Some(BlockEntity::Container {
         ty:ContainerType::Barrel, inventory, comparator_override:0
-    }) if inventory.is_empty())
-    );
+    }) if inventory.is_empty()));
     let slots = vec![stack(64); 27];
     let entries = inventory_entries(&slots);
     world.set_block_entity(
@@ -173,24 +142,16 @@ fn barrel_creation_state_changes_removal_and_chunk_round_trip() {
     );
     for id in 19431..=19442 {
         world.set_block_raw(pos, id);
-        assert_eq!(
-            crate::redstone::comparator::get_override(world.get_block(pos), &world, pos),
-            15
-        );
+        assert_eq!(crate::redstone::comparator::get_override(world.get_block(pos), &world, pos), 15);
         let chunk = world.get_chunk_mut(0, 0).unwrap().save();
         let restored = Chunk::load(0, 0, chunk);
         assert_eq!(restored.get_block(4, 30, 4), id);
-        assert!(
-            matches!(restored.get_block_entity(pos),Some(BlockEntity::Container { inventory, .. }) if inventory.len()==27)
-        );
+        assert!(matches!(restored.get_block_entity(pos),Some(BlockEntity::Container { inventory, .. }) if inventory.len()==27));
     }
     world.set_block(pos, Block::Stone {});
     assert!(world.get_block_entity(pos).is_none());
     world.set_block(pos, Block::from_name("barrel").unwrap());
-    assert_eq!(
-        crate::redstone::comparator::get_override(world.get_block(pos), &world, pos),
-        0
-    );
+    assert_eq!(crate::redstone::comparator::get_override(world.get_block(pos), &world, pos), 0);
 }
 
 fn stack(count: u8) -> Option<ItemStack> {
@@ -255,15 +216,7 @@ fn drag_even_and_one_each_and_invalid_sequences() {
         click(&mut menu, &mut slots, &mut offhand, i, 1, 5, true);
     }
     click(&mut menu, &mut slots, &mut offhand, -999, 2, 5, true);
-    assert_eq!(
-        [
-            count(&slots[0]),
-            count(&slots[1]),
-            count(&slots[2]),
-            count(&menu.cursor)
-        ],
-        [3, 3, 3, 1]
-    );
+    assert_eq!([count(&slots[0]), count(&slots[1]), count(&slots[2]), count(&menu.cursor)], [3, 3, 3, 1]);
     click(&mut menu, &mut slots, &mut offhand, -999, 4, 5, true);
     click(&mut menu, &mut slots, &mut offhand, 3, 5, 5, true);
     click(&mut menu, &mut slots, &mut offhand, -999, 6, 5, true);
@@ -271,15 +224,7 @@ fn drag_even_and_one_each_and_invalid_sequences() {
     assert!(menu.cursor.is_none());
     let before = signature(&slots, &menu.cursor);
     for (slot, button, mode) in [(32767, 0, 0), (-1, 0, 1), (-999, 15, 5), (0, 9, 3)] {
-        click(
-            &mut menu,
-            &mut slots,
-            &mut offhand,
-            slot,
-            button,
-            mode,
-            true,
-        );
+        click(&mut menu, &mut slots, &mut offhand, slot, button, mode, true);
     }
     assert_eq!(signature(&slots, &menu.cursor), before);
 }
@@ -314,14 +259,7 @@ fn creative_drag_fills_compatible_slots_without_consuming_cursor() {
 fn rejected_drag_sequences_preserve_items_and_cancel_the_drag() {
     // A mismatched kind, invalid phase/button, noncreative fill, or another
     // click mode cancels the active drag. A later finish must not move items.
-    for (button, mode, creative) in [
-        (5, 5, true),
-        (3, 5, true),
-        (-1, 5, true),
-        (11, 5, true),
-        (8, 5, false),
-        (0, 99, true),
-    ] {
+    for (button, mode, creative) in [(5, 5, true), (3, 5, true), (-1, 5, true), (11, 5, true), (8, 5, false), (0, 99, true)] {
         let mut slots = vec![None; 63];
         let mut menu = menu();
         menu.cursor = stack(10);
@@ -330,15 +268,7 @@ fn rejected_drag_sequences_preserve_items_and_cancel_the_drag() {
 
         click(&mut menu, &mut slots, &mut offhand, -999, 0, 5, true);
         click(&mut menu, &mut slots, &mut offhand, 0, 1, 5, true);
-        click(
-            &mut menu,
-            &mut slots,
-            &mut offhand,
-            0,
-            button,
-            mode,
-            creative,
-        );
+        click(&mut menu, &mut slots, &mut offhand, 0, button, mode, creative);
         assert!(menu.drag.is_none());
 
         click(&mut menu, &mut slots, &mut offhand, -999, 2, 5, true);

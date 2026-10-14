@@ -6,13 +6,10 @@ use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::components::{NodeState, NodeType, identify_block};
 use crate::redpiler::program_graph::{
-    CallbackReceiver, CircuitNodeDraft, CircuitNodeKind, ComponentState, ContactId, ContactSpec,
-    ContactVariant, Guard, GuardId, InputPort, NodeId, OperandView, PowerPort, Profile,
-    ProfileElectrical, ProfileId, SiteId, SiteSource, SiteSpec, SiteTest, StateTest, WirePlan,
+    CallbackReceiver, CircuitNodeDraft, CircuitNodeKind, ComponentState, ContactId, ContactSpec, ContactVariant, Guard, GuardId, InputPort, NodeId,
+    OperandView, PowerPort, Profile, ProfileElectrical, ProfileId, SiteId, SiteSource, SiteSpec, SiteTest, StateTest, WirePlan,
 };
-pub(crate) use crate::redpiler::program_graph::{
-    ComparatorInputPlan, ComparatorOverride, WireRelation, WireRelationKind,
-};
+pub(crate) use crate::redpiler::program_graph::{ComparatorInputPlan, ComparatorOverride, WireRelation, WireRelationKind};
 use crate::redstone::{comparator, power};
 use crate::world::{World, try_for_each_block_optimized, wire_cache};
 use mchprs_blocks::blocks::{Block, RedstoneWire};
@@ -23,30 +20,17 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ElectricalError {
     Preparation(AnalysisError),
-    UnsupportedComponent {
-        position: BlockPos,
-        block: u32,
-        reason: &'static str,
-    },
-    DynamicComparatorOverrideNotInventoried {
-        comparator: BlockPos,
-        source: BlockPos,
-    },
+    UnsupportedComponent { position: BlockPos, block: u32, reason: &'static str },
+    DynamicComparatorOverrideNotInventoried { comparator: BlockPos, source: BlockPos },
 }
 
 impl fmt::Display for ElectricalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Preparation(error) => error.fmt(f),
-            Self::UnsupportedComponent {
-                position,
-                block,
-                reason,
-            } => write!(
-                f,
-                "unsupported {} at {position:?}: {reason}",
-                Block::from_id(*block).get_name()
-            ),
+            Self::UnsupportedComponent { position, block, reason } => {
+                write!(f, "unsupported {} at {position:?}: {reason}", Block::from_id(*block).get_name())
+            }
             Self::DynamicComparatorOverrideNotInventoried { comparator, source } => write!(
                 f,
                 "comparator at {comparator:?} has dynamic override source at {source:?} outside the compiled electrical inventory"
@@ -124,13 +108,8 @@ struct Root {
 #[derive(Debug, Clone, Copy)]
 enum RootCondition {
     Always,
-    WireAscend {
-        source: BlockPos,
-        neighbor: BlockPos,
-    },
-    WireDescend {
-        neighbor: BlockPos,
-    },
+    WireAscend { source: BlockPos, neighbor: BlockPos },
+    WireDescend { neighbor: BlockPos },
 }
 
 /// Compile directional channel reads, including the local alternatives exposed by geometry.
@@ -358,16 +337,10 @@ pub(crate) fn prepare_electrical(
                 let when = variant_guard(variant.view, contact, id, geometry, &mut guard_table);
                 contact_guards.insert((id, variant_index), when);
                 let receiver = match variant.view {
-                    GeometryView::PistonBase { piston, .. }
-                    | GeometryView::MovingPistonBase(piston) => {
-                        Some(CallbackReceiver::PistonBase(piston))
-                    }
+                    GeometryView::PistonBase { piston, .. } | GeometryView::MovingPistonBase(piston) => Some(CallbackReceiver::PistonBase(piston)),
                     GeometryView::MovingPistonHead(_) => None,
                     GeometryView::PistonHead(piston) => Some(CallbackReceiver::PistonHead(piston)),
-                    GeometryView::Fixed => component_at
-                        .get(&contact.position)
-                        .copied()
-                        .map(CallbackReceiver::Component),
+                    GeometryView::Fixed => component_at.get(&contact.position).copied().map(CallbackReceiver::Component),
                     GeometryView::Air | GeometryView::Resource(_) => None,
                 };
                 ContactVariant {
@@ -389,17 +362,8 @@ pub(crate) fn prepare_electrical(
 
     let mut links = Vec::new();
     let mut wire_relations = Vec::new();
-    let fixed_table_bytes =
-        electrical_fixed_table_bytes(&nodes, &profiles, &sites, &contacts, &wire_plans)
-            .saturating_add(retained_geometry_bytes);
-    compile_wire_relations(
-        &wires,
-        &site,
-        &mut guard_table,
-        &mut wire_relations,
-        &mut budget,
-        fixed_table_bytes,
-    )?;
+    let fixed_table_bytes = electrical_fixed_table_bytes(&nodes, &profiles, &sites, &contacts, &wire_plans).saturating_add(retained_geometry_bytes);
+    compile_wire_relations(&wires, &site, &mut guard_table, &mut wire_relations, &mut budget, fixed_table_bytes)?;
     for component in &components {
         budget.check()?;
         let mut roots = consumer_roots(component.block, component.position, world);
@@ -421,13 +385,7 @@ pub(crate) fn prepare_electrical(
                 &mut links,
                 &mut budget,
             )?;
-            check_electrical_growth(
-                &budget,
-                &guard_table,
-                links.capacity(),
-                &wire_relations,
-                fixed_table_bytes,
-            )?;
+            check_electrical_growth(&budget, &guard_table, links.capacity(), &wire_relations, fixed_table_bytes)?;
         }
     }
 
@@ -440,33 +398,19 @@ pub(crate) fn prepare_electrical(
         let rear_pos = component.position.offset(state.facing.block_face());
         let rear_block = block_at(world, rear_pos);
         let direct = if comparator::has_override(rear_block) {
-            Some(comparator_override(
-                rear_block,
-                component.position,
-                rear_pos,
-                world,
-                &component_at,
-            )?)
+            Some(comparator_override(rear_block, component.position, rear_pos, world, &component_at)?)
         } else {
             None
         };
         let far = if direct.is_none() {
             let far_pos = rear_pos.offset(state.facing.block_face());
             let far_block = block_at(world, far_pos);
-            let can_be_solid = contact_at.get(&rear_pos).is_some_and(|(_, contact)| {
-                contact
-                    .variants
-                    .iter()
-                    .any(|variant| geometry.profiles[variant.profile.index()].solid)
-            }) || (!contact_at.contains_key(&rear_pos) && rear_block.is_solid());
+            let can_be_solid = contact_at
+                .get(&rear_pos)
+                .is_some_and(|(_, contact)| contact.variants.iter().any(|variant| geometry.profiles[variant.profile.index()].solid))
+                || (!contact_at.contains_key(&rear_pos) && rear_block.is_solid());
             if can_be_solid && comparator::has_override(far_block) {
-                let override_value = comparator_override(
-                    far_block,
-                    component.position,
-                    far_pos,
-                    world,
-                    &component_at,
-                )?;
+                let override_value = comparator_override(far_block, component.position, far_pos, world, &component_at)?;
                 let guard = if contact_at.contains_key(&rear_pos) {
                     push_guard(
                         &mut guard_table,
@@ -526,11 +470,7 @@ pub(crate) fn prepare_electrical(
         .map(|plan| plan.node)
         .collect();
     links.retain(|link| {
-        let ElectricalTarget::Input {
-            node,
-            port: InputPort::Main,
-        } = link.to
-        else {
+        let ElectricalTarget::Input { node, port: InputPort::Main } = link.to else {
             return true;
         };
         !overridden_inputs.contains(&node)
@@ -551,11 +491,7 @@ pub(crate) fn prepare_electrical(
     })
 }
 
-fn add_site_position(
-    positions: &mut FxHashSet<BlockPos>,
-    position: BlockPos,
-    budget: &mut PreparationBudget<'_>,
-) -> Result<(), AnalysisError> {
+fn add_site_position(positions: &mut FxHashSet<BlockPos>, position: BlockPos, budget: &mut PreparationBudget<'_>) -> Result<(), AnalysisError> {
     if !positions.contains(&position) {
         budget.consume(1)?;
         positions.insert(position);
@@ -624,16 +560,11 @@ fn consumer_roots(block: Block, position: BlockPos, world: &impl World) -> Vec<R
         }],
         Block::RedstoneWire { .. } => wire_power_roots(position),
         block
-            if matches!(
-                block,
-                Block::RedstoneLamp { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. }
-            ) || block.is_command_block()
+            if matches!(block, Block::RedstoneLamp { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. })
+                || block.is_command_block()
                 || block.is_copper_bulb() =>
         {
-            BlockFace::values()
-                .into_iter()
-                .map(|face| root(face, InputPort::Main))
-                .collect()
+            BlockFace::values().into_iter().map(|face| root(face, InputPort::Main)).collect()
         }
         _ => Vec::new(),
     }
@@ -662,9 +593,7 @@ fn comparator_override(
         };
         Ok(ComparatorOverride::LiveComponentOutput(node))
     } else {
-        Ok(ComparatorOverride::Literal(comparator::get_override(
-            block, world, position,
-        )))
+        Ok(ComparatorOverride::Literal(comparator::get_override(block, world, position)))
     }
 }
 
@@ -681,21 +610,13 @@ fn wire_power_roots(position: BlockPos) -> Vec<Root> {
             comparator_side: false,
         })
         .collect();
-    for face in [
-        BlockFace::North,
-        BlockFace::South,
-        BlockFace::East,
-        BlockFace::West,
-    ] {
+    for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
         let neighbor = position.offset(face);
         roots.push(Root {
             position: neighbor.offset(BlockFace::Top),
             face,
             port: InputPort::Main,
-            condition: RootCondition::WireAscend {
-                source: position,
-                neighbor,
-            },
+            condition: RootCondition::WireAscend { source: position, neighbor },
             wire_only: true,
             stored_wire: false,
             comparator_side: false,
@@ -780,10 +701,7 @@ fn compile_root(
             .enumerate()
             .map(|(variant_index, variant)| {
                 let guard = contact_guards[&(*contact_id, variant_index)];
-                (
-                    Block::from_id(geometry.profiles[variant.profile.index()].raw_state),
-                    guard,
-                )
+                (Block::from_id(geometry.profiles[variant.profile.index()].raw_state), guard)
             })
             .collect()
     } else {
@@ -863,35 +781,22 @@ fn compile_root(
             let include_dust = !is_wire_receiver;
             for face in BlockFace::values() {
                 let source_position = root.position.offset(face);
-                let source_variants: Vec<_> =
-                    if let Some((contact_id, contact)) = contact_at.get(&source_position) {
-                        contact
-                            .variants
-                            .iter()
-                            .enumerate()
-                            .map(|(variant_index, variant)| {
-                                let source_guard = contact_guards[&(*contact_id, variant_index)];
-                                (
-                                    Block::from_id(
-                                        geometry.profiles[variant.profile.index()].raw_state,
-                                    ),
-                                    source_guard,
-                                )
-                            })
-                            .collect()
-                    } else {
-                        vec![(block_at(world, source_position), always)]
-                    };
+                let source_variants: Vec<_> = if let Some((contact_id, contact)) = contact_at.get(&source_position) {
+                    contact
+                        .variants
+                        .iter()
+                        .enumerate()
+                        .map(|(variant_index, variant)| {
+                            let source_guard = contact_guards[&(*contact_id, variant_index)];
+                            (Block::from_id(geometry.profiles[variant.profile.index()].raw_state), source_guard)
+                        })
+                        .collect()
+                } else {
+                    vec![(block_at(world, source_position), always)]
+                };
                 for (source_block, source_guard) in source_variants {
-                    let can_emit = (include_dust
-                        && matches!(source_block, Block::RedstoneWire { .. }))
-                        || power::emits_strong_power(
-                            source_block,
-                            world,
-                            source_position,
-                            face,
-                            !is_wire_receiver,
-                        );
+                    let can_emit = (include_dust && matches!(source_block, Block::RedstoneWire { .. }))
+                        || power::emits_strong_power(source_block, world, source_position, face, !is_wire_receiver);
                     if source_block != Block::Air && can_emit {
                         links.push(ElectricalLink {
                             from: site_for(source_position),
@@ -908,14 +813,7 @@ fn compile_root(
                 }
             }
         } else if block != Block::Air
-            && (matches!(block, Block::RedstoneWire { .. })
-                || power::emits_weak_power(
-                    block,
-                    world,
-                    root.position,
-                    root.face,
-                    !is_wire_receiver,
-                ))
+            && (matches!(block, Block::RedstoneWire { .. }) || power::emits_weak_power(block, world, root.position, root.face, !is_wire_receiver))
         {
             let wire_input = is_wire_receiver && matches!(block, Block::RedstoneWire { .. });
             let stored_wire = root.stored_wire && matches!(block, Block::RedstoneWire { .. });
@@ -944,8 +842,7 @@ fn compile_root(
 }
 
 fn is_comparator_side_source(block: Block) -> bool {
-    crate::redstone::is_diode(block)
-        || matches!(block, Block::RedstoneBlock | Block::RedstoneWire { .. })
+    crate::redstone::is_diode(block) || matches!(block, Block::RedstoneBlock | Block::RedstoneWire { .. })
 }
 
 fn compile_wire_relations(
@@ -969,12 +866,7 @@ fn compile_wire_relations(
             },
         );
         let ascent_headroom = not_guard(guards, above);
-        for direction in [
-            BlockFace::North,
-            BlockFace::South,
-            BlockFace::East,
-            BlockFace::West,
-        ] {
+        for direction in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
             let neighbor = wire.position.offset(direction);
             let neighbor_site = site_for(neighbor);
             let same_wire = push_guard(
@@ -1074,12 +966,7 @@ fn electrical_fixed_table_bytes(
         .saturating_add(
             contacts
                 .iter()
-                .map(|contact| {
-                    contact
-                        .variants
-                        .len()
-                        .saturating_mul(std::mem::size_of::<ContactVariant>())
-                })
+                .map(|contact| contact.variants.len().saturating_mul(std::mem::size_of::<ContactVariant>()))
                 .sum::<usize>(),
         )
         .saturating_add(bytes::<WirePlan>(wires.capacity()))
@@ -1096,9 +983,7 @@ fn check_electrical_growth(
         .capacity()
         .saturating_mul(std::mem::size_of::<Guard>() + std::mem::size_of::<GuardId>() * 4);
     let link_bytes = link_capacity.saturating_mul(std::mem::size_of::<ElectricalLink>());
-    let relation_bytes = relations
-        .capacity()
-        .saturating_mul(std::mem::size_of::<WireRelation>());
+    let relation_bytes = relations.capacity().saturating_mul(std::mem::size_of::<WireRelation>());
     budget.check_estimated_bytes(
         "electrical",
         fixed_table_bytes
@@ -1117,21 +1002,14 @@ fn variant_guard(
 ) -> GuardId {
     match view {
         GeometryView::Fixed => push_guard(guards, Guard::Always),
-        GeometryView::PistonBase { piston, extended } => {
-            stationary_base_guard(guards, piston, extended)
-        }
+        GeometryView::PistonBase { piston, extended } => stationary_base_guard(guards, piston, extended),
         GeometryView::PistonHead(piston) => {
             let present = push_guard(guards, Guard::State(StateTest::PistonHeadPresent(piston)));
             let available = [
                 crate::redpiler::program_graph::PistonAvailability::Ready,
                 crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
             ]
-            .map(|is| {
-                push_guard(
-                    guards,
-                    Guard::State(StateTest::PistonAvailability { piston, is }),
-                )
-            });
+            .map(|is| push_guard(guards, Guard::State(StateTest::PistonAvailability { piston, is })));
             let available = any_guards(guards, &available);
             join_guards(guards, &[present, available])
         }
@@ -1156,28 +1034,16 @@ fn variant_guard(
         }
         GeometryView::Air => {
             let mut absent = Vec::new();
-            for variant in contact
-                .variants
-                .iter()
-                .filter(|v| v.view != GeometryView::Air)
-            {
+            for variant in contact.variants.iter().filter(|v| v.view != GeometryView::Air) {
                 let selected = match variant.view {
-                    GeometryView::PistonBase { piston, extended } => {
-                        stationary_base_guard(guards, piston, extended)
-                    }
+                    GeometryView::PistonBase { piston, extended } => stationary_base_guard(guards, piston, extended),
                     GeometryView::PistonHead(piston) => {
-                        let present =
-                            push_guard(guards, Guard::State(StateTest::PistonHeadPresent(piston)));
+                        let present = push_guard(guards, Guard::State(StateTest::PistonHeadPresent(piston)));
                         let available = [
                             crate::redpiler::program_graph::PistonAvailability::Ready,
                             crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
                         ]
-                        .map(|is| {
-                            push_guard(
-                                guards,
-                                Guard::State(StateTest::PistonAvailability { piston, is }),
-                            )
-                        });
+                        .map(|is| push_guard(guards, Guard::State(StateTest::PistonAvailability { piston, is })));
                         let available = any_guards(guards, &available);
                         join_guards(guards, &[present, available])
                     }
@@ -1196,8 +1062,7 @@ fn variant_guard(
                                 contact: contact_id,
                             }),
                         );
-                        let enabled =
-                            push_guard(guards, Guard::State(StateTest::ResourceEnabled(resource)));
+                        let enabled = push_guard(guards, Guard::State(StateTest::ResourceEnabled(resource)));
                         join_guards(guards, &[at, enabled])
                     }
                     GeometryView::MovingPistonBase(piston) => moving_base_guard(guards, piston),
@@ -1211,42 +1076,22 @@ fn variant_guard(
     }
 }
 
-fn stationary_base_guard(
-    guards: &mut Vec<Guard>,
-    piston: crate::redpiler::program_graph::PistonId,
-    extended: bool,
-) -> GuardId {
+fn stationary_base_guard(guards: &mut Vec<Guard>, piston: crate::redpiler::program_graph::PistonId, extended: bool) -> GuardId {
     use crate::redpiler::program_graph::PistonAvailability::*;
     let pose = push_guard(guards, Guard::State(StateTest::PistonExtended(piston)));
-    let pose = if extended {
-        pose
-    } else {
-        not_guard(guards, pose)
-    };
-    let available = [Ready, HeadPending, PublishingHeadRemoval].map(|is| {
-        push_guard(
-            guards,
-            Guard::State(StateTest::PistonAvailability { piston, is }),
-        )
-    });
+    let pose = if extended { pose } else { not_guard(guards, pose) };
+    let available =
+        [Ready, HeadPending, PublishingHeadRemoval].map(|is| push_guard(guards, Guard::State(StateTest::PistonAvailability { piston, is })));
     let available = any_guards(guards, &available);
     join_guards(guards, &[pose, available])
 }
 
-fn moving_base_guard(
-    guards: &mut Vec<Guard>,
-    piston: crate::redpiler::program_graph::PistonId,
-) -> GuardId {
+fn moving_base_guard(guards: &mut Vec<Guard>, piston: crate::redpiler::program_graph::PistonId) -> GuardId {
     let availability = [
         crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
         crate::redpiler::program_graph::PistonAvailability::BasePending,
     ]
-    .map(|is| {
-        push_guard(
-            guards,
-            Guard::State(StateTest::PistonAvailability { piston, is }),
-        )
-    });
+    .map(|is| push_guard(guards, Guard::State(StateTest::PistonAvailability { piston, is })));
     any_guards(guards, &availability)
 }
 

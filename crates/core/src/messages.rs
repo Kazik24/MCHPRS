@@ -619,9 +619,7 @@ mod tests {
 
     impl PacketSender for Capture {
         fn send_packet(&self, packet: &PacketEncoder) {
-            self.0
-                .borrow_mut()
-                .push(PacketEncoder::new(packet.buffer.clone(), packet.packet_id));
+            self.0.borrow_mut().push(PacketEncoder::new(packet.buffer.clone(), packet.packet_id));
         }
     }
 
@@ -631,19 +629,12 @@ mod tests {
         assert!(plot_owner(name).contains(name));
         assert!(selection_first(-123, 319, 456).contains("(-123, 319, 456)"));
         assert!(
-            history_tick_limit_permission(1000, "plots.admin.rewind.unlimited").contains(
-                "1000 game ticks of pawprints requires plots.admin.rewind.unlimited permission"
-            )
+            history_tick_limit_permission(1000, "plots.admin.rewind.unlimited")
+                .contains("1000 game ticks of pawprints requires plots.admin.rewind.unlimited permission")
         );
-        assert!(
-            worldedit_completed(17, Duration::from_millis(123))
-                .contains("17 block(s) affected (123ms)")
-        );
+        assert!(worldedit_completed(17, Duration::from_millis(123)).contains("17 block(s) affected (123ms)"));
         let diagnostic = "permission denied: C:\\schems\\{reason}.schem";
-        assert_eq!(
-            schematic_save_failed(diagnostic),
-            format!("Could not save schematic: {diagnostic}")
-        );
+        assert_eq!(schematic_save_failed(diagnostic), format!("Could not save schematic: {diagnostic}"));
         let commit_message = "Keep {from} -> {to} as written 🐾";
         assert!(git_committed("a12b34cd", name, commit_message).contains(commit_message));
         let data = r#"{"command":"say {player}","text":"Paw 🐾"}"#;
@@ -670,14 +661,8 @@ mod tests {
             named.extend_from_slice(&packet.buffer[1..]);
             let mut reader = std::io::Cursor::new(named);
             let component = nbt::Blob::from_reader(&mut reader).unwrap();
-            assert_eq!(
-                component.get("text"),
-                Some(&nbt::Value::String(text.into()))
-            );
-            assert_eq!(
-                component.get("color"),
-                Some(&nbt::Value::String(color.into()))
-            );
+            assert_eq!(component.get("text"), Some(&nbt::Value::String(text.into())));
+            assert_eq!(component.get("color"), Some(&nbt::Value::String(color.into())));
             assert_eq!(&reader.get_ref()[reader.position() as usize..], &[0]);
         }
     }
@@ -685,9 +670,7 @@ mod tests {
     #[test]
     fn error_coordinate_highlight_links_survive_network_nbt_encoding() {
         let capture = Capture::default();
-        capture.send_error_message(
-            "Redpiler: source at BlockPos { x: -20, y: 30, z: 40 } is unsupported.",
-        );
+        capture.send_error_message("Redpiler: source at BlockPos { x: -20, y: 30, z: 40 } is unsupported.");
         let packets = capture.0.borrow();
         let packet = &packets[0];
         let mut named = vec![packet.buffer[0], 0, 0];
@@ -702,21 +685,14 @@ mod tests {
         let Some(nbt::Value::Compound(click)) = coordinates.get("click_event") else {
             panic!("missing click event")
         };
-        assert_eq!(
-            click.get("action"),
-            Some(&nbt::Value::String("run_command".into()))
-        );
+        assert_eq!(click.get("action"), Some(&nbt::Value::String("run_command".into())));
         assert_eq!(
             click.get("command"),
-            Some(&nbt::Value::String(
-                "/tp -19.5 30.5 40.5 --highlight-only".into()
-            ))
+            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight-only".into()))
         );
         assert_eq!(
             coordinates.get("insertion"),
-            Some(&nbt::Value::String(
-                "/tp -19.5 30.5 40.5 --highlight".into()
-            ))
+            Some(&nbt::Value::String("/tp -19.5 30.5 40.5 --highlight".into()))
         );
     }
 }

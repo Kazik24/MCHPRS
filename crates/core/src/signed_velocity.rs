@@ -39,27 +39,17 @@ impl Session {
     pub(crate) fn submit(&mut self, message: String) -> Result<Option<String>> {
         let command = message.starts_with('/');
         validate_message(&message, command)?;
-        let queue = if command {
-            &mut self.commands
-        } else {
-            &mut self.chat
-        };
+        let queue = if command { &mut self.commands } else { &mut self.chat };
         if let Some(decision) = queue.decisions.pop_front() {
             return Ok(decision.apply(message));
         }
-        ensure!(
-            queue.messages.len() < QUEUE_LIMIT,
-            "SignedVelocity input queue overflow"
-        );
+        ensure!(queue.messages.len() < QUEUE_LIMIT, "SignedVelocity input queue overflow");
         queue.messages.push_back(message);
         Ok(None)
     }
 
     pub(crate) fn receive(&mut self, mut data: &[u8], uuid: u128) -> Result<Option<String>> {
-        ensure!(
-            read_utf(&mut data)? == HyphenatedUUID(uuid).to_string(),
-            "SignedVelocity UUID mismatch"
-        );
+        ensure!(read_utf(&mut data)? == HyphenatedUUID(uuid).to_string(), "SignedVelocity UUID mismatch");
         let command = match read_utf(&mut data)?.as_str() {
             "CHAT_RESULT" => false,
             "COMMAND_RESULT" => true,
@@ -71,33 +61,19 @@ impl Session {
             "MODIFY" => {
                 let replacement = read_utf(&mut data)?;
                 // Commands on the plugin channel exclude the leading protocol slash.
-                let replacement = if command {
-                    format!("/{replacement}")
-                } else {
-                    replacement
-                };
-                ensure!(
-                    command || !replacement.starts_with('/'),
-                    "SignedVelocity chat cannot become a command"
-                );
+                let replacement = if command { format!("/{replacement}") } else { replacement };
+                ensure!(command || !replacement.starts_with('/'), "SignedVelocity chat cannot become a command");
                 validate_message(&replacement, command)?;
                 Decision::Modify(replacement)
             }
             _ => bail!("Invalid SignedVelocity decision"),
         };
         ensure!(data.is_empty(), "Trailing SignedVelocity data");
-        let queue = if command {
-            &mut self.commands
-        } else {
-            &mut self.chat
-        };
+        let queue = if command { &mut self.commands } else { &mut self.chat };
         if let Some(message) = queue.messages.pop_front() {
             return Ok(decision.apply(message));
         }
-        ensure!(
-            queue.decisions.len() < QUEUE_LIMIT,
-            "SignedVelocity decision queue overflow"
-        );
+        ensure!(queue.decisions.len() < QUEUE_LIMIT, "SignedVelocity decision queue overflow");
         queue.decisions.push_back(decision);
         Ok(None)
     }
@@ -136,13 +112,8 @@ fn read_utf(data: &mut &[u8]) -> Result<String> {
             0xe0..=0xef => {
                 let second = encoded.read_u8()?;
                 let third = encoded.read_u8()?;
-                ensure!(
-                    second & 0xc0 == 0x80 && third & 0xc0 == 0x80,
-                    "Invalid modified UTF-8 continuation"
-                );
-                let unit = (u16::from(first & 0x0f) << 12)
-                    | (u16::from(second & 0x3f) << 6)
-                    | u16::from(third & 0x3f);
+                ensure!(second & 0xc0 == 0x80 && third & 0xc0 == 0x80, "Invalid modified UTF-8 continuation");
+                let unit = (u16::from(first & 0x0f) << 12) | (u16::from(second & 0x3f) << 6) | u16::from(third & 0x3f);
                 ensure!(unit >= 0x800, "Overlong modified UTF-8");
                 unit
             }
@@ -157,23 +128,10 @@ fn read_utf(data: &mut &[u8]) -> Result<String> {
 pub(crate) mod tests {
     use super::*;
 
-    pub(crate) fn payload(
-        uuid: u128,
-        source: &str,
-        decision: &str,
-        replacement: Option<&str>,
-    ) -> Vec<u8> {
+    pub(crate) fn payload(uuid: u128, source: &str, decision: &str, replacement: Option<&str>) -> Vec<u8> {
         let uuid = HyphenatedUUID(uuid).to_string();
         let mut data = Vec::new();
-        for field in [
-            Some(uuid.as_str()),
-            Some(source),
-            Some(decision),
-            replacement,
-        ]
-        .into_iter()
-        .flatten()
-        {
+        for field in [Some(uuid.as_str()), Some(source), Some(decision), replacement].into_iter().flatten() {
             assert!(field.is_ascii());
             data.extend_from_slice(&(field.len() as u16).to_be_bytes());
             data.extend_from_slice(field.as_bytes());
@@ -200,27 +158,14 @@ pub(crate) mod tests {
                 };
                 assert_eq!(result.as_deref(), expected);
 
+                session.receive(&payload(1, "CHAT_RESULT", "CANCEL", None), 1).unwrap();
                 session
-                    .receive(&payload(1, "CHAT_RESULT", "CANCEL", None), 1)
+                    .receive(&payload(1, "COMMAND_RESULT", "MODIFY", Some("/load build.schem")), 1)
                     .unwrap();
-                session
-                    .receive(
-                        &payload(1, "COMMAND_RESULT", "MODIFY", Some("/load build.schem")),
-                        1,
-                    )
-                    .unwrap();
-                assert_eq!(
-                    session.submit("/help".into()).unwrap().as_deref(),
-                    Some("//load build.schem")
-                );
+                assert_eq!(session.submit("/help".into()).unwrap().as_deref(), Some("//load build.schem"));
                 assert_eq!(session.submit("blocked".into()).unwrap(), None);
-                session
-                    .receive(&payload(1, "CHAT_RESULT", "ALLOWED", None), 1)
-                    .unwrap();
-                assert_eq!(
-                    session.submit("next".into()).unwrap().as_deref(),
-                    Some("next")
-                );
+                session.receive(&payload(1, "CHAT_RESULT", "ALLOWED", None), 1).unwrap();
+                assert_eq!(session.submit("next".into()).unwrap().as_deref(), Some("next"));
             }
         }
     }
@@ -236,10 +181,7 @@ pub(crate) mod tests {
         data.extend_from_slice(b"\x00\x0e\xc5\xbc\xc3\xb3\xc5\x82w \xed\xa0\xbd\xed\xb0\x88");
         let mut session = Session::default();
         session.receive(&data, 1).unwrap();
-        assert_eq!(
-            session.submit("original".into()).unwrap().as_deref(),
-            Some("żółw 🐈")
-        );
+        assert_eq!(session.submit("original".into()).unwrap().as_deref(), Some("żółw 🐈"));
     }
 
     #[test]
@@ -274,11 +216,7 @@ pub(crate) mod tests {
     #[test]
     fn missing_decisions_never_allow_input_and_both_queues_are_bounded() {
         for source in ["CHAT_RESULT", "COMMAND_RESULT"] {
-            let input = if source == "CHAT_RESULT" {
-                "hello"
-            } else {
-                "/help"
-            };
+            let input = if source == "CHAT_RESULT" { "hello" } else { "/help" };
             let mut waiting = Session::default();
             let mut ready = Session::default();
             let data = payload(1, source, "ALLOWED", None);

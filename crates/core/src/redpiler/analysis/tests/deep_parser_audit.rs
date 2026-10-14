@@ -1,43 +1,22 @@
 //! Independent query witnesses and complete-stage parser checks; this is not an executor.
 use super::*;
 use crate::redpiler::analysis::callbacks;
-use crate::redpiler::program_graph::{
-    CircuitDraft, ContactId, DeliveryKind, NodeId, OperandView, PistonAvailability, PistonState,
-    SiteId, SiteTest,
-};
+use crate::redpiler::program_graph::{CircuitDraft, ContactId, DeliveryKind, NodeId, OperandView, PistonAvailability, PistonState, SiteId, SiteTest};
 use mchprs_blocks::blocks::{Lever, LeverFace, RedstoneObserver};
 
-fn guard_holds(
-    world: &PlotWorld,
-    draft: &ElectricalDraft,
-    guard: GuardId,
-    pistons: &[PistonState],
-    resources: &[ResourceState],
-) -> bool {
+fn guard_holds(world: &PlotWorld, draft: &ElectricalDraft, guard: GuardId, pistons: &[PistonState], resources: &[ResourceState]) -> bool {
     match &draft.guards[guard.index()] {
         Guard::Always => true,
         Guard::Not(child) => !guard_holds(world, draft, *child, pistons, resources),
-        Guard::All(children) => children
-            .iter()
-            .all(|child| guard_holds(world, draft, *child, pistons, resources)),
-        Guard::Any(children) => children
-            .iter()
-            .any(|child| guard_holds(world, draft, *child, pistons, resources)),
+        Guard::All(children) => children.iter().all(|child| guard_holds(world, draft, *child, pistons, resources)),
+        Guard::Any(children) => children.iter().any(|child| guard_holds(world, draft, *child, pistons, resources)),
         Guard::State(StateTest::PistonExtended(id)) => pistons[id.index()].extended,
         Guard::State(StateTest::PistonHeadPresent(id)) => pistons[id.index()].head_present,
-        Guard::State(StateTest::PistonAvailability { piston, is }) => {
-            pistons[piston.index()].availability == *is
-        }
-        Guard::State(StateTest::ResourceAt { resource, contact }) => {
-            resources[resource.index()].at == *contact
-        }
+        Guard::State(StateTest::PistonAvailability { piston, is }) => pistons[piston.index()].availability == *is,
+        Guard::State(StateTest::ResourceAt { resource, contact }) => resources[resource.index()].at == *contact,
         Guard::State(StateTest::ResourceEnabled(id)) => resources[id.index()].enabled,
         Guard::Site { site, view, test } => {
-            assert_eq!(
-                *view,
-                OperandView::Live,
-                "query test requires live operands"
-            );
+            assert_eq!(*view, OperandView::Live, "query test requires live operands");
             let block = world.get_block(draft.sites[site.index()].position);
             match test {
                 SiteTest::Solid => block.is_solid(),
@@ -61,14 +40,8 @@ fn channel_strength(
         return draft
             .links
             .iter()
-            .filter(|link| {
-                link.to == ElectricalTarget::Conductor { site, include_dust }
-                    && guard_holds(world, draft, link.guard, pistons, resources)
-            })
-            .map(|link| {
-                channel_strength(world, draft, link.from, link.from_port, pistons, resources)
-                    .saturating_sub(link.attenuation)
-            })
+            .filter(|link| link.to == ElectricalTarget::Conductor { site, include_dust } && guard_holds(world, draft, link.guard, pistons, resources))
+            .map(|link| channel_strength(world, draft, link.from, link.from_port, pistons, resources).saturating_sub(link.attenuation))
             .max()
             .unwrap_or(0);
     }
@@ -77,12 +50,8 @@ fn channel_strength(
     let strength = crate::redstone::source_strength(block, world, position);
     let emits = match port {
         PowerPort::Stored | PowerPort::Output => true,
-        PowerPort::Weak(face) => {
-            crate::redstone::power::emits_weak_power(block, world, position, face, true)
-        }
-        PowerPort::Strong(face) => {
-            crate::redstone::power::emits_strong_power(block, world, position, face, true)
-        }
+        PowerPort::Weak(face) => crate::redstone::power::emits_weak_power(block, world, position, face, true),
+        PowerPort::Strong(face) => crate::redstone::power::emits_strong_power(block, world, position, face, true),
         PowerPort::Conducted { .. } => unreachable!(),
     };
     if emits { strength } else { 0 }
@@ -99,14 +68,8 @@ fn input_strength(
     draft
         .links
         .iter()
-        .filter(|link| {
-            link.to == ElectricalTarget::Input { node, port }
-                && guard_holds(world, draft, link.guard, pistons, resources)
-        })
-        .map(|link| {
-            channel_strength(world, draft, link.from, link.from_port, pistons, resources)
-                .saturating_sub(link.attenuation)
-        })
+        .filter(|link| link.to == ElectricalTarget::Input { node, port } && guard_holds(world, draft, link.guard, pistons, resources))
+        .map(|link| channel_strength(world, draft, link.from, link.from_port, pistons, resources).saturating_sub(link.attenuation))
         .max()
         .unwrap_or(0)
 }
@@ -155,20 +118,9 @@ fn directional_lamp_queries_match_interpreter_in_every_face() {
                     &geometry.draft.initial_pistons,
                     &geometry.draft.initial_resources,
                 );
-                let expected = crate::redstone::get_redstone_power(
-                    world.get_block(adjacent),
-                    &world,
-                    adjacent,
-                    face,
-                );
-                assert_eq!(
-                    actual, expected,
-                    "{source:?}, {face:?}, cube={through_cube}"
-                );
-                assert_eq!(
-                    actual > 0,
-                    crate::redstone::redstone_lamp_should_be_lit(&world, BASE)
-                );
+                let expected = crate::redstone::get_redstone_power(world.get_block(adjacent), &world, adjacent, face);
+                assert_eq!(actual, expected, "{source:?}, {face:?}, cube={through_cube}");
+                assert_eq!(actual > 0, crate::redstone::redstone_lamp_should_be_lit(&world, BASE));
             }
         }
     }
@@ -210,11 +162,12 @@ fn qc_sampling_matches_native_in_all_orientations_without_routes() {
             assert!(draft.nodes.iter().all(|node| node.output_route.is_none()));
             world.set_block(source, Block::Air);
         }
-        assert!(!draft.links.iter().any(|link| link.to
-            == ElectricalTarget::Input {
-                node,
-                port: InputPort::Main
-            }));
+        assert!(
+            !draft
+                .links
+                .iter()
+                .any(|link| link.to == ElectricalTarget::Input { node, port: InputPort::Main })
+        );
     }
 }
 
@@ -244,16 +197,9 @@ fn single_resource_contact_guards_partition_legal_stationary_states() {
                 let selected: Vec<_> = contact
                     .variants
                     .iter()
-                    .filter(|variant| {
-                        guard_holds(&world, &draft, variant.when, &pistons, &resources)
-                    })
+                    .filter(|variant| guard_holds(&world, &draft, variant.when, &pistons, &resources))
                     .collect();
-                assert_eq!(
-                    selected.len(),
-                    1,
-                    "{facing:?}, extended={extended}, contact={:?}",
-                    contact.position
-                );
+                assert_eq!(selected.len(), 1, "{facing:?}, extended={extended}, contact={:?}", contact.position);
             }
         }
         for availability in [
@@ -273,9 +219,7 @@ fn single_resource_contact_guards_partition_legal_stationary_states() {
                     contact
                         .variants
                         .iter()
-                        .filter(|variant| {
-                            guard_holds(&world, &draft, variant.when, &pistons, &resources)
-                        })
+                        .filter(|variant| { guard_holds(&world, &draft, variant.when, &pistons, &resources) })
                         .count(),
                     1,
                     "{facing:?}, availability={availability:?}, contact={:?}",
@@ -291,27 +235,14 @@ fn restored_head_has_no_native_excluded_self_update() {
     let mut world = empty();
     world.set_block(BASE, piston_block(BlockFace::East, false, false));
     let geometry = prepare_geometry_for(&world).unwrap();
-    let mut electrical = electrical::prepare_electrical(
-        &world,
-        geometry.report.bounds,
-        &geometry.draft,
-        &Default::default(),
-    )
-    .unwrap();
-    let callbacks = callbacks::prepare_callbacks(
-        &world,
-        &geometry.draft,
-        &mut electrical,
-        &Default::default(),
-    )
-    .unwrap();
+    let mut electrical = electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let callbacks = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default()).unwrap();
     let piston = &callbacks.pistons[0];
     let near = electrical.contacts[piston.near.index()].position;
     let route = &callbacks.routes[piston.routes.head_restored.index()];
     assert!(
         !route.deliveries.iter().any(|delivery| {
-            electrical.sites[delivery.target.index()].position == near
-                && matches!(delivery.kind, DeliveryKind::Update { direction: None })
+            electrical.sites[delivery.target.index()].position == near && matches!(delivery.kind, DeliveryKind::Update { direction: None })
         }),
         "native finish skips the restored head's self-recheck"
     );
@@ -347,23 +278,9 @@ fn inert_supported_sign_does_not_require_an_update_receiver() {
     world.set_block(sign.offset(BlockFace::Bottom), Block::Stone {});
     assert!(!crate::redstone::has_neighbor_update(world.get_block(sign)));
     let geometry = prepare_geometry_for(&world).unwrap();
-    let mut electrical = electrical::prepare_electrical(
-        &world,
-        geometry.report.bounds,
-        &geometry.draft,
-        &Default::default(),
-    )
-    .unwrap();
-    let result = callbacks::prepare_callbacks(
-        &world,
-        &geometry.draft,
-        &mut electrical,
-        &Default::default(),
-    );
-    assert!(
-        result.is_ok(),
-        "ordinary callbacks to a fixed supported sign are inert: {result:?}"
-    );
+    let mut electrical = electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft, &Default::default()).unwrap();
+    let result = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default());
+    assert!(result.is_ok(), "ordinary callbacks to a fixed supported sign are inert: {result:?}");
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -379,22 +296,11 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
     let world = geometry_io_fixture(name);
     let before_ticks = format!("{:?}", world.scheduler().iter_entries().collect::<Vec<_>>());
     let result = (|| {
-        let geometry = prepare_geometry_for(&world)
-            .map_err(|error| (FixturePrepStage::Geometry, error.to_string()))?;
-        let mut electrical = electrical::prepare_electrical(
-            &world,
-            geometry.report.bounds,
-            &geometry.draft,
-            &Default::default(),
-        )
-        .map_err(|error| (FixturePrepStage::Electrical, error.to_string()))?;
-        let callbacks = callbacks::prepare_callbacks(
-            &world,
-            &geometry.draft,
-            &mut electrical,
-            &Default::default(),
-        )
-        .map_err(|error| (FixturePrepStage::Callbacks, error.to_string()))?;
+        let geometry = prepare_geometry_for(&world).map_err(|error| (FixturePrepStage::Geometry, error.to_string()))?;
+        let mut electrical = electrical::prepare_electrical(&world, geometry.report.bounds, &geometry.draft, &Default::default())
+            .map_err(|error| (FixturePrepStage::Electrical, error.to_string()))?;
+        let callbacks = callbacks::prepare_callbacks(&world, &geometry.draft, &mut electrical, &Default::default())
+            .map_err(|error| (FixturePrepStage::Callbacks, error.to_string()))?;
         // Electrical query plans are not yet part of CircuitDraft; this checks callback/state bindings.
         let draft = CircuitDraft {
             nodes: electrical.nodes,
@@ -405,17 +311,13 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
             guards: electrical.guards,
             contacts: electrical.contacts,
             routes: callbacks.routes,
+            turbo_callback_indices: Vec::new(),
             wires: electrical.wires,
             dust_paths: Vec::new(),
             wire_relations: electrical.wire_relations,
             sites: electrical.sites,
             pistons: callbacks.pistons,
-            resources: geometry
-                .draft
-                .resources
-                .iter()
-                .map(|resource| resource.spec.clone())
-                .collect(),
+            resources: geometry.draft.resources.iter().map(|resource| resource.spec.clone()).collect(),
             initial_pistons: geometry.draft.initial_pistons,
             initial_resources: geometry.draft.initial_resources,
         };
@@ -425,15 +327,10 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
             draft.routes.len(),
             draft.resources.len()
         );
-        draft
-            .lower()
-            .map_err(|error| (FixturePrepStage::GraphValidation, error.to_string()))?;
+        draft.lower().map_err(|error| (FixturePrepStage::GraphValidation, error.to_string()))?;
         Ok::<_, (FixturePrepStage, String)>(())
     })();
-    assert_eq!(
-        before_ticks,
-        format!("{:?}", world.scheduler().iter_entries().collect::<Vec<_>>())
-    );
+    assert_eq!(before_ticks, format!("{:?}", world.scheduler().iter_entries().collect::<Vec<_>>()));
     match result {
         Ok(()) => (FixturePrepStage::Admitted, None),
         Err((stage, error)) => (stage, Some(error)),
@@ -442,12 +339,7 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
 
 fn validate_fixture_callback_projection(name: &str) {
     let (stage, error) = fixture_callback_projection(name);
-    assert_eq!(
-        stage,
-        FixturePrepStage::Admitted,
-        "{name}: {stage:?}: {}",
-        error.unwrap_or_default()
-    );
+    assert_eq!(stage, FixturePrepStage::Admitted, "{name}: {stage:?}: {}", error.unwrap_or_default());
 }
 
 #[test]
@@ -472,10 +364,7 @@ fn remaining_frozen_targets_report_their_first_parser_stage() {
         ("AND_1.schem", FixturePrepStage::Admitted),
         ("AND_2.schem", FixturePrepStage::Admitted),
         ("AND_3.schem", FixturePrepStage::Geometry),
-        (
-            "BUD_InstantMemoryCellObserverUpdate.schem",
-            FixturePrepStage::Admitted,
-        ),
+        ("BUD_InstantMemoryCellObserverUpdate.schem", FixturePrepStage::Admitted),
         ("BUD_InstantPistonUpdate.schem", FixturePrepStage::Admitted),
         ("BUD_NonInstantInputs.schem", FixturePrepStage::Admitted),
         ("COUNTER_BASIC.schem", FixturePrepStage::Admitted),

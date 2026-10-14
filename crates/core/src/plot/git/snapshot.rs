@@ -35,13 +35,8 @@ pub(super) fn state(section: Option<&ChunkSectionData>, index: usize) -> u32 {
     };
     let bits = section.bits_per_block as usize;
     let per = 64 / bits;
-    let value = ((section.data[index / per] as u64 >> ((index % per) * bits))
-        & ((1u64 << bits) - 1)) as usize;
-    if bits < 9 {
-        section.palette[value] as u32
-    } else {
-        value as u32
-    }
+    let value = ((section.data[index / per] as u64 >> ((index % per) * bits)) & ((1u64 << bits) - 1)) as usize;
+    if bits < 9 { section.palette[value] as u32 } else { value as u32 }
 }
 
 pub(super) fn entity_value(entity: &BlockEntity) -> Result<Value> {
@@ -58,10 +53,7 @@ pub(super) fn normalize(value: &mut Value) -> Result<()> {
             }
             // Inventory NBT is saved as bytes. Parse it for semantic map equality.
             if let Some(Value::Array(bytes)) = map.get("nbt") {
-                let bytes: Vec<u8> = bytes
-                    .iter()
-                    .map(|v| v.as_u64().unwrap_or(256) as u8)
-                    .collect();
+                let bytes: Vec<u8> = bytes.iter().map(|v| v.as_u64().unwrap_or(256) as u8).collect();
                 let blob = nbt::Blob::from_reader(&mut std::io::Cursor::new(bytes))?;
                 map.insert("nbt".into(), typed_nbt(&nbt::Value::Compound(blob.content)));
             }
@@ -124,10 +116,7 @@ impl Snapshot {
         self.data.validate()?;
         for chunk in &self.data.chunk_data {
             ensure!(
-                chunk
-                    .block_entities
-                    .keys()
-                    .all(|p| (0..16).contains(&p.x) && (0..16).contains(&p.z)),
+                chunk.block_entities.keys().all(|p| (0..16).contains(&p.x) && (0..16).contains(&p.z)),
                 messages::GIT_INVALID_ENTITY_COORDINATES
             );
         }
@@ -145,9 +134,7 @@ impl Snapshot {
         let empty_digest: [u8; 32] = Sha256::digest([0u8; 4096 * 4]).into();
         for chunk in &self.data.chunk_data {
             for sy in 0..PLOT_SECTIONS {
-                if chunk.sections[sy].is_none()
-                    && !chunk.block_entities.keys().any(|p| p.y / 16 == sy as i32)
-                {
+                if chunk.sections[sy].is_none() && !chunk.block_entities.keys().any(|p| p.y / 16 == sy as i32) {
                     content.update(empty_digest);
                     sections.push(empty_digest);
                     continue;
@@ -156,11 +143,7 @@ impl Snapshot {
                 for index in 0..4096 {
                     hash.update(state(chunk.sections[sy].as_ref(), index).to_le_bytes());
                 }
-                let mut entities: Vec<_> = chunk
-                    .block_entities
-                    .iter()
-                    .filter(|(p, _)| p.y / 16 == sy as i32)
-                    .collect();
+                let mut entities: Vec<_> = chunk.block_entities.iter().filter(|(p, _)| p.y / 16 == sy as i32).collect();
                 entities.sort_by_key(|(p, _)| (p.x, p.y, p.z));
                 for (pos, entity) in entities {
                     hash.update(pos.x.to_le_bytes());
@@ -193,22 +176,15 @@ impl Snapshot {
     }
 
     pub fn decode(bytes: &[u8], plot: (i32, i32), limit: usize) -> Result<Self> {
-        let size = bytes
-            .get(..4)
-            .ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
+        let size = bytes.get(..4).ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
         let size = u32::from_le_bytes(size.try_into()?) as usize;
         ensure!(size <= limit, messages::GIT_DECOMPRESSION_LIMIT);
-        ensure!(
-            bytes.len() <= compressed_bound(size),
-            messages::GIT_OVERSIZED_OBJECT
-        );
+        ensure!(bytes.len() <= compressed_bound(size), messages::GIT_OVERSIZED_OBJECT);
         let data = lz4_flex::decompress_size_prepended(bytes)?;
         ensure!(data.len() == size, messages::GIT_INVALID_COMPRESSED_SIZE);
         // Validate the fixed bincode header's chunk count before serde allocates
         // a Vec of large chunk structs from an untrusted declared length.
-        let tps = data
-            .get(16..20)
-            .ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
+        let tps = data.get(16..20).ok_or_else(|| anyhow::anyhow!(messages::GIT_TRUNCATED_SNAPSHOT))?;
         let offset = match u32::from_le_bytes(tps.try_into()?) {
             0 => 28, // Limited(u32), then world_send_rate(u32).
             1 => 24, // Unlimited, then world_send_rate(u32).
@@ -261,17 +237,12 @@ impl Snapshot {
     fn location(&self, pos: BlockPos) -> Option<(usize, BlockPos)> {
         let x = i64::from(pos.x) - i64::from(self.plot.0) * i64::from(PLOT_WIDTH * 16);
         let z = i64::from(pos.z) - i64::from(self.plot.1) * i64::from(PLOT_WIDTH * 16);
-        if !(0..i64::from(PLOT_WIDTH * 16)).contains(&x)
-            || !(0..i64::from(PLOT_WIDTH * 16)).contains(&z)
-            || !(0..PLOT_BLOCK_HEIGHT).contains(&pos.y)
+        if !(0..i64::from(PLOT_WIDTH * 16)).contains(&x) || !(0..i64::from(PLOT_WIDTH * 16)).contains(&z) || !(0..PLOT_BLOCK_HEIGHT).contains(&pos.y)
         {
             return None;
         }
         let (x, z) = (x as i32, z as i32);
-        Some((
-            ((x / 16) * PLOT_WIDTH + z / 16) as usize,
-            BlockPos::new(x & 15, pos.y, z & 15),
-        ))
+        Some((((x / 16) * PLOT_WIDTH + z / 16) as usize, BlockPos::new(x & 15, pos.y, z & 15)))
     }
 
     pub fn block(&self, pos: BlockPos) -> u32 {
@@ -288,11 +259,7 @@ impl Snapshot {
         let Some((chunk, local)) = self.location(pos) else {
             bail!(messages::GIT_POSITION_OUTSIDE_PLOT);
         };
-        self.data.chunk_data[chunk]
-            .block_entities
-            .get(&local)
-            .map(entity_value)
-            .transpose()
+        self.data.chunk_data[chunk].block_entities.get(&local).map(entity_value).transpose()
     }
 }
 
@@ -311,10 +278,7 @@ impl Write for HashWriter {
     }
 }
 
-fn canonical_sequence(
-    writer: &mut impl Write,
-    values: impl IntoIterator<Item = impl Serialize>,
-) -> Result<()> {
+fn canonical_sequence(writer: &mut impl Write, values: impl IntoIterator<Item = impl Serialize>) -> Result<()> {
     writer.write_all(b"[")?;
     for (index, value) in values.into_iter().enumerate() {
         if index != 0 {

@@ -1,18 +1,10 @@
 mod turbo;
 
 pub(crate) const TURBO_ORDER: [[usize; 24]; 4] = [
-    [
-        2, 3, 16, 19, 0, 4, 1, 5, 7, 8, 17, 20, 12, 13, 18, 21, 6, 9, 22, 14, 11, 10, 23, 15,
-    ],
-    [
-        2, 3, 16, 19, 4, 1, 5, 0, 17, 20, 12, 13, 18, 21, 7, 8, 22, 14, 11, 15, 23, 9, 6, 10,
-    ],
-    [
-        2, 3, 16, 19, 1, 5, 0, 4, 12, 13, 18, 21, 7, 8, 17, 20, 11, 15, 23, 10, 6, 14, 22, 9,
-    ],
-    [
-        2, 3, 16, 19, 5, 0, 4, 1, 18, 21, 7, 8, 17, 20, 12, 13, 23, 10, 6, 9, 22, 15, 11, 14,
-    ],
+    [2, 3, 16, 19, 0, 4, 1, 5, 7, 8, 17, 20, 12, 13, 18, 21, 6, 9, 22, 14, 11, 10, 23, 15],
+    [2, 3, 16, 19, 4, 1, 5, 0, 17, 20, 12, 13, 18, 21, 7, 8, 22, 14, 11, 15, 23, 9, 6, 10],
+    [2, 3, 16, 19, 1, 5, 0, 4, 12, 13, 18, 21, 7, 8, 17, 20, 11, 15, 23, 10, 6, 14, 22, 9],
+    [2, 3, 16, 19, 5, 0, 4, 1, 18, 21, 7, 8, 17, 20, 12, 13, 23, 10, 6, 9, 22, 15, 11, 14],
 ];
 
 pub(crate) fn compute_heading(rx: i32, rz: i32) -> usize {
@@ -58,23 +50,14 @@ pub fn get_state_for_placement(world: &impl World, pos: BlockPos) -> RedstoneWir
     wire
 }
 
-pub fn on_neighbor_changed(
-    wire: RedstoneWire,
-    world: &impl World,
-    pos: BlockPos,
-    side: BlockFace,
-) -> RedstoneWire {
+pub fn on_neighbor_changed(wire: RedstoneWire, world: &impl World, pos: BlockPos, side: BlockFace) -> RedstoneWire {
     if side == BlockFace::Top {
         return wire;
     }
     on_neighbor_changed_from(wire, get_all_sides(wire, world, pos), side)
 }
 
-pub(crate) fn on_neighbor_changed_from(
-    mut wire: RedstoneWire,
-    raw: RedstoneWire,
-    side: BlockFace,
-) -> RedstoneWire {
+pub(crate) fn on_neighbor_changed_from(mut wire: RedstoneWire, raw: RedstoneWire, side: BlockFace) -> RedstoneWire {
     let old_state = wire;
     if side == BlockFace::Top {
         return wire;
@@ -131,11 +114,7 @@ pub fn on_neighbor_updated(mut wire: RedstoneWire, world: &mut impl World, pos: 
 
 pub fn on_use(wire: RedstoneWire, world: &mut impl World, pos: BlockPos) -> ActionResult {
     if is_dot(wire) || is_cross(wire) {
-        let mut new_wire = if is_cross(wire) {
-            RedstoneWire::default()
-        } else {
-            make_cross(0)
-        };
+        let mut new_wire = if is_cross(wire) { RedstoneWire::default() } else { make_cross(0) };
         new_wire.power = wire.power;
         new_wire = get_regulated_sides(new_wire, world, pos);
         if wire != new_wire {
@@ -162,9 +141,7 @@ pub(crate) fn can_connect_to_uncached(block: Block, side: BlockDirection) -> boo
         | Block::StoneButton { .. }
         | Block::Target
         | Block::Lever { .. } => true,
-        Block::RedstoneRepeater { repeater } => {
-            repeater.facing == side || repeater.facing == side.opposite()
-        }
+        Block::RedstoneRepeater { repeater } => repeater.facing == side || repeater.facing == side.opposite(),
         Block::Observer { observer } => observer.facing == side.block_facing(),
         _ => false,
     }
@@ -188,21 +165,11 @@ pub fn get_side(world: &impl World, pos: BlockPos, side: BlockDirection) -> Reds
     get_side_with_above(world, pos, side, &mut None)
 }
 
-fn get_side_with_above(
-    world: &impl World,
-    pos: BlockPos,
-    side: BlockDirection,
-    above_solid: &mut Option<bool>,
-) -> RedstoneWireSide {
+fn get_side_with_above(world: &impl World, pos: BlockPos, side: BlockDirection, above_solid: &mut Option<bool>) -> RedstoneWireSide {
     get_side_from(pos, side, above_solid, &|pos| world.get_block(pos))
 }
 
-fn get_side_from(
-    pos: BlockPos,
-    side: BlockDirection,
-    above_solid: &mut Option<bool>,
-    read: &impl Fn(BlockPos) -> Block,
-) -> RedstoneWireSide {
+fn get_side_from(pos: BlockPos, side: BlockDirection, above_solid: &mut Option<bool>, read: &impl Fn(BlockPos) -> Block) -> RedstoneWireSide {
     let neighbor_pos = pos.offset(side.block_face());
     let neighbor = read(neighbor_pos);
     if crate::world::wire_cache::connects(neighbor, side) {
@@ -211,8 +178,7 @@ fn get_side_from(
 
     let up_solid = *above_solid.get_or_insert_with(|| read(pos.offset(BlockFace::Top)).is_solid());
     let neighbor_above = (!up_solid).then(|| read(neighbor_pos.offset(BlockFace::Top)));
-    let neighbor_below =
-        (!neighbor.is_solid()).then(|| read(neighbor_pos.offset(BlockFace::Bottom)));
+    let neighbor_below = (!neighbor.is_solid()).then(|| read(neighbor_pos.offset(BlockFace::Bottom)));
     side_from_blocks(side, neighbor, up_solid, neighbor_above, neighbor_below)
 }
 
@@ -225,13 +191,9 @@ fn side_from_blocks(
 ) -> RedstoneWireSide {
     if crate::world::wire_cache::connects(neighbor, side) {
         RedstoneWireSide::Side
-    } else if !up_solid
-        && can_connect_diagonal_to(neighbor_above.expect("wire can ascend only with clear space"))
-    {
+    } else if !up_solid && can_connect_diagonal_to(neighbor_above.expect("wire can ascend only with clear space")) {
         RedstoneWireSide::Up
-    } else if !neighbor.is_solid()
-        && can_connect_diagonal_to(neighbor_below.expect("wire descends beside a non-solid block"))
-    {
+    } else if !neighbor.is_solid() && can_connect_diagonal_to(neighbor_below.expect("wire descends beside a non-solid block")) {
         RedstoneWireSide::Side
     } else {
         RedstoneWireSide::None
@@ -251,11 +213,7 @@ pub fn get_regulated_sides(wire: RedstoneWire, world: &impl World, pos: BlockPos
     regulate_sides(wire, get_all_sides(wire, world, pos))
 }
 
-pub(crate) fn get_raw_sides_from(
-    wire: RedstoneWire,
-    pos: BlockPos,
-    read: impl Fn(BlockPos) -> Block,
-) -> RedstoneWire {
+pub(crate) fn get_raw_sides_from(wire: RedstoneWire, pos: BlockPos, read: impl Fn(BlockPos) -> Block) -> RedstoneWire {
     let mut state = wire;
     let mut above = None;
     state.north = get_side_from(pos, BlockDirection::North, &mut above, &read);
@@ -265,10 +223,7 @@ pub(crate) fn get_raw_sides_from(
     state
 }
 
-pub(crate) fn get_raw_sides_from_neighbors(
-    mut wire: RedstoneWire,
-    neighbors: &[Block; 24],
-) -> RedstoneWire {
+pub(crate) fn get_raw_sides_from_neighbors(mut wire: RedstoneWire, neighbors: &[Block; 24]) -> RedstoneWire {
     let up_solid = neighbors[3].is_solid();
     for (side, neighbor, above, below) in [
         (BlockDirection::North, 4, 20, 17),
@@ -276,13 +231,7 @@ pub(crate) fn get_raw_sides_from_neighbors(
         (BlockDirection::East, 1, 13, 12),
         (BlockDirection::West, 0, 8, 7),
     ] {
-        let side_state = side_from_blocks(
-            side,
-            neighbors[neighbor],
-            up_solid,
-            Some(neighbors[above]),
-            Some(neighbors[below]),
-        );
+        let side_state = side_from_blocks(side, neighbors[neighbor], up_solid, Some(neighbors[above]), Some(neighbors[below]));
         match side {
             BlockDirection::North => wire.north = side_state,
             BlockDirection::South => wire.south = side_state,
@@ -351,25 +300,14 @@ fn calculate_power(world: &impl World, pos: BlockPos) -> u8 {
         let neighbor_pos = pos.offset(*side);
         let neighbor = world.get_block(neighbor_pos);
         wire_power = max_wire_power(wire_power, neighbor);
-        block_power = block_power.max(super::get_redstone_power_no_dust(
-            neighbor,
-            world,
-            neighbor_pos,
-            *side,
-        ));
+        block_power = block_power.max(super::get_redstone_power_no_dust(neighbor, world, neighbor_pos, *side));
         if side.is_horizontal() {
             if !up_solid && !neighbor.is_transparent() {
-                wire_power = max_wire_power(
-                    wire_power,
-                    world.get_block(neighbor_pos.offset(BlockFace::Top)),
-                );
+                wire_power = max_wire_power(wire_power, world.get_block(neighbor_pos.offset(BlockFace::Top)));
             }
 
             if !neighbor.is_solid() {
-                wire_power = max_wire_power(
-                    wire_power,
-                    world.get_block(neighbor_pos.offset(BlockFace::Bottom)),
-                );
+                wire_power = max_wire_power(wire_power, world.get_block(neighbor_pos.offset(BlockFace::Bottom)));
             }
         }
     }

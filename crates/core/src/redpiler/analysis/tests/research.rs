@@ -15,37 +15,21 @@ fn origin(manifest: &Value) -> BlockPos {
 }
 
 fn manifest(name: &str) -> Value {
-    serde_json::from_slice(
-        &std::fs::read(
-            root()
-                .join("test_data/piston-research/fixtures")
-                .join(format!("{name}.json")),
-        )
-        .unwrap(),
-    )
-    .unwrap()
+    serde_json::from_slice(&std::fs::read(root().join("test_data/piston-research/fixtures").join(format!("{name}.json"))).unwrap()).unwrap()
 }
 
 fn load(manifest: &Value) -> (PlotWorld, (BlockPos, BlockPos)) {
     let bytes = std::fs::read(root().join(manifest["fixture"].as_str().unwrap())).unwrap();
     assert_eq!(manifest["sha256"], format!("{:x}", Sha256::digest(&bytes)));
     let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
-    assert_eq!(
-        manifest["dimensions"],
-        json!([clipboard.size_x, clipboard.size_y, clipboard.size_z])
-    );
+    assert_eq!(manifest["dimensions"], json!([clipboard.size_x, clipboard.size_y, clipboard.size_z]));
     assert_eq!(
         manifest["loader_offset"],
         json!([clipboard.offset_x, clipboard.offset_y, clipboard.offset_z])
     );
     let mut world = empty();
     let first = origin(manifest);
-    let last = first
-        + BlockPos::new(
-            clipboard.size_x as i32 - 1,
-            clipboard.size_y as i32 - 1,
-            clipboard.size_z as i32 - 1,
-        );
+    let last = first + BlockPos::new(clipboard.size_x as i32 - 1, clipboard.size_y as i32 - 1, clipboard.size_z as i32 - 1);
     let (world_first, world_last) = world.get_corners();
     assert_eq!(first.max(world_first), first, "fixture must fit the plot");
     assert_eq!(last.min(world_last), last, "fixture must fit the plot");
@@ -79,13 +63,7 @@ fn observations(world: &PlotWorld, manifest: &Value) -> Value {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .map(|p| {
-                        block_state(
-                            world,
-                            local_pos(p) - BASE + origin(manifest),
-                            origin(manifest),
-                        )
-                    })
+                    .map(|p| block_state(world, local_pos(p) - BASE + origin(manifest), origin(manifest)))
                     .collect::<Vec<_>>(),
             )
         })
@@ -113,10 +91,7 @@ fn action(world: &mut PlotWorld, manifest: &Value, operation: &Value) {
 fn bubblesort_import_preserves_full_memory_and_button_protocol() {
     let fixture = manifest("cpu_bubblesort");
     let (mut world, bounds) = load(&fixture);
-    assert_eq!(
-        bounds,
-        (BlockPos::new(1, 8, 1), BlockPos::new(225, 49, 254))
-    );
+    assert_eq!(bounds, (BlockPos::new(1, 8, 1), BlockPos::new(225, 49, 254)));
     for row in 0..16 {
         let mut word = 0u16;
         for bit in 0..12 {
@@ -128,11 +103,7 @@ fn bubblesort_import_preserves_full_memory_and_button_protocol() {
         }
         assert_eq!(word, 15 - row as u16);
     }
-    action(
-        &mut world,
-        &fixture,
-        &json!({"op": "button", "pos": [166,7,158]}),
-    );
+    action(&mut world, &fixture, &json!({"op": "button", "pos": [166,7,158]}));
     let pos = bounds.0 + BlockPos::new(166, 7, 158);
     assert!(matches!(world.get_block(pos), Block::StoneButton { button } if button.powered));
     assert!(world.pending_tick_at(pos));
@@ -190,10 +161,7 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     let checkpoints = [0, 10, MEASURED_ACTIVE_TICKS];
 
     let mut interpreter = cpus::load_cpu(cpu);
-    assert!(matches!(
-        interpreter.get_block(benchmark_sign),
-        Block::WallSign { .. }
-    ));
+    assert!(matches!(interpreter.get_block(benchmark_sign), Block::WallSign { .. }));
     assert!(interpreter.set_block(benchmark_sign, Block::Air));
     let expected_initial = cpus::checkpoint(&interpreter, 0, &[]);
     let mut interpreter_ram = BTreeMap::from([(0, cpu_words(&interpreter, &fixture))]);
@@ -209,10 +177,7 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     drop(interpreter);
 
     let mut graph_world = cpus::load_cpu(cpu);
-    assert!(matches!(
-        graph_world.get_block(benchmark_sign),
-        Block::WallSign { .. }
-    ));
+    assert!(matches!(graph_world.get_block(benchmark_sign), Block::WallSign { .. }));
     assert!(graph_world.set_block(benchmark_sign, Block::Air));
     assert_eq!(
         cpus::checkpoint(&graph_world, 0, &[]),
@@ -231,51 +196,29 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     );
     let monitor = std::sync::Arc::new(crate::redpiler::TaskMonitor::default());
     let ticks = graph_world.scheduler().iter_entries().collect();
-    let mut graph = crate::redpiler::backend::graph::GraphBackend::compile(
-        &graph_world,
-        bounds,
-        ticks,
-        monitor.clone(),
-    )
-    .unwrap_or_else(|error| {
+    let mut graph = crate::redpiler::backend::graph::GraphBackend::compile(&graph_world, bounds, ticks, monitor.clone()).unwrap_or_else(|error| {
         panic!(
             "Graph preparation failed: {error}; preparation tables: {:?}",
             monitor.graph_statistics().preparation_tables
         )
     });
     let tables = monitor.graph_statistics().preparation_tables;
-    for stage in [
-        "geometry",
-        "electrical",
-        "callbacks",
-        "lowering input",
-        "lowering",
-    ] {
+    for stage in ["geometry", "electrical", "callbacks", "lowering input", "lowering"] {
         let estimate: usize = tables
             .iter()
             .filter(|table| table.stage == stage)
             .map(|table| table.estimated_bytes)
             .sum();
-        eprintln!(
-            "Graph {stage} tables: {:.1} MiB",
-            estimate as f64 / 1_048_576.0
-        );
+        eprintln!("Graph {stage} tables: {:.1} MiB", estimate as f64 / 1_048_576.0);
     }
-    let mut largest_callbacks: Vec<_> = tables
-        .iter()
-        .filter(|table| table.stage == "callbacks")
-        .collect();
+    let mut largest_callbacks: Vec<_> = tables.iter().filter(|table| table.stage == "callbacks").collect();
     largest_callbacks.sort_by_key(|table| std::cmp::Reverse(table.estimated_bytes));
     eprintln!(
         "Largest callback tables: {}",
         largest_callbacks
             .iter()
             .take(3)
-            .map(|table| format!(
-                "{} {:.1} MiB",
-                table.table,
-                table.estimated_bytes as f64 / 1_048_576.0
-            ))
+            .map(|table| format!("{} {:.1} MiB", table.table, table.estimated_bytes as f64 / 1_048_576.0))
             .collect::<Vec<_>>()
             .join(", ")
     );
@@ -285,9 +228,7 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     graph.set_test_recording(false);
     let graph_started = Instant::now();
     for tick in 1..=MEASURED_ACTIVE_TICKS {
-        graph
-            .tick()
-            .unwrap_or_else(|error| panic!("Graph failed at active tick {tick}: {error}"));
+        graph.tick().unwrap_or_else(|error| panic!("Graph failed at active tick {tick}: {error}"));
         if tick % 1_000 == 0 {
             eprintln!("Graph BubbleSort active tick {tick}");
         }
@@ -322,9 +263,7 @@ fn cpu_bubblesort_sign_on_piston_reports_transition_support_loss() {
             ..
         }
     ));
-    assert!(
-        matches!(world.get_block(piston), Block::Piston { piston } if piston.facing == BlockFacing::East && piston.extended)
-    );
+    assert!(matches!(world.get_block(piston), Block::Piston { piston } if piston.facing == BlockFacing::East && piston.extended));
     assert!(matches!(world.get_block(head), Block::PistonHead { .. }));
 
     let before = cpus::checkpoint(&world, 0, &[]);
@@ -340,14 +279,8 @@ fn cpu_bubblesort_sign_on_piston_reports_transition_support_loss() {
         .unwrap_err();
     let message = error.to_string();
     assert!(message.contains("oak_wall_sign"), "{message}");
-    assert!(
-        message.contains("BlockPos { x: 187, y: 10, z: 185 }"),
-        "{message}"
-    );
-    assert!(
-        message.contains("BlockPos { x: 188, y: 10, z: 185 }"),
-        "{message}"
-    );
+    assert!(message.contains("BlockPos { x: 187, y: 10, z: 185 }"), "{message}");
+    assert!(message.contains("BlockPos { x: 188, y: 10, z: 185 }"), "{message}");
     assert!(message.contains("moving_piston"), "{message}");
     assert!(!compiler.is_active());
     assert!(compiler.stats().is_none());
@@ -388,11 +321,7 @@ fn advance(world: &mut PlotWorld, ticks: usize) {
 
 fn data(world: &mut PlotWorld, value: u8) {
     for bit in 0..8 {
-        lever_action(
-            world,
-            BASE + BlockPos::new(14, 14, 25 - 2 * bit),
-            value & (1 << bit) != 0,
-        );
+        lever_action(world, BASE + BlockPos::new(14, 14, 25 - 2 * bit), value & (1 << bit) != 0);
     }
 }
 
@@ -400,11 +329,7 @@ fn address(world: &mut PlotWorld, value: u8, write: bool) {
     for bit in 0..3 {
         lever_action(
             world,
-            BASE + BlockPos::new(
-                if write { 19 } else { 20 },
-                if write { 12 } else { 7 },
-                3 + 2 * bit,
-            ),
+            BASE + BlockPos::new(if write { 19 } else { 20 }, if write { 12 } else { 7 }, 3 + 2 * bit),
             value & (1 << bit) != 0,
         );
     }
@@ -426,16 +351,7 @@ fn fpu_strict_import_preserves_the_947_analog_reference_values() {
     });
     assert_eq!(
         strengths,
-        BTreeMap::from([
-            (1, 636),
-            (2, 1),
-            (3, 1),
-            (4, 128),
-            (6, 64),
-            (11, 1),
-            (12, 16),
-            (15, 100)
-        ])
+        BTreeMap::from([(1, 636), (2, 1), (3, 1), (4, 128), (6, 64), (11, 1), (12, 16), (15, 100)])
     );
 }
 
@@ -449,11 +365,7 @@ fn rilax_memory_preserves_prepared_data_until_neighbor_movement_samples_it() {
         let before = memory_words(&world);
         data(&mut world, 0xa5);
         advance(&mut world, 24);
-        assert_eq!(
-            memory_words(&world),
-            before,
-            "preparation at address {selected}"
-        );
+        assert_eq!(memory_words(&world), before, "preparation at address {selected}");
         assert!(!crate::redstone::piston::should_piston_extend(
             &world,
             BlockFacing::Down,
@@ -466,12 +378,12 @@ fn rilax_memory_preserves_prepared_data_until_neighbor_movement_samples_it() {
         let mut expected = before;
         expected[usize::from(selected)] = 0xa5;
         assert_eq!(memory_words(&world), expected);
-        assert_eq!(
-            output_word(&world),
-            0,
-            "writing alone does not expose the output"
+        assert_eq!(output_word(&world), 0, "writing alone does not expose the output");
+        assert!(
+            operations
+                .iter()
+                .any(|entry| matches!(entry.operation, trace::Operation::Applied(event) if event.pos == memory_pos(selected, 0)))
         );
-        assert!(operations.iter().any(|entry| matches!(entry.operation, trace::Operation::Applied(event) if event.pos == memory_pos(selected, 0))));
         lever_action(&mut world, BASE + WRITE_ENABLE, false);
         advance(&mut world, 24);
         address(&mut world, selected, false);
@@ -480,22 +392,14 @@ fn rilax_memory_preserves_prepared_data_until_neighbor_movement_samples_it() {
         advance(&mut world, 9);
         assert_eq!(output_word(&world), 0);
         advance(&mut world, 1);
-        assert_eq!(
-            output_word(&world),
-            0xa5,
-            "ten-tick read at address {selected}"
-        );
+        assert_eq!(output_word(&world), 0xa5, "ten-tick read at address {selected}");
         advance(&mut world, 14);
         lever_action(&mut world, BASE + READ_ENABLE, false);
         advance(&mut world, 11);
         assert_eq!(output_word(&world), 0xa5);
         advance(&mut world, 1);
         assert_eq!(output_word(&world), 0, "read release after twelve ticks");
-        assert_eq!(
-            memory_words(&world),
-            expected,
-            "read must preserve stored data"
-        );
+        assert_eq!(memory_words(&world), expected, "read must preserve stored data");
     }
 }
 
@@ -506,11 +410,7 @@ fn rilax_seven_update_pistons_sample_all_eight_bits_on_both_movement_edges() {
     advance(&mut world, 24);
     data(&mut world, 255);
     advance(&mut world, 24);
-    assert_eq!(
-        memory_words(&world)[0],
-        0,
-        "holding the update level does not continuously sample"
-    );
+    assert_eq!(memory_words(&world)[0], 0, "holding the update level does not continuously sample");
     let operations = trace::capture(|| {
         lever_action(&mut world, BASE + WRITE_ENABLE, false);
         advance(&mut world, 24);
@@ -529,11 +429,7 @@ fn rilax_seven_update_pistons_sample_all_eight_bits_on_both_movement_edges() {
     }
     assert_eq!(samplers, 7);
     assert_eq!(cells.len(), 8);
-    assert_eq!(
-        memory_words(&world)[0],
-        255,
-        "the falling enable causes another sampling movement"
-    );
+    assert_eq!(memory_words(&world)[0], 255, "the falling enable causes another sampling movement");
 }
 
 #[test]
@@ -547,10 +443,7 @@ fn rilax_decoder_omission_is_a_reproducible_destructive_address_change() {
     let Block::Lever { lever } = world.get_block(BASE + WRITE_ENABLE) else {
         unreachable!()
     };
-    assert!(
-        !lever.powered,
-        "the missing torch admits updates while enable is off"
-    );
+    assert!(!lever.powered, "the missing torch admits updates while enable is off");
 }
 
 #[test]
@@ -598,22 +491,14 @@ fn rilax_held_read_does_not_resample_a_later_write() {
     lever_action(&mut world, BASE + WRITE_ENABLE, true);
     advance(&mut world, 24);
     assert_eq!(memory_words(&world)[0], 255);
-    assert_eq!(
-        output_word(&world),
-        0,
-        "held read retains its sampled output"
-    );
+    assert_eq!(output_word(&world), 0, "held read retains its sampled output");
     lever_action(&mut world, BASE + WRITE_ENABLE, false);
     advance(&mut world, 24);
     lever_action(&mut world, BASE + READ_ENABLE, false);
     advance(&mut world, 24);
     lever_action(&mut world, BASE + READ_ENABLE, true);
     advance(&mut world, 24);
-    assert_eq!(
-        output_word(&world),
-        255,
-        "a new read movement exposes the new word"
-    );
+    assert_eq!(output_word(&world), 255, "a new read movement exposes the new word");
 }
 
 #[test]
@@ -626,11 +511,7 @@ fn rilax_short_enable_pulses_are_filtered_by_the_decoder() {
         advance(&mut world, width);
         lever_action(&mut world, BASE + WRITE_ENABLE, false);
         advance(&mut world, 24);
-        assert_eq!(
-            memory_words(&world)[0],
-            if width <= 2 { 0 } else { 255 },
-            "enable width {width}"
-        );
+        assert_eq!(memory_words(&world)[0], if width <= 2 { 0 } else { 255 }, "enable width {width}");
     }
 }
 
@@ -647,13 +528,16 @@ fn rilax_unchanged_data_keeps_memory_but_still_samples_on_each_update() {
             advance(&mut world, 24);
         }
     });
-    let samples = operations.iter().filter(|entry| matches!(entry.operation, trace::Operation::Sample {pos, ..} if (0..8).any(|bit| pos == memory_pos(0, bit)))).count();
-    let writes = operations.iter().filter(|entry| matches!(entry.operation, trace::Operation::Applied(event) if event.sticky && event.pos.y == BASE.y + 9)).count();
+    let samples = operations
+        .iter()
+        .filter(|entry| matches!(entry.operation, trace::Operation::Sample {pos, ..} if (0..8).any(|bit| pos == memory_pos(0, bit))))
+        .count();
+    let writes = operations
+        .iter()
+        .filter(|entry| matches!(entry.operation, trace::Operation::Applied(event) if event.sticky && event.pos.y == BASE.y + 9))
+        .count();
     assert_eq!(memory_words(&world), before);
-    assert!(
-        samples >= 32,
-        "both movements of both pulses sample all eight cells"
-    );
+    assert!(samples >= 32, "both movements of both pulses sample all eight cells");
     assert_eq!(writes, 0);
 }
 
@@ -700,19 +584,13 @@ fn rilax_pico_and_game_steps_agree_at_completed_tick_boundaries() {
         let mut completed = false;
         for _ in 0..20_000 {
             pico.picotick_advance(1);
-            if pico.piston_state().logical_tick == tick
-                && pico.piston_state().phase == AdvancePhase::BetweenTicks
-            {
+            if pico.piston_state().logical_tick == tick && pico.piston_state().phase == AdvancePhase::BetweenTicks {
                 completed = true;
                 break;
             }
         }
         assert!(completed, "bounded pico stepping at tick {tick}");
-        assert_eq!(
-            observations(&pico, &fixture),
-            observations(&game, &fixture),
-            "aligned tick {tick}"
-        );
+        assert_eq!(observations(&pico, &fixture), observations(&game, &fixture), "aligned tick {tick}");
     }
 }
 
@@ -728,14 +606,12 @@ fn cpu_words(world: &PlotWorld, fixture: &Value) -> Value {
                 .unwrap()
                 .chunks(12)
                 .map(|bits| {
-                    bits.iter().enumerate().try_fold(0, |word, (bit, p)| {
-                        match world.get_block(local_pos(p) - BASE + origin(fixture)) {
-                            Block::Piston { piston } => {
-                                Some(word | (u16::from(!piston.extended) << bit))
-                            }
+                    bits.iter()
+                        .enumerate()
+                        .try_fold(0, |word, (bit, p)| match world.get_block(local_pos(p) - BASE + origin(fixture)) {
+                            Block::Piston { piston } => Some(word | (u16::from(!piston.extended) << bit)),
                             _ => None,
-                        }
-                    })
+                        })
                 })
                 .collect();
             (name, words)
@@ -783,8 +659,10 @@ fn diagnose(world: &PlotWorld) -> Value {
             before,
             "read-only admission must preserve physical state and work"
         );
-        attempts.push(json!({"budget": budget, "elapsed_ms": start.elapsed().as_millis(), "active": compiler.is_active(),
-            "error": result.err().map(|error| error.to_string())}));
+        attempts.push(
+            json!({"budget": budget, "elapsed_ms": start.elapsed().as_millis(), "active": compiler.is_active(),
+            "error": result.err().map(|error| error.to_string())}),
+        );
     }
     json!({"analysis": reports, "compile": attempts})
 }
@@ -795,12 +673,7 @@ fn capture_bubblesort_execution() {
     let output = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
     let fixture = manifest("cpu_bubblesort");
     let selected = std::env::var("MCHPRS_PISTON_RESEARCH_CASE").unwrap();
-    let case = fixture["cases"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|c| c["id"] == selected)
-        .unwrap();
+    let case = fixture["cases"].as_array().unwrap().iter().find(|c| c["id"] == selected).unwrap();
     let (mut world, _) = load(&fixture);
     let watched: rustc_hash::FxHashSet<_> = fixture["observations"]
         .as_object()
@@ -809,22 +682,16 @@ fn capture_bubblesort_execution() {
         .flat_map(|p| p.as_array().unwrap())
         .map(|p| local_pos(p) - BASE + origin(&fixture))
         .collect();
-    let mut samples =
-        vec![json!({"label":"import", "tick":0, "words":cpu_words(&world, &fixture)})];
+    let mut samples = vec![json!({"label":"import", "tick":0, "words":cpu_words(&world, &fixture)})];
     for (index, step) in case["steps"].as_array().unwrap().iter().enumerate() {
-        let count = step["advance"]
-            .as_u64()
-            .or_else(|| step["wait_quiet"].as_u64());
+        let count = step["advance"].as_u64().or_else(|| step["wait_quiet"].as_u64());
         if let Some(count) = count {
             assert!(count <= 50_000, "bounded CPU research run");
             let mut quiet = 0;
             for elapsed in 1..=count {
                 let entries = trace::capture(|| world.tick_interpreted());
                 let total = entries.len();
-                let sha256 = format!(
-                    "{:x}",
-                    Sha256::digest(serde_json::to_vec(&entries).unwrap())
-                );
+                let sha256 = format!("{:x}", Sha256::digest(serde_json::to_vec(&entries).unwrap()));
                 let entries: Vec<_> = entries
                     .into_iter()
                     .filter(|entry| {
@@ -837,21 +704,13 @@ fn capture_bubblesort_execution() {
                 let pending = world.scheduler().iter_entries().count();
                 let motions = world.piston_state().motions.len();
                 let events = world.piston_state().events.len();
-                quiet = if pending == 0 && motions == 0 && events == 0 {
-                    quiet + 1
-                } else {
-                    0
-                };
+                quiet = if pending == 0 && motions == 0 && events == 0 { quiet + 1 } else { 0 };
                 let words = cpu_words(&world, &fixture);
-                samples.push(
-                    json!({"label":"tick", "step":index, "tick":world.piston_state().logical_tick,
+                samples.push(json!({"label":"tick", "step":index, "tick":world.piston_state().logical_tick,
                     "words":words, "pending":pending, "motions":motions, "events":events,
-                    "operation_count":total, "operation_sha256":sha256, "operations":entries}),
-                );
+                    "operation_count":total, "operation_sha256":sha256, "operations":entries}));
                 if elapsed % 500 == 0 {
-                    println!(
-                        "{selected}: step {index}, {elapsed} ticks, pending {pending}, motions {motions}"
-                    );
+                    println!("{selected}: step {index}, {elapsed} ticks, pending {pending}, motions {motions}");
                 }
                 if step.get("wait_quiet").is_some() && quiet >= 20 {
                     break;
@@ -869,27 +728,17 @@ fn capture_bubblesort_execution() {
                 "words":cpu_words(&world, &fixture), "diagnostics":diagnose(&world)}));
         } else {
             let entries = trace::capture(|| action(&mut world, &fixture, step));
-            samples.push(
-                json!({"label":"action", "step":index, "tick":world.piston_state().logical_tick,
-                "action":step, "words":cpu_words(&world, &fixture), "operations":entries}),
-            );
+            samples.push(json!({"label":"action", "step":index, "tick":world.piston_state().logical_tick,
+                "action":step, "words":cpu_words(&world, &fixture), "operations":entries}));
         }
     }
     if let Some(expected) = case.get("expected_final_ram_y37") {
-        assert_eq!(
-            &cpu_words(&world, &fixture)["ram_y37"],
-            expected,
-            "completed CPU sort"
-        );
+        assert_eq!(&cpu_words(&world, &fixture)["ram_y37"], expected, "completed CPU sort");
         assert_eq!(world.scheduler().iter_entries().count(), 0);
         assert!(world.piston_state().motions.is_empty());
         assert!(world.piston_state().events.is_empty());
     }
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(output)
-        .unwrap();
+    let file = std::fs::OpenOptions::new().write(true).create_new(true).open(output).unwrap();
     serde_json::to_writer(std::io::BufWriter::new(file), &json!({"schema_version":1, "engine":"MCHPRS interpreter",
         "fixture":fixture["fixture"], "fixture_sha256":fixture["sha256"], "origin":fixture["origin"], "case":case,
         "coordinates":"words selection-local; operations absolute; null word means moving or missing base",
@@ -901,19 +750,9 @@ fn capture_bubblesort_execution() {
 fn capture_author_research_fixtures() {
     let output = std::env::var("MCHPRS_PISTON_RESEARCH_OUTPUT").unwrap();
     let fixture = std::env::var("MCHPRS_PISTON_RESEARCH_FIXTURE").unwrap();
-    let manifest: Value = serde_json::from_slice(
-        &std::fs::read(
-            root()
-                .join("test_data/piston-research/fixtures")
-                .join(format!("{fixture}.json")),
-        )
-        .unwrap(),
-    )
-    .unwrap();
-    assert!(
-        !Path::new(&output).exists(),
-        "capture never replaces a frozen artifact"
-    );
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root().join("test_data/piston-research/fixtures").join(format!("{fixture}.json"))).unwrap()).unwrap();
+    assert!(!Path::new(&output).exists(), "capture never replaces a frozen artifact");
     let selected = std::env::var("MCHPRS_PISTON_RESEARCH_CASE").ok();
     let (initial, _) = load(&manifest);
     let diagnostics = if selected.is_none() || selected.as_deref() == Some("diagnostics") {
@@ -928,9 +767,7 @@ fn capture_author_research_fixtures() {
             continue;
         }
         let (mut world, _) = load(&manifest);
-        let mut samples = vec![
-            json!({"label": "import", "state": observations(&world, &manifest), "operations": []}),
-        ];
+        let mut samples = vec![json!({"label": "import", "state": observations(&world, &manifest), "operations": []})];
         for (index, step) in case["steps"].as_array().unwrap().iter().enumerate() {
             if let Some(ticks) = step["advance"].as_u64() {
                 assert!(ticks <= 512, "bounded research episode");
@@ -942,24 +779,22 @@ fn capture_author_research_fixtures() {
                 samples.push(json!({"label": "diagnostics", "step": index, "state": observations(&world, &manifest), "operations": [], "diagnostics": diagnose(&world)}));
             } else {
                 let operations = trace::capture(|| action(&mut world, &manifest, step));
-                samples.push(json!({"label": "action", "step": index, "action": step, "state": observations(&world, &manifest), "operations": operations}));
+                samples.push(
+                    json!({"label": "action", "step": index, "action": step, "state": observations(&world, &manifest), "operations": operations}),
+                );
             }
         }
-        println!(
-            "{fixture}: {} captured {} samples",
-            case["id"],
-            samples.len()
-        );
+        println!("{fixture}: {} captured {} samples", case["id"], samples.len());
         episodes.push(json!({"case": case, "samples": samples}));
     }
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(output)
-        .unwrap();
-    serde_json::to_writer(std::io::BufWriter::new(file), &json!({"schema_version": 1, "engine": "MCHPRS interpreter",
+    let file = std::fs::OpenOptions::new().write(true).create_new(true).open(output).unwrap();
+    serde_json::to_writer(
+        std::io::BufWriter::new(file),
+        &json!({"schema_version": 1, "engine": "MCHPRS interpreter",
         "fixture_sha256": manifest["sha256"], "fixture": manifest["fixture"],
         "origin": [origin(&manifest).x, origin(&manifest).y, origin(&manifest).z], "setup": "strict paste, no notifications or implicit settling",
         "coordinates": "observations selection-local; operation entries and queued work absolute",
-        "diagnostics": diagnostics, "episodes": episodes})).unwrap();
+        "diagnostics": diagnostics, "episodes": episodes}),
+    )
+    .unwrap();
 }

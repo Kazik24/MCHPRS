@@ -73,19 +73,19 @@ enum ResourceContactState {
 /// The origin position is the resource key; no actor owns a private payload copy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SharedResourceObservation {
-    source: FixturePosition, // Imported material position used as its stable key.
+    source: FixturePosition,                   // Imported material position used as its stable key.
     selected_contact: Option<FixturePosition>, // Current contact containing the one shared material.
-    enabled: bool, // Whether the selected material is stationary and live.
+    enabled: bool,                             // Whether the selected material is stationary and live.
 }
 
 /// This preserves scheduler bucket distance, priority, and yielded order for each source cell.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PendingTick {
-    position: FixturePosition, // Position-bound callback target, not a carried block identity.
-    ticks_left: u32,           // Remaining scheduler buckets at this observed phase.
-    priority: TickPriority,    // Priority within the pending bucket.
+    position: FixturePosition,        // Position-bound callback target, not a carried block identity.
+    ticks_left: u32,                  // Remaining scheduler buckets at this observed phase.
+    priority: TickPriority,           // Priority within the pending bucket.
     expected_block_type: Option<u32>, // Registry type required for the callback to remain valid.
-    order: usize,              // Index in the existing scheduler iteration order.
+    order: usize,                     // Index in the existing scheduler iteration order.
 }
 
 /// This is the position-bound completion deadline derived from native progress and phase.
@@ -93,7 +93,7 @@ struct PendingTick {
 struct PendingDeadline {
     position: FixturePosition, // Native target projected to its next uninterrupted publication.
     due_tick: u64,             // Absolute logical tick derived from phase and remaining visits.
-    order: usize, // Native completion order, normalized by position rather than identity.
+    order: usize,              // Native completion order, normalized by position rather than identity.
 }
 
 /// Each variant records one ordered interpreter observation used by a later graph replay.
@@ -101,9 +101,9 @@ struct PendingDeadline {
 enum OrderedObservation {
     Callback {
         // One delivered callback, in the native recorder's exact order.
-        target: FixturePosition, // Source position receiving this callback.
-        block: String,           // Live or supplied block handler name.
-        direction: Option<BlockFace>, // Literal callback direction, including directionless None.
+        target: FixturePosition,         // Source position receiving this callback.
+        block: String,                   // Live or supplied block handler name.
+        direction: Option<BlockFace>,    // Literal callback direction, including directionless None.
         source: Option<FixturePosition>, // Notifying source position, when the interpreter provides one.
         parents: Vec<FixturePosition>,   // Nested callback ancestry in delivery order.
         power_available: Option<bool>,   // Current piston power query, separate from sampling.
@@ -114,12 +114,12 @@ enum OrderedObservation {
         extended: bool,         // Supplied piston pose at the sampling callback.
         powered: bool,          // Power availability observed by that sample.
     },
-    RequestQueued(PistonEventObservation), // A sampled action appended to the piston FIFO.
+    RequestQueued(PistonEventObservation),     // A sampled action appended to the piston FIFO.
     AcceptanceAttempt(PistonEventObservation), // A popped request revalidated against live state.
-    Accepted(PistonEventObservation), // A request passed validation and changed logical publication.
+    Accepted(PistonEventObservation),          // A request passed validation and changed logical publication.
     ScheduledTickDispatched {
         // One position-bound scheduled entry consumed by the interpreter.
-        position: FixturePosition, // Source position of the scheduled callback.
+        position: FixturePosition,        // Source position of the scheduled callback.
         expected_block_type: Option<u32>, // Type guard carried by the scheduled entry.
     },
     WireStrengthChanged {
@@ -143,27 +143,27 @@ enum ObservationStage {
 /// This record contains only graph-comparable observations and justified projections.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ComparisonRecord {
-    tick: u64,                        // Interpreter logical tick for this observation boundary.
-    phase: AdvancePhase,              // Scheduler/piston phase at the same boundary.
-    stage: ObservationStage,          // Import, settling, input, or continuation protocol stage.
-    action: usize, // Original manifest action ordinal associated with this boundary.
-    ordered: Vec<OrderedObservation>, // Callbacks and piston lifecycle operations in exact order.
-    components: Vec<ComponentObservation>, // Named manifest boundary ports at this point.
-    published_cells: Vec<CellObservation>, // Justified logical projection of changed native cells.
-    resources: Vec<SharedResourceObservation>, // Authoritative shared-material contact observations.
-    pending_ticks: Vec<PendingTick>,           // Ordered interpreter tick queue projection.
+    tick: u64,                                     // Interpreter logical tick for this observation boundary.
+    phase: AdvancePhase,                           // Scheduler/piston phase at the same boundary.
+    stage: ObservationStage,                       // Import, settling, input, or continuation protocol stage.
+    action: usize,                                 // Original manifest action ordinal associated with this boundary.
+    ordered: Vec<OrderedObservation>,              // Callbacks and piston lifecycle operations in exact order.
+    components: Vec<ComponentObservation>,         // Named manifest boundary ports at this point.
+    published_cells: Vec<CellObservation>,         // Justified logical projection of changed native cells.
+    resources: Vec<SharedResourceObservation>,     // Authoritative shared-material contact observations.
+    pending_ticks: Vec<PendingTick>,               // Ordered interpreter tick queue projection.
     pending_requests: Vec<PistonEventObservation>, // FIFO piston requests awaiting live acceptance.
-    deadlines: Vec<PendingDeadline>, // Projected next publication deadlines, without motion state.
+    deadlines: Vec<PendingDeadline>,               // Projected next publication deadlines, without motion state.
 }
 
 /// This retains the manifest pin and protocol boundaries used to produce a reference.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct FixtureProtocol {
-    fixture: String, // Existing schematic path selected by the frozen manifest.
-    sha256: String,  // Frozen fixture digest verified by the shared loader.
-    case_id: String, // Named action sequence from that same manifest revision.
+    fixture: String,               // Existing schematic path selected by the frozen manifest.
+    sha256: String,                // Frozen fixture digest verified by the shared loader.
+    case_id: String,               // Named action sequence from that same manifest revision.
     strict_import_was_quiet: bool, // Loader confirmed no initial callback or pending work.
-    actions: Vec<ProtocolAction>, // Ordered waits and external operations exactly as declared.
+    actions: Vec<ProtocolAction>,  // Ordered waits and external operations exactly as declared.
 }
 
 /// This preserves the original manifest action and separates waits from notified edits.
@@ -173,7 +173,7 @@ struct ProtocolAction {
     operation: String,               // Existing test-loader operation name.
     delivery: Option<InputDelivery>, // None identifies an explicit settling wait.
     raw: Value,                      // Exact manifest parameters retained for protocol review.
-    settled_ticks: Option<u64>, // Actual wait duration recorded by the existing readiness helper.
+    settled_ticks: Option<u64>,      // Actual wait duration recorded by the existing readiness helper.
 }
 
 /// Notified inputs and direct storage writes have different interpreter semantics.
@@ -186,16 +186,16 @@ enum InputDelivery {
 /// Native physical records are inspection evidence, never comparison state for the graph.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct NativeInspection {
-    operation: usize,    // Native fine-step ordinal, excluded from graph comparisons.
-    piston_state: Value, // Native-only serialized event/motion records, including raw identities.
+    operation: usize,                             // Native fine-step ordinal, excluded from graph comparisons.
+    piston_state: Value,                          // Native-only serialized event/motion records, including raw identities.
     changed_cells: Vec<(FixturePosition, Value)>, // Native block/entity deltas for physical inspection.
 }
 
 /// The existing piston trace is normalized by source position before it enters comparisons.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PistonTraceObservation {
-    tick: u64,           // Logical tick reported by the existing piston trace collector.
-    phase: AdvancePhase, // Phase reported by that collector.
+    tick: u64,                                  // Logical tick reported by the existing piston trace collector.
+    phase: AdvancePhase,                        // Phase reported by that collector.
     operation: PistonTraceOperationObservation, // Sample or accepted event normalized to provenance.
 }
 
@@ -213,17 +213,17 @@ enum PistonTraceOperationObservation {
 /// Raw physical details remain available for diagnosing the native oracle only.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ReferenceEpisode {
-    protocol: FixtureProtocol, // Pin and external protocol required to replay this oracle episode.
-    records: Vec<ComparisonRecord>, // Native observations later grouped at semantic boundaries.
+    protocol: FixtureProtocol,                 // Pin and external protocol required to replay this oracle episode.
+    records: Vec<ComparisonRecord>,            // Native observations later grouped at semantic boundaries.
     piston_trace: Vec<PistonTraceObservation>, // Cross-check from the dedicated piston trace collector.
-    native: Vec<NativeInspection>, // Native-only physical detail excluded from graph comparisons.
+    native: Vec<NativeInspection>,             // Native-only physical detail excluded from graph comparisons.
 }
 
 /// Fixture coordinates identify the sole source payload and its possible shared contacts.
 #[derive(Clone, Copy)]
 struct SharedResourceSpec {
-    source: FixturePosition, // Imported material position used as its immutable resource provenance.
-    material: &'static str,  // Registry name used to recognize stationary and in-flight forms.
+    source: FixturePosition,              // Imported material position used as its immutable resource provenance.
+    material: &'static str,               // Registry name used to recognize stationary and in-flight forms.
     contacts: &'static [FixturePosition], // Fixture positions where this test observes that shared resource.
 }
 
@@ -286,15 +286,8 @@ fn ordered_observation(entry: &Value) -> Option<OrderedObservation> {
             target: source_pos(&data["pos"]),
             block: data["block"].as_str().unwrap().to_owned(),
             direction: serde_json::from_value(data["dir"].clone()).unwrap(),
-            source: data["source"]
-                .as_object()
-                .map(|_| source_pos(&data["source"])),
-            parents: data["parents"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(source_pos)
-                .collect(),
+            source: data["source"].as_object().map(|_| source_pos(&data["source"])),
+            parents: data["parents"].as_array().unwrap().iter().map(source_pos).collect(),
             power_available: data["piston_power"].as_bool(),
         },
         "piston_sample" => OrderedObservation::PistonSample {
@@ -302,15 +295,9 @@ fn ordered_observation(entry: &Value) -> Option<OrderedObservation> {
             extended: data["extended"].as_bool().unwrap(),
             powered: data["powered"].as_bool().unwrap(),
         },
-        "event_enqueue" => OrderedObservation::RequestQueued(event_observation(
-            serde_json::from_value(data.clone()).unwrap(),
-        )),
-        "event_execute" => OrderedObservation::AcceptanceAttempt(event_observation(
-            serde_json::from_value(data.clone()).unwrap(),
-        )),
-        "event_applied" => OrderedObservation::Accepted(event_observation(
-            serde_json::from_value(data.clone()).unwrap(),
-        )),
+        "event_enqueue" => OrderedObservation::RequestQueued(event_observation(serde_json::from_value(data.clone()).unwrap())),
+        "event_execute" => OrderedObservation::AcceptanceAttempt(event_observation(serde_json::from_value(data.clone()).unwrap())),
+        "event_applied" => OrderedObservation::Accepted(event_observation(serde_json::from_value(data.clone()).unwrap())),
         "scheduled_tick" => OrderedObservation::ScheduledTickDispatched {
             position: source_pos(&data["pos"]),
             expected_block_type: data["block_type"].as_u64().map(|n| n as u32),
@@ -344,32 +331,14 @@ fn component_observations(
         });
     } else if let Some(items) = declared.as_array() {
         let values = actual.as_array().unwrap();
-        assert_eq!(
-            items.len(),
-            values.len(),
-            "manifest observation shape: {port}"
-        );
+        assert_eq!(items.len(), values.len(), "manifest observation shape: {port}");
         for (index, (declared, actual)) in items.iter().zip(values).enumerate() {
-            component_observations(
-                &format!("{port}[{index}]"),
-                declared,
-                actual,
-                dimensions,
-                rotation,
-                output,
-            );
+            component_observations(&format!("{port}[{index}]"), declared, actual, dimensions, rotation, output);
         }
     } else {
         let fields = declared.as_object().unwrap();
         for (name, declared) in fields {
-            component_observations(
-                &format!("{port}.{name}"),
-                declared,
-                &actual[name],
-                dimensions,
-                rotation,
-                output,
-            );
+            component_observations(&format!("{port}.{name}"), declared, &actual[name], dimensions, rotation, output);
         }
     }
 }
@@ -378,40 +347,28 @@ fn resource_contact(value: &Value, material: &str) -> ResourceContactState {
     if value["name"] == material {
         return ResourceContactState::Enabled;
     }
-    let carried_id = value["entity"]["MovingPiston"]["block_state"]
-        .as_u64()
-        .map(|id| id as u32);
-    if value["name"] == "moving_piston"
-        && carried_id.is_some_and(|id| Block::from_id(id).get_name() == material)
-    {
+    let carried_id = value["entity"]["MovingPiston"]["block_state"].as_u64().map(|id| id as u32);
+    if value["name"] == "moving_piston" && carried_id.is_some_and(|id| Block::from_id(id).get_name() == material) {
         ResourceContactState::Disabled
     } else {
         ResourceContactState::Absent
     }
 }
 
-fn resource_observation(
-    resource: &SharedResourceSpec,
-    current: &BTreeMap<FixturePosition, Value>,
-) -> SharedResourceObservation {
+fn resource_observation(resource: &SharedResourceSpec, current: &BTreeMap<FixturePosition, Value>) -> SharedResourceObservation {
     let selected: Vec<_> = resource
         .contacts
         .iter()
         .copied()
         .filter(|contact| {
-            current.get(contact).is_some_and(|cell| {
-                resource_contact(cell, resource.material) != ResourceContactState::Absent
-            })
+            current
+                .get(contact)
+                .is_some_and(|cell| resource_contact(cell, resource.material) != ResourceContactState::Absent)
         })
         .collect();
-    assert!(
-        selected.len() <= 1,
-        "one shared payload has one live contact"
-    );
+    assert!(selected.len() <= 1, "one shared payload has one live contact");
     let selected_contact = selected.first().copied();
-    let enabled = selected_contact.is_some_and(|contact| {
-        resource_contact(&current[&contact], resource.material) == ResourceContactState::Enabled
-    });
+    let enabled = selected_contact.is_some_and(|contact| resource_contact(&current[&contact], resource.material) == ResourceContactState::Enabled);
     SharedResourceObservation {
         source: resource.source,
         selected_contact,
@@ -457,11 +414,7 @@ fn pending_deadlines(state: &Value, tick: u64, phase: AdvancePhase) -> Vec<Pendi
             let has_current_visit = match phase {
                 AdvancePhase::BetweenTicks => false,
                 AdvancePhase::ScheduledTicks | AdvancePhase::PistonEvents => true,
-                AdvancePhase::MovingEntities => work
-                    .iter()
-                    .enumerate()
-                    .skip(cursor)
-                    .any(|(_, item)| item[1].as_u64() == Some(identity)),
+                AdvancePhase::MovingEntities => work.iter().enumerate().skip(cursor).any(|(_, item)| item[1].as_u64() == Some(identity)),
             };
             let first_visit_offset = if has_current_visit { 0 } else { 1 };
             let progress = motion["progress"].as_f64().unwrap();
@@ -485,10 +438,7 @@ fn protocol_action(action: &Value, order: usize, readiness: &[Value]) -> Protoco
     let operation = action["op"].as_str().unwrap().to_owned();
     let settled_ticks = match operation.as_str() {
         "wait" | "wait_ready" => Some(
-            readiness
-                .iter()
-                .find(|entry| entry["action"].as_u64() == Some(order as u64))
-                .unwrap()["used_ticks"]
+            readiness.iter().find(|entry| entry["action"].as_u64() == Some(order as u64)).unwrap()["used_ticks"]
                 .as_u64()
                 .unwrap(),
         ),
@@ -496,9 +446,7 @@ fn protocol_action(action: &Value, order: usize, readiness: &[Value]) -> Protoco
     };
     let delivery = match operation.as_str() {
         "wait" | "wait_ready" => None,
-        "lever" | "destroy" | "notify" | "set_notified" | "construct_retracted" => {
-            Some(InputDelivery::Notified)
-        }
+        "lever" | "destroy" | "notify" | "set_notified" | "construct_retracted" => Some(InputDelivery::Notified),
         "raw" => Some(InputDelivery::RawStorageWrite),
         kind => panic!("unclassified manifest operation {kind}"),
     };
@@ -528,11 +476,7 @@ fn observation_stage(snapshot: &Value, actions: &[ProtocolAction]) -> Observatio
     }
 }
 
-fn capture_fixture_episode(
-    manifest: &Value,
-    case: &Value,
-    resource_specs: &[SharedResourceSpec],
-) -> ReferenceEpisode {
+fn capture_fixture_episode(manifest: &Value, case: &Value, resource_specs: &[SharedResourceSpec]) -> ReferenceEpisode {
     let mut raw = None;
     let piston_trace = trace::capture(|| {
         raw = Some(episode(manifest, case, 0, "pico", true));
@@ -542,27 +486,15 @@ fn capture_fixture_episode(
     let initial = &raw["samples"][0];
     assert_eq!(initial["label"], "initial");
     assert!(initial["scheduled"].as_array().unwrap().is_empty());
-    assert!(
-        initial["piston_state"]["events"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        initial["piston_state"]["motions"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
+    assert!(initial["piston_state"]["events"].as_array().unwrap().is_empty());
+    assert!(initial["piston_state"]["motions"].as_array().unwrap().is_empty());
 
     let actions: Vec<_> = case["actions"]
         .as_array()
         .unwrap()
         .iter()
         .enumerate()
-        .map(|(i, action)| {
-            protocol_action(action, i + 1, raw["readiness_checks"].as_array().unwrap())
-        })
+        .map(|(i, action)| protocol_action(action, i + 1, raw["readiness_checks"].as_array().unwrap()))
         .collect();
     let protocol = FixtureProtocol {
         fixture: manifest["fixture"].as_str().unwrap().to_owned(),
@@ -572,12 +504,7 @@ fn capture_fixture_episode(
         actions,
     };
 
-    let watch: Vec<_> = raw["watch_absolute"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(source_pos)
-        .collect();
+    let watch: Vec<_> = raw["watch_absolute"].as_array().unwrap().iter().map(source_pos).collect();
     let mut current = BTreeMap::new();
     let mut projected_current = BTreeMap::new();
     let mut records = Vec::new();
@@ -598,11 +525,7 @@ fn capture_fixture_episode(
             .iter()
             .filter_map(|(position, value)| {
                 let cell = project_cell(value);
-                (projected_current.insert(*position, cell.clone()).as_ref() != Some(&cell))
-                    .then_some(CellObservation {
-                        position: *position,
-                        cell,
-                    })
+                (projected_current.insert(*position, cell.clone()).as_ref() != Some(&cell)).then_some(CellObservation { position: *position, cell })
             })
             .collect();
         let mut components = Vec::new();
@@ -622,16 +545,8 @@ fn capture_fixture_episode(
         }
         let tick = snapshot["tick"].as_u64().unwrap();
         let phase: AdvancePhase = serde_json::from_value(snapshot["phase"].clone()).unwrap();
-        let ordered = snapshot["callbacks"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(ordered_observation)
-            .collect();
-        let resources = resource_specs
-            .iter()
-            .map(|resource| resource_observation(resource, &current))
-            .collect();
+        let ordered = snapshot["callbacks"].as_array().unwrap().iter().filter_map(ordered_observation).collect();
+        let resources = resource_specs.iter().map(|resource| resource_observation(resource, &current)).collect();
         let state = &snapshot["piston_state"];
         records.push(ComparisonRecord {
             tick,
@@ -659,18 +574,12 @@ fn capture_fixture_episode(
             tick: entry.tick,
             phase: entry.phase,
             operation: match entry.operation {
-                PistonTraceOperation::Sample {
-                    pos,
-                    extended,
-                    powered,
-                } => PistonTraceOperationObservation::Sample {
+                PistonTraceOperation::Sample { pos, extended, powered } => PistonTraceOperationObservation::Sample {
                     actor: FixturePosition::from_world(pos),
                     extended,
                     powered,
                 },
-                PistonTraceOperation::Applied(event) => {
-                    PistonTraceOperationObservation::Accepted(event_observation(event))
-                }
+                PistonTraceOperation::Applied(event) => PistonTraceOperationObservation::Accepted(event_observation(event)),
             },
         })
         .collect::<Vec<_>>();
@@ -689,18 +598,12 @@ fn assert_trace_agrees(records: &[ComparisonRecord], trace: &[PistonTraceObserva
         .flat_map(|record| {
             record.ordered.iter().filter_map(move |observation| {
                 let operation = match observation {
-                    OrderedObservation::PistonSample {
-                        actor,
-                        extended,
-                        powered,
-                    } => PistonTraceOperationObservation::Sample {
+                    OrderedObservation::PistonSample { actor, extended, powered } => PistonTraceOperationObservation::Sample {
                         actor: *actor,
                         extended: *extended,
                         powered: *powered,
                     },
-                    OrderedObservation::Accepted(event) => {
-                        PistonTraceOperationObservation::Accepted(*event)
-                    }
+                    OrderedObservation::Accepted(event) => PistonTraceOperationObservation::Accepted(*event),
                     _ => return None,
                 };
                 Some(PistonTraceObservation {
@@ -715,13 +618,7 @@ fn assert_trace_agrees(records: &[ComparisonRecord], trace: &[PistonTraceObserva
 }
 
 fn first_difference(expected: &ComparisonRecord, actual: &ComparisonRecord) -> Option<Difference> {
-    if (
-        expected.tick,
-        expected.phase,
-        expected.stage,
-        expected.action,
-    ) != (actual.tick, actual.phase, actual.stage, actual.action)
-    {
+    if (expected.tick, expected.phase, expected.stage, expected.action) != (actual.tick, actual.phase, actual.stage, actual.action) {
         return Some(Difference::Boundary);
     }
     if expected.ordered != actual.ordered {
@@ -748,20 +645,14 @@ fn first_difference(expected: &ComparisonRecord, actual: &ComparisonRecord) -> O
     None
 }
 
-fn compare_episodes(
-    expected: &ReferenceEpisode,
-    actual: &ReferenceEpisode,
-) -> Result<(), Difference> {
+fn compare_episodes(expected: &ReferenceEpisode, actual: &ReferenceEpisode) -> Result<(), Difference> {
     if expected.protocol != actual.protocol {
         return Err(Difference::Protocol);
     }
     compare_records(&expected.records, &actual.records)
 }
 
-fn compare_records(
-    expected: &[ComparisonRecord],
-    actual: &[ComparisonRecord],
-) -> Result<(), Difference> {
+fn compare_records(expected: &[ComparisonRecord], actual: &[ComparisonRecord]) -> Result<(), Difference> {
     let expected = semantic_boundaries(expected);
     let actual = semantic_boundaries(actual);
     if expected.len() != actual.len() {
@@ -784,11 +675,8 @@ fn same_semantic_state(left: &ComparisonRecord, right: &ComparisonRecord) -> boo
 }
 
 fn is_semantic_boundary(previous: Option<&ComparisonRecord>, record: &ComparisonRecord) -> bool {
-    previous.is_none_or(|previous| {
-        previous.stage != record.stage
-            || previous.action != record.action
-            || !same_semantic_state(previous, record)
-    }) || !record.ordered.is_empty()
+    previous.is_none_or(|previous| previous.stage != record.stage || previous.action != record.action || !same_semantic_state(previous, record))
+        || !record.ordered.is_empty()
         || !record.published_cells.is_empty()
 }
 
@@ -798,26 +686,17 @@ fn semantic_boundaries(records: &[ComparisonRecord]) -> Vec<ComparisonRecord> {
         if !is_semantic_boundary(boundaries.last(), record) {
             continue;
         }
-        let same_boundary = boundaries.last().is_some_and(|last| {
-            (last.tick, last.phase, last.stage, last.action)
-                == (record.tick, record.phase, record.stage, record.action)
-        });
-        if same_boundary
-            && boundaries
-                .last()
-                .is_some_and(|last| same_semantic_state(last, record))
-        {
+        let same_boundary = boundaries
+            .last()
+            .is_some_and(|last| (last.tick, last.phase, last.stage, last.action) == (record.tick, record.phase, record.stage, record.action));
+        if same_boundary && boundaries.last().is_some_and(|last| same_semantic_state(last, record)) {
             let boundary = boundaries.last_mut().unwrap();
             boundary.ordered.extend(record.ordered.iter().cloned());
-            boundary
-                .published_cells
-                .extend(record.published_cells.iter().cloned());
+            boundary.published_cells.extend(record.published_cells.iter().cloned());
             boundary.components.clone_from(&record.components);
             boundary.resources.clone_from(&record.resources);
             boundary.pending_ticks.clone_from(&record.pending_ticks);
-            boundary
-                .pending_requests
-                .clone_from(&record.pending_requests);
+            boundary.pending_requests.clone_from(&record.pending_requests);
             boundary.deadlines.clone_from(&record.deadlines);
         } else {
             boundaries.push(record.clone());
@@ -831,9 +710,7 @@ fn compact_trace(record: &ComparisonRecord) -> String {
         .ordered
         .iter()
         .map(|operation| match operation {
-            OrderedObservation::Callback {
-                target, direction, ..
-            } => format!("U({target},{direction:?})"),
+            OrderedObservation::Callback { target, direction, .. } => format!("U({target},{direction:?})"),
             OrderedObservation::PistonSample { actor, powered, .. } => {
                 format!("sample({actor},{powered})")
             }
@@ -861,11 +738,7 @@ fn compact_trace(record: &ComparisonRecord) -> String {
         record.tick,
         format_args!("{:?}", record.phase),
         operations.join(" > "),
-        if suffix == 0 {
-            String::new()
-        } else {
-            format!(" > … +{suffix}")
-        }
+        if suffix == 0 { String::new() } else { format!(" > … +{suffix}") }
     )
 }
 
@@ -881,15 +754,10 @@ fn record_with_contract_checks(episode: &ReferenceEpisode) -> &ComparisonRecord 
             record.resources.len() == 1
                 && !record.deadlines.is_empty()
                 && record.ordered.len() > 1
-                && record.ordered.iter().any(|operation| {
-                    matches!(
-                        operation,
-                        OrderedObservation::Callback {
-                            direction: Some(_),
-                            ..
-                        }
-                    )
-                })
+                && record
+                    .ordered
+                    .iter()
+                    .any(|operation| matches!(operation, OrderedObservation::Callback { direction: Some(_), .. }))
         })
         .expect("one OR boundary has callbacks, a pending deadline, and a shared resource")
 }
@@ -899,9 +767,7 @@ fn first_callback_mut(record: &mut ComparisonRecord) -> &mut Option<BlockFace> {
         .ordered
         .iter_mut()
         .find_map(|operation| match operation {
-            OrderedObservation::Callback { direction, .. } if direction.is_some() => {
-                Some(direction)
-            }
+            OrderedObservation::Callback { direction, .. } if direction.is_some() => Some(direction),
             _ => None,
         })
         .expect("reference boundary contains a directional callback")
@@ -937,33 +803,18 @@ fn empty_ordinary_actuator_has_a_native_sample_request_and_publication_trace() {
     let trace = piston_trace
         .iter()
         .map(|entry| match entry.operation {
-            PistonTraceOperation::Sample {
-                pos,
-                extended,
-                powered,
-            } => format!(
-                "sample({},{extended},{powered})",
-                FixturePosition::from_world(pos)
-            ),
-            PistonTraceOperation::Applied(event) => format!(
-                "accept({:?}@{})",
-                event.action,
-                FixturePosition::from_world(event.pos)
-            ),
+            PistonTraceOperation::Sample { pos, extended, powered } => format!("sample({},{extended},{powered})", FixturePosition::from_world(pos)),
+            PistonTraceOperation::Applied(event) => format!("accept({:?}@{})", event.action, FixturePosition::from_world(event.pos)),
         })
         .collect::<Vec<_>>();
     let callbacks = callbacks.into_inner();
-    assert!(
-        trace
-            .iter()
-            .any(|entry| entry.starts_with("sample(0,0,0,false,true)"))
-    );
+    assert!(trace.iter().any(|entry| entry.starts_with("sample(0,0,0,false,true)")));
     assert!(trace.iter().any(|entry| entry == "accept(Extend@0,0,0)"));
-    assert!(callbacks.iter().any(|entry| {
-        entry["kind"] == "callback"
-            && entry["data"]["pos"] == json!(base)
-            && entry["data"]["dir"] == json!(BlockFace::West)
-    }));
+    assert!(
+        callbacks
+            .iter()
+            .any(|entry| { entry["kind"] == "callback" && entry["data"]["pos"] == json!(base) && entry["data"]["dir"] == json!(BlockFace::West) })
+    );
     assert!(matches!(
         world.get_block(base),
         Block::Piston { piston } if piston.extended && !piston.sticky
@@ -976,10 +827,7 @@ fn empty_ordinary_actuator_has_a_native_sample_request_and_publication_trace() {
         .iter()
         .filter_map(|entry| {
             let data = &entry["data"];
-            let position = data
-                .get("pos")
-                .map(source_pos)
-                .map(|position| position.to_string());
+            let position = data.get("pos").map(source_pos).map(|position| position.to_string());
             Some(match entry["kind"].as_str().unwrap() {
                 "callback" => format!(
                     "update({},{:?},power={:?})",
@@ -1000,10 +848,7 @@ fn empty_ordinary_actuator_has_a_native_sample_request_and_publication_trace() {
             })
         })
         .collect();
-    println!(
-        "empty actuator trace: {} > publish(0,0,0,extended=true)",
-        ordered.join(" > ")
-    );
+    println!("empty actuator trace: {} > publish(0,0,0,extended=true)", ordered.join(" > "));
 }
 
 #[test]
@@ -1014,43 +859,30 @@ fn fixtures_build_a_pinned_ordered_reference_contract() {
     let chain = capture_fixture_episode(&chain_manifest, &chain_case, &[]);
     assert_eq!(chain.protocol.sha256, chain_manifest["sha256"]);
     assert!(chain.protocol.strict_import_was_quiet);
-    assert!(chain.protocol.actions.iter().any(|action| {
-        action.delivery == Some(InputDelivery::Notified) && action.operation == "destroy"
-    }));
+    assert!(
+        chain
+            .protocol
+            .actions
+            .iter()
+            .any(|action| { action.delivery == Some(InputDelivery::Notified) && action.operation == "destroy" })
+    );
     assert!(chain.piston_trace.iter().any(|entry| matches!(
         entry.operation,
         PistonTraceOperationObservation::Accepted(PistonEventObservation { sticky: true, .. })
     )));
     assert!(
-        chain
-            .native
-            .iter()
-            .flat_map(|entry| &entry.changed_cells)
-            .any(|(_, cell)| {
-                cell["name"] == "moving_piston"
-                    && cell["entity"]["MovingPiston"]["block_state"]
-                        .as_u64()
-                        .is_some_and(|id| {
-                            matches!(
-                                Block::from_id(id as u32).get_name(),
-                                "redstone_block" | "light_blue_wool"
-                            )
-                        })
-            }),
+        chain.native.iter().flat_map(|entry| &entry.changed_cells).any(|(_, cell)| {
+            cell["name"] == "moving_piston"
+                && cell["entity"]["MovingPiston"]["block_state"]
+                    .as_u64()
+                    .is_some_and(|id| matches!(Block::from_id(id as u32).get_name(), "redstone_block" | "light_blue_wool"))
+        }),
         "native-only cells retain the carried redstone/conductor evidence"
     );
 
     let bud_manifest = io_fixture("bud_noninstantinputs");
-    let data_only = capture_fixture_episode(
-        &bud_manifest,
-        &super::named_case(&bud_manifest, "data-only"),
-        &[],
-    );
-    let sampled = capture_fixture_episode(
-        &bud_manifest,
-        &super::named_case(&bud_manifest, "sample-1"),
-        &[],
-    );
+    let data_only = capture_fixture_episode(&bud_manifest, &super::named_case(&bud_manifest, "data-only"), &[]);
+    let sampled = capture_fixture_episode(&bud_manifest, &super::named_case(&bud_manifest, "sample-1"), &[]);
     let memory = FixturePosition([0, 3, 3]);
     assert!(data_only.protocol.actions[0].delivery == Some(InputDelivery::Notified));
     assert!(
@@ -1080,18 +912,12 @@ fn fixtures_build_a_pinned_ordered_reference_contract() {
     let shared = SharedResourceSpec {
         source: FixturePosition([0, 1, 7]),
         material: "redstone_block",
-        contacts: &[
-            FixturePosition([0, 1, 7]),
-            FixturePosition([1, 1, 7]),
-            FixturePosition([0, 1, 8]),
-        ],
+        contacts: &[FixturePosition([0, 1, 7]), FixturePosition([1, 1, 7]), FixturePosition([0, 1, 8])],
     };
     let or_case = super::named_case(&or_manifest, "events-11-12");
     let or = capture_fixture_episode(&or_manifest, &or_case, &[shared]);
     assert!(
-        or.records
-            .iter()
-            .all(|record| { record.resources[0].selected_contact.is_some() }),
+        or.records.iter().all(|record| { record.resources[0].selected_contact.is_some() }),
         "one physical payload remains selected at a shared contact"
     );
     let repeated = capture_fixture_episode(&or_manifest, &or_case, &[shared]);
@@ -1102,39 +928,23 @@ fn fixtures_build_a_pinned_ordered_reference_contract() {
     adder_case["ticks"] = json!(1);
     let adder = capture_fixture_episode(&adder_manifest, &adder_case, &[]);
     let target = FixturePosition([11, 2, 1]);
+    assert!(adder.records.iter().any(|record| event(record, |operation| matches!(
+        operation,
+        OrderedObservation::RequestQueued(event) if event.actor == target
+    ))));
+    assert!(adder.records.iter().any(|record| event(record, |operation| matches!(
+        operation,
+        OrderedObservation::AcceptanceAttempt(event) if event.actor == target
+    ))));
     assert!(
-        adder
-            .records
-            .iter()
-            .any(|record| event(record, |operation| matches!(
-                operation,
-                OrderedObservation::RequestQueued(event) if event.actor == target
-            )))
-    );
-    assert!(
-        adder
-            .records
-            .iter()
-            .any(|record| event(record, |operation| matches!(
-                operation,
-                OrderedObservation::AcceptanceAttempt(event) if event.actor == target
-            )))
-    );
-    assert!(
-        !adder
-            .records
-            .iter()
-            .any(|record| event(record, |operation| matches!(
-                operation,
-                OrderedObservation::Accepted(event) if event.actor == target
-            ))),
+        !adder.records.iter().any(|record| event(record, |operation| matches!(
+            operation,
+            OrderedObservation::Accepted(event) if event.actor == target
+        ))),
         "late inhibition cancels the queued target at acceptance"
     );
 
-    println!(
-        "reference trace: {}",
-        compact_trace(record_with_contract_checks(&or))
-    );
+    println!("reference trace: {}", compact_trace(record_with_contract_checks(&or)));
 }
 
 #[test]
@@ -1144,11 +954,7 @@ fn comparator_catches_direction_order_deadline_and_shared_resource_changes() {
     let resource = SharedResourceSpec {
         source: FixturePosition([0, 1, 7]),
         material: "redstone_block",
-        contacts: &[
-            FixturePosition([0, 1, 7]),
-            FixturePosition([1, 1, 7]),
-            FixturePosition([0, 1, 8]),
-        ],
+        contacts: &[FixturePosition([0, 1, 7]), FixturePosition([1, 1, 7]), FixturePosition([0, 1, 8])],
     };
     let reference = capture_fixture_episode(&manifest, &case, &[resource]);
     let expected = record_with_contract_checks(&reference).clone();
@@ -1156,10 +962,7 @@ fn comparator_catches_direction_order_deadline_and_shared_resource_changes() {
     let mut direction = expected.clone();
     let direction_value = first_callback_mut(&mut direction);
     *direction_value = direction_value.map(BlockFace::opposite);
-    assert_eq!(
-        first_difference(&expected, &direction),
-        Some(Difference::OrderedObservations)
-    );
+    assert_eq!(first_difference(&expected, &direction), Some(Difference::OrderedObservations));
 
     let mut order = expected.clone();
     let pair = (0..order.ordered.len())
@@ -1167,24 +970,15 @@ fn comparator_catches_direction_order_deadline_and_shared_resource_changes() {
         .find(|&(i, j)| order.ordered[i] != order.ordered[j])
         .expect("trace has distinct ordered observations");
     order.ordered.swap(pair.0, pair.1);
-    assert_eq!(
-        first_difference(&expected, &order),
-        Some(Difference::OrderedObservations)
-    );
+    assert_eq!(first_difference(&expected, &order), Some(Difference::OrderedObservations));
 
     let mut deadline = expected.clone();
     deadline.deadlines[0].due_tick += 1;
-    assert_eq!(
-        first_difference(&expected, &deadline),
-        Some(Difference::Deadlines)
-    );
+    assert_eq!(first_difference(&expected, &deadline), Some(Difference::Deadlines));
 
     let mut shared_contact = expected.clone();
     shared_contact.resources[0].enabled = !shared_contact.resources[0].enabled;
-    assert_eq!(
-        first_difference(&expected, &shared_contact),
-        Some(Difference::Resources)
-    );
+    assert_eq!(first_difference(&expected, &shared_contact), Some(Difference::Resources));
     println!("comparison self-check: direction, order, deadline, and resource changes detected");
 }
 
@@ -1196,11 +990,7 @@ fn comparator_ignores_unobservable_progress_visits() {
     let index = reference
         .records
         .iter()
-        .position(|record| {
-            record.phase == AdvancePhase::MovingEntities
-                && record.ordered.is_empty()
-                && record.published_cells.is_empty()
-        })
+        .position(|record| record.phase == AdvancePhase::MovingEntities && record.ordered.is_empty() && record.published_cells.is_empty())
         .expect("episode includes a native movement progress visit");
     let mut with_progress_visit = reference.records.clone();
     let mut progress = with_progress_visit[index].clone();
@@ -1208,21 +998,10 @@ fn comparator_ignores_unobservable_progress_visits() {
     progress.ordered.clear();
     progress.published_cells.clear();
     with_progress_visit.insert(index + 1, progress);
-    assert_eq!(
-        compare_records(&reference.records, &with_progress_visit),
-        Ok(())
-    );
+    assert_eq!(compare_records(&reference.records, &with_progress_visit), Ok(()));
     with_progress_visit.remove(index + 1);
-    assert_eq!(
-        compare_records(&reference.records, &with_progress_visit),
-        Ok(())
-    );
-    assert!(
-        reference
-            .native
-            .windows(2)
-            .all(|steps| { steps[0].operation <= steps[1].operation })
-    );
+    assert_eq!(compare_records(&reference.records, &with_progress_visit), Ok(()));
+    assert!(reference.native.windows(2).all(|steps| { steps[0].operation <= steps[1].operation }));
 }
 
 fn deep_audit_record() -> ComparisonRecord {

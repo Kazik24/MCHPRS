@@ -2,9 +2,7 @@ use crate::chat::{ChatComponentBuilder, ColorCode};
 use crate::messages;
 use crate::player::{PacketSender, Player};
 use crate::redpiler::CompilerOptions;
-use mchprs_network::packets::clientbound::{
-    CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket,
-};
+use mchprs_network::packets::clientbound::{CDisplayScoreboard, CScoreboardObjective, CUpdateScore, ClientBoundPacket};
 use mchprs_save_data::plot_data::{PistonAnimation, Tps};
 use std::collections::HashSet;
 
@@ -124,9 +122,7 @@ fn git_line(head: Option<&str>, restoring: bool, recovery: bool) -> String {
     match head {
         None => messages::SCOREBOARD_GIT_LOADING.into(),
         Some("") => messages::SCOREBOARD_GIT_NONE.into(),
-        Some(head) if head.starts_with('@') => {
-            messages::scoreboard_git_detached(head[1..].chars().take(8).collect::<String>())
-        }
+        Some(head) if head.starts_with('@') => messages::scoreboard_git_detached(head[1..].chars().take(8).collect::<String>()),
         Some(branch) => {
             // The engine heading is at least 19 columns. Keep long branch names
             // within that width so the status footer never widens the sidebar.
@@ -193,21 +189,13 @@ impl Scoreboard {
         if self.redpiler_state == RedpilerState::Running && !self.compiler_flags.is_empty() {
             lines.extend(self.compiler_flags.iter().map(messages::scoreboard_flag));
         }
-        lines.extend([
-            self.metrics.pistons.clone(),
-            self.metrics.screen_only.clone(),
-            self.metrics.git.clone(),
-        ]);
+        lines.extend([self.metrics.pistons.clone(), self.metrics.screen_only.clone(), self.metrics.git.clone()]);
         lines
     }
 
     fn set_lines(&mut self, players: &[Player], lines: Vec<String>, git_readers: HashSet<u128>) {
         debug_assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= 20));
-        debug_assert!(
-            lines
-                .first()
-                .is_some_and(|first| lines.iter().all(|line| first.len() >= line.len()))
-        );
+        debug_assert!(lines.first().is_some_and(|first| lines.iter().all(|line| first.len() >= line.len())));
         if lines == self.current_state && git_readers == self.git_readers {
             return;
         }
@@ -216,8 +204,7 @@ impl Scoreboard {
         let old_readers = std::mem::replace(&mut self.git_readers, git_readers);
         for player in players {
             let previous = visible_lines(&old_lines, old_readers.contains(&player.uuid));
-            let current =
-                visible_lines(&self.current_state, self.git_readers.contains(&player.uuid));
+            let current = visible_lines(&self.current_state, self.git_readers.contains(&player.uuid));
             for old_line in &previous {
                 if !current.contains(old_line) {
                     player.send_packet(&Self::make_removal_packet(old_line).encode());
@@ -268,14 +255,11 @@ impl Scoreboard {
             }
             .encode(),
         );
-        for (index, line) in
-            visible_lines(&self.current_state, self.git_readers.contains(&player.uuid))
-                .iter()
-                .enumerate()
+        for (index, line) in visible_lines(&self.current_state, self.git_readers.contains(&player.uuid))
+            .iter()
+            .enumerate()
         {
-            player.send_packet(
-                &Self::make_update_packet(line, (self.current_state.len() - index) as u32).encode(),
-            );
+            player.send_packet(&Self::make_update_packet(line, (self.current_state.len() - index) as u32).encode());
         }
     }
 
@@ -332,9 +316,7 @@ impl Scoreboard {
     ) {
         let actual = match target_tps {
             Tps::Limited(0) => "0".to_owned(),
-            _ => actual_tps
-                .map(|tps| compact_number(f64::from(tps)))
-                .unwrap_or_else(|| "-".to_owned()),
+            _ => actual_tps.map(|tps| compact_number(f64::from(tps))).unwrap_or_else(|| "-".to_owned()),
         };
         let target = match target_tps {
             Tps::Limited(rate) => compact_number(f64::from(rate)),
@@ -342,15 +324,11 @@ impl Scoreboard {
         };
         self.metrics.tps = messages::scoreboard_tps(actual, target);
         self.metrics.history = if history_enabled {
-            messages::scoreboard_history(
-                compact_number(history_ticks as f64),
-                compact_number(history_capacity as f64),
-            )
+            messages::scoreboard_history(compact_number(history_ticks as f64), compact_number(history_capacity as f64))
         } else {
             messages::SCOREBOARD_HISTORY_OFF.to_owned()
         };
-        self.metrics.history_memory =
-            messages::scoreboard_history_memory(compact_memory(history_memory_bytes));
+        self.metrics.history_memory = messages::scoreboard_history_memory(compact_memory(history_memory_bytes));
         self.metrics.visual_updates = match visual_update_rate {
             Some(rate) => messages::scoreboard_visual_rate(rate),
             None => messages::SCOREBOARD_VISUAL_OFF.to_owned(),
@@ -416,25 +394,13 @@ mod tests {
         assert_eq!(board.current_state.len(), 13);
         assert_eq!(
             &board.current_state[10..],
-            &[
-                "Pistons: auto/off",
-                "Screen only: on",
-                "Git: very-long-b...",
-            ]
+            &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
         );
-        for engine in [
-            RedpilerState::Running,
-            RedpilerState::Compiling,
-            RedpilerState::Stopped,
-        ] {
+        for engine in [RedpilerState::Running, RedpilerState::Compiling, RedpilerState::Stopped] {
             board.set_redpiler_state(&[], engine);
             let lines = &board.current_state;
             assert!(lines.len() <= 15);
-            assert!(
-                lines
-                    .iter()
-                    .all(|line| line.is_ascii() && line.len() <= lines[0].len())
-            );
+            assert!(lines.iter().all(|line| line.is_ascii() && line.len() <= lines[0].len()));
             assert_eq!(lines.iter().collect::<HashSet<_>>().len(), lines.len());
             assert_eq!(lines.last().unwrap(), "Git: very-long-b...");
         }
@@ -443,26 +409,11 @@ mod tests {
     #[test]
     fn git_footer_covers_head_and_restore_states() {
         assert_eq!(git_line(Some("main"), false, false), "Git: main");
-        assert_eq!(
-            git_line(Some(&format!("@{}", "a".repeat(64))), false, false),
-            "Git: @aaaaaaaa"
-        );
-        assert_eq!(
-            git_line(Some(""), false, false),
-            messages::SCOREBOARD_GIT_NONE
-        );
-        assert_eq!(
-            git_line(None, false, false),
-            messages::SCOREBOARD_GIT_LOADING
-        );
-        assert_eq!(
-            git_line(Some("main"), true, false),
-            messages::SCOREBOARD_GIT_RESTORING
-        );
-        assert_eq!(
-            git_line(Some("main"), true, true),
-            messages::SCOREBOARD_GIT_RECOVERY
-        );
+        assert_eq!(git_line(Some(&format!("@{}", "a".repeat(64))), false, false), "Git: @aaaaaaaa");
+        assert_eq!(git_line(Some(""), false, false), messages::SCOREBOARD_GIT_NONE);
+        assert_eq!(git_line(None, false, false), messages::SCOREBOARD_GIT_LOADING);
+        assert_eq!(git_line(Some("main"), true, false), messages::SCOREBOARD_GIT_RESTORING);
+        assert_eq!(git_line(Some("main"), true, true), messages::SCOREBOARD_GIT_RECOVERY);
         let legacy = git_line(Some(&"long".repeat(12)), false, false);
         assert_eq!(legacy.len(), 19);
         assert!(legacy.ends_with("..."));
@@ -498,52 +449,12 @@ mod tests {
         current.piston_mode = PistonAnimation::On;
         current.pistons_animated = true;
         current.screen_only = false;
-        board.update_plot_metrics(
-            &[],
-            Tps::Limited(20),
-            Some(20.0),
-            false,
-            0,
-            0,
-            0,
-            Some(20),
-            current,
-        );
-        assert!(
-            board
-                .current_state
-                .iter()
-                .any(|line| line == "Pistons: on/on")
-        );
-        assert!(
-            board
-                .current_state
-                .iter()
-                .any(|line| line == "Screen only: off")
-        );
-        board.update_plot_metrics(
-            &[],
-            Tps::Limited(20),
-            Some(20.0),
-            false,
-            0,
-            0,
-            0,
-            Some(20),
-            status(Some("experiment")),
-        );
-        assert!(
-            board
-                .current_state
-                .iter()
-                .any(|line| line == "Pistons: auto/off")
-        );
-        assert!(
-            board
-                .current_state
-                .iter()
-                .any(|line| line == "Screen only: on")
-        );
+        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, Some(20), current);
+        assert!(board.current_state.iter().any(|line| line == "Pistons: on/on"));
+        assert!(board.current_state.iter().any(|line| line == "Screen only: off"));
+        board.update_plot_metrics(&[], Tps::Limited(20), Some(20.0), false, 0, 0, 0, Some(20), status(Some("experiment")));
+        assert!(board.current_state.iter().any(|line| line == "Pistons: auto/off"));
+        assert!(board.current_state.iter().any(|line| line == "Screen only: on"));
         assert_eq!(board.current_state.last().unwrap(), "Git: experiment");
         assert!(!board.current_state.iter().any(|line| line == "Git: main"));
     }

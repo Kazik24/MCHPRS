@@ -94,18 +94,12 @@ impl NodeState {
     }
 }
 
-pub(crate) fn identify_block<W: World>(
-    block: Block,
-    pos: BlockPos,
-    world: &W,
-) -> Option<(NodeType, NodeState)> {
+pub(crate) fn identify_block<W: World>(block: Block, pos: BlockPos, world: &W) -> Option<(NodeType, NodeState)> {
     let (ty, state) = match block {
         Block::RedstoneRepeater { repeater } => (
             NodeType::Repeater {
                 delay: repeater.delay,
-                facing_diode: redstone::is_diode(
-                    world.get_block(pos.offset(repeater.facing.opposite().block_face())),
-                ),
+                facing_diode: redstone::is_diode(world.get_block(pos.offset(repeater.facing.opposite().block_face()))),
             },
             NodeState::repeater(repeater.powered, repeater.locked),
         ),
@@ -113,24 +107,18 @@ pub(crate) fn identify_block<W: World>(
             NodeType::Comparator {
                 mode: state.mode,
                 far_input: comparator::get_far_input(world, pos, state.facing),
-                facing_diode: redstone::is_diode(
-                    world.get_block(pos.offset(state.facing.opposite().block_face())),
-                ),
+                facing_diode: redstone::is_diode(world.get_block(pos.offset(state.facing.opposite().block_face()))),
             },
             NodeState::comparator(
                 state.powered,
-                if let Some(BlockEntity::Comparator { output_strength }) =
-                    world.get_block_entity(pos)
-                {
+                if let Some(BlockEntity::Comparator { output_strength }) = world.get_block_entity(pos) {
                     *output_strength
                 } else {
                     0
                 },
             ),
         ),
-        Block::RedstoneTorch { lit, .. } | Block::RedstoneWallTorch { lit, .. } => {
-            (NodeType::Torch, NodeState::simple(lit))
-        }
+        Block::RedstoneTorch { lit, .. } | Block::RedstoneWallTorch { lit, .. } => (NodeType::Torch, NodeState::simple(lit)),
         Block::Observer { observer } => (
             NodeType::Observer {
                 watched: pos.offset(observer.facing.into()),
@@ -142,19 +130,11 @@ pub(crate) fn identify_block<W: World>(
         Block::RedstoneLamp { lit } => (NodeType::Lamp, NodeState::simple(lit)),
         block if block.is_copper_bulb() => {
             let (lit, powered) = block.copper_bulb_state().unwrap();
-            (
-                NodeType::CopperBulb,
-                NodeState::comparator(powered, redstone::bool_to_ss(lit)),
-            )
+            (NodeType::CopperBulb, NodeState::comparator(powered, redstone::bool_to_ss(lit)))
         }
         Block::Lever { lever } => (NodeType::Lever, NodeState::simple(lever.powered)),
-        Block::StonePressurePlate { powered } => {
-            (NodeType::PressurePlate, NodeState::simple(powered))
-        }
-        block if block.pressure_plate_powered().is_some() => (
-            NodeType::PressurePlate,
-            NodeState::simple(block.pressure_plate_powered().unwrap()),
-        ),
+        Block::StonePressurePlate { powered } => (NodeType::PressurePlate, NodeState::simple(powered)),
+        block if block.pressure_plate_powered().is_some() => (NodeType::PressurePlate, NodeState::simple(block.pressure_plate_powered().unwrap())),
         Block::IronTrapdoor { powered, .. } => (NodeType::Trapdoor, NodeState::simple(powered)),
         Block::RedstoneBlock => (NodeType::Constant, NodeState::with_strength(15)),
         Block::NoteBlock { note, powered, .. } => {
@@ -177,11 +157,8 @@ pub(crate) fn identify_block<W: World>(
                     repeating: block.get_name() == "repeating_command_block",
                     chain: block.get_name() == "chain_command_block",
                     automatic: entity.is_some_and(|entity| entity.automatic),
-                    initial_tick: entity.is_some_and(|entity| {
-                        entity.automatic
-                            && (entity.last_execution < 0
-                                || block.get_name() == "repeating_command_block")
-                    }),
+                    initial_tick: entity
+                        .is_some_and(|entity| entity.automatic && (entity.last_execution < 0 || block.get_name() == "repeating_command_block")),
                 },
                 NodeState {
                     powered: entity.is_some_and(|entity| entity.powered),
@@ -191,10 +168,7 @@ pub(crate) fn identify_block<W: World>(
                 },
             )
         }
-        block if comparator::has_override(block) => (
-            NodeType::Constant,
-            NodeState::with_strength(comparator::get_override(block, world, pos)),
-        ),
+        block if comparator::has_override(block) => (NodeType::Constant, NodeState::with_strength(comparator::get_override(block, world, pos))),
         _ => return None,
     };
     Some((ty, state))

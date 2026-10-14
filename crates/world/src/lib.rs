@@ -14,12 +14,7 @@ impl TickPriority {
     /// Indicates that we want to schedule nano-tick
     pub const NanoTick: Self = Self::Normal; //probably the lowest priority is best here
     /// All tick priorities in update order, from highest to lowest
-    pub const ALL: [TickPriority; 4] = [
-        TickPriority::Highest,
-        TickPriority::Higher,
-        TickPriority::High,
-        TickPriority::Normal,
-    ];
+    pub const ALL: [TickPriority; 4] = [TickPriority::Highest, TickPriority::Higher, TickPriority::High, TickPriority::Normal];
     pub const COUNT: usize = Self::ALL.len();
 }
 

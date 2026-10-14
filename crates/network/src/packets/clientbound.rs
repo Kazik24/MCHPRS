@@ -384,11 +384,7 @@ impl<'a> CDeclareCommandsNode<'a> {
         }
     }
 
-    pub fn argument(
-        name: &'static str,
-        parser: CDeclareCommandsNodeParser,
-        children: &'a [i32],
-    ) -> Self {
+    pub fn argument(name: &'static str, parser: CDeclareCommandsNodeParser, children: &'a [i32]) -> Self {
         Self {
             flags: 0x02,
             name: Some(name),
@@ -587,16 +583,9 @@ pub struct CChunkData {
 
 fn write_block_light_masks(buf: &mut Vec<u8>, sections: &[Option<Vec<u8>>], empty: bool) {
     assert!(sections.len() <= 64);
-    let mask = sections
-        .iter()
-        .enumerate()
-        .fold(0u64, |mask, (index, section)| {
-            mask | if section.is_none() == empty {
-                1 << index
-            } else {
-                0
-            }
-        });
+    let mask = sections.iter().enumerate().fold(0u64, |mask, (index, section)| {
+        mask | if section.is_none() == empty { 1 << index } else { 0 }
+    });
     buf.write_varint(i32::from(mask != 0));
     if mask != 0 {
         buf.write_long(mask as i64);
@@ -674,13 +663,10 @@ impl ClientBoundPacket for CChunkData {
                 // Palette
                 if container.bits_per_entry == 0 {
                     // Single valued palette
-                    let palette = container
-                        .palette
-                        .as_ref()
-                        .expect("container with 0 bits per entry should have palette");
-                    let item = *palette.first().expect(
-                        "container with 0 bits per entry should have palette with one entry",
-                    );
+                    let palette = container.palette.as_ref().expect("container with 0 bits per entry should have palette");
+                    let item = *palette
+                        .first()
+                        .expect("container with 0 bits per entry should have palette with one entry");
                     data.write_varint(item);
                 } else if let Some(palette) = &container.palette {
                     // Indirect palette
@@ -694,11 +680,7 @@ impl ClientBoundPacket for CChunkData {
                 for long in container
                     .data_array
                     .iter()
-                    .take(if container.bits_per_entry == 0 {
-                        0
-                    } else {
-                        usize::MAX
-                    })
+                    .take(if container.bits_per_entry == 0 { 0 } else { usize::MAX })
                 {
                     data.write_long(*long as i64);
                 }
@@ -1081,16 +1063,11 @@ pub struct CMultiBlockChange {
 impl ClientBoundPacket for CMultiBlockChange {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::with_capacity(self.records.len() * 8 + 12);
-        let pos = ((self.chunk_x as i64 & 0x3FFFFF) << 42)
-            | ((self.chunk_z as i64 & 0x3FFFFF) << 20)
-            | (self.chunk_y as i64 & 0xFFFFF);
+        let pos = ((self.chunk_x as i64 & 0x3FFFFF) << 42) | ((self.chunk_z as i64 & 0x3FFFFF) << 20) | (self.chunk_y as i64 & 0xFFFFF);
         buf.write_long(pos);
         buf.write_varint(self.records.len() as i32); // Length of record array
         for record in &self.records {
-            let long = ((record.block_id as u64) << 12)
-                | ((record.x as u64) << 8)
-                | ((record.z as u64) << 4)
-                | (record.y as u64);
+            let long = ((record.block_id as u64) << 12) | ((record.x as u64) << 8) | ((record.z as u64) << 4) | (record.y as u64);
             buf.write_varlong(long as i64);
         }
 
@@ -1178,14 +1155,7 @@ impl ClientBoundPacket for CEntityEquipment {
         let mut buf = Vec::new();
         buf.write_varint(self.entity_id);
         for (i, slot) in self.equipment.iter().enumerate() {
-            buf.write_unsigned_byte(
-                slot.slot as u8
-                    | if i + 1 < self.equipment.len() {
-                        0x80
-                    } else {
-                        0
-                    },
-            );
+            buf.write_unsigned_byte(slot.slot as u8 | if i + 1 < self.equipment.len() { 0x80 } else { 0 });
             buf.write_slot_data(&slot.item);
         }
 

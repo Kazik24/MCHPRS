@@ -4,9 +4,8 @@ use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes;
 use crate::redpiler::program_graph::{
-    CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind,
-    LinkSpec, OperandView, PistonAvailability, PistonLane, PistonRoutes, PowerLink, PowerPort,
-    PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest,
+    CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind, LinkSpec, OperandView, PistonAvailability,
+    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest,
 };
 use crate::redpiler::{CompilerOptions, TaskMonitor};
 use crate::world::World;
@@ -209,45 +208,21 @@ struct GuardDto {
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum GuardExpressionDto {
     Always,
-    State {
-        test: StateTestDto,
-    },
-    Site {
-        site: String,
-        view: &'static str,
-        test: SiteTestDto,
-    },
-    Not {
-        guard: String,
-    },
-    All {
-        guards: Vec<String>,
-    },
-    Any {
-        guards: Vec<String>,
-    },
+    State { test: StateTestDto },
+    Site { site: String, view: &'static str, test: SiteTestDto },
+    Not { guard: String },
+    All { guards: Vec<String> },
+    Any { guards: Vec<String> },
 }
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum StateTestDto {
-    PistonExtended {
-        piston: String,
-    },
-    PistonHeadPresent {
-        piston: String,
-    },
-    PistonAvailability {
-        piston: String,
-        availability: &'static str,
-    },
-    ResourceAt {
-        resource: String,
-        contact: String,
-    },
-    ResourceEnabled {
-        resource: String,
-    },
+    PistonExtended { piston: String },
+    PistonHeadPresent { piston: String },
+    PistonAvailability { piston: String, availability: &'static str },
+    ResourceAt { resource: String, contact: String },
+    ResourceEnabled { resource: String },
 }
 
 #[derive(Debug, Serialize)]
@@ -534,61 +509,26 @@ impl GraphExport {
     /// to_bytes validates every typed reference before deterministic pretty serialization.
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, ExportError> {
         self.validate()?;
-        serde_json::to_vec_pretty(self)
-            .map_err(|error| ExportError::new("serialization", error.to_string()))
+        serde_json::to_vec_pretty(self).map_err(|error| ExportError::new("serialization", error.to_string()))
     }
 
     fn validate(&self) -> Result<(), ExportError> {
         if self.format != "mchprs.redpiler.graph" || self.version.major != 1 {
-            return Err(ExportError::new(
-                "schema",
-                "invalid graph JSON format header",
-            ));
+            return Err(ExportError::new("schema", "invalid graph JSON format header"));
         }
         if self.stage != "callback_draft" {
-            return Err(ExportError::new(
-                "stage",
-                "draft export has an invalid stage",
-            ));
+            return Err(ExportError::new("stage", "draft export has an invalid stage"));
         }
         let nodes = unique_ids("node", self.graph.nodes.iter().map(|item| item.id.as_str()))?;
-        let profiles = unique_ids(
-            "profile",
-            self.graph.profiles.iter().map(|item| item.id.as_str()),
-        )?;
+        let profiles = unique_ids("profile", self.graph.profiles.iter().map(|item| item.id.as_str()))?;
         let sites = unique_ids("site", self.graph.sites.iter().map(|item| item.id.as_str()))?;
-        let guards = unique_ids(
-            "guard",
-            self.graph.guards.iter().map(|item| item.id.as_str()),
-        )?;
-        let contacts = unique_ids(
-            "contact",
-            self.graph.contacts.iter().map(|item| item.id.as_str()),
-        )?;
-        let pistons = unique_ids(
-            "piston",
-            self.graph.pistons.iter().map(|item| item.id.as_str()),
-        )?;
-        let resources = unique_ids(
-            "resource",
-            self.graph.resources.iter().map(|item| item.id.as_str()),
-        )?;
-        let wires = unique_ids(
-            "wire",
-            self.graph.wire_plans.iter().map(|item| item.id.as_str()),
-        )?;
-        let node_records: HashMap<_, _> = self
-            .graph
-            .nodes
-            .iter()
-            .map(|item| (item.id.as_str(), item))
-            .collect();
-        let site_records: HashMap<_, _> = self
-            .graph
-            .sites
-            .iter()
-            .map(|item| (item.id.as_str(), item))
-            .collect();
+        let guards = unique_ids("guard", self.graph.guards.iter().map(|item| item.id.as_str()))?;
+        let contacts = unique_ids("contact", self.graph.contacts.iter().map(|item| item.id.as_str()))?;
+        let pistons = unique_ids("piston", self.graph.pistons.iter().map(|item| item.id.as_str()))?;
+        let resources = unique_ids("resource", self.graph.resources.iter().map(|item| item.id.as_str()))?;
+        let wires = unique_ids("wire", self.graph.wire_plans.iter().map(|item| item.id.as_str()))?;
+        let node_records: HashMap<_, _> = self.graph.nodes.iter().map(|item| (item.id.as_str(), item)).collect();
+        let site_records: HashMap<_, _> = self.graph.sites.iter().map(|item| (item.id.as_str(), item)).collect();
         let routes = self
             .graph
             .routes
@@ -596,39 +536,16 @@ impl GraphExport {
             .map(|items| unique_ids("route", items.iter().map(|item| item.id.as_str())))
             .transpose()?
             .unwrap_or_default();
-        unique_ids(
-            "power_link",
-            self.graph.power_links.iter().map(|item| item.id.as_str()),
-        )?;
-        unique_ids(
-            "wire_relation",
-            self.graph
-                .wire_relations
-                .iter()
-                .map(|item| item.id.as_str()),
-        )?;
-        unique_ids(
-            "callback_link",
-            self.graph
-                .callback_links
-                .iter()
-                .map(|item| item.id.as_str()),
-        )?;
-        unique_ids(
-            "comparator_plan",
-            self.graph
-                .comparator_plans
-                .iter()
-                .map(|item| item.id.as_str()),
-        )?;
+        unique_ids("power_link", self.graph.power_links.iter().map(|item| item.id.as_str()))?;
+        unique_ids("wire_relation", self.graph.wire_relations.iter().map(|item| item.id.as_str()))?;
+        unique_ids("callback_link", self.graph.callback_links.iter().map(|item| item.id.as_str()))?;
+        unique_ids("comparator_plan", self.graph.comparator_plans.iter().map(|item| item.id.as_str()))?;
 
         for node in &self.graph.nodes {
             check_optional_ref(&routes, node.output_route.as_deref(), "node output route")?;
             match &node.kind {
                 NodeKindDto::Electrical { .. } => {}
-                NodeKindDto::Observer { watched, .. } => {
-                    check_ref(&sites, watched, "observer site")?
-                }
+                NodeKindDto::Observer { watched, .. } => check_ref(&sites, watched, "observer site")?,
                 NodeKindDto::Wire { plan } => check_ref(&wires, plan, "wire plan")?,
                 NodeKindDto::Piston { piston } => check_ref(&pistons, piston, "node piston")?,
                 NodeKindDto::Contact { contact } => check_ref(&contacts, contact, "node contact")?,
@@ -637,12 +554,8 @@ impl GraphExport {
         for site in &self.graph.sites {
             match &site.source {
                 SiteSourceDto::Component { node } => check_ref(&nodes, node, "site component")?,
-                SiteSourceDto::Contact { contact } => {
-                    check_ref(&contacts, contact, "site contact")?
-                }
-                SiteSourceDto::Constant { profile } => {
-                    check_ref(&profiles, profile, "site profile")?
-                }
+                SiteSourceDto::Contact { contact } => check_ref(&contacts, contact, "site contact")?,
+                SiteSourceDto::Constant { profile } => check_ref(&profiles, profile, "site profile")?,
             }
         }
         for (index, guard) in self.graph.guards.iter().enumerate() {
@@ -652,16 +565,12 @@ impl GraphExport {
                 GuardExpressionDto::State { test } => match test {
                     StateTestDto::PistonExtended { piston }
                     | StateTestDto::PistonHeadPresent { piston }
-                    | StateTestDto::PistonAvailability { piston, .. } => {
-                        check_ref(&pistons, piston, "guard piston")?
-                    }
+                    | StateTestDto::PistonAvailability { piston, .. } => check_ref(&pistons, piston, "guard piston")?,
                     StateTestDto::ResourceAt { resource, contact } => {
                         check_ref(&resources, resource, "guard resource")?;
                         check_ref(&contacts, contact, "guard contact")?;
                     }
-                    StateTestDto::ResourceEnabled { resource } => {
-                        check_ref(&resources, resource, "guard resource")?
-                    }
+                    StateTestDto::ResourceEnabled { resource } => check_ref(&resources, resource, "guard resource")?,
                 },
                 GuardExpressionDto::Site { site, test, .. } => {
                     check_ref(&sites, site, "guard site")?;
@@ -670,8 +579,7 @@ impl GraphExport {
                     }
                 }
                 GuardExpressionDto::Not { guard } => check_prior_guard(&guards, guard, &current)?,
-                GuardExpressionDto::All { guards: references }
-                | GuardExpressionDto::Any { guards: references } => {
+                GuardExpressionDto::All { guards: references } | GuardExpressionDto::Any { guards: references } => {
                     for reference in references {
                         check_prior_guard(&guards, reference, &current)?;
                     }
@@ -685,15 +593,9 @@ impl GraphExport {
                 check_ref(&profiles, &variant.profile, "contact profile")?;
                 if let Some(receiver) = &variant.receiver {
                     match receiver {
-                        ReceiverDto::Component { node } => {
-                            check_ref(&nodes, node, "receiver node")?
-                        }
-                        ReceiverDto::PistonBase { piston } | ReceiverDto::PistonHead { piston } => {
-                            check_ref(&pistons, piston, "receiver piston")?
-                        }
-                        ReceiverDto::Contact { contact } => {
-                            check_ref(&contacts, contact, "receiver contact")?
-                        }
+                        ReceiverDto::Component { node } => check_ref(&nodes, node, "receiver node")?,
+                        ReceiverDto::PistonBase { piston } | ReceiverDto::PistonHead { piston } => check_ref(&pistons, piston, "receiver piston")?,
+                        ReceiverDto::Contact { contact } => check_ref(&contacts, contact, "receiver contact")?,
                     }
                 }
             }
@@ -732,18 +634,13 @@ impl GraphExport {
             check_ref(&guards, &link.guard, "power guard")?;
             match &link.to {
                 PowerTargetDto::Input { node, .. } => check_ref(&nodes, node, "power target")?,
-                PowerTargetDto::Conductor { site, .. } => {
-                    check_ref(&sites, site, "conductor target")?
-                }
+                PowerTargetDto::Conductor { site, .. } => check_ref(&sites, site, "conductor target")?,
             }
         }
         for wire in &self.graph.wire_plans {
             check_ref(&nodes, &wire.node, "wire node")?;
             if wire.canonical_neighbors.len() != 24 {
-                return Err(ExportError::new(
-                    "validation",
-                    "wire plan must contain exactly 24 neighbor sites",
-                ));
+                return Err(ExportError::new("validation", "wire plan must contain exactly 24 neighbor sites"));
             }
             for site in &wire.canonical_neighbors {
                 check_ref(&sites, site, "wire neighbor")?;
@@ -751,13 +648,7 @@ impl GraphExport {
             check_optional_ref(&routes, wire.shape_route.as_deref(), "wire shape route")?;
             check_optional_ref(&routes, wire.turbo_route.as_deref(), "wire turbo route")?;
         }
-        validate_dust_paths(
-            &self.graph.dust_paths,
-            &nodes,
-            &sites,
-            &node_records,
-            &site_records,
-        )?;
+        validate_dust_paths(&self.graph.dust_paths, &nodes, &sites, &node_records, &site_records)?;
         for relation in &self.graph.wire_relations {
             check_ref(&nodes, &relation.from, "wire relation source")?;
             check_ref(&sites, &relation.to, "wire relation target")?;
@@ -773,10 +664,7 @@ impl GraphExport {
             check_ref(&nodes, &plan.node, "comparator node")?;
             check_ref(&sites, &plan.rear, "comparator rear site")?;
             if plan.far_threshold > 15 {
-                return Err(ExportError::new(
-                    "validation",
-                    "comparator threshold exceeds 15",
-                ));
+                return Err(ExportError::new("validation", "comparator threshold exceeds 15"));
             }
             validate_override(plan.direct_override.as_ref(), &nodes)?;
             if let Some(far) = &plan.far_override {
@@ -793,16 +681,9 @@ impl GraphExport {
                     check_ref(&guards, &delivery.guard, "route guard")?;
                     if let Some(receiver) = &delivery.receiver {
                         match receiver {
-                            ReceiverDto::Component { node } => {
-                                check_ref(&nodes, node, "route receiver")?
-                            }
-                            ReceiverDto::PistonBase { piston }
-                            | ReceiverDto::PistonHead { piston } => {
-                                check_ref(&pistons, piston, "route receiver")?
-                            }
-                            ReceiverDto::Contact { contact } => {
-                                check_ref(&contacts, contact, "route receiver")?
-                            }
+                            ReceiverDto::Component { node } => check_ref(&nodes, node, "route receiver")?,
+                            ReceiverDto::PistonBase { piston } | ReceiverDto::PistonHead { piston } => check_ref(&pistons, piston, "route receiver")?,
+                            ReceiverDto::Contact { contact } => check_ref(&contacts, contact, "route receiver")?,
                         }
                     }
                 }
@@ -812,13 +693,8 @@ impl GraphExport {
             for component in &snapshot.components {
                 check_ref(&nodes, &component.node, "snapshot component")?;
                 match &component.state {
-                    ComponentStateDto::Electrical {
-                        output_strength, ..
-                    } if *output_strength > 15 => {
-                        return Err(ExportError::new(
-                            "validation",
-                            "component strength exceeds 15",
-                        ));
+                    ComponentStateDto::Electrical { output_strength, .. } if *output_strength > 15 => {
+                        return Err(ExportError::new("validation", "component strength exceeds 15"));
                     }
                     ComponentStateDto::Wire { power, .. } if *power > 15 => {
                         return Err(ExportError::new("validation", "wire strength exceeds 15"));
@@ -831,11 +707,7 @@ impl GraphExport {
             }
             for resource in &snapshot.resources {
                 check_ref(&resources, &resource.resource, "snapshot resource")?;
-                check_ref(
-                    &contacts,
-                    &resource.selected_contact,
-                    "snapshot resource contact",
-                )?;
+                check_ref(&contacts, &resource.selected_contact, "snapshot resource contact")?;
             }
         }
         Ok(())
@@ -851,17 +723,9 @@ pub(crate) fn prepare<W: World>(
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
 ) -> Result<GraphExport, ExportError> {
-    let mut prepared = passes::rich::prepare(world, bounds, ticks.to_vec(), monitor, limits)
-        .map_err(map_preparation_error)?;
+    let mut prepared = passes::rich::prepare(world, bounds, ticks.to_vec(), monitor, limits).map_err(map_preparation_error)?;
     let pipeline = passes::default_graph_pipeline(options);
-    passes::run_graph_pipeline(
-        &mut prepared.graph,
-        options,
-        &prepared.entry,
-        &pipeline,
-        monitor,
-    )
-    .map_err(map_pass_error)?;
+    passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, monitor).map_err(map_pass_error)?;
     prepared.finish_pipeline_statistics(monitor);
     let export = from_graph(&prepared.report, &prepared.graph)?;
     check_export_cancellation(monitor)?;
@@ -885,8 +749,7 @@ pub(crate) fn prepare_and_write<W: World>(
     let counts = export.counts();
     let bytes = export.to_bytes()?;
     check_export_cancellation(monitor)?;
-    let path = write_artifact(directory, plot_x, plot_z, &bytes)
-        .map_err(|error| ExportError::new("write", error.to_string()))?;
+    let path = write_artifact(directory, plot_x, plot_z, &bytes).map_err(|error| ExportError::new("write", error.to_string()))?;
     Ok((path, counts))
 }
 
@@ -910,9 +773,7 @@ fn map_preparation_error(error: passes::rich::PreparationError) -> ExportError {
         }
         PreparationError::Geometry(error) => {
             let code = match error {
-                super::geometry::GeometryError::Analysis(super::AnalysisError::Cancelled) => {
-                    "cancelled"
-                }
+                super::geometry::GeometryError::Analysis(super::AnalysisError::Cancelled) => "cancelled",
                 super::geometry::GeometryError::Analysis(_) => "analysis",
                 super::geometry::GeometryError::Entry(_) => "admission",
                 super::geometry::GeometryError::Rejected(_) => "geometry",
@@ -921,9 +782,7 @@ fn map_preparation_error(error: passes::rich::PreparationError) -> ExportError {
         }
         PreparationError::Electrical(error) => {
             let code = match error {
-                super::electrical::ElectricalError::Preparation(
-                    super::AnalysisError::Cancelled,
-                ) => "cancelled",
+                super::electrical::ElectricalError::Preparation(super::AnalysisError::Cancelled) => "cancelled",
                 super::electrical::ElectricalError::Preparation(_) => "analysis",
                 _ => "electrical",
             };
@@ -931,9 +790,7 @@ fn map_preparation_error(error: passes::rich::PreparationError) -> ExportError {
         }
         PreparationError::Callbacks(error) => {
             let code = match error {
-                super::callbacks::CallbackError::Preparation(super::AnalysisError::Cancelled) => {
-                    "cancelled"
-                }
+                super::callbacks::CallbackError::Preparation(super::AnalysisError::Cancelled) => "cancelled",
                 super::callbacks::CallbackError::Preparation(_) => "analysis",
                 _ => "callbacks",
             };
@@ -952,10 +809,7 @@ fn map_pass_error(error: passes::PassPipelineError) -> ExportError {
     ExportError::new(code, error.to_string())
 }
 
-pub(super) fn from_graph(
-    report: &AnalysisReport,
-    source: &CompileGraph,
-) -> Result<GraphExport, ExportError> {
+pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Result<GraphExport, ExportError> {
     let graph = GraphTablesDto {
         nodes: source
             .nodes
@@ -966,18 +820,11 @@ pub(super) fn from_graph(
                     id: typed_id("node", index),
                     kind: node_kind(&node.kind)?,
                     position: node.position.map(position),
-                    output_route: node
-                        .output_route
-                        .map(|route| typed_id("route", route.index())),
+                    output_route: node.output_route.map(|route| typed_id("route", route.index())),
                 })
             })
             .collect::<Result<_, ExportError>>()?,
-        profiles: source
-            .profiles
-            .iter()
-            .enumerate()
-            .map(|(index, item)| profile_dto(index, item))
-            .collect(),
+        profiles: source.profiles.iter().enumerate().map(|(index, item)| profile_dto(index, item)).collect(),
         sites: source
             .sites
             .iter()
@@ -1055,11 +902,7 @@ pub(super) fn from_graph(
             .map(|(index, item)| ResourceDto {
                 id: typed_id("resource", index),
                 material: typed_id("profile", item.material.index()),
-                contacts: item
-                    .contacts
-                    .iter()
-                    .map(|contact| typed_id("contact", contact.index()))
-                    .collect(),
+                contacts: item.contacts.iter().map(|contact| typed_id("contact", contact.index())).collect(),
             })
             .collect(),
         power_links: source
@@ -1075,17 +918,9 @@ pub(super) fn from_graph(
             .map(|(index, item)| WirePlanDto {
                 id: typed_id("wire", index),
                 node: typed_id("node", item.node.index()),
-                canonical_neighbors: item
-                    .canonical_neighbors
-                    .iter()
-                    .map(|site| typed_id("site", site.index()))
-                    .collect(),
-                shape_route: item
-                    .shape_route
-                    .map(|route| typed_id("route", route.index())),
-                turbo_route: item
-                    .turbo_route
-                    .map(|route| typed_id("route", route.index())),
+                canonical_neighbors: item.canonical_neighbors.iter().map(|site| typed_id("site", site.index())).collect(),
+                shape_route: item.shape_route.map(|route| typed_id("route", route.index())),
+                turbo_route: item.turbo_route.map(|route| typed_id("route", route.index())),
             })
             .collect(),
         dust_paths: source
@@ -1097,11 +932,7 @@ pub(super) fn from_graph(
                 input_node: typed_id("node", path.input_node.index()),
                 input_site: typed_id("site", path.input_site.index()),
                 input_face: face(path.input_face),
-                wires: path
-                    .wires
-                    .iter()
-                    .map(|node| typed_id("node", node.index()))
-                    .collect(),
+                wires: path.wires.iter().map(|node| typed_id("node", node.index())).collect(),
             })
             .collect(),
         wire_relations: source
@@ -1150,20 +981,12 @@ pub(super) fn from_graph(
                             sequence: delivery.sequence,
                             target: typed_id("site", delivery.target.index()),
                             kind: match delivery.kind {
-                                crate::redpiler::program_graph::DeliveryKind::Update { .. } => {
-                                    "update"
-                                }
-                                crate::redpiler::program_graph::DeliveryKind::Shape { .. } => {
-                                    "shape"
-                                }
+                                crate::redpiler::program_graph::DeliveryKind::Update { .. } => "update",
+                                crate::redpiler::program_graph::DeliveryKind::Shape { .. } => "shape",
                             },
                             direction: match delivery.kind {
-                                crate::redpiler::program_graph::DeliveryKind::Update {
-                                    direction,
-                                } => direction.map(face),
-                                crate::redpiler::program_graph::DeliveryKind::Shape {
-                                    direction,
-                                } => Some(face(direction)),
+                                crate::redpiler::program_graph::DeliveryKind::Update { direction } => direction.map(face),
+                                crate::redpiler::program_graph::DeliveryKind::Shape { direction } => Some(face(direction)),
                             },
                             guard: typed_id("guard", delivery.guard.index()),
                             view: operand_view(delivery.view),
@@ -1268,17 +1091,12 @@ fn node_kind(kind: &CircuitNodeKind) -> Result<NodeKindDto, ExportError> {
 
 fn electrical_kind(kind: &NodeType) -> Result<ElectricalKindDto, ExportError> {
     Ok(match kind {
-        NodeType::Repeater {
-            delay,
-            facing_diode,
-        } => ElectricalKindDto::Repeater {
+        NodeType::Repeater { delay, facing_diode } => ElectricalKindDto::Repeater {
             delay: *delay,
             facing_diode: *facing_diode,
         },
         NodeType::Torch => ElectricalKindDto::Torch,
-        NodeType::Observer { watched } => ElectricalKindDto::Observer {
-            watched: position(*watched),
-        },
+        NodeType::Observer { watched } => ElectricalKindDto::Observer { watched: position(*watched) },
         NodeType::Comparator {
             mode,
             far_input,
@@ -1371,16 +1189,10 @@ fn guard_dto(guard: &Guard) -> GuardExpressionDto {
             guard: typed_id("guard", guard.index()),
         },
         Guard::All(guards) => GuardExpressionDto::All {
-            guards: guards
-                .iter()
-                .map(|guard| typed_id("guard", guard.index()))
-                .collect(),
+            guards: guards.iter().map(|guard| typed_id("guard", guard.index())).collect(),
         },
         Guard::Any(guards) => GuardExpressionDto::Any {
-            guards: guards
-                .iter()
-                .map(|guard| typed_id("guard", guard.index()))
-                .collect(),
+            guards: guards.iter().map(|guard| typed_id("guard", guard.index())).collect(),
         },
     }
 }
@@ -1410,12 +1222,8 @@ fn power_link(index: usize, link: &PowerLink) -> PowerLinkDto {
             port: match link.from_port {
                 PowerPort::Output => PowerPortDto::Output,
                 PowerPort::Stored => PowerPortDto::Stored,
-                PowerPort::Weak(face_value) => PowerPortDto::Weak {
-                    face: face(face_value),
-                },
-                PowerPort::Strong(face_value) => PowerPortDto::Strong {
-                    face: face(face_value),
-                },
+                PowerPort::Weak(face_value) => PowerPortDto::Weak { face: face(face_value) },
+                PowerPort::Strong(face_value) => PowerPortDto::Strong { face: face(face_value) },
                 PowerPort::Conducted { include_dust } => PowerPortDto::Conducted { include_dust },
             },
         },
@@ -1441,13 +1249,11 @@ fn comparator_plan(index: usize, plan: &ComparatorInputPlan) -> ComparatorPlanDt
         node: typed_id("node", plan.node.index()),
         rear: typed_id("site", plan.rear.index()),
         direct_override: plan.direct_override.map(comparator_override),
-        far_override: plan
-            .far_override
-            .map(|(site, value, guard)| FarOverrideDto {
-                site: typed_id("site", site.index()),
-                value: comparator_override(value),
-                guard: typed_id("guard", guard.index()),
-            }),
+        far_override: plan.far_override.map(|(site, value, guard)| FarOverrideDto {
+            site: typed_id("site", site.index()),
+            value: comparator_override(value),
+            guard: typed_id("guard", guard.index()),
+        }),
         far_threshold: plan.far_threshold,
     }
 }
@@ -1455,11 +1261,9 @@ fn comparator_plan(index: usize, plan: &ComparatorInputPlan) -> ComparatorPlanDt
 fn comparator_override(value: ComparatorOverride) -> ComparatorOverrideDto {
     match value {
         ComparatorOverride::Literal(value) => ComparatorOverrideDto::Literal { value },
-        ComparatorOverride::LiveComponentOutput(node) => {
-            ComparatorOverrideDto::LiveComponentOutput {
-                node: typed_id("node", node.index()),
-            }
-        }
+        ComparatorOverride::LiveComponentOutput(node) => ComparatorOverrideDto::LiveComponentOutput {
+            node: typed_id("node", node.index()),
+        },
     }
 }
 
@@ -1486,44 +1290,24 @@ fn electrical_state(state: &NodeState) -> ComponentStateDto {
     }
 }
 
-fn validate_override(
-    value: Option<&ComparatorOverrideDto>,
-    nodes: &HashSet<String>,
-) -> Result<(), ExportError> {
+fn validate_override(value: Option<&ComparatorOverrideDto>, nodes: &HashSet<String>) -> Result<(), ExportError> {
     match value {
-        Some(ComparatorOverrideDto::Literal { value }) if *value > 15 => Err(ExportError::new(
-            "validation",
-            "comparator override exceeds 15",
-        )),
-        Some(ComparatorOverrideDto::LiveComponentOutput { node }) => {
-            check_ref(nodes, node, "comparator override")
-        }
+        Some(ComparatorOverrideDto::Literal { value }) if *value > 15 => Err(ExportError::new("validation", "comparator override exceeds 15")),
+        Some(ComparatorOverrideDto::LiveComponentOutput { node }) => check_ref(nodes, node, "comparator override"),
         _ => Ok(()),
     }
 }
 
-fn unique_ids<'a>(
-    table: &str,
-    ids: impl Iterator<Item = &'a str>,
-) -> Result<HashSet<String>, ExportError> {
+fn unique_ids<'a>(table: &str, ids: impl Iterator<Item = &'a str>) -> Result<HashSet<String>, ExportError> {
     let prefix = format!("{table}:");
     let mut found = HashSet::new();
     for id in ids {
-        let Some(index) = id
-            .strip_prefix(&prefix)
-            .and_then(|suffix| suffix.parse::<usize>().ok())
-        else {
-            return Err(ExportError::new(
-                "validation",
-                format!("invalid {table} ID {id}"),
-            ));
+        let Some(index) = id.strip_prefix(&prefix).and_then(|suffix| suffix.parse::<usize>().ok()) else {
+            return Err(ExportError::new("validation", format!("invalid {table} ID {id}")));
         };
         let _ = index;
         if !found.insert(id.to_owned()) {
-            return Err(ExportError::new(
-                "validation",
-                format!("duplicate {table} ID {id}"),
-            ));
+            return Err(ExportError::new("validation", format!("duplicate {table} ID {id}")));
         }
     }
     Ok(found)
@@ -1533,18 +1317,11 @@ fn check_ref(ids: &HashSet<String>, id: &str, owner: &str) -> Result<(), ExportE
     if ids.contains(id) {
         Ok(())
     } else {
-        Err(ExportError::new(
-            "validation",
-            format!("{owner} references missing ID {id}"),
-        ))
+        Err(ExportError::new("validation", format!("{owner} references missing ID {id}")))
     }
 }
 
-fn check_optional_ref(
-    ids: &HashSet<String>,
-    id: Option<&str>,
-    owner: &str,
-) -> Result<(), ExportError> {
+fn check_optional_ref(ids: &HashSet<String>, id: Option<&str>, owner: &str) -> Result<(), ExportError> {
     id.map_or(Ok(()), |id| check_ref(ids, id, owner))
 }
 
@@ -1561,15 +1338,10 @@ fn validate_dust_paths(
         check_ref(nodes, &path.input_node, "dust path input")?;
         check_ref(sites, &path.input_site, "dust path input site")?;
         if !matches!(
-            node_records
-                .get(path.input_node.as_str())
-                .map(|node| &node.kind),
+            node_records.get(path.input_node.as_str()).map(|node| &node.kind),
             Some(NodeKindDto::Electrical { .. })
         ) {
-            return Err(ExportError::new(
-                "validation",
-                format!("{} input must be an electrical node", path.id),
-            ));
+            return Err(ExportError::new("validation", format!("{} input must be an electrical node", path.id)));
         }
         if !matches!(
             site_records
@@ -1582,14 +1354,8 @@ fn validate_dust_paths(
                 format!("{} input site must be owned by its input node", path.id),
             ));
         }
-        if !matches!(
-            path.input_face.as_str(),
-            "north" | "south" | "east" | "west"
-        ) {
-            return Err(ExportError::new(
-                "validation",
-                format!("{} input face must be horizontal", path.id),
-            ));
+        if !matches!(path.input_face.as_str(), "north" | "south" | "east" | "west") {
+            return Err(ExportError::new("validation", format!("{} input face must be horizontal", path.id)));
         }
         if path.wires.len() < 2 {
             return Err(ExportError::new(
@@ -1600,31 +1366,18 @@ fn validate_dust_paths(
         let mut path_wires = HashSet::new();
         for wire in &path.wires {
             check_ref(nodes, wire, "dust path wire")?;
-            if !matches!(
-                node_records.get(wire.as_str()).map(|node| &node.kind),
-                Some(NodeKindDto::Wire { .. })
-            ) {
-                return Err(ExportError::new(
-                    "validation",
-                    format!("{} references non-wire node {wire}", path.id),
-                ));
+            if !matches!(node_records.get(wire.as_str()).map(|node| &node.kind), Some(NodeKindDto::Wire { .. })) {
+                return Err(ExportError::new("validation", format!("{} references non-wire node {wire}", path.id)));
             }
             if !path_wires.insert(wire.as_str()) || !assigned_wires.insert(wire.as_str()) {
-                return Err(ExportError::new(
-                    "validation",
-                    format!("{} repeats or shares wire node {wire}", path.id),
-                ));
+                return Err(ExportError::new("validation", format!("{} repeats or shares wire node {wire}", path.id)));
             }
         }
     }
     Ok(())
 }
 
-fn check_prior_guard(
-    ids: &HashSet<String>,
-    reference: &str,
-    current: &str,
-) -> Result<(), ExportError> {
+fn check_prior_guard(ids: &HashSet<String>, reference: &str, current: &str) -> Result<(), ExportError> {
     check_ref(ids, reference, "guard expression")?;
     if id_index(reference) < id_index(current) {
         Ok(())
@@ -1637,9 +1390,7 @@ fn check_prior_guard(
 }
 
 fn id_index(id: &str) -> usize {
-    id.split_once(':')
-        .and_then(|(_, index)| index.parse().ok())
-        .unwrap_or(usize::MAX)
+    id.split_once(':').and_then(|(_, index)| index.parse().ok()).unwrap_or(usize::MAX)
 }
 
 #[cfg(test)]
@@ -1658,17 +1409,13 @@ mod dust_path_validation_tests {
             },
             NodeDto {
                 id: "node:1".into(),
-                kind: NodeKindDto::Wire {
-                    plan: "wire:0".into(),
-                },
+                kind: NodeKindDto::Wire { plan: "wire:0".into() },
                 position: None,
                 output_route: None,
             },
             NodeDto {
                 id: "node:2".into(),
-                kind: NodeKindDto::Wire {
-                    plan: "wire:1".into(),
-                },
+                kind: NodeKindDto::Wire { plan: "wire:1".into() },
                 position: None,
                 output_route: None,
             },
@@ -1690,9 +1437,7 @@ mod dust_path_validation_tests {
         let sites = vec![SiteDto {
             id: "site:0".into(),
             position: PositionDto { x: 0, y: 0, z: 0 },
-            source: SiteSourceDto::Component {
-                node: "node:0".into(),
-            },
+            source: SiteSourceDto::Component { node: "node:0".into() },
         }];
         let node_ids = nodes.iter().map(|node| node.id.clone()).collect();
         let site_ids = sites.iter().map(|site| site.id.clone()).collect();
@@ -1703,14 +1448,12 @@ mod dust_path_validation_tests {
 
     #[test]
     fn accepts_a_well_formed_dust_path_certificate() {
-        validate(&[path("dust_path:0", &["node:1", "node:2"])])
-            .expect("valid dust path references should export");
+        validate(&[path("dust_path:0", &["node:1", "node:2"])]).expect("valid dust path references should export");
     }
 
     #[test]
     fn rejects_dangling_dust_path_references() {
-        let error = validate(&[path("dust_path:0", &["node:1", "node:99"])])
-            .expect_err("unknown wire node must fail export validation");
+        let error = validate(&[path("dust_path:0", &["node:1", "node:99"])]).expect_err("unknown wire node must fail export validation");
         assert!(error.to_string().contains("missing ID node:99"));
     }
 
@@ -1728,27 +1471,11 @@ mod dust_path_validation_tests {
 
     #[test]
     fn rejects_duplicate_dust_path_ids_and_wire_ownership() {
-        let duplicate_ids = [
-            path("dust_path:0", &["node:1", "node:2"]),
-            path("dust_path:0", &["node:1", "node:2"]),
-        ];
-        assert!(
-            validate(&duplicate_ids)
-                .unwrap_err()
-                .to_string()
-                .contains("duplicate dust_path ID")
-        );
+        let duplicate_ids = [path("dust_path:0", &["node:1", "node:2"]), path("dust_path:0", &["node:1", "node:2"])];
+        assert!(validate(&duplicate_ids).unwrap_err().to_string().contains("duplicate dust_path ID"));
 
-        let shared_wire = [
-            path("dust_path:0", &["node:1", "node:2"]),
-            path("dust_path:1", &["node:1", "node:2"]),
-        ];
-        assert!(
-            validate(&shared_wire)
-                .unwrap_err()
-                .to_string()
-                .contains("repeats or shares wire node")
-        );
+        let shared_wire = [path("dust_path:0", &["node:1", "node:2"]), path("dust_path:1", &["node:1", "node:2"])];
+        assert!(validate(&shared_wire).unwrap_err().to_string().contains("repeats or shares wire node"));
     }
 }
 
@@ -1764,20 +1491,12 @@ fn piston_routes_dto(routes: PistonRoutes) -> PistonRouteBindingsDto {
     PistonRouteBindingsDto {
         base_changed: typed_id("route", routes.base_changed.index()),
         near_changed: typed_id("route", routes.near_changed.index()),
-        far_changed: routes
-            .far_changed
-            .map(|route| typed_id("route", route.index())),
-        far_shape_changed: routes
-            .far_shape_changed
-            .map(|route| typed_id("route", route.index())),
+        far_changed: routes.far_changed.map(|route| typed_id("route", route.index())),
+        far_shape_changed: routes.far_shape_changed.map(|route| typed_id("route", route.index())),
         base_restored: typed_id("route", routes.base_restored.index()),
         head_restored: typed_id("route", routes.head_restored.index()),
-        resource_restored_near: routes
-            .resource_restored_near
-            .map(|route| typed_id("route", route.index())),
-        resource_restored_far: routes
-            .resource_restored_far
-            .map(|route| typed_id("route", route.index())),
+        resource_restored_near: routes.resource_restored_near.map(|route| typed_id("route", route.index())),
+        resource_restored_far: routes.resource_restored_far.map(|route| typed_id("route", route.index())),
     }
 }
 
@@ -1877,49 +1596,27 @@ fn typed_id(table: &str, index: usize) -> String {
 }
 
 /// write_artifact writes a complete temporary file and atomically renames it to a generated path.
-pub(crate) fn write_artifact(
-    directory: &Path,
-    plot_x: i32,
-    plot_z: i32,
-    bytes: &[u8],
-) -> io::Result<PathBuf> {
+pub(crate) fn write_artifact(directory: &Path, plot_x: i32, plot_z: i32, bytes: &[u8]) -> io::Result<PathBuf> {
     fs::create_dir_all(directory)?;
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
+    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
     let sequence = EXPORT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let revision = format!("{timestamp:x}-{:x}-{sequence:x}", std::process::id());
     let destination = directory.join(format!("plot-{plot_x}-{plot_z}-rev-{revision}.json"));
     if destination.exists() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "generated graph export path already exists",
-        ));
+        return Err(io::Error::new(io::ErrorKind::AlreadyExists, "generated graph export path already exists"));
     }
     publish_temp_file(directory, &destination, &revision, bytes)?;
     Ok(destination)
 }
 
-pub(crate) fn publish_temp_file(
-    directory: &Path,
-    destination: &Path,
-    revision: &str,
-    bytes: &[u8],
-) -> io::Result<()> {
+pub(crate) fn publish_temp_file(directory: &Path, destination: &Path, revision: &str, bytes: &[u8]) -> io::Result<()> {
     let temporary = directory.join(format!(".graph-{revision}.tmp"));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)?;
+    let mut file = OpenOptions::new().write(true).create_new(true).open(&temporary)?;
     let result = (|| {
         file.write_all(bytes)?;
         file.sync_all()?;
         if destination.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "graph export path already exists",
-            ));
+            return Err(io::Error::new(io::ErrorKind::AlreadyExists, "graph export path already exists"));
         }
         fs::rename(&temporary, destination)
     })();

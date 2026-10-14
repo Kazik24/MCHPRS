@@ -84,12 +84,7 @@ impl Plot {
     pub(super) fn diagnostics(&self) -> String {
         let timings = self.timings.generate_report().map_or_else(
             || "TPS samples unavailable".to_owned(),
-            |t| {
-                format!(
-                    "TPS 2s/10s/60s: {:.1}/{:.1}/{:.1}",
-                    t.two_s, t.ten_s, t.one_m
-                )
-            },
+            |t| format!("TPS 2s/10s/60s: {:.1}/{:.1}/{:.1}", t.two_s, t.ten_s, t.one_m),
         );
         let mut text = format!(
             "Plot {},{}; owner {:?}; {} players; {} chunks\nTPS setting {:?}; {timings}; last tick {:?}\nAuto Redpiler {}; compiled {}; WSR {}; screen-only {}; fast rendering {}; piston animation {:?}\nPending half-ticks {}; piston events {}; motions {}\n{}\n{}",

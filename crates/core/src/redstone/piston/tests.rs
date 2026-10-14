@@ -9,9 +9,7 @@ use mchprs_blocks::blocks::{Block, RedstoneObserver, RedstonePiston, RedstonePis
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 
 fn empty_world() -> PlotWorld {
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
 
@@ -19,19 +17,11 @@ fn empty_world() -> PlotWorld {
 fn dust_shape_change_does_not_start_piston_observer_early() {
     use sha2::{Digest, Sha256};
     let schematic = include_bytes!("../../../../../test_data/EDGECASE_PISTION.schem");
-    let reference: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../test_data/piston-repair/java-piston-oscillator-trace.json"
-    ))
-    .unwrap();
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../../test_data/piston-repair/java-piston-oscillator-trace.json")).unwrap();
     assert_eq!(reference["version"], "1.21.5");
-    assert_eq!(
-        reference["server_sha1"],
-        "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
-    );
-    assert_eq!(
-        reference["schematic_sha256"],
-        format!("{:x}", Sha256::digest(schematic))
-    );
+    assert_eq!(reference["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
+    assert_eq!(reference["schematic_sha256"], format!("{:x}", Sha256::digest(schematic)));
     let cb = load_schematic(std::io::Cursor::new(schematic)).unwrap();
     let expected = reference["trace"].as_array().unwrap();
     for stepping in ["game", "nano", "pico"] {
@@ -60,9 +50,7 @@ fn dust_shape_change_does_not_start_piston_observer_early() {
             let observer_powered = |z| matches!(world.get_block(BlockPos::new(40, 32, z)), Block::Observer { observer } if observer.powered);
             let wire_state = |z| {
                 let block = world.get_block(BlockPos::new(40, 31, z));
-                let Block::RedstoneWire { wire } = block else {
-                    panic!("missing wire")
-                };
+                let Block::RedstoneWire { wire } = block else { panic!("missing wire") };
                 serde_json::json!([
                     wire.power,
                     block.property("north").unwrap(),
@@ -79,10 +67,7 @@ fn dust_shape_change_does_not_start_piston_observer_early() {
                 wire_state(41),
                 wire_state(45)
             ]);
-            assert_eq!(
-                &actual, sample,
-                "Java oscillator trace at tick {tick} with {stepping} stepping"
-            );
+            assert_eq!(&actual, sample, "Java oscillator trace at tick {tick} with {stepping} stepping");
             let target_tick = world.piston_state().logical_tick + 1;
             for _ in 0..256 {
                 match stepping {
@@ -91,17 +76,12 @@ fn dust_shape_change_does_not_start_piston_observer_early() {
                     "pico" => world.picotick_advance(1),
                     _ => unreachable!(),
                 }
-                if world.piston_state().logical_tick == target_tick
-                    && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
-                {
+                if world.piston_state().logical_tick == target_tick && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks {
                     break;
                 }
             }
             assert_eq!(world.piston_state().logical_tick, target_tick);
-            assert_eq!(
-                world.piston_state().phase,
-                mchprs_world::AdvancePhase::BetweenTicks
-            );
+            assert_eq!(world.piston_state().phase, mchprs_world::AdvancePhase::BetweenTicks);
         }
     }
 }
@@ -132,34 +112,15 @@ fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
         cases: Vec<Case>,
     }
 
-    let schematic =
-        include_bytes!("../../../../../test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem");
-    let reference: Reference = serde_json::from_str(include_str!(
-        "../../../../../test_data/piston-repair/java-redstone-update-edgecase.json"
-    ))
-    .unwrap();
+    let schematic = include_bytes!("../../../../../test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem");
+    let reference: Reference =
+        serde_json::from_str(include_str!("../../../../../test_data/piston-repair/java-redstone-update-edgecase.json")).unwrap();
     assert_eq!(reference.version, "1.21.5");
-    assert_eq!(
-        reference.server_sha1,
-        "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
-    );
-    assert_eq!(
-        reference.schematic_sha256,
-        format!("{:x}", Sha256::digest(schematic))
-    );
-    assert_eq!(
-        reference
-            .cases
-            .iter()
-            .map(|case| case.rotation)
-            .collect::<Vec<_>>(),
-        [0, 90, 180, 270]
-    );
+    assert_eq!(reference.server_sha1, "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
+    assert_eq!(reference.schematic_sha256, format!("{:x}", Sha256::digest(schematic)));
+    assert_eq!(reference.cases.iter().map(|case| case.rotation).collect::<Vec<_>>(), [0, 90, 180, 270]);
     let original = load_schematic(std::io::Cursor::new(schematic)).unwrap();
-    assert_eq!(
-        (original.size_x, original.size_y, original.size_z),
-        (7, 8, 7)
-    );
+    assert_eq!((original.size_x, original.size_y, original.size_z), (7, 8, 7));
 
     for case in reference.cases {
         let rotate = |mut pos: BlockPos| {
@@ -176,14 +137,12 @@ fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
         for y in 0..8 {
             for z in 0..7 {
                 for x in 0..7 {
-                    let mut block =
-                        Block::from_id(original.data.get_entry((y * 49 + z * 7 + x) as usize));
+                    let mut block = Block::from_id(original.data.get_entry((y * 49 + z * 7 + x) as usize));
                     for _ in 0..case.rotation / 90 {
                         block.rotate(RotateAmt::Rotate90);
                     }
                     let pos = rotate(BlockPos::new(x, y, z));
-                    cb.data
-                        .set_entry((pos.y * 49 + pos.z * 7 + pos.x) as usize, block.get_id());
+                    cb.data.set_entry((pos.y * 49 + pos.z * 7 + pos.x) as usize, block.get_id());
                 }
             }
         }
@@ -215,17 +174,10 @@ fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
                     // Captured positions and properties are already rotated.
                     let pos = BlockPos::new(40 + local[0], 30 + local[1], 40 + local[2]);
                     let block = world.get_block(pos);
-                    let context = format!(
-                        "tick {tick}, rotation {}, {stepping} stepping, {pos:?}",
-                        case.rotation
-                    );
+                    let context = format!("tick {tick}, rotation {}, {stepping} stepping, {pos:?}", case.rotation);
                     assert_eq!(block.get_name(), sample.name, "{context}");
                     for (key, value) in &sample.properties {
-                        assert_eq!(
-                            block.property(key),
-                            Some(value.as_str()),
-                            "{context}: {key}"
-                        );
+                        assert_eq!(block.property(key), Some(value.as_str()), "{context}: {key}");
                     }
                 }
                 // This release is expected, not a wire-update failure. Keep the
@@ -258,17 +210,12 @@ fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
                         "pico" => world.picotick_advance(1),
                         _ => unreachable!(),
                     }
-                    if world.piston_state().logical_tick == target_tick
-                        && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks
-                    {
+                    if world.piston_state().logical_tick == target_tick && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks {
                         break;
                     }
                 }
                 assert_eq!(world.piston_state().logical_tick, target_tick);
-                assert_eq!(
-                    world.piston_state().phase,
-                    mchprs_world::AdvancePhase::BetweenTicks
-                );
+                assert_eq!(world.piston_state().phase, mchprs_world::AdvancePhase::BetweenTicks);
             }
         }
     }
@@ -291,23 +238,13 @@ fn observer_piston_feedback_matches_java_for_block_and_dust_triggers() {
         server_sha1: String,
         cases: Vec<Case>,
     }
-    let reference: Reference = serde_json::from_str(include_str!(
-        "../../../../../test_data/piston-repair/java-observer-piston-feedback.json"
-    ))
-    .unwrap();
+    let reference: Reference =
+        serde_json::from_str(include_str!("../../../../../test_data/piston-repair/java-observer-piston-feedback.json")).unwrap();
     assert_eq!(reference.version, "1.21.5");
-    assert_eq!(
-        reference.server_sha1,
-        "e6ec2f64e6080b9b5d9b471b291c33cc7f509733"
-    );
+    assert_eq!(reference.server_sha1, "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
     assert_eq!(reference.cases.len(), 16);
 
-    for facing in [
-        BlockFacing::East,
-        BlockFacing::South,
-        BlockFacing::West,
-        BlockFacing::North,
-    ] {
+    for facing in [BlockFacing::East, BlockFacing::South, BlockFacing::West, BlockFacing::North] {
         for stepping in ["game", "nano", "pico"] {
             for case in &reference.cases {
                 let mut world = empty_world();
@@ -341,14 +278,7 @@ fn observer_piston_feedback_matches_java_for_block_and_dust_triggers() {
                 world.set_block(observer_pos.offset(BlockFace::Top), Block::Stone {});
                 if case.dust {
                     world.set_block(behind.offset(BlockFace::Bottom), Block::Stone {});
-                    crate::interaction::place_in_world(
-                        Block::RedstoneWire {
-                            wire: Default::default(),
-                        },
-                        &mut world,
-                        behind,
-                        &None,
-                    );
+                    crate::interaction::place_in_world(Block::RedstoneWire { wire: Default::default() }, &mut world, behind, &None);
                 }
                 let advance = |world: &mut PlotWorld| {
                     let target = world.piston_state().logical_tick + 1;
@@ -359,28 +289,17 @@ fn observer_piston_feedback_matches_java_for_block_and_dust_triggers() {
                             "pico" => world.picotick_advance(1),
                             _ => unreachable!(),
                         }
-                        if world.piston_state().logical_tick == target
-                            && world.piston_state().phase
-                                == mchprs_world::AdvancePhase::BetweenTicks
-                        {
+                        if world.piston_state().logical_tick == target && world.piston_state().phase == mchprs_world::AdvancePhase::BetweenTicks {
                             break;
                         }
                     }
                     assert_eq!(world.piston_state().logical_tick, target);
-                    assert_eq!(
-                        world.piston_state().phase,
-                        mchprs_world::AdvancePhase::BetweenTicks
-                    );
+                    assert_eq!(world.piston_state().phase, mchprs_world::AdvancePhase::BetweenTicks);
                 };
                 for _ in 0..8 {
                     advance(&mut world);
                 }
-                crate::interaction::place_in_world(
-                    Block::RedstoneBlock {},
-                    &mut world,
-                    source,
-                    &None,
-                );
+                crate::interaction::place_in_world(Block::RedstoneBlock {}, &mut world, source, &None);
                 // Placement requests piston movement, but has not changed the
                 // watched piston yet. A diagonal power recheck must not start
                 // the observer early and quasi-power the piston on removal.
@@ -430,10 +349,7 @@ fn containers_cannot_be_pushed_or_pulled_in_any_state() {
         settle(&mut world);
         assert!(!extended(&world, pos), "container state {id} was pushed");
         assert_eq!(world.get_block(front), block);
-        assert!(matches!(
-            world.get_block_entity(front),
-            Some(BlockEntity::Container { .. })
-        ));
+        assert!(matches!(world.get_block_entity(front), Some(BlockEntity::Container { .. })));
         world.set_block(front, Block::Air);
         world.set_block(ahead, block);
         world.set_block(
@@ -463,10 +379,7 @@ fn containers_cannot_be_pushed_or_pulled_in_any_state() {
             }
             _ => assert_eq!(actual, block, "container state {id} was pulled"),
         }
-        assert!(matches!(
-            world.get_block_entity(ahead),
-            Some(BlockEntity::Container { .. })
-        ));
+        assert!(matches!(world.get_block_entity(ahead), Some(BlockEntity::Container { .. })));
         world.set_block(ahead, Block::Air);
     }
 }
@@ -477,11 +390,7 @@ fn named(name: &str) -> Block {
     Block::from_name(name).unwrap()
 }
 fn piston(facing: BlockFacing, sticky: bool, extended: bool) -> RedstonePiston {
-    RedstonePiston {
-        facing,
-        sticky,
-        extended,
-    }
+    RedstonePiston { facing, sticky, extended }
 }
 fn start(world: &mut PlotWorld, pos: BlockPos, facing: BlockFacing, payload: Block) {
     world.set_block(
@@ -522,10 +431,7 @@ fn movable_trapdoor_is_preserved() {
     settle(&mut world);
     let target = pos.offset(BlockFace::East).offset(BlockFace::East);
     println!("TRAPDOOR destination={:?}", world.get_block(target));
-    assert!(matches!(
-        world.get_block(target),
-        Block::IronTrapdoor { .. }
-    ));
+    assert!(matches!(world.get_block(target), Block::IronTrapdoor { .. }));
 }
 
 #[test]
@@ -584,10 +490,7 @@ fn removing_base_removes_stationary_head() {
     start(&mut world, pos, BlockFacing::East, Block::Stone {});
     settle(&mut world);
     crate::interaction::destroy(world.get_block(pos), &mut world, pos);
-    println!(
-        "ORPHAN_HEAD current={:?}",
-        world.get_block(pos.offset(BlockFace::East))
-    );
+    println!("ORPHAN_HEAD current={:?}", world.get_block(pos.offset(BlockFace::East)));
     assert_eq!(world.get_block(pos.offset(BlockFace::East)), Block::Air);
 }
 
@@ -599,11 +502,7 @@ fn breaking_stationary_head_removes_base() {
     start(&mut world, pos, BlockFacing::East, Block::Stone {});
     settle(&mut world);
     crate::interaction::destroy(world.get_block(head), &mut world, head);
-    println!(
-        "BROKEN_HEAD base={:?} head={:?}",
-        world.get_block(pos),
-        world.get_block(head)
-    );
+    println!("BROKEN_HEAD base={:?} head={:?}", world.get_block(pos), world.get_block(head));
     assert_eq!(world.get_block(pos), Block::Air);
 }
 
@@ -635,14 +534,9 @@ fn moving_payload_has_its_own_destination_entity() {
         world.get_block(target),
         world.get_block_entity(target)
     );
-    assert!(matches!(
-        world.get_block(target),
-        Block::MovingPiston { .. }
-    ));
-    assert!(
-        matches!(world.get_block_entity(target), Some(BlockEntity::MovingPiston(e))
-        if !e.source && e.block_state == Block::Stone {}.get_id())
-    );
+    assert!(matches!(world.get_block(target), Block::MovingPiston { .. }));
+    assert!(matches!(world.get_block_entity(target), Some(BlockEntity::MovingPiston(e))
+        if !e.source && e.block_state == Block::Stone {}.get_id()));
 }
 
 #[test]
@@ -654,15 +548,9 @@ fn normal_retraction_uses_moving_source_at_base() {
     world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
     crate::redstone::update(world.get_block(pos), &mut world, pos, None);
     world.picotick_advance(1);
-    println!(
-        "RETRACT_SOURCE base={:?} entity={:?}",
-        world.get_block(pos),
-        world.get_block_entity(pos)
-    );
+    println!("RETRACT_SOURCE base={:?} entity={:?}", world.get_block(pos), world.get_block_entity(pos));
     assert!(matches!(world.get_block(pos), Block::MovingPiston { .. }));
-    assert!(
-        matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if !e.extending && e.source)
-    );
+    assert!(matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if !e.extending && e.source));
 }
 
 #[test]
@@ -673,24 +561,14 @@ fn movement_progress_advances_before_completion() {
     world.tick_interpreted();
     let head = pos.offset(BlockFace::East);
     println!("PROGRESS entity={:?}", world.get_block_entity(head));
-    assert!(
-        world
-            .piston_state()
-            .motions
-            .iter()
-            .any(|m| m.pos == head && m.progress == 0.5)
-    );
+    assert!(world.piston_state().motions.iter().any(|m| m.pos == head && m.progress == 0.5));
 }
 
 #[test]
 fn half_progress_is_exactly_representable() {
     let mut entity = MovingPistonEntity::default();
     entity.set_progress(0.5);
-    println!(
-        "HALF_PROGRESS encoded={} decoded={}",
-        entity.progress,
-        entity.get_progress()
-    );
+    println!("HALF_PROGRESS encoded={} decoded={}", entity.progress, entity.get_progress());
     assert_eq!(entity.get_progress(), 0.5);
 }
 
@@ -700,11 +578,7 @@ fn moved_powered_observer_does_not_stay_powered_forever() {
     let pos = base();
     // A powered observer normally has an outstanding pulse-off tick at its old position.
     world.set_block(pos.offset(BlockFace::East), world_observer());
-    world.schedule_half_tick(
-        pos.offset(BlockFace::East),
-        2,
-        mchprs_world::TickPriority::Normal,
-    );
+    world.schedule_half_tick(pos.offset(BlockFace::East), 2, mchprs_world::TickPriority::Normal);
     start(
         &mut world,
         pos,
@@ -744,10 +618,7 @@ fn old_observer_tick_cannot_complete_new_moving_head() {
     world.schedule_half_tick(head, 1, mchprs_world::TickPriority::Normal);
     start(&mut world, pos, BlockFacing::East, world_observer());
     world.tick_interpreted();
-    println!(
-        "OLD_TICK head_after_one_game_tick={:?}",
-        world.get_block(head)
-    );
+    println!("OLD_TICK head_after_one_game_tick={:?}", world.get_block(head));
     assert!(
         matches!(world.get_block(head), Block::MovingPiston { .. }),
         "Java scheduled block ticks retain their block type and reject a replacement type"
@@ -760,19 +631,12 @@ fn moved_waterlogged_stairs_are_not_still_waterlogged() {
     let pos = base();
     let mut block = named("oak_stairs");
     block.set_properties([("waterlogged", "true")].into_iter().collect());
-    assert_eq!(
-        block.properties().get("waterlogged").map(String::as_str),
-        Some("true")
-    );
+    assert_eq!(block.properties().get("waterlogged").map(String::as_str), Some("true"));
     start(&mut world, pos, BlockFacing::East, block);
     settle(&mut world);
     let target = pos.offset(BlockFace::East).offset(BlockFace::East);
     let moved = world.get_block(target);
-    println!(
-        "WATERLOGGED destination={:?} properties={:?}",
-        moved,
-        moved.properties()
-    );
+    println!("WATERLOGGED destination={:?} properties={:?}", moved, moved.properties());
     assert_eq!(moved.get_name(), "oak_stairs");
     assert_eq!(
         moved.properties().get("waterlogged").map(String::as_str),
@@ -879,8 +743,7 @@ fn dust_does_not_attach_to_moving_heads_or_payloads() {
                     wire: RedstoneWire::default(),
                 },
             );
-            let expected =
-                facing == BlockFace::Bottom && source && !extending && block_state == base_state;
+            let expected = facing == BlockFace::Bottom && source && !extending && block_state == base_state;
             assert_eq!(
                 crate::interaction::is_valid_position(world.get_block(dust), &world, dust),
                 expected,
@@ -913,10 +776,7 @@ fn control_single_stone_extension_all_six_directions() {
         start(&mut world, pos, facing, Block::Stone {});
         settle(&mut world);
         assert!(extended(&world, pos));
-        assert_eq!(
-            world.get_block(pos.offset(facing.into()).offset(facing.into())),
-            Block::Stone {}
-        );
+        assert_eq!(world.get_block(pos.offset(facing.into()).offset(facing.into())), Block::Stone {});
     }
 }
 
@@ -944,10 +804,7 @@ fn control_quasi_connected_power_detected_after_base_update() {
             piston: piston(BlockFacing::East, true, false),
         },
     );
-    world.set_block(
-        pos.offset(BlockFace::Top).offset(BlockFace::East),
-        Block::RedstoneBlock {},
-    );
+    world.set_block(pos.offset(BlockFace::Top).offset(BlockFace::East), Block::RedstoneBlock {});
     assert!(super::should_piston_extend(&world, BlockFacing::East, pos));
     assert!(!world.pending_tick_at(pos));
     crate::redstone::update(world.get_block(pos), &mut world, pos, None);
@@ -960,10 +817,7 @@ fn extension_sets_base_state_during_event_and_does_not_schedule_a_lock() {
     let mut world = empty_world();
     start(&mut world, base(), BlockFacing::East, Block::Stone {});
     assert!(extended(&world, base()));
-    assert!(matches!(
-        world.get_block(base().offset(BlockFace::East)),
-        Block::MovingPiston { .. }
-    ));
+    assert!(matches!(world.get_block(base().offset(BlockFace::East)), Block::MovingPiston { .. }));
     assert!(!world.scheduler().iter_entries().any(|e| e.pos == base()));
 }
 
@@ -983,10 +837,7 @@ fn power_off_request_ignores_unrelated_future_base_tick() {
             .any(|e| e.pos == base() && e.action == mchprs_world::PistonAction::Retract)
     );
     world.picotick_advance(1);
-    assert!(matches!(
-        world.get_block(base()),
-        Block::MovingPiston { .. }
-    ));
+    assert!(matches!(world.get_block(base()), Block::MovingPiston { .. }));
 }
 
 #[test]
@@ -1010,20 +861,12 @@ fn short_pulse_drops_but_completed_extension_pulls() {
         settle(&mut world);
         assert_eq!(
             world.get_block(destination),
-            if movement_ticks < 3 {
-                Block::Stone {}
-            } else {
-                Block::Air
-            },
+            if movement_ticks < 3 { Block::Stone {} } else { Block::Air },
             "pulse {movement_ticks}"
         );
         assert_eq!(
             world.get_block(head),
-            if movement_ticks < 3 {
-                Block::Air
-            } else {
-                Block::Stone {}
-            },
+            if movement_ticks < 3 { Block::Air } else { Block::Stone {} },
             "pulse {movement_ticks}"
         );
         assert!(matches!(world.get_block(base()), Block::Piston { piston } if !piston.extended));
@@ -1037,14 +880,8 @@ fn push_chain_snapshots_preserve_overlapping_payloads() {
     world.set_block(head.offset(BlockFace::East), Block::GoldBlock {});
     start(&mut world, base(), BlockFacing::East, Block::Stone {});
     settle(&mut world);
-    assert_eq!(
-        world.get_block(head.offset(BlockFace::East)),
-        Block::Stone {}
-    );
-    assert_eq!(
-        world.get_block(head.offset(BlockFace::East).offset(BlockFace::East)),
-        Block::GoldBlock {}
-    );
+    assert_eq!(world.get_block(head.offset(BlockFace::East)), Block::Stone {});
+    assert_eq!(world.get_block(head.offset(BlockFace::East).offset(BlockFace::East)), Block::GoldBlock {});
 }
 
 #[test]
@@ -1055,11 +892,7 @@ fn long_payload_lines_spill_and_preserve_every_block() {
     for offset in 1..=length {
         world.set_block(
             BlockPos::new(pos.x + offset, pos.y, pos.z),
-            if offset % 2 == 0 {
-                Block::GoldBlock {}
-            } else {
-                Block::Stone {}
-            },
+            if offset % 2 == 0 { Block::GoldBlock {} } else { Block::Stone {} },
         );
     }
     start(&mut world, pos, BlockFacing::East, Block::Stone {});
@@ -1068,11 +901,7 @@ fn long_payload_lines_spill_and_preserve_every_block() {
     for offset in 1..=length {
         assert_eq!(
             world.get_block(BlockPos::new(pos.x + offset + 1, pos.y, pos.z)),
-            if offset % 2 == 0 {
-                Block::GoldBlock {}
-            } else {
-                Block::Stone {}
-            },
+            if offset % 2 == 0 { Block::GoldBlock {} } else { Block::Stone {} },
             "payload {offset}"
         );
     }
@@ -1146,10 +975,7 @@ fn interrupted_waterlogged_payload_retains_waterlogging() {
     settle(&mut world);
     let dropped = world.get_block(head.offset(BlockFace::East));
     assert_eq!(dropped.get_name(), "oak_stairs");
-    assert_eq!(
-        dropped.properties().get("waterlogged").map(String::as_str),
-        Some("true")
-    );
+    assert_eq!(dropped.properties().get("waterlogged").map(String::as_str), Some("true"));
 }
 
 #[test]
@@ -1163,9 +989,7 @@ fn game_nano_and_pico_steps_share_event_and_movement_order() {
         worlds[0].tick_interpreted();
         for mode in 1..=2 {
             for _ in 0..30 {
-                if worlds[mode].piston_state().logical_tick == game_tick
-                    && worlds[mode].piston_state().phase == AdvancePhase::BetweenTicks
-                {
+                if worlds[mode].piston_state().logical_tick == game_tick && worlds[mode].piston_state().phase == AdvancePhase::BetweenTicks {
                     break;
                 }
                 if mode == 1 {
@@ -1175,14 +999,8 @@ fn game_nano_and_pico_steps_share_event_and_movement_order() {
                 }
             }
             assert_eq!(worlds[mode].piston_state().logical_tick, game_tick);
-            assert_eq!(
-                worlds[mode].piston_state().phase,
-                AdvancePhase::BetweenTicks
-            );
-            assert_eq!(
-                worlds[mode].piston_state().events,
-                worlds[0].piston_state().events
-            );
+            assert_eq!(worlds[mode].piston_state().phase, AdvancePhase::BetweenTicks);
+            assert_eq!(worlds[mode].piston_state().events, worlds[0].piston_state().events);
             for n in 0..=2 {
                 let p = BlockPos::new(base().x + n, base().y, base().z);
                 assert_eq!(worlds[mode].get_block(p), worlds[0].get_block(p));
@@ -1191,15 +1009,7 @@ fn game_nano_and_pico_steps_share_event_and_movement_order() {
                 w.piston_state()
                     .motions
                     .iter()
-                    .map(|m| {
-                        (
-                            m.pos,
-                            m.identity,
-                            m.progress,
-                            m.previous_progress,
-                            m.last_tick,
-                        )
-                    })
+                    .map(|m| (m.pos, m.identity, m.progress, m.previous_progress, m.last_tick))
                     .collect::<Vec<_>>()
             };
             assert_eq!(snapshot(&worlds[mode]), snapshot(&worlds[0]));
@@ -1226,11 +1036,7 @@ fn removing_vertical_base_updates_support_at_removed_head() {
     settle(&mut world);
     let torch = base().offset(BlockFace::Top).offset(BlockFace::Top);
     world.set_block(torch, Block::RedstoneTorch { lit: true });
-    assert!(crate::interaction::is_valid_position(
-        world.get_block(torch),
-        &world,
-        torch
-    ));
+    assert!(crate::interaction::is_valid_position(world.get_block(torch), &world, torch));
     crate::interaction::destroy(world.get_block(base()), &mut world, base());
     assert_eq!(world.get_block(torch), Block::Air);
 }
@@ -1258,13 +1064,7 @@ fn completion_runs_once_and_repeated_stale_work_preserves_payload() {
     let mut world = empty_world();
     let destination = base().offset(BlockFace::East).offset(BlockFace::East);
     start(&mut world, base(), BlockFacing::East, Block::Stone {});
-    let identity = world
-        .piston_state()
-        .motions
-        .iter()
-        .find(|m| m.pos == destination)
-        .unwrap()
-        .identity;
+    let identity = world.piston_state().motions.iter().find(|m| m.pos == destination).unwrap().identity;
     settle(&mut world);
     for _ in 0..3 {
         super::tick_motion(&mut world, destination, identity);

@@ -40,44 +40,25 @@ fn powered(world: &impl World, pos: BlockPos, face: BlockFace) -> bool {
 }
 
 pub fn should_piston_extend(world: &impl World, facing: BlockFacing, pos: BlockPos) -> bool {
-    if let Some(routes) = world
-        .instant_piston_cache()
-        .and_then(|cache| cache.power_routes(pos, facing.into()))
-    {
+    if let Some(routes) = world.instant_piston_cache().and_then(|cache| cache.power_routes(pos, facing.into())) {
         return routes.iter().any(|route| {
             let block = Block::from_id(world.get_wire_block_raw(route.source));
             if block.is_solid() {
-                route
-                    .strong
-                    .iter()
-                    .zip(BlockFace::values())
-                    .any(|(&source, side)| {
-                        super::get_strong_power(
-                            Block::from_id(world.get_wire_block_raw(source)),
-                            world,
-                            source.pos,
-                            side,
-                            true,
-                        ) > 0
-                    })
+                route.strong.iter().zip(BlockFace::values()).any(|(&source, side)| {
+                    super::get_strong_power(Block::from_id(world.get_wire_block_raw(source)), world, source.pos, side, true) > 0
+                })
             } else {
                 super::get_weak_power(block, world, route.source.pos, route.side, true) > 0
             }
         });
     }
     let front: BlockFace = facing.into();
-    if NEIGHBORS
-        .into_iter()
-        .any(|f| f != front && powered(world, pos, f))
-    {
+    if NEIGHBORS.into_iter().any(|f| f != front && powered(world, pos, f)) {
         return true;
     }
     // Direct signal from below, and quasi-connectivity around the block above.
     let above = pos.offset(BlockFace::Top);
-    powered(world, above, BlockFace::Bottom)
-        || NEIGHBORS
-            .into_iter()
-            .any(|f| f != BlockFace::Bottom && powered(world, above, f))
+    powered(world, above, BlockFace::Bottom) || NEIGHBORS.into_iter().any(|f| f != BlockFace::Bottom && powered(world, above, f))
 }
 
 pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) {
@@ -102,10 +83,7 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
                 index.map(|i| &state.motions[i]).is_some_and(|motion| {
                     motion.previous_progress < 0.5
                         || motion.last_tick == state.logical_tick
-                        || matches!(
-                            state.phase,
-                            AdvancePhase::ScheduledTicks | AdvancePhase::PistonEvents
-                        )
+                        || matches!(state.phase, AdvancePhase::ScheduledTicks | AdvancePhase::PistonEvents)
                 })
             }
             _ => false,
@@ -177,12 +155,7 @@ fn moving(
     carried_entity: Option<BlockEntity>,
 ) {
     world.delete_block_entity(pos);
-    world.set_block(
-        pos,
-        Block::MovingPiston {
-            moving: piston.into(),
-        },
-    );
+    world.set_block(pos, Block::MovingPiston { moving: piston.into() });
     world.set_block_entity(
         pos,
         BlockEntity::MovingPiston(MovingPistonEntity {
@@ -198,9 +171,7 @@ fn moving(
 
 fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool {
     let facing = piston.facing.into();
-    let awaiting_reset = world
-        .instant_piston_cache()
-        .is_some_and(|cache| cache.awaiting_reset(pos, facing));
+    let awaiting_reset = world.instant_piston_cache().is_some_and(|cache| cache.awaiting_reset(pos, facing));
     let mut reset = awaiting_reset && instant::reset_driven(world, pos, facing);
     if awaiting_reset && !reset {
         if let Some(cache) = world.instant_piston_cache_mut() {
@@ -241,9 +212,7 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
         world,
         pos.offset(facing),
         piston,
-        Block::PistonHead {
-            head: piston.into(),
-        },
+        Block::PistonHead { head: piston.into() },
         true,
         true,
         None,
@@ -256,12 +225,7 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
         notify(world, p);
     }
     notify(world, pos.offset(facing));
-    world.set_block(
-        pos,
-        Block::Piston {
-            piston: piston.extend(true),
-        },
-    );
+    world.set_block(pos, Block::Piston { piston: piston.extend(true) });
     notify(world, pos);
     if reset {
         let head = pos.offset(facing);
@@ -284,17 +248,10 @@ fn extend(world: &mut impl World, piston: RedstonePiston, pos: BlockPos) -> bool
     true
 }
 
-fn retract(
-    world: &mut impl World,
-    piston: RedstonePiston,
-    pos: BlockPos,
-    action: PistonAction,
-    captured_facing: BlockFace,
-) {
+fn retract(world: &mut impl World, piston: RedstonePiston, pos: BlockPos, action: PistonAction, captured_facing: BlockFace) {
     let facing: BlockFace = piston.facing.into();
     let head = pos.offset(facing);
-    let candidate = world.instant_piston_cache().is_some()
-        && instant::candidate_retract(world, piston, pos, action);
+    let candidate = world.instant_piston_cache().is_some() && instant::candidate_retract(world, piston, pos, action);
     let mut pulled_redstone = false;
     if matches!(world.get_block(head), Block::MovingPiston { .. }) {
         finish(world, head, true);
@@ -304,17 +261,7 @@ fn retract(
         extended: false,
         ..piston
     };
-    moving(
-        world,
-        pos,
-        piston,
-        Block::Piston {
-            piston: carried_base,
-        },
-        false,
-        true,
-        None,
-    );
+    moving(world, pos, piston, Block::Piston { piston: carried_base }, false, true, None);
     notify(world, pos);
     let ahead = head.offset(facing);
     let moving_extension = matches!(world.get_block(ahead), Block::MovingPiston { .. })
@@ -327,10 +274,7 @@ fn retract(
         finish(world, ahead, true);
     } else if piston.sticky && action == PistonAction::Retract {
         let block = world.get_block(ahead);
-        if block != Block::Air
-            && !matches!(block, Block::MovingPiston { .. })
-            && !immovable_container(block)
-        {
+        if block != Block::Air && !matches!(block, Block::MovingPiston { .. }) && !immovable_container(block) {
             let entity = world.get_block_entity(ahead).cloned();
             pulled_redstone = block == Block::RedstoneBlock {} && entity.is_none();
             moving(world, head, piston, block, false, false, entity);
@@ -361,12 +305,7 @@ pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) 
     let Some(i) = world.piston_motion_index(pos, Some(identity)) else {
         return;
     };
-    if !matches!(world.get_block(pos), Block::MovingPiston { .. })
-        || !matches!(
-            world.get_block_entity(pos),
-            Some(BlockEntity::MovingPiston(_))
-        )
-    {
+    if !matches!(world.get_block(pos), Block::MovingPiston { .. }) || !matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(_))) {
         if let Some(cache) = world.instant_piston_cache_mut() {
             cache.reject_motion(pos, identity);
         }
@@ -402,8 +341,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
         block = block.without_waterlogging();
     }
     let motion = world.piston_motion_index(pos, None);
-    let carried_entity =
-        motion.and_then(|i| world.piston_state().motions[i].carried_entity.clone());
+    let carried_entity = motion.and_then(|i| world.piston_state().motions[i].carried_entity.clone());
     let identity = motion.map(|index| world.piston_state().motions[index].identity);
     world.delete_piston_entity(pos);
     world.set_block(pos, block);
@@ -412,8 +350,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     }
     if let Block::PistonHead { head } = block {
         let base = world.get_block(pos.offset(BlockFace::from(head.facing).opposite()));
-        if !matches!(base, Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky)
-        {
+        if !matches!(base, Block::Piston { piston } if piston.extended && piston.facing == head.facing && piston.sticky == head.sticky) {
             block = Block::Air;
             world.set_block(pos, block);
         }
@@ -437,10 +374,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
         super::update(restored, world, pos, None);
     }
     notify(world, pos);
-    if world
-        .instant_piston_cache()
-        .is_some_and(|cache| !cache.is_empty())
-    {
+    if world.instant_piston_cache().is_some_and(|cache| !cache.is_empty()) {
         if let Some(identity) = identity {
             instant::completed(world, pos, entity, identity, interrupted);
         }
@@ -486,11 +420,7 @@ pub(crate) fn notify(world: &mut impl World, pos: BlockPos) {
 
 /// Breaking an owned source/head removes its counterpart. Payload movement is
 /// independent and can finish without rewriting or resurrecting that source.
-pub(crate) fn remove_owned_parts(
-    world: &mut impl World,
-    block: Block,
-    pos: BlockPos,
-) -> Option<BlockPos> {
+pub(crate) fn remove_owned_parts(world: &mut impl World, block: Block, pos: BlockPos) -> Option<BlockPos> {
     match block {
         Block::Piston { piston } if piston.extended => {
             let head = pos.offset(piston.facing.into());
@@ -507,12 +437,9 @@ pub(crate) fn remove_owned_parts(
                 None
             }
         }
-        Block::PistonHead { head } => {
-            remove_matching_base(world, pos, head.facing.into(), head.sticky)
-        }
+        Block::PistonHead { head } => remove_matching_base(world, pos, head.facing.into(), head.sticky),
         Block::MovingPiston { moving } => {
-            if matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if e.source && e.extending)
-            {
+            if matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if e.source && e.extending) {
                 remove_matching_base(world, pos, moving.facing.into(), moving.sticky)
             } else {
                 None
@@ -522,12 +449,7 @@ pub(crate) fn remove_owned_parts(
     }
 }
 
-fn remove_matching_base(
-    world: &mut impl World,
-    head: BlockPos,
-    facing: BlockFace,
-    sticky: bool,
-) -> Option<BlockPos> {
+fn remove_matching_base(world: &mut impl World, head: BlockPos, facing: BlockFace, sticky: bool) -> Option<BlockPos> {
     let base = head.offset(facing.opposite());
     if matches!(world.get_block(base), Block::Piston { piston }
         if piston.extended && BlockFace::from(piston.facing) == facing && piston.sticky == sticky)
@@ -544,30 +466,17 @@ fn immovable_container(block: Block) -> bool {
     mchprs_blocks::block_entities::ContainerType::from_block(block).is_some()
 }
 
-fn payload_line(
-    world: &impl World,
-    start: BlockPos,
-    facing: BlockFace,
-) -> Option<SmallVec<[BlockPos; 8]>> {
+fn payload_line(world: &impl World, start: BlockPos, facing: BlockFace) -> Option<SmallVec<[BlockPos; 8]>> {
     let mut line = SmallVec::new();
     walk_payload_line(world, start, facing, |pos| line.push(pos)).then_some(line)
 }
 
 // Validation and collection share the movement rules. The no-op visitor used
 // while requesting an event avoids allocating a line that would be discarded.
-fn walk_payload_line(
-    world: &impl World,
-    start: BlockPos,
-    facing: BlockFace,
-    mut visit: impl FnMut(BlockPos),
-) -> bool {
+fn walk_payload_line(world: &impl World, start: BlockPos, facing: BlockFace, mut visit: impl FnMut(BlockPos)) -> bool {
     let mut pos = start;
     loop {
-        if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&pos.y)
-            || world
-                .get_chunk(pos.x.div_euclid(16), pos.z.div_euclid(16))
-                .is_none()
-        {
+        if !(0..crate::plot::PLOT_BLOCK_HEIGHT).contains(&pos.y) || world.get_chunk(pos.x.div_euclid(16), pos.z.div_euclid(16)).is_none() {
             return false;
         }
         let block = world.get_block(pos);

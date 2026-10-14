@@ -11,16 +11,9 @@ fn relative_path(name: &str) -> Result<PathBuf> {
         messages::SCHEMATIC_RELATIVE_FILENAME_REQUIRED
     );
     let mut path = PathBuf::new();
-    for part in name
-        .split('/')
-        .filter(|part| !part.is_empty() && *part != ".")
-    {
+    for part in name.split('/').filter(|part| !part.is_empty() && *part != ".") {
         ensure!(
-            part != ".."
-                && !part.ends_with(['.', ' '])
-                && !part
-                    .chars()
-                    .any(|c| c.is_control() || ":*?\"<>|".contains(c)),
+            part != ".." && !part.ends_with(['.', ' ']) && !part.chars().any(|c| c.is_control() || ":*?\"<>|".contains(c)),
             messages::SCHEMATIC_INVALID_PATH
         );
         path.push(part);
@@ -34,19 +27,14 @@ fn relative_path(name: &str) -> Result<PathBuf> {
 }
 
 fn in_rf(path: &Path) -> bool {
-    path.components().next().is_some_and(|part| {
-        part.as_os_str()
-            .to_string_lossy()
-            .eq_ignore_ascii_case("rf")
-    })
+    path.components()
+        .next()
+        .is_some_and(|part| part.as_os_str().to_string_lossy().eq_ignore_ascii_case("rf"))
 }
 
 fn within_root(root: &Path, path: &Path) -> Result<PathBuf> {
     let resolved = path.canonicalize()?;
-    ensure!(
-        resolved.starts_with(root),
-        messages::SCHEMATIC_PATH_OUTSIDE_FOLDER
-    );
+    ensure!(resolved.starts_with(root), messages::SCHEMATIC_PATH_OUTSIDE_FOLDER);
     Ok(resolved)
 }
 
@@ -60,9 +48,7 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
     // in filenames below it (rf/PM1 also finds rf/Gwiezdny@PM1-...schem).
     let (directory, needle) = query
         .rsplit_once('/')
-        .map_or(("", query.as_str()), |(_, needle)| {
-            (&query[..query.len() - needle.len()], needle)
-        });
+        .map_or(("", query.as_str()), |(_, needle)| (&query[..query.len() - needle.len()], needle));
     let mut folders = vec![root.to_path_buf()];
     let mut names = std::collections::BTreeSet::new();
     while let Some(folder) = folders.pop() {
@@ -77,9 +63,7 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
             } else if kind.is_file() {
                 let path = entry.path();
                 let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-                if !extension.eq_ignore_ascii_case("schem")
-                    && !extension.eq_ignore_ascii_case("schematic")
-                {
+                if !extension.eq_ignore_ascii_case("schem") && !extension.eq_ignore_ascii_case("schematic") {
                     continue;
                 }
                 let relative = path.strip_prefix(root)?;
@@ -110,10 +94,7 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
                 3
             } else {
                 let mut chars = filename.chars();
-                if needle
-                    .chars()
-                    .all(|ch| chars.by_ref().any(|next| next == ch))
-                {
+                if needle.chars().all(|ch| chars.by_ref().any(|next| next == ch)) {
                     4
                 } else {
                     return None;
@@ -123,11 +104,7 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
         })
         .collect();
     matches.sort();
-    Ok(matches
-        .into_iter()
-        .take(256)
-        .map(|(_, _, _, name)| name)
-        .collect())
+    Ok(matches.into_iter().take(256).map(|(_, _, _, name)| name).collect())
 }
 
 pub(super) fn load_path(root: &Path, name: &str) -> Result<PathBuf> {
@@ -162,19 +139,13 @@ pub(super) fn load_path(root: &Path, name: &str) -> Result<PathBuf> {
     match matches.len() {
         0 => Err(std::io::Error::from(std::io::ErrorKind::NotFound).into()),
         1 => Ok(matches.pop().unwrap()),
-        _ => bail!(messages::schematic_ambiguous_filename(
-            name,
-            matches[0].strip_prefix(&root)?.display()
-        )),
+        _ => bail!(messages::schematic_ambiguous_filename(name, matches[0].strip_prefix(&root)?.display())),
     }
 }
 
 pub(super) fn save_path(root: &Path, name: &str) -> Result<PathBuf> {
     let relative = relative_path(name)?;
-    ensure!(
-        !in_rf(&relative),
-        messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY
-    );
+    ensure!(!in_rf(&relative), messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY);
     fs::create_dir_all(root)?;
     let root = root.canonicalize()?;
     let mut ancestor = root.join(&relative);
@@ -184,12 +155,7 @@ pub(super) fn save_path(root: &Path, name: &str) -> Result<PathBuf> {
         match fs::symlink_metadata(&ancestor) {
             Ok(_) => break,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                suffix.push(
-                    ancestor
-                        .file_name()
-                        .context(messages::SCHEMATIC_INVALID_ANCESTOR)?
-                        .to_owned(),
-                );
+                suffix.push(ancestor.file_name().context(messages::SCHEMATIC_INVALID_ANCESTOR)?.to_owned());
                 ensure!(ancestor.pop(), messages::SCHEMATIC_INVALID_ANCESTOR);
             }
             Err(error) => return Err(error.into()),
@@ -199,16 +165,10 @@ pub(super) fn save_path(root: &Path, name: &str) -> Result<PathBuf> {
     for part in suffix.into_iter().rev() {
         resolved.push(part);
     }
-    ensure!(
-        !in_rf(resolved.strip_prefix(&root)?),
-        messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY
-    );
+    ensure!(!in_rf(resolved.strip_prefix(&root)?), messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY);
     // A link named otherwise may still point into the shared library.
     if let Ok(shared) = root.join("rf").canonicalize() {
-        ensure!(
-            !resolved.starts_with(shared),
-            messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY
-        );
+        ensure!(!resolved.starts_with(shared), messages::SCHEMATIC_SHARED_LIBRARY_READ_ONLY);
     }
     Ok(resolved)
 }
@@ -220,8 +180,7 @@ mod tests {
     struct Library(PathBuf);
     impl Library {
         fn new() -> Self {
-            let path = std::env::temp_dir()
-                .join(format!("mchprs-schematic-paths-{}", rand::random::<u64>()));
+            let path = std::env::temp_dir().join(format!("mchprs-schematic-paths-{}", rand::random::<u64>()));
             fs::create_dir_all(&path).unwrap();
             Self(path)
         }
@@ -249,14 +208,8 @@ mod tests {
             complete_names(&library.0, "MINE").unwrap(),
             ["local/Minesweeper.schematic", "rf/Q2CK_minesweeper.schem"]
         );
-        assert_eq!(
-            complete_names(&library.0, "rf\\q2ck").unwrap(),
-            ["rf/Q2CK_minesweeper.schem"]
-        );
-        assert_eq!(
-            complete_names(&library.0, "q2mn").unwrap(),
-            ["rf/Q2CK_minesweeper.schem"]
-        );
+        assert_eq!(complete_names(&library.0, "rf\\q2ck").unwrap(), ["rf/Q2CK_minesweeper.schem"]);
+        assert_eq!(complete_names(&library.0, "q2mn").unwrap(), ["rf/Q2CK_minesweeper.schem"]);
         assert_eq!(
             complete_names(&library.0, "local/").unwrap(),
             ["local/", "local/Minesweeper.schematic", "local/Other.schem"]
@@ -270,11 +223,7 @@ mod tests {
         for name in all.into_iter().filter(|name| !name.ends_with('/')) {
             assert!(load_path(&library.0, &name).is_ok());
         }
-        assert!(
-            complete_names(&library.0.join("missing"), "")
-                .unwrap()
-                .is_empty()
-        );
+        assert!(complete_names(&library.0.join("missing"), "").unwrap().is_empty());
     }
 
     #[test]
@@ -299,10 +248,7 @@ mod tests {
         ];
         assert_eq!(complete_names(&library.0, "rf/PM1").unwrap(), expected);
         assert_eq!(complete_names(&library.0, "RF\\pm1").unwrap(), expected);
-        assert_eq!(
-            complete_names(&library.0, "rf/deep/pm1").unwrap(),
-            ["rf/deep/Gwiezdny@PM1-OTHER.schem"]
-        );
+        assert_eq!(complete_names(&library.0, "rf/deep/pm1").unwrap(), ["rf/deep/Gwiezdny@PM1-OTHER.schem"]);
     }
 
     #[test]
@@ -312,10 +258,7 @@ mod tests {
             library.file(&format!("rf/build{i:03}.schem"));
         }
         library.file("z/needle.schem");
-        assert_eq!(
-            complete_names(&library.0, "NEEDLE").unwrap(),
-            ["z/needle.schem"]
-        );
+        assert_eq!(complete_names(&library.0, "NEEDLE").unwrap(), ["z/needle.schem"]);
         assert_eq!(complete_names(&library.0, "").unwrap().len(), 256);
     }
 
@@ -323,27 +266,12 @@ mod tests {
     fn recursive_loading_requires_an_unambiguous_name() {
         let library = Library::new();
         library.file("rf/deep/circuit.schem");
-        let expected = library
-            .0
-            .join("rf/deep/circuit.schem")
-            .canonicalize()
-            .unwrap();
+        let expected = library.0.join("rf/deep/circuit.schem").canonicalize().unwrap();
         assert_eq!(load_path(&library.0, "circuit.schem").unwrap(), expected);
-        assert_eq!(
-            load_path(&library.0, "./rf/deep/circuit.schem").unwrap(),
-            expected
-        );
-        assert_eq!(
-            load_path(&library.0, "rf\\deep\\circuit.schem").unwrap(),
-            expected
-        );
+        assert_eq!(load_path(&library.0, "./rf/deep/circuit.schem").unwrap(), expected);
+        assert_eq!(load_path(&library.0, "rf\\deep\\circuit.schem").unwrap(), expected);
         library.file("other/circuit.schem");
-        assert!(
-            load_path(&library.0, "circuit.schem")
-                .unwrap_err()
-                .to_string()
-                .contains("More than one")
-        );
+        assert!(load_path(&library.0, "circuit.schem").unwrap_err().to_string().contains("More than one"));
         library.file("circuit.schem");
         assert_eq!(
             load_path(&library.0, "circuit.schem").unwrap(),
@@ -377,30 +305,13 @@ mod tests {
     fn shared_schematics_cannot_be_created_or_overwritten() {
         let library = Library::new();
         library.file("rf/original.schem");
-        for name in [
-            "rf/original.schem",
-            "./rf/new.schem",
-            "RF/deep/new.schem",
-            "rf\\new.schem",
-        ] {
-            assert!(
-                save_path(&library.0, name)
-                    .unwrap_err()
-                    .to_string()
-                    .contains("read-only")
-            );
+        for name in ["rf/original.schem", "./rf/new.schem", "RF/deep/new.schem", "rf\\new.schem"] {
+            assert!(save_path(&library.0, name).unwrap_err().to_string().contains("read-only"));
         }
-        assert_eq!(
-            fs::read(library.0.join("rf/original.schem")).unwrap(),
-            b"original"
-        );
+        assert_eq!(fs::read(library.0.join("rf/original.schem")).unwrap(), b"original");
         assert!(!library.0.join("rf/new.schem").exists());
         assert!(!library.0.join("rf/deep").exists());
-        assert!(
-            save_path(&library.0, "my_builds/new.schem")
-                .unwrap()
-                .ends_with("my_builds/new.schem")
-        );
+        assert!(save_path(&library.0, "my_builds/new.schem").unwrap().ends_with("my_builds/new.schem"));
         for name in [
             "../outside.schem",
             "rf/../new.schem",
@@ -444,9 +355,6 @@ mod tests {
         assert!(load_path(&library.0, "escape/outside.schem").is_err());
         assert!(load_path(&library.0, "original.schem").is_ok());
         assert!(complete_names(&library.0, "outside").unwrap().is_empty());
-        assert_eq!(
-            complete_names(&library.0, "original").unwrap(),
-            ["rf/original.schem"]
-        );
+        assert_eq!(complete_names(&library.0, "original").unwrap(), ["rf/original.schem"]);
     }
 }

@@ -162,12 +162,6 @@ fn protocol_constants_match_python_generated_baseline() {
     assert_eq!(protocol::ITEM_COUNT, 1396);
     assert_eq!(protocol::COMPONENT_COUNT, 96);
     assert_eq!(protocol::PLAYER_ENTITY, 148);
-    assert_eq!(
-        protocol::TAGS,
-        include_bytes!("../../../mc_data/1.21.5/tags.bin")
-    );
-    assert_eq!(
-        protocol::REGISTRIES,
-        include_bytes!("../../../mc_data/1.21.5/registries.bin")
-    );
+    assert_eq!(protocol::TAGS, include_bytes!("../../../mc_data/1.21.5/tags.bin"));
+    assert_eq!(protocol::REGISTRIES, include_bytes!("../../../mc_data/1.21.5/registries.bin"));
 }

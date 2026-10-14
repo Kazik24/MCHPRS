@@ -46,14 +46,7 @@ fn future(world: &PlotWorld) -> InterpreterFuture {
         motions: state
             .motions
             .iter()
-            .map(|motion| {
-                (
-                    motion.pos,
-                    motion.progress,
-                    motion.previous_progress,
-                    motion.last_tick,
-                )
-            })
+            .map(|motion| (motion.pos, motion.progress, motion.previous_progress, motion.last_tick))
             .collect(),
     }
 }
@@ -89,20 +82,11 @@ fn host_protocols() -> Vec<Protocol> {
         .collect();
     protocols.push(Protocol {
         id: "toggle_before_acceptance",
-        actions: vec![
-            set(normal, true, use_input),
-            set(normal, false, use_input),
-            tick(4),
-        ],
+        actions: vec![set(normal, true, use_input), set(normal, false, use_input), tick(4)],
     });
     protocols.push(Protocol {
         id: "quasi_pulse",
-        actions: vec![
-            set(quasi, true, use_input),
-            tick(1),
-            set(quasi, false, use_input),
-            tick(5),
-        ],
+        actions: vec![set(quasi, true, use_input), tick(1), set(quasi, false, use_input), tick(5)],
     });
     protocols
 }
@@ -112,9 +96,7 @@ fn steps(fixture: &Fixture, protocol: &Protocol) -> Vec<Step> {
     let mut powered = [false, false];
     for action in &protocol.actions {
         match *action {
-            Action::SetControl {
-                input, powered: on, ..
-            } => {
+            Action::SetControl { input, powered: on, .. } => {
                 let (index, position) = match input {
                     Input::Normal => (0, fixture.normal),
                     Input::Quasi => (1, fixture.quasi),
@@ -170,9 +152,7 @@ fn with_observer(mut fixture: Fixture) -> Fixture {
             },
         },
     ));
-    fixture
-        .blocks
-        .push((observer.offset(side), Block::RedstoneLamp { lit: false }));
+    fixture.blocks.push((observer.offset(side), Block::RedstoneLamp { lit: false }));
     fixture
 }
 
@@ -185,12 +165,7 @@ struct Continuation {
 
 /// Run `steps[..cut]` through the public compiler, reset, and continue
 /// natively, comparing with an uninterrupted native run at every boundary.
-fn continue_after_reset(
-    fixture: &Fixture,
-    steps: &[Step],
-    cut: usize,
-    display: Display,
-) -> Result<Continuation, String> {
+fn continue_after_reset(fixture: &Fixture, steps: &[Step], cut: usize, display: Display) -> Result<Continuation, String> {
     let mut expected = load_fixture(fixture);
     let mut world = load_fixture(fixture);
     let options = CompilerOptions {
@@ -222,9 +197,7 @@ fn continue_after_reset(
     for boundary in cut..=steps.len() {
         let (native, resumed) = (future(&expected), future(&world));
         if native != resumed {
-            return Err(format!(
-                "cut {cut}, boundary {boundary}: expected {native:?}; resumed {resumed:?}"
-            ));
+            return Err(format!("cut {cut}, boundary {boundary}: expected {native:?}; resumed {resumed:?}"));
         }
         if let Some(&step) = steps.get(boundary) {
             native_step(&mut expected, step);
@@ -260,9 +233,7 @@ fn run_campaign(fixtures: &[Fixture], display: Display) -> (CampaignCoverage, Ve
                         coverage.piston_actions += result.counts.piston_actions;
                         coverage.callbacks += result.counts.callbacks;
                     }
-                    Err(error) => {
-                        failures.push(format!("{:?}/{}: {error}", fixture.template, protocol.id))
-                    }
+                    Err(error) => failures.push(format!("{:?}/{}: {error}", fixture.template, protocol.id)),
                 }
             }
         }
@@ -294,10 +265,7 @@ fn reset_at_every_host_boundary_continues_like_uninterrupted_native_execution() 
 
 #[test]
 fn reset_preserves_ordinary_scheduled_work_beside_pending_transitions() {
-    let fixtures: Vec<_> = templates()
-        .into_iter()
-        .map(|template| with_observer(fixture(template)))
-        .collect();
+    let fixtures: Vec<_> = templates().into_iter().map(|template| with_observer(fixture(template))).collect();
     let (coverage, failures) = run_campaign(&fixtures, Display::Full);
     report("observer continuation", &coverage, &failures);
     assert!(coverage.pending_tick_cuts > 0);
@@ -307,9 +275,7 @@ fn reset_preserves_ordinary_scheduled_work_beside_pending_transitions() {
 fn suppressed_display_does_not_change_execution_or_continuation() {
     let fixtures: Vec<_> = templates()
         .into_iter()
-        .filter(|template| {
-            template.facing == BlockFacing::East || template.facing == BlockFacing::Up
-        })
+        .filter(|template| template.facing == BlockFacing::East || template.facing == BlockFacing::Up)
         .map(|template| with_observer(fixture(template)))
         .collect();
     for display in [Display::IoOnly, Display::Suppressed] {
@@ -320,21 +286,10 @@ fn suppressed_display_does_not_change_execution_or_continuation() {
     for fixture in &fixtures {
         for protocol in host_protocols() {
             let steps = steps(fixture, &protocol);
-            let counts = [Display::Full, Display::IoOnly, Display::Suppressed].map(|display| {
-                continue_after_reset(fixture, &steps, steps.len(), display)
-                    .unwrap()
-                    .counts
-            });
-            assert_eq!(
-                counts[0], counts[1],
-                "{:?}/{}",
-                fixture.template, protocol.id
-            );
-            assert_eq!(
-                counts[0], counts[2],
-                "{:?}/{}",
-                fixture.template, protocol.id
-            );
+            let counts = [Display::Full, Display::IoOnly, Display::Suppressed]
+                .map(|display| continue_after_reset(fixture, &steps, steps.len(), display).unwrap().counts);
+            assert_eq!(counts[0], counts[1], "{:?}/{}", fixture.template, protocol.id);
+            assert_eq!(counts[0], counts[2], "{:?}/{}", fixture.template, protocol.id);
         }
     }
 }
@@ -367,10 +322,7 @@ fn pending_extension_projects_motions_from_logical_state_only() {
 
     backend.reset(&mut world);
     let projected = future(&world);
-    eprintln!(
-        "projection: motions={:?} entities={:?}",
-        projected.motions, projected.entities
-    );
+    eprintln!("projection: motions={:?} entities={:?}", projected.motions, projected.entities);
     assert_eq!(projected, future(&expected));
     for _ in 0..4 {
         native_step(&mut expected, Step::Tick);

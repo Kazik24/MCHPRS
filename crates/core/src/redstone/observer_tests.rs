@@ -6,9 +6,7 @@ use mchprs_blocks::blocks::RedstoneObserver;
 #[test]
 fn dust_shape_notifies_its_observer_but_not_one_watching_an_unchanged_neighbor() {
     use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     let dust = BlockPos::new(40, 30, 40);
     let source = dust.offset(BlockFace::North);
@@ -33,22 +31,13 @@ fn dust_shape_notifies_its_observer_but_not_one_watching_an_unchanged_neighbor()
         world.set_block(
             pos,
             Block::Observer {
-                observer: RedstoneObserver {
-                    facing,
-                    powered: false,
-                },
+                observer: RedstoneObserver { facing, powered: false },
             },
         );
     }
     crate::interaction::destroy(world.get_block(source), &mut world, source);
-    assert!(
-        world.pending_tick_at(direct),
-        "the observed dust shape changed"
-    );
-    assert!(
-        !world.pending_tick_at(indirect),
-        "the observed stone did not change"
-    );
+    assert!(world.pending_tick_at(direct), "the observed dust shape changed");
+    assert!(!world.pending_tick_at(indirect), "the observed stone did not change");
     assert_eq!(world.get_block(watched), Block::Stone {});
     for _ in 0..2 {
         world.tick_interpreted();
@@ -62,9 +51,7 @@ fn observer_power_direction_matches_conduction_and_piston_inputs() {
     for facing in BlockFace::values() {
         for powered in [false, true] {
             for side in BlockFace::values() {
-                let chunks = (0..PLOT_WIDTH)
-                    .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-                    .collect();
+                let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
                 let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
                 let observer_pos = BlockPos::new(40, 30, 40);
                 let observer = Block::Observer {
@@ -74,10 +61,7 @@ fn observer_power_direction_matches_conduction_and_piston_inputs() {
                     },
                 };
                 let expected = if powered && facing == side { 15 } else { 0 };
-                assert_eq!(
-                    get_weak_power(observer, &world, observer_pos, side, false),
-                    expected
-                );
+                assert_eq!(get_weak_power(observer, &world, observer_pos, side, false), expected);
                 assert_eq!(
                     get_strong_power(observer, &world, observer_pos, side, false),
                     expected,

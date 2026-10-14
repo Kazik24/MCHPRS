@@ -26,11 +26,7 @@ impl TickIndex {
         self.dirty = true;
     }
 
-    pub fn contains(
-        &mut self,
-        scheduler: &TickScheduler<ScheduledBlockTick>,
-        tick: ScheduledBlockTick,
-    ) -> bool {
+    pub fn contains(&mut self, scheduler: &TickScheduler<ScheduledBlockTick>, tick: ScheduledBlockTick) -> bool {
         if self.dirty {
             self.pending.clear();
             for (&node, _, _) in scheduler.iter() {
@@ -85,12 +81,7 @@ impl PistonIndex {
         self.events_dirty = true;
     }
 
-    pub fn motion(
-        &mut self,
-        state: &PistonState,
-        pos: BlockPos,
-        identity: Option<u64>,
-    ) -> Option<usize> {
+    pub fn motion(&mut self, state: &PistonState, pos: BlockPos, identity: Option<u64>) -> Option<usize> {
         // Tiny banks are cheaper to scan than to hash. Keep the derived index
         // dirty until a larger bank actually needs it.
         if state.motions.len() <= 8 {
@@ -121,9 +112,7 @@ impl PistonIndex {
         if state.motions.front().is_some_and(|m| m.pos == pos) {
             // Most completions consume the ordered front. Its old hash-map
             // index may have shifted after earlier removals in this phase.
-            return identity
-                .is_none_or(|id| state.motions[0].identity == id)
-                .then_some(0);
+            return identity.is_none_or(|id| state.motions[0].identity == id).then_some(0);
         }
         let mut i = *self.motions.get(&pos)?;
         // Ordered removal shifts logical indices. Repair only the queried entry;
@@ -132,9 +121,7 @@ impl PistonIndex {
             i = state.motions.iter().position(|m| m.pos == pos)?;
             self.motions.insert(pos, i);
         }
-        identity
-            .is_none_or(|id| state.motions[i].identity == id)
-            .then_some(i)
+        identity.is_none_or(|id| state.motions[i].identity == id).then_some(i)
     }
 
     pub fn inserted(&mut self, pos: BlockPos, i: usize) {
@@ -218,14 +205,8 @@ mod tests {
             pos: BlockPos::new(1, 2, 3),
             block_type: Some(1),
         };
-        let b = ScheduledBlockTick {
-            block_type: Some(2),
-            ..a
-        };
-        let legacy = ScheduledBlockTick {
-            block_type: None,
-            ..a
-        };
+        let b = ScheduledBlockTick { block_type: Some(2), ..a };
+        let legacy = ScheduledBlockTick { block_type: None, ..a };
         for turn in 0..70 {
             for (node, delay, priority) in [
                 (a, 0, TickPriority::NanoTick),
@@ -241,10 +222,7 @@ mod tests {
             while let Some(node) = scheduler.this_tick().pop_first() {
                 index.popped(node);
                 for queried in [a, b, legacy] {
-                    assert_eq!(
-                        index.contains(&scheduler, queried),
-                        scheduler.contains(&queried)
-                    );
+                    assert_eq!(index.contains(&scheduler, queried), scheduler.contains(&queried));
                 }
             }
             if turn == 35 {
@@ -270,18 +248,14 @@ mod tests {
     fn wrapped_motion_deque_keeps_vec_save_bytes_and_order() {
         let mut state = PistonState::default();
         for i in 0..20 {
-            state
-                .motions
-                .push_back(motion(BlockPos::new(i, 1, 1), i as u64));
+            state.motions.push_back(motion(BlockPos::new(i, 1, 1), i as u64));
         }
         for _ in 0..state.motions.capacity() - 5 {
             let m = state.motions.pop_front().unwrap();
             state.motions.push_back(m);
         }
         assert!(!state.motions.as_slices().1.is_empty());
-        state.motions[0].carried_entity = Some(Box::new(
-            mchprs_blocks::block_entities::BlockEntity::Comparator { output_strength: 7 },
-        ));
+        state.motions[0].carried_entity = Some(Box::new(mchprs_blocks::block_entities::BlockEntity::Comparator { output_strength: 7 }));
         state.logical_tick = 40;
         state.phase = mchprs_world::AdvancePhase::MovingEntities;
         state.scheduled_advanced = true;
@@ -309,17 +283,13 @@ mod tests {
     fn ordered_removals_replacements_and_external_mutations_match_linear_lookup() {
         let mut s = PistonState::default();
         for i in 0..100 {
-            s.motions
-                .push_back(motion(BlockPos::new(i, 1, 1), i as u64));
+            s.motions.push_back(motion(BlockPos::new(i, 1, 1), i as u64));
         }
         let mut cache = PistonIndex::default();
         for removed in [33, 0, 99, 47, 4] {
             for i in 0..100 {
                 let pos = BlockPos::new(i, 1, 1);
-                assert_eq!(
-                    cache.motion(&s, pos, Some(i as u64)),
-                    s.motions.iter().position(|m| m.pos == pos)
-                );
+                assert_eq!(cache.motion(&s, pos, Some(i as u64)), s.motions.iter().position(|m| m.pos == pos));
             }
             let pos = BlockPos::new(removed, 1, 1);
             s.motions.retain(|m| m.pos != pos);
@@ -366,8 +336,7 @@ mod tests {
             motions: vec![motion(pos, 1), motion(pos, 2)].into(),
             ..Default::default()
         };
-        s.motions
-            .extend((0..9).map(|i| motion(BlockPos::new(i, 3, 4), i as u64 + 3)));
+        s.motions.extend((0..9).map(|i| motion(BlockPos::new(i, 3, 4), i as u64 + 3)));
         let e = PistonEvent {
             pos,
             sticky: true,

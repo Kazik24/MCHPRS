@@ -61,38 +61,21 @@ impl std::fmt::Display for CompileError {
 
 impl std::error::Error for CompileError {}
 
-fn graph_preparation_error(
-    error: passes::rich::PreparationError,
-    monitor: &TaskMonitor,
-) -> CompileError {
+fn graph_preparation_error(error: passes::rich::PreparationError, monitor: &TaskMonitor) -> CompileError {
     let error = match error {
-        passes::rich::PreparationError::Analysis(error) => {
-            backend::graph::GraphBackendError::Analysis(error)
-        }
-        passes::rich::PreparationError::Geometry(error) => {
-            backend::graph::GraphBackendError::Geometry(error)
-        }
-        passes::rich::PreparationError::Electrical(error) => {
-            backend::graph::GraphBackendError::Electrical(error)
-        }
-        passes::rich::PreparationError::Callbacks(error) => {
-            backend::graph::GraphBackendError::Callbacks(error)
-        }
+        passes::rich::PreparationError::Analysis(error) => backend::graph::GraphBackendError::Analysis(error),
+        passes::rich::PreparationError::Geometry(error) => backend::graph::GraphBackendError::Geometry(error),
+        passes::rich::PreparationError::Electrical(error) => backend::graph::GraphBackendError::Electrical(error),
+        passes::rich::PreparationError::Callbacks(error) => backend::graph::GraphBackendError::Callbacks(error),
     };
     graph_backend_error(error, monitor)
 }
 
 fn graph_pipeline_error(error: passes::PassPipelineError, monitor: &TaskMonitor) -> CompileError {
-    graph_backend_error(
-        backend::graph::GraphBackendError::PassPipeline(error),
-        monitor,
-    )
+    graph_backend_error(backend::graph::GraphBackendError::PassPipeline(error), monitor)
 }
 
-fn graph_backend_error(
-    error: backend::graph::GraphBackendError,
-    monitor: &TaskMonitor,
-) -> CompileError {
+fn graph_backend_error(error: backend::graph::GraphBackendError, monitor: &TaskMonitor) -> CompileError {
     if monitor.cancelled() {
         CompileError::Cancelled
     } else {
@@ -216,6 +199,10 @@ pub struct GraphCallbackProfile {
     pub piston_samples_skipped_base_pending: u64,
     /// Number of ordered Turbo route candidate searches.
     pub turbo_route_lookups: u64,
+    /// Number of Turbo searches served by a per-wire target index.
+    pub turbo_indexed_lookups: u64,
+    /// Number of Turbo searches that used the general linear route scan.
+    pub turbo_fallback_lookups: u64,
     /// Number of candidate delivery rows inspected across Turbo searches.
     pub turbo_candidate_entries_scanned: u64,
     /// Inspected Turbo rows whose target matched the requested site.
@@ -249,17 +236,11 @@ impl GraphCallbackProfile {
         "unclassified",
     ];
 
-    pub const PHASES: [&'static str; 4] = [
-        "other",
-        "scheduled_ticks",
-        "piston_actions",
-        "deferred_connections",
-    ];
+    pub const PHASES: [&'static str; 4] = ["other", "scheduled_ticks", "piston_actions", "deferred_connections"];
 
     pub const GUARD_KINDS: [&'static str; 6] = ["always", "state", "site", "not", "all", "any"];
 
-    pub const RECEIVER_FAMILIES: [&'static str; 4] =
-        ["component", "piston_base", "piston_head", "contact"];
+    pub const RECEIVER_FAMILIES: [&'static str; 4] = ["component", "piston_base", "piston_head", "contact"];
 
     pub const DELIVERY_KINDS: [&'static str; 2] = ["update", "shape"];
 
@@ -282,42 +263,19 @@ impl GraphCallbackProfile {
         let delta = |after: u64, prior: u64| after.saturating_sub(prior);
         Self {
             route_calls: delta(self.route_calls, before.route_calls),
-            route_calls_by_role: std::array::from_fn(|index| {
-                delta(
-                    self.route_calls_by_role[index],
-                    before.route_calls_by_role[index],
-                )
-            }),
-            delivery_records_examined: delta(
-                self.delivery_records_examined,
-                before.delivery_records_examined,
-            ),
+            route_calls_by_role: std::array::from_fn(|index| delta(self.route_calls_by_role[index], before.route_calls_by_role[index])),
+            delivery_records_examined: delta(self.delivery_records_examined, before.delivery_records_examined),
             delivery_records_by_role: std::array::from_fn(|index| {
-                delta(
-                    self.delivery_records_by_role[index],
-                    before.delivery_records_by_role[index],
-                )
+                delta(self.delivery_records_by_role[index], before.delivery_records_by_role[index])
             }),
             guard_roots_evaluated: delta(self.guard_roots_evaluated, before.guard_roots_evaluated),
             guard_operations_by_kind: std::array::from_fn(|index| {
-                delta(
-                    self.guard_operations_by_kind[index],
-                    before.guard_operations_by_kind[index],
-                )
+                delta(self.guard_operations_by_kind[index], before.guard_operations_by_kind[index])
             }),
             guard_failures: delta(self.guard_failures, before.guard_failures),
-            missing_captured_guard_operands: delta(
-                self.missing_captured_guard_operands,
-                before.missing_captured_guard_operands,
-            ),
-            missing_captured_delivery_operands: delta(
-                self.missing_captured_delivery_operands,
-                before.missing_captured_delivery_operands,
-            ),
-            deliveries_without_effective_receiver: delta(
-                self.deliveries_without_effective_receiver,
-                before.deliveries_without_effective_receiver,
-            ),
+            missing_captured_guard_operands: delta(self.missing_captured_guard_operands, before.missing_captured_guard_operands),
+            missing_captured_delivery_operands: delta(self.missing_captured_delivery_operands, before.missing_captured_delivery_operands),
+            deliveries_without_effective_receiver: delta(self.deliveries_without_effective_receiver, before.deliveries_without_effective_receiver),
             dispatches_by_receiver_and_kind: std::array::from_fn(|family| {
                 std::array::from_fn(|kind| {
                     delta(
@@ -335,39 +293,20 @@ impl GraphCallbackProfile {
                 })
             }),
             handler_invocations_by_family: std::array::from_fn(|index| {
-                delta(
-                    self.handler_invocations_by_family[index],
-                    before.handler_invocations_by_family[index],
-                )
+                delta(self.handler_invocations_by_family[index], before.handler_invocations_by_family[index])
             }),
-            component_state_changes: delta(
-                self.component_state_changes,
-                before.component_state_changes,
-            ),
-            tick_schedule_attempts: delta(
-                self.tick_schedule_attempts,
-                before.tick_schedule_attempts,
-            ),
+            component_state_changes: delta(self.component_state_changes, before.component_state_changes),
+            tick_schedule_attempts: delta(self.tick_schedule_attempts, before.tick_schedule_attempts),
             newly_scheduled_ticks: delta(self.newly_scheduled_ticks, before.newly_scheduled_ticks),
-            piston_samples_skipped_base_pending: delta(
-                self.piston_samples_skipped_base_pending,
-                before.piston_samples_skipped_base_pending,
-            ),
+            piston_samples_skipped_base_pending: delta(self.piston_samples_skipped_base_pending, before.piston_samples_skipped_base_pending),
             turbo_route_lookups: delta(self.turbo_route_lookups, before.turbo_route_lookups),
-            turbo_candidate_entries_scanned: delta(
-                self.turbo_candidate_entries_scanned,
-                before.turbo_candidate_entries_scanned,
-            ),
-            turbo_target_entries_scanned: delta(
-                self.turbo_target_entries_scanned,
-                before.turbo_target_entries_scanned,
-            ),
+            turbo_indexed_lookups: delta(self.turbo_indexed_lookups, before.turbo_indexed_lookups),
+            turbo_fallback_lookups: delta(self.turbo_fallback_lookups, before.turbo_fallback_lookups),
+            turbo_candidate_entries_scanned: delta(self.turbo_candidate_entries_scanned, before.turbo_candidate_entries_scanned),
+            turbo_target_entries_scanned: delta(self.turbo_target_entries_scanned, before.turbo_target_entries_scanned),
             turbo_lookup_failures: delta(self.turbo_lookup_failures, before.turbo_lookup_failures),
             turbo_first_matches: delta(self.turbo_first_matches, before.turbo_first_matches),
-            turbo_wire_node_evaluations: delta(
-                self.turbo_wire_node_evaluations,
-                before.turbo_wire_node_evaluations,
-            ),
+            turbo_wire_node_evaluations: delta(self.turbo_wire_node_evaluations, before.turbo_wire_node_evaluations),
             route_calls_by_phase_and_role: std::array::from_fn(|phase| {
                 std::array::from_fn(|role| {
                     delta(
@@ -396,8 +335,6 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Adds certified dust-path contraction to the O1 pass set for review and measurement.
-    pub experimental_dust_paths: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
@@ -411,7 +348,6 @@ impl Default for CompilerOptions {
         Self {
             budget_multiplier: 0,
             optimization_level: Some(0),
-            experimental_dust_paths: false,
             io_only: false,
             update: false,
         }
@@ -422,10 +358,7 @@ impl CompilerOptions {
     pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
         let mut options = Self::default();
         for option in flags.split_whitespace() {
-            if let Some(level) = option
-                .strip_prefix("-O")
-                .or_else(|| option.strip_prefix("-o"))
-            {
+            if let Some(level) = option.strip_prefix("-O").or_else(|| option.strip_prefix("-o")) {
                 options.optimization_level = if level.is_empty() {
                     None
                 } else {
@@ -433,9 +366,7 @@ impl CompilerOptions {
                         .parse::<usize>()
                         .map_err(|_| format!("Invalid Redpiler optimization level: {option}"))?;
                     if level > MAX_OPTIMIZATION_LEVEL {
-                        return Err(format!(
-                            "Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"
-                        ));
+                        return Err(format!("Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"));
                     }
                     Some(level)
                 };
@@ -444,7 +375,6 @@ impl CompilerOptions {
             if option.starts_with("--") {
                 match option {
                     "--optimize" => options.optimization_level = None,
-                    "--experimental-dust-paths" => options.experimental_dust_paths = true,
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
                     _ => return Err(format!("Unrecognized Redpiler option: {option}")),
@@ -460,13 +390,11 @@ impl CompilerOptions {
                             options.optimization_level = if level.is_empty() {
                                 None
                             } else {
-                                let level = level.parse::<usize>().map_err(|_| {
-                                    format!("Invalid Redpiler optimization level: {option}")
-                                })?;
+                                let level = level
+                                    .parse::<usize>()
+                                    .map_err(|_| format!("Invalid Redpiler optimization level: {option}"))?;
                                 if level > MAX_OPTIMIZATION_LEVEL {
-                                    return Err(format!(
-                                        "Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"
-                                    ));
+                                    return Err(format!("Redpiler supports optimization levels 0 through {MAX_OPTIMIZATION_LEVEL}"));
                                 }
                                 Some(level)
                             };
@@ -551,23 +479,19 @@ impl GraphStatistics {
         if let (Some(before), Some(after)) = (self.baseline(), self.final_graph()) {
             lines.push(format!(
                 "Graph after required preparation: {} nodes / {} links; after passes: {} nodes / {} links (change {:+} nodes / {:+} links)",
-                before.nodes, before.links, after.nodes, after.links,
+                before.nodes,
+                before.links,
+                after.nodes,
+                after.links,
                 after.nodes as i128 - before.nodes as i128,
                 after.links as i128 - before.links as i128,
             ));
             lines.push("Construction: all parsed wire nodes are retained.".into());
         }
         if let Some(stage) = self.preparation_tables.last().map(|table| table.stage) {
-            let mut tables: Vec<_> = self
-                .preparation_tables
-                .iter()
-                .filter(|table| table.stage == stage)
-                .collect();
+            let mut tables: Vec<_> = self.preparation_tables.iter().filter(|table| table.stage == stage).collect();
             tables.sort_by_key(|table| std::cmp::Reverse(table.estimated_bytes));
-            let estimate = tables
-                .iter()
-                .map(|table| table.estimated_bytes)
-                .sum::<usize>();
+            let estimate = tables.iter().map(|table| table.estimated_bytes).sum::<usize>();
             let largest = tables
                 .iter()
                 .take(3)
@@ -587,11 +511,7 @@ impl GraphStatistics {
                 estimate as f64 / (1024.0 * 1024.0),
             ));
         }
-        let enabled = self
-            .transformations
-            .iter()
-            .filter(|pass| pass.enabled)
-            .count();
+        let enabled = self.transformations.iter().filter(|pass| pass.enabled).count();
         let skipped = self.transformations.len() - enabled;
         lines.push(if self.transformations.is_empty() {
             "Transformations: none configured.".into()
@@ -733,16 +653,8 @@ impl Compiler {
         monitor.clear_graph_statistics();
         monitor.set_budget_multiplier(options.budget_multiplier);
         let backend_start = Instant::now();
-        let (backend, analysis_duration) =
-            Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?;
-        self.publish(
-            backend,
-            options,
-            &monitor,
-            start,
-            analysis_duration,
-            backend_start,
-        )
+        let (backend, analysis_duration) = Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?;
+        self.publish(backend, options, &monitor, start, analysis_duration, backend_start)
     }
 
     fn prepare_graph_backend<W: World>(
@@ -754,24 +666,16 @@ impl Compiler {
         graph_pipeline: Option<passes::PassPipeline>,
     ) -> Result<(Runtime, Duration), CompileError> {
         let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
-        let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits)
-            .map_err(|error| graph_preparation_error(error, monitor))?;
+        let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits).map_err(|error| graph_preparation_error(error, monitor))?;
         let analysis_duration = prepared.analysis_duration;
         let pipeline = graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(options));
-        passes::run_graph_pipeline(
-            &mut prepared.graph,
-            options,
-            &prepared.entry,
-            &pipeline,
-            monitor,
-        )
-        .map_err(|error| graph_pipeline_error(error, monitor))?;
+        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, monitor)
+            .map_err(|error| graph_pipeline_error(error, monitor))?;
         prepared.finish_pipeline_statistics(monitor);
-        let lowered = prepared.lower(&monitor).map_err(|error| {
-            graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor)
-        })?;
-        let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor)
-            .map_err(|error| graph_backend_error(error, monitor))?;
+        let lowered = prepared
+            .lower(&monitor)
+            .map_err(|error| graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor))?;
+        let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor).map_err(|error| graph_backend_error(error, monitor))?;
         Ok((Runtime::Graph(Box::new(backend)), analysis_duration))
     }
 
@@ -823,9 +727,7 @@ impl Compiler {
     }
 
     fn backend(&mut self) -> &mut Runtime {
-        self.backend
-            .as_mut()
-            .expect("tried to get redpiler backend when inactive")
+        self.backend.as_mut().expect("tried to get redpiler backend when inactive")
     }
 
     pub fn tick(&mut self) -> Result<(), GraphExecutionError> {
@@ -892,9 +794,7 @@ mod tests {
                 world.set_block(
                     head,
                     if extended {
-                        Block::PistonHead {
-                            head: piston.into(),
-                        }
+                        Block::PistonHead { head: piston.into() }
                     } else {
                         Block::Air
                     },
@@ -905,23 +805,15 @@ mod tests {
                         ..Default::default()
                     };
                     let mut compiler = Compiler::default();
-                    compiler
-                        .compile(&world, bounds, options, vec![], Arc::default())
-                        .unwrap();
+                    compiler.compile(&world, bounds, options, vec![], Arc::default()).unwrap();
                     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
                     assert_eq!(compiler.stats().unwrap().backend, BackendKind::Graph);
                     compiler.tick().unwrap();
                     assert_eq!(compiler.graph_execution_counts().unwrap().ticks, 1);
                     compiler.reset(&mut world, bounds);
                     assert_eq!(world.get_block(pos), Block::Piston { piston });
-                    let candidate = analysis::graph::prepare_candidate_graph(
-                        &world,
-                        bounds,
-                        &[],
-                        &CompilerOptions::default(),
-                        Arc::default(),
-                    )
-                    .unwrap();
+                    let candidate =
+                        analysis::graph::prepare_candidate_graph(&world, bounds, &[], &CompilerOptions::default(), Arc::default()).unwrap();
                     assert!(candidate.summary().nodes > 0);
                 }
             }
@@ -966,8 +858,7 @@ mod tests {
         let base = BlockPos::new(4, 20, 4);
         let repeater = BlockPos::new(10, 20, 10);
         let build = |payload: Block| {
-            let mut world =
-                PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+            let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
             world.set_block(
                 base,
                 Block::Piston {
@@ -1000,13 +891,7 @@ mod tests {
         let mut scratch = build(Block::RedstoneBlock);
         let ticks = scratch.scheduler().iter_entries().collect();
         compiler
-            .compile(
-                &scratch,
-                bounds,
-                CompilerOptions::default(),
-                ticks,
-                Arc::default(),
-            )
+            .compile(&scratch, bounds, CompilerOptions::default(), ticks, Arc::default())
             .unwrap();
         assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
         let published = compiler.stats().unwrap().total_duration;
@@ -1015,37 +900,25 @@ mod tests {
         let cancelled = Arc::new(TaskMonitor::default());
         cancelled.cancel();
         let cases: [(&str, &PlotWorld, CompilerOptions, Arc<TaskMonitor>); 2] = [
-            (
-                "moved observer",
-                &moved_observer,
-                CompilerOptions::default(),
-                Arc::default(),
-            ),
+            ("moved observer", &moved_observer, CompilerOptions::default(), Arc::default()),
             ("cancelled", &world, CompilerOptions::default(), cancelled),
         ];
         for (name, input, options, monitor) in cases {
             let before = interpreter_snapshot(input, bounds);
             let ticks = input.scheduler().iter_entries().collect();
-            let error = compiler
-                .compile(input, bounds, options, ticks, monitor)
-                .unwrap_err();
+            let error = compiler.compile(input, bounds, options, ticks, monitor).unwrap_err();
             eprintln!("{name}: {error}");
             match name {
                 "moved observer" => assert!(matches!(error, CompileError::RichGraph(_))),
                 "cancelled" => assert!(matches!(
                     error,
-                    CompileError::Cancelled
-                        | CompileError::Analysis(analysis::AnalysisError::Cancelled)
+                    CompileError::Cancelled | CompileError::Analysis(analysis::AnalysisError::Cancelled)
                 )),
                 _ => unreachable!(),
             }
             assert!(!compiler.is_active(), "{name}");
             assert!(compiler.current_flags().is_none(), "{name}");
-            assert_eq!(
-                compiler.stats().unwrap().total_duration,
-                published,
-                "{name}"
-            );
+            assert_eq!(compiler.stats().unwrap().total_duration, published, "{name}");
             assert_eq!(interpreter_snapshot(input, bounds), before, "{name}");
         }
     }
@@ -1055,7 +928,6 @@ mod tests {
         let input = "-iO0 -U";
         let expected_options = CompilerOptions {
             budget_multiplier: 0,
-            experimental_dust_paths: false,
             io_only: true,
             optimization_level: Some(0),
             update: true,
@@ -1063,9 +935,6 @@ mod tests {
         let options = CompilerOptions::parse(input).unwrap();
 
         assert_eq!(options, expected_options);
-        let dust_options = CompilerOptions::parse("-O1 --experimental-dust-paths").unwrap();
-        assert_eq!(dust_options.optimization_level, Some(1));
-        assert!(dust_options.experimental_dust_paths);
     }
 
     #[test]
@@ -1094,23 +963,11 @@ mod tests {
         let mut compiler = Compiler::default();
         assert!(compiler.stats().is_none());
         compiler
-            .compile(
-                &world,
-                bounds,
-                CompilerOptions::default(),
-                Vec::new(),
-                Arc::default(),
-            )
+            .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::default())
             .unwrap();
         let statistics = compiler.stats().unwrap();
         assert!(!statistics.graph.passes.is_empty());
-        assert!(
-            statistics
-                .graph
-                .transformations
-                .iter()
-                .all(|pass| !pass.enabled)
-        );
+        assert!(statistics.graph.transformations.iter().all(|pass| !pass.enabled));
         assert_eq!(statistics.graph.baseline(), statistics.graph.final_graph());
         assert!(statistics.backend_nodes > 0);
         let total_duration = statistics.total_duration;
@@ -1119,13 +976,7 @@ mod tests {
         cancelled.cancel();
         assert!(
             compiler
-                .compile(
-                    &world,
-                    bounds,
-                    CompilerOptions::default(),
-                    Vec::new(),
-                    cancelled
-                )
+                .compile(&world, bounds, CompilerOptions::default(), Vec::new(), cancelled)
                 .is_err()
         );
         assert_eq!(compiler.stats().unwrap().total_duration, total_duration);

@@ -4,10 +4,7 @@ use anyhow::{Result, ensure};
 use mchprs_blocks::block_entities::BlockEntity;
 
 pub(super) fn check_entity(entity: &BlockEntity) -> Result<()> {
-    ensure!(
-        bincode::serialized_size(entity)? <= 256 * 1024,
-        messages::GIT_ENTITY_SIZE_LIMIT
-    );
+    ensure!(bincode::serialized_size(entity)? <= 256 * 1024, messages::GIT_ENTITY_SIZE_LIMIT);
     if let BlockEntity::Container { inventory, .. } = entity {
         for entry in inventory {
             if let Some(bytes) = &entry.nbt {
@@ -54,10 +51,7 @@ impl<'a> NbtReader<'a> {
     }
 
     fn payload(&mut self, tag: u8, depth: usize) -> Result<()> {
-        ensure!(
-            depth < 64 && self.tags > 0,
-            messages::GIT_NBT_RESOURCE_LIMIT
-        );
+        ensure!(depth < 64 && self.tags > 0, messages::GIT_NBT_RESOURCE_LIMIT);
         self.tags -= 1;
         match tag {
             1..=6 => {
@@ -70,10 +64,7 @@ impl<'a> NbtReader<'a> {
                     11 => 4,
                     _ => 8,
                 };
-                ensure!(
-                    count <= self.bytes.len() / width,
-                    messages::GIT_NBT_RESOURCE_LIMIT
-                );
+                ensure!(count <= self.bytes.len() / width, messages::GIT_NBT_RESOURCE_LIMIT);
                 self.take(count * width)?;
             }
             8 => self.string()?,
@@ -81,10 +72,7 @@ impl<'a> NbtReader<'a> {
                 let element = self.take(1)?[0];
                 let count = self.count()?;
                 ensure!(
-                    element <= 12
-                        && (element != 0 || count == 0)
-                        && count <= self.tags
-                        && count <= self.bytes.len(),
+                    element <= 12 && (element != 0 || count == 0) && count <= self.tags && count <= self.bytes.len(),
                     messages::GIT_NBT_RESOURCE_LIMIT
                 );
                 for _ in 0..count {

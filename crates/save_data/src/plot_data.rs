@@ -137,10 +137,7 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
         for chunk in &self.chunk_data {
             for section in chunk.sections.iter().flatten() {
                 let bits = section.bits_per_block;
-                if !((4..=8).contains(&bits) || bits == 15)
-                    || section.entries != 4096
-                    || !(0..=4096).contains(&section.block_count)
-                {
+                if !((4..=8).contains(&bits) || bits == 15) || section.entries != 4096 || !(0..=4096).contains(&section.block_count) {
                     return Err(invalid("invalid section geometry or block count"));
                 }
                 let per = 64 / bits as usize;
@@ -150,19 +147,13 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
                 if bits < 9
                     && (section.palette.is_empty()
                         || section.palette.len() > 1usize << bits
-                        || section
-                            .palette
-                            .iter()
-                            .any(|id| *id < 0 || *id as u32 >= states))
+                        || section.palette.iter().any(|id| *id < 0 || *id as u32 >= states))
                 {
                     return Err(invalid("invalid section palette"));
                 }
                 for i in 0..4096 {
-                    let value = ((section.data[i / per] as u64 >> ((i % per) * bits as usize))
-                        & ((1 << bits) - 1)) as usize;
-                    if (bits < 9 && value >= section.palette.len())
-                        || (bits == 15 && value >= states as usize)
-                    {
+                    let value = ((section.data[i / per] as u64 >> ((i % per) * bits as usize)) & ((1 << bits) - 1)) as usize;
+                    if (bits < 9 && value >= section.palette.len()) || (bits == 15 && value >= states as usize) {
                         return Err(invalid("invalid packed section entry"));
                     }
                 }
@@ -173,9 +164,7 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
                 }
                 match entity {
                     BlockEntity::CommandBlock(entity)
-                        if entity.command.len() > 131068
-                            || entity.command.chars().count() > 32767
-                            || entity.success_count < 0 =>
+                        if entity.command.len() > 131068 || entity.command.chars().count() > 32767 || entity.success_count < 0 =>
                     {
                         return Err(invalid("invalid command block data"));
                     }
@@ -194,8 +183,7 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
                                 return Err(invalid("invalid container inventory"));
                             }
                             if let Some(nbt) = &entry.nbt {
-                                nbt::Blob::from_reader(&mut std::io::Cursor::new(nbt))
-                                    .map_err(|_| invalid("invalid container item NBT"))?;
+                                nbt::Blob::from_reader(&mut std::io::Cursor::new(nbt)).map_err(|_| invalid("invalid container item NBT"))?;
                             }
                         }
                     }
@@ -207,16 +195,14 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
         for tick in &self.pending_ticks {
             if tick.ticks_left >= 32
                 || tick.block_type.is_some_and(|id| id >= registry_count)
-                || (tick.ticks_left == 0
-                    && tick.tick_priority != mchprs_world::TickPriority::NanoTick)
+                || (tick.ticks_left == 0 && tick.tick_priority != mchprs_world::TickPriority::NanoTick)
             {
                 return Err(invalid("invalid scheduled block tick"));
             }
         }
         let state = &self.piston_state;
         if state.movement_cursor > state.movement_work.len()
-            || (state.phase != mchprs_world::AdvancePhase::MovingEntities
-                && (!state.movement_work.is_empty() || state.movement_cursor != 0))
+            || (state.phase != mchprs_world::AdvancePhase::MovingEntities && (!state.movement_work.is_empty() || state.movement_cursor != 0))
         {
             return Err(invalid("invalid piston movement phase"));
         }
@@ -240,45 +226,31 @@ impl<const NUM_CHUNK_SECTIONS: usize> PlotData<NUM_CHUNK_SECTIONS> {
         for (pos, id) in &state.movement_work {
             // A replaced/deleted entity may remain in the snapshot; its identity
             // is discarded when stepping rather than applied to the replacement.
-            if *id == 0
-                || *id > state.next_identity
-                || !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&pos.y)
-            {
+            if *id == 0 || *id > state.next_identity || !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&pos.y) {
                 return Err(invalid("invalid piston movement snapshot"));
             }
         }
         for (i, event) in state.events.iter().enumerate() {
-            if !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&event.pos.y)
-                || state
-                    .events
-                    .iter()
-                    .take(i)
-                    .any(|previous| previous == event)
-            {
+            if !(0..NUM_CHUNK_SECTIONS as i32 * 16).contains(&event.pos.y) || state.events.iter().take(i).any(|previous| previous == event) {
                 return Err(invalid("invalid or duplicate piston event"));
             }
         }
         Ok(())
     }
-    pub fn load_from_file(
-        path: impl AsRef<Path>,
-        save_if_plot_fixed: bool,
-    ) -> Result<PlotData<NUM_CHUNK_SECTIONS>, PlotLoadError> {
+    pub fn load_from_file(path: impl AsRef<Path>, save_if_plot_fixed: bool) -> Result<PlotData<NUM_CHUNK_SECTIONS>, PlotLoadError> {
         let mut file = File::open(&path)?;
 
         let mut magic = [0; 8];
         file.read_exact(&mut magic)?;
         if &magic != PLOT_MAGIC {
             drop(file);
-            return fixer::try_fix(path, FixInfo::InvalidHeader, save_if_plot_fixed)?
-                .ok_or(PlotLoadError::InvalidHeader);
+            return fixer::try_fix(path, FixInfo::InvalidHeader, save_if_plot_fixed)?.ok_or(PlotLoadError::InvalidHeader);
         }
 
         let version = file.read_u32::<LittleEndian>()?;
         if version < VERSION {
             drop(file);
-            return fixer::try_fix(path, FixInfo::OldVersion { version }, save_if_plot_fixed)?
-                .ok_or(PlotLoadError::ConversionFailed(version));
+            return fixer::try_fix(path, FixInfo::OldVersion { version }, save_if_plot_fixed)?.ok_or(PlotLoadError::ConversionFailed(version));
         }
         if version > VERSION {
             return Err(PlotLoadError::TooNew(version));

@@ -112,11 +112,7 @@ impl SearchCache {
             return Ok(());
         }
         let hits = self.page(page)?;
-        let suffix = if self.truncated {
-            messages::SEARCH_RESULT_LIMIT
-        } else {
-            ""
-        };
+        let suffix = if self.truncated { messages::SEARCH_RESULT_LIMIT } else { "" };
         player.send_raw_system_message(
             json!({
                 "text": messages::search_results(self.hits.len(), suffix, page, self.page_count()),
@@ -130,9 +126,7 @@ impl SearchCache {
             let label = format!("({}, {}, {})", pos.x, pos.y, pos.z);
             let mut parts = vec![ResultAction::Teleport(pos).component(&label)];
             for line in &hit.lines {
-                parts.push(
-                    json!({"text": format!("\n  {} {}: ", line.side.label(), line.line + 1)}),
-                );
+                parts.push(json!({"text": format!("\n  {} {}: ", line.side.label(), line.line + 1)}));
                 parts.extend(highlight_parts(&line.text, line.highlight.clone()));
             }
             player.send_raw_system_message(json!({"text": "", "extra": parts}).to_string());
@@ -140,22 +134,10 @@ impl SearchCache {
 
         let mut pages = Vec::new();
         if page > 1 {
-            pages.push(
-                ResultAction::Page {
-                    kind,
-                    page: page - 1,
-                }
-                .component(messages::SEARCH_PREVIOUS_PAGE),
-            );
+            pages.push(ResultAction::Page { kind, page: page - 1 }.component(messages::SEARCH_PREVIOUS_PAGE));
         }
         if page < self.page_count() {
-            pages.push(
-                ResultAction::Page {
-                    kind,
-                    page: page + 1,
-                }
-                .component(messages::SEARCH_NEXT_PAGE),
-            );
+            pages.push(ResultAction::Page { kind, page: page + 1 }.component(messages::SEARCH_NEXT_PAGE));
         }
         if !pages.is_empty() {
             player.send_raw_system_message(json!({"text": "", "extra": pages}).to_string());
@@ -207,9 +189,7 @@ impl BlockMask {
         }
         let (name, properties) = match term.split_once('[') {
             Some((name, tail)) => {
-                let properties = tail
-                    .strip_suffix(']')
-                    .context(messages::MASK_PROPERTIES_MUST_END)?;
+                let properties = tail.strip_suffix(']').context(messages::MASK_PROPERTIES_MUST_END)?;
                 (name, properties)
             }
             None => (term, ""),
@@ -222,15 +202,11 @@ impl BlockMask {
         let mut constraints = Vec::new();
         if !properties.is_empty() {
             for property in properties.split(',') {
-                let (key, value) = property
-                    .split_once('=')
-                    .context(messages::USE_PROPERTY_VALUE_MASKS)?;
+                let (key, value) = property.split_once('=').context(messages::USE_PROPERTY_VALUE_MASKS)?;
                 if constraints.iter().any(|&(existing, _)| existing == key) {
                     bail!(messages::duplicate_mask_property(key));
                 }
-                if !(definition.2..=definition.3)
-                    .any(|id| Block::from_id(id).property(key) == Some(value))
-                {
+                if !(definition.2..=definition.3).any(|id| Block::from_id(id).property(key) == Some(value)) {
                     bail!(messages::invalid_mask_property(key, value));
                 }
                 constraints.push((key, value));
@@ -238,10 +214,7 @@ impl BlockMask {
         }
         for id in definition.2..=definition.3 {
             let block = Block::from_id(id);
-            if constraints
-                .iter()
-                .all(|&(key, value)| block.property(key) == Some(value))
-            {
+            if constraints.iter().all(|&(key, value)| block.property(key) == Some(value)) {
                 states.insert(id);
             }
         }
@@ -291,22 +264,14 @@ impl Plot {
                 return None;
             };
             let mut lines = Vec::new();
-            for (side, rows) in [
-                (SignSide::Front, &sign.rows),
-                (SignSide::Back, &sign.back_rows),
-            ] {
+            for (side, rows) in [(SignSide::Front, &sign.rows), (SignSide::Back, &sign.back_rows)] {
                 for (line, row) in rows.iter().enumerate() {
                     let text = flatten_sign_text(row);
                     let Some(found) = regex.find(&text) else {
                         continue;
                     };
                     let highlight = found.range();
-                    lines.push(SignMatch {
-                        side,
-                        line,
-                        text,
-                        highlight,
-                    });
+                    lines.push(SignMatch { side, line, text, highlight });
                 }
             }
             match lines.is_empty() {
@@ -325,9 +290,7 @@ impl Plot {
         let [_, page] = args else {
             bail!(messages::search_page_usage(kind.command()));
         };
-        let page = page
-            .parse::<usize>()
-            .context(messages::PAGE_MUST_POSITIVE_INTEGER)?;
+        let page = page.parse::<usize>().context(messages::PAGE_MUST_POSITIVE_INTEGER)?;
         self.display_search(player, kind, page)?;
         Ok(true)
     }
@@ -352,11 +315,7 @@ impl Plot {
         Ok(bounds)
     }
 
-    fn scan_selection(
-        &self,
-        bounds: SelectionBounds,
-        find: impl Fn(&Self, BlockPos) -> Option<Vec<SignMatch>>,
-    ) -> SearchCache {
+    fn scan_selection(&self, bounds: SelectionBounds, find: impl Fn(&Self, BlockPos) -> Option<Vec<SignMatch>>) -> SearchCache {
         let mut hits = Vec::new();
         let mut text_bytes = 0;
         let mut truncated = false;
@@ -366,9 +325,7 @@ impl Plot {
                     let position = BlockPos::new(x, y, z);
                     if let Some(lines) = find(self, position) {
                         let line_bytes: usize = lines.iter().map(|line| line.text.len()).sum();
-                        if hits.len() == MAX_RESULTS
-                            || text_bytes + line_bytes > MAX_RESULT_TEXT_BYTES
-                        {
+                        if hits.len() == MAX_RESULTS || text_bytes + line_bytes > MAX_RESULT_TEXT_BYTES {
                             truncated = true;
                             break 'scan;
                         }
@@ -458,9 +415,7 @@ mod tests {
         let repeater = Block::from_name("repeater").unwrap();
         for id in 0..mchprs_blocks::generated::STATE_PROPERTIES.len() as u32 {
             let block = Block::from_id(id);
-            let expected = block.get_name() == "stone"
-                || (block.get_name() == repeater.get_name()
-                    && block.property("facing") == Some("north"));
+            let expected = block.get_name() == "stone" || (block.get_name() == repeater.get_name() && block.property("facing") == Some("north"));
             assert_eq!(mask.matches(block), expected);
         }
         for invalid in [

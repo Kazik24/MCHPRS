@@ -35,18 +35,11 @@ pub(crate) fn play_toggle(world: &mut impl World, pos: BlockPos, lit: bool) {
     );
 }
 
-pub(crate) fn item_transform(
-    block: Block,
-    item: &str,
-) -> Option<(Block, Option<&'static str>, i32)> {
+pub(crate) fn item_transform(block: Block, item: &str) -> Option<(Block, Option<&'static str>, i32)> {
     block.copper_bulb_state()?;
     let name = block.get_name();
     if item == "honeycomb" && !name.starts_with("waxed_") {
-        return Some((
-            block.with_copper_bulb_variant(&format!("waxed_{name}"))?,
-            None,
-            3003,
-        ));
+        return Some((block.with_copper_bulb_variant(&format!("waxed_{name}"))?, None, 3003));
     }
     if !matches!(
         item,
@@ -55,11 +48,7 @@ pub(crate) fn item_transform(
         return None;
     }
     if let Some(unwaxed) = name.strip_prefix("waxed_") {
-        return Some((
-            block.with_copper_bulb_variant(unwaxed)?,
-            Some("item.axe.wax_off"),
-            3004,
-        ));
+        return Some((block.with_copper_bulb_variant(unwaxed)?, Some("item.axe.wax_off"), 3004));
     }
     let previous = match block.copper_oxidation()? {
         1 => "copper_bulb",
@@ -67,11 +56,7 @@ pub(crate) fn item_transform(
         3 => "weathered_copper_bulb",
         _ => return None,
     };
-    Some((
-        block.with_copper_bulb_variant(previous)?,
-        Some("item.axe.scrape"),
-        3005,
-    ))
+    Some((block.with_copper_bulb_variant(previous)?, Some("item.axe.scrape"), 3005))
 }
 
 #[cfg(test)]

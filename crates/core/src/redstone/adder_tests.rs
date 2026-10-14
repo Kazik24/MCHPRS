@@ -11,13 +11,7 @@ use std::io::Cursor;
 const SCHEMATIC: &[u8] = include_bytes!("../../../../test_data/instant-pistons/ADDER_11BITS.schem");
 const BIT_WIDTH: u32 = 11;
 const OUTPUT_MASK: u16 = (1 << BIT_WIDTH) - 1;
-fn loaded() -> (
-    PlotWorld,
-    Vec<BlockPos>,
-    Vec<BlockPos>,
-    Vec<BlockPos>,
-    BlockPos,
-) {
+fn loaded() -> (PlotWorld, Vec<BlockPos>, Vec<BlockPos>, Vec<BlockPos>, BlockPos) {
     let cb = load_schematic(Cursor::new(SCHEMATIC)).unwrap();
     assert_eq!((cb.size_x, cb.size_y, cb.size_z), (21, 7, 46));
     let labels: HashMap<_, _> = cb
@@ -49,31 +43,16 @@ fn loaded() -> (
             })
             .collect()
     };
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
-    let anchor = BlockPos::new(
-        origin.x + cb.offset_x,
-        origin.y + cb.offset_y,
-        origin.z + cb.offset_z,
-    );
+    let anchor = BlockPos::new(origin.x + cb.offset_x, origin.y + cb.offset_y, origin.z + cb.offset_z);
     paste_clipboard(&mut world, &cb, anchor, false);
-    (
-        world,
-        bank("A"),
-        bank("B"),
-        bank("O"),
-        absolute(BlockPos::new(2, 4, 45)),
-    )
+    (world, bank("A"), bank("B"), bank("O"), absolute(BlockPos::new(2, 4, 45)))
 }
 fn read_inputs(world: &PlotWorld, bank: &[BlockPos]) -> u16 {
     bank.iter().enumerate().fold(0, |value, (i, &p)| {
         let block = world.get_block(p);
-        assert!(
-            block == Block::RedstoneBlock {} || block.is_cube(),
-            "invalid input {p:?}: {block:?}"
-        );
+        assert!(block == Block::RedstoneBlock {} || block.is_cube(), "invalid input {p:?}: {block:?}");
         value | ((block != Block::RedstoneBlock {}) as u16) << i
     })
 }
@@ -113,19 +92,13 @@ fn set_inputs(world: &mut PlotWorld, a: &[BlockPos], b: &[BlockPos], va: u16, vb
         world.tick_interpreted();
     }
 }
-fn compare_java_output(
-    world: &mut PlotWorld,
-    out: &[BlockPos],
-    reference: &str,
-) -> Vec<Option<u16>> {
+fn compare_java_output(world: &mut PlotWorld, out: &[BlockPos], reference: &str) -> Vec<Option<u16>> {
     let reference: serde_json::Value = serde_json::from_str(reference).unwrap();
     assert_eq!(
         reference["fixtures"]["ADDER_11BITS.schem"]["sha256"].as_str(),
         Some(format!("{:x}", Sha256::digest(SCHEMATIC)).as_str())
     );
-    let expected: Vec<Option<u16>> =
-        serde_json::from_value(reference["fixtures"]["ADDER_11BITS.schem"]["adder_output"].clone())
-            .unwrap();
+    let expected: Vec<Option<u16>> = serde_json::from_value(reference["fixtures"]["ADDER_11BITS.schem"]["adder_output"].clone()).unwrap();
     let got: Vec<_> = expected
         .iter()
         .map(|_| {
@@ -140,10 +113,7 @@ fn compare_java_output(
 #[test]
 fn adder_fixture_calculates_stored_inputs_after_tick_removal() {
     let (mut world, a, b, out, tick) = loaded();
-    assert_eq!(
-        (read_inputs(&world, &a), read_inputs(&world, &b)),
-        (OUTPUT_MASK, OUTPUT_MASK)
-    );
+    assert_eq!((read_inputs(&world, &a), read_inputs(&world, &b)), (OUTPUT_MASK, OUTPUT_MASK));
     assert_eq!(read_output(&world, &out), Some(0));
     trigger(&mut world, tick);
     world.tick_interpreted();
@@ -187,11 +157,7 @@ fn adder_arithmetic_vectors() {
         set_inputs(&mut world, &bank_a, &bank_b, a, b);
         trigger(&mut world, tick);
         world.tick_interpreted();
-        assert_eq!(
-            read_output(&world, &out),
-            Some((a + b) & OUTPUT_MASK),
-            "inputs {a} + {b}"
-        );
+        assert_eq!(read_output(&world, &out), Some((a + b) & OUTPUT_MASK), "inputs {a} + {b}");
     }
 }
 
@@ -222,10 +188,7 @@ fn adder_all_bit_positions_handle_carries_and_overflow() {
 fn adder_changed_inputs_calculate_correct_sum_and_match_java() {
     let (mut world, a, b, out, tick) = loaded();
     set_inputs(&mut world, &a, &b, 0x555, 0x2aa);
-    assert_eq!(
-        (read_inputs(&world, &a), read_inputs(&world, &b)),
-        (0x555, 0x2aa)
-    );
+    assert_eq!((read_inputs(&world, &a), read_inputs(&world, &b)), (0x555, 0x2aa));
     trigger(&mut world, tick);
     let got = compare_java_output(
         &mut world,

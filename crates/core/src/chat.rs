@@ -2,10 +2,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
 
-static URL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new("([a-zA-Z0-9§\\-:/]+\\.[a-zA-Z/0-9§\\-:_#]+(\\.[a-zA-Z/0-9.§\\-:#\\?\\+=_]+)?)")
-        .unwrap()
-});
+static URL_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("([a-zA-Z0-9§\\-:/]+\\.[a-zA-Z/0-9§\\-:_#]+(\\.[a-zA-Z/0-9.§\\-:#\\?\\+=_]+)?)").unwrap());
 
 #[derive(Serialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
@@ -65,10 +62,7 @@ impl ColorCode {
 
     fn is_formatting(self) -> bool {
         use ColorCode::*;
-        matches!(
-            self,
-            Obfuscated | Bold | Strikethrough | Underline | Italic | Reset
-        )
+        matches!(self, Obfuscated | Bold | Strikethrough | Underline | Italic | Reset)
     }
 }
 
@@ -103,10 +97,7 @@ pub struct ChatComponentBuilder {
 
 impl ChatComponentBuilder {
     pub fn new(text: String) -> Self {
-        let component = ChatComponent {
-            text,
-            ..Default::default()
-        };
+        let component = ChatComponent { text, ..Default::default() };
         Self { component }
     }
 
@@ -290,10 +281,7 @@ mod tests {
         assert_eq!(components[1].text, "example.com");
         assert_eq!(components[2].text, " after");
         assert!(components[0].click_event.is_none());
-        assert_eq!(
-            components[1].click_event.as_ref().unwrap().value,
-            "example.com"
-        );
+        assert_eq!(components[1].click_event.as_ref().unwrap().value, "example.com");
         assert!(components[2].click_event.is_none());
     }
 }

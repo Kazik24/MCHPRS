@@ -22,8 +22,7 @@ pub(super) fn execute_wand(ctx: CommandExecuteContext<'_>) {
         item_type: Item::WEWand {},
         nbt: None,
     };
-    ctx.player
-        .set_inventory_slot(ctx.player.selected_slot + 36, Some(item));
+    ctx.player.set_inventory_slot(ctx.player.selected_slot + 36, Some(item));
     if ctx.player.small_model.is_none() {
         let entity_equipment = CEntityEquipment {
             entity_id: ctx.player.entity_id as i32,
@@ -56,10 +55,7 @@ pub(super) fn execute_set(ctx: CommandExecuteContext<'_>) {
     });
 
     ctx.player
-        .send_worldedit_message(&messages::worldedit_completed(
-            blocks_updated,
-            start_time.elapsed(),
-        ));
+        .send_worldedit_message(&messages::worldedit_completed(blocks_updated, start_time.elapsed()));
 }
 
 pub(super) fn execute_replace(ctx: CommandExecuteContext<'_>) {
@@ -73,18 +69,13 @@ pub(super) fn execute_replace(ctx: CommandExecuteContext<'_>) {
     let mut blocks_updated = 0;
     capture_undo(ctx.plot, ctx.player, first, second);
     for_each_selected_position(first, second, |pos| {
-        if filter.matches(ctx.plot.get_block(pos))
-            && ctx.plot.set_block_raw(pos, pattern.pick().get_id())
-        {
+        if filter.matches(ctx.plot.get_block(pos)) && ctx.plot.set_block_raw(pos, pattern.pick().get_id()) {
             blocks_updated += 1;
         }
     });
 
     ctx.player
-        .send_worldedit_message(&messages::worldedit_completed(
-            blocks_updated,
-            start_time.elapsed(),
-        ));
+        .send_worldedit_message(&messages::worldedit_completed(blocks_updated, start_time.elapsed()));
 }
 
 pub(super) fn execute_count(ctx: CommandExecuteContext<'_>) {
@@ -102,26 +93,17 @@ pub(super) fn execute_count(ctx: CommandExecuteContext<'_>) {
     });
 
     ctx.player
-        .send_worldedit_message(&messages::worldedit_counted(
-            blocks_counted,
-            start_time.elapsed(),
-        ));
+        .send_worldedit_message(&messages::worldedit_counted(blocks_counted, start_time.elapsed()));
 }
 
 pub(super) fn execute_copy(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
     let origin = ctx.player.pos.block_pos();
-    let clipboard = create_clipboard(
-        ctx.plot,
-        origin,
-        ctx.player.first_position.unwrap(),
-        ctx.player.second_position.unwrap(),
-    );
+    let clipboard = create_clipboard(ctx.plot, origin, ctx.player.first_position.unwrap(), ctx.player.second_position.unwrap());
     ctx.player.worldedit_clipboard = Some(clipboard);
 
-    ctx.player
-        .send_worldedit_message(&messages::selection_copied(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::selection_copied(start_time.elapsed()));
 }
 
 pub(super) fn execute_cut(ctx: CommandExecuteContext<'_>) {
@@ -137,8 +119,7 @@ pub(super) fn execute_cut(ctx: CommandExecuteContext<'_>) {
     ctx.player.worldedit_clipboard = Some(clipboard);
     clear_area(ctx.plot, first_pos, second_pos);
 
-    ctx.player
-        .send_worldedit_message(&messages::selection_cut(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::selection_cut(start_time.elapsed()));
 }
 
 pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
@@ -170,12 +151,7 @@ pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
 
     let clipboard = create_clipboard(ctx.plot, zero_pos, first_pos, second_pos);
     clear_area(ctx.plot, first_pos, second_pos);
-    paste_clipboard(
-        ctx.plot,
-        &clipboard,
-        direction.offset_pos(zero_pos, move_amt as i32),
-        ctx.has_flag('a'),
-    );
+    paste_clipboard(ctx.plot, &clipboard, direction.offset_pos(zero_pos, move_amt as i32), ctx.has_flag('a'));
 
     if ctx.has_flag('s') {
         let first_pos = direction.offset_pos(first_pos, move_amt as i32);
@@ -185,16 +161,14 @@ pub(super) fn execute_move(mut ctx: CommandExecuteContext<'_>) {
         player.worldedit_set_second_position(second_pos);
     }
 
-    ctx.player
-        .send_worldedit_message(&messages::selection_moved(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::selection_moved(start_time.elapsed()));
 }
 
 pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
     let Some(clipboard) = ctx.player.worldedit_clipboard.as_ref() else {
-        ctx.player
-            .send_system_message(messages::CLIPBOARD_EMPTY_PASTE);
+        ctx.player.send_system_message(messages::CLIPBOARD_EMPTY_PASTE);
         return;
     };
     let pos = ctx.player.pos.block_pos();
@@ -210,8 +184,7 @@ pub(super) fn execute_paste(ctx: CommandExecuteContext<'_>) {
     if ctx.has_flag('u') {
         update(ctx.plot, first_pos, second_pos);
     }
-    ctx.player
-        .send_worldedit_message(&messages::clipboard_pasted(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::clipboard_pasted(start_time.elapsed()));
 }
 
 pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
@@ -233,8 +206,7 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
             if let Some(message) = warnings.notification() {
                 ctx.player.send_worldedit_message(&message);
             }
-            ctx.player
-                .send_worldedit_message(&messages::schematic_loaded(start_time.elapsed()));
+            ctx.player.send_worldedit_message(&messages::schematic_loaded(start_time.elapsed()));
         }
         Err(e) => {
             if let Some(e) = e.downcast_ref::<std::io::Error>() {
@@ -246,8 +218,7 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
             }
             error!("There was an error loading a schematic:");
             error!("{:#}", e);
-            ctx.player
-                .send_error_message(&messages::schematic_load_failed(e.root_cause()));
+            ctx.player.send_error_message(&messages::schematic_load_failed(e.root_cause()));
         }
     }
 }
@@ -265,14 +236,12 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     let clipboard = ctx.player.worldedit_clipboard.as_ref().unwrap();
     match save_schematic(&file_name, clipboard) {
         Ok(_) => {
-            ctx.player
-                .send_worldedit_message(&messages::schematic_saved(start_time.elapsed()));
+            ctx.player.send_worldedit_message(&messages::schematic_saved(start_time.elapsed()));
         }
         Err(err) => {
             error!("There was an error saving a schematic: ");
             error!("{:?}", err);
-            ctx.player
-                .send_error_message(&messages::schematic_save_failed(err.root_cause()));
+            ctx.player.send_error_message(&messages::schematic_save_failed(err.root_cause()));
         }
     }
 }
@@ -294,12 +263,7 @@ pub(super) fn execute_stack(ctx: CommandExecuteContext<'_>) {
     for i in 1..stack_amt + 1 {
         let offset = (i * stack_offset) as i32;
         let block_pos = direction.offset_pos(pos1, offset);
-        undo_cbs.push(create_clipboard(
-            ctx.plot,
-            pos1,
-            block_pos,
-            direction.offset_pos(pos2, offset),
-        ));
+        undo_cbs.push(create_clipboard(ctx.plot, pos1, block_pos, direction.offset_pos(pos2, offset)));
         paste_clipboard(ctx.plot, &clipboard, block_pos, ctx.has_flag('a'));
     }
     let undo = WorldEditUndo {
@@ -310,20 +274,17 @@ pub(super) fn execute_stack(ctx: CommandExecuteContext<'_>) {
     };
     ctx.player.worldedit_undo.push(undo);
 
-    ctx.player
-        .send_worldedit_message(&messages::selection_stacked(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::selection_stacked(start_time.elapsed()));
 }
 
 pub(super) fn execute_undo(ctx: CommandExecuteContext<'_>) {
     if ctx.player.worldedit_undo.is_empty() {
-        ctx.player
-            .send_error_message(messages::THERE_NOTHING_LEFT_UNDO);
+        ctx.player.send_error_message(messages::THERE_NOTHING_LEFT_UNDO);
         return;
     }
     let undo = ctx.player.worldedit_undo.pop().unwrap();
     if undo.plot_x != ctx.plot.x || undo.plot_z != ctx.plot.z {
-        ctx.player
-            .send_error_message(messages::CANNOT_UNDO_OUTSIDE_CURRENT_PLOT);
+        ctx.player.send_error_message(messages::CANNOT_UNDO_OUTSIDE_CURRENT_PLOT);
         return;
     }
     let redo = undo.capture_inverse(ctx.plot);
@@ -335,14 +296,12 @@ pub(super) fn execute_undo(ctx: CommandExecuteContext<'_>) {
 
 pub(super) fn execute_redo(ctx: CommandExecuteContext<'_>) {
     if ctx.player.worldedit_redo.is_empty() {
-        ctx.player
-            .send_error_message(messages::THERE_NOTHING_LEFT_REDO);
+        ctx.player.send_error_message(messages::THERE_NOTHING_LEFT_REDO);
         return;
     }
     let redo = ctx.player.worldedit_redo.pop().unwrap();
     if redo.plot_x != ctx.plot.x || redo.plot_z != ctx.plot.z {
-        ctx.player
-            .send_error_message(messages::CANNOT_REDO_OUTSIDE_CURRENT_PLOT);
+        ctx.player.send_error_message(messages::CANNOT_REDO_OUTSIDE_CURRENT_PLOT);
         return;
     }
     let undo = redo.capture_inverse(ctx.plot);
@@ -403,11 +362,7 @@ pub(super) fn execute_expand(ctx: CommandExecuteContext<'_>) {
     let direction = ctx.arguments[1].unwrap_direction();
     let player = ctx.player;
 
-    expand_selection(
-        player,
-        direction.offset_pos(BlockPos::zero(), amount as i32),
-        false,
-    );
+    expand_selection(player, direction.offset_pos(BlockPos::zero(), amount as i32), false);
 
     player.send_worldedit_message(&messages::region_expanded(amount));
 }
@@ -417,11 +372,7 @@ pub(super) fn execute_contract(ctx: CommandExecuteContext<'_>) {
     let direction = ctx.arguments[1].unwrap_direction();
     let player = ctx.player;
 
-    expand_selection(
-        player,
-        direction.offset_pos(BlockPos::zero(), amount as i32),
-        true,
-    );
+    expand_selection(player, direction.offset_pos(BlockPos::zero(), amount as i32), true);
 
     player.send_worldedit_message(&messages::region_contracted(amount));
 }
@@ -464,11 +415,7 @@ pub(super) fn execute_flip(ctx: CommandExecuteContext<'_>) {
     let mut c_y = 0;
     let mut c_z = 0;
     for i in 0..volume {
-        let BlockPos {
-            x: n_x,
-            y: n_y,
-            z: n_z,
-        } = flip_pos(BlockPos::new(c_x, c_y, c_z));
+        let BlockPos { x: n_x, y: n_y, z: n_z } = flip_pos(BlockPos::new(c_x, c_y, c_z));
         let n_i = (n_y as u32 * size_x * size_z) + (n_z as u32 * size_x) + n_x as u32;
 
         let mut block = Block::from_id(clipboard.data.get_entry(i as usize));
@@ -493,11 +440,7 @@ pub(super) fn execute_flip(ctx: CommandExecuteContext<'_>) {
         }
     }
 
-    let offset = flip_pos(BlockPos::new(
-        clipboard.offset_x,
-        clipboard.offset_y,
-        clipboard.offset_z,
-    ));
+    let offset = flip_pos(BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z));
     let cb = WorldEditClipboard {
         offset_x: offset.x,
         offset_y: offset.y,
@@ -506,16 +449,11 @@ pub(super) fn execute_flip(ctx: CommandExecuteContext<'_>) {
         size_y,
         size_z,
         data: newcpdata,
-        block_entities: clipboard
-            .block_entities
-            .iter()
-            .map(|(pos, e)| (flip_pos(*pos), e.clone()))
-            .collect(),
+        block_entities: clipboard.block_entities.iter().map(|(pos, e)| (flip_pos(*pos), e.clone())).collect(),
     };
 
     ctx.player.worldedit_clipboard = Some(cb);
-    ctx.player
-        .send_worldedit_message(&messages::clipboard_flipped(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::clipboard_flipped(start_time.elapsed()));
 }
 
 pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
@@ -523,16 +461,14 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
     let rotate_amt = ctx.arguments[0].unwrap_uint();
     let rotate_amt = match rotate_amt % 360 {
         0 => {
-            ctx.player
-                .send_worldedit_message(messages::CLIPBOARD_ROTATED_ZERO);
+            ctx.player.send_worldedit_message(messages::CLIPBOARD_ROTATED_ZERO);
             return;
         }
         90 => RotateAmt::Rotate90,
         180 => RotateAmt::Rotate180,
         270 => RotateAmt::Rotate270,
         _ => {
-            ctx.player
-                .send_error_message(messages::ROTATE_AMOUNT_MUST_MULTIPLE);
+            ctx.player.send_error_message(messages::ROTATE_AMOUNT_MUST_MULTIPLE);
             return;
         }
     };
@@ -572,11 +508,7 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
     let mut c_y = 0;
     let mut c_z = 0;
     for i in 0..volume {
-        let BlockPos {
-            x: n_x,
-            y: n_y,
-            z: n_z,
-        } = rotate_pos(BlockPos::new(c_x, c_y, c_z));
+        let BlockPos { x: n_x, y: n_y, z: n_z } = rotate_pos(BlockPos::new(c_x, c_y, c_z));
         let n_i = (n_y as u32 * n_size_x * n_size_z) + (n_z as u32 * n_size_x) + n_x as u32;
 
         let mut block = Block::from_id(clipboard.data.get_entry(i as usize));
@@ -597,11 +529,7 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
         }
     }
 
-    let offset = rotate_pos(BlockPos::new(
-        clipboard.offset_x,
-        clipboard.offset_y,
-        clipboard.offset_z,
-    ));
+    let offset = rotate_pos(BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z));
     let cb = WorldEditClipboard {
         offset_x: offset.x,
         offset_y: offset.y,
@@ -610,16 +538,11 @@ pub(super) fn execute_rotate(ctx: CommandExecuteContext<'_>) {
         size_y,
         size_z: n_size_z,
         data: newcpdata,
-        block_entities: clipboard
-            .block_entities
-            .iter()
-            .map(|(pos, e)| (rotate_pos(*pos), e.clone()))
-            .collect(),
+        block_entities: clipboard.block_entities.iter().map(|(pos, e)| (rotate_pos(*pos), e.clone())).collect(),
     };
 
     ctx.player.worldedit_clipboard = Some(cb);
-    ctx.player
-        .send_worldedit_message(&messages::clipboard_rotated(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::clipboard_rotated(start_time.elapsed()));
 }
 
 pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
@@ -631,9 +554,7 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
         .get(command_name.as_str())
         .or_else(|| COMMANDS.get(slash_command_name.as_str()))
         .or_else(|| {
-            let alias = ALIASES
-                .get(command_name.as_str())
-                .or_else(|| ALIASES.get(slash_command_name.as_str()))?;
+            let alias = ALIASES.get(command_name.as_str()).or_else(|| ALIASES.get(slash_command_name.as_str()))?;
             COMMANDS.get(alias.split_whitespace().next()?)
         });
     let command = match maybe_command {
@@ -667,15 +588,9 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
 
     for arg in command.arguments {
         message.extend([
-            ChatComponentBuilder::new(" [".to_owned())
-                .color_code(ColorCode::Yellow)
-                .finish(),
-            ChatComponentBuilder::new(arg.name.to_owned())
-                .color_code(ColorCode::Gold)
-                .finish(),
-            ChatComponentBuilder::new("]".to_owned())
-                .color_code(ColorCode::Yellow)
-                .finish(),
+            ChatComponentBuilder::new(" [".to_owned()).color_code(ColorCode::Yellow).finish(),
+            ChatComponentBuilder::new(arg.name.to_owned()).color_code(ColorCode::Gold).finish(),
+            ChatComponentBuilder::new("]".to_owned()).color_code(ColorCode::Yellow).finish(),
         ]);
     }
 
@@ -687,15 +602,9 @@ pub(super) fn execute_help(mut ctx: CommandExecuteContext<'_>) {
 
     for arg in command.arguments {
         message.extend([
-            ChatComponentBuilder::new("\n  [".to_owned())
-                .color_code(ColorCode::Yellow)
-                .finish(),
-            ChatComponentBuilder::new(arg.name.to_owned())
-                .color_code(ColorCode::Gold)
-                .finish(),
-            ChatComponentBuilder::new("]".to_owned())
-                .color_code(ColorCode::Yellow)
-                .finish(),
+            ChatComponentBuilder::new("\n  [".to_owned()).color_code(ColorCode::Yellow).finish(),
+            ChatComponentBuilder::new(arg.name.to_owned()).color_code(ColorCode::Gold).finish(),
+            ChatComponentBuilder::new("]".to_owned()).color_code(ColorCode::Yellow).finish(),
         ]);
 
         let default = if let Some(arg) = &arg.default {
@@ -776,19 +685,9 @@ fn execute_vertical_move(ctx: CommandExecuteContext<'_>, ascending: bool) {
     let player = ctx.player;
     let player_pos = player.pos.block_pos();
     let (player_y, moved) = if ascending {
-        vertical_destination(
-            ctx.plot,
-            player_pos,
-            levels,
-            (player_pos.y + 1).max(1)..PLOT_BLOCK_HEIGHT - 1,
-        )
+        vertical_destination(ctx.plot, player_pos, levels, (player_pos.y + 1).max(1)..PLOT_BLOCK_HEIGHT - 1)
     } else {
-        vertical_destination(
-            ctx.plot,
-            player_pos,
-            levels,
-            (1..player_pos.y.min(PLOT_BLOCK_HEIGHT - 1)).rev(),
-        )
+        vertical_destination(ctx.plot, player_pos, levels, (1..player_pos.y.min(PLOT_BLOCK_HEIGHT - 1)).rev())
     };
     if moved == 0 {
         player.send_error_message(if ascending {
@@ -809,12 +708,7 @@ fn execute_vertical_move(ctx: CommandExecuteContext<'_>, ascending: bool) {
     }
 }
 
-fn vertical_destination(
-    world: &impl World,
-    player_pos: BlockPos,
-    levels: u32,
-    heights: impl Iterator<Item = i32>,
-) -> (i32, u32) {
+fn vertical_destination(world: &impl World, player_pos: BlockPos, levels: u32, heights: impl Iterator<Item = i32>) -> (i32, u32) {
     let mut destination_y = player_pos.y;
     let mut moved = 0;
     for y in heights {
@@ -839,13 +733,10 @@ pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {
     let (first_pos, second_pos) = if ctx.has_flag('p') {
         ctx.plot.get_corners()
     } else {
-        if let (Some(first_pos), Some(second_pos)) =
-            (ctx.player.first_position, ctx.player.second_position)
-        {
+        if let (Some(first_pos), Some(second_pos)) = (ctx.player.first_position, ctx.player.second_position) {
             (first_pos, second_pos)
         } else {
-            ctx.player
-                .send_error_message(messages::SELECTION_INCOMPLETE);
+            ctx.player.send_error_message(messages::SELECTION_INCOMPLETE);
             return;
         }
     };
@@ -855,14 +746,12 @@ pub(super) fn execute_update(ctx: CommandExecuteContext<'_>) {
         return;
     }
 
-    ctx.player
-        .send_worldedit_message(&messages::selection_updated(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::selection_updated(start_time.elapsed()));
 }
 
 pub(super) fn execute_invalidate_caches(ctx: CommandExecuteContext<'_>) {
     ctx.plot.clear_interpreter_caches();
-    ctx.player
-        .send_worldedit_message(messages::INTERPRETER_CACHES_INVALIDATED);
+    ctx.player.send_worldedit_message(messages::INTERPRETER_CACHES_INVALIDATED);
 }
 
 pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
@@ -888,12 +777,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
             return;
         }
         let block_entity = ctx.plot.get_block_entity(pos);
-        if let Some(BlockEntity::Container {
-            comparator_override,
-            ty,
-            ..
-        }) = block_entity
-        {
+        if let Some(BlockEntity::Container { comparator_override, ty, .. }) = block_entity {
             if *ty != from {
                 return;
             }
@@ -925,8 +809,7 @@ pub(super) fn execute_replace_container(ctx: CommandExecuteContext<'_>) {
         }
     });
 
-    ctx.player
-        .send_worldedit_message(&messages::selection_replaced(start_time.elapsed()));
+    ctx.player.send_worldedit_message(&messages::selection_replaced(start_time.elapsed()));
 }
 
 pub(super) fn execute_unimplemented(_ctx: CommandExecuteContext<'_>) {
@@ -967,9 +850,7 @@ mod tests {
 
     #[test]
     fn vertical_destinations_count_floors_and_require_headroom() {
-        let chunks = (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-            .collect();
+        let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
         let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
         for y in [9, 19, 24, 25, 29] {
             world.set_block(BlockPos::new(1, y, 1), Block::Glass);

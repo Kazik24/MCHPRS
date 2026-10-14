@@ -16,12 +16,7 @@ pub trait ServerBoundPacketHandler {
     fn handle_plugin_message(&mut self, _packet: SPluginMessage, _player_idx: usize) {}
     fn handle_keep_alive(&mut self, _packet: SKeepAlive, _player_idx: usize) {}
     fn handle_player_position(&mut self, _packet: SPlayerPosition, _player_idx: usize) {}
-    fn handle_player_position_and_rotation(
-        &mut self,
-        _packet: SPlayerPositionAndRotation,
-        _player_idx: usize,
-    ) {
-    }
+    fn handle_player_position_and_rotation(&mut self, _packet: SPlayerPositionAndRotation, _player_idx: usize) {}
     fn handle_player_rotation(&mut self, _packet: SPlayerRotation, _player_idx: usize) {}
     fn handle_player_movement(&mut self, _packet: SPlayerMovement, _player_idx: usize) {}
     fn handle_player_abilities(&mut self, _packet: SPlayerAbilities, _player_idx: usize) {}
@@ -29,20 +24,14 @@ pub trait ServerBoundPacketHandler {
     fn handle_entity_action(&mut self, _packet: SEntityAction, _player_idx: usize) {}
     fn handle_animation(&mut self, _packet: SAnimation, _player_idx: usize) {}
     fn handle_use_item(&mut self, _packet: SUseItem, _player_idx: usize) {}
-    fn handle_player_block_placement(&mut self, _packet: SPlayerBlockPlacemnt, _player_idx: usize) {
-    }
+    fn handle_player_block_placement(&mut self, _packet: SPlayerBlockPlacemnt, _player_idx: usize) {}
     fn handle_held_item_change(&mut self, _packet: SHeldItemChange, _player_idx: usize) {}
     fn handle_pick_item_from_block(&mut self, _packet: SPickItemFromBlock, _player_idx: usize) {}
     fn handle_pick_item_from_entity(&mut self, _packet: SPickItemFromEntity, _player_idx: usize) {}
     fn handle_update_command_block(&mut self, _packet: SUpdateCommandBlock, _player_idx: usize) {}
     fn handle_container_click(&mut self, _packet: SContainerClick, _player_idx: usize) {}
     fn handle_container_close(&mut self, _packet: SContainerClose, _player_idx: usize) {}
-    fn handle_creative_inventory_action(
-        &mut self,
-        _packet: SCreativeInventoryAction,
-        _player_idx: usize,
-    ) {
-    }
+    fn handle_creative_inventory_action(&mut self, _packet: SCreativeInventoryAction, _player_idx: usize) {}
     fn handle_update_sign(&mut self, _packet: SUpdateSign, _player_idx: usize) {}
     fn handle_unknown(&mut self, _packet: SUnknown, _player_idx: usize) {}
 }
@@ -67,11 +56,7 @@ impl ServerBoundPacket for SLoginPluginResponse {
         let successful = reader.read_bool()?;
         let data = PacketDecoderExt::read_to_end(reader)?;
         if data.len() > 32768 || (!successful && !data.is_empty()) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid login forwarding response",
-            )
-            .into());
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid login forwarding response").into());
         }
         Ok(Self {
             message_id,
@@ -95,11 +80,7 @@ impl ServerBoundPacket for STeleportConfirm {
     fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
         let id = decoder.read_varint()?;
         if id < 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "negative teleport confirmation id",
-            )
-            .into());
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "negative teleport confirmation id").into());
         }
         Ok(Self { id })
     }
@@ -129,15 +110,8 @@ impl ServerBoundPacket for SUpdateCommandBlock {
             mode: reader.read_varint()?,
             flags: reader.read_unsigned_byte()?,
         };
-        if !(0..=2).contains(&packet.mode)
-            || packet.flags & !7 != 0
-            || packet.command.chars().count() > 32767
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid command block update",
-            )
-            .into());
+        if !(0..=2).contains(&packet.mode) || packet.flags & !7 != 0 || packet.command.chars().count() > 32767 {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid command block update").into());
         }
         Ok(packet)
     }
@@ -348,9 +322,7 @@ pub struct SKeepAlive {
 
 impl ServerBoundPacket for SKeepAlive {
     fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
-        Ok(SKeepAlive {
-            id: decoder.read_long()?,
-        })
+        Ok(SKeepAlive { id: decoder.read_long()? })
     }
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
@@ -585,9 +557,7 @@ pub struct SHeldItemChange {
 
 impl ServerBoundPacket for SHeldItemChange {
     fn decode<T: PacketDecoderExt>(decoder: &mut T) -> DecodeResult<Self> {
-        Ok(SHeldItemChange {
-            slot: decoder.read_short()?,
-        })
+        Ok(SHeldItemChange { slot: decoder.read_short()? })
     }
 
     fn handle(self: Box<Self>, handler: &mut dyn ServerBoundPacketHandler, player_idx: usize) {
@@ -630,9 +600,7 @@ fn read_hashed_slot<T: PacketDecoderExt>(reader: &mut T) -> DecodeResult<()> {
         }
         for _ in 0..n {
             let component = reader.read_varint()?;
-            if !(0..crate::generated::COMPONENT_COUNT).contains(&component)
-                || !seen.insert(component)
-            {
+            if !(0..crate::generated::COMPONENT_COUNT).contains(&component) || !seen.insert(component) {
                 return Err(invalid_container("invalid hashed component"));
             }
             if !removed {
@@ -751,11 +719,7 @@ impl ServerBoundPacket for SChatCommand {
         r.read_long()?;
         let n = r.read_varint()?;
         if !(0..=64).contains(&n) {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid signature count",
-            )
-            .into());
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid signature count").into());
         }
         for _ in 0..n {
             r.read_string()?;
@@ -767,11 +731,6 @@ impl ServerBoundPacket for SChatCommand {
         Ok(Self { message })
     }
     fn handle(self: Box<Self>, h: &mut dyn ServerBoundPacketHandler, idx: usize) {
-        h.handle_chat_message(
-            SChatMessage {
-                message: self.message,
-            },
-            idx,
-        );
+        h.handle_chat_message(SChatMessage { message: self.message }, idx);
     }
 }

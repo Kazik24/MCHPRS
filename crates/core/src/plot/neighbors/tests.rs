@@ -26,39 +26,15 @@ fn neighbor_refreshes_are_grouped_throttled_and_skip_unchanged_packets() {
     let delivered = views.update(now, interval, |r| requests.push(r));
     assert_eq!(delivered.len(), 2);
     assert!(Arc::ptr_eq(&delivered[0].1, &delivered[1].1));
-    assert!(
-        views
-            .update(now + Duration::from_millis(1999), interval, |r| requests
-                .push(r))
-            .is_empty()
-    );
+    assert!(views.update(now + Duration::from_millis(1999), interval, |r| requests.push(r)).is_empty());
     assert!(requests.is_empty());
     views.update(now + interval, interval, |r| requests.push(r));
     assert_eq!(requests.len(), 1);
-    requests
-        .pop()
-        .unwrap()
-        .reply
-        .send(vec![((16, 0), packet(1))])
-        .unwrap();
-    assert!(
-        views
-            .update(now + interval, interval, |r| requests.push(r))
-            .is_empty()
-    );
+    requests.pop().unwrap().reply.send(vec![((16, 0), packet(1))]).unwrap();
+    assert!(views.update(now + interval, interval, |r| requests.push(r)).is_empty());
     views.update(now + interval * 2, interval, |r| requests.push(r));
-    requests
-        .pop()
-        .unwrap()
-        .reply
-        .send(vec![((16, 0), packet(2))])
-        .unwrap();
-    assert_eq!(
-        views
-            .update(now + interval * 2, interval, |r| requests.push(r))
-            .len(),
-        2
-    );
+    requests.pop().unwrap().reply.send(vec![((16, 0), packet(2))]).unwrap();
+    assert_eq!(views.update(now + interval * 2, interval, |r| requests.push(r)).len(), 2);
 }
 
 #[test]
@@ -79,12 +55,7 @@ fn stale_replies_cannot_reload_unloaded_chunks_or_follow_a_player_to_another_plo
     assert!(views.update(now, interval, |r| requests.push(r)).is_empty());
     assert!(views.packet(1, (-1, -1)).is_none());
     assert_eq!(requests.len(), 1); // New visibility requests its own initial snapshot.
-    requests
-        .pop()
-        .unwrap()
-        .reply
-        .send(vec![((-1, -1), packet(2))])
-        .unwrap();
+    requests.pop().unwrap().reply.send(vec![((-1, -1), packet(2))]).unwrap();
     let deliveries = views.update(now, interval, |_| panic!("unexpected request"));
     assert_eq!(deliveries.len(), 1);
     assert_eq!(deliveries[0].0, 1);
@@ -103,14 +74,10 @@ fn failed_and_timed_out_requests_retry_without_flooding_the_service() {
     let mut requests = Vec::new();
     views.update(now, interval, |r| requests.push(r));
     drop(requests.pop());
-    views.update(now + Duration::from_secs(1), interval, |_| {
-        panic!("retry too soon")
-    });
+    views.update(now + Duration::from_secs(1), interval, |_| panic!("retry too soon"));
     views.update(now + interval, interval, |r| requests.push(r));
     let stalled = requests.pop().unwrap();
-    views.update(now + interval + REQUEST_TIMEOUT, interval, |r| {
-        requests.push(r)
-    });
+    views.update(now + interval + REQUEST_TIMEOUT, interval, |r| requests.push(r));
     assert_eq!(requests.len(), 1);
     assert!(stalled.reply.try_send(vec![]).is_err());
 }
@@ -127,11 +94,7 @@ fn snapshot_cache_obeys_its_memory_limit_and_evicts_the_least_recently_used_chun
     assert!(cache.get((0, 0), &version).is_some());
     assert!(cache.get((0, 0), &Version::Live((1, 1))).is_none());
     assert!(cache.bytes <= cache.limit);
-    cache.insert(
-        (0, 3),
-        version,
-        Arc::new(PacketEncoder::new(vec![0; 1024], 1)),
-    );
+    cache.insert((0, 3), version, Arc::new(PacketEncoder::new(vec![0; 1024], 1)));
     assert!(cache.bytes <= cache.limit);
 }
 
@@ -165,18 +128,10 @@ fn live_snapshots_observe_changes_after_local_flushes_and_screen_only_filtering(
     world.flush_block_changes();
     let changed = read(&mut source, &world);
     assert_ne!(initial.buffer, changed.buffer);
-    assert_eq!(
-        changed.buffer,
-        world.chunks[0].encode_packet_for_client(true).buffer
-    );
-    world.chunks[0].set_block_entity(
-        BlockPos::new(1, 2, 3),
-        BlockEntity::Comparator { output_strength: 1 },
-    );
+    assert_eq!(changed.buffer, world.chunks[0].encode_packet_for_client(true).buffer);
+    world.chunks[0].set_block_entity(BlockPos::new(1, 2, 3), BlockEntity::Comparator { output_strength: 1 });
     let version = world.chunks[0].snapshot_version();
-    if let Some(BlockEntity::Comparator { output_strength }) =
-        world.get_block_entity_mut(BlockPos::new(1, 2, 3))
-    {
+    if let Some(BlockEntity::Comparator { output_strength }) = world.get_block_entity_mut(BlockPos::new(1, 2, 3)) {
         *output_strength = 2;
     }
     assert_ne!(version, world.chunks[0].snapshot_version());
@@ -197,9 +152,7 @@ fn live_snapshots_project_moving_pistons_and_limit_work_per_poll() {
     };
     let mut chunk = Chunk::empty(0, 0);
     let pos = BlockPos::new(1, 20, 2);
-    let moving = mchprs_blocks::blocks::Block::from_name("moving_piston")
-        .unwrap()
-        .get_id();
+    let moving = mchprs_blocks::blocks::Block::from_name("moving_piston").unwrap().get_id();
     chunk.set_block(1, 20, 2, moving);
     chunk.set_block_entity(pos, BlockEntity::MovingPiston(Default::default()));
     let normal = chunk.encode_packet_for_client(false);
@@ -226,12 +179,8 @@ fn live_snapshots_project_moving_pistons_and_limit_work_per_poll() {
 struct TempRoot(std::path::PathBuf);
 impl TempRoot {
     fn new() -> Self {
-        let unique = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("mchprs-neighbors-{}-{unique}", std::process::id()));
+        let unique = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_nanos();
+        let path = std::env::temp_dir().join(format!("mchprs-neighbors-{}-{unique}", std::process::id()));
         fs::create_dir(&path).unwrap();
         Self(path)
     }
@@ -285,10 +234,7 @@ fn saved_neighbor_reads_use_correct_negative_coordinates_and_invalidate_changed_
     data.save_to_file(&path).unwrap();
     let updated = disk_snapshots(&root.0, &request, &mut cache).unwrap();
     assert_ne!(updated[0].1.buffer, initial[0].1.buffer);
-    assert_eq!(
-        updated[0].1.buffer,
-        chunk.encode_packet_for_client(true).buffer
-    );
+    assert_eq!(updated[0].1.buffer, chunk.encode_packet_for_client(true).buffer);
     fs::write(&path, b"invalid save").unwrap();
     assert!(disk_snapshots(&root.0, &request, &mut cache).is_err());
     assert_eq!(fs::read(&path).unwrap(), b"invalid save");
@@ -307,9 +253,7 @@ fn missing_neighbors_use_the_template_or_generated_ground_without_creating_saves
     let generated = disk_snapshots(&root.0, &request, &mut cache).unwrap();
     assert_eq!(
         generated[0].1.buffer,
-        Plot::generate_chunk(8, 16, -16)
-            .encode_packet_for_client(true)
-            .buffer
+        Plot::generate_chunk(8, 16, -16).encode_packet_for_client(true).buffer
     );
     assert!(!root.0.join("p1,-1").exists());
     let mut data = saved_plot();
@@ -318,10 +262,7 @@ fn missing_neighbors_use_the_template_or_generated_ground_without_creating_saves
     data.chunk_data[0] = chunk.save();
     data.save_to_file(root.0.join("pTEMPLATE")).unwrap();
     let templated = disk_snapshots(&root.0, &request, &mut cache).unwrap();
-    assert_eq!(
-        templated[0].1.buffer,
-        chunk.encode_packet_for_client(true).buffer
-    );
+    assert_eq!(templated[0].1.buffer, chunk.encode_packet_for_client(true).buffer);
     assert!(!root.0.join("p1,-1").exists());
 }
 
@@ -332,11 +273,7 @@ fn dropping_an_old_live_source_does_not_unregister_its_replacement() {
     let replacement = LiveSource::register(plot);
     drop(old);
     let (reply, _) = mpsc::sync_channel(1);
-    SERVICE.request(Request {
-        plot,
-        chunks: vec![],
-        reply,
-    });
+    SERVICE.request(Request { plot, chunks: vec![], reply });
     assert!(replacement.requests.try_recv().is_ok());
     drop(replacement);
     assert!(!SERVICE.sources.lock().unwrap().contains_key(&plot));

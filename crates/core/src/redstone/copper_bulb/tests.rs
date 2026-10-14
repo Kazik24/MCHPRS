@@ -3,9 +3,7 @@ use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::{Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{
-    Block, ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver,
-};
+use mchprs_blocks::blocks::{Block, ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing};
 
 const BULB: BlockPos = BlockPos::new(40, 30, 40);
@@ -15,21 +13,13 @@ const FAR: BlockPos = BlockPos::new(42, 30, 40);
 const OBSERVER: BlockPos = BlockPos::new(39, 30, 40);
 
 fn world() -> PlotWorld {
-    let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z)))
-        .collect();
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())
 }
 
 fn circuit(name: &str, lit: bool, powered: bool) -> PlotWorld {
     let mut world = world();
-    world.set_block(
-        BULB,
-        Block::from_name(name)
-            .unwrap()
-            .with_copper_bulb_state(lit, powered)
-            .unwrap(),
-    );
+    world.set_block(BULB, Block::from_name(name).unwrap().with_copper_bulb_state(lit, powered).unwrap());
     for pos in [INPUT, DIRECT, FAR] {
         world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
     }
@@ -48,10 +38,7 @@ fn circuit(name: &str, lit: bool, powered: bool) -> PlotWorld {
             },
         );
         world.set_block_entity(pos, BlockEntity::Comparator { output_strength: 0 });
-        world.set_block(
-            pos.offset(facing.opposite().block_face()),
-            Block::RedstoneLamp { lit: false },
-        );
+        world.set_block(pos.offset(facing.opposite().block_face()), Block::RedstoneLamp { lit: false });
     }
     world.set_block(
         OBSERVER,
@@ -87,18 +74,9 @@ fn every_bulb_state_has_opaque_cube_geometry_without_electrical_output() {
                 crate::redstone::bool_to_ss(lit)
             );
             for face in BlockFace::values() {
-                assert_eq!(
-                    crate::redstone::get_redstone_power(block, &world, BULB, face),
-                    0
-                );
+                assert_eq!(crate::redstone::get_redstone_power(block, &world, BULB, face), 0);
             }
-            assert_eq!(
-                block
-                    .with_copper_bulb_state(!lit, !powered)
-                    .unwrap()
-                    .get_name(),
-                name
-            );
+            assert_eq!(block.with_copper_bulb_state(!lit, !powered).unwrap().get_name(), name);
         }
     }
     assert_eq!(count, 32);
@@ -114,23 +92,14 @@ fn stale_callbacks_do_not_toggle_twice_or_schedule_a_bulb_tick() {
     for _ in 0..3 {
         crate::redstone::update(bulb, &mut world, BULB, None);
     }
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((true, true))
-    );
+    assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
     assert!(!world.pending_tick_at(BULB));
     world.set_block(INPUT, Block::Air);
     crate::redstone::update(bulb, &mut world, BULB, None);
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((true, false))
-    );
+    assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, false)));
     world.set_block(INPUT, Block::RedstoneBlock);
     crate::redstone::update(bulb, &mut world, BULB, None);
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((false, true))
-    );
+    assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((false, true)));
 }
 
 #[test]
@@ -139,23 +108,14 @@ fn powered_placement_and_same_type_state_edits_have_distinct_behavior() {
     world.set_block(INPUT, Block::RedstoneBlock);
     let bulb = Block::from_name("copper_bulb").unwrap();
     crate::interaction::place_in_world(bulb, &mut world, BULB, &None);
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((true, true))
-    );
+    assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
     crate::interaction::place_in_world(bulb, &mut world, BULB, &None);
-    assert_eq!(
-        world.get_block(BULB).copper_bulb_state(),
-        Some((false, false))
-    );
+    assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((false, false)));
 }
 
 #[test]
 fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
-    let reference: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../../../test_data/copper-bulbs/java-1.21.5.json"
-    ))
-    .unwrap();
+    let reference: serde_json::Value = serde_json::from_str(include_str!("../../../../../test_data/copper-bulbs/java-1.21.5.json")).unwrap();
     assert_eq!(reference["version"], "1.21.5");
     for case in reference["cases"].as_array().unwrap() {
         for flags in [None, Some(""), Some("-O"), Some("-Oi")] {
@@ -189,10 +149,7 @@ fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
                         lever.powered = target;
                         world.set_block(INPUT, Block::Lever { lever });
                         crate::redstone::update_surrounding_blocks(&mut world, INPUT);
-                        crate::redstone::update_surrounding_blocks(
-                            &mut world,
-                            INPUT.offset(BlockFace::Bottom),
-                        );
+                        crate::redstone::update_surrounding_blocks(&mut world, INPUT.offset(BlockFace::Bottom));
                     }
                     powered = target;
                 }
@@ -210,12 +167,7 @@ fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
                 let mut got = vec![serde_json::json!(lit), serde_json::json!(powered)];
                 for pos in [DIRECT, FAR] {
                     let strength = if flags.is_some() {
-                        compiler
-                            .ordinary_sources()
-                            .into_iter()
-                            .find(|(source, _)| *source == pos)
-                            .unwrap()
-                            .1
+                        compiler.ordinary_sources().into_iter().find(|(source, _)| *source == pos).unwrap().1
                     } else {
                         match world.get_block_entity(pos) {
                             Some(BlockEntity::Comparator { output_strength }) => *output_strength,
@@ -224,25 +176,16 @@ fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
                     };
                     got.push(serde_json::json!(strength));
                 }
-                got.push(serde_json::json!(matches!(world.get_block(OBSERVER), Block::Observer { observer } if observer.powered)));
-                assert_eq!(
-                    serde_json::Value::Array(got),
-                    sample["state"],
-                    "{case}, flags={flags:?}"
-                );
+                got.push(serde_json::json!(
+                    matches!(world.get_block(OBSERVER), Block::Observer { observer } if observer.powered)
+                ));
+                assert_eq!(serde_json::Value::Array(got), sample["state"], "{case}, flags={flags:?}");
             }
             if flags.is_some() {
-                compiler.reset(
-                    &mut world,
-                    (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46)),
-                );
+                compiler.reset(&mut world, (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46)));
                 let before = world.get_block(BULB);
                 crate::redstone::update(before, &mut world, BULB, None);
-                assert_eq!(
-                    world.get_block(BULB),
-                    before,
-                    "handoff must preserve the latch"
-                );
+                assert_eq!(world.get_block(BULB), before, "handoff must preserve the latch");
             }
         }
     }
@@ -269,10 +212,7 @@ fn copper_bulb_waxing_and_scraping_preserve_the_latch() {
                 assert_eq!(effect, 3003);
                 if block.copper_oxidation().unwrap() > 0 {
                     let (scraped, sound, effect) = item_transform(block, "diamond_axe").unwrap();
-                    assert_eq!(
-                        scraped.copper_oxidation(),
-                        Some(block.copper_oxidation().unwrap() - 1)
-                    );
+                    assert_eq!(scraped.copper_oxidation(), Some(block.copper_oxidation().unwrap() - 1));
                     assert_eq!(scraped.copper_bulb_state(), block.copper_bulb_state());
                     assert_eq!((sound, effect), (Some("item.axe.scrape"), 3005));
                 } else {
@@ -326,11 +266,7 @@ fn copper_bulbs_toggle_on_the_aggregate_input_edge() {
                 world.set_block(pos, Block::Lever { lever });
                 crate::redstone::update_surrounding_blocks(&mut world, pos);
             }
-            assert_eq!(
-                world.get_block(BULB).copper_bulb_state(),
-                Some(state),
-                "{flags:?}"
-            );
+            assert_eq!(world.get_block(BULB).copper_bulb_state(), Some(state), "{flags:?}");
         }
     }
 }
@@ -347,13 +283,7 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
             let bounds = (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46));
             if let Some(flags) = flags {
                 compiler
-                    .compile(
-                        &world,
-                        bounds,
-                        CompilerOptions::parse(flags).unwrap(),
-                        vec![],
-                        Default::default(),
-                    )
+                    .compile(&world, bounds, CompilerOptions::parse(flags).unwrap(), vec![], Default::default())
                     .unwrap();
                 compiler.on_use_block(INPUT);
             } else {
@@ -372,10 +302,7 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
                 compiler.reset(&mut world, bounds);
             }
             assert_eq!(world.get_block(BULB).get_name(), name, "flags={flags:?}");
-            assert_eq!(
-                world.get_block(BULB).copper_bulb_state(),
-                Some((true, true))
-            );
+            assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
         }
     }
 }
@@ -391,21 +318,12 @@ fn copper_bulb_light_updates_and_removal_cross_chunk_boundaries() {
         ("oxidized_copper_bulb", 4),
         ("waxed_copper_bulb", 15),
     ] {
-        let bulb = Block::from_name(name)
-            .unwrap()
-            .with_copper_bulb_state(true, false)
-            .unwrap();
+        let bulb = Block::from_name(name).unwrap().with_copper_bulb_state(true, false).unwrap();
         world.set_block(source, bulb);
         world.flush_block_changes();
         assert_eq!(world.bulb_light_at(source), emission);
-        assert_eq!(
-            world.bulb_light_at(source.offset(BlockFace::East)),
-            emission - 1
-        );
-        assert_eq!(
-            world.bulb_light_at(source.offset(BlockFace::South)),
-            emission - 1
-        );
+        assert_eq!(world.bulb_light_at(source.offset(BlockFace::East)), emission - 1);
+        assert_eq!(world.bulb_light_at(source.offset(BlockFace::South)), emission - 1);
         world.set_block(source.offset(BlockFace::East), Block::Stone {});
         world.flush_block_changes();
         assert_eq!(world.bulb_light_at(source.offset(BlockFace::East)), 0);
@@ -432,10 +350,7 @@ fn copper_bulb_save_load_retains_states() {
     let saved = chunk.save();
     let loaded = Chunk::load(2, 2, saved);
     for (index, &state) in states.iter().enumerate() {
-        assert_eq!(
-            loaded.get_block(index as u32 & 15, 30, index as u32 >> 4),
-            state
-        );
+        assert_eq!(loaded.get_block(index as u32 & 15, 30, index as u32 >> 4), state);
     }
 }
 

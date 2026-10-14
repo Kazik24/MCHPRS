@@ -30,11 +30,7 @@ fn plain_text(value: &serde_json::Value) -> String {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Array(values) => values.iter().map(plain_text).collect(),
         serde_json::Value::Object(object) => {
-            let text = object
-                .get("text")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("")
-                .to_owned();
+            let text = object.get("text").and_then(serde_json::Value::as_str).unwrap_or("").to_owned();
             let extra = object.get("extra").map(plain_text).unwrap_or_default();
 
             text + &extra
@@ -54,10 +50,7 @@ pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     if !block.is_command_block() {
         return;
     }
-    if !matches!(
-        world.get_block_entity(pos),
-        Some(BlockEntity::CommandBlock(_))
-    ) {
+    if !matches!(world.get_block_entity(pos), Some(BlockEntity::CommandBlock(_))) {
         world.set_block_entity(pos, BlockEntity::CommandBlock(Box::default()));
     }
     let powered = BlockFace::values().into_iter().any(|face| {
@@ -71,10 +64,7 @@ pub(crate) fn update(world: &mut impl World, pos: BlockPos) {
     entity.powered = powered;
     let start = rising || (entity.automatic && entity.last_execution < 0);
     let repeating = block.get_name() == "repeating_command_block" && (powered || entity.automatic);
-    if block.get_name() != "chain_command_block"
-        && (start || repeating)
-        && !world.pending_tick_at(pos)
-    {
+    if block.get_name() != "chain_command_block" && (start || repeating) && !world.pending_tick_at(pos) {
         let met = condition_met(world, pos);
         if let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) {
             entity.condition_met = met;
@@ -103,15 +93,12 @@ fn execute(world: &mut impl World, pos: BlockPos, notify: bool) -> bool {
             Ok(()) => {
                 entity.success_count = 1;
                 if entity.track_output {
-                    entity.last_output = Some(
-                        serde_json::json!({"text":messages::COMMAND_BLOCK_EXECUTED}).to_string(),
-                    );
+                    entity.last_output = Some(serde_json::json!({"text":messages::COMMAND_BLOCK_EXECUTED}).to_string());
                 }
             }
             Err(error) => {
                 if entity.track_output {
-                    entity.last_output =
-                        Some(serde_json::json!({"text":error,"color":"red"}).to_string());
+                    entity.last_output = Some(serde_json::json!({"text":error,"color":"red"}).to_string());
                 }
             }
         }
@@ -149,8 +136,7 @@ fn tick_inner(world: &mut impl World, pos: BlockPos, notify: bool) -> Vec<BlockP
         return Vec::new();
     }
     let mut executed = vec![pos];
-    if !matches!(world.get_block_entity(pos), Some(BlockEntity::CommandBlock(entity)) if entity.condition_met)
-    {
+    if !matches!(world.get_block_entity(pos), Some(BlockEntity::CommandBlock(entity)) if entity.condition_met) {
         return executed;
     }
     let mut current = pos;
