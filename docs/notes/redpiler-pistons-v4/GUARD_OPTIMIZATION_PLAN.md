@@ -85,7 +85,7 @@ Any guard-ID rewrite must invalidate metadata that embeds guards or depends on t
 
 ## Reviewable batches
 
-1. **Census:** count actual hot root patterns, pattern misses, and expected avoided recursive operations under `graph-profile`. No permanent root-ID trace buffers and no normal-build instrumentation.
+1. **Census:** use bounded temporary measurements or compile-gated trace summaries to identify hot root patterns, misses, and recursive work. Do not add permanent root-ID buffers or runtime profiling counters.
 2. **One complete pass:** implement the smallest measured useful family, its checker, unit/property tests, composition tests, and a five-pair runtime comparison. Stop for review.
 3. **Next family:** proceed according to measured coverage. Do not implement a broad rule catalog whose CPU candidates all miss.
 

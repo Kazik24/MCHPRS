@@ -25,36 +25,6 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-#[cfg(feature = "graph-profile")]
-#[test]
-fn callback_research_inventory_covers_shared_adder_at_o0_and_o1() {
-    let circuit = load_adder("adder_1bit", ORIGIN, None);
-    for level in [0, 1] {
-        let world = circuit.build();
-        let mut compiler = crate::redpiler::Compiler::default();
-        compiler
-            .compile(
-                &world,
-                circuit.bounds(),
-                crate::redpiler::CompilerOptions {
-                    optimization_level: Some(level),
-                    ..Default::default()
-                },
-                world.scheduler().iter_entries().collect(),
-                Arc::default(),
-            )
-            .unwrap_or_else(|error| panic!("{} O{level}: {error}", circuit.id));
-        let inventory = compiler.graph_callback_inventory().unwrap();
-        assert!(inventory["exact_duplicate_route_bodies"].as_u64().unwrap() > 0);
-        assert!(inventory["exact_duplicate_route_body_delivery_rows"].as_u64().unwrap() > 0);
-        println!(
-            "CALLBACK_INVENTORY fixture={} optimization=O{level} data={}",
-            circuit.id,
-            serde_json::to_string(&inventory).unwrap()
-        );
-    }
-}
-
 fn empty_world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,

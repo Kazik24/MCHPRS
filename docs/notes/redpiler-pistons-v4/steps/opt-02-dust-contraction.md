@@ -50,7 +50,7 @@ The new diagnostic census runs the full existing certificate checks on candidate
 | 53 | 1 | 0 |
 | **Total** | **1,798** | **3,625,962** |
 
-These query counts are actual executions of the six canonical neighbor-power samples the specialization skips; they came from a separate `graph-profile` build and are not timing data. The O1-only and O1+dust builds retain identical post-pass graph tables, work counters, and zero accepted certificates, so both execute those same 3,625,962 samples. Since none of the long groups meet the current complete-boundary rule, this family has no safe longer-path expansion to make; continue with opt-03 instead of weakening the contact or neighboring-wire checks.
+Historical profile: these query counts are actual executions of the six canonical neighbor-power samples the specialization skips; they came from a separate instrumented build and are not timing data. The O1-only and O1+dust builds retain identical post-pass graph tables, work counters, and zero accepted certificates, so both execute those same 3,625,962 samples. Since none of the long groups meet the current complete-boundary rule, this family has no safe longer-path expansion to make; continue with opt-03 instead of weakening the contact or neighboring-wire checks.
 
 The uninstrumented release benchmark ran five fresh paired 100-tick episodes on the same sign-free in-memory schematic variant for Graph and interpreter. Preparation, initial stimulus, flush, RAM checks, and statistics were outside the timed interval. All Graph episodes matched interpreter RAM. The medians and ranges were:
 

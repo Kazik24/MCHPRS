@@ -1,6 +1,4 @@
 use super::{GraphStatistics, PassStatistics, PreparationTableStatistics};
-#[cfg(feature = "graph-profile")]
-use mchprs_blocks::BlockPos;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -14,9 +12,6 @@ pub struct TaskMonitor {
     message: Mutex<Option<Arc<String>>>,
     budget_multiplier: AtomicUsize,
     graph_statistics: Mutex<GraphStatistics>,
-    #[cfg(feature = "graph-profile")]
-    /// Maps diagnostic long-path wire positions to their candidate group length for profiling only.
-    dust_candidate_wires: Mutex<Vec<(usize, BlockPos)>>,
 }
 
 impl TaskMonitor {
@@ -26,8 +21,6 @@ impl TaskMonitor {
 
     pub(crate) fn clear_graph_statistics(&self) {
         *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
-        #[cfg(feature = "graph-profile")]
-        self.dust_candidate_wires.lock().unwrap().clear();
     }
 
     pub(crate) fn begin_graph_statistics(&self) {
@@ -46,19 +39,6 @@ impl TaskMonitor {
 
     pub(crate) fn record_preparation_tables(&self, tables: Vec<PreparationTableStatistics>) {
         self.graph_statistics.lock().unwrap().preparation_tables.extend(tables);
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn record_dust_candidate_wires(&self, length: usize, positions: &[BlockPos]) {
-        self.dust_candidate_wires
-            .lock()
-            .unwrap()
-            .extend(positions.iter().copied().map(|position| (length, position)));
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn take_dust_candidate_wires(&self) -> Vec<(usize, BlockPos)> {
-        std::mem::take(&mut *self.dust_candidate_wires.lock().unwrap())
     }
 
     pub(crate) fn preparation_stage_estimate(&self, stage: &'static str) -> usize {

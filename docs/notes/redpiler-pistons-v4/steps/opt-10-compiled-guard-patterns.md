@@ -27,7 +27,7 @@ Search all callers of `guard_matches_using`. A plan installed only in ordinary r
 
 ## Milestone A — select the family from runtime use
 
-Under `graph-profile`, classify evaluated roots by complete expression shape without storing a trace of every evaluation. Report candidate visits, recursive operations, affected State kinds, and rejection reasons. Use root-local bounded matching and existing counters; normal builds must contain none of this instrumentation.
+Use bounded temporary measurements or compile-gated trace summaries to classify evaluated roots by complete expression shape without storing a trace of every evaluation. Report candidate visits, recursive operations, affected State kinds, and rejection reasons. Use root-local bounded matching; normal release builds must contain none of this runtime work.
 
 First candidate families:
 

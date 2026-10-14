@@ -28,11 +28,21 @@ opt-level = 3
 # This seems to speed up Redpiler compile times
 lto = "fat"
 
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
+
+[features]
+default = ["static-log-levels"]
+static-log-levels = ["tracing/release_max_level_info", "tracing/max_level_debug"]
+graph-trace = ["mchprs_core/graph-trace"]
+
 [dependencies]
 mchprs_core = { path = "./crates/core" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
-tracing = {version = "0.1", features = ["release_max_level_info", "max_level_debug"] }
+tracing = "0.1"
 
 [patch.crates-io]
 hematite-nbt = { git = "https://github.com/StackDoubleFlow/hematite_nbt" }

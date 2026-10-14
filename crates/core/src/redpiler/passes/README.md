@@ -164,7 +164,7 @@ Use the existing [CPU benchmark](../../../benches/cpus.rs), fresh identical inpu
 
 Report medians and ranges, candidate coverage, runtime work counts, and retained program/state memory. Existing frozen counts describe the general baseline; a certified reduction needs new behavior checks and explicit before/after counts, not silently edited expectations. Fixtures and their hashes must remain unchanged; any already approved temporary normalization must be identical and disclosed for all compared inputs.
 
-Measure speed in an uninstrumented build. `graph-profile` helps locate work but changes the measured execution. Timings are inclusive and overlap; never add nested buckets or call them self-time. For cumulative profiling, snapshot immediately before and after the timed window and report the difference. Table-byte estimates are not peak RSS.
+Pass durations, before/after node and link counts, and retained-table estimates remain preparation statistics. For detailed runtime attribution, use an external profiler on a separate run. Do not add nested profiler samples or treat them as exclusive time; table-byte estimates are not peak RSS.
 
 Smaller tables alone do not demonstrate acceleration. Event counts alone do not show CPU attribution. Report an ineffective or slower optimization honestly; do not promise a speedup multiplier before measurement.
 

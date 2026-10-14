@@ -340,8 +340,6 @@ impl<W: World> Builder<'_, W> {
         events: Vec<Event>,
     ) -> Result<RouteId, CallbackError> {
         self.budget.consume(1)?;
-        #[cfg(feature = "graph-profile")]
-        let native_event_count = events.len();
         let route_id = RouteId::try_from_index(self.routes.len()).ok_or(CallbackError::TooManyEntries { table: "routes" })?;
         let mut deliveries = Vec::with_capacity(events.len());
         for (sequence, event) in events.into_iter().enumerate() {
@@ -394,8 +392,6 @@ impl<W: World> Builder<'_, W> {
         self.routes.push(Route {
             source,
             deliveries: deliveries.into_boxed_slice(),
-            #[cfg(feature = "graph-profile")]
-            native_event_count,
         });
         self.delivery_entries = self.delivery_entries.saturating_add(delivery_count);
         Ok(route_id)

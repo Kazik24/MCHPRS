@@ -1,5 +1,7 @@
 # Callback compilation and runtime cost
 
+Status: historical. The `graph-profile` instrumentation and commands in this report have been removed; these measurements remain as completed research results.
+
 The callback table is large because it is a compiled description of ordered native notifications for every possible owner and contact state. On the active CPU_BubbleSort episode, the clearest repeated runtime cost is narrower: Turbo wire propagation scans whole per-wire candidate routes to find one target. O0 examined 200.6 million rows for 8.11 million lookups; only 8.81 million examined rows matched the requested target. The first useful follow-up is to index those candidates while preserving their route order and guards.
 
 This is a profiling and inventory report. It does not rewrite callback behavior. Census hooks and the extra `Route::native_event_count` field exist only with `graph-profile`; ordinary compilation and execution collect none of these counters.

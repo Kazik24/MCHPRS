@@ -126,8 +126,6 @@ mod tests {
         Route {
             source: NodeId::new(0),
             deliveries: deliveries.into_boxed_slice(),
-            #[cfg(feature = "graph-profile")]
-            native_event_count: 0,
         }
     }
 

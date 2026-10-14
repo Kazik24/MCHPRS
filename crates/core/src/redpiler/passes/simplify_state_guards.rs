@@ -1309,8 +1309,6 @@ mod tests {
             routes: vec![Route {
                 source: crate::redpiler::program_graph::NodeId::new(0),
                 deliveries: Vec::new().into_boxed_slice(),
-                #[cfg(feature = "graph-profile")]
-                native_event_count: 0,
             }],
             turbo_callback_indices: Vec::new(),
             wires: Vec::new(),

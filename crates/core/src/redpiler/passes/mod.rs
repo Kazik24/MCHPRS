@@ -178,6 +178,19 @@ pub(crate) fn run_graph_pipeline(
 
         let after = GraphCounts::of(graph);
 
+        #[cfg(feature = "graph-trace")]
+        tracing::debug!(
+            target: "mchprs_core::redpiler::passes",
+            pass = name,
+            before_nodes = before.nodes,
+            after_nodes = after.nodes,
+            nodes_removed = before.nodes.saturating_sub(after.nodes),
+            before_links = before.links,
+            after_links = after.links,
+            elapsed_ns = start.elapsed().as_nanos(),
+            "graph pass complete"
+        );
+
         utils::record_transformation(monitor, name, before, after, start);
 
         monitor.inc_progress();

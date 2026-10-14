@@ -1,4 +1,5 @@
 pub(crate) mod graph;
+mod graph_trace;
 mod queue;
 pub use queue::*;
 
@@ -21,34 +22,6 @@ impl Runtime {
     pub(crate) fn graph_execution_counts(&self) -> Option<super::GraphExecutionCounts> {
         match self {
             Self::Graph(backend) => Some(backend.execution_counts()),
-        }
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn graph_execution_profile(&self) -> Option<super::GraphExecutionProfile> {
-        match self {
-            Self::Graph(backend) => Some(backend.execution_profile()),
-        }
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn graph_callback_profile(&self) -> Option<super::GraphCallbackProfile> {
-        match self {
-            Self::Graph(backend) => Some(backend.callback_execution_profile()),
-        }
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn graph_callback_inventory(&self) -> Option<serde_json::Value> {
-        match self {
-            Self::Graph(backend) => Some(backend.callback_research_inventory()),
-        }
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn dust_candidate_power_samples(&self) -> Vec<(usize, u64)> {
-        match self {
-            Self::Graph(backend) => backend.dust_candidate_power_samples(),
         }
     }
 

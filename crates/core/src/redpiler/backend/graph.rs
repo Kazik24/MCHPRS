@@ -2,6 +2,7 @@
 //! compilation; flush and reset project graph state back to it.
 
 use super::TickScheduler;
+use super::graph_trace::graph_trace;
 use crate::redpiler::GraphExecutionCounts;
 use crate::redpiler::TaskMonitor;
 #[cfg(test)]
@@ -12,8 +13,6 @@ use crate::redpiler::passes;
 #[cfg(test)]
 use crate::redpiler::passes::rich::PreparationError;
 use crate::redpiler::program_graph::*;
-#[cfg(feature = "graph-profile")]
-use crate::redpiler::{GraphCallbackProfile, GraphExecutionProfile, GraphProfileMetric};
 use crate::world::{BlockAction, World};
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType, MovingPistonEntity};
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstonePiston, RedstoneWire, RedstoneWireSide};
@@ -22,12 +21,8 @@ use mchprs_world::{PistonEvent, TickEntry, TickPriority};
 use rustc_hash::{FxHashMap, FxHashSet};
 #[cfg(test)]
 use std::cell::Cell;
-#[cfg(feature = "graph-profile")]
-use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt;
-#[cfg(feature = "graph-profile")]
-use std::time::Instant;
 
 #[cfg(test)]
 macro_rules! graph_test_trace {
@@ -41,18 +36,6 @@ macro_rules! graph_test_trace {
 use std::sync::Arc;
 
 const SCHEDULER_BUCKETS: usize = super::queue::NUM_QUEUES;
-
-#[cfg(feature = "graph-profile")]
-#[derive(Clone, Copy)]
-enum GraphProfileBucket {
-    TickPhases,
-    ScheduledDrain,
-    PistonActions,
-    DeferredConnections,
-    RouteDelivery,
-    TurboWireWalk,
-    PistonSample,
-}
 
 #[derive(Debug)]
 pub(crate) enum GraphBackendError {
@@ -305,20 +288,6 @@ pub(crate) struct GraphBackend {
     /// Reported work only; simulation never reads it.
     counts: GraphExecutionCounts,
     /// Opt-in inclusive operation timings; nested buckets overlap.
-    #[cfg(feature = "graph-profile")]
-    profile: GraphExecutionProfile,
-    #[cfg(feature = "graph-profile")]
-    /// Counts callback operations only when the profiling feature is enabled.
-    callback_profile: RefCell<GraphCallbackProfile>,
-    #[cfg(feature = "graph-profile")]
-    /// Maps each immutable route to the role that owns it.
-    route_roles: Vec<usize>,
-    #[cfg(feature = "graph-profile")]
-    /// Candidate wire node to path length, retained only by the profiling feature.
-    dust_candidate_length_by_node: Vec<Option<usize>>,
-    #[cfg(feature = "graph-profile")]
-    /// Counts actual six-site wire-power samples performed for each long candidate length.
-    dust_candidate_power_samples: FxHashMap<usize, u64>,
     #[cfg(test)]
     trace: Vec<String>,
     #[cfg(test)]
@@ -340,10 +309,8 @@ fn first_turbo_delivery(
     target: SiteId,
     observed: &ObservedSite,
     mut guard_matches: impl FnMut(GuardId, SiteId, &ObservedSite) -> bool,
-    mut inspect: impl FnMut(RouteDelivery),
 ) -> Option<RouteDelivery> {
     for delivery in deliveries.iter().copied() {
-        inspect(delivery);
         if delivery.target == target
             && delivery.receiver.is_some()
             && delivery.view == OperandView::Captured
@@ -391,17 +358,14 @@ mod turbo_callback_selection_tests {
             properties: ObservedProperties::Passive,
         };
         let matches_guard = |guard, _, observed: &ObservedSite| guard == GuardId::new(9) && observed.receiver == Some(receiver);
-        let mut linear_rows = 0;
-        let linear = first_turbo_delivery(&route, target, &observed, matches_guard, |_| linear_rows += 1);
-        let mut indexed_rows = 0;
-        let indexed = first_turbo_delivery(&route[10..], target, &observed, matches_guard, |_| indexed_rows += 1);
+        let linear = first_turbo_delivery(&route, target, &observed, matches_guard);
+        let indexed = first_turbo_delivery(&route[10..], target, &observed, matches_guard);
         assert_eq!(linear, indexed);
         assert_eq!(linear, Some(route[13]));
-        assert_eq!((linear_rows, indexed_rows), (14, 4));
 
         let miss_guard = |_, _, _: &ObservedSite| false;
-        let linear_miss = first_turbo_delivery(&route, target, &observed, miss_guard, |_| {});
-        let indexed_miss = first_turbo_delivery(&route[10..], target, &observed, miss_guard, |_| {});
+        let linear_miss = first_turbo_delivery(&route, target, &observed, miss_guard);
+        let indexed_miss = first_turbo_delivery(&route[10..], target, &observed, miss_guard);
         assert_eq!(linear_miss, indexed_miss);
         assert_eq!(linear_miss, None);
     }
@@ -434,11 +398,6 @@ impl GraphBackend {
     pub(crate) fn from_lowered(lowered: LoweredCircuit, monitor: &TaskMonitor) -> Result<Self, GraphBackendError> {
         Self::validate_supported(&lowered.program)?;
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
-        #[cfg(feature = "graph-profile")]
-        for (length, position) in monitor.take_dust_candidate_wires() {
-            let node = *backend.positions.get(&position).expect("long candidate wire position survives lowering");
-            backend.dust_candidate_length_by_node[node.index()] = Some(length);
-        }
         backend.import_ticks(lowered.imported_ticks)?;
         let initial_command_ticks: Vec<_> = backend
             .program
@@ -640,8 +599,6 @@ impl GraphBackend {
             }
         }
         let node_count = program.nodes().len();
-        #[cfg(feature = "graph-profile")]
-        let route_roles = callback_route_roles(&program);
         Ok(Self {
             program,
             state,
@@ -660,16 +617,6 @@ impl GraphBackend {
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
-            #[cfg(feature = "graph-profile")]
-            profile: GraphExecutionProfile::default(),
-            #[cfg(feature = "graph-profile")]
-            callback_profile: RefCell::new(GraphCallbackProfile::default()),
-            #[cfg(feature = "graph-profile")]
-            route_roles,
-            #[cfg(feature = "graph-profile")]
-            dust_candidate_length_by_node: vec![None; node_count],
-            #[cfg(feature = "graph-profile")]
-            dust_candidate_power_samples: FxHashMap::default(),
             #[cfg(test)]
             trace: Vec::new(),
             #[cfg(test)]
@@ -747,10 +694,6 @@ impl GraphBackend {
     }
 
     fn schedule_with(&mut self, node: NodeId, delay: usize, priority: TickPriority, _game_tick_delay: bool) {
-        #[cfg(feature = "graph-profile")]
-        {
-            self.callback_profile.borrow_mut().tick_schedule_attempts += 1;
-        }
         if delay >= SCHEDULER_BUCKETS || (delay == 0 && priority != TickPriority::NanoTick) {
             return;
         }
@@ -767,10 +710,6 @@ impl GraphBackend {
         }
         self.scheduler.schedule_half_tick(tick, delay, priority);
         self.pending.insert(key, 1);
-        #[cfg(feature = "graph-profile")]
-        {
-            self.callback_profile.borrow_mut().newly_scheduled_ticks += 1;
-        }
         #[cfg(test)]
         graph_test_trace!(
             self,
@@ -820,11 +759,7 @@ impl GraphBackend {
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let result = self.tick_phases(&mut host);
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::TickPhases, started);
         if let Err(error) = &result {
             if !matches!(error, GraphExecutionError::CommandHostUnavailable { .. }) {
                 self.failure = Some(error.clone());
@@ -876,13 +811,10 @@ impl GraphBackend {
         }
         self.clock.phase = GraphPhase::ScheduledTicks;
         self.clock.scheduled_advanced = false;
+        graph_trace!(self.clock.logical_tick, self.clock.phase, "phase start");
         #[cfg(test)]
         graph_test_trace!(self, "phase scheduled_ticks".into());
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let drain_result = self.drain_current_ticks(host);
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::ScheduledDrain, started);
         if let Err(error) = drain_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
@@ -894,11 +826,7 @@ impl GraphBackend {
         graph_test_trace!(self, "clock.advance".into());
         #[cfg(test)]
         graph_test_trace!(self, "phase scheduled_ticks_after_advance".into());
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let drain_result = self.drain_current_ticks(host);
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::ScheduledDrain, started);
         if let Err(error) = drain_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             self.clock.scheduled_advanced = false;
@@ -906,25 +834,19 @@ impl GraphBackend {
         }
 
         self.clock.phase = GraphPhase::PistonActions;
+        graph_trace!(self.clock.logical_tick, self.clock.phase, "phase start");
         #[cfg(test)]
         graph_test_trace!(self, "phase piston_actions".into());
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let action_result = self.drain_piston_actions();
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::PistonActions, started);
         if let Err(error) = action_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
         self.clock.phase = GraphPhase::DeferredConnections;
+        graph_trace!(self.clock.logical_tick, self.clock.phase, "phase start");
         #[cfg(test)]
         graph_test_trace!(self, "phase deferred_connections".into());
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let deferred_result = self.publish_deferred_pistons();
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::DeferredConnections, started);
         if let Err(error) = deferred_result {
             self.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
@@ -949,6 +871,7 @@ impl GraphBackend {
                 graph_test_trace!(self, format!("unbound {:?} skipped", tick.position));
                 continue;
             };
+            graph_trace!(self.clock.logical_tick, self.clock.phase, "dispatch node={}", node.index());
             #[cfg(test)]
             graph_test_trace!(self, format!("dispatch {node:?}"));
             self.counts.scheduled_ticks += 1;
@@ -1050,8 +973,6 @@ impl GraphBackend {
     }
 
     fn update_component(&mut self, node: NodeId, kind: DeliveryKind, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
-        #[cfg(feature = "graph-profile")]
-        self.record_handler_invocation(node);
         let direction = match kind {
             DeliveryKind::Update { direction } => direction,
             DeliveryKind::Shape { direction } => {
@@ -1120,8 +1041,6 @@ impl GraphBackend {
         }
         let entity = self.node_state(node).command_entity.as_ref().unwrap();
         let entity_powered = entity.powered;
-        #[cfg(feature = "graph-profile")]
-        let previous_condition_met = entity.condition_met;
         let last_execution = entity.last_execution;
         let rising = powered && !entity_powered;
         let changed = entity_powered != powered;
@@ -1146,10 +1065,6 @@ impl GraphBackend {
         entity.powered = powered;
         if let Some(condition_met) = condition_met {
             entity.condition_met = condition_met;
-        }
-        #[cfg(feature = "graph-profile")]
-        if missing_entity || changed || condition_met.is_some_and(|value| value != previous_condition_met) {
-            self.callback_profile.borrow_mut().component_state_changes += 1;
         }
         if missing_entity || should_schedule || changed {
             self.dirty[node.index()] = true;
@@ -1212,8 +1127,6 @@ impl GraphBackend {
         let Some(mut entity) = self.node_state(node).command_entity.clone() else {
             return Ok(false);
         };
-        #[cfg(feature = "graph-profile")]
-        let original_entity = entity.clone();
         if host.is_none() {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
@@ -1250,10 +1163,6 @@ impl GraphBackend {
         }
         if entity.update_last_execution {
             entity.last_execution = tick;
-        }
-        #[cfg(feature = "graph-profile")]
-        if entity != original_entity {
-            self.callback_profile.borrow_mut().component_state_changes += 1;
         }
         let success_count = entity.success_count.clamp(0, 15) as u8;
         let Some(ComponentState::Electrical(state)) = self.state.components.get_mut(node.index()) else {
@@ -1297,10 +1206,6 @@ impl GraphBackend {
         state.powered = powered;
         state.note_instrument = Some(instrument);
         self.dirty[node.index()] = true;
-        #[cfg(feature = "graph-profile")]
-        {
-            self.callback_profile.borrow_mut().component_state_changes += 1;
-        }
         if powered && unblocked {
             if let Some(pitch) = crate::redstone::noteblock::pitch(*note) {
                 self.effects.push(PresentationEffect::Sound {
@@ -1317,11 +1222,7 @@ impl GraphBackend {
 
     #[inline(always)]
     fn sample_piston(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let result = self.sample_piston_inner(piston);
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::PistonSample, started);
         result
     }
 
@@ -1330,10 +1231,6 @@ impl GraphBackend {
         let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
         let state = self.state.pistons[piston.index()];
         if state.availability.base_pending() {
-            #[cfg(feature = "graph-profile")]
-            {
-                self.callback_profile.borrow_mut().piston_samples_skipped_base_pending += 1;
-            }
             return Ok(());
         }
         self.counts.piston_samples += 1;
@@ -1836,10 +1733,6 @@ impl GraphBackend {
         if *current == wire {
             return;
         }
-        #[cfg(feature = "graph-profile")]
-        {
-            self.callback_profile.borrow_mut().component_state_changes += 1;
-        }
         #[cfg(test)]
         let old = *current;
         *current = wire;
@@ -1920,8 +1813,6 @@ impl GraphBackend {
     }
 
     fn seed_power_general(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
-        #[cfg(feature = "graph-profile")]
-        self.record_dust_candidate_power_samples(plan.node);
         let up_solid = self.live_site(plan.canonical_neighbors[3]).solid;
         let mut block_power = 0;
         let mut wire_power = 0;
@@ -2097,18 +1988,8 @@ impl GraphBackend {
     }
 
     fn wire_route_delivery(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> Option<RouteDelivery> {
-        #[cfg(feature = "graph-profile")]
-        {
-            self.callback_profile.borrow_mut().turbo_route_lookups += 1;
-        }
         let deliveries = &self.program.routes()[route.index()].deliveries;
         let index = self.program.turbo_callback_index(wire_index);
-        #[cfg(feature = "graph-profile")]
-        {
-            let mut profile = self.callback_profile.borrow_mut();
-            profile.turbo_indexed_lookups += u64::from(index.is_some());
-            profile.turbo_fallback_lookups += u64::from(index.is_none());
-        }
         let candidates = index.map_or(deliveries.as_ref(), |index| {
             &deliveries[index.offsets[slot] as usize..index.offsets[slot + 1] as usize]
         });
@@ -2117,26 +1998,7 @@ impl GraphBackend {
             target,
             observed,
             |guard, target, observed| self.guard_matches_for_site(guard, target, observed),
-            |delivery| {
-                #[cfg(feature = "graph-profile")]
-                {
-                    let mut profile = self.callback_profile.borrow_mut();
-                    profile.turbo_candidate_entries_scanned += 1;
-                    profile.turbo_target_entries_scanned += u64::from(delivery.target == target);
-                }
-                #[cfg(not(feature = "graph-profile"))]
-                let _ = (delivery, target);
-            },
         );
-        #[cfg(feature = "graph-profile")]
-        {
-            let mut profile = self.callback_profile.borrow_mut();
-            if matched.is_some() {
-                profile.turbo_first_matches += 1;
-            } else {
-                profile.turbo_lookup_failures += 1;
-            }
-        }
         matched
     }
 
@@ -2196,11 +2058,7 @@ impl GraphBackend {
 
     #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
         let result = self.evaluate_turbo_wire_inner(node);
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::TurboWireWalk, started);
         result
     }
 
@@ -2234,8 +2092,6 @@ impl GraphBackend {
             return Ok(());
         };
         self.counts.callbacks += 1;
-        #[cfg(feature = "graph-profile")]
-        self.record_callback_dispatch(receiver, DeliveryKind::Update { direction: None }, 2);
         // Dust-to-dust steps stay inside the walk; native dispatches only the rest.
         #[cfg(test)]
         if self.test_recording
@@ -2268,10 +2124,6 @@ impl GraphBackend {
     }
 
     fn evaluate_turbo_wire_node(&mut self, node: NodeId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
-        #[cfg(feature = "graph-profile")]
-        {
-            self.callback_profile.borrow_mut().turbo_wire_node_evaluations += 1;
-        }
         let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
         self.capture_walk_site(walk, root);
         walk.sites.get_mut(&root).unwrap().visited = true;
@@ -2348,8 +2200,6 @@ impl GraphBackend {
     }
 
     fn turbo_wire_power_general(&mut self, plan: &WirePlan, ordered: &[(usize, SiteId); 24], walk: &WireWalk) -> (u8, u8, u8) {
-        #[cfg(feature = "graph-profile")]
-        self.record_dust_candidate_power_samples(plan.node);
         let mut wire_power = 0;
         for (face, index) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]) {
             let site = plan.canonical_neighbors[index];
@@ -2758,39 +2608,15 @@ impl GraphBackend {
 
     fn guard_matches(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>) -> bool {
         let matched = self.guard_matches_using(id, captured, None);
-        #[cfg(feature = "graph-profile")]
-        {
-            let mut profile = self.callback_profile.borrow_mut();
-            profile.guard_roots_evaluated += 1;
-            profile.guard_failures += u64::from(!matched);
-        }
         matched
     }
 
     fn guard_matches_for_site(&self, id: GuardId, site: SiteId, observed: &ObservedSite) -> bool {
         let matched = self.guard_matches_using(id, None, Some((site, observed)));
-        #[cfg(feature = "graph-profile")]
-        {
-            let mut profile = self.callback_profile.borrow_mut();
-            profile.guard_roots_evaluated += 1;
-            profile.guard_failures += u64::from(!matched);
-        }
         matched
     }
 
     fn guard_matches_using(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>, captured_site: Option<(SiteId, &ObservedSite)>) -> bool {
-        #[cfg(feature = "graph-profile")]
-        {
-            let kind = match &self.program.guards()[id.index()] {
-                Guard::Always => 0,
-                Guard::State(_) => 1,
-                Guard::Site { .. } => 2,
-                Guard::Not(_) => 3,
-                Guard::All(_) => 4,
-                Guard::Any(_) => 5,
-            };
-            self.callback_profile.borrow_mut().guard_operations_by_kind[kind] += 1;
-        }
         match &self.program.guards()[id.index()] {
             Guard::Always => true,
             Guard::State(test) => match *test {
@@ -2801,19 +2627,6 @@ impl GraphBackend {
                 StateTest::ResourceEnabled(resource) => self.state.resources[resource.index()].enabled,
             },
             Guard::Site { site, view, test } => {
-                #[cfg(feature = "graph-profile")]
-                let captured_operand = if *view == OperandView::Captured {
-                    captured_site
-                        .filter(|(captured_id, _)| captured_id == site)
-                        .map(|(_, observed)| observed)
-                        .or_else(|| captured.and_then(|sites| sites.get(site.index())).and_then(Option::as_ref))
-                } else {
-                    None
-                };
-                #[cfg(feature = "graph-profile")]
-                if *view == OperandView::Captured && captured_operand.is_none() {
-                    self.callback_profile.borrow_mut().missing_captured_guard_operands += 1;
-                }
                 let resolved = match view {
                     OperandView::Live => self.resolve_site(*site, None),
                     OperandView::Captured => captured_site
@@ -3048,28 +2861,14 @@ impl GraphBackend {
 
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        #[cfg(feature = "graph-profile")]
-        let started = Instant::now();
-        #[cfg(feature = "graph-profile")]
-        self.record_route_call(route);
         let result = self.deliver_route_inner(route, captured);
-        #[cfg(feature = "graph-profile")]
-        self.record_profile(GraphProfileBucket::RouteDelivery, started);
         result
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
         let delivery_count = self.program.routes()[route.index()].deliveries.len();
-        #[cfg(feature = "graph-profile")]
-        let route_role = self.route_roles[route.index()];
         for index in 0..delivery_count {
             let delivery = self.program.routes()[route.index()].deliveries[index];
-            #[cfg(feature = "graph-profile")]
-            {
-                let mut profile = self.callback_profile.borrow_mut();
-                profile.delivery_records_examined += 1;
-                profile.delivery_records_by_role[route_role] += 1;
-            }
             if !self.guard_matches(delivery.guard, captured) {
                 continue;
             }
@@ -3079,10 +2878,6 @@ impl GraphBackend {
                 None
             };
             if delivery.view == OperandView::Captured && observed.is_none() {
-                #[cfg(feature = "graph-profile")]
-                {
-                    self.callback_profile.borrow_mut().missing_captured_delivery_operands += 1;
-                }
                 continue;
             }
             // Inert component updates still visit their no-op handler in native order.
@@ -3093,15 +2888,9 @@ impl GraphBackend {
                     _ => None,
                 });
             let Some(receiver) = receiver else {
-                #[cfg(feature = "graph-profile")]
-                {
-                    self.callback_profile.borrow_mut().deliveries_without_effective_receiver += 1;
-                }
                 continue;
             };
             self.counts.callbacks += 1;
-            #[cfg(feature = "graph-profile")]
-            self.record_callback_dispatch(receiver, delivery.kind, route_role);
             #[cfg(test)]
             if self.test_recording && self.has_semantic_callback(receiver) && matches!(delivery.kind, DeliveryKind::Update { .. }) {
                 self.observed_operations.push(GraphObservedOperation::Callback {
@@ -3140,10 +2929,6 @@ impl GraphBackend {
             state.repeater_locked = locked;
         }
         if changed {
-            #[cfg(feature = "graph-profile")]
-            {
-                self.callback_profile.borrow_mut().component_state_changes += 1;
-            }
             self.dirty[node.index()] = true;
             #[cfg(test)]
             graph_test_trace!(self, format!("state {:?} powered={powered} strength={output_strength}", node));
@@ -3171,92 +2956,6 @@ impl GraphBackend {
 
     pub(crate) fn execution_counts(&self) -> GraphExecutionCounts {
         self.counts
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn execution_profile(&self) -> GraphExecutionProfile {
-        self.profile
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn callback_execution_profile(&self) -> GraphCallbackProfile {
-        *self.callback_profile.borrow()
-    }
-
-    #[cfg(feature = "graph-profile")]
-    fn record_route_call(&self, route: RouteId) {
-        let role = self.route_roles[route.index()];
-        let phase = profile_phase_index(self.clock.phase);
-        let mut profile = self.callback_profile.borrow_mut();
-        profile.route_calls += 1;
-        profile.route_calls_by_role[role] += 1;
-        profile.route_calls_by_phase_and_role[phase][role] += 1;
-    }
-
-    #[cfg(feature = "graph-profile")]
-    fn record_callback_dispatch(&self, receiver: CallbackReceiver, kind: DeliveryKind, role: usize) {
-        let kind = match kind {
-            DeliveryKind::Update { .. } => 0,
-            DeliveryKind::Shape { .. } => 1,
-        };
-        let receiver_family = match receiver {
-            CallbackReceiver::Component(_) => 0,
-            CallbackReceiver::PistonBase(_) => 1,
-            CallbackReceiver::PistonHead(_) => 2,
-            CallbackReceiver::Contact(_) => 3,
-        };
-        let phase = profile_phase_index(self.clock.phase);
-        let mut profile = self.callback_profile.borrow_mut();
-        profile.dispatches_by_receiver_and_kind[receiver_family][kind] += 1;
-        profile.dispatches_by_role_and_kind[role][kind] += 1;
-        profile.dispatches_by_phase_and_role[phase][role] += 1;
-        if matches!(receiver, CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_)) {
-            profile.handler_invocations_by_family[10] += 1;
-        }
-    }
-
-    #[cfg(feature = "graph-profile")]
-    fn record_handler_invocation(&self, node: NodeId) {
-        let family = handler_family_index(&self.program.nodes()[node.index()].kind);
-        self.callback_profile.borrow_mut().handler_invocations_by_family[family] += 1;
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn callback_research_inventory(&self) -> serde_json::Value {
-        callback_research_inventory(&self.program, &self.route_roles)
-    }
-
-    #[cfg(feature = "graph-profile")]
-    pub(crate) fn dust_candidate_power_samples(&self) -> Vec<(usize, u64)> {
-        let mut counts: Vec<_> = self
-            .dust_candidate_power_samples
-            .iter()
-            .map(|(&length, &samples)| (length, samples))
-            .collect();
-        counts.sort_unstable_by_key(|(length, _)| *length);
-        counts
-    }
-
-    #[cfg(feature = "graph-profile")]
-    fn record_dust_candidate_power_samples(&mut self, node: NodeId) {
-        if let Some(Some(length)) = self.dust_candidate_length_by_node.get(node.index()) {
-            *self.dust_candidate_power_samples.entry(*length).or_default() += 6;
-        }
-    }
-
-    #[cfg(feature = "graph-profile")]
-    fn record_profile(&mut self, bucket: GraphProfileBucket, started: Instant) {
-        let metric: &mut GraphProfileMetric = match bucket {
-            GraphProfileBucket::TickPhases => &mut self.profile.tick_phases,
-            GraphProfileBucket::ScheduledDrain => &mut self.profile.scheduled_drain,
-            GraphProfileBucket::PistonActions => &mut self.profile.piston_actions,
-            GraphProfileBucket::DeferredConnections => &mut self.profile.deferred_connections,
-            GraphProfileBucket::RouteDelivery => &mut self.profile.route_delivery,
-            GraphProfileBucket::TurboWireWalk => &mut self.profile.turbo_wire_walk,
-            GraphProfileBucket::PistonSample => &mut self.profile.piston_sample,
-        };
-        metric.calls += 1;
-        metric.elapsed_ns += started.elapsed().as_nanos();
     }
 
     pub(crate) fn node_count(&self) -> usize {
@@ -3597,432 +3296,6 @@ impl MotionProjection {
         motion.previous_progress = previous_progress;
         motion.last_tick = state.logical_tick;
     }
-}
-
-#[cfg(feature = "graph-profile")]
-fn callback_route_roles(program: &CircuitProgram) -> Vec<usize> {
-    const UNCLASSIFIED: usize = 11;
-    let mut roles = vec![UNCLASSIFIED; program.routes().len()];
-    let mut assign = |route: RouteId, role: usize| {
-        let owner = &mut roles[route.index()];
-        if *owner == UNCLASSIFIED || *owner == role {
-            *owner = role;
-        } else {
-            *owner = UNCLASSIFIED;
-        }
-    };
-
-    for node in program.nodes() {
-        if let Some(route) = node.output_route {
-            assign(route, 0);
-        }
-    }
-    for wire in program.wires() {
-        if let Some(route) = wire.shape_route {
-            assign(route, 1);
-        }
-        if let Some(route) = wire.turbo_route {
-            assign(route, 2);
-        }
-    }
-    for piston in program.pistons() {
-        let routes = piston.routes;
-        assign(routes.base_changed, 3);
-        assign(routes.near_changed, 4);
-        if let Some(route) = routes.far_changed {
-            assign(route, 5);
-        }
-        if let Some(route) = routes.far_shape_changed {
-            assign(route, 6);
-        }
-        assign(routes.base_restored, 7);
-        assign(routes.head_restored, 8);
-        if let Some(route) = routes.resource_restored_near {
-            assign(route, 9);
-        }
-        if let Some(route) = routes.resource_restored_far {
-            assign(route, 10);
-        }
-    }
-    roles
-}
-
-#[cfg(feature = "graph-profile")]
-fn profile_phase_index(phase: GraphPhase) -> usize {
-    match phase {
-        GraphPhase::BetweenTicks => 0,
-        GraphPhase::ScheduledTicks => 1,
-        GraphPhase::PistonActions => 2,
-        GraphPhase::DeferredConnections => 3,
-    }
-}
-
-#[cfg(feature = "graph-profile")]
-fn handler_family_index(kind: &CircuitNodeKind) -> usize {
-    match kind {
-        CircuitNodeKind::Observer { .. } => 0,
-        CircuitNodeKind::Wire(_) => 1,
-        CircuitNodeKind::Piston(_) => 10,
-        CircuitNodeKind::Electrical(kind) => match kind {
-            NodeType::Wire => 1,
-            NodeType::Repeater { .. } => 2,
-            NodeType::Comparator { .. } => 3,
-            NodeType::Torch => 4,
-            NodeType::Lamp => 5,
-            NodeType::CopperBulb => 6,
-            NodeType::CommandBlock { .. } => 7,
-            NodeType::NoteBlock { .. } => 8,
-            NodeType::Lever | NodeType::Button | NodeType::PressurePlate => 9,
-            NodeType::Observer { .. } => 0,
-            NodeType::Constant | NodeType::Trapdoor => 11,
-        },
-        CircuitNodeKind::Contact(_) => 11,
-    }
-}
-
-#[cfg(feature = "graph-profile")]
-fn callback_research_inventory(program: &CircuitProgram, route_roles: &[usize]) -> serde_json::Value {
-    use std::collections::{BTreeMap, HashSet};
-    use std::hash::{Hash, Hasher};
-
-    let receiver_identity = |receiver: Option<CallbackReceiver>| match receiver {
-        Some(CallbackReceiver::Component(id)) => (0, id.index()),
-        Some(CallbackReceiver::PistonBase(id)) => (1, id.index()),
-        Some(CallbackReceiver::PistonHead(id)) => (2, id.index()),
-        Some(CallbackReceiver::Contact(id)) => (3, id.index()),
-        None => (4, 0),
-    };
-
-    let mut role_totals = BTreeMap::<String, (u64, u64)>::new();
-    let mut owner_totals = BTreeMap::<String, (u64, u64)>::new();
-    let mut route_sizes = BTreeMap::<usize, u64>::new();
-    let mut deliveries_by_kind = [0u64; 2];
-    let mut deliveries_by_view = [0u64; 2];
-    let mut receiver_family_counts = BTreeMap::<String, u64>::new();
-    let mut receiver_type_counts = BTreeMap::<String, u64>::new();
-    let mut literal_receiver_none = 0u64;
-    let mut branch_histogram = BTreeMap::<usize, u64>::new();
-    let mut profile_histogram = BTreeMap::<usize, u64>::new();
-    let mut contact_occurrences = 0u64;
-    let mut unresolved_contact_branches = 0u64;
-    let mut exact_duplicate_alternatives = 0u64;
-    let mut largest_routes = Vec::new();
-    let mut representative_routes = BTreeMap::<String, serde_json::Value>::new();
-    let mut route_body_candidates = FxHashMap::<u64, Vec<usize>>::default();
-    let mut exact_duplicate_route_bodies = 0u64;
-    let mut exact_duplicate_route_body_delivery_rows = 0u64;
-    let mut unique_route_bodies = 0u64;
-
-    for (route_index, route) in program.routes().iter().enumerate() {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        route.deliveries.len().hash(&mut hasher);
-        for delivery in &route.deliveries {
-            (
-                delivery.target,
-                delivery.kind,
-                delivery.guard,
-                delivery.view,
-                delivery.sequence,
-                receiver_identity(delivery.receiver),
-            )
-                .hash(&mut hasher);
-        }
-        let candidates = route_body_candidates.entry(hasher.finish()).or_default();
-        if candidates
-            .iter()
-            .any(|&candidate| program.routes()[candidate].deliveries == route.deliveries)
-        {
-            exact_duplicate_route_bodies += 1;
-            exact_duplicate_route_body_delivery_rows += route.deliveries.len() as u64;
-        } else {
-            candidates.push(route_index);
-            unique_route_bodies += 1;
-        }
-
-        let role = GraphCallbackProfile::ROUTE_ROLES[route_roles[route_index]];
-        let owner = &program.nodes()[route.source.index()];
-        let block_type = owner.block.map_or("specialized", |block| block.get_name());
-        let position = owner
-            .position
-            .map_or_else(|| "unknown position".to_owned(), |position| format!("{position:?}"));
-        let owner_label = format!("{role} / {block_type}");
-        let role_entry = role_totals.entry(role.to_owned()).or_default();
-        role_entry.0 += 1;
-        role_entry.1 += route.deliveries.len() as u64;
-        let owner_entry = owner_totals.entry(owner_label.clone()).or_default();
-        owner_entry.0 += 1;
-        owner_entry.1 += route.deliveries.len() as u64;
-        *route_sizes.entry(route.deliveries.len()).or_default() += 1;
-        largest_routes.push((route.deliveries.len(), route_index, role, block_type, position.clone()));
-
-        let mut branches = vec![Vec::new(); route.native_event_count];
-        let mut route_sequence_rows = BTreeMap::<u32, u64>::new();
-        let mut route_literal_none = 0u64;
-        let mut route_effective_none = 0u64;
-        for delivery in &route.deliveries {
-            *route_sequence_rows.entry(delivery.sequence).or_default() += 1;
-            let kind_index = match delivery.kind {
-                DeliveryKind::Update { .. } => 0,
-                DeliveryKind::Shape { .. } => 1,
-            };
-            deliveries_by_kind[kind_index] += 1;
-            deliveries_by_view[match delivery.view {
-                OperandView::Live => 0,
-                OperandView::Captured => 1,
-            }] += 1;
-            literal_receiver_none += u64::from(delivery.receiver.is_none());
-            route_literal_none += u64::from(delivery.receiver.is_none());
-            let effective_receiver = delivery
-                .receiver
-                .or_else(|| match (program.sites()[delivery.target.index()].source, delivery.kind) {
-                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
-                    _ => None,
-                });
-            route_effective_none += u64::from(effective_receiver.is_none());
-            let (receiver_family, receiver_type) = match effective_receiver {
-                Some(CallbackReceiver::Component(node)) => {
-                    let component = &program.nodes()[node.index()];
-                    let component_type = component.block.map_or("component_other", |block| block.get_name()).to_owned();
-                    let family = handler_family_index(&component.kind);
-                    (format!("component_{}", GraphCallbackProfile::HANDLER_FAMILIES[family]), component_type)
-                }
-                Some(CallbackReceiver::PistonBase(_)) => ("piston_base".to_owned(), "piston_base".to_owned()),
-                Some(CallbackReceiver::PistonHead(_)) => ("piston_head".to_owned(), "piston_head".to_owned()),
-                Some(CallbackReceiver::Contact(_)) => ("contact".to_owned(), "contact".to_owned()),
-                None => ("none".to_owned(), "none".to_owned()),
-            };
-            *receiver_family_counts.entry(receiver_family).or_default() += 1;
-            *receiver_type_counts.entry(receiver_type).or_default() += 1;
-            if let Some(group) = branches.get_mut(delivery.sequence as usize) {
-                group.push(*delivery);
-            }
-        }
-
-        representative_routes.entry(owner_label).or_insert_with(|| {
-            serde_json::json!({
-                "route": route_index,
-                "role": role,
-                "owner_type": block_type,
-                "owner_position": position,
-                "native_event_occurrences": route.native_event_count,
-                "retained_delivery_rows": route.deliveries.len(),
-                "literal_receiver_none_rows": route_literal_none,
-                "effective_receiver_none_rows": route_effective_none,
-                "empty_native_occurrences": route.native_event_count.saturating_sub(route_sequence_rows.len()),
-                "rows_by_native_sequence": route_sequence_rows,
-            })
-        });
-
-        for group in &branches {
-            *branch_histogram.entry(group.len()).or_default() += 1;
-            let mut identical = HashSet::new();
-            for delivery in group {
-                if !identical.insert((
-                    delivery.target,
-                    delivery.kind,
-                    delivery.guard,
-                    delivery.view,
-                    receiver_identity(delivery.receiver),
-                )) {
-                    exact_duplicate_alternatives += 1;
-                }
-            }
-            let mut selected_profiles = HashSet::new();
-            let mut has_contact = false;
-            for delivery in group {
-                let SiteSource::Contact(contact_id) = program.sites()[delivery.target.index()].source else {
-                    continue;
-                };
-                has_contact = true;
-                let contact = &program.contacts()[contact_id.index()];
-                for variant in &contact.variants {
-                    let selected = match delivery.view {
-                        OperandView::Live => guard_contains(program.guards(), delivery.guard, variant.when),
-                        OperandView::Captured => guard_contains_profile(program.guards(), delivery.guard, delivery.target, variant.profile),
-                    };
-                    if selected {
-                        selected_profiles.insert(variant.profile.index());
-                    }
-                }
-                if selected_profiles.is_empty() && contact.variants.len() == 1 {
-                    selected_profiles.insert(contact.variants[0].profile.index());
-                }
-            }
-            if has_contact {
-                contact_occurrences += 1;
-                if selected_profiles.is_empty() {
-                    unresolved_contact_branches += group.len() as u64;
-                }
-                *profile_histogram.entry(selected_profiles.len()).or_default() += 1;
-            }
-        }
-    }
-
-    largest_routes.sort_by_key(|(size, route, ..)| (std::cmp::Reverse(*size), *route));
-    let largest_routes: Vec<_> = largest_routes
-        .into_iter()
-        .take(12)
-        .map(|(size, route, role, block_type, position)| {
-            serde_json::json!({
-                "route": route,
-                "role": role,
-                "owner_type": block_type,
-                "owner_position": position,
-                "deliveries": size,
-            })
-        })
-        .collect();
-
-    let guards = program.guards();
-    let mut guard_kinds = [0u64; 6];
-    let mut guard_uses = vec![0usize; guards.len()];
-    for guard in guards {
-        match guard {
-            Guard::Always => guard_kinds[0] += 1,
-            Guard::State(_) => guard_kinds[1] += 1,
-            Guard::Site { .. } => guard_kinds[2] += 1,
-            Guard::Not(child) => {
-                guard_kinds[3] += 1;
-                guard_uses[child.index()] += 1;
-            }
-            Guard::All(children) => {
-                guard_kinds[4] += 1;
-                for child in children.iter() {
-                    guard_uses[child.index()] += 1;
-                }
-            }
-            Guard::Any(children) => {
-                guard_kinds[5] += 1;
-                for child in children.iter() {
-                    guard_uses[child.index()] += 1;
-                }
-            }
-        }
-    }
-    for route in program.routes() {
-        for delivery in &route.deliveries {
-            guard_uses[delivery.guard.index()] += 1;
-        }
-    }
-    for link in program.power_links() {
-        guard_uses[link.guard.index()] += 1;
-    }
-    for contact in program.contacts() {
-        for variant in contact.variants.iter() {
-            guard_uses[variant.when.index()] += 1;
-        }
-    }
-    for plan in program.comparator_inputs() {
-        if let Some((_, _, guard)) = plan.far_override {
-            guard_uses[guard.index()] += 1;
-        }
-    }
-    let expression_sizes = guard_expression_sizes(guards);
-    let mut expression_histogram = BTreeMap::<usize, u64>::new();
-    for size in expression_sizes {
-        *expression_histogram.entry(size).or_default() += 1;
-    }
-
-    serde_json::json!({
-        "routes_by_role": role_totals.into_iter().map(|(role, (routes, deliveries))| {
-            serde_json::json!({"role": role, "routes": routes, "deliveries": deliveries})
-        }).collect::<Vec<_>>(),
-        "routes_by_owner_and_role": owner_totals.into_iter().map(|(owner_role, (routes, deliveries))| {
-            serde_json::json!({"owner_role": owner_role, "routes": routes, "deliveries": deliveries})
-        }).collect::<Vec<_>>(),
-        "deliveries": {
-            "update": deliveries_by_kind[0],
-            "shape": deliveries_by_kind[1],
-            "live": deliveries_by_view[0],
-            "captured": deliveries_by_view[1],
-            "effective_receiver_families": receiver_family_counts,
-            "effective_receiver_types": receiver_type_counts,
-            "literal_receiver_none": literal_receiver_none,
-        },
-        "native_sequence_groups": {
-            "branches_per_occurrence": branch_histogram,
-            "contact_occurrences": contact_occurrences,
-            "distinct_profiles_referenced_per_contact_occurrence": profile_histogram,
-            "unresolved_contact_branch_rows": unresolved_contact_branches,
-            "exact_duplicate_alternatives": exact_duplicate_alternatives,
-        },
-        "route_size_histogram": route_sizes,
-        "exact_duplicate_route_bodies": exact_duplicate_route_bodies,
-        "exact_duplicate_route_body_delivery_rows": exact_duplicate_route_body_delivery_rows,
-        "unique_route_bodies": unique_route_bodies,
-        "largest_routes": largest_routes,
-        "representative_routes": representative_routes.into_values().collect::<Vec<_>>(),
-        "guards": {
-            "by_kind": {
-                "always": guard_kinds[0], "state": guard_kinds[1], "site": guard_kinds[2],
-                "not": guard_kinds[3], "all": guard_kinds[4], "any": guard_kinds[5],
-            },
-            "records_referenced_more_than_once": guard_uses.iter().filter(|&&uses| uses > 1).count(),
-            "direct_reference_count": guard_uses.iter().sum::<usize>(),
-            "expression_dag_size_histogram": expression_histogram,
-        },
-    })
-}
-
-#[cfg(feature = "graph-profile")]
-fn guard_contains(guards: &[Guard], root: GuardId, expected: GuardId) -> bool {
-    let mut stack = vec![root];
-    let mut visited = FxHashSet::default();
-    while let Some(current) = stack.pop() {
-        if current == expected {
-            return true;
-        }
-        if !visited.insert(current) {
-            continue;
-        }
-        match &guards[current.index()] {
-            Guard::Not(child) => stack.push(*child),
-            Guard::All(children) | Guard::Any(children) => stack.extend(children.iter().copied()),
-            Guard::Always | Guard::State(_) | Guard::Site { .. } => {}
-        }
-    }
-    false
-}
-
-#[cfg(feature = "graph-profile")]
-fn guard_contains_profile(guards: &[Guard], root: GuardId, site: SiteId, profile: ProfileId) -> bool {
-    let mut stack = vec![root];
-    let mut visited = FxHashSet::default();
-    while let Some(current) = stack.pop() {
-        if !visited.insert(current) {
-            continue;
-        }
-        match &guards[current.index()] {
-            Guard::Site {
-                site: guarded_site,
-                view: OperandView::Captured,
-                test: SiteTest::Profile(guarded_profile),
-            } if *guarded_site == site && *guarded_profile == profile => return true,
-            Guard::Not(child) => stack.push(*child),
-            Guard::All(children) | Guard::Any(children) => stack.extend(children.iter().copied()),
-            Guard::Always | Guard::State(_) | Guard::Site { .. } => {}
-        }
-    }
-    false
-}
-
-#[cfg(feature = "graph-profile")]
-fn guard_expression_sizes(guards: &[Guard]) -> Vec<usize> {
-    fn size(index: usize, guards: &[Guard], memo: &mut [Option<usize>]) -> usize {
-        if let Some(size) = memo[index] {
-            return size;
-        }
-        let children: &[GuardId] = match &guards[index] {
-            Guard::Not(child) => std::slice::from_ref(child),
-            Guard::All(children) | Guard::Any(children) => children,
-            Guard::Always | Guard::State(_) | Guard::Site { .. } => &[],
-        };
-        let result = 1 + children.iter().map(|child| size(child.index(), guards, memo)).sum::<usize>();
-        memo[index] = Some(result);
-        result
-    }
-    let mut memo = vec![None; guards.len()];
-    (0..guards.len()).map(|index| size(index, guards, &mut memo)).collect()
 }
 
 #[cfg(test)]

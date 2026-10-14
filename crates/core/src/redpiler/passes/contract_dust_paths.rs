@@ -55,11 +55,6 @@ impl GraphPass for ContractDustPaths {
             let component_len = component.len();
             if component_len > 3 {
                 *report.long_candidates.entry(component_len).or_default() += 1;
-                #[cfg(feature = "graph-profile")]
-                context.monitor.record_dust_candidate_wires(
-                    component_len,
-                    &component.iter().filter_map(|node| graph.nodes[node.index()].position).collect::<Vec<_>>(),
-                );
             }
             if component.iter().any(|node| already_assigned.contains(node)) {
                 report.decline(DeclineReason::AlreadyAssigned);
@@ -1119,61 +1114,5 @@ mod tests {
         resumed.tick_with_world(&mut specialized_world).unwrap();
         resumed.flush(&mut specialized_world);
         assert_path_worlds_match(&interpreted, &specialized_world);
-    }
-
-    #[cfg(feature = "graph-profile")]
-    #[test]
-    fn long_candidate_profile_counts_general_neighbor_power_samples() {
-        let mut world = path_world();
-        for distance in 0..4 {
-            world.set_block(
-                FIRST_WIRE + BlockPos::new(distance, 0, 0),
-                Block::RedstoneWire {
-                    wire: RedstoneWire {
-                        power: 15 - distance as u8,
-                        ..Default::default()
-                    },
-                },
-            );
-        }
-        for distance in 0..4 {
-            let position = FIRST_WIRE + BlockPos::new(distance, 0, 0);
-            let Block::RedstoneWire { wire } = world.get_block(position) else {
-                unreachable!();
-            };
-            world.set_block(
-                position,
-                Block::RedstoneWire {
-                    wire: crate::redstone::wire::get_regulated_sides(wire, &world, position),
-                },
-            );
-        }
-        let mut compiler = Compiler::default();
-        compiler
-            .compile(
-                &world,
-                BOUNDS,
-                CompilerOptions {
-                    optimization_level: Some(1),
-                    ..Default::default()
-                },
-                vec![],
-                Default::default(),
-            )
-            .unwrap();
-        let tables = &compiler.stats().unwrap().graph.preparation_tables;
-        assert!(
-            tables
-                .iter()
-                .any(|table| { table.stage == "dust contraction" && table.table == "otherwise eligible length 4" && table.entries == 1 }),
-            "{tables:?}"
-        );
-
-        set_interpreted_lever(&mut world, false);
-        compiler.on_use_block(INPUT);
-        compiler.tick_with_world(&mut world).unwrap();
-        let samples = compiler.dust_candidate_power_samples().unwrap();
-        assert!(samples.iter().any(|(length, count)| *length == 4 && *count > 0));
-        assert_eq!(compiler.graph_execution_counts().unwrap().dust_path_power_samples_elided, 0);
     }
 }
