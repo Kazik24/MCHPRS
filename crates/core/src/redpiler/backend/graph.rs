@@ -3392,12 +3392,6 @@ impl MotionProjection {
 mod tests;
 
 #[cfg(test)]
-#[test]
-fn site_view_size_probe() {
-    println!("ResolvedSite={} ResolvedSiteView={}", std::mem::size_of::<ResolvedSite>(), std::mem::size_of::<ResolvedSiteView>());
-}
-
-#[cfg(test)]
 #[path = "graph_fuzz_tests.rs"]
 mod fuzz_tests;
 
