@@ -1971,6 +1971,7 @@ pub(crate) struct ObservedSite {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One sampled neighbor used by the runtime wire walk.
 pub(crate) struct WalkSite {
+    pub(crate) site: SiteId,
     pub(crate) observed: ObservedSite,
     pub(crate) visited: bool,
     pub(crate) x_bias: i32,
@@ -1983,18 +1984,29 @@ pub(crate) struct WalkSite {
 /// circuit state, so nested walks cannot overwrite a caller's captured sites.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WireWalk {
-    pub(crate) sites: FxHashMap<SiteId, WalkSite>,
-    pub(crate) queues: [VecDeque<SiteId>; 3],
+    pub(crate) site_slots: FxHashMap<SiteId, usize>,
+    pub(crate) sites: Vec<WalkSite>,
+    pub(crate) queues: [VecDeque<usize>; 3],
     pub(crate) layer: u32,
 }
 
 impl WireWalk {
     pub(crate) fn new() -> Self {
         Self {
-            sites: FxHashMap::default(),
+            site_slots: FxHashMap::default(),
+            sites: Vec::new(),
             queues: std::array::from_fn(|_| VecDeque::new()),
             layer: 0,
         }
+    }
+
+    pub(crate) fn insert_site(&mut self, site: SiteId, walk_site: WalkSite) -> usize {
+        debug_assert!(!self.site_slots.contains_key(&site));
+        debug_assert_eq!(walk_site.site, site);
+        let slot = self.sites.len();
+        self.site_slots.insert(site, slot);
+        self.sites.push(walk_site);
+        slot
     }
 }
 
@@ -2387,9 +2399,10 @@ mod tests {
         let mut outer = WireWalk::new();
         let mut nested = WireWalk::new();
         let site = SiteId::new(0);
-        outer.sites.insert(
+        outer.insert_site(
             site,
             WalkSite {
+                site,
                 observed: ObservedSite {
                     profile: None,
                     receiver: None,
@@ -2403,9 +2416,10 @@ mod tests {
             },
         );
         assert!(nested.sites.is_empty());
-        nested.sites.insert(
+        nested.insert_site(
             site,
             WalkSite {
+                site,
                 observed: ObservedSite {
                     profile: None,
                     receiver: None,
@@ -2418,8 +2432,10 @@ mod tests {
                 heading: None,
             },
         );
-        assert!(outer.sites[&site].visited);
-        assert!(!nested.sites[&site].visited);
+        assert_eq!(outer.site_slots[&site], 0);
+        assert_eq!(nested.site_slots[&site], 0);
+        assert!(outer.sites[0].visited);
+        assert!(!nested.sites[0].visited);
         assert_eq!(outer.queues, std::array::from_fn(|_| VecDeque::new()));
         assert_eq!(nested.queues, std::array::from_fn(|_| VecDeque::new()));
     }

@@ -293,6 +293,12 @@ struct ResolvedSiteView {
     transparent: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct WireWalkNeighbors {
+    heading: usize,
+    slots: [usize; 24],
+}
+
 impl ResolvedSite {
     fn observed(self) -> ObservedSite {
         ObservedSite {
@@ -1879,7 +1885,8 @@ impl GraphBackend {
     }
 
     fn live_site(&self, site: SiteId) -> ResolvedSiteView {
-        self.resolve_site_view(site, None).expect("wire query site was validated during preparation")
+        self.resolve_site_view(site, None)
+            .expect("wire query site was validated during preparation")
     }
 
     fn raw_wire_sides(&self, plan: &WirePlan, wire: RedstoneWire) -> RedstoneWire {
@@ -1935,9 +1942,9 @@ impl GraphBackend {
         self.conducted_power(site, false)
     }
 
-    fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) {
-        if walk.sites.contains_key(&site) {
-            return;
+    fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) -> usize {
+        if let Some(&slot) = walk.site_slots.get(&site) {
+            return slot;
         }
         let observed = self
             .resolve_site(site, None)
@@ -1953,9 +1960,10 @@ impl GraphBackend {
                 observed.properties
             )
         );
-        walk.sites.insert(
+        walk.insert_site(
             site,
             WalkSite {
+                site,
                 observed,
                 visited: false,
                 x_bias: 0,
@@ -1963,21 +1971,22 @@ impl GraphBackend {
                 layer: 0,
                 heading: None,
             },
-        );
+        )
     }
 
-    fn identify_wire_neighbors(&mut self, node: NodeId, walk: &mut WireWalk) -> [(usize, SiteId); 24] {
+    fn identify_wire_neighbors(&mut self, node: NodeId, walk: &mut WireWalk) -> WireWalkNeighbors {
         let plan = self.wire_plan(node).clone();
         let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
-        self.capture_walk_site(walk, root);
-        if let Some(heading) = walk.sites[&root].heading {
-            return crate::redstone::wire::TURBO_ORDER[heading as usize].map(|slot| (slot, plan.canonical_neighbors[slot]));
+        let root_slot = self.capture_walk_site(walk, root);
+        if let Some(heading) = walk.sites[root_slot].heading {
+            return WireWalkNeighbors {
+                heading: heading as usize,
+                slots: plan.canonical_neighbors.map(|site| walk.site_slots[&site]),
+            };
         }
-        for site in plan.canonical_neighbors {
-            self.capture_walk_site(walk, site);
-        }
+        let slots = plan.canonical_neighbors.map(|site| self.capture_walk_site(walk, site));
 
-        let visited = plan.canonical_neighbors.map(|site| walk.sites[&site].visited);
+        let visited = slots.map(|slot| walk.sites[slot].visited);
         let from_west = visited[0] || visited[7] || visited[8];
         let from_east = visited[1] || visited[12] || visited[13];
         let from_north = visited[4] || visited[17] || visited[20];
@@ -1985,7 +1994,7 @@ impl GraphBackend {
         let mut x_bias = i32::from(from_west) - i32::from(from_east);
         let mut z_bias = i32::from(from_north) - i32::from(from_south);
         let (old_x_bias, old_z_bias) = {
-            let root = &walk.sites[&root];
+            let root = &walk.sites[root_slot];
             (root.x_bias, root.z_bias)
         };
         let heading = if x_bias == 0 && z_bias == 0 {
@@ -2003,15 +2012,15 @@ impl GraphBackend {
             }
             crate::redstone::wire::compute_heading(x_bias, z_bias)
         };
-        for site in plan.canonical_neighbors {
-            let neighbor = walk.sites.get_mut(&site).unwrap();
+        for slot in slots {
+            let neighbor = &mut walk.sites[slot];
             neighbor.x_bias = x_bias;
             neighbor.z_bias = z_bias;
         }
-        walk.sites.get_mut(&root).unwrap().heading = Some(heading as u8);
+        walk.sites[root_slot].heading = Some(heading as u8);
         #[cfg(test)]
         graph_test_trace!(self, format!("wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}"));
-        crate::redstone::wire::TURBO_ORDER[heading].map(|slot| (slot, plan.canonical_neighbors[slot]))
+        WireWalkNeighbors { heading, slots }
     }
 
     fn wire_route_delivery(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> Option<RouteDelivery> {
@@ -2020,12 +2029,9 @@ impl GraphBackend {
         let candidates = index.map_or(deliveries.as_ref(), |index| {
             &deliveries[index.offsets[slot] as usize..index.offsets[slot + 1] as usize]
         });
-        let matched = first_turbo_delivery(
-            candidates,
-            target,
-            observed,
-            |guard, target, observed| self.guard_matches_for_site(guard, target, observed),
-        );
+        let matched = first_turbo_delivery(candidates, target, observed, |guard, target, observed| {
+            self.guard_matches_for_site(guard, target, observed)
+        });
         matched
     }
 
@@ -2037,11 +2043,13 @@ impl GraphBackend {
         let CircuitNodeKind::Wire(wire_index) = self.program.nodes()[node.index()].kind else {
             unreachable!("Turbo callback lookup received a non-wire node");
         };
-        let ordered = self.identify_wire_neighbors(node, walk);
-        for &(slot, site) in &ordered {
+        let neighbors = self.identify_wire_neighbors(node, walk);
+        for &slot in &crate::redstone::wire::TURBO_ORDER[neighbors.heading] {
+            let walk_slot = neighbors.slots[slot];
+            let site = walk.sites[walk_slot].site;
             let next_layer = layer + 1;
             let changed = {
-                let neighbor = walk.sites.get_mut(&site).unwrap();
+                let neighbor = &mut walk.sites[walk_slot];
                 if next_layer > neighbor.layer {
                     neighbor.layer = next_layer;
                     true
@@ -2051,16 +2059,18 @@ impl GraphBackend {
             };
             if changed
                 && self
-                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[&site].observed)
+                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
                     .is_some()
             {
-                walk.queues[1].push_back(site);
+                walk.queues[1].push_back(walk_slot);
             }
         }
-        for &(slot, site) in &ordered[..4] {
+        for &slot in &crate::redstone::wire::TURBO_ORDER[neighbors.heading][..4] {
+            let walk_slot = neighbors.slots[slot];
+            let site = walk.sites[walk_slot].site;
             let next_layer = layer + 2;
             let changed = {
-                let neighbor = walk.sites.get_mut(&site).unwrap();
+                let neighbor = &mut walk.sites[walk_slot];
                 if next_layer > neighbor.layer {
                     neighbor.layer = next_layer;
                     true
@@ -2070,10 +2080,10 @@ impl GraphBackend {
             };
             if changed
                 && self
-                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[&site].observed)
+                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
                     .is_some()
             {
-                walk.queues[2].push_back(site);
+                walk.queues[2].push_back(walk_slot);
             }
         }
     }
@@ -2092,8 +2102,8 @@ impl GraphBackend {
     fn evaluate_turbo_wire_inner(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
         let mut walk = WireWalk::new();
-        self.capture_walk_site(&mut walk, root);
-        walk.sites.get_mut(&root).unwrap().visited = true;
+        let root_slot = self.capture_walk_site(&mut walk, root);
+        walk.sites[root_slot].visited = true;
         #[cfg(test)]
         graph_test_trace!(self, format!("wire turbo start {node:?}"));
         self.propagate_wire_changes(node, &mut walk, 0);
@@ -2102,8 +2112,8 @@ impl GraphBackend {
         while !walk.queues[0].is_empty() || !walk.queues[1].is_empty() {
             let count = walk.queues[0].len();
             for _ in 0..count {
-                let site = walk.queues[0].pop_front().unwrap();
-                self.dispatch_turbo_site(site, &mut walk)?;
+                let slot = walk.queues[0].pop_front().unwrap();
+                self.dispatch_turbo_site(slot, &mut walk)?;
             }
             self.shift_wire_queues(&mut walk);
             walk.layer += 1;
@@ -2113,8 +2123,9 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn dispatch_turbo_site(&mut self, site: SiteId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
-        let observed = walk.sites[&site].observed.clone();
+    fn dispatch_turbo_site(&mut self, slot: usize, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
+        let _site = walk.sites[slot].site;
+        let observed = walk.sites[slot].observed.clone();
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
@@ -2127,7 +2138,7 @@ impl GraphBackend {
                 if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
         {
             self.test_recorder.observed_operations.push(GraphObservedOperation::Callback {
-                target: self.program.sites()[site.index()].position,
+                target: self.program.sites()[_site.index()].position,
                 direction: None,
             });
         }
@@ -2136,7 +2147,7 @@ impl GraphBackend {
             self,
             format!(
                 "wire deliver {:?} layer={} Update {{ direction: None }} receiver={receiver:?}",
-                self.program.sites()[site.index()].position,
+                self.program.sites()[_site.index()].position,
                 walk.layer
             )
         );
@@ -2152,11 +2163,11 @@ impl GraphBackend {
 
     fn evaluate_turbo_wire_node(&mut self, node: NodeId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
         let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
-        self.capture_walk_site(walk, root);
-        walk.sites.get_mut(&root).unwrap().visited = true;
+        let root_slot = self.capture_walk_site(walk, root);
+        walk.sites[root_slot].visited = true;
         let ordered = self.identify_wire_neighbors(node, walk);
         let plan = self.wire_plan(node).clone();
-        let mut wire = match walk.sites[&root].observed.properties {
+        let mut wire = match walk.sites[root_slot].observed.properties {
             ObservedProperties::Wire(wire) => wire,
             _ => unreachable!("captured wire site has non-wire properties"),
         };
@@ -2178,7 +2189,7 @@ impl GraphBackend {
         #[cfg(test)]
         let old_power = wire.power;
         wire.power = new_power;
-        walk.sites.get_mut(&root).unwrap().observed.properties = ObservedProperties::Wire(wire);
+        walk.sites[root_slot].observed.properties = ObservedProperties::Wire(wire);
         self.set_wire(node, wire);
         #[cfg(test)]
         graph_test_trace!(self, format!("wire strength {node:?} layer={} {old_power} -> {new_power}", walk.layer));
@@ -2186,7 +2197,7 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn turbo_wire_power(&mut self, plan: &WirePlan, ordered: &[(usize, SiteId); 24], walk: &WireWalk) -> (u8, u8, u8) {
+    fn turbo_wire_power(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (u8, u8, u8) {
         if let Some((input_site, input_face, is_input, adjacent)) = {
             self.program.dust_path_for_wire(plan.node).map(|path| {
                 let index = path
@@ -2202,7 +2213,7 @@ impl GraphBackend {
             })
         } {
             let input_power = if is_input {
-                let captured = &walk.sites.get(&input_site).expect("wire walk captured its certified input").observed;
+                let captured = &walk.sites[walk.site_slots[&input_site]].observed;
                 self.power_no_dust(input_site, input_face, Some(captured))
             } else {
                 0
@@ -2211,11 +2222,12 @@ impl GraphBackend {
             if input_power < 15 {
                 for neighbor in adjacent.into_iter().flatten() {
                     let site = self.component_sites[neighbor.index()].expect("certified neighboring wire has a root site");
-                    let Some(observed) = walk.sites.get(&site).map(|site| &site.observed) else {
-                        return self.turbo_wire_power_general(plan, ordered, walk);
+                    let Some(&slot) = walk.site_slots.get(&site) else {
+                        return self.turbo_wire_power_general(plan, neighbors, walk);
                     };
+                    let observed = &walk.sites[slot].observed;
                     let ObservedProperties::Wire(wire) = observed.properties else {
-                        return self.turbo_wire_power_general(plan, ordered, walk);
+                        return self.turbo_wire_power_general(plan, neighbors, walk);
                     };
                     wire_power = wire_power.max(wire.power);
                 }
@@ -2223,43 +2235,45 @@ impl GraphBackend {
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
             return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
         }
-        self.turbo_wire_power_general(plan, ordered, walk)
+        self.turbo_wire_power_general(plan, neighbors, walk)
     }
 
-    fn turbo_wire_power_general(&mut self, plan: &WirePlan, ordered: &[(usize, SiteId); 24], walk: &WireWalk) -> (u8, u8, u8) {
+    fn turbo_wire_power_general(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (u8, u8, u8) {
         let mut wire_power = 0;
         for (face, index) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]) {
             let site = plan.canonical_neighbors[index];
-            let observed = &walk.sites[&site].observed;
+            let observed = &walk.sites[neighbors.slots[index]].observed;
             wire_power = wire_power.max(self.power_no_dust(site, face, Some(observed)));
         }
         let mut block_power = 0;
         if wire_power < 15 {
-            let center_up_solid = self.walk_site(ordered[1].1, walk).solid;
+            let order = crate::redstone::wire::TURBO_ORDER[neighbors.heading];
+            let center_up_solid = self.walk_site(neighbors.slots[order[1]], walk).solid;
             let horizontal = [4, 5, 6, 7];
             let down = [8, 10, 12, 14];
             let up = [9, 11, 13, 15];
             for index in 0..4 {
-                let neighbor = ordered[horizontal[index]].1;
+                let neighbor = neighbors.slots[order[horizontal[index]]];
                 let neighbor_site = self.walk_site(neighbor, walk);
                 block_power = self.walk_wire_strength(neighbor, walk, block_power);
                 if !neighbor_site.solid {
-                    block_power = self.walk_wire_strength(ordered[down[index]].1, walk, block_power);
+                    block_power = self.walk_wire_strength(neighbors.slots[order[down[index]]], walk, block_power);
                 } else if !center_up_solid && !neighbor_site.transparent {
-                    block_power = self.walk_wire_strength(ordered[up[index]].1, walk, block_power);
+                    block_power = self.walk_wire_strength(neighbors.slots[order[up[index]]], walk, block_power);
                 }
             }
         }
         (wire_power.max(block_power.saturating_sub(1)), block_power, wire_power)
     }
 
-    fn walk_site(&self, site: SiteId, walk: &WireWalk) -> ResolvedSiteView {
-        let observed = &walk.sites[&site].observed;
+    fn walk_site(&self, slot: usize, walk: &WireWalk) -> ResolvedSiteView {
+        let site = walk.sites[slot].site;
+        let observed = &walk.sites[slot].observed;
         self.resolve_site_view(site, Some(observed)).expect("captured wire site is valid")
     }
 
-    fn walk_wire_strength(&self, site: SiteId, walk: &WireWalk, strength: u8) -> u8 {
-        match walk.sites[&site].observed.properties {
+    fn walk_wire_strength(&self, slot: usize, walk: &WireWalk, strength: u8) -> u8 {
+        match walk.sites[slot].observed.properties {
             ObservedProperties::Wire(wire) => strength.max(wire.power),
             _ => strength,
         }
