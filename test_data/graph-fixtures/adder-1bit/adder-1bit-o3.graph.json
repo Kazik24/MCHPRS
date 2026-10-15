@@ -15,7 +15,9 @@
     "callback_routes",
     "callback_links",
     "piston_routes",
-    "wire_query_facts"
+    "wire_query_facts",
+    "instant_regions",
+    "instant_proxies"
   ],
   "source": {
     "revision": null,
@@ -880,14 +882,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:86",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 49,
           "y": 32,
           "z": 42
         },
-        "output_route": "route:3"
+        "output_route": null
       },
       {
         "id": "node:64",
@@ -961,14 +964,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:158",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 45,
           "y": 33,
           "z": 41
         },
-        "output_route": "route:4"
+        "output_route": null
       },
       {
         "id": "node:70",
@@ -988,28 +992,30 @@
         "kind": {
           "kind": "observer",
           "watched": "site:164",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 51,
           "y": 33,
           "z": 41
         },
-        "output_route": "route:5"
+        "output_route": null
       },
       {
         "id": "node:72",
         "kind": {
           "kind": "observer",
           "watched": "site:169",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 56,
           "y": 33,
           "z": 41
         },
-        "output_route": "route:6"
+        "output_route": null
       },
       {
         "id": "node:73",
@@ -1070,14 +1076,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:202",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 47,
           "y": 33,
           "z": 43
         },
-        "output_route": "route:7"
+        "output_route": null
       },
       {
         "id": "node:78",
@@ -1112,14 +1119,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:208",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 53,
           "y": 33,
           "z": 43
         },
-        "output_route": "route:8"
+        "output_route": null
       },
       {
         "id": "node:81",
@@ -1247,14 +1255,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:285",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 41,
           "y": 34,
           "z": 41
         },
-        "output_route": "route:10"
+        "output_route": null
       },
       {
         "id": "node:91",
@@ -1354,14 +1363,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:328",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 41,
           "y": 34,
           "z": 43
         },
-        "output_route": "route:11"
+        "output_route": null
       },
       {
         "id": "node:99",
@@ -1394,14 +1404,15 @@
         "kind": {
           "kind": "observer",
           "watched": "site:369",
-          "facing": "bottom"
+          "facing": "bottom",
+          "builtin_reset": true
         },
         "position": {
           "x": 49,
           "y": 34,
           "z": 45
         },
-        "output_route": "route:12"
+        "output_route": null
       },
       {
         "id": "node:102",
@@ -16957,10 +16968,10 @@
       {
         "id": "power_link:114",
         "from": {
-          "site": "site:85",
+          "site": "site:84",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "west"
           }
         },
         "to": {
@@ -16993,10 +17004,9 @@
       {
         "id": "power_link:116",
         "from": {
-          "site": "site:315",
+          "site": "site:183",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17013,8 +17023,7 @@
         "from": {
           "site": "site:183",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17065,10 +17074,10 @@
       {
         "id": "power_link:120",
         "from": {
-          "site": "site:157",
+          "site": "site:288",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17101,10 +17110,9 @@
       {
         "id": "power_link:122",
         "from": {
-          "site": "site:424",
+          "site": "site:289",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17121,8 +17129,7 @@
         "from": {
           "site": "site:289",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17209,10 +17216,10 @@
       {
         "id": "power_link:128",
         "from": {
-          "site": "site:163",
+          "site": "site:294",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17226,6 +17233,24 @@
       },
       {
         "id": "power_link:129",
+        "from": {
+          "site": "site:162",
+          "port": {
+            "kind": "strong",
+            "face": "west"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:2",
+          "port": "main"
+        },
+        "face": "west",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:130",
         "from": {
           "site": "site:294",
           "port": {
@@ -17243,7 +17268,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:130",
+        "id": "power_link:131",
         "from": {
           "site": "site:162",
           "port": {
@@ -17261,12 +17286,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:131",
+        "id": "power_link:132",
         "from": {
-          "site": "site:430",
+          "site": "site:295",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17279,12 +17303,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:132",
+        "id": "power_link:133",
         "from": {
           "site": "site:295",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17297,7 +17320,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:133",
+        "id": "power_link:134",
         "from": {
           "site": "site:294",
           "port": {
@@ -17315,12 +17338,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:134",
+        "id": "power_link:135",
         "from": {
-          "site": "site:168",
+          "site": "site:167",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "west"
           }
         },
         "to": {
@@ -17333,7 +17356,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:135",
+        "id": "power_link:136",
         "from": {
           "site": "site:167",
           "port": {
@@ -17351,12 +17374,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:136",
+        "id": "power_link:137",
         "from": {
-          "site": "site:435",
+          "site": "site:300",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17369,12 +17391,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:137",
+        "id": "power_link:138",
         "from": {
           "site": "site:300",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17387,7 +17408,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:138",
+        "id": "power_link:139",
         "from": {
           "site": "site:201",
           "port": {
@@ -17405,12 +17426,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:139",
+        "id": "power_link:140",
         "from": {
-          "site": "site:467",
+          "site": "site:334",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17423,12 +17443,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:140",
+        "id": "power_link:141",
         "from": {
           "site": "site:334",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17441,12 +17460,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:141",
+        "id": "power_link:142",
         "from": {
-          "site": "site:207",
+          "site": "site:206",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "west"
           }
         },
         "to": {
@@ -17459,7 +17478,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:142",
+        "id": "power_link:143",
         "from": {
           "site": "site:206",
           "port": {
@@ -17477,12 +17496,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:143",
+        "id": "power_link:144",
         "from": {
-          "site": "site:473",
+          "site": "site:340",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17495,12 +17513,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:144",
+        "id": "power_link:145",
         "from": {
           "site": "site:340",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17513,12 +17530,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:145",
+        "id": "power_link:146",
         "from": {
-          "site": "site:284",
+          "site": "site:419",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17531,7 +17548,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:146",
+        "id": "power_link:147",
         "from": {
           "site": "site:419",
           "port": {
@@ -17549,12 +17566,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:147",
+        "id": "power_link:148",
         "from": {
-          "site": "site:532",
+          "site": "site:608",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17567,7 +17584,24 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:148",
+        "id": "power_link:149",
+        "from": {
+          "site": "site:420",
+          "port": {
+            "kind": "output"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:6",
+          "port": "quasi"
+        },
+        "face": "top",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:150",
         "from": {
           "site": "site:608",
           "port": {
@@ -17585,12 +17619,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:149",
+        "id": "power_link:151",
         "from": {
           "site": "site:420",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -17603,7 +17636,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:150",
+        "id": "power_link:152",
         "from": {
           "site": "site:419",
           "port": {
@@ -17621,7 +17654,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:151",
+        "id": "power_link:153",
         "from": {
           "site": "site:159",
           "port": {
@@ -17639,12 +17672,12 @@
         "guard": "guard:43"
       },
       {
-        "id": "power_link:152",
+        "id": "power_link:154",
         "from": {
-          "site": "site:312",
+          "site": "site:447",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17657,7 +17690,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:153",
+        "id": "power_link:155",
         "from": {
           "site": "site:447",
           "port": {
@@ -17675,7 +17708,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:154",
+        "id": "power_link:156",
         "from": {
           "site": "site:447",
           "port": {
@@ -17693,12 +17726,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:155",
+        "id": "power_link:157",
         "from": {
-          "site": "site:424",
+          "site": "site:289",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17711,7 +17743,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:156",
+        "id": "power_link:158",
         "from": {
           "site": "site:165",
           "port": {
@@ -17729,12 +17761,12 @@
         "guard": "guard:67"
       },
       {
-        "id": "power_link:157",
+        "id": "power_link:159",
         "from": {
-          "site": "site:318",
+          "site": "site:453",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17747,7 +17779,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:158",
+        "id": "power_link:160",
         "from": {
           "site": "site:453",
           "port": {
@@ -17765,7 +17797,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:159",
+        "id": "power_link:161",
         "from": {
           "site": "site:453",
           "port": {
@@ -17783,12 +17815,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:160",
+        "id": "power_link:162",
         "from": {
-          "site": "site:430",
+          "site": "site:295",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17801,12 +17832,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:161",
+        "id": "power_link:163",
         "from": {
-          "site": "site:446",
+          "site": "site:551",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17819,7 +17850,43 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:162",
+        "id": "power_link:164",
+        "from": {
+          "site": "site:447",
+          "port": {
+            "kind": "strong",
+            "face": "east"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:9",
+          "port": "main"
+        },
+        "face": "top",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:165",
+        "from": {
+          "site": "site:445",
+          "port": {
+            "kind": "strong",
+            "face": "west"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:9",
+          "port": "main"
+        },
+        "face": "top",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:166",
         "from": {
           "site": "site:551",
           "port": {
@@ -17837,7 +17904,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:163",
+        "id": "power_link:167",
         "from": {
           "site": "site:447",
           "port": {
@@ -17855,7 +17922,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:164",
+        "id": "power_link:168",
         "from": {
           "site": "site:445",
           "port": {
@@ -17873,7 +17940,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:165",
+        "id": "power_link:169",
         "from": {
           "site": "site:332",
           "port": {
@@ -17891,12 +17958,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:166",
+        "id": "power_link:170",
         "from": {
-          "site": "site:312",
+          "site": "site:447",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17909,7 +17976,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:167",
+        "id": "power_link:171",
         "from": {
           "site": "site:551",
           "port": {
@@ -17927,12 +17994,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:168",
+        "id": "power_link:172",
         "from": {
-          "site": "site:424",
+          "site": "site:289",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -17945,7 +18011,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:169",
+        "id": "power_link:173",
         "from": {
           "site": "site:447",
           "port": {
@@ -17963,7 +18029,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:170",
+        "id": "power_link:174",
         "from": {
           "site": "site:445",
           "port": {
@@ -17981,12 +18047,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:171",
+        "id": "power_link:175",
         "from": {
-          "site": "site:452",
+          "site": "site:556",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -17999,7 +18065,43 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:172",
+        "id": "power_link:176",
+        "from": {
+          "site": "site:453",
+          "port": {
+            "kind": "strong",
+            "face": "east"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:10",
+          "port": "main"
+        },
+        "face": "top",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:177",
+        "from": {
+          "site": "site:451",
+          "port": {
+            "kind": "strong",
+            "face": "west"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:10",
+          "port": "main"
+        },
+        "face": "top",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:178",
         "from": {
           "site": "site:556",
           "port": {
@@ -18017,7 +18119,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:173",
+        "id": "power_link:179",
         "from": {
           "site": "site:453",
           "port": {
@@ -18035,7 +18137,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:174",
+        "id": "power_link:180",
         "from": {
           "site": "site:451",
           "port": {
@@ -18053,12 +18155,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:175",
+        "id": "power_link:181",
         "from": {
-          "site": "site:318",
+          "site": "site:453",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -18071,7 +18173,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:176",
+        "id": "power_link:182",
         "from": {
           "site": "site:556",
           "port": {
@@ -18089,12 +18191,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:177",
+        "id": "power_link:183",
         "from": {
-          "site": "site:430",
+          "site": "site:295",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -18107,7 +18208,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:178",
+        "id": "power_link:184",
         "from": {
           "site": "site:453",
           "port": {
@@ -18125,7 +18226,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:179",
+        "id": "power_link:185",
         "from": {
           "site": "site:451",
           "port": {
@@ -18143,12 +18244,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:180",
+        "id": "power_link:186",
         "from": {
-          "site": "site:327",
+          "site": "site:460",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -18161,7 +18262,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:181",
+        "id": "power_link:187",
         "from": {
           "site": "site:460",
           "port": {
@@ -18179,12 +18280,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:182",
+        "id": "power_link:188",
         "from": {
-          "site": "site:563",
+          "site": "site:627",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "top"
           }
         },
         "to": {
@@ -18197,7 +18298,24 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:183",
+        "id": "power_link:189",
+        "from": {
+          "site": "site:461",
+          "port": {
+            "kind": "output"
+          }
+        },
+        "to": {
+          "kind": "input",
+          "node": "node:11",
+          "port": "quasi"
+        },
+        "face": "top",
+        "attenuation": 0,
+        "guard": "guard:0"
+      },
+      {
+        "id": "power_link:190",
         "from": {
           "site": "site:627",
           "port": {
@@ -18215,12 +18333,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:184",
+        "id": "power_link:191",
         "from": {
           "site": "site:461",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -18233,7 +18350,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:185",
+        "id": "power_link:192",
         "from": {
           "site": "site:460",
           "port": {
@@ -18251,12 +18368,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:186",
+        "id": "power_link:193",
         "from": {
-          "site": "site:381",
+          "site": "site:380",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "west"
           }
         },
         "to": {
@@ -18269,7 +18386,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:187",
+        "id": "power_link:194",
         "from": {
           "site": "site:380",
           "port": {
@@ -18287,12 +18404,12 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:188",
+        "id": "power_link:195",
         "from": {
-          "site": "site:368",
+          "site": "site:367",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "strong",
+            "face": "west"
           }
         },
         "to": {
@@ -18305,7 +18422,7 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:189",
+        "id": "power_link:196",
         "from": {
           "site": "site:367",
           "port": {
@@ -18323,12 +18440,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:190",
+        "id": "power_link:197",
         "from": {
-          "site": "site:593",
+          "site": "site:503",
           "port": {
-            "kind": "conducted",
-            "include_dust": true
+            "kind": "output"
           }
         },
         "to": {
@@ -18341,12 +18457,11 @@
         "guard": "guard:0"
       },
       {
-        "id": "power_link:191",
+        "id": "power_link:198",
         "from": {
           "site": "site:503",
           "port": {
-            "kind": "strong",
-            "face": "bottom"
+            "kind": "output"
           }
         },
         "to": {
@@ -18397,8 +18512,19 @@
           "transparent": 788546,
           "wire": 0,
           "zero_no_dust": 5329537,
-          "isolated": true
-        }
+          "isolated": true,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:70"
       },
       {
         "id": "wire:1",
@@ -18437,8 +18563,19 @@
           "transparent": 50896,
           "wire": 2097154,
           "zero_no_dust": 15138818,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 2,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 2,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:83"
       },
       {
         "id": "wire:2",
@@ -18477,8 +18614,19 @@
           "transparent": 537136,
           "wire": 1,
           "zero_no_dust": 13074433,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 1,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 1,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:84"
       },
       {
         "id": "wire:3",
@@ -18517,8 +18665,19 @@
           "transparent": 8949920,
           "wire": 1048578,
           "zero_no_dust": 7561730,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 2,
+              "conditional": 1048576
+            },
+            "turbo": {
+              "direct": 2,
+              "conditional": 1048576
+            }
+          }
+        },
+        "hop_root": "site:161"
       },
       {
         "id": "wire:4",
@@ -18557,8 +18716,19 @@
           "transparent": 33828,
           "wire": 8193,
           "zero_no_dust": 14381081,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 8193,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 8193,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:162"
       },
       {
         "id": "wire:5",
@@ -18597,8 +18767,19 @@
           "transparent": 8917120,
           "wire": 2097152,
           "zero_no_dust": 7856656,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 2097152
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 2097152
+            }
+          }
+        },
+        "hop_root": "site:167"
       },
       {
         "id": "wire:6",
@@ -18637,8 +18818,19 @@
           "transparent": 14464,
           "wire": 131328,
           "zero_no_dust": 3114280,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:201"
       },
       {
         "id": "wire:7",
@@ -18677,8 +18869,19 @@
           "transparent": 512,
           "wire": 256,
           "zero_no_dust": 11400680,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:206"
       },
       {
         "id": "wire:8",
@@ -18717,8 +18920,19 @@
           "transparent": 2097160,
           "wire": 262144,
           "zero_no_dust": 14678995,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 262144
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 262144
+            }
+          }
+        },
+        "hop_root": "site:271"
       },
       {
         "id": "wire:9",
@@ -18757,8 +18971,19 @@
           "transparent": 262178,
           "wire": 10485760,
           "zero_no_dust": 16467608,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:288"
       },
       {
         "id": "wire:10",
@@ -18797,8 +19022,19 @@
           "transparent": 262178,
           "wire": 10485888,
           "zero_no_dust": 16466841,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 128,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 128,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:294"
       },
       {
         "id": "wire:11",
@@ -18837,8 +19073,19 @@
           "transparent": 1311753,
           "wire": 131072,
           "zero_no_dust": 15464738,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 131072
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 131072
+            }
+          }
+        },
+        "hop_root": "site:320"
       },
       {
         "id": "wire:12",
@@ -18877,8 +19124,19 @@
           "transparent": 204816,
           "wire": 13631490,
           "zero_no_dust": 16551466,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 2,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 2,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:331"
       },
       {
         "id": "wire:13",
@@ -18917,8 +19175,19 @@
           "transparent": 4262408,
           "wire": 8392705,
           "zero_no_dust": 11318563,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4097,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4097,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:332"
       },
       {
         "id": "wire:14",
@@ -18957,8 +19226,19 @@
           "transparent": 131088,
           "wire": 5246976,
           "zero_no_dust": 16628202,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4096,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4096,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:337"
       },
       {
         "id": "wire:15",
@@ -18997,8 +19277,19 @@
           "transparent": 0,
           "wire": 2306,
           "zero_no_dust": 12578746,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 258,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 258,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:362"
       },
       {
         "id": "wire:16",
@@ -19037,8 +19328,19 @@
           "transparent": 0,
           "wire": 2051,
           "zero_no_dust": 12578619,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:363"
       },
       {
         "id": "wire:17",
@@ -19077,8 +19379,19 @@
           "transparent": 0,
           "wire": 4196419,
           "zero_no_dust": 16772987,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:364"
       },
       {
         "id": "wire:18",
@@ -19117,8 +19430,19 @@
           "transparent": 0,
           "wire": 4196419,
           "zero_no_dust": 16772987,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:365"
       },
       {
         "id": "wire:19",
@@ -19157,8 +19481,19 @@
           "transparent": 0,
           "wire": 67,
           "zero_no_dust": 16770939,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:366"
       },
       {
         "id": "wire:20",
@@ -19197,8 +19532,19 @@
           "transparent": 4194304,
           "wire": 65,
           "zero_no_dust": 12547961,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 1,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 1,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:367"
       },
       {
         "id": "wire:21",
@@ -19237,8 +19583,19 @@
           "transparent": 2,
           "wire": 8388640,
           "zero_no_dust": 16502769,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 32,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 32,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:419"
       },
       {
         "id": "wire:22",
@@ -19277,8 +19634,19 @@
           "transparent": 49152,
           "wire": 8388656,
           "zero_no_dust": 13189115,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 48,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 48,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:441"
       },
       {
         "id": "wire:23",
@@ -19317,8 +19685,19 @@
           "transparent": 98308,
           "wire": 403456,
           "zero_no_dust": 16656889,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 401408,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 401408,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:445"
       },
       {
         "id": "wire:24",
@@ -19357,8 +19736,19 @@
           "transparent": 21520,
           "wire": 320,
           "zero_no_dust": 16525674,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:447"
       },
       {
         "id": "wire:25",
@@ -19397,8 +19787,19 @@
           "transparent": 65540,
           "wire": 403456,
           "zero_no_dust": 16691065,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 401408,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 401408,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:451"
       },
       {
         "id": "wire:26",
@@ -19437,8 +19838,19 @@
           "transparent": 22544,
           "wire": 320,
           "zero_no_dust": 16590186,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:453"
       },
       {
         "id": "wire:27",
@@ -19477,8 +19889,19 @@
           "transparent": 2,
           "wire": 4194352,
           "zero_no_dust": 7983089,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 48,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 48,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:460"
       },
       {
         "id": "wire:28",
@@ -19517,8 +19940,19 @@
           "transparent": 16384,
           "wire": 4227088,
           "zero_no_dust": 13221851,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 16,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 16,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:478"
       },
       {
         "id": "wire:29",
@@ -19557,8 +19991,19 @@
           "transparent": 4194304,
           "wire": 4608,
           "zero_no_dust": 12582522,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4096,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4096,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:495"
       },
       {
         "id": "wire:30",
@@ -19597,8 +20042,19 @@
           "transparent": 262144,
           "wire": 4224,
           "zero_no_dust": 16318459,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4224,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4224,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:551"
       },
       {
         "id": "wire:31",
@@ -19637,8 +20093,19 @@
           "transparent": 0,
           "wire": 4224,
           "zero_no_dust": 16580603,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4224,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4224,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:556"
       }
     ],
     "dust_paths": [],
@@ -46236,6 +46703,2362 @@
               "kind": "piston_base",
               "piston": "piston:12"
             }
+          }
+        ]
+      }
+    ],
+    "instant_regions": [
+      {
+        "stable_inputs": false,
+        "wires": [],
+        "id": "instant_region:0",
+        "actors": [
+          "piston:0",
+          "piston:2",
+          "piston:5",
+          "piston:8",
+          "piston:10"
+        ],
+        "resources": [
+          "resource:1",
+          "resource:3",
+          "resource:7"
+        ],
+        "resets": [
+          "node:63",
+          "node:71",
+          "node:80"
+        ],
+        "contacts": [
+          "contact:0",
+          "contact:1",
+          "contact:2",
+          "contact:6",
+          "contact:7",
+          "contact:8",
+          "contact:14",
+          "contact:15",
+          "contact:22",
+          "contact:23",
+          "contact:24",
+          "contact:28",
+          "contact:29"
+        ],
+        "readable_sites": [
+          "site:86",
+          "site:87",
+          "site:88",
+          "site:164",
+          "site:165",
+          "site:166",
+          "site:183",
+          "site:185",
+          "site:187",
+          "site:208",
+          "site:295",
+          "site:296",
+          "site:297",
+          "site:298",
+          "site:317",
+          "site:340"
+        ],
+        "power_inputs": [
+          "power_link:3",
+          "power_link:114",
+          "power_link:116",
+          "power_link:118",
+          "power_link:125",
+          "power_link:126",
+          "power_link:127",
+          "power_link:128",
+          "power_link:129",
+          "power_link:132",
+          "power_link:134",
+          "power_link:142",
+          "power_link:144",
+          "power_link:158",
+          "power_link:159",
+          "power_link:161",
+          "power_link:162",
+          "power_link:175",
+          "power_link:176",
+          "power_link:177",
+          "power_link:181",
+          "power_link:182",
+          "power_link:183",
+          "power_link:184",
+          "power_link:185"
+        ],
+        "power_readers": [
+          "power_link:2",
+          "power_link:23",
+          "power_link:27",
+          "power_link:35",
+          "power_link:49",
+          "power_link:117",
+          "power_link:133",
+          "power_link:145"
+        ],
+        "routes": [
+          "route:3",
+          "route:5",
+          "route:8",
+          "route:80",
+          "route:81",
+          "route:82",
+          "route:83",
+          "route:84",
+          "route:85",
+          "route:86",
+          "route:87",
+          "route:96",
+          "route:97",
+          "route:98",
+          "route:99",
+          "route:100",
+          "route:101",
+          "route:102",
+          "route:103",
+          "route:120",
+          "route:121",
+          "route:122",
+          "route:123",
+          "route:124",
+          "route:125",
+          "route:126",
+          "route:127",
+          "route:144",
+          "route:145",
+          "route:146",
+          "route:147",
+          "route:148",
+          "route:149",
+          "route:150",
+          "route:151",
+          "route:160",
+          "route:161",
+          "route:162",
+          "route:163",
+          "route:164",
+          "route:165",
+          "route:166",
+          "route:167"
+        ],
+        "incoming": [
+          {
+            "route": "route:1",
+            "ordinal": 0
+          },
+          {
+            "route": "route:1",
+            "ordinal": 3
+          },
+          {
+            "route": "route:16",
+            "ordinal": 0
+          },
+          {
+            "route": "route:16",
+            "ordinal": 1
+          },
+          {
+            "route": "route:16",
+            "ordinal": 3
+          },
+          {
+            "route": "route:16",
+            "ordinal": 4
+          },
+          {
+            "route": "route:16",
+            "ordinal": 8
+          },
+          {
+            "route": "route:16",
+            "ordinal": 11
+          },
+          {
+            "route": "route:16",
+            "ordinal": 12
+          },
+          {
+            "route": "route:16",
+            "ordinal": 15
+          },
+          {
+            "route": "route:17",
+            "ordinal": 0
+          },
+          {
+            "route": "route:17",
+            "ordinal": 1
+          },
+          {
+            "route": "route:17",
+            "ordinal": 3
+          },
+          {
+            "route": "route:17",
+            "ordinal": 4
+          },
+          {
+            "route": "route:17",
+            "ordinal": 6
+          },
+          {
+            "route": "route:17",
+            "ordinal": 7
+          },
+          {
+            "route": "route:20",
+            "ordinal": 9
+          },
+          {
+            "route": "route:20",
+            "ordinal": 10
+          },
+          {
+            "route": "route:21",
+            "ordinal": 2
+          },
+          {
+            "route": "route:21",
+            "ordinal": 3
+          },
+          {
+            "route": "route:23",
+            "ordinal": 4
+          },
+          {
+            "route": "route:24",
+            "ordinal": 3
+          },
+          {
+            "route": "route:24",
+            "ordinal": 4
+          },
+          {
+            "route": "route:24",
+            "ordinal": 6
+          },
+          {
+            "route": "route:24",
+            "ordinal": 7
+          },
+          {
+            "route": "route:24",
+            "ordinal": 10
+          },
+          {
+            "route": "route:24",
+            "ordinal": 11
+          },
+          {
+            "route": "route:25",
+            "ordinal": 1
+          },
+          {
+            "route": "route:25",
+            "ordinal": 2
+          },
+          {
+            "route": "route:25",
+            "ordinal": 3
+          },
+          {
+            "route": "route:25",
+            "ordinal": 5
+          },
+          {
+            "route": "route:25",
+            "ordinal": 6
+          },
+          {
+            "route": "route:26",
+            "ordinal": 2
+          },
+          {
+            "route": "route:26",
+            "ordinal": 7
+          },
+          {
+            "route": "route:26",
+            "ordinal": 11
+          },
+          {
+            "route": "route:26",
+            "ordinal": 12
+          },
+          {
+            "route": "route:26",
+            "ordinal": 14
+          },
+          {
+            "route": "route:27",
+            "ordinal": 0
+          },
+          {
+            "route": "route:27",
+            "ordinal": 1
+          },
+          {
+            "route": "route:27",
+            "ordinal": 2
+          },
+          {
+            "route": "route:30",
+            "ordinal": 1
+          },
+          {
+            "route": "route:30",
+            "ordinal": 2
+          },
+          {
+            "route": "route:30",
+            "ordinal": 5
+          },
+          {
+            "route": "route:30",
+            "ordinal": 6
+          },
+          {
+            "route": "route:30",
+            "ordinal": 7
+          },
+          {
+            "route": "route:30",
+            "ordinal": 8
+          },
+          {
+            "route": "route:30",
+            "ordinal": 9
+          },
+          {
+            "route": "route:30",
+            "ordinal": 12
+          },
+          {
+            "route": "route:30",
+            "ordinal": 13
+          },
+          {
+            "route": "route:31",
+            "ordinal": 0
+          },
+          {
+            "route": "route:31",
+            "ordinal": 2
+          },
+          {
+            "route": "route:31",
+            "ordinal": 3
+          },
+          {
+            "route": "route:31",
+            "ordinal": 4
+          },
+          {
+            "route": "route:31",
+            "ordinal": 5
+          },
+          {
+            "route": "route:31",
+            "ordinal": 6
+          },
+          {
+            "route": "route:31",
+            "ordinal": 7
+          },
+          {
+            "route": "route:36",
+            "ordinal": 3
+          },
+          {
+            "route": "route:36",
+            "ordinal": 4
+          },
+          {
+            "route": "route:36",
+            "ordinal": 10
+          },
+          {
+            "route": "route:36",
+            "ordinal": 11
+          },
+          {
+            "route": "route:36",
+            "ordinal": 12
+          },
+          {
+            "route": "route:36",
+            "ordinal": 13
+          },
+          {
+            "route": "route:36",
+            "ordinal": 14
+          },
+          {
+            "route": "route:36",
+            "ordinal": 15
+          },
+          {
+            "route": "route:36",
+            "ordinal": 16
+          },
+          {
+            "route": "route:36",
+            "ordinal": 17
+          },
+          {
+            "route": "route:37",
+            "ordinal": 0
+          },
+          {
+            "route": "route:37",
+            "ordinal": 2
+          },
+          {
+            "route": "route:37",
+            "ordinal": 3
+          },
+          {
+            "route": "route:37",
+            "ordinal": 4
+          },
+          {
+            "route": "route:37",
+            "ordinal": 5
+          },
+          {
+            "route": "route:37",
+            "ordinal": 6
+          },
+          {
+            "route": "route:37",
+            "ordinal": 7
+          },
+          {
+            "route": "route:38",
+            "ordinal": 3
+          },
+          {
+            "route": "route:38",
+            "ordinal": 6
+          },
+          {
+            "route": "route:38",
+            "ordinal": 9
+          },
+          {
+            "route": "route:38",
+            "ordinal": 10
+          },
+          {
+            "route": "route:39",
+            "ordinal": 0
+          },
+          {
+            "route": "route:39",
+            "ordinal": 1
+          },
+          {
+            "route": "route:39",
+            "ordinal": 2
+          },
+          {
+            "route": "route:44",
+            "ordinal": 7
+          },
+          {
+            "route": "route:44",
+            "ordinal": 8
+          },
+          {
+            "route": "route:44",
+            "ordinal": 12
+          },
+          {
+            "route": "route:44",
+            "ordinal": 13
+          },
+          {
+            "route": "route:45",
+            "ordinal": 2
+          },
+          {
+            "route": "route:45",
+            "ordinal": 3
+          },
+          {
+            "route": "route:66",
+            "ordinal": 5
+          },
+          {
+            "route": "route:66",
+            "ordinal": 6
+          },
+          {
+            "route": "route:66",
+            "ordinal": 12
+          },
+          {
+            "route": "route:66",
+            "ordinal": 13
+          },
+          {
+            "route": "route:67",
+            "ordinal": 1
+          },
+          {
+            "route": "route:67",
+            "ordinal": 2
+          },
+          {
+            "route": "route:68",
+            "ordinal": 3
+          },
+          {
+            "route": "route:68",
+            "ordinal": 4
+          },
+          {
+            "route": "route:68",
+            "ordinal": 5
+          },
+          {
+            "route": "route:68",
+            "ordinal": 6
+          },
+          {
+            "route": "route:68",
+            "ordinal": 7
+          },
+          {
+            "route": "route:68",
+            "ordinal": 8
+          },
+          {
+            "route": "route:68",
+            "ordinal": 13
+          },
+          {
+            "route": "route:68",
+            "ordinal": 14
+          },
+          {
+            "route": "route:69",
+            "ordinal": 1
+          },
+          {
+            "route": "route:69",
+            "ordinal": 2
+          },
+          {
+            "route": "route:69",
+            "ordinal": 4
+          },
+          {
+            "route": "route:69",
+            "ordinal": 5
+          },
+          {
+            "route": "route:78",
+            "ordinal": 2
+          },
+          {
+            "route": "route:78",
+            "ordinal": 3
+          },
+          {
+            "route": "route:79",
+            "ordinal": 2
+          },
+          {
+            "route": "route:79",
+            "ordinal": 3
+          }
+        ],
+        "outgoing": [
+          {
+            "route": "route:80",
+            "ordinal": 0
+          },
+          {
+            "route": "route:80",
+            "ordinal": 2
+          },
+          {
+            "route": "route:80",
+            "ordinal": 4
+          },
+          {
+            "route": "route:81",
+            "ordinal": 0
+          },
+          {
+            "route": "route:83",
+            "ordinal": 0
+          },
+          {
+            "route": "route:83",
+            "ordinal": 2
+          },
+          {
+            "route": "route:83",
+            "ordinal": 4
+          },
+          {
+            "route": "route:96",
+            "ordinal": 0
+          },
+          {
+            "route": "route:96",
+            "ordinal": 2
+          },
+          {
+            "route": "route:97",
+            "ordinal": 0
+          },
+          {
+            "route": "route:99",
+            "ordinal": 0
+          },
+          {
+            "route": "route:99",
+            "ordinal": 2
+          },
+          {
+            "route": "route:100",
+            "ordinal": 0
+          },
+          {
+            "route": "route:100",
+            "ordinal": 3
+          },
+          {
+            "route": "route:102",
+            "ordinal": 2
+          },
+          {
+            "route": "route:102",
+            "ordinal": 5
+          },
+          {
+            "route": "route:120",
+            "ordinal": 0
+          },
+          {
+            "route": "route:120",
+            "ordinal": 2
+          },
+          {
+            "route": "route:121",
+            "ordinal": 0
+          },
+          {
+            "route": "route:123",
+            "ordinal": 0
+          },
+          {
+            "route": "route:123",
+            "ordinal": 2
+          },
+          {
+            "route": "route:144",
+            "ordinal": 0
+          },
+          {
+            "route": "route:144",
+            "ordinal": 1
+          },
+          {
+            "route": "route:144",
+            "ordinal": 3
+          },
+          {
+            "route": "route:144",
+            "ordinal": 4
+          },
+          {
+            "route": "route:145",
+            "ordinal": 0
+          },
+          {
+            "route": "route:145",
+            "ordinal": 1
+          },
+          {
+            "route": "route:147",
+            "ordinal": 0
+          },
+          {
+            "route": "route:147",
+            "ordinal": 1
+          },
+          {
+            "route": "route:147",
+            "ordinal": 3
+          },
+          {
+            "route": "route:147",
+            "ordinal": 4
+          },
+          {
+            "route": "route:160",
+            "ordinal": 0
+          },
+          {
+            "route": "route:160",
+            "ordinal": 2
+          },
+          {
+            "route": "route:160",
+            "ordinal": 4
+          },
+          {
+            "route": "route:161",
+            "ordinal": 0
+          },
+          {
+            "route": "route:162",
+            "ordinal": 1
+          },
+          {
+            "route": "route:162",
+            "ordinal": 6
+          },
+          {
+            "route": "route:163",
+            "ordinal": 0
+          },
+          {
+            "route": "route:163",
+            "ordinal": 2
+          },
+          {
+            "route": "route:163",
+            "ordinal": 4
+          },
+          {
+            "route": "route:165",
+            "ordinal": 0
+          },
+          {
+            "route": "route:165",
+            "ordinal": 5
+          },
+          {
+            "route": "route:167",
+            "ordinal": 0
+          },
+          {
+            "route": "route:167",
+            "ordinal": 5
+          }
+        ],
+        "wire_readers": [
+          "node:50",
+          "node:53",
+          "node:57",
+          "node:58",
+          "node:60",
+          "node:65",
+          "node:70",
+          "node:73",
+          "node:79",
+          "node:94",
+          "node:95",
+          "node:103"
+        ],
+        "observers": []
+      },
+      {
+        "stable_inputs": false,
+        "wires": [],
+        "id": "instant_region:1",
+        "actors": [
+          "piston:1",
+          "piston:4",
+          "piston:7",
+          "piston:9"
+        ],
+        "resources": [
+          "resource:0",
+          "resource:2",
+          "resource:6"
+        ],
+        "resets": [
+          "node:69",
+          "node:77"
+        ],
+        "contacts": [
+          "contact:3",
+          "contact:4",
+          "contact:5",
+          "contact:12",
+          "contact:13",
+          "contact:19",
+          "contact:20",
+          "contact:21",
+          "contact:25",
+          "contact:26",
+          "contact:27"
+        ],
+        "readable_sites": [
+          "site:82",
+          "site:158",
+          "site:159",
+          "site:160",
+          "site:179",
+          "site:181",
+          "site:202",
+          "site:289",
+          "site:290",
+          "site:291",
+          "site:292",
+          "site:311",
+          "site:334"
+        ],
+        "power_inputs": [
+          "power_link:119",
+          "power_link:120",
+          "power_link:122",
+          "power_link:124",
+          "power_link:139",
+          "power_link:140",
+          "power_link:153",
+          "power_link:154",
+          "power_link:156",
+          "power_link:157",
+          "power_link:163",
+          "power_link:164",
+          "power_link:165",
+          "power_link:169",
+          "power_link:170",
+          "power_link:171",
+          "power_link:172",
+          "power_link:173",
+          "power_link:174"
+        ],
+        "power_readers": [
+          "power_link:8",
+          "power_link:9",
+          "power_link:14",
+          "power_link:18",
+          "power_link:41",
+          "power_link:123",
+          "power_link:141"
+        ],
+        "routes": [
+          "route:4",
+          "route:7",
+          "route:88",
+          "route:89",
+          "route:90",
+          "route:91",
+          "route:92",
+          "route:93",
+          "route:94",
+          "route:95",
+          "route:112",
+          "route:113",
+          "route:114",
+          "route:115",
+          "route:116",
+          "route:117",
+          "route:118",
+          "route:119",
+          "route:136",
+          "route:137",
+          "route:138",
+          "route:139",
+          "route:140",
+          "route:141",
+          "route:142",
+          "route:143",
+          "route:152",
+          "route:153",
+          "route:154",
+          "route:155",
+          "route:156",
+          "route:157",
+          "route:158",
+          "route:159"
+        ],
+        "incoming": [
+          {
+            "route": "route:18",
+            "ordinal": 1
+          },
+          {
+            "route": "route:18",
+            "ordinal": 3
+          },
+          {
+            "route": "route:18",
+            "ordinal": 4
+          },
+          {
+            "route": "route:18",
+            "ordinal": 6
+          },
+          {
+            "route": "route:18",
+            "ordinal": 11
+          },
+          {
+            "route": "route:18",
+            "ordinal": 13
+          },
+          {
+            "route": "route:19",
+            "ordinal": 1
+          },
+          {
+            "route": "route:19",
+            "ordinal": 2
+          },
+          {
+            "route": "route:19",
+            "ordinal": 3
+          },
+          {
+            "route": "route:20",
+            "ordinal": 0
+          },
+          {
+            "route": "route:20",
+            "ordinal": 2
+          },
+          {
+            "route": "route:20",
+            "ordinal": 3
+          },
+          {
+            "route": "route:20",
+            "ordinal": 6
+          },
+          {
+            "route": "route:20",
+            "ordinal": 7
+          },
+          {
+            "route": "route:21",
+            "ordinal": 1
+          },
+          {
+            "route": "route:21",
+            "ordinal": 4
+          },
+          {
+            "route": "route:21",
+            "ordinal": 5
+          },
+          {
+            "route": "route:22",
+            "ordinal": 2
+          },
+          {
+            "route": "route:22",
+            "ordinal": 7
+          },
+          {
+            "route": "route:22",
+            "ordinal": 10
+          },
+          {
+            "route": "route:22",
+            "ordinal": 11
+          },
+          {
+            "route": "route:22",
+            "ordinal": 13
+          },
+          {
+            "route": "route:23",
+            "ordinal": 1
+          },
+          {
+            "route": "route:23",
+            "ordinal": 2
+          },
+          {
+            "route": "route:23",
+            "ordinal": 3
+          },
+          {
+            "route": "route:28",
+            "ordinal": 5
+          },
+          {
+            "route": "route:28",
+            "ordinal": 7
+          },
+          {
+            "route": "route:28",
+            "ordinal": 8
+          },
+          {
+            "route": "route:28",
+            "ordinal": 10
+          },
+          {
+            "route": "route:28",
+            "ordinal": 11
+          },
+          {
+            "route": "route:28",
+            "ordinal": 12
+          },
+          {
+            "route": "route:28",
+            "ordinal": 15
+          },
+          {
+            "route": "route:29",
+            "ordinal": 0
+          },
+          {
+            "route": "route:29",
+            "ordinal": 1
+          },
+          {
+            "route": "route:29",
+            "ordinal": 3
+          },
+          {
+            "route": "route:29",
+            "ordinal": 4
+          },
+          {
+            "route": "route:29",
+            "ordinal": 5
+          },
+          {
+            "route": "route:29",
+            "ordinal": 7
+          },
+          {
+            "route": "route:32",
+            "ordinal": 6
+          },
+          {
+            "route": "route:32",
+            "ordinal": 8
+          },
+          {
+            "route": "route:33",
+            "ordinal": 0
+          },
+          {
+            "route": "route:34",
+            "ordinal": 3
+          },
+          {
+            "route": "route:34",
+            "ordinal": 4
+          },
+          {
+            "route": "route:34",
+            "ordinal": 9
+          },
+          {
+            "route": "route:34",
+            "ordinal": 10
+          },
+          {
+            "route": "route:34",
+            "ordinal": 11
+          },
+          {
+            "route": "route:34",
+            "ordinal": 12
+          },
+          {
+            "route": "route:34",
+            "ordinal": 13
+          },
+          {
+            "route": "route:34",
+            "ordinal": 14
+          },
+          {
+            "route": "route:34",
+            "ordinal": 15
+          },
+          {
+            "route": "route:34",
+            "ordinal": 16
+          },
+          {
+            "route": "route:35",
+            "ordinal": 0
+          },
+          {
+            "route": "route:35",
+            "ordinal": 2
+          },
+          {
+            "route": "route:35",
+            "ordinal": 3
+          },
+          {
+            "route": "route:35",
+            "ordinal": 4
+          },
+          {
+            "route": "route:35",
+            "ordinal": 5
+          },
+          {
+            "route": "route:35",
+            "ordinal": 6
+          },
+          {
+            "route": "route:35",
+            "ordinal": 7
+          },
+          {
+            "route": "route:40",
+            "ordinal": 6
+          },
+          {
+            "route": "route:40",
+            "ordinal": 7
+          },
+          {
+            "route": "route:40",
+            "ordinal": 11
+          },
+          {
+            "route": "route:40",
+            "ordinal": 12
+          },
+          {
+            "route": "route:41",
+            "ordinal": 2
+          },
+          {
+            "route": "route:41",
+            "ordinal": 3
+          },
+          {
+            "route": "route:42",
+            "ordinal": 2
+          },
+          {
+            "route": "route:42",
+            "ordinal": 4
+          },
+          {
+            "route": "route:42",
+            "ordinal": 5
+          },
+          {
+            "route": "route:42",
+            "ordinal": 6
+          },
+          {
+            "route": "route:43",
+            "ordinal": 1
+          },
+          {
+            "route": "route:43",
+            "ordinal": 2
+          },
+          {
+            "route": "route:43",
+            "ordinal": 3
+          },
+          {
+            "route": "route:43",
+            "ordinal": 5
+          },
+          {
+            "route": "route:43",
+            "ordinal": 6
+          },
+          {
+            "route": "route:57",
+            "ordinal": 4
+          },
+          {
+            "route": "route:62",
+            "ordinal": 5
+          },
+          {
+            "route": "route:62",
+            "ordinal": 6
+          },
+          {
+            "route": "route:62",
+            "ordinal": 12
+          },
+          {
+            "route": "route:62",
+            "ordinal": 13
+          },
+          {
+            "route": "route:63",
+            "ordinal": 1
+          },
+          {
+            "route": "route:63",
+            "ordinal": 2
+          },
+          {
+            "route": "route:64",
+            "ordinal": 3
+          },
+          {
+            "route": "route:64",
+            "ordinal": 4
+          },
+          {
+            "route": "route:64",
+            "ordinal": 5
+          },
+          {
+            "route": "route:64",
+            "ordinal": 6
+          },
+          {
+            "route": "route:64",
+            "ordinal": 7
+          },
+          {
+            "route": "route:64",
+            "ordinal": 8
+          },
+          {
+            "route": "route:64",
+            "ordinal": 13
+          },
+          {
+            "route": "route:64",
+            "ordinal": 14
+          },
+          {
+            "route": "route:65",
+            "ordinal": 1
+          },
+          {
+            "route": "route:65",
+            "ordinal": 2
+          },
+          {
+            "route": "route:65",
+            "ordinal": 4
+          },
+          {
+            "route": "route:65",
+            "ordinal": 5
+          },
+          {
+            "route": "route:76",
+            "ordinal": 2
+          },
+          {
+            "route": "route:76",
+            "ordinal": 3
+          },
+          {
+            "route": "route:77",
+            "ordinal": 2
+          },
+          {
+            "route": "route:77",
+            "ordinal": 3
+          }
+        ],
+        "outgoing": [
+          {
+            "route": "route:88",
+            "ordinal": 0
+          },
+          {
+            "route": "route:88",
+            "ordinal": 2
+          },
+          {
+            "route": "route:89",
+            "ordinal": 0
+          },
+          {
+            "route": "route:91",
+            "ordinal": 0
+          },
+          {
+            "route": "route:91",
+            "ordinal": 2
+          },
+          {
+            "route": "route:112",
+            "ordinal": 0
+          },
+          {
+            "route": "route:112",
+            "ordinal": 2
+          },
+          {
+            "route": "route:113",
+            "ordinal": 0
+          },
+          {
+            "route": "route:114",
+            "ordinal": 1
+          },
+          {
+            "route": "route:114",
+            "ordinal": 2
+          },
+          {
+            "route": "route:115",
+            "ordinal": 0
+          },
+          {
+            "route": "route:115",
+            "ordinal": 2
+          },
+          {
+            "route": "route:116",
+            "ordinal": 0
+          },
+          {
+            "route": "route:116",
+            "ordinal": 2
+          },
+          {
+            "route": "route:117",
+            "ordinal": 0
+          },
+          {
+            "route": "route:117",
+            "ordinal": 1
+          },
+          {
+            "route": "route:118",
+            "ordinal": 2
+          },
+          {
+            "route": "route:118",
+            "ordinal": 4
+          },
+          {
+            "route": "route:119",
+            "ordinal": 0
+          },
+          {
+            "route": "route:119",
+            "ordinal": 1
+          },
+          {
+            "route": "route:136",
+            "ordinal": 0
+          },
+          {
+            "route": "route:136",
+            "ordinal": 1
+          },
+          {
+            "route": "route:136",
+            "ordinal": 3
+          },
+          {
+            "route": "route:136",
+            "ordinal": 4
+          },
+          {
+            "route": "route:137",
+            "ordinal": 0
+          },
+          {
+            "route": "route:137",
+            "ordinal": 1
+          },
+          {
+            "route": "route:139",
+            "ordinal": 0
+          },
+          {
+            "route": "route:139",
+            "ordinal": 1
+          },
+          {
+            "route": "route:139",
+            "ordinal": 3
+          },
+          {
+            "route": "route:139",
+            "ordinal": 4
+          },
+          {
+            "route": "route:152",
+            "ordinal": 0
+          },
+          {
+            "route": "route:152",
+            "ordinal": 1
+          },
+          {
+            "route": "route:153",
+            "ordinal": 0
+          },
+          {
+            "route": "route:155",
+            "ordinal": 0
+          },
+          {
+            "route": "route:155",
+            "ordinal": 1
+          },
+          {
+            "route": "route:156",
+            "ordinal": 0
+          },
+          {
+            "route": "route:156",
+            "ordinal": 2
+          },
+          {
+            "route": "route:158",
+            "ordinal": 2
+          },
+          {
+            "route": "route:158",
+            "ordinal": 4
+          }
+        ],
+        "wire_readers": [
+          "node:52",
+          "node:53",
+          "node:57",
+          "node:58",
+          "node:64",
+          "node:66",
+          "node:68",
+          "node:70",
+          "node:75",
+          "node:76",
+          "node:86",
+          "node:92",
+          "node:93",
+          "node:102"
+        ],
+        "observers": []
+      },
+      {
+        "stable_inputs": false,
+        "wires": [],
+        "id": "instant_region:2",
+        "actors": [
+          "piston:3"
+        ],
+        "resources": [
+          "resource:4"
+        ],
+        "resets": [
+          "node:72"
+        ],
+        "contacts": [
+          "contact:9",
+          "contact:10",
+          "contact:11"
+        ],
+        "readable_sites": [
+          "site:169",
+          "site:170",
+          "site:171",
+          "site:300"
+        ],
+        "power_inputs": [
+          "power_link:135",
+          "power_link:137"
+        ],
+        "power_readers": [
+          "power_link:29",
+          "power_link:138"
+        ],
+        "routes": [
+          "route:6",
+          "route:104",
+          "route:105",
+          "route:106",
+          "route:107",
+          "route:108",
+          "route:109",
+          "route:110",
+          "route:111"
+        ],
+        "incoming": [
+          {
+            "route": "route:26",
+            "ordinal": 8
+          },
+          {
+            "route": "route:26",
+            "ordinal": 9
+          },
+          {
+            "route": "route:27",
+            "ordinal": 3
+          },
+          {
+            "route": "route:27",
+            "ordinal": 4
+          }
+        ],
+        "outgoing": [
+          {
+            "route": "route:104",
+            "ordinal": 1
+          },
+          {
+            "route": "route:107",
+            "ordinal": 1
+          }
+        ],
+        "wire_readers": [
+          "node:60"
+        ],
+        "observers": []
+      },
+      {
+        "stable_inputs": false,
+        "wires": [],
+        "id": "instant_region:3",
+        "actors": [
+          "piston:6"
+        ],
+        "resources": [
+          "resource:5"
+        ],
+        "resets": [
+          "node:90"
+        ],
+        "contacts": [
+          "contact:16",
+          "contact:17",
+          "contact:18"
+        ],
+        "readable_sites": [
+          "site:285",
+          "site:286",
+          "site:287",
+          "site:420"
+        ],
+        "power_inputs": [
+          "power_link:146",
+          "power_link:148",
+          "power_link:149",
+          "power_link:152"
+        ],
+        "power_readers": [
+          "power_link:44",
+          "power_link:151"
+        ],
+        "routes": [
+          "route:10",
+          "route:128",
+          "route:129",
+          "route:130",
+          "route:131",
+          "route:132",
+          "route:133",
+          "route:134",
+          "route:135"
+        ],
+        "incoming": [
+          {
+            "route": "route:34",
+            "ordinal": 19
+          },
+          {
+            "route": "route:35",
+            "ordinal": 1
+          },
+          {
+            "route": "route:58",
+            "ordinal": 2
+          },
+          {
+            "route": "route:58",
+            "ordinal": 3
+          },
+          {
+            "route": "route:58",
+            "ordinal": 8
+          },
+          {
+            "route": "route:58",
+            "ordinal": 9
+          },
+          {
+            "route": "route:59",
+            "ordinal": 0
+          },
+          {
+            "route": "route:59",
+            "ordinal": 2
+          },
+          {
+            "route": "route:59",
+            "ordinal": 3
+          },
+          {
+            "route": "route:61",
+            "ordinal": 2
+          }
+        ],
+        "outgoing": [
+          {
+            "route": "route:128",
+            "ordinal": 0
+          },
+          {
+            "route": "route:128",
+            "ordinal": 2
+          },
+          {
+            "route": "route:129",
+            "ordinal": 0
+          },
+          {
+            "route": "route:131",
+            "ordinal": 0
+          },
+          {
+            "route": "route:131",
+            "ordinal": 2
+          }
+        ],
+        "wire_readers": [
+          "node:68",
+          "node:89",
+          "node:91"
+        ],
+        "observers": []
+      },
+      {
+        "stable_inputs": false,
+        "wires": [],
+        "id": "instant_region:4",
+        "actors": [
+          "piston:11"
+        ],
+        "resources": [
+          "resource:8"
+        ],
+        "resets": [
+          "node:98"
+        ],
+        "contacts": [
+          "contact:30",
+          "contact:31",
+          "contact:32"
+        ],
+        "readable_sites": [
+          "site:328",
+          "site:329",
+          "site:330",
+          "site:461"
+        ],
+        "power_inputs": [
+          "power_link:186",
+          "power_link:188",
+          "power_link:189",
+          "power_link:192"
+        ],
+        "power_readers": [
+          "power_link:53",
+          "power_link:191"
+        ],
+        "routes": [
+          "route:11",
+          "route:168",
+          "route:169",
+          "route:170",
+          "route:171",
+          "route:172",
+          "route:173",
+          "route:174",
+          "route:175"
+        ],
+        "incoming": [
+          {
+            "route": "route:40",
+            "ordinal": 15
+          },
+          {
+            "route": "route:41",
+            "ordinal": 1
+          },
+          {
+            "route": "route:46",
+            "ordinal": 3
+          },
+          {
+            "route": "route:47",
+            "ordinal": 3
+          },
+          {
+            "route": "route:61",
+            "ordinal": 3
+          },
+          {
+            "route": "route:70",
+            "ordinal": 2
+          },
+          {
+            "route": "route:70",
+            "ordinal": 3
+          },
+          {
+            "route": "route:70",
+            "ordinal": 9
+          },
+          {
+            "route": "route:70",
+            "ordinal": 10
+          },
+          {
+            "route": "route:71",
+            "ordinal": 0
+          },
+          {
+            "route": "route:71",
+            "ordinal": 3
+          },
+          {
+            "route": "route:71",
+            "ordinal": 4
+          },
+          {
+            "route": "route:73",
+            "ordinal": 1
+          },
+          {
+            "route": "route:75",
+            "ordinal": 2
+          }
+        ],
+        "outgoing": [
+          {
+            "route": "route:168",
+            "ordinal": 0
+          },
+          {
+            "route": "route:168",
+            "ordinal": 2
+          },
+          {
+            "route": "route:169",
+            "ordinal": 0
+          },
+          {
+            "route": "route:171",
+            "ordinal": 0
+          },
+          {
+            "route": "route:171",
+            "ordinal": 2
+          }
+        ],
+        "wire_readers": [
+          "node:75",
+          "node:76",
+          "node:81",
+          "node:82",
+          "node:91",
+          "node:97",
+          "node:99",
+          "node:100"
+        ],
+        "observers": []
+      },
+      {
+        "stable_inputs": false,
+        "wires": [],
+        "id": "instant_region:5",
+        "actors": [
+          "piston:12"
+        ],
+        "resources": [
+          "resource:9"
+        ],
+        "resets": [
+          "node:101"
+        ],
+        "contacts": [
+          "contact:33",
+          "contact:34",
+          "contact:35"
+        ],
+        "readable_sites": [
+          "site:336",
+          "site:354",
+          "site:369",
+          "site:503"
+        ],
+        "power_inputs": [
+          "power_link:193",
+          "power_link:195",
+          "power_link:197"
+        ],
+        "power_readers": [
+          "power_link:58",
+          "power_link:198"
+        ],
+        "routes": [
+          "route:12",
+          "route:176",
+          "route:177",
+          "route:178",
+          "route:179",
+          "route:180",
+          "route:181",
+          "route:182",
+          "route:183"
+        ],
+        "incoming": [
+          {
+            "route": "route:9",
+            "ordinal": 0
+          },
+          {
+            "route": "route:9",
+            "ordinal": 1
+          },
+          {
+            "route": "route:44",
+            "ordinal": 10
+          },
+          {
+            "route": "route:44",
+            "ordinal": 15
+          },
+          {
+            "route": "route:45",
+            "ordinal": 0
+          },
+          {
+            "route": "route:56",
+            "ordinal": 4
+          },
+          {
+            "route": "route:56",
+            "ordinal": 5
+          },
+          {
+            "route": "route:57",
+            "ordinal": 2
+          },
+          {
+            "route": "route:57",
+            "ordinal": 3
+          }
+        ],
+        "outgoing": [
+          {
+            "route": "route:176",
+            "ordinal": 0
+          },
+          {
+            "route": "route:176",
+            "ordinal": 1
+          },
+          {
+            "route": "route:177",
+            "ordinal": 0
+          },
+          {
+            "route": "route:179",
+            "ordinal": 0
+          },
+          {
+            "route": "route:179",
+            "ordinal": 1
+          }
+        ],
+        "wire_readers": [
+          "node:79",
+          "node:86"
+        ],
+        "observers": []
+      }
+    ],
+    "instant_proxies": [
+      {
+        "id": "instant_proxy:0",
+        "region": "instant_region:2",
+        "private_cells": [
+          {
+            "actor": "piston:3",
+            "resource": "resource:4",
+            "reset": "node:72"
+          }
+        ],
+        "routes": [
+          {
+            "route": "route:104",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "dispatch"
+              }
+            ]
+          },
+          {
+            "route": "route:106",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              }
+            ]
+          },
+          {
+            "route": "route:107",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "dispatch"
+              }
+            ]
+          },
+          {
+            "route": "route:108",
+            "operations": [
+              {
+                "kind": "arm_reset",
+                "node": "node:72"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              }
+            ]
+          },
+          {
+            "route": "route:109",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              }
+            ]
+          },
+          {
+            "route": "route:110",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "arm_reset",
+                "node": "node:72"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              }
+            ]
+          },
+          {
+            "route": "route:111",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:3"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "instant_proxy:1",
+        "region": "instant_region:3",
+        "private_cells": [
+          {
+            "actor": "piston:6",
+            "resource": "resource:5",
+            "reset": "node:90"
+          }
+        ],
+        "routes": [
+          {
+            "route": "route:128",
+            "operations": [
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "dispatch"
+              }
+            ]
+          },
+          {
+            "route": "route:130",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              }
+            ]
+          },
+          {
+            "route": "route:131",
+            "operations": [
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "dispatch"
+              }
+            ]
+          },
+          {
+            "route": "route:132",
+            "operations": [
+              {
+                "kind": "arm_reset",
+                "node": "node:90"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              }
+            ]
+          },
+          {
+            "route": "route:133",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              }
+            ]
+          },
+          {
+            "route": "route:134",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "arm_reset",
+                "node": "node:90"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              }
+            ]
+          },
+          {
+            "route": "route:135",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:6"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "instant_proxy:2",
+        "region": "instant_region:4",
+        "private_cells": [
+          {
+            "actor": "piston:11",
+            "resource": "resource:8",
+            "reset": "node:98"
+          }
+        ],
+        "routes": [
+          {
+            "route": "route:168",
+            "operations": [
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "dispatch"
+              }
+            ]
+          },
+          {
+            "route": "route:170",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              }
+            ]
+          },
+          {
+            "route": "route:171",
+            "operations": [
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "dispatch"
+              }
+            ]
+          },
+          {
+            "route": "route:172",
+            "operations": [
+              {
+                "kind": "arm_reset",
+                "node": "node:98"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              }
+            ]
+          },
+          {
+            "route": "route:173",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              }
+            ]
+          },
+          {
+            "route": "route:174",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "arm_reset",
+                "node": "node:98"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              }
+            ]
+          },
+          {
+            "route": "route:175",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:11"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "instant_proxy:3",
+        "region": "instant_region:5",
+        "private_cells": [
+          {
+            "actor": "piston:12",
+            "resource": "resource:9",
+            "reset": "node:101"
+          }
+        ],
+        "routes": [
+          {
+            "route": "route:176",
+            "operations": [
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
+          },
+          {
+            "route": "route:178",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
+          },
+          {
+            "route": "route:179",
+            "operations": [
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "dispatch"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
+          },
+          {
+            "route": "route:180",
+            "operations": [
+              {
+                "kind": "arm_reset",
+                "node": "node:101"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
+          },
+          {
+            "route": "route:181",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
+          },
+          {
+            "route": "route:182",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              },
+              {
+                "kind": "arm_reset",
+                "node": "node:101"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
+          },
+          {
+            "route": "route:183",
+            "operations": [
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              },
+              {
+                "kind": "sample",
+                "piston": "piston:12"
+              }
+            ]
           }
         ]
       }

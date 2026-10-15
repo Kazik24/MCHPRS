@@ -100,6 +100,8 @@ pub enum BackendKind {
 /// Cumulative work counters for an active graph backend.
 pub struct GraphExecutionCounts {
     pub ticks: u64,
+    /// Exact compiled transitions executed in place of internal graph propagation.
+    pub instant_transitions: u64,
     pub scheduled_ticks: u64,
     pub callbacks: u64,
     pub wire_walks: u64,
@@ -444,6 +446,7 @@ mod tests {
             io_only: true,
             optimization_level: Some(0),
             update: true,
+            stable_instant_inputs: false,
         };
         let options = CompilerOptions::parse(input).unwrap();
 

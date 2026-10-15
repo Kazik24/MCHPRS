@@ -78,6 +78,50 @@ function instantCertificate(graph) {
   };
 }
 
+test('compiled hop roots bind their wire and preserve older exports', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const wire = graph.graph.wire_plans[0];
+  const root = graph.graph.sites.find((site) => site.source.kind === 'component' && site.source.node === wire.node);
+  wire.hop_root = root.id;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  for (const invalid of ['site:999999', 'node:0', 7]) {
+    wire.hop_root = invalid;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false);
+  }
+  wire.hop_root = graph.graph.sites.find((site) => site.id !== root.id).id;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, false);
+  delete wire.hop_root;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+});
+
+test('loads built-in resets and rejects malformed clocks without replacing the graph', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const observer = graph.graph.nodes.find((node) => node.kind.kind === 'observer');
+  observer.kind.builtin_reset = true;
+  observer.output_route = null;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  assert.equal(viewer.evaluate(`recordLabel(recordIndex.get('${observer.id}'))`), 'built-in reset');
+  const previous = viewer.cy;
+  observer.kind.builtin_reset = 'true';
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, false);
+  assert.equal(viewer.cy, previous);
+  observer.kind.builtin_reset = true;
+  observer.output_route = graph.graph.routes[0].id;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, false);
+  assert.equal(viewer.cy, previous);
+});
+
 test('loads additive instant bindings and accepts older exports', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
@@ -432,5 +476,78 @@ test('rejects dangling and duplicate dust-path references while preserving the l
     await load(viewer, graph);
     assert.equal(viewer.elements.get('error').hidden, false);
     assert.equal(viewer.cy, previous);
+  }
+});
+
+test('validates compiled wire inputs while accepting older facts', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const facts = { known: 0xffffff, solid: 0, transparent: 0, wire: 0, zero_no_dust: 0 };
+  graph.graph.wire_plans[0].query_facts = facts;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  facts.transfer = { seed: { direct: 4, conditional: 1 << 20 }, turbo: { direct: 1, conditional: 1 << 7 } };
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  const previous = viewer.cy;
+  for (const invalid of [null, [], { direct: true, conditional: 0 }, { direct: 1 << 23, conditional: 0 },
+    { direct: 1 << 7, conditional: 1 << 7 }, { direct: 0, conditional: 4 }, { direct: 4, conditional: 0 }]) {
+    facts.transfer.turbo = invalid;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false, JSON.stringify(invalid));
+    assert.equal(viewer.cy, previous);
+  }
+});
+
+
+test('loads private instant proxies and rejects invalid route programs', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, '../../test_data/graph-fixtures/adder-1bit/adder-1bit-o3.graph.json'), 'utf8'));
+  assert.equal(fixture.graph.instant_proxies.length, 4);
+  await load(viewer, fixture);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  const previous = viewer.cy;
+  for (const mutation of [
+    (graph) => { graph.instant_regions[0].incoming[0].ordinal = 999999; },
+    (graph) => { graph.instant_proxies[0].region = 'instant_region:999999'; },
+    (graph) => { graph.instant_proxies[0].routes[0].operations.push('dispatch'); },
+    (graph) => { graph.instant_proxies[0].routes[0].operations[0] = 'skip'; },
+    (graph) => { graph.instant_regions[0].stable_inputs = 'true'; },
+    (graph) => { graph.instant_proxies[0].routes[0].operations[0] = {kind: 'sample', piston: 'node:0'}; },
+    (graph) => { graph.instant_proxies[0].private_cells.push(graph.instant_proxies[0].private_cells[0]); },
+  ]) {
+    const invalid = JSON.parse(JSON.stringify(fixture));
+    mutation(invalid.graph);
+    await load(viewer, invalid);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+});
+const closedMachine = (graph) => ({
+  encoding: 'closed-instant-machine-v1', controls: [graph.nodes[0].id],
+  owners: {components: graph.nodes.map((n) => n.id), pistons: graph.pistons.map((p) => p.id), resources: graph.resources.map((r) => r.id)},
+  states: [{components: graph.nodes.map(() => 0), pistons: graph.pistons.map(() => 0), resources: graph.resources.map(() => null)}],
+  transitions: [[{next: 0}, null]],
+});
+
+test('closed instant machines retain owner dimensions and bounded targets', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const fixture = adderFixture();
+  fixture.graph.instant_machine = closedMachine(fixture.graph);
+  await load(viewer, fixture);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  for (const corrupt of [
+    (m) => m.transitions[0][0].next = m.states.length,
+    (m) => m.controls[0] = 'node:999999',
+    (m) => m.states[0].components.pop(),
+    (m) => m.owners.components.pop(),
+  ]) {
+    const invalid = JSON.parse(JSON.stringify(fixture));
+    corrupt(invalid.graph.instant_machine);
+    await load(viewer, invalid);
+    assert.equal(viewer.elements.get('error').hidden, false);
   }
 });

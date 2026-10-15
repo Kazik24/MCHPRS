@@ -84,7 +84,6 @@ impl GraphPass for SimplifyStateGuards {
         let (guards, compact_map) = compact_guards(&interner.guards, &roots, context.monitor)?;
         references.remap(&compact_map, context.monitor)?;
 
-
         if context.monitor.cancelled() {
             return Err("cancelled before applying state-guard rewrite".into());
         }
@@ -551,9 +550,7 @@ fn find_site_profile_guard(
             view: OperandView::Captured,
             test: SiteTest::Profile(found_profile),
         } if *found_site == site && *found_profile == profile => Some(root),
-        Guard::All(children) => children
-            .iter()
-            .find_map(|child| find_site_profile_guard(guards, *child, site, profile)),
+        Guard::All(children) => children.iter().find_map(|child| find_site_profile_guard(guards, *child, site, profile)),
         Guard::Any(children) if !children.is_empty() => {
             let mut found = None;
             for child in children.iter() {
@@ -827,7 +824,11 @@ mod tests {
     #[test]
     fn boolean_literal_encoding_preserves_both_values_and_polarities() {
         let graph = test_graph();
-        for field in [StateField::Extended(PistonId::new(0)), StateField::HeadPresent(PistonId::new(0)), StateField::ResourceEnabled(ResourceId::new(0))] {
+        for field in [
+            StateField::Extended(PistonId::new(0)),
+            StateField::HeadPresent(PistonId::new(0)),
+            StateField::ResourceEnabled(ResourceId::new(0)),
+        ] {
             for value in [0, 1] {
                 for equal in [false, true] {
                     let mut interner = GuardInterner::new();
@@ -1323,6 +1324,9 @@ mod tests {
             resources: Vec::new(),
             initial_pistons: Vec::new(),
             initial_resources: Vec::new(),
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         }
     }
 }

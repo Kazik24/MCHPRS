@@ -17,6 +17,64 @@ pub(crate) struct WireQueryFacts {
     pub(crate) zero_no_dust: u32,
     /// Distinct neighbors can never dispatch another wire, so callbacks need no walk.
     pub(crate) isolated: bool,
+    /// Pure wire-strength expressions retain live seed reads and captured Turbo reads separately.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) transfer: Option<WireTransfer>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+/// Wire inputs after partial evaluation of fixed geometry; no event order is changed.
+pub(crate) struct WireTransfer {
+    /// These inputs use live geometry and strengths when starting a walk.
+    pub(crate) seed: WireInputs,
+    /// These inputs use the walk's captured geometry and strengths during propagation.
+    pub(crate) turbo: WireInputs,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+/// Canonical neighbor-slot masks for one maximum-of-wire-strengths expression.
+pub(crate) struct WireInputs {
+    /// These slots contribute without further geometry checks, but their strengths remain dynamic.
+    pub(crate) direct: u32,
+    /// These diagonal slots require the original step-up or step-down geometry condition.
+    pub(crate) conditional: u32,
+}
+
+impl WireInputs {
+    pub(crate) fn selected(self, turbo: bool, mut geometry: impl FnMut(usize) -> (bool, bool)) -> u32 {
+        let mut selected = self.direct;
+        let mut conditional = self.conditional;
+        while conditional != 0 {
+            let slot = conditional.trailing_zeros() as usize;
+            conditional &= conditional - 1;
+            let (horizontal, ascent) = match slot {
+                7 => (0, false),
+                8 => (0, true),
+                12 => (1, false),
+                13 => (1, true),
+                17 => (4, false),
+                20 => (4, true),
+                18 => (5, false),
+                21 => (5, true),
+                _ => unreachable!("validated wire input is a diagonal slot"),
+            };
+            let (solid, transparent) = geometry(horizontal);
+            let enabled = if ascent {
+                (!turbo || solid) && !transparent && !geometry(3).0
+            } else {
+                !solid
+            };
+            if enabled {
+                selected |= 1 << slot;
+            }
+        }
+        selected
+    }
+
+    pub(crate) fn valid(self) -> bool {
+        const DIAGONALS: u32 = (1 << 7) | (1 << 8) | (1 << 12) | (1 << 13) | (1 << 17) | (1 << 18) | (1 << 20) | (1 << 21);
+        self.direct & !(DIAGONALS | 0b111111) == 0 && self.direct & self.conditional == 0 && self.conditional & !DIAGONALS == 0
+    }
 }
 
 impl WireQueryFacts {
@@ -37,7 +95,7 @@ impl WireQueryFacts {
                             let block = Block::RedstoneWire { wire: *wire };
                             Some((block, block.is_solid(), block.is_transparent()))
                         }
-                        (CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. }, _) => node
+                        (CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }, _) => node
                             .raw_state
                             .map(Block::from_id)
                             .map(|block| (block, block.is_solid(), block.is_transparent())),
@@ -67,6 +125,17 @@ impl WireQueryFacts {
             }
         }
         facts.isolated = isolated_neighborhood(graph, wire);
+        // A contact may change its geometry without ever containing a wire. Prove
+        // absence across every variant instead of treating all contacts as wires.
+        let possible_wires = wire
+            .canonical_neighbors
+            .iter()
+            .enumerate()
+            .fold(0, |mask, (slot, site)| mask | (u32::from(!site_is_not_wire(graph, *site)) << slot));
+        facts.transfer = Some(WireTransfer {
+            seed: infer_inputs(facts, possible_wires, false),
+            turbo: infer_inputs(facts, possible_wires, true),
+        });
         facts
     }
 
@@ -109,4 +178,95 @@ fn node_is_not_wire(graph: &CircuitDraft, node: NodeId) -> bool {
 
 fn is_wire(block: Block) -> bool {
     matches!(block, Block::RedstoneWire { .. })
+}
+
+/// Partially evaluates the native seed/Turbo equations, which differ at vertical inputs and ascents.
+fn infer_inputs(facts: WireQueryFacts, possible_wires: u32, turbo: bool) -> WireInputs {
+    let adjacent = if turbo { 0b110011 } else { 0b111111 };
+    let mut inputs = WireInputs {
+        direct: possible_wires & adjacent,
+        conditional: 0,
+    };
+    for (neighbor, below, above) in [(0, 7, 8), (1, 12, 13), (4, 17, 20), (5, 18, 21)] {
+        let horizontal = facts.geometry_at(neighbor);
+        let center_up = facts.geometry_at(3);
+        let descent = horizontal.map(|(solid, _)| !solid);
+        let ascent = conjunction([
+            center_up.map(|(solid, _)| !solid),
+            horizontal.map(|(_, transparent)| !transparent),
+            if turbo { horizontal.map(|(solid, _)| solid) } else { Some(true) },
+        ]);
+        for (slot, condition) in [(below, descent), (above, ascent)] {
+            if possible_wires & (1 << slot) == 0 {
+                continue;
+            }
+            match condition {
+                Some(true) => inputs.direct |= 1 << slot,
+                Some(false) => {}
+                None => inputs.conditional |= 1 << slot,
+            }
+        }
+    }
+    inputs
+}
+
+fn conjunction(terms: [Option<bool>; 3]) -> Option<bool> {
+    if terms.contains(&Some(false)) {
+        Some(false)
+    } else if terms.iter().all(|term| *term == Some(true)) {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compiled_inputs_equal_native_geometry_equations_for_every_local_case() {
+        // Each term of max is independent. Check every basis wire slot and the
+        // complete set, with each fixed/unknown geometry combination and rotation.
+        let mut cases = 0;
+        for horizontal in [0, 1, 4, 5] {
+            for geometry in 0..8 {
+                let up_solid = geometry & 1 != 0;
+                let solid = geometry & 2 != 0;
+                let transparent = geometry & 4 != 0;
+                let mut properties = [(false, true); 24];
+                properties[3] = (up_solid, true);
+                properties[horizontal] = (solid, transparent);
+                for unknown in 0..4 {
+                    let mut facts = WireQueryFacts::default();
+                    for (slot, (solid, transparent)) in properties.iter().copied().enumerate() {
+                        if slot == 3 && unknown & 1 != 0 || slot == horizontal && unknown & 2 != 0 {
+                            continue;
+                        }
+                        facts.known |= 1 << slot;
+                        facts.solid |= u32::from(solid) << slot;
+                        facts.transparent |= u32::from(transparent) << slot;
+                    }
+                    for possible in (0..24).map(|slot| 1 << slot).chain([0, 0xffffff]) {
+                        for turbo in [false, true] {
+                            let mut expected = if turbo { 0b110011 } else { 0b111111 };
+                            for (h, below, above) in [(0, 7, 8), (1, 12, 13), (4, 17, 20), (5, 18, 21)] {
+                                if !properties[h].0 {
+                                    expected |= 1 << below;
+                                }
+                                if (!turbo || properties[h].0) && !properties[h].1 && !up_solid {
+                                    expected |= 1 << above;
+                                }
+                            }
+                            let inputs = infer_inputs(facts, possible, turbo);
+                            assert!(inputs.valid());
+                            assert_eq!(inputs.selected(turbo, |slot| properties[slot]), expected & possible);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cases, 6656);
+    }
 }

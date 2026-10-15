@@ -382,7 +382,7 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                     let statistics = compiler.stats().unwrap();
                     let transformations = &statistics.graph.transformations;
                     let enabled_transformations = transformations.iter().filter(|pass| pass.enabled).collect::<Vec<_>>();
-                    assert_eq!(enabled_transformations.len(), if optimize { 8 } else { 0 });
+                    assert_eq!(enabled_transformations.len(), if optimize { 14 } else { 0 });
                     if optimize {
                         assert_eq!(
                             enabled_transformations.iter().map(|pass| pass.name).collect::<Vec<_>>(),
@@ -394,7 +394,13 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                                 "contract-static-dust-paths",
                                 "simplify-state-guards",
                                 "specialize-wire-queries",
+                                "compile-wire-hops",
                                 "simplify-instant-resets",
+                                "specialize-instant-pistons",
+                                "compile-builtin-resets",
+                                "identify-instant-regions",
+                                "compile-instant-proxies",
+                                "compile-instant-machine",
                             ]
                         );
                     }

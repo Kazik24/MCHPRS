@@ -1,0 +1,47 @@
+//! Records complete ownership and query/event boundaries before region contraction.
+//!
+//! Shared contacts, conserved payloads and reset drivers form one ownership closure.
+//! Every owned site and state stays observable; crossing occurrences retain their
+//! original rows, captures, directions, duplicates and order. No event is deleted.
+//! The indexed closure scans routes once; storage is linear in the exposed boundary.
+//! Reset provenance alone is not a proof of a combinational truth table.
+//! The following proxy pass must supply its own stronger certificate.
+use super::{GraphPass, PassContext};
+use crate::redpiler::program_graph::CompileGraph;
+
+pub(crate) struct IdentifyInstantRegions;
+
+impl GraphPass for IdentifyInstantRegions {
+    fn name(&self) -> &'static str {
+        "identify-instant-regions"
+    }
+    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
+        use crate::redpiler::analysis::instant_regions::{infer_regions, infer_stable_regions};
+        let regions = if context.options.stable_instant_inputs {
+            infer_stable_regions(graph, context.monitor)?
+        } else {
+            infer_regions(graph, context.monitor)?
+        };
+        graph.instant_regions = regions;
+        graph.instant_proxies.clear();
+        Ok(())
+    }
+    fn preserves_instant_regions(&self) -> bool {
+        false
+    }
+    fn preserves_wire_hops(&self) -> bool {
+        true
+    }
+    fn preserves_dust_paths(&self) -> bool {
+        true
+    }
+    fn preserves_turbo_callback_indices(&self) -> bool {
+        true
+    }
+    fn preserves_wire_query_facts(&self) -> bool {
+        true
+    }
+    fn preserves_instant_resets(&self) -> bool {
+        true
+    }
+}

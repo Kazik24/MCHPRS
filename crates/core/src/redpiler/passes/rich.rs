@@ -175,6 +175,9 @@ pub(crate) fn prepare(
         resources,
         initial_pistons: geometry.draft.initial_pistons,
         initial_resources: geometry.draft.initial_resources,
+        instant_regions: Vec::new(),
+        instant_proxies: Vec::new(),
+        instant_machine: None,
     };
     let analysis_duration = geometry.analysis_duration;
     let report = geometry.report;

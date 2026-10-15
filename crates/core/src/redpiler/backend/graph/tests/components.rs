@@ -1,4 +1,7 @@
 //! Graph backend differential and regression tests.
+#[path = "wire_hops.rs"]
+mod wire_hops;
+
 use super::*;
 use crate::plot::worldedit::{WorldEditClipboard, load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
@@ -116,6 +119,7 @@ fn captured_wire_walk(backend: &GraphBackend, plan: &WirePlan) -> WireWalk {
                 z_bias: 0,
                 layer: 0,
                 heading: None,
+                neighbor_slots: None,
             },
         );
     }
@@ -417,6 +421,9 @@ fn contact_resource_backend() -> GraphBackend {
             contacts: vec![first, second].into_boxed_slice(),
         }],
         initial_pistons: vec![],
+        instant_regions: Vec::new(),
+        instant_proxies: Vec::new(),
+        instant_machine: None,
         initial_resources: vec![ResourceState {
             at: first,
             enabled: true,
@@ -509,6 +516,9 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         resources: vec![],
         initial_pistons: vec![],
         initial_resources: vec![],
+        instant_regions: Vec::new(),
+        instant_proxies: Vec::new(),
+        instant_machine: None,
     }
     .lower()
     .unwrap();
@@ -797,6 +807,12 @@ fn wire_shape_callback_regulates_sides_then_uses_native_neighbor_route() {
 
 #[test]
 fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
+    for compiled_hops in [false, true] {
+        check_wire_turbo_walk_matches_native_across_ascent_and_descent(compiled_hops);
+    }
+}
+
+fn check_wire_turbo_walk_matches_native_across_ascent_and_descent(compiled_hops: bool) {
     let lever_pos = BlockPos::new(4, 20, 6);
     let wires = [
         BlockPos::new(5, 20, 6),
@@ -817,7 +833,11 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
             world.set_block(position, Block::RedstoneWire { wire: Default::default() });
         }
     }
-    let mut backend = recording_graph(&graph_world, vec![]);
+    let mut backend = if compiled_hops {
+        wire_hops::recording_hops_graph(&graph_world)
+    } else {
+        recording_graph(&graph_world, vec![])
+    };
     backend.use_block(lever_pos).unwrap();
     set_native_lever(&mut native, lever_pos, true);
     backend.flush(&mut graph_world, false);
@@ -837,6 +857,12 @@ fn wire_turbo_walk_matches_native_across_ascent_and_descent() {
 
 #[test]
 fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
+    for compiled_hops in [false, true] {
+        check_wire_turbo_heading_orders_match_native_for_all_horizontal_directions(compiled_hops);
+    }
+}
+
+fn check_wire_turbo_heading_orders_match_native_for_all_horizontal_directions(compiled_hops: bool) {
     for direction in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
         let first_wire = BlockPos::new(8, 20, 8);
         let wires: Vec<_> = std::iter::successors(Some(first_wire), |position| Some(position.offset(direction)))
@@ -853,7 +879,11 @@ fn wire_turbo_heading_orders_match_native_for_all_horizontal_directions() {
                 world.set_block(*position, Block::RedstoneWire { wire: Default::default() });
             }
         }
-        let mut backend = recording_graph(&graph_world, vec![]);
+        let mut backend = if compiled_hops {
+            wire_hops::recording_hops_graph(&graph_world)
+        } else {
+            recording_graph(&graph_world, vec![])
+        };
         backend.use_block(lever_pos).unwrap();
         let native_trace = capture_at(&wires, || set_native_lever(&mut native, lever_pos, true));
         let native_callbacks: Vec<_> = native_trace
@@ -953,6 +983,12 @@ fn compiled_wire_side_sites_match_native_vertical_and_horizontal_rules() {
 
 #[test]
 fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
+    for compiled_hops in [false, true] {
+        check_bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes(compiled_hops);
+    }
+}
+
+fn check_bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes(compiled_hops: bool) {
     let lever_pos = BlockPos::new(5, 20, 5);
     let outer_wire = lever_pos.offset(BlockFace::East);
     let bulb_pos = outer_wire.offset(BlockFace::South);
@@ -978,7 +1014,11 @@ fn bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes() {
         world.set_block(inner_source, lever(false));
         world.set_block(bulb_source, Block::RedstoneBlock);
     }
-    let mut backend = recording_graph(&graph_world, vec![]);
+    let mut backend = if compiled_hops {
+        wire_hops::recording_hops_graph(&graph_world)
+    } else {
+        recording_graph(&graph_world, vec![])
+    };
     let inner_source_node = backend.positions[&inner_source];
     let outer_node = backend.positions[&outer_wire];
     let inner_node = backend.positions[&inner_wire];
@@ -3898,6 +3938,9 @@ fn site_geometry_guards_use_compiled_profile_facts() {
         resources: vec![],
         initial_pistons: vec![],
         initial_resources: vec![],
+        instant_regions: Vec::new(),
+        instant_proxies: Vec::new(),
+        instant_machine: None,
     }
     .lower()
     .unwrap();

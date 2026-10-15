@@ -1,0 +1,265 @@
+//! Contract-scoped composition and full-state comparison on the real adder fixtures.
+use super::*;
+use crate::redpiler::CompilerOptions;
+
+pub(super) fn stable_graph(id: &'static str) -> (CompileGraph, EntryState) {
+    let circuit = load_adder(id, ORIGIN, None);
+    let world = circuit.build();
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(3),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    (prepared.graph, prepared.entry)
+}
+
+#[test]
+fn stable_contract_is_explicit_and_requires_the_instant_pass_tier() {
+    assert!(!CompilerOptions::default().stable_instant_inputs);
+    for flags in ["-O3 --stable-instant-inputs", "--stable-instant-inputs --optimize"] {
+        assert!(CompilerOptions::parse(flags).unwrap().stable_instant_inputs);
+    }
+    for flags in ["--stable-instant-inputs", "-O2 --stable-instant-inputs"] {
+        assert!(CompilerOptions::parse(flags).is_err());
+    }
+}
+
+#[test]
+fn both_adders_compose_all_their_actors_into_one_ordered_region() {
+    for (id, actor_count, private_count) in [("adder_1bit", 13, 4), ("adder_11bits", 142, 43)] {
+        let (graph, _) = stable_graph(id);
+        eprintln!(
+            "{id}: regions={}, actors={:?}, wires={:?}, proxies={}",
+            graph.instant_regions.len(),
+            graph.instant_regions.iter().map(|r| r.actors.len()).collect::<Vec<_>>(),
+            graph.instant_regions.iter().map(|r| r.wires.len()).collect::<Vec<_>>(),
+            graph.instant_proxies.len()
+        );
+        assert_eq!(
+            graph.instant_machine.is_some(),
+            id == "adder_1bit",
+            "only the bounded closed family gets a kernel"
+        );
+        assert_eq!(graph.instant_regions.len(), 1);
+        let region = &graph.instant_regions[0];
+        assert!(region.stable_inputs);
+        assert_eq!(region.actors.len(), actor_count);
+        assert_eq!(region.contacts.len(), graph.contacts.len(), "all actor and payload contacts remain owned");
+        assert!(!region.wires.is_empty());
+        assert_eq!(graph.instant_proxies.len(), 1);
+        let proxy = &graph.instant_proxies[0];
+        assert_eq!(proxy.private_cells.len(), private_count);
+        let mut sampled: Vec<_> = proxy
+            .routes
+            .iter()
+            .flat_map(|route| route.steps.iter())
+            .filter_map(|step| {
+                if let InstantStepKind::Sample(actor) = step.kind {
+                    Some(actor)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        sampled.sort_unstable();
+        sampled.dedup();
+        assert_eq!(sampled, region.actors, "every actor has an explicit logical sampling instruction");
+        graph.validate().unwrap();
+    }
+}
+
+fn stable_backend(circuit: &Adder, world: &PlotWorld) -> GraphBackend {
+    GraphBackend::compile_with_options(
+        world,
+        circuit.bounds(),
+        world.scheduler().iter_entries().collect(),
+        &CompilerOptions {
+            optimization_level: Some(3),
+            stable_instant_inputs: true,
+            ..Default::default()
+        },
+        Arc::default(),
+    )
+    .unwrap()
+}
+
+fn input_levels(circuit: &Adder, world: &PlotWorld) -> Vec<(BlockPos, bool)> {
+    circuit
+        .cells
+        .iter()
+        .filter_map(|(local, block, _)| {
+            if !matches!(block, Block::Lever { .. }) {
+                return None;
+            }
+            let position = circuit.place(*local);
+            let Block::Lever { lever } = world.get_block(position) else {
+                panic!("missing external control at {position:?}")
+            };
+            Some((position, lever.powered))
+        })
+        .collect()
+}
+
+/// Freeze external controls at the actual falling edge, before any queued action is accepted.
+#[test]
+fn falling_edge_adder_cycles_preserve_all_memory_and_pending_work() {
+    let mut cases_checked = 0;
+    let mut absorbed_callbacks = 0;
+    for id in FAMILY {
+        let circuit = load_adder(id, ORIGIN, None);
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
+        for case in manifest["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["expectation"].is_object())
+        {
+            let positions = circuit.positions();
+            let mut native = circuit.build();
+            let mut scratch = circuit.build();
+            let mut general = GraphBackend::compile_with_options(
+                &native,
+                circuit.bounds(),
+                vec![],
+                &CompilerOptions {
+                    optimization_level: Some(3),
+                    ..Default::default()
+                },
+                Arc::default(),
+            )
+            .unwrap();
+            let mut composed = stable_backend(&circuit, &native);
+            assert_eq!(composed.program.instant_proxies().len(), 1);
+            general.set_test_recording(true);
+            composed.set_test_recording(true);
+            let mut steps = case_steps(&circuit, case, false, true);
+            let response_start = steps.len();
+            let mut frozen_inputs = None;
+            steps.extend(std::iter::repeat_n(Step::Tick, 16));
+            for (index, step) in steps.into_iter().enumerate() {
+                let toggle = match step {
+                    Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
+                    Step::Tick => false,
+                };
+                let falling_edge = matches!(step, Step::SetLever { position, powered: false } if position == circuit.trigger());
+                if falling_edge {
+                    assert!(toggle, "{id}/{} must activate with a real high-to-low edge", case["id"]);
+                    assert!(frozen_inputs.is_none(), "no second activation during this held-input episode");
+                }
+                if frozen_inputs.is_some() {
+                    assert!(matches!(step, Step::Tick), "external inputs cannot change before reset");
+                }
+                general.clear_test_traces();
+                composed.clear_test_traces();
+                native_step(&mut native, step);
+                graph_step(&mut general, step, toggle).unwrap();
+                graph_step(&mut composed, step, toggle).unwrap();
+                instant_proxy_tests::assert_same_memory(&general, &composed);
+                check_boundary(&composed, &native, &mut scratch, &positions, &format!("{id}/{} step {index}", case["id"])).unwrap();
+                if falling_edge {
+                    frozen_inputs = Some(input_levels(&circuit, &native));
+                }
+                if let Some(expected) = &frozen_inputs {
+                    assert_eq!(&input_levels(&circuit, &native), expected);
+                    assert_eq!(&input_levels(&circuit, &scratch), expected);
+                }
+                if index >= response_start {
+                    assert!(frozen_inputs.is_some());
+                    assert_math_window(
+                        &circuit,
+                        &scratch,
+                        expectation(&circuit, case).0,
+                        expectation(&circuit, case).1,
+                        index - response_start + 1,
+                    );
+                }
+            }
+            absorbed_callbacks += general.execution_counts().callbacks - composed.execution_counts().callbacks;
+            cases_checked += 1;
+        }
+    }
+    assert_eq!(cases_checked, 48);
+    assert!(absorbed_callbacks > 0, "at least one exercised cycle must use the composed instructions");
+}
+
+#[test]
+fn stable_composition_retains_uncertified_reset_groups() {
+    use crate::redpiler::analysis::instant_regions::{infer_regions, infer_stable_regions};
+    let circuit = load_adder("adder_1bit", ORIGIN, None);
+    let monitor = TaskMonitor::default();
+    let prepared = passes::rich::prepare(&circuit.build(), circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
+    assert_eq!(
+        infer_stable_regions(&prepared.graph, &monitor).unwrap(),
+        infer_regions(&prepared.graph, &monitor).unwrap()
+    );
+}
+
+#[test]
+fn composed_certificates_reject_lost_contacts_and_wrong_internal_targets() {
+    let (graph, _) = stable_graph("adder_1bit");
+    let mut missing_contact = graph.clone();
+    missing_contact.instant_regions[0].contacts.pop();
+    assert!(matches!(missing_contact.validate(), Err(GraphBuildError::InvalidInstantRegion { .. })));
+    let mut wrong_actor = graph;
+    let step = wrong_actor.instant_proxies[0]
+        .routes
+        .iter_mut()
+        .flat_map(|route| route.steps.iter_mut())
+        .find(|step| matches!(step.kind, InstantStepKind::Sample(_)))
+        .unwrap();
+    let InstantStepKind::Sample(actor) = step.kind else { unreachable!() };
+    step.kind = InstantStepKind::Sample(PistonId::new((actor.index() as u32 + 1) % 13));
+    assert!(matches!(wrong_actor.validate(), Err(GraphBuildError::InvalidInstantRegion { .. })));
+}
+
+#[test]
+fn stable_region_reset_hands_back_the_same_memory_and_continuation() {
+    for id in FAMILY {
+        let circuit = load_adder(id, ORIGIN, None);
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
+        let case = manifest["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["expectation"].is_object() && case["expectation"]["carry"].as_u64() == Some(1))
+            .unwrap();
+        for cut in [0, 1, 2, 4, 8, 16] {
+            let mut native = circuit.build();
+            let mut handed_back = circuit.build();
+            let mut backend = stable_backend(&circuit, &native);
+            let positions = circuit.positions();
+            let mut steps = case_steps(&circuit, case, false, true);
+            steps.extend(std::iter::repeat_n(Step::Tick, cut));
+            for step in steps {
+                let toggle = match step {
+                    Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
+                    Step::Tick => false,
+                };
+                native_step(&mut native, step);
+                graph_step(&mut backend, step, toggle).unwrap();
+            }
+            backend.reset(&mut handed_back);
+            for tick in 0..17 {
+                assert_eq!(
+                    first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
+                    None,
+                    "{id} cut={cut} continuation={tick}"
+                );
+                native.tick_interpreted();
+                handed_back.tick_interpreted();
+            }
+        }
+    }
+}

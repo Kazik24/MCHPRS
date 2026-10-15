@@ -1,4 +1,18 @@
 //! Full adder fixture replays against the interpreter and compact graph inventory.
+#[path = "builtin_reset.rs"]
+mod builtin_reset_tests;
+#[path = "fixed_point_adder.rs"]
+mod fixed_point_tests;
+#[path = "instant_machine.rs"]
+mod instant_machine_tests;
+#[path = "instant_proxy.rs"]
+mod instant_proxy_tests;
+#[path = "instant_recognition.rs"]
+mod instant_recognition_tests;
+#[path = "reset_elision.rs"]
+mod reset_elision_tests;
+#[path = "stable_region.rs"]
+mod stable_region_tests;
 use super::fuzz_tests::{Operation, graph_operations_since, native_operations};
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
@@ -387,10 +401,28 @@ fn compile_with_instant_pass(circuit: &Adder, world: &PlotWorld, ticks: Vec<Tick
     let monitor = TaskMonitor::default();
     let mut prepared =
         passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).map_err(|error| error.to_string())?;
-    let pipeline = passes::PassPipeline::new(vec![passes::PassEntry {
-        pass: Box::new(passes::simplify_instant_resets::SimplifyInstantResets),
-        enabled: true,
-    }]);
+    let pipeline = passes::PassPipeline::new(vec![
+        passes::PassEntry {
+            pass: Box::new(passes::simplify_instant_resets::SimplifyInstantResets),
+            enabled: true,
+        },
+        passes::PassEntry {
+            pass: Box::new(passes::specialize_instant_pistons::SpecializeInstantPistons),
+            enabled: true,
+        },
+        passes::PassEntry {
+            pass: Box::new(passes::compile_builtin_resets::CompileBuiltinResets),
+            enabled: true,
+        },
+        passes::PassEntry {
+            pass: Box::new(passes::identify_instant_regions::IdentifyInstantRegions),
+            enabled: true,
+        },
+        passes::PassEntry {
+            pass: Box::new(passes::compile_instant_proxies::CompileInstantProxies),
+            enabled: true,
+        },
+    ]);
     // Isolate this rewrite: older O1 passes intentionally erase identity callbacks.
     passes::run_graph_pipeline(&mut prepared.graph, &Default::default(), &prepared.entry, &pipeline, &monitor).map_err(|error| error.to_string())?;
     GraphBackend::from_lowered(prepared.lower(&monitor).map_err(|error| error.to_string())?, &monitor).map_err(|error| error.to_string())
@@ -745,6 +777,7 @@ fn structure(circuit: &Adder) -> String {
         let name = match &node.kind {
             CircuitNodeKind::Electrical(kind) => format!("electrical:{kind:?}"),
             CircuitNodeKind::Observer { .. } => "observer".into(),
+            CircuitNodeKind::BuiltinReset { .. } => "builtin_reset".into(),
             CircuitNodeKind::Wire(_) => "wire".into(),
             CircuitNodeKind::Piston(_) => "piston".into(),
             CircuitNodeKind::Contact(_) => "contact".into(),

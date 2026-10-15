@@ -1,4 +1,5 @@
 //! Versioned inspection JSON for the richer graph drafts.
+mod machine;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
@@ -111,6 +112,97 @@ struct GraphTablesDto {
     comparator_plans: Vec<ComparatorPlanDto>,
     callback_links: Vec<CallbackLinkDto>,
     routes: Option<Vec<RouteDto>>,
+    instant_regions: Vec<InstantRegionDto>,
+    instant_proxies: Vec<InstantProxyDto>,
+    /// This optional artifact exposes the complete checked transition program, including fallbacks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_machine: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+struct InstantRegionDto {
+    /// This declares the opt-in falling-edge-to-reset input stability contract for this region.
+    stable_inputs: bool,
+    /// These wires remain ordered internal state owned by the composed region.
+    wires: Vec<String>,
+    /// This gives the boundary a stable table reference in this export.
+    id: String,
+    /// These references retain all actors in the ownership closure.
+    actors: Vec<String>,
+    /// These references retain conserved payload identities.
+    resources: Vec<String>,
+    /// These references retain the original reset clock owners.
+    resets: Vec<String>,
+    /// These references cover all permitted occupied positions.
+    contacts: Vec<String>,
+    /// These sites expose all region state and geometry to live or captured queries.
+    readable_sites: Vec<String>,
+    /// These links supply the original Main, Quasi, and conducted reads.
+    power_inputs: Vec<String>,
+    /// These links expose region power to other owners.
+    power_readers: Vec<String>,
+    /// These routes originate in the region.
+    routes: Vec<String>,
+    /// These occurrences enter from another owner in their original order.
+    incoming: Vec<RouteOccurrenceDto>,
+    /// These occurrences leave the region in their original order.
+    outgoing: Vec<RouteOccurrenceDto>,
+    /// These wires can capture or sample region sites.
+    wire_readers: Vec<String>,
+    /// These observers can see intermediate region changes.
+    observers: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct RouteOccurrenceDto {
+    /// This identifies the original route without duplicating its deliveries.
+    route: String,
+    /// This identifies an occurrence rather than collapsing duplicate target deliveries.
+    ordinal: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct InstantProxyDto {
+    /// This identifies a certified ordered region program.
+    id: String,
+    /// This identifies its complete compile-time boundary.
+    region: String,
+    /// These independent certificates retain private-lane occupancy fast paths.
+    private_cells: Vec<PrivateInstantCellDto>,
+    /// These programs replace selected raw route deliveries during lowering.
+    routes: Vec<InstantRouteDto>,
+}
+
+#[derive(Debug, Serialize)]
+struct PrivateInstantCellDto {
+    /// This identifies the only actor that can occupy this payload lane.
+    actor: String,
+    /// This retains the original conserved payload identity.
+    resource: String,
+    /// This identifies the original self-reset clock.
+    reset: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum InstantOperationDto {
+    Dispatch,
+    Sample {
+        /// This identifies the actor sampled at this exact route position.
+        piston: String,
+    },
+    ArmReset {
+        /// This identifies the original clock armed at this exact route position.
+        node: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
+struct InstantRouteDto {
+    /// This route retains the complete original rows as validation witnesses.
+    route: String,
+    /// Each operation corresponds to the original row at the same ordinal.
+    operations: Vec<InstantOperationDto>,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,11 +217,25 @@ struct NodeDto {
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum NodeKindDto {
-    Electrical { component: ElectricalKindDto },
-    Observer { watched: String, facing: String },
-    Wire { plan: String },
-    Piston { piston: String },
-    Contact { contact: String },
+    Electrical {
+        component: ElectricalKindDto,
+    },
+    Observer {
+        watched: String,
+        facing: String,
+        /// This marks a compiled reset clock while retaining the observer's projected identity.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        builtin_reset: Option<bool>,
+    },
+    Wire {
+        plan: String,
+    },
+    Piston {
+        piston: String,
+    },
+    Contact {
+        contact: String,
+    },
 }
 
 /// ElectricalKind describes each fixed component type and its rule parameters.
@@ -345,6 +451,9 @@ struct WirePlanDto {
     query_facts: Option<WireQueryFacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_reset: Option<InstantResetDto>,
+    /// This selects compiled hop execution using the existing canonical neighbors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hop_root: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -562,7 +671,12 @@ impl GraphExport {
             check_optional_ref(&routes, node.output_route.as_deref(), "node output route")?;
             match &node.kind {
                 NodeKindDto::Electrical { .. } => {}
-                NodeKindDto::Observer { watched, .. } => check_ref(&sites, watched, "observer site")?,
+                NodeKindDto::Observer { watched, builtin_reset, .. } => {
+                    check_ref(&sites, watched, "observer site")?;
+                    if *builtin_reset == Some(true) && node.output_route.is_some() {
+                        return Err(ExportError::new("invalid_builtin_reset", "built-in reset has an output callback route"));
+                    }
+                }
                 NodeKindDto::Wire { plan } => check_ref(&wires, plan, "wire plan")?,
                 NodeKindDto::Piston { piston } => check_ref(&pistons, piston, "node piston")?,
                 NodeKindDto::Contact { contact } => check_ref(&contacts, contact, "node contact")?,
@@ -657,6 +771,13 @@ impl GraphExport {
         let mut instant_wires = HashSet::new();
         for wire in &self.graph.wire_plans {
             check_ref(&nodes, &wire.node, "wire node")?;
+            if let Some(root) = &wire.hop_root {
+                check_ref(&sites, root, "wire hop root")?;
+                let site = site_records[root.as_str()];
+                if !matches!(&site.source, SiteSourceDto::Component { node } if node == &wire.node) {
+                    return Err(ExportError::new("validation", "wire hop root must bind its component"));
+                }
+            }
             if wire.canonical_neighbors.len() != 24 {
                 return Err(ExportError::new("validation", "wire plan must contain exactly 24 neighbor sites"));
             }
@@ -724,6 +845,87 @@ impl GraphExport {
                     }
                 }
             }
+        }
+        let regions = unique_ids("instant_region", self.graph.instant_regions.iter().map(|region| region.id.as_str()))?;
+        let _ = unique_ids("instant_proxy", self.graph.instant_proxies.iter().map(|proxy| proxy.id.as_str()))?;
+        let power = unique_ids("power_link", self.graph.power_links.iter().map(|link| link.id.as_str()))?;
+        let route_rows: HashMap<_, _> = self
+            .graph
+            .routes
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|route| (route.id.as_str(), route.deliveries.len()))
+            .collect();
+        for region in &self.graph.instant_regions {
+            for actor in &region.actors {
+                check_ref(&pistons, actor, "region actor")?;
+            }
+            for resource in &region.resources {
+                check_ref(&resources, resource, "region resource")?;
+            }
+            for node in region
+                .resets
+                .iter()
+                .chain(&region.wires)
+                .chain(&region.wire_readers)
+                .chain(&region.observers)
+            {
+                check_ref(&nodes, node, "region component")?;
+            }
+            for contact in &region.contacts {
+                check_ref(&contacts, contact, "region contact")?;
+            }
+            for site in &region.readable_sites {
+                check_ref(&sites, site, "region readable site")?;
+            }
+            for link in region.power_inputs.iter().chain(&region.power_readers) {
+                check_ref(&power, link, "region power")?;
+            }
+            for route in &region.routes {
+                check_ref(&routes, route, "region route")?;
+            }
+            for event in region.incoming.iter().chain(&region.outgoing) {
+                if !route_rows.get(event.route.as_str()).is_some_and(|&len| (event.ordinal as usize) < len) {
+                    return Err(ExportError::new("validation", "invalid region route occurrence"));
+                }
+            }
+        }
+        let mut assigned = HashSet::new();
+        for proxy in &self.graph.instant_proxies {
+            check_ref(&regions, &proxy.region, "proxy region")?;
+            let region = self
+                .graph
+                .instant_regions
+                .iter()
+                .find(|region| region.id == proxy.region)
+                .expect("checked region");
+            for cell in &proxy.private_cells {
+                if !region.actors.contains(&cell.actor) || !region.resources.contains(&cell.resource) || !region.resets.contains(&cell.reset) {
+                    return Err(ExportError::new("validation", "private cell lies outside its proxy region"));
+                }
+            }
+            for route in &proxy.routes {
+                if !region.routes.contains(&route.route)
+                    || !assigned.insert(&route.route)
+                    || route_rows.get(route.route.as_str()) != Some(&route.operations.len())
+                {
+                    return Err(ExportError::new("validation", "invalid proxy route program"));
+                }
+                for operation in &route.operations {
+                    let valid = match operation {
+                        InstantOperationDto::Dispatch => true,
+                        InstantOperationDto::Sample { piston } => region.actors.contains(piston),
+                        InstantOperationDto::ArmReset { node } => region.resets.contains(node),
+                    };
+                    if !valid {
+                        return Err(ExportError::new("validation", "proxy operation targets another region"));
+                    }
+                }
+            }
+        }
+        if let Some(machine) = &self.graph.instant_machine {
+            machine::validate(machine, self)?;
         }
         for snapshot in &self.snapshots {
             for component in &snapshot.components {
@@ -958,6 +1160,7 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 shape_route: item.shape_route.map(|route| typed_id("route", route.index())),
                 turbo_route: item.turbo_route.map(|route| typed_id("route", route.index())),
                 query_facts: item.query_facts,
+                hop_root: item.hop_root.map(|site| typed_id("site", site.index())),
                 instant_reset: item.instant_reset.map(|plan| InstantResetDto {
                     piston: typed_id("piston", plan.piston.index()),
                     resource: typed_id("resource", plan.resource.index()),
@@ -995,6 +1198,81 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 guard: typed_id("guard", item.guard.index()),
             })
             .collect(),
+        instant_regions: source
+            .instant_regions
+            .iter()
+            .enumerate()
+            .map(|(index, region)| InstantRegionDto {
+                id: typed_id("instant_region", index),
+                stable_inputs: region.stable_inputs,
+                wires: region.wires.iter().map(|id| typed_id("node", id.index())).collect(),
+                actors: region.actors.iter().map(|id| typed_id("piston", id.index())).collect(),
+                resources: region.resources.iter().map(|id| typed_id("resource", id.index())).collect(),
+                resets: region.resets.iter().map(|id| typed_id("node", id.index())).collect(),
+                contacts: region.contacts.iter().map(|id| typed_id("contact", id.index())).collect(),
+                readable_sites: region.readable_sites.iter().map(|id| typed_id("site", id.index())).collect(),
+                power_inputs: region.power_inputs.iter().map(|&id| typed_id("power_link", id as usize)).collect(),
+                power_readers: region.power_readers.iter().map(|&id| typed_id("power_link", id as usize)).collect(),
+                routes: region.routes.iter().map(|id| typed_id("route", id.index())).collect(),
+                incoming: region
+                    .incoming
+                    .iter()
+                    .map(|event| RouteOccurrenceDto {
+                        route: typed_id("route", event.route.index()),
+                        ordinal: event.ordinal,
+                    })
+                    .collect(),
+                outgoing: region
+                    .outgoing
+                    .iter()
+                    .map(|event| RouteOccurrenceDto {
+                        route: typed_id("route", event.route.index()),
+                        ordinal: event.ordinal,
+                    })
+                    .collect(),
+                wire_readers: region.wire_readers.iter().map(|id| typed_id("node", id.index())).collect(),
+                observers: region.observers.iter().map(|id| typed_id("node", id.index())).collect(),
+            })
+            .collect(),
+        instant_proxies: source
+            .instant_proxies
+            .iter()
+            .enumerate()
+            .map(|(index, proxy)| InstantProxyDto {
+                id: typed_id("instant_proxy", index),
+                region: typed_id("instant_region", proxy.region),
+                private_cells: proxy
+                    .private_cells
+                    .iter()
+                    .map(|cell| PrivateInstantCellDto {
+                        actor: typed_id("piston", cell.actor.index()),
+                        resource: typed_id("resource", cell.resource.index()),
+                        reset: typed_id("node", cell.reset.index()),
+                    })
+                    .collect(),
+                routes: proxy
+                    .routes
+                    .iter()
+                    .map(|route| InstantRouteDto {
+                        route: typed_id("route", route.route.index()),
+                        operations: route
+                            .steps
+                            .iter()
+                            .map(|step| match step.kind {
+                                crate::redpiler::program_graph::InstantStepKind::Dispatch => InstantOperationDto::Dispatch,
+                                crate::redpiler::program_graph::InstantStepKind::Sample(piston) => InstantOperationDto::Sample {
+                                    piston: typed_id("piston", piston.index()),
+                                },
+                                crate::redpiler::program_graph::InstantStepKind::ArmReset(node) => InstantOperationDto::ArmReset {
+                                    node: typed_id("node", node.index()),
+                                },
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        instant_machine: source.instant_machine.as_ref().map(|machine| machine::export(machine, source)),
         comparator_plans: source
             .comparator_inputs
             .iter()
@@ -1093,6 +1371,15 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if source.wires.iter().any(|wire| wire.query_facts.is_some()) {
         capabilities.push("wire_query_facts");
     }
+    if !source.instant_regions.is_empty() {
+        capabilities.push("instant_regions");
+    }
+    if !source.instant_proxies.is_empty() {
+        capabilities.push("instant_proxies");
+    }
+    if source.instant_machine.is_some() {
+        capabilities.push("instant_machine");
+    }
     if source.wires.iter().any(|wire| wire.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
     }
@@ -1122,9 +1409,10 @@ fn node_kind(kind: &CircuitNodeKind) -> Result<NodeKindDto, ExportError> {
         CircuitNodeKind::Electrical(component) => NodeKindDto::Electrical {
             component: electrical_kind(component)?,
         },
-        CircuitNodeKind::Observer { watched, facing } => NodeKindDto::Observer {
+        CircuitNodeKind::Observer { watched, facing } | CircuitNodeKind::BuiltinReset { watched, facing } => NodeKindDto::Observer {
             watched: typed_id("site", watched.index()),
             facing: face(*facing),
+            builtin_reset: matches!(kind, CircuitNodeKind::BuiltinReset { .. }).then_some(true),
         },
         CircuitNodeKind::Wire(plan) => NodeKindDto::Wire {
             plan: typed_id("wire", *plan),
@@ -1448,7 +1736,13 @@ fn validate_wire_query_facts(facts: Option<&WireQueryFacts>) -> Result<(), Expor
         return Ok(());
     };
     let properties = facts.solid | facts.transparent | facts.wire | facts.zero_no_dust;
-    if facts.known >> 24 != 0 || properties & !facts.known != 0 || facts.zero_no_dust & facts.solid != 0 {
+    if facts.known >> 24 != 0
+        || properties & !facts.known != 0
+        || facts.zero_no_dust & facts.solid != 0
+        || facts
+            .transfer
+            .is_some_and(|transfer| !transfer.seed.valid() || !transfer.turbo.valid() || transfer.turbo.direct & 0xc != 0)
+    {
         return Err(ExportError::new("validation", "invalid wire query fact masks"));
     }
     Ok(())
@@ -1457,6 +1751,25 @@ fn validate_wire_query_facts(facts: Option<&WireQueryFacts>) -> Result<(), Expor
 #[cfg(test)]
 mod wire_query_fact_validation_tests {
     use super::*;
+
+    #[test]
+    fn compiled_hop_exports_validate_the_wire_root_binding() {
+        let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+        let options = CompilerOptions {
+            optimization_level: Some(2),
+            ..Default::default()
+        };
+        let mut export = prepare(&world, bounds, &[], &options, &TaskMonitor::default(), AnalysisLimits::default()).unwrap();
+        let index = export.graph.wire_plans.iter().position(|wire| wire.hop_root.is_some()).unwrap();
+        export.validate().unwrap();
+        let saved = export.graph.wire_plans[index].hop_root.clone();
+        export.graph.wire_plans[index].hop_root = Some("site:999999".into());
+        assert!(export.validate().is_err());
+        export.graph.wire_plans[index].hop_root = Some(export.graph.wire_plans[index + 1].hop_root.clone().unwrap());
+        assert!(export.validate().is_err());
+        export.graph.wire_plans[index].hop_root = saved;
+        export.validate().unwrap();
+    }
 
     #[test]
     fn instant_reset_export_retains_typed_bindings_and_rejects_wrong_roles() {
@@ -1508,7 +1821,45 @@ mod wire_query_fact_validation_tests {
             wire: 4,
             zero_no_dust: 0xfffffe,
             isolated: false,
+            transfer: None,
         }
+    }
+
+    #[test]
+    fn validates_compiled_wire_inputs_without_requiring_the_additive_field() {
+        let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+        let mut export = prepare(
+            &world,
+            bounds,
+            &[],
+            &CompilerOptions {
+                optimization_level: Some(2),
+                ..Default::default()
+            },
+            &TaskMonitor::default(),
+            AnalysisLimits::default(),
+        )
+        .unwrap();
+        let facts = export.graph.wire_plans.iter_mut().find_map(|wire| wire.query_facts.as_mut()).unwrap();
+        let original = *facts;
+        assert!(original.transfer.is_some());
+        for corrupt in 0..5 {
+            let mut bad = original;
+            let transfer = bad.transfer.as_mut().unwrap();
+            match corrupt {
+                0 => transfer.seed.direct |= 1 << 24,
+                1 => transfer.seed.direct |= 1 << 23,
+                2 => transfer.seed.conditional |= 1 << 4,
+                3 => {
+                    transfer.seed.direct |= 1 << 7;
+                    transfer.seed.conditional |= 1 << 7;
+                }
+                _ => transfer.turbo.direct |= 1 << 2,
+            }
+            assert!(validate_wire_query_facts(Some(&bad)).is_err());
+        }
+        facts.transfer = None;
+        export.validate().unwrap();
     }
 
     #[test]
@@ -1523,6 +1874,7 @@ mod wire_query_fact_validation_tests {
             turbo_route: None,
             query_facts: None,
             instant_reset: None,
+            hop_root: None,
         };
         assert!(serde_json::to_value(&wire).unwrap().get("query_facts").is_none());
         wire.query_facts = Some(facts());

@@ -211,11 +211,31 @@ impl GraphBackend {
         })
     }
 
-    fn resource_contact_available(&self, resource: ResourceId, contact: ContactId, vacated_head: Option<PistonId>) -> bool {
+    pub(super) fn resource_contact_available(&self, resource: ResourceId, contact: ContactId, vacated_head: Option<PistonId>) -> bool {
+        if let Some(actor) = self.program.private_resource_owner(resource) {
+            let spec = self.program.pistons()[actor.index()];
+            if !self.program.resources()[resource.index()].contacts.contains(&contact) {
+                return false;
+            }
+            // Ownership closure proves that only this actor's head can obstruct either contact.
+            let piston = self.state.pistons[actor.index()];
+            if contact == spec.near
+                && piston.head_present
+                && matches!(
+                    piston.availability,
+                    PistonAvailability::Ready | PistonAvailability::HeadPending | PistonAvailability::BasePendingHeadPresent
+                )
+                && vacated_head != Some(actor)
+            {
+                return false;
+            }
+            return self.resource_contact_is_free(resource, contact, vacated_head);
+        }
+        self.general_resource_contact_available(resource, contact, vacated_head)
+    }
+
+    pub(super) fn general_resource_contact_available(&self, resource: ResourceId, contact: ContactId, vacated_head: Option<PistonId>) -> bool {
         let Some(spec) = self.program.resources().get(resource.index()) else {
-            return false;
-        };
-        let Some(state) = self.state.resources.get(resource.index()).copied() else {
             return false;
         };
         if !spec.contacts.contains(&contact)
@@ -243,6 +263,11 @@ impl GraphBackend {
                 return false;
             }
         }
+        self.resource_contact_is_free(resource, contact, vacated_head)
+    }
+
+    fn resource_contact_is_free(&self, resource: ResourceId, contact: ContactId, vacated_head: Option<PistonId>) -> bool {
+        let state = self.state.resources[resource.index()];
         if state.at == contact && state.enabled {
             return true;
         }

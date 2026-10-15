@@ -28,53 +28,8 @@ fn first_turbo_delivery(
 }
 
 #[cfg(test)]
-mod turbo_callback_selection_tests {
-    use super::*;
-
-    fn delivery(target: SiteId, guard: u32, view: OperandView, receiver: Option<CallbackReceiver>, sequence: u32) -> RouteDelivery {
-        RouteDelivery {
-            target,
-            kind: DeliveryKind::Update { direction: None },
-            guard: GuardId::new(guard),
-            view,
-            sequence,
-            receiver,
-        }
-    }
-
-    #[test]
-    fn indexed_and_linear_selection_keep_the_same_first_passing_row() {
-        let receiver = CallbackReceiver::Component(NodeId::new(7));
-        let target = SiteId::new(200);
-        let other_targets: Vec<_> = (0..10).map(|slot| SiteId::new(slot * 11 + 3)).collect();
-        let mut route = other_targets
-            .iter()
-            .map(|&site| delivery(site, 9, OperandView::Captured, Some(receiver), 17))
-            .collect::<Vec<_>>();
-        route.extend([
-            delivery(target, 9, OperandView::Captured, None, 30),
-            delivery(target, 9, OperandView::Live, Some(receiver), 30),
-            delivery(target, 8, OperandView::Captured, Some(receiver), 90),
-            delivery(target, 9, OperandView::Captured, Some(receiver), 90),
-        ]);
-        let observed = ObservedSite {
-            profile: None,
-            receiver: Some(receiver),
-            properties: ObservedProperties::Passive,
-        };
-        let matches_guard = |guard, _, observed: &ObservedSite| guard == GuardId::new(9) && observed.receiver == Some(receiver);
-        let linear = first_turbo_delivery(&route, target, &observed, matches_guard);
-        let indexed = first_turbo_delivery(&route[10..], target, &observed, matches_guard);
-        assert_eq!(linear, indexed);
-        assert_eq!(linear, Some(route[13]));
-
-        let miss_guard = |_, _, _: &ObservedSite| false;
-        let linear_miss = first_turbo_delivery(&route, target, &observed, miss_guard);
-        let indexed_miss = first_turbo_delivery(&route[10..], target, &observed, miss_guard);
-        assert_eq!(linear_miss, indexed_miss);
-        assert_eq!(linear_miss, None);
-    }
-}
+#[path = "tests/turbo_callback_selection.rs"]
+mod turbo_callback_selection_tests;
 
 impl GraphBackend {
     pub(super) fn wire_plan(&self, node: NodeId) -> &WirePlan {
@@ -179,6 +134,22 @@ impl GraphBackend {
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
             return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
         }
+        if let Some(transfer) = plan.query_facts.and_then(|facts| facts.transfer) {
+            let mut inputs = transfer.seed.selected(false, |slot| self.live_neighbor_geometry(plan, slot));
+            let mut wire_power = 0;
+            while inputs != 0 {
+                let slot = inputs.trailing_zeros() as usize;
+                inputs &= inputs - 1;
+                wire_power = wire_power.max(self.live_neighbor_wire_strength(plan, slot));
+            }
+            let block_power = BlockFace::values()
+                .into_iter()
+                .zip([3, 2, 4, 5, 1, 0])
+                .map(|(face, slot)| self.neighbor_power_no_dust(plan, slot, face, None))
+                .max()
+                .unwrap_or(0);
+            return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
+        }
         self.seed_power_general(plan)
     }
 
@@ -272,13 +243,16 @@ impl GraphBackend {
     }
 
     fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) -> usize {
-        if let Some(&slot) = walk.site_slots.get(&site) {
+        if let Some(slot) = walk.slot(site) {
             return slot;
         }
-        let observed = self
-            .resolve_site(site, None)
-            .expect("wire traversal site was validated during preparation")
-            .observed();
+        let observed = if walk.is_compiled() {
+            self.observe_site(site).expect("compiled hop site was validated during preparation")
+        } else {
+            self.resolve_site(site, None)
+                .expect("wire traversal site was validated during preparation")
+                .observed()
+        };
         #[cfg(test)]
         graph_test_trace!(
             self,
@@ -299,6 +273,7 @@ impl GraphBackend {
                 z_bias: 0,
                 layer: 0,
                 heading: None,
+                neighbor_slots: None,
             },
         )
     }
@@ -310,7 +285,9 @@ impl GraphBackend {
         if let Some(heading) = walk.sites[root_slot].heading {
             return WireWalkNeighbors {
                 heading: heading as usize,
-                slots: plan.canonical_neighbors.map(|site| walk.site_slots[&site]),
+                slots: walk
+                    .cached_neighbors(root_slot)
+                    .unwrap_or_else(|| plan.canonical_neighbors.map(|site| walk.slot(site).expect("discovered wire neighbor"))),
             };
         }
         let slots = plan.canonical_neighbors.map(|site| self.capture_walk_site(walk, site));
@@ -347,12 +324,20 @@ impl GraphBackend {
             neighbor.z_bias = z_bias;
         }
         walk.sites[root_slot].heading = Some(heading as u8);
+        walk.cache_neighbors(root_slot, slots);
         #[cfg(test)]
         graph_test_trace!(self, format!("wire heading {node:?} bias=({x_bias},{z_bias}) order={heading}"));
         WireWalkNeighbors { heading, slots }
     }
 
-    pub(super) fn wire_route_delivery(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> Option<RouteDelivery> {
+    pub(super) fn wire_route_delivery(
+        &self,
+        wire_index: usize,
+        route: RouteId,
+        slot: usize,
+        target: SiteId,
+        observed: &ObservedSite,
+    ) -> Option<RouteDelivery> {
         let deliveries = &self.program.routes()[route.index()].deliveries;
         let index = self.program.turbo_callback_index(wire_index);
         let candidates = index.map_or(deliveries.as_ref(), |index| {
@@ -424,6 +409,9 @@ impl GraphBackend {
 
     #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        if super::fixed_point::enabled() {
+            return self.evaluate_fixed_point_wire(node);
+        }
         if let Some(instant) = self.wire_plan(node).instant_reset {
             let plan = self.wire_plan(node).clone();
             return self.evaluate_instant_output(&plan, instant);
@@ -468,22 +456,39 @@ impl GraphBackend {
     }
 
     fn evaluate_turbo_wire_inner(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
-        let mut walk = WireWalk::new();
-        let root_slot = self.capture_walk_site(&mut walk, root);
+        let compiled_root = self.wire_plan(node).hop_root;
+        let root = compiled_root
+            .or(self.component_sites[node.index()])
+            .expect("wire root site was validated during preparation");
+        let mut walk = if compiled_root.is_some() {
+            self.wire_walks.pop().unwrap_or_else(|| WireWalk::compiled(self.program.sites().len()))
+        } else {
+            WireWalk::new()
+        };
+        // Always return scratch, including when a nested command reports an error.
+        let result = self.run_wire_hops(node, root, &mut walk);
+        if compiled_root.is_some() {
+            walk.clear();
+            self.wire_walks.push(walk);
+        }
+        result
+    }
+
+    fn run_wire_hops(&mut self, node: NodeId, root: SiteId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
+        let root_slot = self.capture_walk_site(walk, root);
         walk.sites[root_slot].visited = true;
         #[cfg(test)]
         graph_test_trace!(self, format!("wire turbo start {node:?}"));
-        self.propagate_wire_changes(node, &mut walk, 0);
-        self.shift_wire_queues(&mut walk);
+        self.propagate_wire_changes(node, walk, 0);
+        self.shift_wire_queues(walk);
         walk.layer = 1;
         while !walk.queues[0].is_empty() || !walk.queues[1].is_empty() {
             let count = walk.queues[0].len();
             for _ in 0..count {
                 let slot = walk.queues[0].pop_front().unwrap();
-                self.dispatch_turbo_site(slot, &mut walk)?;
+                self.dispatch_turbo_site(slot, walk)?;
             }
-            self.shift_wire_queues(&mut walk);
+            self.shift_wire_queues(walk);
             walk.layer += 1;
         }
         #[cfg(test)]
@@ -592,7 +597,7 @@ impl GraphBackend {
             })
         } {
             let input_power = if is_input {
-                let captured = &walk.sites[walk.site_slots[&input_site]].observed;
+                let captured = &walk.sites[walk.slot(input_site).expect("certified input was discovered")].observed;
                 self.power_no_dust(input_site, input_face, Some(captured))
             } else {
                 0
@@ -601,7 +606,7 @@ impl GraphBackend {
             if input_power < 15 {
                 for neighbor in adjacent.into_iter().flatten() {
                     let site = self.component_sites[neighbor.index()].expect("certified neighboring wire has a root site");
-                    let Some(&slot) = walk.site_slots.get(&site) else {
+                    let Some(slot) = walk.slot(site) else {
                         return self.turbo_wire_power_general(plan, neighbors, walk);
                     };
                     let observed = &walk.sites[slot].observed;
@@ -612,6 +617,29 @@ impl GraphBackend {
                 }
             }
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
+            return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
+        }
+        if let Some(transfer) = plan.query_facts.and_then(|facts| facts.transfer) {
+            let input_power = BlockFace::values()
+                .into_iter()
+                .zip([3, 2, 4, 5, 1, 0])
+                .map(|(face, slot)| {
+                    let observed = &walk.sites[neighbors.slots[slot]].observed;
+                    self.neighbor_power_no_dust(plan, slot, face, Some(observed))
+                })
+                .max()
+                .unwrap_or(0);
+            let mut wire_power = 0;
+            if input_power < 15 {
+                let mut inputs = transfer
+                    .turbo
+                    .selected(true, |slot| self.captured_neighbor_geometry(plan, slot, neighbors, walk));
+                while inputs != 0 {
+                    let slot = inputs.trailing_zeros() as usize;
+                    inputs &= inputs - 1;
+                    wire_power = self.walk_wire_strength(neighbors.slots[slot], walk, wire_power);
+                }
+            }
             return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
         }
         self.turbo_wire_power_general(plan, neighbors, walk)

@@ -1,12 +1,20 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
+pub(crate) mod compile_builtin_resets;
+pub(crate) mod compile_instant_machine;
+pub(crate) mod compile_instant_proxies;
+pub(crate) mod compile_wire_hops;
 pub(crate) mod contract_dust_paths;
+pub(crate) mod identify_instant_regions;
 pub(crate) mod index_turbo_callbacks;
 pub(crate) mod prune_inert_callbacks;
 pub(crate) mod prune_unhandled_updates;
 pub(crate) mod rich;
+#[cfg(any(test, feature = "unsafe-turbo-fixed-point"))]
+mod settle_dust_networks;
 pub(crate) mod simplify_guards;
 pub(crate) mod simplify_instant_resets;
 pub(crate) mod simplify_state_guards;
+pub(crate) mod specialize_instant_pistons;
 pub(crate) mod specialize_wire_queries;
 pub(crate) mod utils;
 
@@ -17,6 +25,14 @@ use std::time::Instant;
 
 /// A graph transformation with its own assumptions and optional parameters.
 pub(crate) trait GraphPass {
+    /// Preserve only when every compiled transition still matches the graph's semantics.
+    fn preserves_instant_machine(&self) -> bool {
+        false
+    }
+    /// Preserve only when ownership boundaries and their route witnesses stay unchanged.
+    fn preserves_instant_regions(&self) -> bool {
+        false
+    }
     fn name(&self) -> &'static str;
     /// Check pass-specific preconditions; the runner already validates the graph.
     fn validate_input(&self, _graph: &CompileGraph) -> Result<(), String> {
@@ -36,6 +52,11 @@ pub(crate) trait GraphPass {
 
     /// Preserve only when fixed site geometry and canonical bindings are unchanged.
     fn preserves_wire_query_facts(&self) -> bool {
+        false
+    }
+
+    /// Preserve only when component-site roots and canonical hop bindings stay valid.
+    fn preserves_wire_hops(&self) -> bool {
         false
     }
 
@@ -165,8 +186,15 @@ pub(crate) fn run_graph_pipeline(
             continue;
         }
         // Passes drop derived records by default and must opt in when they preserve their IDs.
+        if !item.pass.preserves_instant_machine() {
+            graph.instant_machine = None;
+        }
         if !item.pass.preserves_dust_paths() && !graph.dust_paths.is_empty() {
             graph.dust_paths.clear();
+        }
+        if !item.pass.preserves_instant_regions() {
+            graph.instant_regions.clear();
+            graph.instant_proxies.clear();
         }
         if !item.pass.preserves_turbo_callback_indices() {
             graph.turbo_callback_indices.clear();
@@ -174,6 +202,11 @@ pub(crate) fn run_graph_pipeline(
         if !item.pass.preserves_wire_query_facts() {
             for wire in &mut graph.wires {
                 wire.query_facts = None;
+            }
+        }
+        if !item.pass.preserves_wire_hops() {
+            for wire in &mut graph.wires {
+                wire.hop_root = None;
             }
         }
         if !item.pass.preserves_instant_resets() {
@@ -234,7 +267,7 @@ pub(crate) fn run_graph_pipeline(
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let passes: [(usize, Box<dyn GraphPass>); 8] = [
+    let passes: [(usize, Box<dyn GraphPass>); 14] = [
         (1, Box::new(simplify_guards::GuardAndUpdateReduction)),
         (1, Box::new(prune_inert_callbacks::PruneInertCallbacks)),
         (1, Box::new(prune_unhandled_updates::PruneUnhandledUpdates)),
@@ -242,7 +275,13 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (1, Box::new(contract_dust_paths::ContractDustPaths)),
         (2, Box::new(simplify_state_guards::SimplifyStateGuards)),
         (2, Box::new(specialize_wire_queries::SpecializeWireQueries)),
+        (2, Box::new(compile_wire_hops::CompileWireHops)),
         (3, Box::new(simplify_instant_resets::SimplifyInstantResets)),
+        (3, Box::new(specialize_instant_pistons::SpecializeInstantPistons)),
+        (3, Box::new(compile_builtin_resets::CompileBuiltinResets)),
+        (3, Box::new(identify_instant_regions::IdentifyInstantRegions)),
+        (3, Box::new(compile_instant_proxies::CompileInstantProxies)),
+        (3, Box::new(compile_instant_machine::CompileInstantMachine)),
     ];
     let entries = passes
         .into_iter()
@@ -251,7 +290,17 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             enabled: level >= minimum_level,
         })
         .collect();
-    PassPipeline::new(entries)
+    let pipeline = PassPipeline::new(entries);
+    #[cfg(feature = "unsafe-turbo-fixed-point")]
+    let pipeline = {
+        let mut pipeline = pipeline;
+        pipeline.entries.push(PassEntry {
+            pass: Box::new(settle_dust_networks::SettleDustNetworks),
+            enabled: true,
+        });
+        pipeline
+    };
+    pipeline
 }
 
 #[cfg(test)]
@@ -346,6 +395,9 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         }
     }
 

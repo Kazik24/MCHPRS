@@ -24,6 +24,20 @@ Execution and inspection use shared preparation and pass infrastructure. Preserv
 
 ## File organization — mandatory
 
+Instant region boundaries and the private-cell instruction proxy are documented in
+[INSTANT_REGIONS_AND_PROXIES.md](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_REGIONS_AND_PROXIES.md).
+At O3, `identify_instant_regions` follows built-in reset compilation and
+`compile_instant_proxies` follows boundary identification. Shared regions remain
+general execution. Passes invalidate these certificates by default; opt into
+preservation only if ownership, original route rows, and reset witnesses remain valid.
+
+With `-O3 --stable-instant-inputs`, `compile_instant_machine` follows proxy compilation.
+It replaces internal execution for bounded closed selections with independently replayed,
+exact full-state transitions. Unknown states/actions retain general execution. The initial
+family covers the whole one-bit adder; larger regions remain ordered proxies. Read
+[CLOSED_INSTANT_MACHINE.md](../../../../../docs/notes/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md)
+before extending admission, normalization, or the bounded exploration budget.
+
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.
 2. `mod.rs` holds registration and pipeline infrastructure. Do not implement unrelated transformations inside the runner, parser, compiler orchestration, or backend dispatch.
 3. Keep pass-specific discovery, proof, and rewrite helpers private to that pass. Break complex work into small, named functions and intermediate variables.
@@ -91,16 +105,46 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | O1 | `index-turbo-callbacks` | Repeated searches through unrelated callback rows. |
 | O1 | `contract-static-dust-paths` | General power queries on certified private dust paths. |
 | O2 | `simplify-state-guards` | Redundant predicates on the same state field. |
-| O2 | `specialize-wire-queries` | Repeated property queries and whole Turbo walks whose distinct neighbors can never contain a wire. |
+| O2 | `specialize-wire-queries` | Repeated property/strength queries through compiled wire input expressions; whole Turbo walks whose distinct neighbors can never contain a wire. |
+| O2 | `compile-wire-hops` | Per-walk hash indexing, full block-view construction during capture, and repeated neighbor-slot mapping. |
 | O3 | `simplify-instant-resets` | Two conductor traversals in a private reset mechanism and general Turbo execution of its certified two-wire output. |
+| O3 | `specialize-instant-pistons` | Exact fixed-conductor power reads in observer-reset mechanisms, including shared payloads and shared reset drivers. |
+| O3 | `compile-builtin-resets` | Ordinary reset-observer execution and empty output-route dispatch, replaced by shared built-in reset clocks. |
 
 The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding a pass, add it to the corresponding optimization tier; do not introduce a dedicated setting for the pass.
 
-Derived dust paths, Turbo offsets, wire-query facts and instant-reset plans are invalidated before enabled passes by default. Override a `preserves_*` method only with an argument that the affected references and assumptions remain valid. Disabled entries preserve metadata. Wire-query facts certify geometry, block class, and absence of neighboring wires, never strength or contact selection; their shared inference rule lives in `program_graph/wire_query_facts.rs` so graph validation can independently reject stale certificates. An isolated-wire certificate preserves the complete captured callback schedule, including duplicate deliveries and nested execution; it does not permit dropping those callbacks.
+Derived dust paths, Turbo offsets, wire-query facts and instant-reset plans are invalidated before enabled passes by default. Override a `preserves_*` method only with an argument that the affected references and assumptions remain valid. Disabled entries preserve metadata. Wire-query facts certify geometry, block class, possible wire inputs, and absence of neighboring wires, never strength or contact selection; their shared inference rule lives in `program_graph/wire_query_facts.rs` so graph validation can independently reject stale certificates. An isolated-wire certificate preserves the complete captured callback schedule, including duplicate deliveries and nested execution; it does not permit dropping those callbacks.
 
-The first instant pass recognizes a closed graph pattern, not a schematic name. Its two-wire transfer removes internal wire callbacks, discovery, maps and queues while retaining every intermediate write and outside callback. The actor, resource, observer and global scheduler remain their existing state owners. Recognition deliberately declines shared resources, extra sources/readers, unsupported orientations and uncertain routes. O2 is the pass-off baseline and O3 enables this first family; recognition and execution checks live in [simplify_instant_resets.rs](simplify_instant_resets.rs) and [graph_instant_reset_tests.rs](../backend/graph_instant_reset_tests.rs).
+The private instant-output pass recognizes a closed graph pattern, not a schematic name. Its two-wire transfer removes internal wire callbacks, discovery, maps and queues while retaining every intermediate write and outside callback. The actor, resource, observer and global scheduler remain their existing state owners. Recognition deliberately declines shared resources, extra sources/readers, unsupported orientations and uncertain routes. O2 is the pass-off baseline and O3 enables this first family; recognition and execution checks live in [simplify_instant_resets.rs](simplify_instant_resets.rs) and [graph_instant_reset_tests.rs](../backend/graph/tests/instant_reset.rs).
 
 Long discovery/proof loops must check cancellation at sensible boundaries. Compute eligibility and replacement data before mutating each candidate. The compiler stages the graph and publishes only after success; the runner does not roll back failed mutations. Do not clone an entire large graph merely to provide rollback, and never mutate the input World from a pass.
+
+
+### Broader instant mechanism recognition
+
+`specialize_instant_pistons.rs` follows reset power from a base-watching observer through a fixed conductor into QC. It accepts the adder's shared redstone/wool resources, downward actuators, shared reset observers and multiple power contributors. It recognizes all 13 ADDER1BIT actors and expands their fixed conducted input reads without changing state, event order or reset behavior. The existing private two-wire output certificate remains separate and retains its stronger geometry/ownership conditions.
+
+The exact identity is `guard_outer ? max_i(guard_i ? source_i.saturating_sub(a_i) : 0).saturating_sub(a_outer) : 0 = max_i((guard_outer && guard_i) ? source_i.saturating_sub(min(15, a_i + a_outer)) : 0)`. Source strengths are four-bit; guards and reads are pure. No callback or scheduled work executes during either query, so both expressions see the same live state. Query equality at every operation preserves sampling, acceptance and subsequent execution by induction. Mutable contacts are retained as source reads; only immutable fixed conductors are expanded. Recursive conductor programs stay general.
+
+Report recognized mechanisms, rewritten input owners, private output kernels and absorbed lifecycles separately. Observer-reset provenance does not authorize eliminating a lifecycle or replacing it with a truth table. Discovery/type rejection tests, rotated/transformed fixtures, real before/after runtime queries with multiple independent guards and strengths, and full adder differential/continuation tests establish this slice. The source catalogue and all-actor mechanism map are in [ADDER1BIT_INSTANT_RECOGNITION_RESEARCH.md](../../../../../docs/notes/redpiler-pistons-v4/ADDER1BIT_INSTANT_RECOGNITION_RESEARCH.md).
+
+### Built-in reset clocks
+
+`compile_builtin_resets.rs` is the first executable reset replacement. It converts recognized reset observers with matching raw orientation and no outgoing callback deliveries into `BuiltinReset { watched, facing }` nodes. Existing node IDs, component state and scheduler entries remain the single state authority. Shared observers become one shared clock; a separate clock per piston would duplicate reset ownership. Unsupported output circuits remain ordinary observers.
+
+A qualifying notification schedules the original one-game-tick transition through the shared scheduler, which suppresses an already-pending matching entry. A rising transition schedules its falling transition before updating reset output, exactly as before. The clock writes the original powered/output state and marks the projected cell dirty. It has no output route. Correctly oriented reset-emission links become `PowerPort::Output`, retaining source, target, guard and attenuation. Fixed-component `Output`/`Stored` reads access scalar state directly; dynamic contacts and other directional/conducted queries retain their general path. Other weak/strong clock faces still return zero. Imported stale, duplicate, untyped and priority-sensitive work retains its original target identity and order. Projection continues to produce the original observer block and pending ticks; no Motion or second state owner is introduced.
+
+The equivalence argument is local: (1) notification qualification is identical, including captured powered operands and `None` direction; (2) scheduler insertion, pending checks and ON/OFF updates are identical; (3) the skipped output route is empty; (4) block projection, power channels and handoff use the same state and IDs. This establishes the same transition after every input event, independent of an arithmetic protocol. Validation rejects a built-in clock with an output route or an incompatible raw observer state. Discovery and source/state tests are in `backend/graph/tests/builtin_reset.rs`; full adder and private-output continuation tests also execute the built-in path.
+
+This lowering avoids ordinary observer handling, a duplicate pending lookup, empty-route dispatch and reset-source block reconstruction. It does **not** yet delete ingress notifications, skip scheduler transitions, absorb actor/resource actions or contract connecting dust. Retain and report those work counts honestly. The export preserves `kind: observer` as the projected identity and adds `builtin_reset: true`; the viewer labels it as a built-in reset. Older exports omit the additive marker.
+
+### Compiled wire hops
+
+`compile_wire_hops.rs` binds each unambiguous wire root and reuses its existing canonical neighbor IDs as direct hop destinations. It does not duplicate adjacency or store a second electrical state. Optimized walks reuse dense site-to-slot scratch, capture only profile/receiver/properties, and retain their discovered neighbor-slot arrays. Scratch is owned by an invocation; nested callbacks take another scratch record from the backend pool, and returning a walk clears only its discovered entries. General O0 walks retain sparse lookup as the comparison path.
+
+The optimization preserves heading, layer queues, admission-time guards, captured versus live reads, intermediate writes, callbacks and scheduler work. It does not replace an arbitrary network with its settled voltages or collapse a whole wire chain into a single observable event. Those stronger reductions still need a region-boundary proof. See [COMPILED_WIRE_HOPS.md](../../../../../docs/notes/redpiler-pistons-v4/COMPILED_WIRE_HOPS.md).
+
+The `preserves_wire_hops` hook defaults to false. Later passes retain root bindings only if component-site ownership remains valid; the three O3 instant/reset rewrites preserve these roots explicitly. Validation rejects dangling, ambiguous and wrong-owner roots. JSON adds optional `hop_root` references; older exports remain valid.
 
 ## Behavioral contract
 
@@ -157,7 +201,7 @@ Every nontrivial rewrite needs extensive coverage appropriate to its semantic sc
 
 Vary analog strengths, saved state, stale/imported ticks, repeated same-value updates, rapid trigger/reset histories, both action orders, shared ownership, captured/live disagreements, nested walks, and observer visibility as the rule requires. A failing safety condition must leave the original candidate executable.
 
-Reuse the existing [Graph tests](../backend/graph_tests.rs), [seeded fuzz tests](../backend/graph_fuzz_tests.rs), [adder episodes](../backend/graph_adder_tests.rs), [continuation tests](../backend/graph_continuation_tests.rs), and [reference contract](../../redstone/instant_piston_tests/reference_contract.rs). Add focused generators rather than a second fixture loader or simulator.
+Reuse the existing [Graph tests](../backend/graph/tests/components.rs), [seeded fuzz tests](../backend/graph/tests/fuzz.rs), [adder episodes](../backend/graph/tests/adder.rs), [continuation tests](../backend/graph/tests/continuation.rs), and [reference contract](../../redstone/instant_piston_tests/reference_contract.rs). Add focused generators rather than a second fixture loader or simulator.
 
 Discover tests before running them. A command matching zero tests proves nothing. Run affected suites in debug and release with `--locked`; complete the broader Redpiler suite for cross-cutting rewrites. Check the server consumer when the API changes. Typical checks are:
 
@@ -197,3 +241,29 @@ The final report must state:
 - What was not checked, remaining risks, and in what opt effort is enabled.
 
 Default enablement requires reviewed correctness evidence and measured benefit. Unsupported proof cases must retain the general graph; no Native/Direct fallback, TODO execution branch, guessed output, or broader unsupported circuit rejection may substitute for a proof.
+
+## Experimental unordered dust settling
+
+O3's separate `--stable-instant-inputs` option promises stable external inputs from the activating falling edge until reset, and composes admitted instant groups through connecting dust and variable-input fanout. Internal derived signals still change. Its ordered proxy preserves shared/reset memory; it does **not** enable unordered settling. Read [the contract, autonomous execution target and real-output counterexample](../../../../../docs/notes/redpiler-pistons-v4/STABLE_INSTANT_REGION_CONTRACT.md) before deleting internal work or changing the boundary.
+
+`settle_dust_networks.rs` is deliberately **not** a correctness-preserving pass. Build core with `--features unsafe-turbo-fixed-point` to append it after the selected normal pipeline. The experimental runtime replaces ordered Turbo walks with final-state settling and one notification per boundary site. Seed writes and shape callbacks remain. Boundary routes remain available, while ordered-walk specializations are invalidated. This is off by default and is not an optimization tier; never enable it in a production server.
+
+```text
+cargo bench -p mchprs_core --bench cpus --features unsafe-turbo-fixed-point --locked -- --cpu cpu_bubblesort --graph-short --graph-tier 3 --iterations 1 --output target/cpu-dust-fixed-point.json
+```
+
+The solver discovers electrical wire neighbors, samples external power once, then builds local attenuation edges. It performs up to fifteen synchronous relaxation rounds in zero-initialized temporary strength arrays, publishing only final values. With fixed non-dust sources and one-level wire attenuation, four-bit power cannot travel beyond fourteen wire edges. Only final changed wires and the triggering root notify boundary sites, once each. It drops intermediate values, duplicate notifications and native order. Nested boundary callbacks can start another solve after the current one has settled.
+
+The harness records interpreter mismatches in `fixed_point_comparisons` instead of enforcing parity in this build. A successful exit does **not** mean correctness. Ordinary builds retain strict comparisons. A stalled circuit is not a speedup. Tests check retained routes, structural validation and lowering, plus long-line rise/decay from every stale strength. Dynamic-contact histories, BUD behavior and instant circuits are not certified.
+
+shortcut: the experiment rediscovers neighborhoods and samples general electrical inputs, compile compact guarded attenuation edges only after measuring useful coverage and proving the boundary contract.
+
+Investigation results and the proposed ordered-boundary certification are in [DUST_FIXED_POINT_INVESTIGATION.md](../../../../../docs/notes/redpiler-pistons-v4/DUST_FIXED_POINT_INVESTIGATION.md). The repaired CPU episode matches sampled RAM but not complete future work; the ADDER1BIT FIFO counterexample prevents general enablement.
+
+### Compiled wire transfer expressions
+
+The existing `specialize-wire-queries` pass also compiles each wire's maximum-of-wire-strengths expression into `query_facts.transfer`. `seed` and `turbo` each contain a `direct` canonical-slot mask and a `conditional` diagonal-slot mask. Constant geometry folds step conditions; contacts remain dynamic where their selection matters. A slot is omitted only when every supported occupant is a non-wire or its geometry condition is false. Potential wire profiles and typed wire receivers both prevent that omission. The graph validator re-infers the whole certificate after every enabled pass.
+
+Runtime reads the selected live wire strengths for a seed and the selected walk snapshots for Turbo. Strong conducted power retains its existing live semantics. The reduction changes no writes, callback selection, heading, FIFO work or reset ownership: pure maxima may reorder their operand reads because no callback executes inside either query. Separate seed and Turbo expressions preserve their different vertical and ascent rules. A malformed or stale expression is rejected before execution; absent metadata uses general queries. Rust, Python and HTML exports validate the additive masks, and older exports remain readable.
+
+This is a first exact lowering of connecting dust calculations, not an atomic instant-region contraction or an electrical fixed-point solver. General Turbo still orders propagation. Evidence is in `program_graph/wire_query_facts.rs` (6,656 local geometry cases), `backend/graph/tests/wire_query.rs` (live/captured dynamic contact and strength checks), and `backend/graph/tests/instant_recognition.rs` (all 32 ADDER1BIT wires, all headings, changed snapshots). Preserving every intermediate write and outside callback deliberately leaves semantic work counts unchanged; benchmark the runtime cost rather than claiming event elimination.

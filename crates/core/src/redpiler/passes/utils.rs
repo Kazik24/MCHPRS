@@ -1,5 +1,7 @@
 //! Pass statistics and table-memory accounting shared by preparation and transformations.
 
+pub(crate) mod instant_mechanisms;
+
 use crate::redpiler::analysis::{AnalysisError, MAX_GRAPH_PREPARATION_BYTES, callbacks, electrical, geometry};
 use crate::redpiler::passes::index_turbo_callbacks::TurboCallbackIndex;
 use crate::redpiler::program_graph::{
@@ -10,6 +12,40 @@ use crate::redpiler::{GraphCounts, PassStatistics, PreparationTableStatistics, T
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use std::time::Instant;
+
+fn instant_proxy_bytes(proxies: &[crate::redpiler::program_graph::InstantProxy]) -> usize {
+    use crate::redpiler::program_graph::{InstantRoute, InstantStep, PrivateInstantCell};
+    proxies
+        .iter()
+        .map(|proxy| {
+            boxed_bytes::<PrivateInstantCell>(proxy.private_cells.len())
+                + boxed_bytes::<InstantRoute>(proxy.routes.len())
+                + proxy
+                    .routes
+                    .iter()
+                    .map(|route| boxed_bytes::<InstantStep>(route.steps.len()))
+                    .sum::<usize>()
+        })
+        .sum()
+}
+
+fn instant_region_bytes(regions: &[crate::redpiler::program_graph::InstantRegion]) -> usize {
+    use crate::redpiler::program_graph::{ContactId, NodeId, RouteId, RouteOccurrence, SiteId};
+    regions
+        .iter()
+        .map(|region| {
+            boxed_bytes::<NodeId>(region.wires.capacity())
+                + boxed_bytes::<PistonId>(region.actors.capacity())
+                + boxed_bytes::<ResourceId>(region.resources.capacity())
+                + boxed_bytes::<NodeId>(region.resets.capacity() + region.wire_readers.capacity() + region.observers.capacity())
+                + boxed_bytes::<ContactId>(region.contacts.capacity())
+                + boxed_bytes::<SiteId>(region.readable_sites.capacity())
+                + boxed_bytes::<u32>(region.power_inputs.capacity() + region.power_readers.capacity())
+                + boxed_bytes::<RouteId>(region.routes.capacity())
+                + boxed_bytes::<RouteOccurrence>(region.incoming.capacity() + region.outgoing.capacity())
+        })
+        .sum()
+}
 
 pub(super) fn child_before_parent_order(guards: &[Guard], monitor: &TaskMonitor) -> Result<Vec<usize>, String> {
     let mut marks = vec![0u8; guards.len()];
@@ -180,6 +216,27 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
         .sum();
     let tables = vec![
+        table::<crate::redpiler::program_graph::InstantMachine>(
+            "lowering input",
+            "instant machine",
+            usize::from(graph.instant_machine.is_some()),
+            usize::from(graph.instant_machine.is_some()),
+            graph.instant_machine.as_ref().map_or(0, |machine| machine.estimated_bytes()),
+        ),
+        table::<crate::redpiler::program_graph::InstantRegion>(
+            "lowering input",
+            "instant regions",
+            graph.instant_regions.len(),
+            graph.instant_regions.capacity(),
+            instant_region_bytes(&graph.instant_regions),
+        ),
+        table::<crate::redpiler::program_graph::InstantProxy>(
+            "lowering input",
+            "instant proxies",
+            graph.instant_proxies.len(),
+            graph.instant_proxies.capacity(),
+            instant_proxy_bytes(&graph.instant_proxies),
+        ),
         table::<crate::redpiler::program_graph::CircuitNodeDraft>("lowering input", "nodes", graph.nodes.len(), graph.nodes.capacity(), 0),
         table::<crate::redpiler::program_graph::LinkSpec>("lowering input", "callback links", graph.links.len(), graph.links.capacity(), 0),
         table::<PowerLink>("lowering input", "power links", graph.power_links.len(), graph.power_links.capacity(), 0),
@@ -299,6 +356,27 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
+        table::<crate::redpiler::program_graph::InstantMachine>(
+            "lowering",
+            "instant machine",
+            usize::from(program.instant_machine().is_some()),
+            usize::from(program.instant_machine().is_some()),
+            program.instant_machine().map_or(0, |machine| machine.estimated_bytes()),
+        ),
+        table::<crate::redpiler::program_graph::InstantProxy>(
+            "lowering",
+            "instant proxies",
+            program.instant_proxies().len(),
+            program.instant_proxies().len(),
+            instant_proxy_bytes(program.instant_proxies()),
+        ),
+        table::<Option<(u32, u32)>>(
+            "lowering",
+            "instant route bindings",
+            routes.len(),
+            routes.len(),
+            boxed_bytes::<Option<PistonId>>(program.resources().len()),
+        ),
         table::<NodeSpec>("lowering", "nodes", program.nodes().len(), program.nodes().len(), 0),
         table::<PowerLink>("lowering", "power links", program.power_links().len(), program.power_links().len(), 0),
         table::<ComparatorInputPlan>(

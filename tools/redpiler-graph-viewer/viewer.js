@@ -3,6 +3,7 @@
 const tables = {
   nodes: "node", sites: "site", contacts: "contact", resources: "resource", guards: "guard",
   pistons: "piston", power_links: "power_link", wire_plans: "wire", wire_relations: "wire_relation",
+  instant_regions: "instant_region", instant_proxies: "instant_proxy",
   dust_paths: "dust_path", comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
 };
 const $ = (id) => document.getElementById(id);
@@ -38,7 +39,7 @@ function validateGraph(data) {
     const rows = data.graph[table];
     if (table === "routes" && rows === null) continue;
     if (table === "callback_links" && rows === undefined) continue;
-    if (table === "dust_paths" && rows == null) continue;
+    if (["dust_paths", "instant_regions", "instant_proxies"].includes(table) && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -52,9 +53,54 @@ function validateGraph(data) {
   }
   for (const ref of typedIds(data)) if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`);
   const nodes = new Map(data.graph.nodes.map((node) => [node.id, node]));
+  for (const node of nodes.values()) {
+    if (node.kind?.builtin_reset !== undefined && (typeof node.kind.builtin_reset !== "boolean" || node.kind.kind !== "observer")) throw Error(`${node.id}.builtin_reset must be an observer boolean.`);
+    if (node.kind?.builtin_reset && (node.kind.kind !== "observer" || node.output_route != null)) throw Error(`${node.id} has an invalid built-in reset.`);
+  }
   const sites = new Map(data.graph.sites.map((site) => [site.id, site]));
+  const regionRows = new Map((data.graph.instant_regions || []).map((region) => [region.id, region]));
+  const routeRows = new Map((data.graph.routes || []).map((route) => [route.id, route]));
+  for (const region of regionRows.values()) {
+    if (region.stable_inputs !== undefined && typeof region.stable_inputs !== "boolean") throw Error(`${region.id} has invalid stable_inputs.`);
+    if (!Array.isArray(region.wires ?? []) || (region.wires ?? []).some((wire) => nodes.get(wire)?.kind?.kind !== "wire")) throw Error(`${region.id} has invalid internal wires.`);
+    const fields = {actors: "piston", resources: "resource", resets: "node", contacts: "contact", readable_sites: "site",
+      power_inputs: "power_link", power_readers: "power_link", routes: "route", wire_readers: "node", observers: "node"};
+    for (const [field, prefix] of Object.entries(fields)) {
+      if (!Array.isArray(region[field]) || region[field].some((id) => typeof id !== "string" || !id.startsWith(`${prefix}:`) || !ids.has(id))) throw Error(`${region.id} has invalid ${field}.`);
+    }
+    for (const field of ["incoming", "outgoing"]) {
+      if (!Array.isArray(region[field])) throw Error(`${region.id} has invalid ${field}.`);
+      for (const event of region[field]) {
+        if (!Number.isInteger(event.ordinal) || event.ordinal < 0 || event.ordinal >= (routeRows.get(event.route)?.deliveries.length ?? -1)) throw Error(`${region.id} has an invalid route occurrence.`);
+      }
+    }
+  }
+  const proxyRoutes = new Set();
+  for (const proxy of data.graph.instant_proxies || []) {
+    const region = regionRows.get(proxy.region);
+    if (!region || !Array.isArray(proxy.private_cells) || !Array.isArray(proxy.routes)) throw Error(`${proxy.id} has an invalid region.`);
+    const privateResources = new Set();
+    for (const cell of proxy.private_cells) {
+      if (!cell || !region.actors.includes(cell.actor) || !region.resources.includes(cell.resource)
+        || !region.resets.includes(cell.reset) || privateResources.has(cell.resource)) throw Error(`${proxy.id} has an invalid private cell.`);
+      privateResources.add(cell.resource);
+    }
+    for (const plan of proxy.routes) {
+      if (!region.routes.includes(plan.route) || proxyRoutes.has(plan.route) || !Array.isArray(plan.operations)
+        || plan.operations.length !== routeRows.get(plan.route)?.deliveries.length
+        || plan.operations.some((operation) => !operation || typeof operation !== "object"
+          || !(operation.kind === "dispatch" || (operation.kind === "sample" && region.actors.includes(operation.piston))
+            || (operation.kind === "arm_reset" && region.resets.includes(operation.node))))) throw Error(`${proxy.id} has an invalid proxy route.`);
+      proxyRoutes.add(plan.route);
+    }
+  }
+  validateInstantMachine(data.graph.instant_machine, data.graph);
   const instantWires = new Set();
   for (const wire of data.graph.wire_plans) {
+    if (wire.hop_root != null) {
+      const root = sites.get(wire.hop_root);
+      if (root?.source?.kind !== "component" || root.source.node !== wire.node) throw Error(`${wire.id} hop root must bind its component.`);
+    }
     const instant = wire.instant_reset;
     if (instant != null) {
       if (typeof instant !== "object" || Array.isArray(instant)
@@ -76,6 +122,18 @@ function validateGraph(data) {
     if (masks.some((mask) => !Number.isInteger(mask) || mask < 0 || mask > 0xffffff)
       || ((facts.solid | facts.transparent | facts.wire | facts.zero_no_dust) & ~facts.known)
       || (facts.zero_no_dust & facts.solid)) throw Error(`${wire.id} has invalid wire query fact masks.`);
+    if (facts.transfer != null) {
+      const diagonals = [7, 8, 12, 13, 17, 18, 20, 21].reduce((mask, slot) => mask | (1 << slot), 0);
+      for (const phase of ["seed", "turbo"]) {
+        const inputs = facts.transfer?.[phase];
+        if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)
+          || [inputs.direct, inputs.conditional].some((mask) => !Number.isInteger(mask) || mask < 0 || mask > 0xffffff)
+          || (inputs.direct & ~(diagonals | 0x3f)) || (inputs.conditional & ~diagonals)
+          || (inputs.direct & inputs.conditional) || (phase === "turbo" && (inputs.direct & 0xc))) {
+          throw Error(`${wire.id} has invalid wire transfer inputs.`);
+        }
+      }
+    }
   }
   const assignedWires = new Set();
   for (const path of data.graph.dust_paths || []) {
@@ -221,6 +279,7 @@ function connectionLabel(connection) {
 }
 
 function recordLabel(row) {
+  if (row.kind?.builtin_reset) return 'built-in reset';
   if (row.id.startsWith('site:')) {
     const source = row.source;
     return source.kind === 'constant' ? `${recordIndex.get(source.profile).name} site` : `${source.kind} site`;
@@ -600,3 +659,23 @@ $('relax').addEventListener('click', layoutGraph);
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape') clearHighlight(); });
 $('graph').addEventListener('dragover', (event) => event.preventDefault());
 $('graph').addEventListener('drop', (event) => { event.preventDefault(); readFile(event.dataTransfer.files[0]); });
+
+
+function validateInstantMachine(machine, graph) {
+  if (machine == null) return;
+  if (machine.encoding !== "closed-instant-machine-v1" || !Array.isArray(machine.controls)
+    || machine.controls.length < 1 || machine.controls.length > 4 || !Array.isArray(machine.states)
+    || machine.states.length < 1 || machine.states.length > 2048 || !Array.isArray(machine.transitions)
+    || machine.transitions.length !== machine.states.length) throw Error("Invalid instant machine dimensions.");
+  for (const [field, table] of [["components", "nodes"], ["pistons", "pistons"], ["resources", "resources"]]) {
+    const owners = machine.owners?.[field];
+    const ids = new Set(graph[table].map((row) => row.id));
+    if (!Array.isArray(owners) || owners.length !== ids.size || new Set(owners).size !== ids.size
+      || owners.some((id) => !ids.has(id)) || machine.states.some((state) => !Array.isArray(state?.[field])
+        || state[field].length !== owners.length)) throw Error("Invalid instant machine owners/state dimensions.");
+  }
+  for (const row of machine.transitions) {
+    if (!Array.isArray(row) || row.length !== machine.controls.length + 1 || row.some((edge) => edge != null
+      && (!Number.isInteger(edge.next) || edge.next < 0 || edge.next >= machine.states.length))) throw Error("Invalid instant machine transition.");
+  }
+}

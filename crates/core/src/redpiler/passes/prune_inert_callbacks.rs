@@ -152,6 +152,9 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         }
     }
 
@@ -377,6 +380,7 @@ mod tests {
             turbo_route: Some(RouteId::new(0)),
             query_facts: None,
             instant_reset: None,
+            hop_root: None,
         });
         set_deliveries(
             &mut graph,

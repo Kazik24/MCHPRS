@@ -170,7 +170,7 @@ fn unhandled_delivery(graph: &CompileGraph, delivery: RouteDelivery) -> bool {
         };
         return matches!(
             graph.nodes[node.index()].kind,
-            CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. }
+            CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }
         );
     }
     if delivery.view != OperandView::Live {
@@ -180,7 +180,10 @@ fn unhandled_delivery(graph: &CompileGraph, delivery: RouteDelivery) -> bool {
         return false;
     };
     match (delivery.kind, &graph.nodes[node.index()].kind) {
-        (DeliveryKind::Update { direction: Some(direction) }, CircuitNodeKind::Observer { facing, .. }) => direction != *facing,
+        (
+            DeliveryKind::Update { direction: Some(direction) },
+            CircuitNodeKind::Observer { facing, .. } | CircuitNodeKind::BuiltinReset { facing, .. },
+        ) => direction != *facing,
         _ => false,
     }
 }
@@ -259,6 +262,9 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         };
         rebuild_links(&mut graph);
         graph
@@ -690,6 +696,7 @@ mod tests {
             turbo_route,
             query_facts: None,
             instant_reset: None,
+            hop_root: None,
         });
     }
 

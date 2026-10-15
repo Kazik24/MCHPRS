@@ -66,6 +66,44 @@ def document() -> dict:
 
 
 class DustPathLoaderTests(unittest.TestCase):
+    def test_wire_hop_roots_bind_their_wire_and_allow_older_exports(self):
+        data = document()
+        site = {"id": "site:1", "position": {"x": 1, "y": 0, "z": 0},
+                "source": {"kind": "component", "node": "node:1"}}
+        data["graph"]["sites"].append(site)
+        wire = data["graph"]["wire_plans"][0]
+        wire["hop_root"] = "site:1"
+        self.load_data(data)
+        for root in ("site:999", "node:1", 0):
+            wire["hop_root"] = root
+            with self.assertRaises(GraphFormatError):
+                self.load_data(data)
+        wire["hop_root"] = "site:1"
+        site["source"]["node"] = "node:2"
+        with self.assertRaises(GraphFormatError):
+            self.load_data(data)
+        wire["hop_root"] = None
+        self.load_data(data)
+        del wire["hop_root"]
+        self.load_data(data)
+
+    def test_builtin_resets_preserve_projection_and_reject_output_routes(self):
+        data = self.instant_document()
+        observer = data["graph"]["nodes"][3]
+        observer["kind"]["builtin_reset"] = True
+        self.assertTrue(self.load_data(data).record("node:3")["kind"]["builtin_reset"])
+        observer["kind"]["builtin_reset"] = "true"
+        with self.assertRaises(GraphFormatError):
+            self.load_data(data)
+        observer["kind"]["builtin_reset"] = True
+        data["graph"]["routes"] = [{"id": "route:0", "source": "node:3", "deliveries": []}]
+        observer["output_route"] = "route:0"
+        with self.assertRaises(GraphFormatError):
+            self.load_data(data)
+        observer["output_route"] = None
+        del observer["kind"]["builtin_reset"]
+        self.load_data(data)
+
     def load_data(self, data: dict):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "graph.json"
@@ -148,6 +186,20 @@ class DustPathLoaderTests(unittest.TestCase):
         graph = self.load_data(data)
         self.assertEqual(graph.records["dust_path"], {})
 
+    def test_validates_compiled_wire_inputs_and_accepts_older_facts(self):
+        data = document()
+        facts = {"known": 0xffffff, "solid": 0, "transparent": 0, "wire": 0, "zero_no_dust": 0}
+        data["graph"]["wire_plans"][0]["query_facts"] = facts
+        self.load_data(data)
+        facts["transfer"] = {"seed": {"direct": 4, "conditional": 1 << 20}, "turbo": {"direct": 1, "conditional": 1 << 7}}
+        self.load_data(data)
+        for invalid in (None, [], {"direct": True, "conditional": 0}, {"direct": 1 << 23, "conditional": 0},
+                        {"direct": 1 << 7, "conditional": 1 << 7}, {"direct": 0, "conditional": 1 << 2},
+                        {"direct": 4, "conditional": 0}):
+            facts["transfer"]["turbo"] = invalid
+            with self.subTest(inputs=invalid), self.assertRaises(GraphFormatError):
+                self.load_data(data)
+
     def test_accepts_wire_query_facts_and_absent_older_field(self):
         data = document()
         self.load_data(data)
@@ -160,6 +212,50 @@ class DustPathLoaderTests(unittest.TestCase):
         for isolated in (True, False):
             facts["isolated"] = isolated
             self.assertIs(self.load_data(data).record("wire:0")["query_facts"]["isolated"], isolated)
+
+    def test_private_proxy_exports_validate_boundaries_and_instruction_ordinals(self):
+        source = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/adder-1bit/adder-1bit-o3.graph.json"
+        original = json.loads(source.read_text(encoding="utf-8"))
+        self.assertEqual(len(self.load_data(original).records["instant_proxy"]), 4)
+        mutations = (
+            lambda graph: graph["instant_regions"][0]["incoming"][0].update(ordinal=999999),
+            lambda graph: graph["instant_proxies"][0].update(region="instant_region:999999"),
+            lambda graph: graph["instant_proxies"][0]["routes"][0]["operations"].append("dispatch"),
+            lambda graph: graph["instant_proxies"][0]["routes"][0]["operations"].__setitem__(0, "skip"),
+            lambda graph: graph["instant_regions"][0].update(stable_inputs="true"),
+            lambda graph: graph["instant_proxies"][0]["routes"][0]["operations"].__setitem__(0, {"kind": "sample", "piston": "node:0"}),
+            lambda graph: graph["instant_proxies"][0]["private_cells"].append(graph["instant_proxies"][0]["private_cells"][0]),
+        )
+        for mutation in mutations:
+            data = json.loads(json.dumps(original))
+            mutation(data["graph"])
+            with self.assertRaises(GraphFormatError):
+                self.load_data(data)
+        older = json.loads(json.dumps(original))
+        del older["graph"]["instant_regions"]
+        del older["graph"]["instant_proxies"]
+        self.load_data(older)
+
+    def test_closed_instant_machine_validates_owners_targets_and_references(self):
+        data = document()
+        graph = data["graph"]
+        machine = {
+            "encoding": "closed-instant-machine-v1", "controls": ["node:0"],
+            "owners": {"components": [n["id"] for n in graph["nodes"]], "pistons": [], "resources": []},
+            "states": [{"components": [0, 0, 0], "pistons": [], "resources": [], "ticks": [], "requests": [], "deferred": []}],
+            "transitions": [[{"next": 0}, None]],
+        }
+        graph["instant_machine"] = machine
+        self.load_data(data)
+        mutations = [lambda m: m["transitions"][0][0].update(next=1),
+                     lambda m: m["controls"].__setitem__(0, "node:999"),
+                     lambda m: m["owners"]["components"].pop(),
+                     lambda m: m["states"][0]["components"].pop()]
+        for mutation in mutations:
+            bad = json.loads(json.dumps(data))
+            mutation(bad["graph"]["instant_machine"])
+            with self.assertRaises(GraphFormatError):
+                self.load_data(bad)
 
     def test_rejects_invalid_wire_query_fact_masks(self):
         valid = {"known": 0xffffff, "solid": 1, "transparent": 2, "wire": 4, "zero_no_dust": 0xfffffe}

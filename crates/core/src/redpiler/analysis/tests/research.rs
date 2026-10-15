@@ -42,6 +42,55 @@ fn load(manifest: &Value) -> (PlotWorld, (BlockPos, BlockPos)) {
     (world, (first, last))
 }
 
+#[test]
+#[ignore = "bounded static census of the large Divider's composed instant regions"]
+fn divider_stable_regions_report_complete_and_incomplete_groups() {
+    use crate::redpiler::{CompilerOptions, passes};
+    let (world, bounds) = load(&manifest("fpu_divider"));
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(3),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let recognized: BTreeSet<_> = passes::utils::instant_mechanisms::discover_mechanisms(graph, &monitor)
+        .unwrap()
+        .iter()
+        .map(|m| m.piston)
+        .collect();
+    let mut owned = BTreeSet::new();
+    for region in &graph.instant_regions {
+        for actor in &region.actors {
+            assert!(owned.insert(*actor), "an actor has only one owner");
+            if region.stable_inputs {
+                assert!(recognized.contains(actor));
+            }
+        }
+    }
+    let mut composed_sizes: Vec<_> = graph.instant_regions.iter().filter(|r| r.stable_inputs).map(|r| r.actors.len()).collect();
+    composed_sizes.sort_unstable_by(|a, b| b.cmp(a));
+    println!(
+        "Divider actors={} recognized={} owned={} regions={} proxies={} composed_sizes={composed_sizes:?}",
+        graph.pistons.len(),
+        recognized.len(),
+        owned.len(),
+        graph.instant_regions.len(),
+        graph.instant_proxies.len()
+    );
+    graph.validate().unwrap();
+}
+
 fn block_state(world: &PlotWorld, pos: BlockPos, first: BlockPos) -> Value {
     let block = world.get_block(pos);
     json!({"pos": pos - first, "name": block.get_name(), "properties": block.properties(),

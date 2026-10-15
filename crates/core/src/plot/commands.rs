@@ -67,6 +67,7 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "-u",
         "-O0",
         "-O1",
+        "--stable-instant-inputs",
     ]
     .into_iter()
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
@@ -1954,9 +1955,20 @@ mod security_tests {
             ("/rp analyze --graph --o", vec!["--optimize"]),
             (
                 "/rp compile -",
-                vec!["--optimize", "--io-only", "--update", "-o", "-i", "-u", "-O0", "-O1"],
+                vec![
+                    "--optimize",
+                    "--io-only",
+                    "--update",
+                    "-o",
+                    "-i",
+                    "-u",
+                    "-O0",
+                    "-O1",
+                    "--stable-instant-inputs",
+                ],
             ),
             ("/rp analyze --ex", vec!["--export-json"]),
+            ("/rp compile --stable", vec!["--stable-instant-inputs"]),
             ("/rp compile --unknown", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();
@@ -1966,7 +1978,10 @@ mod security_tests {
             assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
             assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
             for item in response.matches {
-                assert!(item.match_ == "--graph" || item.match_ == "--export-json" || CompilerOptions::parse(&item.match_).is_ok());
+                // Tier-dependent flags are valid in their required O3 context.
+                assert!(
+                    item.match_ == "--graph" || item.match_ == "--export-json" || CompilerOptions::parse(&format!("-O3 {}", item.match_)).is_ok()
+                );
             }
         }
         let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();

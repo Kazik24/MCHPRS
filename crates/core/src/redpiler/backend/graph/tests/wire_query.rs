@@ -78,6 +78,7 @@ fn capture_neighbors(backend: &GraphBackend, plan: &WirePlan) -> WireWalk {
                 z_bias: 0,
                 layer: 0,
                 heading: None,
+                neighbor_slots: None,
             },
         );
     }
@@ -88,7 +89,7 @@ fn assert_seed_matches(backend: &mut GraphBackend, plan: &WirePlan) -> u8 {
     let mut general = plan.clone();
     general.query_facts = None;
     let expected = backend.seed_power_general(&general);
-    let actual = backend.seed_power_general(plan);
+    let actual = backend.seed_power(plan);
     assert_eq!(actual, expected, "live seed query");
     actual.0
 }
@@ -98,7 +99,7 @@ fn assert_captured_matches(backend: &mut GraphBackend, plan: &WirePlan, walk: &m
     let mut general = plan.clone();
     general.query_facts = None;
     let expected = backend.turbo_wire_power_general(&general, &ordered, walk);
-    let actual = backend.turbo_wire_power_general(plan, &ordered, walk);
+    let actual = backend.turbo_wire_power(plan, &ordered, walk);
     assert_eq!(actual, expected, "captured Turbo query");
     actual.0
 }
@@ -258,4 +259,45 @@ fn typed_wire_class_overrides_mismatched_raw_state_in_query_certificates() {
     assert_eq!(assert_seed_matches(&mut backend, &plan), 14);
     let mut walk = capture_neighbors(&backend, &plan);
     assert_eq!(assert_captured_matches(&mut backend, &plan, &mut walk), 14);
+}
+
+#[test]
+fn changing_a_compiled_input_mask_invalidates_its_certificate() {
+    let mut graph = query_graph();
+    let wire = graph
+        .wires
+        .iter()
+        .position(|wire| graph.nodes[wire.node.index()].position == Some(ROOT))
+        .unwrap();
+    let mut facts = WireQueryFacts::infer(&graph, &graph.wires[wire]);
+    assert_ne!(facts.transfer.unwrap().seed.direct, 0);
+    facts.transfer.as_mut().unwrap().seed.direct = 0;
+    graph.wires[wire].query_facts = Some(facts);
+    assert!(matches!(graph.validate(), Err(GraphBuildError::InvalidWireQueryFacts { .. })));
+}
+
+#[test]
+fn seed_and_turbo_keep_their_distinct_vertical_and_ascent_rules() {
+    for diagonal in [false, true] {
+        let mut graph = query_graph();
+        let wire = Block::RedstoneWire {
+            wire: RedstoneWire {
+                power: 15,
+                ..Default::default()
+            },
+        };
+        let source = profile(&mut graph, wire, false, wire.is_transparent());
+        if diagonal {
+            let opaque_nonsolid = profile(&mut graph, Block::Stone {}, false, false);
+            set_constant_neighbor(&mut graph, 4, opaque_nonsolid);
+            set_constant_neighbor(&mut graph, 20, source);
+        } else {
+            set_constant_neighbor(&mut graph, 3, source);
+        }
+        let mut backend = backend(graph);
+        let plan = root_plan(&backend);
+        assert_eq!(assert_seed_matches(&mut backend, &plan), 14);
+        let mut walk = capture_neighbors(&backend, &plan);
+        assert_eq!(assert_captured_matches(&mut backend, &plan, &mut walk), 0);
+    }
 }

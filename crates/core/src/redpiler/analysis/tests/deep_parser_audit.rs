@@ -320,6 +320,9 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
             resources: geometry.draft.resources.iter().map(|resource| resource.spec.clone()).collect(),
             initial_pistons: geometry.draft.initial_pistons,
             initial_resources: geometry.draft.initial_resources,
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         };
         println!(
             "{name}: nodes={}, routes={}, resources={}",

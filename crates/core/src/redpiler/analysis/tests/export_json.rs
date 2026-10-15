@@ -255,6 +255,52 @@ fn adder_1bit_fixture_matches_graph_json() {
 }
 
 #[test]
+fn stable_adder_export_names_the_contract_and_every_instruction_target() {
+    let world = geometry_io_fixture("ADDER_1BIT.schem");
+    let export = exported_with_options(
+        &world,
+        &CompilerOptions {
+            optimization_level: Some(3),
+            stable_instant_inputs: true,
+            ..Default::default()
+        },
+    );
+    let document: Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
+    let graph = &document["graph"];
+    assert_eq!(graph["instant_regions"].as_array().unwrap().len(), 1);
+    let region = &graph["instant_regions"][0];
+    assert_eq!(region["stable_inputs"], true);
+    assert_eq!(region["actors"].as_array().unwrap().len(), 13);
+    assert_eq!(region["wires"].as_array().unwrap().len(), 32);
+    let proxy = &graph["instant_proxies"][0];
+    assert_eq!(proxy["private_cells"].as_array().unwrap().len(), 4);
+    let mut sampled = std::collections::BTreeSet::new();
+    for route in proxy["routes"].as_array().unwrap() {
+        for operation in route["operations"].as_array().unwrap() {
+            if operation["kind"] == "sample" {
+                sampled.insert(operation["piston"].as_str().unwrap());
+            }
+            if operation["kind"] == "arm_reset" {
+                assert!(region["resets"].as_array().unwrap().contains(&operation["node"]));
+            }
+        }
+    }
+    assert_eq!(sampled.len(), 13);
+    let machine = &graph["instant_machine"];
+    assert_eq!(machine["encoding"], "closed-instant-machine-v1");
+    assert_eq!(machine["controls"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        machine["owners"]["components"].as_array().unwrap().len(),
+        graph["nodes"].as_array().unwrap().len()
+    );
+    assert!(machine["states"].as_array().unwrap().len() <= 2048);
+    assert_eq!(
+        machine["states"].as_array().unwrap().len(),
+        machine["transitions"].as_array().unwrap().len()
+    );
+}
+
+#[test]
 #[ignore = "regenerates the checked-in ADDER_1BIT graph JSON fixtures for every optimization level"]
 fn write_adder_1bit_graph_json_fixtures() {
     std::fs::create_dir_all(adder_1bit_export_path(0).parent().unwrap()).unwrap();

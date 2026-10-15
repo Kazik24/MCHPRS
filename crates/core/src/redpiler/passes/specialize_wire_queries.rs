@@ -1,5 +1,14 @@
 //! Certifies immutable properties used by repeated wire-neighbor queries.
 //!
+//! The same rule compiles the maximum-of-wire-strengths calculation into direct
+//! input slots and only the diagonal terms needing dynamic geometry. Seed and
+//! captured Turbo expressions stay distinct, including their different vertical
+//! and ascent rules. Contacts without any possible wire no longer cause strength
+//! or geometry reads in that expression. The original Turbo walk still owns all
+//! intermediate writes, captures, duplicate callbacks and scheduling. No electrical
+//! fixed point replaces event ordering. Inference is O(24 + contact variants) per
+//! wire, and validation independently re-derives the complete plan.
+//!
 //! Each wire receives masks inferred by the shared graph rule over its 24
 //! canonical sites. Constant profiles and fixed component properties may be
 //! known; contacts remain dynamic. Only proven zero queries may omit a power
@@ -11,7 +20,7 @@
 //! Tests below cover static/dynamic boundaries, state independence, corruption,
 //! invalidation, cancellation, disabled execution, and idempotence.
 //!
-//! This pass runs last at O2, preserving dust paths and Turbo offsets. Later
+//! This pass runs at O2 before hop compilation, preserving dust paths and Turbo offsets. Later
 //! passes must preserve these facts explicitly or let the runner invalidate
 //! them. Planning scans 24 sites per wire and uses one optional fact record per
 //! wire temporarily; publication is atomic after the final cancellation check.
@@ -41,16 +50,22 @@ impl GraphPass for SpecializeWireQueries {
             return Err("cancelled before publishing wire query facts".into());
         }
         let isolated = plans.iter().flatten().filter(|facts| facts.isolated).count();
+        let transfers = plans.iter().flatten().filter(|facts| facts.transfer.is_some()).count();
         for (wire, facts) in graph.wires.iter_mut().zip(plans) {
             wire.query_facts = facts;
         }
-        context.monitor.record_preparation_tables(vec![PreparationTableStatistics {
-            stage: "wire query specialization",
-            table: "certified isolated wires".into(),
-            entries: isolated,
-            capacity: isolated,
-            estimated_bytes: 0,
-        }]);
+        context.monitor.record_preparation_tables(
+            [("certified isolated wires", isolated), ("compiled wire transfers", transfers)]
+                .into_iter()
+                .map(|(table, entries)| PreparationTableStatistics {
+                    stage: "wire query specialization",
+                    table: table.into(),
+                    entries,
+                    capacity: entries,
+                    estimated_bytes: 0,
+                })
+                .collect(),
+        );
         Ok(())
     }
 
@@ -147,6 +162,7 @@ mod tests {
                 turbo_route: None,
                 query_facts: None,
                 instant_reset: None,
+                hop_root: None,
             }],
             dust_paths: vec![],
             wire_relations: vec![],
@@ -167,6 +183,9 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         }
     }
 
@@ -239,6 +258,7 @@ mod tests {
         let mut expected = graph.clone();
         expected.wires[0].query_facts = Some(WireQueryFacts {
             isolated: true,
+            transfer: WireQueryFacts::infer(&graph, &graph.wires[0]).transfer,
             ..Default::default()
         });
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
@@ -260,6 +280,7 @@ mod tests {
             !WireQueryFacts::infer(&graph, &graph.wires[0]).isolated,
             "typed wire receiver remains possible"
         );
+        assert_ne!(WireQueryFacts::infer(&graph, &graph.wires[0]).transfer.unwrap().seed.direct & (1 << 4), 0);
         graph.contacts[0].variants[0].receiver = None;
         let block = Block::RedstoneWire { wire: Default::default() };
         graph.profiles.push(Profile {
@@ -272,6 +293,7 @@ mod tests {
         });
         graph.contacts[0].variants[0].profile = ProfileId::new(2);
         assert!(!WireQueryFacts::infer(&graph, &graph.wires[0]).isolated, "wire profile remains possible");
+        assert_ne!(WireQueryFacts::infer(&graph, &graph.wires[0]).transfer.unwrap().seed.direct & (1 << 4), 0);
         graph.contacts[0].variants[0].profile = ProfileId::new(0);
         graph.wires[0].canonical_neighbors[1] = graph.wires[0].canonical_neighbors[0];
         assert!(

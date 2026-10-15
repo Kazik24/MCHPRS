@@ -18397,8 +18397,19 @@
           "transparent": 788546,
           "wire": 0,
           "zero_no_dust": 5329537,
-          "isolated": true
-        }
+          "isolated": true,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:70"
       },
       {
         "id": "wire:1",
@@ -18437,8 +18448,19 @@
           "transparent": 50896,
           "wire": 2097154,
           "zero_no_dust": 15138818,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 2,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 2,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:83"
       },
       {
         "id": "wire:2",
@@ -18477,8 +18499,19 @@
           "transparent": 537136,
           "wire": 1,
           "zero_no_dust": 13074433,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 1,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 1,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:84"
       },
       {
         "id": "wire:3",
@@ -18517,8 +18550,19 @@
           "transparent": 8949920,
           "wire": 1048578,
           "zero_no_dust": 7561730,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 2,
+              "conditional": 1048576
+            },
+            "turbo": {
+              "direct": 2,
+              "conditional": 1048576
+            }
+          }
+        },
+        "hop_root": "site:161"
       },
       {
         "id": "wire:4",
@@ -18557,8 +18601,19 @@
           "transparent": 33828,
           "wire": 8193,
           "zero_no_dust": 14381081,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 8193,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 8193,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:162"
       },
       {
         "id": "wire:5",
@@ -18597,8 +18652,19 @@
           "transparent": 8917120,
           "wire": 2097152,
           "zero_no_dust": 7856656,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 2097152
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 2097152
+            }
+          }
+        },
+        "hop_root": "site:167"
       },
       {
         "id": "wire:6",
@@ -18637,8 +18703,19 @@
           "transparent": 14464,
           "wire": 131328,
           "zero_no_dust": 3114280,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:201"
       },
       {
         "id": "wire:7",
@@ -18677,8 +18754,19 @@
           "transparent": 512,
           "wire": 256,
           "zero_no_dust": 11400680,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:206"
       },
       {
         "id": "wire:8",
@@ -18717,8 +18805,19 @@
           "transparent": 2097160,
           "wire": 262144,
           "zero_no_dust": 14678995,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 262144
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 262144
+            }
+          }
+        },
+        "hop_root": "site:271"
       },
       {
         "id": "wire:9",
@@ -18757,8 +18856,19 @@
           "transparent": 262178,
           "wire": 10485760,
           "zero_no_dust": 16467608,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:288"
       },
       {
         "id": "wire:10",
@@ -18797,8 +18907,19 @@
           "transparent": 262178,
           "wire": 10485888,
           "zero_no_dust": 16466841,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 128,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 128,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:294"
       },
       {
         "id": "wire:11",
@@ -18837,8 +18958,19 @@
           "transparent": 1311753,
           "wire": 131072,
           "zero_no_dust": 15464738,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 0,
+              "conditional": 131072
+            },
+            "turbo": {
+              "direct": 0,
+              "conditional": 131072
+            }
+          }
+        },
+        "hop_root": "site:320"
       },
       {
         "id": "wire:12",
@@ -18877,8 +19009,19 @@
           "transparent": 204816,
           "wire": 13631490,
           "zero_no_dust": 16551466,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 2,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 2,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:331"
       },
       {
         "id": "wire:13",
@@ -18917,8 +19060,19 @@
           "transparent": 4262408,
           "wire": 8392705,
           "zero_no_dust": 11318563,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4097,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4097,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:332"
       },
       {
         "id": "wire:14",
@@ -18957,8 +19111,19 @@
           "transparent": 131088,
           "wire": 5246976,
           "zero_no_dust": 16628202,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4096,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4096,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:337"
       },
       {
         "id": "wire:15",
@@ -18997,8 +19162,19 @@
           "transparent": 0,
           "wire": 2306,
           "zero_no_dust": 12578746,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 258,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 258,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:362"
       },
       {
         "id": "wire:16",
@@ -19037,8 +19213,19 @@
           "transparent": 0,
           "wire": 2051,
           "zero_no_dust": 12578619,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:363"
       },
       {
         "id": "wire:17",
@@ -19077,8 +19264,19 @@
           "transparent": 0,
           "wire": 4196419,
           "zero_no_dust": 16772987,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:364"
       },
       {
         "id": "wire:18",
@@ -19117,8 +19315,19 @@
           "transparent": 0,
           "wire": 4196419,
           "zero_no_dust": 16772987,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:365"
       },
       {
         "id": "wire:19",
@@ -19157,8 +19366,19 @@
           "transparent": 0,
           "wire": 67,
           "zero_no_dust": 16770939,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 3,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 3,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:366"
       },
       {
         "id": "wire:20",
@@ -19197,8 +19417,19 @@
           "transparent": 4194304,
           "wire": 65,
           "zero_no_dust": 12547961,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 1,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 1,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:367"
       },
       {
         "id": "wire:21",
@@ -19237,8 +19468,19 @@
           "transparent": 2,
           "wire": 8388640,
           "zero_no_dust": 16502769,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 32,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 32,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:419"
       },
       {
         "id": "wire:22",
@@ -19277,8 +19519,19 @@
           "transparent": 49152,
           "wire": 8388656,
           "zero_no_dust": 13189115,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 48,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 48,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:441"
       },
       {
         "id": "wire:23",
@@ -19317,8 +19570,19 @@
           "transparent": 98308,
           "wire": 403456,
           "zero_no_dust": 16656889,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 401408,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 401408,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:445"
       },
       {
         "id": "wire:24",
@@ -19357,8 +19621,19 @@
           "transparent": 21520,
           "wire": 320,
           "zero_no_dust": 16525674,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:447"
       },
       {
         "id": "wire:25",
@@ -19397,8 +19672,19 @@
           "transparent": 65540,
           "wire": 403456,
           "zero_no_dust": 16691065,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 401408,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 401408,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:451"
       },
       {
         "id": "wire:26",
@@ -19437,8 +19723,19 @@
           "transparent": 22544,
           "wire": 320,
           "zero_no_dust": 16590186,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 256,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 256,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:453"
       },
       {
         "id": "wire:27",
@@ -19477,8 +19774,19 @@
           "transparent": 2,
           "wire": 4194352,
           "zero_no_dust": 7983089,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 48,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 48,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:460"
       },
       {
         "id": "wire:28",
@@ -19517,8 +19825,19 @@
           "transparent": 16384,
           "wire": 4227088,
           "zero_no_dust": 13221851,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 16,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 16,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:478"
       },
       {
         "id": "wire:29",
@@ -19557,8 +19876,19 @@
           "transparent": 4194304,
           "wire": 4608,
           "zero_no_dust": 12582522,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4096,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4096,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:495"
       },
       {
         "id": "wire:30",
@@ -19597,8 +19927,19 @@
           "transparent": 262144,
           "wire": 4224,
           "zero_no_dust": 16318459,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4224,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4224,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:551"
       },
       {
         "id": "wire:31",
@@ -19637,8 +19978,19 @@
           "transparent": 0,
           "wire": 4224,
           "zero_no_dust": 16580603,
-          "isolated": false
-        }
+          "isolated": false,
+          "transfer": {
+            "seed": {
+              "direct": 4224,
+              "conditional": 0
+            },
+            "turbo": {
+              "direct": 4224,
+              "conditional": 0
+            }
+          }
+        },
+        "hop_root": "site:556"
       }
     ],
     "dust_paths": [],
@@ -46239,7 +46591,9 @@
           }
         ]
       }
-    ]
+    ],
+    "instant_regions": [],
+    "instant_proxies": []
   },
   "snapshots": [
     {

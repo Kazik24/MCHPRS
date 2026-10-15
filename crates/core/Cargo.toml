@@ -6,6 +6,8 @@ edition = "2024"
 
 [features]
 graph-trace = []
+# Deliberately incorrect experiment; never enable in a production build.
+unsafe-turbo-fixed-point = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

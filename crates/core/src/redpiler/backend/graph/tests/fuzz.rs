@@ -1456,5 +1456,5 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
     assert!(divergences.is_empty(), "{}", divergences.join("\n"));
 }
 
-#[path = "graph_continuation_tests.rs"]
+#[path = "continuation.rs"]
 mod continuation;

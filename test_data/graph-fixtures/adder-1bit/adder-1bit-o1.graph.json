@@ -47831,7 +47831,9 @@
           }
         ]
       }
-    ]
+    ],
+    "instant_regions": [],
+    "instant_proxies": []
   },
   "snapshots": [
     {

@@ -501,14 +501,14 @@ mod tests {
     #[test]
     fn optimization_levels_select_pass_tiers() {
         let unoptimized = super::super::default_graph_pipeline(&CompilerOptions::default());
-        assert_eq!(unoptimized.entries.len(), 8);
+        assert_eq!(unoptimized.entries.len(), 14);
         assert!(unoptimized.entries.iter().all(|entry| !entry.enabled));
 
         let optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: Some(1),
             ..Default::default()
         });
-        assert_eq!(optimized.entries.len(), 8);
+        assert_eq!(optimized.entries.len(), 14);
         assert!(optimized.entries.iter().take(5).all(|entry| entry.enabled));
         assert!(optimized.entries[5..].iter().all(|entry| !entry.enabled));
         assert_eq!(
@@ -521,7 +521,13 @@ mod tests {
                 "contract-static-dust-paths",
                 "simplify-state-guards",
                 "specialize-wire-queries",
+                "compile-wire-hops",
                 "simplify-instant-resets",
+                "specialize-instant-pistons",
+                "compile-builtin-resets",
+                "identify-instant-regions",
+                "compile-instant-proxies",
+                "compile-instant-machine",
             ]
         );
 
@@ -529,8 +535,8 @@ mod tests {
             optimization_level: Some(2),
             ..Default::default()
         });
-        assert!(opt_2.entries.iter().take(7).all(|entry| entry.enabled));
-        assert!(!opt_2.entries[7].enabled);
+        assert!(opt_2.entries.iter().take(8).all(|entry| entry.enabled));
+        assert!(!opt_2.entries[8].enabled);
 
         let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: None,
@@ -913,6 +919,9 @@ mod tests {
             resources: Vec::new(),
             initial_pistons: Vec::new(),
             initial_resources: Vec::new(),
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
         }
     }
 }

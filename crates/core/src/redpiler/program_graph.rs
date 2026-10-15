@@ -1,6 +1,10 @@
 //! Typed construction and immutable program storage for the general graph.
 
+mod instant_machine;
+mod instant_regions;
+pub(crate) use instant_machine::*;
 mod wire_query_facts;
+pub(crate) use instant_regions::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
 use crate::redpiler::components::{NodeState, NodeType};
@@ -89,7 +93,17 @@ pub(crate) struct CallbackEdgeRef {
 /// Runtime category and state owner for a node in the circuit draft.
 pub(crate) enum CircuitNodeKind {
     Electrical(NodeType),
-    Observer { watched: SiteId, facing: BlockFace },
+    Observer {
+        watched: SiteId,
+        facing: BlockFace,
+    },
+    /// A reset pulse source executed directly by the scheduler, without an output callback circuit.
+    BuiltinReset {
+        /// This retains the original watched site for provenance and projection.
+        watched: SiteId,
+        /// This preserves which directional notifications arm the shared reset clock.
+        facing: BlockFace,
+    },
     Wire(usize),
     Piston(PistonId),
     Contact(ContactId),
@@ -366,6 +380,8 @@ pub(crate) struct WirePlan {
     pub(crate) query_facts: Option<WireQueryFacts>,
     /// This replaces a certified private reset cell's output walk with its exact two-wire transfer.
     pub(crate) instant_reset: Option<InstantResetPlan>,
+    /// This binds the root for compiled hops; neighbors reuse canonical_neighbors.
+    pub(crate) hop_root: Option<SiteId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -516,6 +532,12 @@ pub(crate) struct CircuitDraft {
     pub(crate) resources: Vec<ResourceSpec>,
     pub(crate) initial_pistons: Vec<PistonState>,
     pub(crate) initial_resources: Vec<ResourceState>,
+    /// These compile-time boundaries expose every owned state and crossing notification.
+    pub(crate) instant_regions: Vec<InstantRegion>,
+    /// These certificates replace private-cell internal dispatch with direct instructions.
+    pub(crate) instant_proxies: Vec<InstantProxy>,
+    /// This optional bounded machine replaces closed-selection transitions without duplicating live state.
+    pub(crate) instant_machine: Option<std::sync::Arc<InstantMachine>>,
 }
 
 /// The complete mutable graph shared by preparation, transformations, and export.
@@ -577,6 +599,19 @@ impl CircuitDraft {
 
     pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         self.validate_inner()?;
+
+        let mut instant_route_by_route = vec![None; self.routes.len()];
+        let mut private_resource_owners = vec![None; self.resources.len()];
+        for (proxy_index, proxy) in self.instant_proxies.iter().enumerate() {
+            for cell in &proxy.private_cells {
+                private_resource_owners[cell.resource.index()] = Some(cell.actor);
+            }
+            for (route_index, route) in proxy.routes.iter().enumerate() {
+                instant_route_by_route[route.route.index()] = Some((proxy_index as u32, route_index as u32));
+                // The validated instructions retain every witness; runtime needs only one copy.
+                self.routes[route.route.index()].deliveries = Box::new([]);
+            }
+        }
 
         let nodes = self
             .nodes
@@ -717,6 +752,10 @@ impl CircuitDraft {
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
+            instant_machine: self.instant_machine,
+            instant_proxies: self.instant_proxies.into_boxed_slice(),
+            private_resource_owners: private_resource_owners.into_boxed_slice(),
+            instant_route_by_route: instant_route_by_route.into_boxed_slice(),
             nodes: nodes.into_boxed_slice(),
             power_links: self.power_links.into_boxed_slice(),
             power_inputs,
@@ -760,6 +799,8 @@ impl CircuitDraft {
             ("wires", self.wires.len()),
             ("dust paths", self.dust_paths.len()),
             ("wire relations", self.wire_relations.len()),
+            ("instant regions", self.instant_regions.len()),
+            ("instant proxies", self.instant_proxies.len()),
         ] {
             if u32::try_from(len).is_err() {
                 return Err(GraphBuildError::TooManyEntries { table: name });
@@ -785,6 +826,47 @@ impl CircuitDraft {
             }
         }
         self.validate_instant_resets()?;
+        self.validate_instant_regions()?;
+        if let Some(machine) = &self.instant_machine {
+            crate::redpiler::analysis::instant_regions::machine::validate(self, machine)?;
+        }
+        Ok(())
+    }
+
+    fn validate_instant_regions(&self) -> Result<(), GraphBuildError> {
+        use crate::redpiler::analysis::instant_regions::{infer_proxies, infer_regions, infer_stable_regions};
+        if self.instant_regions.is_empty() && self.instant_proxies.is_empty() {
+            return Ok(());
+        }
+        let monitor = crate::redpiler::TaskMonitor::default();
+        let inferred = if self.instant_regions.iter().any(|region| region.stable_inputs) {
+            infer_stable_regions(self, &monitor)
+        } else {
+            infer_regions(self, &monitor)
+        };
+        let regions = inferred.map_err(|_| GraphBuildError::InvalidInstantRegion { table: "regions", index: 0 })?;
+        if self.instant_regions != regions {
+            let index = self
+                .instant_regions
+                .iter()
+                .zip(&regions)
+                .position(|(actual, expected)| actual != expected)
+                .unwrap_or(self.instant_regions.len().min(regions.len()));
+            return Err(GraphBuildError::InvalidInstantRegion { table: "regions", index });
+        }
+        if !self.instant_proxies.is_empty() {
+            let proxies =
+                infer_proxies(self, &regions, &monitor).map_err(|_| GraphBuildError::InvalidInstantRegion { table: "proxies", index: 0 })?;
+            if self.instant_proxies != proxies {
+                let index = self
+                    .instant_proxies
+                    .iter()
+                    .zip(&proxies)
+                    .position(|(actual, expected)| actual != expected)
+                    .unwrap_or(self.instant_proxies.len().min(proxies.len()));
+                return Err(GraphBuildError::InvalidInstantRegion { table: "proxies", index });
+            }
+        }
         Ok(())
     }
 
@@ -1040,12 +1122,19 @@ impl CircuitDraft {
                     )?;
                     true
                 }
-                (CircuitNodeKind::Observer { watched, .. }, ComponentState::Electrical(state)) => {
+                (CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. }, ComponentState::Electrical(state)) => {
                     if node.raw_state.is_none() {
                         return Err(GraphBuildError::MissingComponentState { node: id });
                     }
                     check_id("sites", watched.index(), self.sites.len())?;
                     validate_strength(id, state.output_strength, None)?;
+                    if let CircuitNodeKind::BuiltinReset { facing, .. } = node.kind {
+                        if node.output_route.is_some()
+                            || !matches!(node.raw_state.map(Block::from_id), Some(Block::Observer { observer }) if BlockFace::from(observer.facing) == facing)
+                        {
+                            return Err(GraphBuildError::NodeKindMismatch { node: id });
+                        }
+                    }
                     true
                 }
                 (CircuitNodeKind::Wire(plan), ComponentState::Wire(state)) => {
@@ -1202,6 +1291,14 @@ impl CircuitDraft {
             }
         }
 
+        let mut hop_root_counts = vec![0u32; self.nodes.len()];
+        if self.wires.iter().any(|wire| wire.hop_root.is_some()) {
+            for site in &self.sites {
+                if let SiteSource::Component(node) = site.source {
+                    hop_root_counts[node.index()] += 1;
+                }
+            }
+        }
         for (index, wire) in self.wires.iter().enumerate() {
             let node = self.nodes.get(wire.node.index()).ok_or(GraphBuildError::InvalidReference {
                 table: "nodes",
@@ -1210,6 +1307,15 @@ impl CircuitDraft {
             })?;
             if node.kind != CircuitNodeKind::Wire(index) {
                 return Err(GraphBuildError::NodeKindMismatch { node: wire.node });
+            }
+            if let Some(root) = wire.hop_root
+                && (hop_root_counts[wire.node.index()] != 1
+                    || !self
+                        .sites
+                        .get(root.index())
+                        .is_some_and(|site| site.source == SiteSource::Component(wire.node)))
+            {
+                return Err(GraphBuildError::InvalidWireHopRoot { wire: index });
             }
             for site in wire.canonical_neighbors {
                 check_id("sites", site.index(), self.sites.len())?;
@@ -1384,7 +1490,7 @@ impl CircuitDraft {
             .kind;
         if matches!(
             kind,
-            CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
+            CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Wire(_)
         ) {
             Ok(())
         } else {
@@ -1639,6 +1745,18 @@ fn check_id(table: &'static str, index: usize, len: usize) -> Result<(), GraphBu
 #[derive(Debug)]
 /// Structural validation failures encountered while building or lowering a graph.
 pub(crate) enum GraphBuildError {
+    InvalidInstantRegion {
+        /// This names the derived table whose witness no longer agrees with the graph.
+        table: &'static str,
+        /// This identifies the first stale or missing certificate in that table.
+        index: usize,
+    },
+    InvalidInstantMachine {
+        /// This identifies the normalized snapshot whose transition proof failed.
+        state: usize,
+        /// This identifies tick column zero or the corresponding lever-toggle column.
+        action: usize,
+    },
     PreparationMemoryLimit {
         stage: &'static str,
         estimated_bytes: usize,
@@ -1667,6 +1785,9 @@ pub(crate) enum GraphBuildError {
     InvalidTurboCallbackIndex {
         wire: usize,
         reason: &'static str,
+    },
+    InvalidWireHopRoot {
+        wire: usize,
     },
     InvalidWireQueryFacts {
         wire: usize,
@@ -1765,7 +1886,12 @@ impl std::fmt::Display for GraphBuildError {
             Self::InvalidTurboCallbackIndex { wire, reason } => {
                 write!(f, "Turbo callback index for wire {wire} is invalid: {reason}")
             }
+            Self::InvalidWireHopRoot { wire } => write!(f, "wire {wire} has an invalid compiled hop root"),
             Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
+            Self::InvalidInstantRegion { table, index } => write!(f, "instant {table}[{index}] has a stale or invalid certificate"),
+            Self::InvalidInstantMachine { state, action } => {
+                write!(f, "instant machine state {state}, action {action} has an invalid transition certificate")
+            }
             Self::InvalidInstantReset { wire } => write!(f, "wire {wire} has a stale or invalid instant reset certificate"),
             Self::InvalidNodeState { node } => {
                 write!(f, "node {} has state that does not match its kind", node.index())
@@ -1829,6 +1955,14 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
+    /// This owns certified closed-selection transitions; unsupported states retain general execution.
+    instant_machine: Option<std::sync::Arc<InstantMachine>>,
+    /// These private-cell programs reuse the existing actor, resource, and clock state.
+    instant_proxies: Box<[InstantProxy]>,
+    /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
+    private_resource_owners: Box<[Option<PistonId>]>,
+    /// This binds a route directly to its proxy and ordered instruction sequence.
+    instant_route_by_route: Box<[Option<(u32, u32)>]>,
     nodes: Box<[NodeSpec]>,
     power_links: Box<[PowerLink]>,
     power_inputs: FxHashMap<PowerTarget, Range<usize>>,
@@ -1867,6 +2001,19 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn instant_machine(&self) -> Option<&std::sync::Arc<InstantMachine>> {
+        self.instant_machine.as_ref()
+    }
+    pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {
+        self.private_resource_owners[resource.index()]
+    }
+    pub(crate) fn instant_proxies(&self) -> &[InstantProxy] {
+        &self.instant_proxies
+    }
+
+    pub(crate) fn instant_route_binding(&self, route: RouteId) -> Option<(u32, u32)> {
+        self.instant_route_by_route[route.index()]
+    }
     pub(crate) fn nodes(&self) -> &[NodeSpec] {
         &self.nodes
     }
@@ -1988,7 +2135,10 @@ impl CircuitProgram {
             .filter_map(|(index, node)| {
                 if !matches!(
                     node.kind,
-                    CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
+                    CircuitNodeKind::Electrical(_)
+                        | CircuitNodeKind::Observer { .. }
+                        | CircuitNodeKind::BuiltinReset { .. }
+                        | CircuitNodeKind::Wire(_)
                 ) {
                     return None;
                 }
@@ -2034,6 +2184,8 @@ pub(crate) struct WalkSite {
     pub(crate) z_bias: i32,
     pub(crate) layer: u32,
     pub(crate) heading: Option<u8>,
+    /// This indexes a compiled walk's cached neighborhood; general walks leave it empty.
+    pub(crate) neighbor_slots: Option<u32>,
 }
 
 /// Per-invocation dust scratch. It is constructed separately from persistent
@@ -2041,6 +2193,10 @@ pub(crate) struct WalkSite {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WireWalk {
     pub(crate) site_slots: FxHashMap<SiteId, usize>,
+    /// This reusable dense index replaces hashing in compiled walks; MAX means undiscovered.
+    direct_slots: Vec<u32>,
+    /// These arrays retain discovered neighbor slots without repeating 24 address lookups.
+    neighbor_slots: Vec<[usize; 24]>,
     // shortcut: inline storage covers the root plus one 24-neighbor set; larger walks spill.
     pub(crate) sites: SmallVec<[WalkSite; 25]>,
     pub(crate) queues: [VecDeque<usize>; 3],
@@ -2051,17 +2207,70 @@ impl WireWalk {
     pub(crate) fn new() -> Self {
         Self {
             site_slots: FxHashMap::default(),
+            direct_slots: Vec::new(),
+            neighbor_slots: Vec::new(),
             sites: SmallVec::new(),
             queues: std::array::from_fn(|_| VecDeque::new()),
             layer: 0,
         }
     }
 
+    pub(crate) fn compiled(site_count: usize) -> Self {
+        Self {
+            direct_slots: vec![u32::MAX; site_count],
+            ..Self::new()
+        }
+    }
+
+    pub(crate) fn is_compiled(&self) -> bool {
+        !self.direct_slots.is_empty()
+    }
+
+    pub(crate) fn slot(&self, site: SiteId) -> Option<usize> {
+        if self.is_compiled() {
+            let slot = self.direct_slots[site.index()];
+            (slot != u32::MAX).then_some(slot as usize)
+        } else {
+            self.site_slots.get(&site).copied()
+        }
+    }
+
+    pub(crate) fn cached_neighbors(&self, root: usize) -> Option<[usize; 24]> {
+        self.sites[root].neighbor_slots.map(|index| self.neighbor_slots[index as usize])
+    }
+
+    pub(crate) fn cache_neighbors(&mut self, root: usize, slots: [usize; 24]) {
+        if self.is_compiled() {
+            self.sites[root].neighbor_slots = Some(self.neighbor_slots.len() as u32);
+            self.neighbor_slots.push(slots);
+        }
+    }
+
+    /// Discard this invocation's observations, retaining only reusable allocation capacity.
+    pub(crate) fn clear(&mut self) {
+        if self.is_compiled() {
+            for site in &self.sites {
+                self.direct_slots[site.site.index()] = u32::MAX;
+            }
+        }
+        self.site_slots.clear();
+        self.sites.clear();
+        self.neighbor_slots.clear();
+        for queue in &mut self.queues {
+            queue.clear();
+        }
+        self.layer = 0;
+    }
+
     pub(crate) fn insert_site(&mut self, site: SiteId, walk_site: WalkSite) -> usize {
-        debug_assert!(!self.site_slots.contains_key(&site));
+        debug_assert!(self.slot(site).is_none());
         debug_assert_eq!(walk_site.site, site);
         let slot = self.sites.len();
-        self.site_slots.insert(site, slot);
+        if self.is_compiled() {
+            self.direct_slots[site.index()] = u32::try_from(slot).expect("validated site count fits u32");
+        } else {
+            self.site_slots.insert(site, slot);
+        }
         self.sites.push(walk_site);
         slot
     }
@@ -2243,6 +2452,7 @@ mod tests {
                 turbo_route: None,
                 query_facts: None,
                 instant_reset: None,
+                hop_root: None,
             }],
             dust_paths: vec![],
             wire_relations: vec![],
@@ -2281,6 +2491,9 @@ mod tests {
                 availability: PistonAvailability::Ready,
                 revision: 0,
             }],
+            instant_regions: Vec::new(),
+            instant_proxies: Vec::new(),
+            instant_machine: None,
             initial_resources: vec![ResourceState {
                 at: contact,
                 enabled: true,
@@ -2472,6 +2685,7 @@ mod tests {
                 z_bias: 0,
                 layer: 2,
                 heading: Some(1),
+                neighbor_slots: None,
             },
         );
         assert!(nested.sites.is_empty());
@@ -2489,6 +2703,7 @@ mod tests {
                 z_bias: 0,
                 layer: 0,
                 heading: None,
+                neighbor_slots: None,
             },
         );
         assert_eq!(outer.site_slots[&site], 0);
@@ -2518,6 +2733,7 @@ mod tests {
                     z_bias: 0,
                     layer: 0,
                     heading: None,
+                    neighbor_slots: None,
                 },
             );
         }
@@ -2538,6 +2754,7 @@ mod tests {
                 z_bias: 0,
                 layer: 0,
                 heading: None,
+                neighbor_slots: None,
             },
         );
         assert!(walk.sites.spilled());

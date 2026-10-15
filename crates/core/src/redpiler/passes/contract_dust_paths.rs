@@ -496,7 +496,7 @@ fn certify_external_readers(
 ) -> Result<(), DeclineReason> {
     for node in &graph.nodes {
         match node.kind {
-            CircuitNodeKind::Observer { watched, .. }
+            CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. }
                 if neighborhood.contains(&watched)
                     && matches!(graph.sites[watched.index()].source, SiteSource::Component(wire) if members.contains(&wire)) =>
             {

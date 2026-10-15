@@ -8,6 +8,8 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
+    /// Promise stable external inputs from an activating falling edge through reset; enables composed O3 regions.
+    pub stable_instant_inputs: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
@@ -21,6 +23,7 @@ impl Default for CompilerOptions {
         Self {
             budget_multiplier: 0,
             optimization_level: Some(0),
+            stable_instant_inputs: false,
             io_only: false,
             update: false,
         }
@@ -36,6 +39,7 @@ impl CompilerOptions {
                     "--optimize" => options.optimization_level = None,
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
+                    "--stable-instant-inputs" => options.stable_instant_inputs = true,
                     _ => return Err(format!("Unrecognized Redpiler option: {option}")),
                 }
             } else if let Some(short_flags) = option.strip_prefix('-') {
@@ -67,6 +71,9 @@ impl CompilerOptions {
             } else {
                 return Err(format!("Unrecognized Redpiler option: {option}"));
             }
+        }
+        if options.stable_instant_inputs && options.optimization_level.is_some_and(|level| level < 3) {
+            return Err("--stable-instant-inputs requires -O3 or --optimize".into());
         }
         Ok(options)
     }

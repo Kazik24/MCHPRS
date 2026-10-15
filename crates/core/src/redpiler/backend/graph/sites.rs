@@ -22,6 +22,32 @@ pub(super) struct ResolvedSiteView {
 impl ResolvedSite {}
 
 impl GraphBackend {
+    /// Capture only the values a queued hop owns; block geometry stays in the program.
+    pub(super) fn observe_site(&self, site: SiteId) -> Option<ObservedSite> {
+        match self.program.sites()[site.index()].source {
+            SiteSource::Component(node) => Some(ObservedSite {
+                profile: None,
+                receiver: Some(CallbackReceiver::Component(node)),
+                properties: self.node_properties(node),
+            }),
+            SiteSource::Constant(profile) => Some(self.observe_profile(profile, None)),
+            SiteSource::Contact(contact) => self.program.contacts()[contact.index()]
+                .variants
+                .iter()
+                .find(|variant| self.guard_matches(variant.when, None))
+                .map(|variant| self.observe_profile(variant.profile, variant.receiver)),
+        }
+    }
+
+    fn observe_profile(&self, profile: ProfileId, receiver: Option<CallbackReceiver>) -> ObservedSite {
+        let block = self.program.profile_block(profile).expect("validated profile");
+        ObservedSite {
+            profile: Some(profile),
+            receiver,
+            properties: self.contact_properties(receiver, block),
+        }
+    }
+
     pub(super) fn site_block(&self, site: SiteId) -> Block {
         self.live_site(site).block
     }

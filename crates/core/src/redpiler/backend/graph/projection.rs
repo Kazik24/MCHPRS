@@ -20,6 +20,7 @@ impl GraphBackend {
         matches!(
             self.program.nodes()[node.index()].kind,
             CircuitNodeKind::Observer { .. }
+                | CircuitNodeKind::BuiltinReset { .. }
                 | CircuitNodeKind::Electrical(
                     NodeType::Lever
                         | NodeType::Button
@@ -80,7 +81,7 @@ impl GraphBackend {
     fn owns_cell(&self, node: NodeId) -> bool {
         matches!(
             self.program.nodes()[node.index()].kind,
-            CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Wire(_)
         ) || matches!(
             &self.program.nodes()[node.index()].kind,
             CircuitNodeKind::Electrical(kind) if *kind != NodeType::Constant

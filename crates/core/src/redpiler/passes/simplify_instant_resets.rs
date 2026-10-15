@@ -78,6 +78,10 @@ impl GraphPass for SimplifyInstantResets {
         Ok(())
     }
 
+    fn preserves_wire_hops(&self) -> bool {
+        true
+    }
+
     fn preserves_dust_paths(&self) -> bool {
         true
     }
@@ -167,12 +171,12 @@ impl DiscoveryIndex {
             if let Some(position) = node.position {
                 index.nodes_at.entry(position).or_default().push(id);
             }
-            if let CircuitNodeKind::Observer { watched, .. } = node.kind
+            if let CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } = node.kind
                 && let SiteSource::Contact(contact) = graph.sites[watched.index()].source
             {
                 index.observers.entry(contact).or_default().push(id);
             }
-            if let CircuitNodeKind::Observer { watched, .. } = node.kind
+            if let CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } = node.kind
                 && let SiteSource::Component(component) = graph.sites[watched.index()].source
             {
                 index.watched_components.insert(component);
@@ -287,10 +291,14 @@ fn check_candidate(graph: &CompileGraph, index: &DiscoveryIndex, piston: PistonI
     };
     let observer = *observer;
     let observed = &graph.nodes[observer.index()];
-    let CircuitNodeKind::Observer {
+    let (CircuitNodeKind::Observer {
         watched,
         facing: BlockFace::Bottom,
-    } = observed.kind
+    }
+    | CircuitNodeKind::BuiltinReset {
+        watched,
+        facing: BlockFace::Bottom,
+    }) = observed.kind
     else {
         return None;
     };
@@ -340,7 +348,8 @@ fn check_candidate(graph: &CompileGraph, index: &DiscoveryIndex, piston: PistonI
         || normal.from_port != PowerPort::Strong(actor.facing.opposite())
         || graph.sites[qc.from.index()].source != SiteSource::Component(observer)
         || graph.sites[qc.from.index()].position != observed.position?
-        || qc.from_port != PowerPort::Strong(BlockFace::Bottom)
+        || !(qc.from_port == PowerPort::Strong(BlockFace::Bottom)
+            || (matches!(observed.kind, CircuitNodeKind::BuiltinReset { .. }) && qc.from_port == PowerPort::Output))
         || index
             .power_from_component
             .get(&observer)?

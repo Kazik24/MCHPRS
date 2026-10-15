@@ -1,10 +1,18 @@
 //! Graph-native execution for rich piston circuits. The World is read only at
 //! compilation; flush and reset project graph state back to it.
 
+mod fixed_point;
+#[cfg(test)]
+#[path = "graph/tests/fixed_point_cpu.rs"]
+mod fixed_point_cpu_tests;
 mod instant;
+mod instant_proxy;
+mod machine_state;
+pub(crate) use machine_state::MACHINE_EPOCH;
 mod pistons;
 mod power;
 mod projection;
+mod reset;
 mod sites;
 mod wire;
 
@@ -269,6 +277,8 @@ pub(crate) struct GraphBackend {
     state: CircuitState,
     positions: FxHashMap<BlockPos, NodeId>,
     component_sites: Vec<Option<SiteId>>,
+    /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
+    wire_walks: Vec<WireWalk>,
     scheduler: TickScheduler<ScheduledNodeTick>,
     pending: FxHashMap<PendingNodeTick, usize>,
     piston_requests: VecDeque<PistonRequest>,
@@ -278,6 +288,8 @@ pub(crate) struct GraphBackend {
     effects: Vec<PresentationEffect>,
     failure: Option<GraphExecutionError>,
     counts: GraphExecutionCounts,
+    /// This reuses the complete-state lookup buffer for an optional instant machine.
+    machine_key: MachineState,
     #[cfg(test)]
     test_recorder: TestRecorder,
 }
@@ -299,7 +311,6 @@ impl DerefMut for GraphBackend {
 }
 
 impl GraphBackend {
-    #[cfg(test)]
     pub(crate) fn new(program: CircuitProgram, state: CircuitState, logical_tick: u64) -> Result<Self, GraphBackendError> {
         let positions = program.position_index();
         Self::new_with_positions(program, state, logical_tick, positions)
@@ -500,7 +511,7 @@ impl GraphBackend {
             let id = NodeId::try_from_index(index).expect("graph node count was validated");
             if matches!(
                 node.kind,
-                CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::Wire(_)
+                CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Wire(_)
             ) {
                 if node.raw_state.is_none() {
                     return Err(GraphBackendError::MissingBlockState { node: id });
@@ -541,6 +552,7 @@ impl GraphBackend {
             state,
             positions,
             component_sites,
+            wire_walks: Vec::new(),
             scheduler: TickScheduler::default(),
             pending: FxHashMap::default(),
             piston_requests: VecDeque::new(),
@@ -554,6 +566,7 @@ impl GraphBackend {
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
+            machine_key: MachineState::default(),
             #[cfg(test)]
             test_recorder: TestRecorder::default(),
         })
@@ -686,6 +699,12 @@ impl GraphBackend {
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
+        if self.try_machine_step(0) {
+            if let Some(host) = host.as_mut() {
+                host.publish_logical_tick(self.clock.logical_tick);
+            }
+            return Ok(());
+        }
         let result = self.tick_phases(&mut host);
         if let Err(error) = &result {
             if !matches!(error, GraphExecutionError::CommandHostUnavailable { .. }) {
@@ -811,6 +830,18 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
+        let machine_action = self.program.instant_machine().and_then(|machine| {
+            machine
+                .controls
+                .iter()
+                .position(|&node| self.position(node) == position)
+                .map(|index| index + 1)
+        });
+        if let Some(action) = machine_action {
+            if self.try_machine_step(action) {
+                return Ok(());
+            }
+        }
         let result = self.use_block_inner(position);
         self.latch_error(&result);
         result
@@ -868,6 +899,7 @@ impl GraphBackend {
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Wire(_) => Ok(()),
             CircuitNodeKind::Observer { .. } => self.tick_observer(node),
+            CircuitNodeKind::BuiltinReset { .. } => self.tick_builtin_reset(node),
             CircuitNodeKind::Electrical(NodeType::Torch) => self.tick_torch(node),
             CircuitNodeKind::Electrical(NodeType::Repeater { delay, .. }) => self.tick_repeater(node, delay),
             CircuitNodeKind::Electrical(NodeType::Comparator { mode, facing_diode, .. }) => self.tick_comparator(node, mode, facing_diode),
@@ -917,6 +949,10 @@ impl GraphBackend {
         }
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Observer { .. } => self.update_observer(node, direction, captured),
+            CircuitNodeKind::BuiltinReset { facing, .. } => {
+                self.arm_builtin_reset(node, facing, direction, captured);
+                Ok(())
+            }
             CircuitNodeKind::Electrical(NodeType::Torch) => self.update_torch(node, captured),
             CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => self.update_repeater(node, captured),
             CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => self.update_comparator(node),
@@ -1477,54 +1513,70 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
+        if let Some(binding) = self.program.instant_route_binding(route) {
+            return self.deliver_instant_route(route, binding, captured);
+        }
         let delivery_count = self.program.routes()[route.index()].deliveries.len();
         for index in 0..delivery_count {
             let delivery = self.program.routes()[route.index()].deliveries[index];
-            if !self.guard_matches(delivery.guard, captured) {
-                continue;
-            }
-            let observed = if delivery.view == OperandView::Captured {
-                captured.and_then(|sites| sites.get(delivery.target.index())).and_then(Option::as_ref)
-            } else {
-                None
-            };
-            if delivery.view == OperandView::Captured && observed.is_none() {
-                continue;
-            }
-            // Inert component updates still visit their no-op handler in native order.
-            let receiver = delivery
-                .receiver
-                .or_else(|| match (self.program.sites()[delivery.target.index()].source, delivery.kind) {
-                    (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
-                    _ => None,
-                });
-            let Some(receiver) = receiver else {
-                continue;
-            };
-            self.counts.callbacks += 1;
-            #[cfg(test)]
-            if self.test_recording && self.has_semantic_callback(receiver) && matches!(delivery.kind, DeliveryKind::Update { .. }) {
-                self.test_recorder.observed_operations.push(GraphObservedOperation::Callback {
-                    target: self.program.sites()[delivery.target.index()].position,
-                    direction: match delivery.kind {
-                        DeliveryKind::Update { direction } => direction,
-                        DeliveryKind::Shape { direction } => Some(direction),
-                    },
-                });
-            }
-            #[cfg(test)]
-            graph_test_trace!(self, format!("route {}:{} {:?}", route.index(), delivery.sequence, delivery.kind));
-            match receiver {
-                CallbackReceiver::Component(node) => {
-                    self.update_component(node, delivery.kind, observed)?;
-                }
-                CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
-                    self.sample_piston(piston)?;
-                }
-                CallbackReceiver::Contact(_) => {}
-            }
+            self.deliver_callback(route, delivery, captured)?;
         }
         Ok(())
+    }
+
+    #[inline(always)]
+    fn deliver_callback(
+        &mut self,
+        route: RouteId,
+        delivery: RouteDelivery,
+        captured: Option<&[Option<ObservedSite>]>,
+    ) -> Result<(), GraphExecutionError> {
+        if !self.guard_matches(delivery.guard, captured) {
+            return Ok(());
+        }
+        let observed = if delivery.view == OperandView::Captured {
+            captured.and_then(|sites| sites.get(delivery.target.index())).and_then(Option::as_ref)
+        } else {
+            None
+        };
+        if delivery.view == OperandView::Captured && observed.is_none() {
+            return Ok(());
+        }
+        let receiver = delivery
+            .receiver
+            .or_else(|| match (self.program.sites()[delivery.target.index()].source, delivery.kind) {
+                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+                _ => None,
+            });
+        let Some(receiver) = receiver else {
+            return Ok(());
+        };
+        self.counts.callbacks += 1;
+        #[cfg(test)]
+        self.record_route_event(route, delivery, receiver);
+        #[cfg(not(test))]
+        let _ = route;
+        match receiver {
+            CallbackReceiver::Component(node) => self.update_component(node, delivery.kind, observed)?,
+            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => self.sample_piston(piston)?,
+            CallbackReceiver::Contact(_) => {}
+        }
+        Ok(())
+    }
+
+    /// The test oracle projects absorbed internal notifications; counters record actual dispatch only.
+    #[cfg(test)]
+    fn record_route_event(&mut self, route: RouteId, delivery: RouteDelivery, receiver: CallbackReceiver) {
+        if self.test_recording && self.has_semantic_callback(receiver) && matches!(delivery.kind, DeliveryKind::Update { .. }) {
+            self.test_recorder.observed_operations.push(GraphObservedOperation::Callback {
+                target: self.program.sites()[delivery.target.index()].position,
+                direction: match delivery.kind {
+                    DeliveryKind::Update { direction } => direction,
+                    DeliveryKind::Shape { direction } => Some(direction),
+                },
+            });
+        }
+        graph_test_trace!(self, format!("route {}:{} {:?}", route.index(), delivery.sequence, delivery.kind));
     }
 
     fn set_node(&mut self, node: NodeId, powered: bool, output_strength: u8, locked: Option<bool>, notify: bool) -> Result<(), GraphExecutionError> {
@@ -1638,33 +1690,33 @@ impl GraphBackend {
 }
 
 #[cfg(test)]
-#[path = "graph_tests.rs"]
+#[path = "graph/tests/components.rs"]
 mod tests;
 
 #[cfg(test)]
-#[path = "graph_fuzz_tests.rs"]
+#[path = "graph/tests/fuzz.rs"]
 mod fuzz_tests;
 
 #[cfg(test)]
-#[path = "graph_test_family_tests.rs"]
+#[path = "graph/tests/test_family.rs"]
 mod test_family_tests;
 
 #[cfg(test)]
-#[path = "graph_adder_tests.rs"]
+#[path = "graph/tests/adder.rs"]
 mod adder_tests;
 
 #[cfg(test)]
-#[path = "graph_hopper_tests.rs"]
+#[path = "graph/tests/hopper.rs"]
 mod hopper_tests;
 
 #[cfg(test)]
-#[path = "graph_wire_query_tests.rs"]
+#[path = "graph/tests/wire_query.rs"]
 mod wire_query_tests;
 
 #[cfg(test)]
-#[path = "graph_isolated_wire_tests.rs"]
+#[path = "graph/tests/isolated_wire.rs"]
 mod isolated_wire_tests;
 
 #[cfg(test)]
-#[path = "graph_instant_reset_tests.rs"]
+#[path = "graph/tests/instant_reset.rs"]
 mod instant_reset_tests;

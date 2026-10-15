@@ -22,6 +22,7 @@ use std::{
 const NAMES: [&str; 4] = ["cpu_bubblesort", "anpu_pong", "fpu_divider", "counter_basic"];
 const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     ticks: 100,
+    instant_transitions: 0,
     scheduled_ticks: 20_005,
     callbacks: 2_059_909,
     wire_walks: 32_505,
@@ -33,6 +34,7 @@ const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
 
 struct Episode {
     name: String,
+    stable_inputs: bool,
     cpu: Option<Cpu>,
     manifest: Value,
     bounds: (BlockPos, BlockPos),
@@ -41,7 +43,11 @@ struct Episode {
 }
 
 impl Episode {
-    fn new(name: &str) -> Result<Self> {
+    fn new(name: &str, stable_inputs: bool) -> Result<Self> {
+        ensure!(
+            !stable_inputs || matches!(name, "io/adder_1bit" | "io/adder_11bits" | "fpu_divider"),
+            "stable-input measurements require a prepared adder or Divider protocol"
+        );
         let cpu = CPUS.iter().copied().find(|cpu| cpu.name == name);
         let manifest = if let Some(cpu) = cpu {
             let bytes = std::fs::read(root().join("test_data").join(cpu.schematic))?;
@@ -65,6 +71,7 @@ impl Episode {
         let bounds = (origin, origin + manifest_position(&manifest["dimensions"]) - BlockPos::new(1, 1, 1));
         let mut episode = Self {
             name: name.to_owned(),
+            stable_inputs,
             cpu,
             manifest,
             bounds,
@@ -114,7 +121,7 @@ impl Episode {
         Ok(world)
     }
 
-    fn compile(&self, world: &PlotWorld, tier: usize) -> Result<Compiler> {
+    fn compile(&self, world: &PlotWorld, tier: usize, compose_regions: bool) -> Result<Compiler> {
         let mut compiler = Compiler::default();
         compiler
             .compile(
@@ -122,6 +129,7 @@ impl Episode {
                 self.bounds,
                 CompilerOptions {
                     optimization_level: Some(tier),
+                    stable_instant_inputs: compose_regions,
                     budget_multiplier: 8,
                     ..Default::default()
                 },
@@ -272,7 +280,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"ticks":value.ticks,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
+    json!({"ticks":value.ticks,"instant_transitions":value.instant_transitions,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
         "wire_walks":value.wire_walks,"dust_path_power_samples_elided":value.dust_path_power_samples_elided,
         "piston_samples":value.piston_samples,"piston_actions":value.piston_actions,"deferred_publications":value.deferred_publications})
 }
@@ -280,6 +288,7 @@ fn counts(value: GraphExecutionCounts) -> Value {
 fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> Value {
     counts(GraphExecutionCounts {
         ticks: after.ticks - before.ticks,
+        instant_transitions: after.instant_transitions - before.instant_transitions,
         scheduled_ticks: after.scheduled_ticks - before.scheduled_ticks,
         callbacks: after.callbacks - before.callbacks,
         wire_walks: after.wire_walks - before.wire_walks,
@@ -300,6 +309,9 @@ fn future(world: &PlotWorld) -> Value {
 }
 
 fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<Option<BlockPos>> {
+    if episode.stable_inputs && episode.generic() {
+        return prepare_stable_adder(episode, compiler, world).map(Some);
+    }
     let trigger = match episode.name.as_str() {
         "fpu_divider" => Some(episode.bounds.0 + manifest_position(&episode.manifest["protocol"]["trigger"])),
         "counter_basic" => Some(episode.bounds.0 + manifest_position(&episode.manifest["ports"]["inputs"]["trigger"])),
@@ -347,7 +359,41 @@ fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotW
     Ok(trigger)
 }
 
+/// Use a pinned arithmetic case, then hold every external lever throughout the timed episode.
+fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<BlockPos> {
+    let case = episode.manifest["cases"]
+        .as_array()
+        .context("missing adder cases")?
+        .iter()
+        .find(|case| case["expectation"]["carry"] == 1)
+        .context("missing carry case")?;
+    for action in case["actions"].as_array().context("missing prepared actions")? {
+        match action["op"].as_str() {
+            Some("lever") => {
+                let position = episode.bounds.0 + manifest_position(&action["pos"]);
+                let Block::Lever { lever } = world.get_block(position) else {
+                    bail!("missing adder control {position:?}");
+                };
+                if lever.powered != action["powered"].as_bool().context("missing lever value")? {
+                    toggle(compiler, world, position)?;
+                }
+            }
+            Some("wait" | "wait_ready") => {
+                for _ in 0..action["ticks"].as_u64().context("missing preparation wait")? {
+                    tick(compiler, world)?;
+                }
+            }
+            _ => bail!("unsupported stable adder preparation {action}"),
+        }
+        publish(compiler, world);
+    }
+    Ok(episode.bounds.0 + manifest_position(&episode.manifest["ports"]["inputs"]["trigger"]))
+}
+
 fn episode_tick_phases(episode: &Episode) -> &'static [u32] {
+    if episode.stable_inputs && episode.generic() {
+        return &[512];
+    }
     match episode.name.as_str() {
         "cpu_bubblesort" => &[100],
         "anpu_pong" => &[400],
@@ -390,11 +436,11 @@ fn verify_workload_response(episode: &Episode, trace: &[Value]) -> Result<()> {
     Ok(())
 }
 
-fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool) -> Result<Value> {
+fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regions: bool) -> Result<Value> {
     let mut world = episode.load()?;
     let initial = checkpoint(&world, 0, &[]);
     let compile_started = Instant::now();
-    let mut compiler = tier.map(|tier| episode.compile(&world, tier)).transpose()?;
+    let mut compiler = tier.map(|tier| episode.compile(&world, tier, compose_regions)).transpose()?;
     let compile_seconds = tier.map(|_| compile_started.elapsed().as_secs_f64());
     let tables = compiler.as_ref().map(|compiler| {
         let stats = compiler.stats().unwrap();
@@ -419,7 +465,7 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool) -> Result<Va
     for (phase, &ticks) in phases.iter().enumerate() {
         if episode.name == "fpu_divider" {
             toggle(&mut compiler, &mut world, trigger.unwrap())?;
-        } else if episode.generic() {
+        } else if episode.generic() && !episode.stable_inputs {
             let started = Instant::now();
             toggle(&mut compiler, &mut world, episode.controls[phase % episode.controls.len()])?;
             elapsed += started.elapsed();
@@ -469,8 +515,9 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool) -> Result<Va
     let continuation_checkpoint = checkpoint(&world, active_ticks + 32, &chat);
     let continuation_future = future(&world);
     Ok(
-        json!({"executor":tier.map_or("interpreter".to_owned(),|tier|format!("O{tier}")),"seconds":elapsed.as_secs_f64(),
-        "timed_operations":if episode.generic(){"64 round-robin lever operations and 512 tick calls; observations and projection excluded"}else{"tick calls only; setup and start stimulus excluded"},
+        json!({"executor":tier.map_or("interpreter".to_owned(),|tier| if compose_regions { format!("O{tier}-stable") } else { format!("O{tier}") }),"seconds":elapsed.as_secs_f64(),
+        "stable_input_protocol":episode.stable_inputs,"composed_instant_regions":compose_regions,
+        "timed_operations":if episode.generic() && !episode.stable_inputs {"64 round-robin lever operations and 512 tick calls; observations and projection excluded"}else{"tick calls only; setup and start stimulus excluded"},
         "compile_seconds_metadata":compile_seconds,"active_ticks":active_ticks,"initial":initial,
         "trace":trace,"chat":chat,"continuation":continuation,"active_final_checkpoint":active_final,
         "reset_checkpoint":reset_checkpoint,"reset_future":reset_future,
@@ -496,7 +543,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
         for tier in [0, 2, 3] {
             let admitted = (|| -> Result<()> {
                 let world = episode.load()?;
-                episode.compile(&world, tier)?;
+                episode.compile(&world, tier, episode.stable_inputs && tier == 3)?;
                 Ok(())
             })();
             let admission = match admitted {
@@ -511,7 +558,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
         }
     } else {
         for sample in 0..iterations {
-            let mut order = if interpreted {
+            let order = if interpreted {
                 vec![None]
             } else if let Some(tier) = selected_tier {
                 vec![Some(tier), None]
@@ -522,12 +569,18 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                     vec![Some(0), Some(2), Some(3), None]
                 }
             };
+            let mut order: Vec<_> = if episode.stable_inputs && !interpreted {
+                vec![(Some(3), false), (Some(3), true), (None, false)]
+            } else {
+                order.into_iter().map(|tier| (tier, false)).collect()
+            };
             if sample % 2 != 0 {
                 order.reverse();
             }
             let mut results = Vec::new();
-            for (position, &tier) in order.iter().enumerate() {
-                let mut result = run(&episode, tier, false).with_context(|| format!("{name} sample {} executor {tier:?}", sample + 1))?;
+            for (position, &(tier, compose_regions)) in order.iter().enumerate() {
+                let mut result = run(&episode, tier, false, compose_regions)
+                    .with_context(|| format!("{name} sample {} executor {tier:?} composed={compose_regions}", sample + 1))?;
                 result["sample"] = json!(sample + 1);
                 result["order"] = json!(position + 1);
                 println!(
@@ -539,6 +592,45 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 results.push(result);
             }
             let native = results.iter().find(|result| result["executor"] == "interpreter").unwrap();
+            if cfg!(feature = "unsafe-turbo-fixed-point") {
+                // Keep failures as evidence; this build deliberately discards transient propagation.
+                let comparisons: Vec<_> = results
+                    .iter()
+                    .filter(|result| result["executor"] != "interpreter")
+                    .map(|result| {
+                        let mut mismatches: Vec<String> = ["initial", "trace", "chat", "continuation", "reset_future", "continuation_future"]
+                            .into_iter()
+                            .filter(|field| result[*field] != native[*field])
+                            .map(str::to_owned)
+                            .collect();
+                        // Use the same projected contract as normal comparisons: the native
+                        // piston inspection hash includes physical state absent from Graph.
+                        for checkpoint in ["reset_checkpoint", "continuation_checkpoint"] {
+                            for field in ["blocks", "entities", "chat"] {
+                                if result[checkpoint][field] != native[checkpoint][field] {
+                                    mismatches.push(format!("{checkpoint}.{field}"));
+                                }
+                            }
+                        }
+                        let first_trace_difference = result["trace"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .zip(native["trace"].as_array().unwrap())
+                            .position(|(a, b)| a != b);
+                        println!("{name}: EXPERIMENTAL fixed-point mismatches: {mismatches:?}");
+                        json!({"executor":result["executor"],"sample":sample+1,"mismatched_fields":mismatches,
+                            "first_trace_difference":first_trace_difference})
+                    })
+                    .collect();
+                workload["unsafe_fixed_point"] = json!(true);
+                if workload["fixed_point_comparisons"].is_null() {
+                    workload["fixed_point_comparisons"] = json!([]);
+                }
+                workload["fixed_point_comparisons"].as_array_mut().unwrap().extend(comparisons);
+                workload["samples"].as_array_mut().unwrap().extend(results);
+                continue;
+            }
             for result in &results {
                 for field in ["initial", "trace", "chat", "continuation", "reset_future", "continuation_future"] {
                     ensure!(
@@ -561,8 +653,12 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 }
             }
             if sample == 0 {
-                for tier in order.iter().filter_map(|tier| *tier) {
-                    let reset = run(&episode, Some(tier), true).with_context(|| format!("{name} O{tier} pending reset continuation"))?;
+                for &(tier, compose_regions) in &order {
+                    let Some(tier) = tier else {
+                        continue;
+                    };
+                    let reset = run(&episode, Some(tier), true, compose_regions)
+                        .with_context(|| format!("{name} O{tier} composed={compose_regions} pending reset continuation"))?;
                     ensure!(
                         ["trace", "chat", "continuation", "reset_future", "continuation_future"]
                             .iter()
@@ -585,7 +681,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
             workload["samples"].as_array_mut().unwrap().extend(results);
         }
         let mut summaries = Vec::new();
-        for executor in ["O0", "O1", "O2", "O3", "interpreter"] {
+        for executor in ["O0", "O1", "O2", "O3", "O3-stable", "interpreter"] {
             let mut times: Vec<_> = workload["samples"]
                 .as_array()
                 .unwrap()
@@ -618,6 +714,11 @@ pub fn main() -> Result<()> {
     ensure!(iterations > 0, "--iterations must be positive");
     let selected_tier = argument("--graph-tier").map(str::parse::<usize>).transpose()?;
     ensure!(selected_tier.is_none_or(|tier| matches!(tier, 1 | 2 | 3)), "--graph-tier needs 1, 2 or 3");
+    let stable_inputs = args.iter().any(|arg| arg == "--stable-instant-inputs");
+    ensure!(
+        !stable_inputs || selected_tier == Some(3),
+        "--stable-instant-inputs requires --graph-tier 3"
+    );
     let interpreted = args.iter().any(|arg| arg == "--interpreted");
     let label = argument("--label").unwrap_or("current");
     let git = |args: &[&str]| -> Result<String> {
@@ -633,7 +734,8 @@ pub fn main() -> Result<()> {
         "timed_operations":"tick_with_world or tick_interpreted calls only; fresh world per executor/sample; setup, compilation, stimulus, publication, reads, reset and continuation excluded"});
     let mut blockers = 0;
     for name in names.iter().filter(|name| selected.is_none_or(|selected| selected == name.as_str())) {
-        let measured = Episode::new(name).and_then(|episode| benchmark_episode(&episode, iterations, smoke, selected_tier, interpreted));
+        let measured =
+            Episode::new(name, stable_inputs).and_then(|episode| benchmark_episode(&episode, iterations, smoke, selected_tier, interpreted));
         let workload = match measured {
             Ok((workload, rejected)) => {
                 blockers += rejected;

@@ -14,6 +14,7 @@ pub(crate) mod electrical;
 pub(crate) mod export_json;
 pub(crate) mod geometry;
 pub mod graph;
+pub(crate) mod instant_regions;
 
 // shortcut: excludes maps and allocator overhead, upgrade if measured RSS exceeds the table estimate.
 pub(crate) const MAX_GRAPH_PREPARATION_BYTES: usize = 1024 * 1024 * 1024;
