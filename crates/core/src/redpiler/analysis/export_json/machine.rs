@@ -1,6 +1,9 @@
 //! Complete inspection form of the finite program; integer vectors follow explicit owner tables.
 use super::*;
-use crate::redpiler::program_graph::{InstantKernel, InstantMachine, KernelEffect, KernelExpr, KernelExprId, KernelStateExpr};
+use crate::redpiler::program_graph::{
+    InstantKernel, InstantMachine, KernelBoundary, KernelEffect, KernelExpr, KernelExprId, KernelInput, KernelOutput,
+    KernelStateSlot, KernelStateExpr,
+};
 use mchprs_world::PistonAction;
 use serde_json::{Value, json};
 
@@ -142,8 +145,16 @@ pub(super) fn export_kernel(kernel: &InstantKernel, graph: &CompileGraph) -> Val
             })
         })
         .collect::<Vec<_>>();
+    let boundary = graph
+        .plans
+        .instant
+        .regions
+        .first()
+        .map(KernelBoundary::from_region)
+        .map(|boundary| boundary_json(&boundary));
     json!({
         "encoding": "compact-instant-kernel-v1",
+        "boundary": boundary,
         "trigger": typed_id("node", kernel.trigger.index()),
         "data_controls": kernel.data_controls.iter().map(|&node| typed_id("node", node.index())).collect::<Vec<_>>(),
         "owners": {
@@ -158,6 +169,34 @@ pub(super) fn export_kernel(kernel: &InstantKernel, graph: &CompileGraph) -> Val
         "expressions": expressions,
         "entry": state_roots(&kernel.entry),
         "phases": phases,
+    })
+}
+
+fn boundary_json(boundary: &KernelBoundary) -> Value {
+    let occurrence = |event: crate::redpiler::program_graph::RouteOccurrence| {
+        json!({ "route": event.route.index(), "ordinal": event.ordinal })
+    };
+    let inputs = boundary.inputs.iter().map(|input| match input {
+        KernelInput::Power(link) => json!({ "kind": "power", "link": link }),
+        KernelInput::Callback(event) => json!({ "kind": "callback", "event": occurrence(*event) }),
+    });
+    let state = boundary.state.iter().map(|slot| match slot {
+        KernelStateSlot::Reset(id) => json!({ "kind": "reset", "node": typed_id("node", id.index()) }),
+        KernelStateSlot::Piston(id) => json!({ "kind": "piston", "piston": typed_id("piston", id.index()) }),
+        KernelStateSlot::Resource(id) => json!({ "kind": "resource", "resource": typed_id("resource", id.index()) }),
+        KernelStateSlot::Wire(id) => json!({ "kind": "wire", "node": typed_id("node", id.index()) }),
+    });
+    let outputs = boundary.outputs.iter().map(|output| match output {
+        KernelOutput::Power(link) => json!({ "kind": "power", "link": link }),
+        KernelOutput::Callback(event) => json!({ "kind": "callback", "event": occurrence(*event) }),
+        KernelOutput::Observer(id) => json!({ "kind": "observer", "node": typed_id("node", id.index()) }),
+    });
+    json!({
+        "inputs": inputs.collect::<Vec<_>>(),
+        "state": state.collect::<Vec<_>>(),
+        "outputs": outputs.collect::<Vec<_>>(),
+        "effects": boundary.effects.iter().copied().map(occurrence).collect::<Vec<_>>(),
+        "projection_roots": boundary.projection_roots.iter().map(|id| typed_id("site", id.index())).collect::<Vec<_>>(),
     })
 }
 

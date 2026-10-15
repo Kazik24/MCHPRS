@@ -1,6 +1,8 @@
 //! Ownership, instruction refinement, and real-fixture boundary replay.
 use super::*;
 use crate::redpiler::CompilerOptions;
+use crate::redpiler::passes::Pass;
+use crate::redpiler::passes::planning::PlanBuilder;
 
 fn proxy_graph(id: &'static str) -> (CompileGraph, EntryState) {
     let circuit = load_adder(id, ORIGIN, None);
@@ -26,18 +28,20 @@ fn proxy_graph(id: &'static str) -> (CompileGraph, EntryState) {
 fn adder_regions_close_shared_payloads_and_resets_before_selecting_private_proxies() {
     let (graph, _) = proxy_graph("adder_1bit");
     let actors: Vec<_> = graph
-        .instant_regions
+        .plans
+        .instant
+        .regions
         .iter()
         .map(|r| r.actors.iter().map(|p| p.index()).collect::<Vec<_>>())
         .collect();
-    let proxies: Vec<_> = graph.instant_proxies.iter().map(|p| p.private_cells[0].actor.index()).collect();
+    let proxies: Vec<_> = graph.plans.instant.proxies.iter().map(|p| p.private_cells[0].actor.index()).collect();
     assert_eq!(actors, vec![vec![0, 2, 5, 8, 10], vec![1, 4, 7, 9], vec![3], vec![6], vec![11], vec![12]]);
     assert_eq!(proxies, vec![3, 6, 11, 12]);
     assert_eq!(actors.iter().map(Vec::len).sum::<usize>(), 13);
     assert!(!proxies.is_empty(), "the first private-cell family must execute");
-    assert!(graph.instant_regions.iter().any(|r| r.actors.len() > 1));
-    for proxy in &graph.instant_proxies {
-        let region = &graph.instant_regions[proxy.region];
+    assert!(graph.plans.instant.regions.iter().any(|r| r.actors.len() > 1));
+    for proxy in &graph.plans.instant.proxies {
+        let region = &graph.plans.instant.regions[proxy.region];
         assert_eq!(region.actors.as_slice(), &[proxy.private_cells[0].actor]);
         assert_eq!(region.resources.as_slice(), &[proxy.private_cells[0].resource]);
         assert!(!region.incoming.is_empty());
@@ -71,9 +75,9 @@ fn adder_regions_close_shared_payloads_and_resets_before_selecting_private_proxi
 #[test]
 fn private_proxies_decline_uncertain_reset_ingress_and_are_idempotent() {
     use crate::redpiler::analysis::instant_regions::infer_proxies;
-    use crate::redpiler::passes::{GraphPass, PassContext};
+    use crate::redpiler::passes::PassContext;
     let (graph, entry) = proxy_graph("adder_1bit");
-    let proxy = graph.instant_proxies[0].clone();
+    let proxy = graph.plans.instant.proxies[0].clone();
     for captured in [false, true] {
         let mut changed = graph.clone();
         for route in &proxy.routes {
@@ -88,7 +92,7 @@ fn private_proxies_decline_uncertain_reset_ingress_and_are_idempotent() {
                 }
             }
         }
-        let plans = infer_proxies(&changed, &changed.instant_regions, &TaskMonitor::default()).unwrap();
+        let plans = infer_proxies(&changed, &changed.plans.instant.regions, &TaskMonitor::default()).unwrap();
         assert!(
             !plans
                 .iter()
@@ -159,13 +163,13 @@ fn instant_certificates_reject_corruption_and_unknown_passes_invalidate_them() {
     use crate::redpiler::passes::{GraphPass, PassContext, PassEntry, PassPipeline};
     let (graph, entry) = proxy_graph("adder_1bit");
     let mut invalid = graph.clone();
-    invalid.instant_regions[0].actors.pop();
+    invalid.plans.instant.regions[0].actors.pop();
     assert!(matches!(
         invalid.validate(),
         Err(GraphBuildError::InvalidInstantRegion { table: "regions", index: 0 })
     ));
     invalid = graph.clone();
-    let proxy = &mut invalid.instant_proxies[0];
+    let proxy = &mut invalid.plans.instant.proxies[0];
     let step = proxy
         .routes
         .iter_mut()
@@ -192,7 +196,7 @@ fn instant_certificates_reject_corruption_and_unknown_passes_invalidate_them() {
         &Default::default(),
         &entry,
         &PassPipeline::new(vec![PassEntry {
-            pass: Box::new(UnknownPass),
+            pass: Pass::rewrite(UnknownPass),
             enabled: false,
         }]),
         &TaskMonitor::default(),
@@ -204,13 +208,13 @@ fn instant_certificates_reject_corruption_and_unknown_passes_invalidate_them() {
         &Default::default(),
         &entry,
         &PassPipeline::new(vec![PassEntry {
-            pass: Box::new(UnknownPass),
+            pass: Pass::rewrite(UnknownPass),
             enabled: true,
         }]),
         &TaskMonitor::default(),
     )
     .unwrap();
-    assert!(disabled.instant_regions.is_empty() && disabled.instant_proxies.is_empty());
+    assert!(disabled.plans.instant.regions.is_empty() && disabled.plans.instant.proxies.is_empty());
     let mut cancelled = graph.clone();
     let monitor = TaskMonitor::default();
     monitor.cancel();
@@ -290,11 +294,13 @@ pub(super) fn assert_same_memory(general: &GraphBackend, proxy: &GraphBackend) {
 fn private_proxy_routes_refine_all_adder_states_and_pending_reset_obligations() {
     let (graph, _) = proxy_graph("adder_1bit");
     let mut general = graph.clone();
-    general.instant_proxies.clear();
-    general.instant_regions.clear();
+    general.plans.instant.proxies.clear();
+    general.plans.instant.regions.clear();
     let (general_program, general_state) = general.lower().unwrap();
     let routes: Vec<_> = graph
-        .instant_proxies
+        .plans
+        .instant
+        .proxies
         .iter()
         .flat_map(|proxy| proxy.routes.iter().map(|route| route.route))
         .collect();

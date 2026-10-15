@@ -4,6 +4,8 @@
 //! This is not an equivalent transformation and must never enter normal tiers.
 
 use super::{GraphPass, PassContext};
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::CompileGraph;
 
 pub(crate) struct SettleDustNetworks;
@@ -18,10 +20,10 @@ impl GraphPass for SettleDustNetworks {
             return Err("cancelled before replacing Turbo propagation".into());
         }
         for wire in &mut graph.wires {
-            wire.instant_reset = None;
-            wire.query_facts = None;
+            wire.execution.instant_reset = None;
+            wire.execution.query_facts = None;
         }
-        graph.turbo_callback_indices.clear();
+        graph.plans.turbo_callback_indices.clear();
         Ok(())
     }
 }
@@ -41,7 +43,7 @@ mod tests {
         let nodes = prepared.graph.nodes.clone();
         assert!(prepared.graph.wires.iter().any(|wire| wire.turbo_route.is_some()));
         let pipeline = PassPipeline::new(vec![PassEntry {
-            pass: Box::new(SettleDustNetworks),
+            pass: Pass::rewrite(SettleDustNetworks),
             enabled: true,
         }]);
         run_graph_pipeline(&mut prepared.graph, &CompilerOptions::default(), &prepared.entry, &pipeline, &monitor).unwrap();

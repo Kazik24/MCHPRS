@@ -1165,9 +1165,9 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 canonical_neighbors: item.canonical_neighbors.iter().map(|site| typed_id("site", site.index())).collect(),
                 shape_route: item.shape_route.map(|route| typed_id("route", route.index())),
                 turbo_route: item.turbo_route.map(|route| typed_id("route", route.index())),
-                query_facts: item.query_facts,
-                hop_root: item.hop_root.map(|site| typed_id("site", site.index())),
-                instant_reset: item.instant_reset.map(|plan| InstantResetDto {
+                query_facts: item.execution.query_facts,
+                hop_root: item.execution.hop_root.map(|site| typed_id("site", site.index())),
+                instant_reset: item.execution.instant_reset.map(|plan| InstantResetDto {
                     piston: typed_id("piston", plan.piston.index()),
                     resource: typed_id("resource", plan.resource.index()),
                     observer: typed_id("node", plan.observer.index()),
@@ -1176,6 +1176,7 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             })
             .collect(),
         dust_paths: source
+            .plans
             .dust_paths
             .iter()
             .enumerate()
@@ -1205,7 +1206,9 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             })
             .collect(),
         instant_regions: source
-            .instant_regions
+            .plans
+            .instant
+            .regions
             .iter()
             .enumerate()
             .map(|(index, region)| InstantRegionDto {
@@ -1241,7 +1244,9 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             })
             .collect(),
         instant_proxies: source
-            .instant_proxies
+            .plans
+            .instant
+            .proxies
             .iter()
             .enumerate()
             .map(|(index, proxy)| InstantProxyDto {
@@ -1278,9 +1283,11 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                     .collect(),
             })
             .collect(),
-        instant_machine: source.instant_machine.as_ref().map(|machine| machine::export(machine, source)),
+        instant_machine: source.plans.instant.machine.as_ref().map(|machine| machine::export(machine, source)),
         instant_kernel: source
-            .instant_machine
+            .plans
+            .instant
+            .machine
             .as_ref()
             .map(|machine| machine::export_kernel(&machine.kernel, source)),
         comparator_plans: source
@@ -1375,23 +1382,23 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         "callback_links",
         "piston_routes",
     ];
-    if !source.dust_paths.is_empty() {
+    if !source.plans.dust_paths.is_empty() {
         capabilities.push("dust_path_certificates");
     }
-    if source.wires.iter().any(|wire| wire.query_facts.is_some()) {
+    if source.wires.iter().any(|wire| wire.execution.query_facts.is_some()) {
         capabilities.push("wire_query_facts");
     }
-    if !source.instant_regions.is_empty() {
+    if !source.plans.instant.regions.is_empty() {
         capabilities.push("instant_regions");
     }
-    if !source.instant_proxies.is_empty() {
+    if !source.plans.instant.proxies.is_empty() {
         capabilities.push("instant_proxies");
     }
-    if source.instant_machine.is_some() {
+    if source.plans.instant.machine.is_some() {
         capabilities.push("instant_machine");
         capabilities.push("instant_kernel");
     }
-    if source.wires.iter().any(|wire| wire.instant_reset.is_some()) {
+    if source.wires.iter().any(|wire| wire.execution.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
     }
     let export = GraphExport {

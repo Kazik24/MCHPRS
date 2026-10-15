@@ -24,6 +24,8 @@
 
 use super::{GraphPass, PassContext};
 use crate::redpiler::TaskMonitor;
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::{
     CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, CompileGraph, DeliveryKind, LinkKind, NodeId, OperandView, RouteDelivery, RouteId, SiteSource,
 };
@@ -43,17 +45,6 @@ struct RemovalPlan {
 
 impl GraphPass for PruneUnhandledUpdates {
     // todo I do not like this pattern, can we implement it on clean way?
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
-    }
-
-    fn preserves_wire_query_facts(&self) -> bool {
-        true
-    }
 
     fn name(&self) -> &'static str {
         "prune-unhandled-updates"
@@ -249,9 +240,9 @@ mod tests {
                 source: NodeId::new(0),
                 deliveries: deliveries.into_boxed_slice(),
             }],
-            turbo_callback_indices: vec![],
+
             wires: vec![],
-            dust_paths: vec![],
+
             wire_relations: vec![],
             sites: vec![SiteSpec {
                 position: BlockPos::new(0, 0, 0),
@@ -262,9 +253,8 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         };
         rebuild_links(&mut graph);
         graph
@@ -315,7 +305,7 @@ mod tests {
             &options,
             &entry,
             &PassPipeline::new(vec![PassEntry {
-                pass: Box::new(PruneUnhandledUpdates),
+                pass: Pass::rewrite(PruneUnhandledUpdates),
                 enabled: true,
             }]),
             monitor,
@@ -694,14 +684,12 @@ mod tests {
             canonical_neighbors: [SiteId::new(0); 24],
             shape_route: None,
             turbo_route,
-            query_facts: None,
-            instant_reset: None,
-            hop_root: None,
+            execution: Default::default(),
         });
     }
 
     #[test]
-    fn custom_order_preserves_existing_turbo_index_ranges() {
+    fn custom_rewrite_discards_indices_and_explicit_rebuild_restores_ranges() {
         use super::super::{PassEntry, default_graph_pipeline, run_graph_pipeline};
 
         let dead = delivery(
@@ -732,7 +720,7 @@ mod tests {
         pipeline.entries.retain(|item| item.pass.name() == "index-turbo-callbacks");
         pipeline.entries[0].enabled = true;
         pipeline.entries.push(PassEntry {
-            pass: Box::new(PruneUnhandledUpdates),
+            pass: Pass::rewrite(PruneUnhandledUpdates),
             enabled: true,
         });
         let entry = EntryState {
@@ -740,12 +728,18 @@ mod tests {
             pending_ticks: vec![],
         };
         run_graph_pipeline(&mut graph, &options, &entry, &pipeline, &TaskMonitor::default()).unwrap();
+        assert!(graph.plans.turbo_callback_indices.is_empty());
+        let rebuild = PassPipeline::new(vec![PassEntry {
+            pass: Pass::build(super::super::index_turbo_callbacks::IndexTurboCallbacks),
+            enabled: true,
+        }]);
+        run_graph_pipeline(&mut graph, &options, &entry, &rebuild, &TaskMonitor::default()).unwrap();
         let mut expected = [2; 25];
         expected[0] = 0;
-        assert_eq!(graph.turbo_callback_indices[0].as_ref().unwrap().offsets, expected);
+        assert_eq!(graph.plans.turbo_callback_indices[0].as_ref().unwrap().offsets, expected);
         assert_eq!(graph.routes[0].deliveries.as_ref(), [dead, dead]);
         assert!(graph.routes[1].deliveries.is_empty());
-        assert!(PruneUnhandledUpdates.preserves_dust_paths());
+
         graph.validate().unwrap();
     }
 

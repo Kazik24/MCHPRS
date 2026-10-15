@@ -48,20 +48,23 @@ fn both_adders_compose_all_their_actors_into_one_ordered_region() {
         let (graph, _) = stable_graph(id);
         eprintln!(
             "{id}: regions={}, actors={:?}, wires={:?}, proxies={}",
-            graph.instant_regions.len(),
-            graph.instant_regions.iter().map(|r| r.actors.len()).collect::<Vec<_>>(),
-            graph.instant_regions.iter().map(|r| r.wires.len()).collect::<Vec<_>>(),
-            graph.instant_proxies.len()
+            graph.plans.instant.regions.len(),
+            graph.plans.instant.regions.iter().map(|r| r.actors.len()).collect::<Vec<_>>(),
+            graph.plans.instant.regions.iter().map(|r| r.wires.len()).collect::<Vec<_>>(),
+            graph.plans.instant.proxies.len()
         );
-        assert!(graph.instant_machine.is_none(), "O3 composes regions without O4 compact compilation");
-        assert_eq!(graph.instant_regions.len(), 1);
-        let region = &graph.instant_regions[0];
+        assert!(
+            graph.plans.instant.machine.is_none(),
+            "O3 composes regions without O4 compact compilation"
+        );
+        assert_eq!(graph.plans.instant.regions.len(), 1);
+        let region = &graph.plans.instant.regions[0];
         assert!(region.stable_inputs);
         assert_eq!(region.actors.len(), actor_count);
         assert_eq!(region.contacts.len(), graph.contacts.len(), "all actor and payload contacts remain owned");
         assert!(!region.wires.is_empty());
-        assert_eq!(graph.instant_proxies.len(), 1);
-        let proxy = &graph.instant_proxies[0];
+        assert_eq!(graph.plans.instant.proxies.len(), 1);
+        let proxy = &graph.plans.instant.proxies[0];
         assert_eq!(proxy.private_cells.len(), private_count);
         let mut sampled: Vec<_> = proxy
             .routes
@@ -213,10 +216,10 @@ fn stable_composition_retains_uncertified_reset_groups() {
 fn composed_certificates_reject_lost_contacts_and_wrong_internal_targets() {
     let (graph, _) = stable_graph("adder_1bit");
     let mut missing_contact = graph.clone();
-    missing_contact.instant_regions[0].contacts.pop();
+    missing_contact.plans.instant.regions[0].contacts.pop();
     assert!(matches!(missing_contact.validate(), Err(GraphBuildError::InvalidInstantRegion { .. })));
     let mut wrong_actor = graph;
-    let step = wrong_actor.instant_proxies[0]
+    let step = wrong_actor.plans.instant.proxies[0]
         .routes
         .iter_mut()
         .flat_map(|route| route.steps.iter_mut())

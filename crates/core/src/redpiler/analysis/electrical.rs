@@ -304,9 +304,7 @@ pub(crate) fn prepare_electrical(
             canonical_neighbors,
             shape_route: None,
             turbo_route: None,
-            query_facts: None,
-            instant_reset: None,
-            hop_root: None,
+            execution: Default::default(),
         });
         let node = &mut nodes[wire.node.index()];
         node.kind = CircuitNodeKind::Wire(plan);

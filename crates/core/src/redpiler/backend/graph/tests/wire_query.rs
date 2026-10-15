@@ -42,7 +42,7 @@ fn query_graph() -> CompileGraph {
 
 fn backend(mut graph: CompileGraph) -> GraphBackend {
     for index in 0..graph.wires.len() {
-        graph.wires[index].query_facts = Some(WireQueryFacts::infer(&graph, &graph.wires[index]));
+        graph.wires[index].execution.query_facts = Some(WireQueryFacts::infer(&graph, &graph.wires[index]));
     }
     let (program, state) = graph.lower().unwrap();
     GraphBackend::new(program, state, 0).unwrap()
@@ -87,7 +87,7 @@ fn capture_neighbors(backend: &GraphBackend, plan: &WirePlan) -> WireWalk {
 
 fn assert_seed_matches(backend: &mut GraphBackend, plan: &WirePlan) -> u8 {
     let mut general = plan.clone();
-    general.query_facts = None;
+    general.execution.query_facts = None;
     let expected = backend.seed_power_general(&general);
     let actual = backend.seed_power(plan);
     assert_eq!(actual, expected, "live seed query");
@@ -97,7 +97,7 @@ fn assert_seed_matches(backend: &mut GraphBackend, plan: &WirePlan) -> u8 {
 fn assert_captured_matches(backend: &mut GraphBackend, plan: &WirePlan, walk: &mut WireWalk) -> u8 {
     let ordered = backend.identify_wire_neighbors(plan.node, walk);
     let mut general = plan.clone();
-    general.query_facts = None;
+    general.execution.query_facts = None;
     let expected = backend.turbo_wire_power_general(&general, &ordered, walk);
     let actual = backend.turbo_wire_power(plan, &ordered, walk);
     assert_eq!(actual, expected, "captured Turbo query");
@@ -131,7 +131,7 @@ fn set_constant_neighbor(graph: &mut CompileGraph, slot: usize, profile: Profile
 fn certificates_preserve_every_live_input_and_adjacent_wire_strength() {
     let mut backend = backend(query_graph());
     let plan = root_plan(&backend);
-    assert!(plan.query_facts.is_some());
+    assert!(plan.execution.query_facts.is_some());
     for input in 0..=15 {
         for wire in 0..=15 {
             set_strength(&mut backend, DIRECT, input);
@@ -148,7 +148,7 @@ fn certificates_preserve_every_live_input_and_adjacent_wire_strength() {
 fn captured_wire_strength_stays_old_while_conducted_strong_power_stays_live() {
     let mut backend = backend(query_graph());
     let plan = root_plan(&backend);
-    assert_ne!(plan.query_facts.unwrap().solid & (1 << 5), 0);
+    assert_ne!(plan.execution.query_facts.unwrap().solid & (1 << 5), 0);
     set_strength(&mut backend, NEIGHBOR, 13);
     let mut walk = capture_neighbors(&backend, &plan);
     set_strength(&mut backend, NEIGHBOR, 1);
@@ -237,7 +237,7 @@ fn dynamic_contact_geometry_uses_live_seed_and_captured_turbo_selection() {
     site.source = SiteSource::Contact(contact);
     let mut backend = backend(graph);
     let plan = root_plan(&backend);
-    assert_eq!(plan.query_facts.unwrap().known & (1 << 4), 0);
+    assert_eq!(plan.execution.query_facts.unwrap().known & (1 << 4), 0);
     let mut walk = capture_neighbors(&backend, &plan);
     assert_eq!(assert_seed_matches(&mut backend, &plan), 14);
     backend.state.resources[0].enabled = false;
@@ -272,7 +272,7 @@ fn changing_a_compiled_input_mask_invalidates_its_certificate() {
     let mut facts = WireQueryFacts::infer(&graph, &graph.wires[wire]);
     assert_ne!(facts.transfer.unwrap().seed.direct, 0);
     facts.transfer.as_mut().unwrap().seed.direct = 0;
-    graph.wires[wire].query_facts = Some(facts);
+    graph.wires[wire].execution.query_facts = Some(facts);
     assert!(matches!(graph.validate(), Err(GraphBuildError::InvalidWireQueryFacts { .. })));
 }
 

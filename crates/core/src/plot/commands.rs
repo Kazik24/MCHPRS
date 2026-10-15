@@ -606,6 +606,48 @@ impl Plot {
         }
 
         match command {
+            "/hl" => {
+                let teleport = args.last() == Some(&"--tp");
+                if teleport {
+                    args.pop();
+                }
+                let pos = match args.as_slice() {
+                    [] => worldedit::ray_trace_block(
+                        &self.world,
+                        self.players[player].eye_position(),
+                        self.players[player].pitch as f64,
+                        self.players[player].yaw as f64,
+                        10.0,
+                    ),
+                    [x, y, z] => match (x.parse(), y.parse(), z.parse()) {
+                        (Ok(x), Ok(y), Ok(z)) => Some(mchprs_blocks::BlockPos::new(x, y, z)),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let Some(pos) = pos else {
+                    self.players[player].send_error_message(if args.is_empty() {
+                        messages::BLOCK_TRACE_FAILED
+                    } else {
+                        messages::INVALID_ARGUMENT_COUNT
+                    });
+                    return false;
+                };
+                if !Self::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) || !(0..super::PLOT_BLOCK_HEIGHT).contains(&pos.y) {
+                    self.players[player].send_error_message(messages::INVALID_TELEPORT_COORDINATES);
+                    return false;
+                }
+                if teleport {
+                    let player_pos = self.players[player].pos;
+                    let destination = PlayerPos::new(
+                        f64::from(pos.x) + 0.5,
+                        f64::from(pos.y) + 0.5 - (self.players[player].eye_position().y - player_pos.y),
+                        f64::from(pos.z) + 0.5,
+                    );
+                    self.players[player].teleport(destination);
+                }
+                self.show_block_highlight(player, pos, false);
+            }
             "/visual" => {
                 if !self.players[player].has_permission("commands.visual") {
                     self.players[player].send_no_permission_message();
@@ -1102,6 +1144,7 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/git" | "/rv" => "git".to_owned(),
         "/version" => "version".to_owned(),
         "/teleport" | "/tp" => "teleport".to_owned(),
+        "/hl" => "teleport".to_owned(),
         "/warp" if !crate::redbox::enabled() => "warp".to_owned(),
         "/setwarp" if !crate::redbox::enabled() => "setwarp".to_owned(),
         "/speed" => "speed".to_owned(),
@@ -1482,6 +1525,11 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
 
     let redbox = crate::redbox::enabled();
     let mut root_children = nodes[0].children.to_vec();
+    let hl = nodes.len() as i32;
+    let hl_args = hl + 1;
+    nodes.push(Node::literal("hl", Box::leak(vec![hl_args].into_boxed_slice())).executable());
+    nodes.push(Node::argument("arguments", Parser::String(2), &[]).executable());
+    root_children.push(hl);
     let history = nodes.iter().position(|node| node.name == Some("rhistory")).unwrap();
     let mut history_children = nodes[history].children.to_vec();
     let rewind = nodes.len() as i32;
@@ -1650,6 +1698,16 @@ mod security_tests {
         let nodes = declared_command_nodes();
         let inspect = nodes.iter().find(|node| node.name == Some("inspect")).unwrap();
         assert!(inspect.children.is_empty());
+    }
+
+    #[test]
+    fn highlight_command_targets_coordinates_and_can_teleport() {
+        let (mut plot, _) = super::super::client_sync_tests::fixture(false);
+        assert!(!plot.handle_command(0, "/hl", vec!["33", "21", "35", "--tp"]));
+        let eye = plot.players[0].eye_position();
+        assert_eq!((eye.x, eye.y, eye.z), (33.5, 21.5, 35.5));
+        assert_eq!(native_command_permission("/hl", &[]).as_deref(), Some("commands.teleport"));
+        assert!(declared_command_nodes().iter().any(|node| node.name == Some("hl")));
     }
 
     #[test]

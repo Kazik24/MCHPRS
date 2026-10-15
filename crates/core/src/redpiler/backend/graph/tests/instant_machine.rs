@@ -1,11 +1,63 @@
 //! Real input histories compare complete memory, deadlines and interpreter boundary outputs.
 use super::*;
+use crate::redpiler::passes::Pass;
+use crate::redpiler::passes::planning::PlanBuilder;
+
+#[test]
+fn lowered_kernel_effects_match_every_frozen_assignment_and_preserve_occurrences() {
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (program, _) = graph.lower().unwrap();
+    let kernel = program.instant_kernel().unwrap();
+    let execution = program.instant_execution().unwrap();
+    let mut candidates = 0;
+    let mut retained = 0;
+    for mask in 0..(1u8 << kernel.data_controls.len()) {
+        for (index, phase) in kernel.phases.iter().enumerate() {
+            let actual = execution.phase(mask, index).unwrap();
+            let writes: Vec<_> = phase
+                .components
+                .iter()
+                .filter(|delta| kernel.evaluate(delta.changed, mask) != 0)
+                .map(|delta| (delta.node, kernel.evaluate(delta.value, mask) as u16))
+                .collect();
+            let dirty: Vec<_> = phase
+                .dirty
+                .iter()
+                .filter(|&&(_, changed)| kernel.evaluate(changed, mask) != 0)
+                .map(|&(node, _)| node)
+                .collect();
+            let effects: Vec<_> = phase
+                .effects
+                .iter()
+                .filter(|effect| kernel.evaluate(effect.enabled, mask) != 0)
+                .map(|effect| (effect.piston, effect.action, effect.extended))
+                .collect();
+            assert_eq!(actual.writes.as_ref(), writes);
+            assert_eq!(actual.dirty.as_ref(), dirty);
+            assert_eq!(actual.effects.as_ref(), effects);
+            assert_eq!(actual.scheduled, kernel.evaluate(phase.scheduled, mask));
+            assert_eq!(actual.published, kernel.evaluate(phase.published, mask));
+            candidates += phase.components.len() + phase.dirty.len() + phase.effects.len();
+            retained += actual.writes.len() + actual.dirty.len() + actual.effects.len();
+        }
+    }
+    assert!(
+        retained < candidates,
+        "lowering must remove inactive operations, not just move their checks"
+    );
+    assert!(execution.phase(8, 0).is_none());
+    assert!(execution.phase(0, kernel.phases.len()).is_none());
+    eprintln!(
+        "kernel candidate operations={candidates}, active operations={retained}, execution bytes={}",
+        execution.estimated_bytes()
+    );
+}
 
 #[test]
 fn closed_adder_machine_covers_all_falling_edge_responses_without_turbo() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
-    let machine = graph.instant_machine.as_ref().expect("the closed one-bit family must compile");
+    let machine = graph.plans.instant.machine.as_ref().expect("the closed one-bit family must compile");
     eprintln!(
         "compile certificate: {} states, {} edges, {} bytes incl. kernel; runtime kernel: {} phases, {} expressions, {} bytes",
         machine.states.len(),
@@ -16,7 +68,7 @@ fn closed_adder_machine_covers_all_falling_edge_responses_without_turbo() {
         machine.kernel_bytes()
     );
     let mut baseline = graph.clone();
-    baseline.instant_machine = None;
+    baseline.plans.instant.machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
     let (program, state) = graph.lower().unwrap();
     let manifest: Value =
@@ -89,7 +141,7 @@ fn compact_kernel_phases_preserve_revision_origins_and_future_work() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let mut baseline = graph.clone();
-    baseline.instant_machine = None;
+    baseline.plans.instant.machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
     let (program, state) = graph.lower().unwrap();
     let mut exact = GraphBackend::new(base_program, base_state, 0).unwrap();
@@ -137,7 +189,7 @@ fn compact_kernel_phases_preserve_revision_origins_and_future_work() {
 fn stale_entry_work_prevents_compact_kernel_admission() {
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let mut baseline = graph.clone();
-    baseline.instant_machine = None;
+    baseline.plans.instant.machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
     let (program, state) = graph.lower().unwrap();
     let mut exact = GraphBackend::new(base_program, base_state, 0).unwrap();
@@ -198,7 +250,7 @@ fn stale_entry_work_prevents_compact_kernel_admission() {
 #[test]
 fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
-    let original = graph.instant_machine.as_ref().unwrap();
+    let original = graph.plans.instant.machine.as_ref().unwrap();
     let (source, action) = original
         .transitions
         .iter()
@@ -212,7 +264,7 @@ fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
         .unwrap();
     for corrupt in 0..4 {
         let mut bad = graph.clone();
-        let machine = Arc::make_mut(bad.instant_machine.as_mut().unwrap());
+        let machine = Arc::make_mut(bad.plans.instant.machine.as_mut().unwrap());
         let edge = machine.transitions[source][action].as_mut().unwrap();
         match corrupt {
             0 => edge.components[0].1 ^= 1,
@@ -226,7 +278,7 @@ fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
         assert!(matches!(bad.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
     }
     let mut bad = graph.clone();
-    let machine = Arc::make_mut(bad.instant_machine.as_mut().unwrap());
+    let machine = Arc::make_mut(bad.plans.instant.machine.as_mut().unwrap());
     let state = machine.states.iter_mut().find(|state| !state.deferred.is_empty()).unwrap();
     state.deferred[0].delay = 32;
     assert!(matches!(bad.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
@@ -235,7 +287,7 @@ fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
 #[test]
 fn compact_kernel_validation_rejects_malformed_programs_before_lowering() {
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
-    let valid = graph.instant_machine.as_ref().unwrap();
+    let valid = graph.plans.instant.machine.as_ref().unwrap();
     let select = valid
         .kernel
         .expressions
@@ -244,7 +296,7 @@ fn compact_kernel_validation_rejects_malformed_programs_before_lowering() {
         .unwrap();
     for corruption in 0..6 {
         let mut bad = graph.clone();
-        let machine = Arc::make_mut(bad.instant_machine.as_mut().unwrap());
+        let machine = Arc::make_mut(bad.plans.instant.machine.as_mut().unwrap());
         match corruption {
             0 => {
                 if let KernelExpr::Select { low, .. } = &mut machine.kernel.expressions[select] {
@@ -278,7 +330,7 @@ fn compact_kernel_validation_rejects_malformed_programs_before_lowering() {
 #[test]
 fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() {
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
-    let kernel = &graph.instant_machine.as_ref().unwrap().kernel;
+    let kernel = &graph.plans.instant.machine.as_ref().unwrap().kernel;
     let other_root = |original: KernelExprId| {
         (0..kernel.expressions.len())
             .map(|index| KernelExprId(index as u32))
@@ -286,13 +338,13 @@ fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() 
             .unwrap()
     };
     let mut hot = graph.clone();
-    let machine = Arc::make_mut(hot.instant_machine.as_mut().unwrap());
+    let machine = Arc::make_mut(hot.plans.instant.machine.as_mut().unwrap());
     let delta = machine.kernel.phases.iter_mut().find_map(|phase| phase.components.first_mut()).unwrap();
     delta.value = other_root(delta.value);
     assert!(matches!(hot.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
 
     let mut future = graph.clone();
-    let machine = Arc::make_mut(future.instant_machine.as_mut().unwrap());
+    let machine = Arc::make_mut(future.plans.instant.machine.as_mut().unwrap());
     let phase = machine
         .kernel
         .phases
@@ -303,7 +355,7 @@ fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() 
     assert!(matches!(future.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
 
     let mut effects = graph.clone();
-    let machine = Arc::make_mut(effects.instant_machine.as_mut().unwrap());
+    let machine = Arc::make_mut(effects.plans.instant.machine.as_mut().unwrap());
     let phase = machine
         .kernel
         .phases
@@ -318,9 +370,9 @@ fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() 
 #[test]
 fn arbitrary_control_histories_deopt_and_keep_complete_state() {
     let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
-    let controls = graph.instant_machine.as_ref().unwrap().controls.clone();
+    let controls = graph.plans.instant.machine.as_ref().unwrap().controls.clone();
     let mut baseline = graph.clone();
-    baseline.instant_machine = None;
+    baseline.plans.instant.machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
     let (program, state) = graph.lower().unwrap();
     let mut exact = GraphBackend::new(base_program, base_state, 0).unwrap();
@@ -354,7 +406,7 @@ fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() 
     let monitor = TaskMonitor::default();
     monitor.cancel();
     let mut cancelled = graph.clone();
-    let original = cancelled.instant_machine.clone().unwrap();
+    let original = cancelled.plans.instant.machine.clone().unwrap();
     assert!(
         CompileInstantMachine
             .run(
@@ -368,7 +420,7 @@ fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() 
             .is_err()
     );
     assert!(
-        Arc::ptr_eq(&original, cancelled.instant_machine.as_ref().unwrap()),
+        Arc::ptr_eq(&original, cancelled.plans.instant.machine.as_ref().unwrap()),
         "cancellation publishes no partial artifact"
     );
     let monitor = TaskMonitor::default();
@@ -383,7 +435,7 @@ fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() 
             },
         )
         .unwrap();
-    assert!(ordinary.instant_machine.is_none());
+    assert!(ordinary.plans.instant.machine.is_none());
     struct UnknownRewrite;
     impl GraphPass for UnknownRewrite {
         fn name(&self) -> &'static str {
@@ -400,13 +452,13 @@ fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() 
             &options,
             &entry,
             &PassPipeline::new(vec![PassEntry {
-                pass: Box::new(UnknownRewrite),
+                pass: Pass::rewrite(UnknownRewrite),
                 enabled,
             }]),
             &monitor,
         )
         .unwrap();
-        assert_eq!(output.instant_machine.is_some(), !enabled);
+        assert_eq!(output.plans.instant.machine.is_some(), !enabled);
     }
     let mut rebuilt = graph.clone();
     CompileInstantMachine
@@ -419,5 +471,8 @@ fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() 
             },
         )
         .unwrap();
-    assert_eq!(rebuilt.instant_machine, graph.instant_machine, "deterministic rebuild is idempotent");
+    assert_eq!(
+        rebuilt.plans.instant.machine, graph.plans.instant.machine,
+        "deterministic rebuild is idempotent"
+    );
 }

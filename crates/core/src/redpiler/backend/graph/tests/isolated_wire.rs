@@ -41,7 +41,7 @@ fn backend(mut graph: CompileGraph, isolated: bool) -> GraphBackend {
         for index in 0..graph.wires.len() {
             let facts = WireQueryFacts::infer(&graph, &graph.wires[index]);
             assert!(facts.isolated);
-            graph.wires[index].query_facts = Some(facts);
+            graph.wires[index].execution.query_facts = Some(facts);
         }
     }
     let (program, state) = graph.lower().unwrap();

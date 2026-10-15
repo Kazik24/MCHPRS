@@ -11,7 +11,7 @@ mod task_monitor;
 
 use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
-use backend::Runtime;
+use backend::graph::GraphBackend;
 use mchprs_blocks::BlockPos;
 use mchprs_world::TickEntry;
 use std::sync::Arc;
@@ -116,7 +116,7 @@ pub struct GraphExecutionCounts {
 #[derive(Default)]
 /// Owns the active compiled backend and its options and statistics.
 pub struct Compiler {
-    backend: Option<Runtime>,
+    backend: Option<Box<GraphBackend>>,
     options: CompilerOptions,
     statistics: Option<CompileStatistics>,
 }
@@ -141,12 +141,12 @@ impl Compiler {
     }
 
     pub fn backend_kind(&self) -> Option<BackendKind> {
-        self.backend.as_ref().map(Runtime::kind)
+        self.backend.as_ref().map(|_| BackendKind::Graph)
     }
 
     /// Executed graph work; None unless the active backend is the graph.
     pub fn graph_execution_counts(&self) -> Option<GraphExecutionCounts> {
-        self.backend.as_ref()?.graph_execution_counts()
+        Some(self.backend.as_ref()?.execution_counts())
     }
 
     pub fn compile<W: World>(
@@ -190,7 +190,7 @@ impl Compiler {
 
         let statistics = CompileStatistics {
             graph: monitor.graph_statistics(),
-            backend: backend.kind(),
+            backend: BackendKind::Graph,
             backend_nodes: backend.node_count(),
             analysis_duration,
             backend_duration,
@@ -211,7 +211,7 @@ impl Compiler {
         options: &CompilerOptions,
         monitor: &TaskMonitor,
         graph_pipeline: Option<passes::PassPipeline>,
-    ) -> Result<(Runtime, Duration), CompileError> {
+    ) -> Result<(Box<GraphBackend>, Duration), CompileError> {
         let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
         let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits).map_err(|error| graph_preparation_error(error, monitor))?;
         let analysis_duration = prepared.analysis_duration;
@@ -223,12 +223,12 @@ impl Compiler {
             .lower(monitor)
             .map_err(|error| graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor))?;
         let backend = backend::graph::GraphBackend::from_lowered(lowered, monitor).map_err(|error| graph_backend_error(error, monitor))?;
-        Ok((Runtime::Graph(Box::new(backend)), analysis_duration))
+        Ok((Box::new(backend), analysis_duration))
     }
 
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
         if let Some(mut backend) = self.backend.take() {
-            backend.reset(world, self.options.io_only);
+            backend.reset(world);
         }
 
         if self.options.update {
@@ -241,7 +241,7 @@ impl Compiler {
         self.options = Default::default();
     }
 
-    fn backend(&mut self) -> &mut Runtime {
+    fn backend(&mut self) -> &mut GraphBackend {
         self.backend.as_mut().expect("tried to get redpiler backend when inactive")
     }
 
@@ -250,11 +250,15 @@ impl Compiler {
     }
 
     pub fn on_use_block(&mut self, pos: BlockPos) {
-        self.backend().on_use_block(pos);
+        if let Err(error) = self.backend().use_block(pos) {
+            tracing::error!(%error, "graph backend control failed");
+        }
     }
 
     pub fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
-        self.backend().set_pressure_plate(pos, powered);
+        if let Err(error) = self.backend().set_pressure_plate(pos, powered) {
+            tracing::error!(%error, "graph backend control failed");
+        }
     }
 
     pub fn flush<W: World>(&mut self, world: &mut W) {

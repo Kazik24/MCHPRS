@@ -2,10 +2,12 @@
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_instant_machine;
 pub(crate) mod compile_instant_proxies;
+pub(crate) mod compile_instant_resets;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_regions;
 pub(crate) mod index_turbo_callbacks;
+pub(crate) mod planning;
 pub(crate) mod prune_inert_callbacks;
 pub(crate) mod prune_unhandled_updates;
 pub(crate) mod rich;
@@ -23,47 +25,13 @@ use super::{CompilerOptions, GraphCounts, PassStatistics, TaskMonitor};
 use std::fmt;
 use std::time::Instant;
 
-/// A graph transformation with its own assumptions and optional parameters.
+/// A pipeline step. Rewrites invalidate derived plans; read-only builders cannot change the circuit.
 pub(crate) trait GraphPass {
-    /// Preserve only when every compiled transition still matches the graph's semantics.
-    fn preserves_instant_machine(&self) -> bool {
-        false
-    }
-    /// Preserve only when ownership boundaries and their route witnesses stay unchanged.
-    fn preserves_instant_regions(&self) -> bool {
-        false
-    }
     fn name(&self) -> &'static str;
-    /// Check pass-specific preconditions; the runner already validates the graph.
     fn validate_input(&self, _graph: &CompileGraph) -> Result<(), String> {
         Ok(())
     }
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String>;
-
-    /// Return true only when the pass keeps these derived records valid.
-    fn preserves_dust_paths(&self) -> bool {
-        false
-    }
-
-    /// Return true only when the pass keeps the callback indices valid.
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        false
-    }
-
-    /// Preserve only when fixed site geometry and canonical bindings are unchanged.
-    fn preserves_wire_query_facts(&self) -> bool {
-        false
-    }
-
-    /// Preserve only when component-site roots and canonical hop bindings stay valid.
-    fn preserves_wire_hops(&self) -> bool {
-        false
-    }
-
-    /// Preserve only when the private reset footprint, inputs and ordered routes stay valid.
-    fn preserves_instant_resets(&self) -> bool {
-        false
-    }
 }
 
 #[allow(dead_code)]
@@ -77,10 +45,54 @@ pub(crate) struct PassContext<'a> {
     pub(crate) entry: &'a EntryState,
 }
 
+/// The variant determines access and invalidation; passes declare no preservation flags.
+pub(crate) enum Pass {
+    Rewrite(Box<dyn GraphPass>),
+    Build(Box<dyn planning::PlanBuilder>),
+}
+
+impl Pass {
+    pub(crate) fn rewrite(pass: impl GraphPass + 'static) -> Self {
+        Self::Rewrite(Box::new(pass))
+    }
+
+    pub(crate) fn build(builder: impl planning::PlanBuilder + 'static) -> Self {
+        Self::Build(Box::new(builder))
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Rewrite(pass) => pass.name(),
+            Self::Build(builder) => builder.name(),
+        }
+    }
+
+    fn validate_input(&self, graph: &CompileGraph) -> Result<(), String> {
+        match self {
+            Self::Rewrite(pass) => pass.validate_input(graph),
+            Self::Build(_) => Ok(()),
+        }
+    }
+
+    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
+        match self {
+            Self::Rewrite(pass) => pass.run(graph, context),
+            Self::Build(builder) => {
+                let output = builder.build(graph, context)?;
+                if context.monitor.cancelled() {
+                    return Err("cancelled before publishing execution plans".into());
+                }
+                output.publish(graph);
+                Ok(())
+            }
+        }
+    }
+}
+
 /// A graph transformation and whether this pipeline should run it.
 pub(crate) struct PassEntry {
     /// This owns a built-in or developer-defined transformation.
-    pub(crate) pass: Box<dyn GraphPass>,
+    pub(crate) pass: Pass,
     /// This records whether the runner should validate and execute the pass.
     pub(crate) enabled: bool,
 }
@@ -185,34 +197,8 @@ pub(crate) fn run_graph_pipeline(
             monitor.inc_progress();
             continue;
         }
-        // Passes drop derived records by default and must opt in when they preserve their IDs.
-        if !item.pass.preserves_instant_machine() {
-            graph.instant_machine = None;
-        }
-        if !item.pass.preserves_dust_paths() && !graph.dust_paths.is_empty() {
-            graph.dust_paths.clear();
-        }
-        if !item.pass.preserves_instant_regions() {
-            graph.instant_regions.clear();
-            graph.instant_proxies.clear();
-        }
-        if !item.pass.preserves_turbo_callback_indices() {
-            graph.turbo_callback_indices.clear();
-        }
-        if !item.pass.preserves_wire_query_facts() {
-            for wire in &mut graph.wires {
-                wire.query_facts = None;
-            }
-        }
-        if !item.pass.preserves_wire_hops() {
-            for wire in &mut graph.wires {
-                wire.hop_root = None;
-            }
-        }
-        if !item.pass.preserves_instant_resets() {
-            for wire in &mut graph.wires {
-                wire.instant_reset = None;
-            }
+        if matches!(item.pass, Pass::Rewrite(_)) {
+            graph.clear_execution_plans();
         }
         monitor.set_message(name.to_string());
         let start = Instant::now();
@@ -267,24 +253,28 @@ pub(crate) fn run_graph_pipeline(
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let passes: [(usize, Box<dyn GraphPass>); 14] = [
-        (1, Box::new(simplify_guards::GuardAndUpdateReduction)),
-        (1, Box::new(prune_inert_callbacks::PruneInertCallbacks)),
-        (1, Box::new(prune_unhandled_updates::PruneUnhandledUpdates)),
-        (1, Box::new(index_turbo_callbacks::IndexTurboCallbacks)),
-        (1, Box::new(contract_dust_paths::ContractDustPaths)),
-        (2, Box::new(simplify_state_guards::SimplifyStateGuards)),
-        (2, Box::new(specialize_wire_queries::SpecializeWireQueries)),
-        (2, Box::new(compile_wire_hops::CompileWireHops)),
-        (3, Box::new(simplify_instant_resets::SimplifyInstantResets)),
-        (3, Box::new(specialize_instant_pistons::SpecializeInstantPistons)),
-        (3, Box::new(compile_builtin_resets::CompileBuiltinResets)),
-        (3, Box::new(identify_instant_regions::IdentifyInstantRegions)),
-        (3, Box::new(compile_instant_proxies::CompileInstantProxies)),
-        (4, Box::new(compile_instant_machine::CompileInstantMachine)),
+    let rewrites: [(usize, Pass); 7] = [
+        (1, Pass::rewrite(simplify_guards::GuardAndUpdateReduction)),
+        (1, Pass::rewrite(prune_inert_callbacks::PruneInertCallbacks)),
+        (1, Pass::rewrite(prune_unhandled_updates::PruneUnhandledUpdates)),
+        (2, Pass::rewrite(simplify_state_guards::SimplifyStateGuards)),
+        (3, Pass::rewrite(simplify_instant_resets::SimplifyInstantResets)),
+        (3, Pass::rewrite(specialize_instant_pistons::SpecializeInstantPistons)),
+        (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
     ];
-    let entries = passes
+    let plans: [(usize, Pass); 8] = [
+        (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
+        (1, Pass::build(contract_dust_paths::ContractDustPaths)),
+        (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
+        (2, Pass::build(compile_wire_hops::CompileWireHops)),
+        (3, Pass::build(compile_instant_resets::CompileInstantResets)),
+        (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
+        (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
+        (4, Pass::build(compile_instant_machine::CompileInstantMachine)),
+    ];
+    let entries = rewrites
         .into_iter()
+        .chain(plans)
         .map(|(minimum_level, pass)| PassEntry {
             pass,
             enabled: level >= minimum_level,
@@ -295,7 +285,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
     let pipeline = {
         let mut pipeline = pipeline;
         pipeline.entries.push(PassEntry {
-            pass: Box::new(settle_dust_networks::SettleDustNetworks),
+            pass: Pass::rewrite(settle_dust_networks::SettleDustNetworks),
             enabled: true,
         });
         pipeline
@@ -386,18 +376,17 @@ mod tests {
             guards: vec![],
             contacts: vec![],
             routes: vec![],
-            turbo_callback_indices: vec![],
+
             wires: vec![],
-            dust_paths: vec![],
+
             wire_relations: vec![],
             sites: vec![],
             pistons: vec![],
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         }
     }
 
@@ -422,7 +411,7 @@ mod tests {
         run_test_pipeline(
             &mut standalone_graph,
             vec![PassEntry {
-                pass: Box::new(test_pass("standalone", Some(6), standalone_calls.clone())),
+                pass: Pass::rewrite(test_pass("standalone", Some(6), standalone_calls.clone())),
                 enabled: true,
             }],
             &TaskMonitor::default(),
@@ -445,15 +434,15 @@ mod tests {
             &mut graph,
             vec![
                 PassEntry {
-                    pass: Box::new(first),
+                    pass: Pass::rewrite(first),
                     enabled: true,
                 },
                 PassEntry {
-                    pass: Box::new(skipped),
+                    pass: Pass::rewrite(skipped),
                     enabled: false,
                 },
                 PassEntry {
-                    pass: Box::new(second),
+                    pass: Pass::rewrite(second),
                     enabled: true,
                 },
             ],
@@ -490,7 +479,7 @@ mod tests {
         run_test_pipeline(
             &mut graph,
             vec![PassEntry {
-                pass: Box::new(skipped),
+                pass: Pass::rewrite(skipped),
                 enabled: false,
             }],
             &monitor,
@@ -515,7 +504,7 @@ mod tests {
             let calls = Rc::new(Cell::new((0, 0)));
             let entries = if all_disabled {
                 vec![PassEntry {
-                    pass: Box::new(test_pass("disabled", None, calls.clone())),
+                    pass: Pass::rewrite(test_pass("disabled", None, calls.clone())),
                     enabled: false,
                 }]
             } else {
@@ -549,7 +538,7 @@ mod tests {
             run_test_pipeline(
                 &mut graph,
                 vec![PassEntry {
-                    pass: Box::new(test_pass("", None, empty_calls.clone())),
+                    pass: Pass::rewrite(test_pass("", None, empty_calls.clone())),
                     enabled: true,
                 }],
                 &TaskMonitor::default(),
@@ -561,11 +550,11 @@ mod tests {
                 &mut graph,
                 vec![
                     PassEntry {
-                        pass: Box::new(test_pass("same", None, empty_calls.clone())),
+                        pass: Pass::rewrite(test_pass("same", None, empty_calls.clone())),
                         enabled: true,
                     },
                     PassEntry {
-                        pass: Box::new(test_pass("same", None, empty_calls.clone())),
+                        pass: Pass::rewrite(test_pass("same", None, empty_calls.clone())),
                         enabled: true,
                     },
                 ],
@@ -580,7 +569,7 @@ mod tests {
             run_test_pipeline(
                 &mut graph,
                 vec![PassEntry {
-                    pass: Box::new(precondition),
+                    pass: Pass::rewrite(precondition),
                     enabled: true,
                 }],
                 &TaskMonitor::default(),
@@ -595,7 +584,7 @@ mod tests {
             run_test_pipeline(
                 &mut graph,
                 vec![PassEntry {
-                    pass: Box::new(failure),
+                    pass: Pass::rewrite(failure),
                     enabled: true,
                 }],
                 &failure_monitor,
@@ -613,7 +602,7 @@ mod tests {
             run_test_pipeline(
                 &mut graph,
                 vec![PassEntry {
-                    pass: Box::new(malformed),
+                    pass: Pass::rewrite(malformed),
                     enabled: true,
                 }],
                 &TaskMonitor::default(),
@@ -635,11 +624,11 @@ mod tests {
                 &mut graph,
                 vec![
                     PassEntry {
-                        pass: Box::new(cancel),
+                        pass: Pass::rewrite(cancel),
                         enabled: true,
                     },
                     PassEntry {
-                        pass: Box::new(second),
+                        pass: Pass::rewrite(second),
                         enabled: true,
                     },
                 ],
@@ -675,7 +664,7 @@ mod tests {
             vec![],
             Arc::default(),
             Some(PassPipeline::new(vec![PassEntry {
-                pass: Box::new(failure),
+                pass: Pass::rewrite(failure),
                 enabled: true,
             }])),
         );

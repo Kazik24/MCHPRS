@@ -437,6 +437,30 @@ fn target_nbt_and_position_packet_layouts() {
     }
 }
 #[test]
+fn entity_position_sync_resets_relative_movement_without_teleport_flags() {
+    let packet = CEntityPositionSync {
+        entity_id: 128,
+        x: -32.125,
+        y: 64.25,
+        z: 193.5,
+        yaw: 123.5,
+        pitch: -20.25,
+        on_ground: true,
+    }
+    .encode();
+    assert_eq!(packet.packet_id, 0x1f);
+    let mut frame = Cursor::new(&packet.buffer);
+    assert_eq!(frame.read_varint().unwrap(), 128);
+    for expected in [-32.125, 64.25, 193.5, 0.0, 0.0, 0.0] {
+        assert_eq!(frame.read_double().unwrap(), expected);
+    }
+    assert_eq!(frame.read_float().unwrap(), 123.5);
+    assert_eq!(frame.read_float().unwrap(), -20.25);
+    assert!(frame.read_bool().unwrap());
+    assert_eq!(frame.position() as usize, packet.buffer.len());
+}
+
+#[test]
 fn compressed_status_framing_round_trips() {
     for size in [0, 254, 255, 256, 2000] {
         let mut data = vec![];

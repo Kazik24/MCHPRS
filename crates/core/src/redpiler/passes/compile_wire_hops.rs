@@ -16,19 +16,22 @@
 //! Runtime scratch is four bytes per program site per concurrent walk, allocated
 //! lazily and reused; clearing touches only discovered sites, not the full graph.
 
-use super::{GraphPass, PassContext};
+use super::PassContext;
+use super::planning::{PlanBuilder, PlanOutput};
 use crate::redpiler::PreparationTableStatistics;
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::{CompileGraph, SiteId, SiteSource};
 
 /// Compiles wire roots without changing connectivity, state or callback routes.
 pub(crate) struct CompileWireHops;
 
-impl GraphPass for CompileWireHops {
+impl PlanBuilder for CompileWireHops {
     fn name(&self) -> &'static str {
         "compile-wire-hops"
     }
 
-    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
+    fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         let mut roots = vec![None; graph.nodes.len()];
         let mut ambiguous = vec![false; graph.nodes.len()];
         for (index, site) in graph.sites.iter().enumerate() {
@@ -43,11 +46,12 @@ impl GraphPass for CompileWireHops {
         if context.monitor.cancelled() {
             return Err("cancelled before publishing wire hops".into());
         }
-        let mut compiled = 0;
-        for wire in &mut graph.wires {
-            wire.hop_root = roots[wire.node.index()].filter(|_| !ambiguous[wire.node.index()]);
-            compiled += usize::from(wire.hop_root.is_some());
-        }
+        let bindings: Vec<_> = graph
+            .wires
+            .iter()
+            .map(|wire| roots[wire.node.index()].filter(|_| !ambiguous[wire.node.index()]))
+            .collect();
+        let compiled = bindings.iter().flatten().count();
         context.monitor.record_preparation_tables(vec![PreparationTableStatistics {
             stage: "compiled wire hops",
             table: "bound wires".into(),
@@ -55,23 +59,7 @@ impl GraphPass for CompileWireHops {
             capacity: compiled,
             estimated_bytes: 0, // Root storage is included in the existing WirePlan table.
         }]);
-        Ok(())
-    }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
-    }
-    fn preserves_wire_query_facts(&self) -> bool {
-        true
-    }
-    fn preserves_instant_resets(&self) -> bool {
-        true
-    }
-    fn preserves_wire_hops(&self) -> bool {
-        true
+        Ok(PlanOutput::WireHops(bindings))
     }
 }
 
@@ -79,6 +67,7 @@ impl GraphPass for CompileWireHops {
 mod tests {
     use super::*;
     use crate::plot::PlotWorld;
+    use crate::redpiler::passes::GraphPass;
     use crate::redpiler::program_graph::{EntryState, GraphBuildError};
     use crate::redpiler::{TaskMonitor, passes};
     use crate::world::{World, storage::Chunk};
@@ -122,16 +111,16 @@ mod tests {
         let mut graph = graph();
         compile_hops(&mut graph);
         graph.validate().unwrap();
-        let saved = graph.wires[0].hop_root;
-        for root in [SiteId::new(u32::MAX), graph.wires[1].hop_root.unwrap()] {
-            graph.wires[0].hop_root = Some(root);
+        let saved = graph.wires[0].execution.hop_root;
+        for root in [SiteId::new(u32::MAX), graph.wires[1].execution.hop_root.unwrap()] {
+            graph.wires[0].execution.hop_root = Some(root);
             assert!(matches!(graph.validate(), Err(GraphBuildError::InvalidWireHopRoot { wire: 0 })));
         }
-        graph.wires[0].hop_root = saved;
+        graph.wires[0].execution.hop_root = saved;
         graph.sites.push(graph.sites[saved.unwrap().index()]);
         assert!(matches!(graph.validate(), Err(GraphBuildError::InvalidWireHopRoot { wire: 0 })));
         compile_hops(&mut graph);
-        assert_eq!(graph.wires[0].hop_root, None);
+        assert_eq!(graph.wires[0].execution.hop_root, None);
     }
 
     #[test]
@@ -153,11 +142,11 @@ mod tests {
         };
         for enabled in [false, true] {
             let pipeline = passes::PassPipeline::new(vec![passes::PassEntry {
-                pass: Box::new(Identity),
+                pass: Pass::rewrite(Identity),
                 enabled,
             }]);
             passes::run_graph_pipeline(&mut graph, &Default::default(), &entry, &pipeline, &TaskMonitor::default()).unwrap();
-            assert!(graph.wires.iter().all(|wire| wire.hop_root.is_some() != enabled));
+            assert!(graph.wires.iter().all(|wire| wire.execution.hop_root.is_some() != enabled));
         }
     }
 

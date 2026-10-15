@@ -18,6 +18,8 @@ use super::utils::child_before_parent_order;
 use super::{GraphPass, PassContext};
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::components::NodeType;
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::{
     CallbackEdgeRef, CallbackReceiver, CircuitNodeKind, CompileGraph, DeliveryKind, Guard, GuardId, LinkKind, OperandView, PowerLink, PowerPort,
     PowerTarget, RouteId, SiteSource, SiteTest,
@@ -499,60 +501,38 @@ mod tests {
     use mchprs_blocks::BlockPos;
 
     #[test]
-    fn optimization_levels_select_pass_tiers() {
-        let unoptimized = super::super::default_graph_pipeline(&CompilerOptions::default());
-        assert_eq!(unoptimized.entries.len(), 14);
-        assert!(unoptimized.entries.iter().all(|entry| !entry.enabled));
-
-        let optimized = super::super::default_graph_pipeline(&CompilerOptions {
-            optimization_level: Some(1),
-            ..Default::default()
-        });
-        assert_eq!(optimized.entries.len(), 14);
-        assert!(optimized.entries.iter().take(5).all(|entry| entry.enabled));
-        assert!(optimized.entries[5..].iter().all(|entry| !entry.enabled));
-        assert_eq!(
-            optimized.entries.iter().map(|entry| entry.pass.name()).collect::<Vec<_>>(),
-            [
-                "guard-and-update-reduction",
-                "prune-inert-callbacks",
-                "prune-unhandled-updates",
-                "index-turbo-callbacks",
-                "contract-static-dust-paths",
-                "simplify-state-guards",
-                "specialize-wire-queries",
-                "compile-wire-hops",
-                "simplify-instant-resets",
-                "specialize-instant-pistons",
-                "compile-builtin-resets",
-                "identify-instant-regions",
-                "compile-instant-proxies",
-                "compile-instant-machine",
-            ]
-        );
-
-        let opt_2 = super::super::default_graph_pipeline(&CompilerOptions {
-            optimization_level: Some(2),
-            ..Default::default()
-        });
-        assert!(opt_2.entries.iter().take(8).all(|entry| entry.enabled));
-        assert!(!opt_2.entries[8].enabled);
-
-        for level in [3, 4, 5] {
-            let pipeline = super::super::default_graph_pipeline(&CompilerOptions {
-                optimization_level: Some(level),
+    fn optimization_levels_select_rewrites_before_dependent_plan_builders() {
+        use crate::redpiler::passes::{Pass, default_graph_pipeline};
+        let expected = [
+            (1, "guard-and-update-reduction"),
+            (1, "prune-inert-callbacks"),
+            (1, "prune-unhandled-updates"),
+            (2, "simplify-state-guards"),
+            (3, "simplify-instant-resets"),
+            (3, "specialize-instant-pistons"),
+            (3, "compile-builtin-resets"),
+            (1, "index-turbo-callbacks"),
+            (1, "contract-static-dust-paths"),
+            (2, "specialize-wire-queries"),
+            (2, "compile-wire-hops"),
+            (3, "compile-instant-resets"),
+            (3, "identify-instant-regions"),
+            (3, "compile-instant-proxies"),
+            (4, "compile-instant-machine"),
+        ];
+        for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {
+            let pipeline = default_graph_pipeline(&CompilerOptions {
+                optimization_level: level,
                 ..Default::default()
             });
-            assert!(pipeline.entries[..13].iter().all(|entry| entry.enabled));
-            assert_eq!(pipeline.entries[13].pass.name(), "compile-instant-machine");
-            assert_eq!(pipeline.entries[13].enabled, level >= 4);
+            #[cfg(not(feature = "unsafe-turbo-fixed-point"))]
+            assert_eq!(pipeline.entries.len(), expected.len());
+            for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
+                assert_eq!(entry.pass.name(), name);
+                assert_eq!(entry.enabled, level.is_none_or(|level| level >= minimum), "{name} at {level:?}");
+                assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 7);
+            }
         }
-
-        let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
-            optimization_level: None,
-            ..Default::default()
-        });
-        assert!(max_optimized.entries.iter().all(|entry| entry.enabled));
     }
 
     #[test]
@@ -796,14 +776,14 @@ mod tests {
             pending_ticks: Vec::new(),
         };
         let disabled = PassPipeline::new(vec![PassEntry {
-            pass: Box::new(GuardAndUpdateReduction),
+            pass: Pass::rewrite(GuardAndUpdateReduction),
             enabled: false,
         }]);
         super::super::run_graph_pipeline(&mut graph, &options, &entry, &disabled, &TaskMonitor::default()).unwrap();
         assert_eq!(graph, input);
 
         let enabled = PassPipeline::new(vec![PassEntry {
-            pass: Box::new(GuardAndUpdateReduction),
+            pass: Pass::rewrite(GuardAndUpdateReduction),
             enabled: true,
         }]);
         super::super::run_graph_pipeline(
@@ -916,9 +896,9 @@ mod tests {
                 source: node,
                 deliveries: Vec::new().into_boxed_slice(),
             }],
-            turbo_callback_indices: vec![],
+
             wires: Vec::new(),
-            dust_paths: Vec::new(),
+
             wire_relations: Vec::new(),
             sites: vec![SiteSpec {
                 position,
@@ -929,9 +909,8 @@ mod tests {
             resources: Vec::new(),
             initial_pistons: Vec::new(),
             initial_resources: Vec::new(),
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         }
     }
 }

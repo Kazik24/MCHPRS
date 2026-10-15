@@ -90,21 +90,4 @@ impl GraphPass for CompileBuiltinResets {
         }]);
         Ok(())
     }
-
-    fn preserves_wire_hops(&self) -> bool {
-        true
-    }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
-    }
-    fn preserves_wire_query_facts(&self) -> bool {
-        true
-    }
-    fn preserves_instant_resets(&self) -> bool {
-        true
-    }
 }

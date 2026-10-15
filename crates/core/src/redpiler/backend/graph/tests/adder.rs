@@ -1,4 +1,5 @@
 //! Full adder fixture replays against the interpreter and compact graph inventory.
+use crate::redpiler::passes::Pass;
 #[path = "builtin_reset.rs"]
 mod builtin_reset_tests;
 #[path = "fixed_point_adder.rs"]
@@ -405,23 +406,27 @@ fn compile_with_instant_pass(circuit: &Adder, world: &PlotWorld, ticks: Vec<Tick
         passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).map_err(|error| error.to_string())?;
     let pipeline = passes::PassPipeline::new(vec![
         passes::PassEntry {
-            pass: Box::new(passes::simplify_instant_resets::SimplifyInstantResets),
+            pass: Pass::rewrite(passes::simplify_instant_resets::SimplifyInstantResets),
             enabled: true,
         },
         passes::PassEntry {
-            pass: Box::new(passes::specialize_instant_pistons::SpecializeInstantPistons),
+            pass: Pass::rewrite(passes::specialize_instant_pistons::SpecializeInstantPistons),
             enabled: true,
         },
         passes::PassEntry {
-            pass: Box::new(passes::compile_builtin_resets::CompileBuiltinResets),
+            pass: Pass::rewrite(passes::compile_builtin_resets::CompileBuiltinResets),
             enabled: true,
         },
         passes::PassEntry {
-            pass: Box::new(passes::identify_instant_regions::IdentifyInstantRegions),
+            pass: Pass::build(passes::compile_instant_resets::CompileInstantResets),
             enabled: true,
         },
         passes::PassEntry {
-            pass: Box::new(passes::compile_instant_proxies::CompileInstantProxies),
+            pass: Pass::build(passes::identify_instant_regions::IdentifyInstantRegions),
+            enabled: true,
+        },
+        passes::PassEntry {
+            pass: Pass::build(passes::compile_instant_proxies::CompileInstantProxies),
             enabled: true,
         },
     ]);

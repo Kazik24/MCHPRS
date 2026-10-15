@@ -98,7 +98,7 @@ fn builtin_resets_keep_one_clock_per_shared_driver_and_reject_output_circuits() 
     let mut mismatched = graph.clone();
     mismatched.nodes[observer.index()].raw_state = Some(Block::Stone {}.get_id());
     for wire in &mut mismatched.wires {
-        wire.query_facts = None;
+        wire.execution.query_facts = None;
     }
     mismatched.validate().unwrap();
     compile_resets(&mut mismatched, &entry, &TaskMonitor::default()).unwrap();

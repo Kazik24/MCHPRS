@@ -3,7 +3,7 @@
 pub(crate) mod instant_mechanisms;
 
 use crate::redpiler::analysis::{AnalysisError, MAX_GRAPH_PREPARATION_BYTES, callbacks, electrical, geometry};
-use crate::redpiler::passes::index_turbo_callbacks::TurboCallbackIndex;
+use crate::redpiler::program_graph::TurboCallbackIndex;
 use crate::redpiler::program_graph::{
     ComparatorInputPlan, CompileGraph, ContactSpec, DustPathId, DustPathPlan, GraphBuildError, Guard, GuardId, NodeSpec, PistonId, PistonSpec,
     PowerLink, Profile, ResourceId, ResourceSpec, Route, RouteDelivery, SiteSpec, WirePlan,
@@ -219,23 +219,23 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         table::<crate::redpiler::program_graph::InstantMachine>(
             "lowering input",
             "instant proof + compact kernel",
-            usize::from(graph.instant_machine.is_some()),
-            usize::from(graph.instant_machine.is_some()),
-            graph.instant_machine.as_ref().map_or(0, |machine| machine.estimated_bytes()),
+            usize::from(graph.plans.instant.machine.is_some()),
+            usize::from(graph.plans.instant.machine.is_some()),
+            graph.plans.instant.machine.as_ref().map_or(0, |machine| machine.estimated_bytes()),
         ),
         table::<crate::redpiler::program_graph::InstantRegion>(
             "lowering input",
             "instant regions",
-            graph.instant_regions.len(),
-            graph.instant_regions.capacity(),
-            instant_region_bytes(&graph.instant_regions),
+            graph.plans.instant.regions.len(),
+            graph.plans.instant.regions.capacity(),
+            instant_region_bytes(&graph.plans.instant.regions),
         ),
         table::<crate::redpiler::program_graph::InstantProxy>(
             "lowering input",
             "instant proxies",
-            graph.instant_proxies.len(),
-            graph.instant_proxies.capacity(),
-            instant_proxy_bytes(&graph.instant_proxies),
+            graph.plans.instant.proxies.len(),
+            graph.plans.instant.proxies.capacity(),
+            instant_proxy_bytes(&graph.plans.instant.proxies),
         ),
         table::<crate::redpiler::program_graph::CircuitNodeDraft>("lowering input", "nodes", graph.nodes.len(), graph.nodes.capacity(), 0),
         table::<crate::redpiler::program_graph::LinkSpec>("lowering input", "callback links", graph.links.len(), graph.links.capacity(), 0),
@@ -282,16 +282,17 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         table::<Option<TurboCallbackIndex>>(
             "lowering input",
             "Turbo callback indices",
-            graph.turbo_callback_indices.len(),
-            graph.turbo_callback_indices.capacity(),
+            graph.plans.turbo_callback_indices.len(),
+            graph.plans.turbo_callback_indices.capacity(),
             0,
         ),
         table::<DustPathPlan>(
             "lowering input",
             "dust paths",
-            graph.dust_paths.len(),
-            graph.dust_paths.capacity(),
+            graph.plans.dust_paths.len(),
+            graph.plans.dust_paths.capacity(),
             graph
+                .plans
                 .dust_paths
                 .iter()
                 .map(|path| boxed_bytes::<crate::redpiler::program_graph::NodeId>(path.wires.len()))
@@ -356,6 +357,13 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
+        table::<crate::redpiler::program_graph::KernelExecution>(
+            "lowering",
+            "instant active effects",
+            usize::from(program.instant_execution().is_some()),
+            usize::from(program.instant_execution().is_some()),
+            program.instant_execution().map_or(0, |execution| execution.estimated_bytes()),
+        ),
         table::<crate::redpiler::program_graph::InstantKernel>(
             "lowering",
             "instant kernel",

@@ -25,20 +25,23 @@ fn fixture_graph() -> (PlotWorld, CompileGraph, (BlockPos, BlockPos)) {
         &monitor,
     )
     .unwrap();
-    assert_eq!(prepared.graph.wires.iter().filter(|wire| wire.instant_reset.is_some()).count(), 1);
+    assert_eq!(
+        prepared.graph.wires.iter().filter(|wire| wire.execution.instant_reset.is_some()).count(),
+        1
+    );
     (world, prepared.graph, bounds)
 }
 
 fn output_plan(graph: &CompileGraph) -> (NodeId, InstantResetPlan) {
-    let wire = graph.wires.iter().find(|wire| wire.instant_reset.is_some()).unwrap();
-    (wire.node, wire.instant_reset.unwrap())
+    let wire = graph.wires.iter().find(|wire| wire.execution.instant_reset.is_some()).unwrap();
+    (wire.node, wire.execution.instant_reset.unwrap())
 }
 
 fn backend(graph: &CompileGraph, certified: bool) -> GraphBackend {
     let mut graph = graph.clone();
     if !certified {
         for wire in &mut graph.wires {
-            wire.instant_reset = None;
+            wire.execution.instant_reset = None;
         }
     }
     let (program, state) = graph.lower().unwrap();

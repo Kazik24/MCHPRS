@@ -12,7 +12,7 @@ This finite enumeration is restricted to the small first family. It is not a str
 
 ## Runtime and observation
 
-On hot ticks, the kernel evaluates only the roots needed for selected Electrical component outputs, dirty-node deltas, ordered presentation effects and logical counters. The selected graph inventory is closed, so internal wire and piston callbacks have no independent runtime reader after their output effects have been compiled. Private wire, piston, resource, revision and scheduler values are cold reconstruction roots, evaluated for projection, inspection, flush, fallback or interpreter handoff.
+Lowering specializes the Boolean conditions for each certified frozen input assignment through `mchprs_redpiler_opt`. Equal resulting phase lists share storage. On hot ticks, the kernel selects an unconditional list of Electrical writes, dirty-node touches, ordered presentation effects and literal logical counters; it does not evaluate condition expressions. The selected graph inventory is closed, so internal wire and piston callbacks have no independent runtime reader after their output effects have been compiled. Private wire, piston, resource, revision and scheduler values are cold reconstruction roots, evaluated for projection, inspection, flush, fallback or interpreter handoff.
 
 Every external control change deoptimizes before its effects: the backend reconstructs the exact current `CircuitState` and future work, then lets ordinary Graph handle the action. The same reconstruction supports reset cuts, native continuation and direct projection. Dirty bits and queued presentation are append-only; hot phases OR and append their exact deltas to the live buffers. Near clock overflow the backend deoptimizes before deadlines stop being representable.
 
@@ -88,3 +88,29 @@ cargo test -p mchprs_core --lib cpu_bubblesort_o4_completes_sort_and_preserves_i
 The alternating script, pinned executables, individual JSON reports and summary are local artifacts in `target/compact-kernel-bench/`; the previous executable remains in `target/closed-instant-bench/`. The script selects the old executable's O3 tier and the new executable's O4 tier. Compact executable SHA-256: `9af53977dccb5c3d4f6c418ed9b5ccc00f609229b168f99935b1759df02df111`. Previous executable SHA-256: `02f541d7e35b747f855445211f944e831a17e31ec4ad4bc0973d4ea00db1acdf`.
 
 Not run: full-workspace tests, new sampled profiling, broad fuzzing, peak-RSS measurement or larger-region kernel extraction. Source schematics and Cargo dependencies were preserved; the O4 exported-graph fixture was added. Changes are uncommitted.
+
+
+## Active-effect lowering through redpiler_opt (2026-10-15)
+
+The source kernel and its cold reconstruction roots remain unchanged. Lowering translates Boolean constant/Select conditions into the existing pure optimizer, binds the frozen controls, and compiles only active occurrences into immutable `KernelExecution` lists. Scalar values retain the source kernel's exact u64 semantics. Root order and duplicate effects survive specialization; dirty touches remain distinct from value changes. This is code generation, not permission to remove callbacks from general Graph execution.
+
+This uses the already certified maximum of three data controls (eight assignments). Larger interfaces need structural/symbolic compilation, not a larger truth-table limit. The optimizer's public `specialize` API accepts partial bindings in declared input order; exhaustive tests compare every compatible assignment, including budget fallback. Invalid graphs are rejected before specialization.
+
+Across all eight ADDER1BIT assignments and 17 phases, lowering reduces candidate write/touch/effect entries from 3,464 to 922 active entries. The resulting tables occupy 6,224 estimated bytes; retained lowered storage including the object header increases from 129,060 to 135,332 bytes. These counts are static aggregates, not dynamic event savings or RSS.
+
+Five alternating release pairs on the same prepared held-input carry case timed 512 kernel ticks, excluding setup, activation, flush and checks:
+
+| Lowering | Median | Range |
+| --- | ---: | ---: |
+| Previous conditional compact kernel | 0.0799 ms | 0.0751–0.0808 ms |
+| Specialized active-effect lists | 0.0421 ms | 0.0400–0.0431 ms |
+
+The ratio of medians is **1.90×**, with every pair favoring the specialized lists. Both executors retain 512 accelerated ticks, 935 logical scheduled dispatches, 1,197 accepted actions and 1,190 publications. Harness output, memory, pending-work and interpreter-continuation checks passed in every sample. This measures the admitted small kernel, not arithmetic transaction throughput or CPU acceleration; ADDER11BIT, Divider and CPU still require larger-region kernel extraction.
+
+The full Redpiler suite passed **344 tests, 9 ignored**, in both debug and release. The optimizer's **10 tests** passed in release as well as debug. The new lowering test checks every assignment and phase against the source DAG, including ordered duplicate effects. Existing independent projection, flush, revision-origin and deoptimization tests remain enabled.
+
+Reproduction: `cargo test -p mchprs_redpiler_opt --release --locked`; the standard debug/release Redpiler commands above; and the local alternating benchmark script `target/active-instant-effects/run.ps1`. Individual reports and summary are in that directory. Baseline executable SHA-256 is `9af53977dccb5c3d4f6c418ed9b5ccc00f609229b168f99935b1759df02df111`; specialized executable is `e98a24ba3cb332b2d9cf28653a6f1c172c33fba54ff2caa1a4c0ed140db89dce`.
+
+Not repeated for this lowering: full CPU sorting, broad fuzzing, peak RSS or sampled profiling. General Graph execution is unchanged.
+
+Final integration caveat: subsequent concurrent pass-metadata edits changed the combined worktree after the successful test/benchmark snapshots. The final graph-trace core check and server check failed on incomplete metadata migration (including DTO/runtime `plans` references and pass API names). Those edits were preserved; the completed suite results above do not certify the later combined source. Focused formatting also reports drift in concurrently edited files; `git diff --check` passes.

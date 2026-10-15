@@ -40,6 +40,7 @@ name = "instant"
 harness = false
 
 [dependencies]
+mchprs_redpiler_opt = { path = "../redpiler_opt" }
 hmac = "0.12"
 sha2 = "0.10"
 mchprs_proc_macros = { path = "../proc_macros" }

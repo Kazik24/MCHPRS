@@ -162,7 +162,7 @@ impl Plot {
                     false
                 };
                 let position = moved.then(|| {
-                    CEntityTeleport {
+                    CEntityPositionSync {
                         entity_id: model.entity_id as i32,
                         x: player.pos.x,
                         y: player.pos.y,

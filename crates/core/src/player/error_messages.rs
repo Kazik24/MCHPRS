@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 static COORDINATES: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"BlockPos \{ x: (-?\d+), y: (-?\d+), z: (-?\d+) \}|\((-?\d+),\s*(-?\d+),\s*(-?\d+)\)").unwrap());
 
-/// Keep diagnostics readable while letting the normal teleport command enforce permissions.
+/// Keep diagnostics readable while linking block positions to the highlight command.
 pub(super) fn component(message: &str) -> Value {
     let mut extra = Vec::new();
     let mut end = 0;
@@ -18,11 +18,11 @@ pub(super) fn component(message: &str) -> Value {
         };
         extra.push(json!({"text": &message[end..span.start()]}));
         let [x, y, z] = coordinates.as_slice() else { unreachable!() };
-        let teleport = format!("/tp {} {} {} --highlight", f64::from(*x) + 0.5, f64::from(*y) + 0.5, f64::from(*z) + 0.5);
+        let highlight = format!("/hl {x} {y} {z}");
         extra.push(json!({
             "text": span.as_str(), "color": "aqua", "underlined": true,
-            "click_event": {"action": "run_command", "command": format!("{teleport}-only")},
-            "insertion": teleport,
+            "click_event": {"action": "run_command", "command": highlight},
+            "insertion": format!("{highlight} --tp"),
             "hover_event": {"action": "show_text", "value": {"text": "Click to highlight. Shift-click, then Enter to teleport."}}
         }));
         end = span.end();
@@ -44,10 +44,10 @@ mod tests {
         let result = component(message);
         let parts = result["extra"].as_array().unwrap();
         assert_eq!(parts.iter().map(|p| p["text"].as_str().unwrap()).collect::<String>(), message);
-        assert_eq!(parts[1]["click_event"]["command"], "/tp -19.5 30.5 40.5 --highlight-only");
-        assert_eq!(parts[3]["click_event"]["command"], "/tp 5.5 6.5 -6.5 --highlight-only");
-        assert_eq!(parts[1]["insertion"], "/tp -19.5 30.5 40.5 --highlight");
-        assert_eq!(parts[3]["insertion"], "/tp 5.5 6.5 -6.5 --highlight");
+        assert_eq!(parts[1]["click_event"]["command"], "/hl -20 30 40");
+        assert_eq!(parts[3]["click_event"]["command"], "/hl 5 6 -7");
+        assert_eq!(parts[1]["insertion"], "/hl -20 30 40 --tp");
+        assert_eq!(parts[3]["insertion"], "/hl 5 6 -7 --tp");
         assert_eq!(
             parts[1]["hover_event"]["value"]["text"],
             "Click to highlight. Shift-click, then Enter to teleport."

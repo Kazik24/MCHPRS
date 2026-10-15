@@ -70,7 +70,7 @@ fn divider_stable_regions_report_complete_and_incomplete_groups() {
         .map(|m| m.piston)
         .collect();
     let mut owned = BTreeSet::new();
-    for region in &graph.instant_regions {
+    for region in &graph.plans.instant.regions {
         for actor in &region.actors {
             assert!(owned.insert(*actor), "an actor has only one owner");
             if region.stable_inputs {
@@ -78,15 +78,22 @@ fn divider_stable_regions_report_complete_and_incomplete_groups() {
             }
         }
     }
-    let mut composed_sizes: Vec<_> = graph.instant_regions.iter().filter(|r| r.stable_inputs).map(|r| r.actors.len()).collect();
+    let mut composed_sizes: Vec<_> = graph
+        .plans
+        .instant
+        .regions
+        .iter()
+        .filter(|r| r.stable_inputs)
+        .map(|r| r.actors.len())
+        .collect();
     composed_sizes.sort_unstable_by(|a, b| b.cmp(a));
     println!(
         "Divider actors={} recognized={} owned={} regions={} proxies={} composed_sizes={composed_sizes:?}",
         graph.pistons.len(),
         recognized.len(),
         owned.len(),
-        graph.instant_regions.len(),
-        graph.instant_proxies.len()
+        graph.plans.instant.regions.len(),
+        graph.plans.instant.proxies.len()
     );
     graph.validate().unwrap();
 }

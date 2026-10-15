@@ -423,48 +423,35 @@ impl GraphBackend {
             self.leave_kernel_before_general_execution();
             return false;
         }
-        let Some(kernel) = self.program.instant_kernel().cloned() else {
-            panic!("active kernel cursor has no lowered kernel");
+        let Some(execution) = self.program.instant_execution().cloned() else {
+            panic!("active kernel cursor has no lowered execution plan");
         };
-        let Some(frame) = kernel.phases.get(phase) else {
+        let Some(frame) = execution.phase(mask, phase) else {
             self.leave_kernel_before_general_execution();
             return false;
         };
 
         graph_trace!(self.clock.logical_tick, self.clock.phase, "instant kernel phase={phase}");
-        for delta in &frame.components {
-            if kernel.evaluate(delta.changed, mask) != 0 {
-                let value = kernel.evaluate(delta.value, mask) as u16;
-                assert!(
-                    write_component(&mut self.state.components[delta.node.index()], value),
-                    "validated kernel component root must match its compiled owner"
-                );
-            }
+        for &(node, value) in &frame.writes {
+            assert!(
+                write_component(&mut self.state.components[node.index()], value),
+                "validated kernel component root must match its compiled owner"
+            );
         }
-        for &(node, changed) in &frame.dirty {
-            if kernel.evaluate(changed, mask) != 0 {
-                self.dirty[node.index()] = true;
-            }
+        for &node in &frame.dirty {
+            self.dirty[node.index()] = true;
         }
-        for effect in &frame.effects {
-            if kernel.evaluate(effect.enabled, mask) != 0 {
-                self.accepted(
-                    PistonRequest {
-                        piston: effect.piston,
-                        action: effect.action,
-                    },
-                    effect.extended,
-                );
-            }
+        for &(piston, action, extended) in &frame.effects {
+            self.accepted(PistonRequest { piston, action }, extended);
         }
         self.clock.logical_tick += 1;
         self.counts.ticks += 1;
-        self.counts.scheduled_ticks += kernel.evaluate(frame.scheduled, mask);
-        self.counts.deferred_publications += kernel.evaluate(frame.published, mask);
+        self.counts.scheduled_ticks += frame.scheduled;
+        self.counts.deferred_publications += frame.published;
         self.counts.instant_transitions += 1;
         let cursor = self.kernel_cursor.as_mut().expect("active kernel cursor remains installed");
-        if phase + 1 == kernel.phases.len() {
-            cursor.phase = usize::from(kernel.prefix);
+        if phase + 1 == execution.phase_count {
+            cursor.phase = execution.prefix;
             cursor.cycles = cursor.cycles.wrapping_add(1);
         } else {
             cursor.phase = phase + 1;

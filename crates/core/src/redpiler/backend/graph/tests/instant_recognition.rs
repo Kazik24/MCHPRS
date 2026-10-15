@@ -1,6 +1,7 @@
 //! Exact power-channel equivalence, independent of prepared arithmetic protocols.
 use super::*;
 use crate::redpiler::CompilerOptions;
+use crate::redpiler::passes::Pass;
 
 #[test]
 fn compiled_hop_observations_match_all_adder_contact_alternatives() {
@@ -84,7 +85,7 @@ fn every_instant_adder_power_channel_matches_across_strengths_contacts_and_saved
             pending_ticks: vec![],
         },
         &passes::PassPipeline::new(vec![passes::PassEntry {
-            pass: Box::new(passes::specialize_instant_pistons::SpecializeInstantPistons),
+            pass: Pass::rewrite(passes::specialize_instant_pistons::SpecializeInstantPistons),
             enabled: true,
         }]),
         &TaskMonitor::default(),
@@ -157,7 +158,13 @@ fn compiled_adder_wire_transfers_match_general_queries_before_and_after_contact_
     )
     .unwrap();
     assert_eq!(prepared.graph.wires.len(), 32);
-    assert!(prepared.graph.wires.iter().all(|wire| wire.query_facts.unwrap().transfer.is_some()));
+    assert!(
+        prepared
+            .graph
+            .wires
+            .iter()
+            .all(|wire| wire.execution.query_facts.unwrap().transfer.is_some())
+    );
     let (program, state) = prepared.graph.lower().unwrap();
     let mut backend = GraphBackend::new(program, state, 0).unwrap();
     let plans = backend.program.wires().to_vec();
@@ -185,7 +192,7 @@ fn compiled_adder_wire_transfers_match_general_queries_before_and_after_contact_
             }
             for plan in &plans {
                 let mut general = plan.clone();
-                general.query_facts = None;
+                general.execution.query_facts = None;
                 assert_eq!(backend.seed_power(plan), backend.seed_power_general(&general));
                 let mut walk = WireWalk::new();
                 let root = backend.component_sites[plan.node.index()].unwrap();

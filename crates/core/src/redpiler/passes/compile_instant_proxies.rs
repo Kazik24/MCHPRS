@@ -7,36 +7,18 @@
 //! deferred publications and imported clock work remain. This is not an atomic gate.
 //! Each instruction is rederived and validated against the original graph before lowering.
 //! Unsupported groups retain general execution; only explicitly opted-in regions carry a protocol promise.
-use super::{GraphPass, PassContext};
+use super::PassContext;
+use super::planning::{PlanBuilder, PlanOutput};
 use crate::redpiler::program_graph::CompileGraph;
 
 pub(crate) struct CompileInstantProxies;
 
-impl GraphPass for CompileInstantProxies {
+impl PlanBuilder for CompileInstantProxies {
     fn name(&self) -> &'static str {
         "compile-instant-proxies"
     }
-    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
-        let proxies = crate::redpiler::analysis::instant_regions::infer_proxies(graph, &graph.instant_regions, context.monitor)?;
-        graph.instant_proxies = proxies;
-        Ok(())
-    }
-    fn preserves_instant_regions(&self) -> bool {
-        true
-    }
-    fn preserves_wire_hops(&self) -> bool {
-        true
-    }
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
-    }
-    fn preserves_wire_query_facts(&self) -> bool {
-        true
-    }
-    fn preserves_instant_resets(&self) -> bool {
-        true
+    fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
+        let proxies = crate::redpiler::analysis::instant_regions::infer_proxies(graph, &graph.plans.instant.regions, context.monitor)?;
+        Ok(PlanOutput::Proxies(proxies))
     }
 }

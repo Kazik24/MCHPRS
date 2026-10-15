@@ -384,6 +384,70 @@ fn redbox_teleport_restores_exact_position_and_facing_and_transfers_out_of_plots
 }
 
 #[test]
+fn teleport_resets_observers_relative_movement_base() {
+    for compressed in [false, true] {
+        let (mut plot, mut peer) = fixture(compressed);
+        let observer = connection(compressed).unwrap();
+        let mut viewer = Player::test_player(observer.player);
+        viewer.uuid = 2;
+        plot.players.push(viewer);
+        let mut observer_peer = observer.peer;
+        let destination = PlayerPos::new(192.125, 64.25, 193.5);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.priv_message_receiver = receiver;
+        sender
+            .send(PrivMessage::RedBoxTeleport {
+                uuid: plot.players[0].uuid,
+                position: crate::redbox::Position::new("plot_0_0", destination, 123.5, -20.25),
+            })
+            .unwrap();
+        plot.handle_messages();
+        let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+        assert_eq!(id, 0x41);
+        plot.handle_teleport_confirm(
+            STeleportConfirm {
+                id: frame.read_varint().unwrap(),
+            },
+            0,
+        );
+
+        let (id, mut frame) = read_frame(&mut observer_peer, compressed).unwrap();
+        // 1.21.5 Teleport Entity (0x76) leaves the client's relative movement base unchanged.
+        assert_eq!(id, 0x1f);
+        assert_eq!(frame.read_varint().unwrap(), plot.players[0].entity_id as i32);
+        let base = [frame.read_double().unwrap(), frame.read_double().unwrap(), frame.read_double().unwrap()];
+        assert_eq!(base, [destination.x, destination.y, destination.z]);
+        for _ in 0..3 {
+            assert_eq!(frame.read_double().unwrap(), 0.0);
+        }
+        assert_eq!(frame.read_float().unwrap(), 123.5);
+        assert_eq!(frame.read_float().unwrap(), -20.25);
+        assert_eq!(frame.read_bool().unwrap(), plot.players[0].on_ground);
+        assert_eq!(frame.position() as usize, frame.get_ref().len());
+
+        let next = PlayerPos::new(192.875, 64.5, 193.25);
+        plot.handle_player_position(
+            SPlayerPosition {
+                x: next.x,
+                y: next.y,
+                z: next.z,
+                on_ground: true,
+            },
+            0,
+        );
+        let (id, mut frame) = read_frame(&mut observer_peer, compressed).unwrap();
+        assert_eq!(id, 0x2e);
+        assert_eq!(frame.read_varint().unwrap(), plot.players[0].entity_id as i32);
+        for (base, expected) in base.into_iter().zip([next.x, next.y, next.z]) {
+            let delta = frame.read_short().unwrap();
+            assert_eq!(base + f64::from(delta) / 4096.0, expected);
+        }
+        assert!(frame.read_bool().unwrap());
+        assert_eq!(frame.position() as usize, frame.get_ref().len());
+    }
+}
+
+#[test]
 fn redpiler_flag_suggestions_reach_the_chat_client() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);

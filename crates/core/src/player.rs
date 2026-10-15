@@ -798,7 +798,7 @@ impl Player {
     }
 
     pub(crate) fn entity_teleport_packet(&self) -> PacketEncoder {
-        CEntityTeleport {
+        CEntityPositionSync {
             entity_id: self.entity_id as i32,
             x: self.pos.x,
             y: self.pos.y,

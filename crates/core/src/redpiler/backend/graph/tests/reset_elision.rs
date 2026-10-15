@@ -22,8 +22,8 @@ fn reset_erasure_backend(circuit: &Adder, world: &PlotWorld, erase: bool) -> (Gr
     let observers: FxHashSet<_> = mechanisms.iter().map(|mechanism| mechanism.observer).collect();
     assert_eq!(observers.len(), 9);
     // This deliberately invalid rewrite must not retain executable certificates for the old rows.
-    prepared.graph.instant_proxies.clear();
-    prepared.graph.instant_regions.clear();
+    prepared.graph.plans.instant.proxies.clear();
+    prepared.graph.plans.instant.regions.clear();
     let mut removed = 0;
     if erase {
         for route in &mut prepared.graph.routes {
@@ -50,7 +50,7 @@ fn reset_erasure_backend(circuit: &Adder, world: &PlotWorld, erase: bool) -> (Gr
         assert!(removed > 0);
     }
     // Both controls use linear selection so route-offset invalidation cannot explain a difference.
-    prepared.graph.turbo_callback_indices.clear();
+    prepared.graph.plans.turbo_callback_indices.clear();
     // Structural validity cannot establish semantic equivalence of a rewrite.
     prepared.graph.validate().unwrap();
     let lowered = prepared.lower(&monitor).unwrap();

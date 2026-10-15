@@ -100,6 +100,13 @@ impl std::error::Error for ValidationError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OptimizeError {
     InvalidCircuit(ValidationError),
+    /// The bindings must follow the circuit's declared input order.
+    InputCount {
+        /// This is the number of declared circuit inputs.
+        expected: usize,
+        /// This is the number of supplied known-input bindings.
+        actual: usize,
+    },
     Cancelled,
 }
 
@@ -107,6 +114,7 @@ impl fmt::Display for OptimizeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidCircuit(error) => error.fmt(f),
+            Self::InputCount { expected, actual } => write!(f, "expected {expected} bindings, got {actual}"),
             Self::Cancelled => f.write_str("optimization cancelled"),
         }
     }
@@ -116,7 +124,7 @@ impl std::error::Error for OptimizeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::InvalidCircuit(error) => Some(error),
-            Self::Cancelled => None,
+            Self::Cancelled | Self::InputCount { .. } => None,
         }
     }
 }
@@ -199,12 +207,7 @@ impl Plan {
     /// Writes scratch and ordered root outputs without allocating.
     /// Input count must match exactly; scratch/root buffers may have extra space.
     /// Invalid buffer sizes return before any buffer is modified.
-    pub fn evaluate(
-        &self,
-        input_values: &[bool],
-        scratch: &mut [bool],
-        root_values: &mut [bool],
-    ) -> Result<(), EvaluationError> {
+    pub fn evaluate(&self, input_values: &[bool], scratch: &mut [bool], root_values: &mut [bool]) -> Result<(), EvaluationError> {
         if input_values.len() != self.inputs.len() {
             return Err(EvaluationError::InputCount {
                 expected: self.inputs.len(),
@@ -304,11 +307,7 @@ pub fn reference(circuit: &Circuit) -> Result<Plan, ValidationError> {
     if ops.len() != count {
         return Err(ValidationError::Cycle);
     }
-    let roots = circuit
-        .roots
-        .iter()
-        .map(|&net| original_to_slot[net].unwrap())
-        .collect();
+    let roots = circuit.roots.iter().map(|&net| original_to_slot[net].unwrap()).collect();
     Ok(Plan {
         inputs: circuit.inputs.clone(),
         ops,
@@ -322,13 +321,35 @@ pub fn reference(circuit: &Circuit) -> Result<Plan, ValidationError> {
 /// One topological rewrite sweep, structural sharing, then pruning from all roots.
 /// Invalid circuits fail before cancellation or optimizer limits are examined.
 /// Budget exhaustion returns the validated reference with `used_fallback = true`.
-pub fn optimize(
-    circuit: &Circuit,
-    limits: Limits,
-    mut cancelled: impl FnMut() -> bool,
-) -> Result<Plan, OptimizeError> {
+pub fn optimize(circuit: &Circuit, limits: Limits, mut cancelled: impl FnMut() -> bool) -> Result<Plan, OptimizeError> {
+    let reference = reference(circuit).map_err(OptimizeError::InvalidCircuit)?;
+    finish_optimization(reference, limits, &mut cancelled)
+}
+
+/// Replace known inputs with constants, then share and prune the resulting circuit.
+/// Bindings use declared input order; `None` leaves that input variable. Evaluation
+/// retains the original input layout, but values supplied for bound inputs are ignored.
+/// Validation precedes binding and cancellation; budget fallback retains the bindings.
+pub fn specialize(circuit: &Circuit, bindings: &[Option<bool>], limits: Limits, mut cancelled: impl FnMut() -> bool) -> Result<Plan, OptimizeError> {
     let mut reference = reference(circuit).map_err(OptimizeError::InvalidCircuit)?;
-    match optimize_plan(&reference, limits, &mut cancelled)? {
+    if bindings.len() != reference.inputs.len() {
+        return Err(OptimizeError::InputCount {
+            expected: reference.inputs.len(),
+            actual: bindings.len(),
+        });
+    }
+    for (slot, op) in reference.ops.iter_mut().enumerate() {
+        if matches!(op, Op::Input(_))
+            && let Some(value) = bindings[reference.input_ordinals[slot]]
+        {
+            *op = Op::Const(value);
+        }
+    }
+    finish_optimization(reference, limits, &mut cancelled)
+}
+
+fn finish_optimization(mut reference: Plan, limits: Limits, cancelled: &mut impl FnMut() -> bool) -> Result<Plan, OptimizeError> {
+    match optimize_plan(&reference, limits, cancelled)? {
         Some(plan) => Ok(plan),
         None => {
             reference.used_fallback = true;
@@ -337,11 +358,7 @@ pub fn optimize(
     }
 }
 
-fn optimize_plan(
-    reference: &Plan,
-    limits: Limits,
-    cancelled: &mut impl FnMut() -> bool,
-) -> Result<Option<Plan>, OptimizeError> {
+fn optimize_plan(reference: &Plan, limits: Limits, cancelled: &mut impl FnMut() -> bool) -> Result<Option<Plan>, OptimizeError> {
     let mut work = 0;
     let mut step = || {
         if cancelled() {
@@ -473,18 +490,10 @@ fn simplify(op: Op, nodes: &[Op]) -> Op {
                         return Op::Const(false);
                     }
                     if let Some(value) = constant(nodes, a) {
-                        return if value {
-                            Op::Buffer(b)
-                        } else {
-                            Op::Const(false)
-                        };
+                        return if value { Op::Buffer(b) } else { Op::Const(false) };
                     }
                     if let Some(value) = constant(nodes, b) {
-                        return if value {
-                            Op::Buffer(a)
-                        } else {
-                            Op::Const(false)
-                        };
+                        return if value { Op::Buffer(a) } else { Op::Const(false) };
                     }
                     Op::And(a, b)
                 }
@@ -496,18 +505,10 @@ fn simplify(op: Op, nodes: &[Op]) -> Op {
                         return Op::Const(true);
                     }
                     if let Some(value) = constant(nodes, a) {
-                        return if value {
-                            Op::Const(true)
-                        } else {
-                            Op::Buffer(b)
-                        };
+                        return if value { Op::Const(true) } else { Op::Buffer(b) };
                     }
                     if let Some(value) = constant(nodes, b) {
-                        return if value {
-                            Op::Const(true)
-                        } else {
-                            Op::Buffer(a)
-                        };
+                        return if value { Op::Const(true) } else { Op::Buffer(a) };
                     }
                     Op::Or(a, b)
                 }
@@ -519,18 +520,10 @@ fn simplify(op: Op, nodes: &[Op]) -> Op {
                         return Op::Const(true);
                     }
                     if let Some(value) = constant(nodes, a) {
-                        return if value {
-                            simplify(Op::Not(b), nodes)
-                        } else {
-                            Op::Buffer(b)
-                        };
+                        return if value { simplify(Op::Not(b), nodes) } else { Op::Buffer(b) };
                     }
                     if let Some(value) = constant(nodes, b) {
-                        return if value {
-                            simplify(Op::Not(a), nodes)
-                        } else {
-                            Op::Buffer(a)
-                        };
+                        return if value { simplify(Op::Not(a), nodes) } else { Op::Buffer(a) };
                     }
                     Op::Xor(a, b)
                 }
@@ -573,6 +566,83 @@ fn simplify(op: Op, nodes: &[Op]) -> Op {
 mod tests {
     use super::*;
 
+    #[test]
+    fn specialization_preserves_every_compatible_assignment_and_ordered_root() {
+        let circuit = Circuit::new(
+            vec![41, 7, 900],
+            vec![
+                Op::Input(900),
+                Op::Input(41),
+                Op::Input(7),
+                Op::Xor(0, 1),
+                Op::Select(2, 3, 0),
+                Op::Not(4),
+            ],
+            vec![4, 5, 3, 4],
+        );
+        let before = circuit.clone();
+        let baseline = reference(&circuit).unwrap();
+        for assignment in 0..27 {
+            let mut code = assignment;
+            let bindings: Vec<_> = (0..3)
+                .map(|_| {
+                    let value = match code % 3 {
+                        0 => None,
+                        1 => Some(false),
+                        _ => Some(true),
+                    };
+                    code /= 3;
+                    value
+                })
+                .collect();
+            for limits in [Limits::default(), Limits { max_work: 0, max_nodes: 0 }] {
+                let plan = specialize(&circuit, &bindings, limits, || false).unwrap();
+                assert_eq!(plan.inputs(), circuit.inputs());
+                assert_eq!(plan.used_fallback(), limits.max_work == 0);
+                if bindings.iter().all(Option::is_some) && !plan.used_fallback() {
+                    assert!(plan.ops().iter().all(|op| matches!(op, Op::Const(_))));
+                    assert!(plan.ops().len() <= 2);
+                }
+                for mask in 0..8 {
+                    let values: Vec<_> = (0..3).map(|bit| mask & (1 << bit) != 0).collect();
+                    if bindings
+                        .iter()
+                        .zip(&values)
+                        .any(|(known, &value)| known.is_some_and(|known| known != value))
+                    {
+                        continue;
+                    }
+                    let mut expected = vec![false; circuit.roots().len()];
+                    let mut actual = expected.clone();
+                    baseline
+                        .evaluate(&values, &mut vec![false; baseline.scratch_len()], &mut expected)
+                        .unwrap();
+                    plan.evaluate(&values, &mut vec![false; plan.scratch_len()], &mut actual).unwrap();
+                    assert_eq!(actual, expected, "bindings={bindings:?}, mask={mask}");
+                }
+            }
+        }
+        assert_eq!(circuit, before);
+    }
+
+    #[test]
+    fn specialization_validates_before_binding_and_cancellation() {
+        let bad = Circuit::new(vec![], vec![Op::Buffer(0)], vec![]);
+        assert_eq!(
+            specialize(&bad, &[Some(false)], Limits::default(), || true),
+            Err(OptimizeError::InvalidCircuit(ValidationError::Cycle))
+        );
+        let valid = Circuit::new(vec![42], vec![Op::Input(42)], vec![0]);
+        assert_eq!(
+            specialize(&valid, &[], Limits::default(), || true),
+            Err(OptimizeError::InputCount { expected: 1, actual: 0 })
+        );
+        assert_eq!(
+            specialize(&valid, &[Some(false)], Limits::default(), || true),
+            Err(OptimizeError::Cancelled)
+        );
+    }
+
     fn equivalent(circuit: &Circuit) -> Plan {
         let before = circuit.clone();
         let reference = reference(circuit).unwrap();
@@ -589,15 +659,9 @@ mod tests {
         let mut expected = vec![false; circuit.roots.len()];
         let mut actual = expected.clone();
         for bits in 0..(1usize << circuit.inputs.len()) {
-            let inputs: Vec<_> = (0..circuit.inputs.len())
-                .map(|bit| bits & (1 << bit) != 0)
-                .collect();
-            reference
-                .evaluate(&inputs, &mut reference_scratch, &mut expected)
-                .unwrap();
-            optimized
-                .evaluate(&inputs, &mut optimized_scratch, &mut actual)
-                .unwrap();
+            let inputs: Vec<_> = (0..circuit.inputs.len()).map(|bit| bits & (1 << bit) != 0).collect();
+            reference.evaluate(&inputs, &mut reference_scratch, &mut expected).unwrap();
+            optimized.evaluate(&inputs, &mut optimized_scratch, &mut actual).unwrap();
             assert_eq!(actual, expected, "assignment {bits}");
             for (original, &slot) in optimized.original_to_slot().iter().enumerate() {
                 if let Some(slot) = slot {
@@ -615,10 +679,7 @@ mod tests {
     #[test]
     fn rejects_invalid_inputs_operands_roots_and_all_cycles() {
         let invalid = [
-            (
-                Circuit::new(vec![4, 4], vec![Op::Input(4)], vec![0]),
-                ValidationError::DuplicateInput(4),
-            ),
+            (Circuit::new(vec![4, 4], vec![Op::Input(4)], vec![0]), ValidationError::DuplicateInput(4)),
             (
                 Circuit::new(vec![4], vec![Op::Input(8)], vec![0]),
                 ValidationError::UndeclaredInput { net: 0, input: 8 },
@@ -628,51 +689,27 @@ mod tests {
                 ValidationError::InvalidOperand { net: 0, operand: 1 },
             ),
             (
-                Circuit::new(
-                    vec![],
-                    vec![Op::Const(true), Op::Select(0, 0, usize::MAX)],
-                    vec![0],
-                ),
-                ValidationError::InvalidOperand {
-                    net: 1,
-                    operand: usize::MAX,
-                },
+                Circuit::new(vec![], vec![Op::Const(true), Op::Select(0, 0, usize::MAX)], vec![0]),
+                ValidationError::InvalidOperand { net: 1, operand: usize::MAX },
             ),
             (
                 Circuit::new(vec![], vec![Op::Const(true)], vec![1]),
                 ValidationError::InvalidRoot { root: 0, net: 1 },
             ),
+            (Circuit::new(vec![], vec![], vec![0]), ValidationError::InvalidRoot { root: 0, net: 0 }),
+            (Circuit::new(vec![], vec![Op::Buffer(0)], vec![]), ValidationError::Cycle),
             (
-                Circuit::new(vec![], vec![], vec![0]),
-                ValidationError::InvalidRoot { root: 0, net: 0 },
-            ),
-            (
-                Circuit::new(vec![], vec![Op::Buffer(0)], vec![]),
-                ValidationError::Cycle,
-            ),
-            (
-                Circuit::new(
-                    vec![],
-                    vec![Op::Not(1), Op::Not(0), Op::Const(true)],
-                    vec![2],
-                ),
+                Circuit::new(vec![], vec![Op::Not(1), Op::Not(0), Op::Const(true)], vec![2]),
                 ValidationError::Cycle,
             ),
         ];
         for (circuit, error) in invalid {
             assert_eq!(reference(&circuit), Err(error.clone()));
             let mut polled = false;
-            let result = optimize(
-                &circuit,
-                Limits {
-                    max_work: 0,
-                    max_nodes: 0,
-                },
-                || {
-                    polled = true;
-                    true
-                },
-            );
+            let result = optimize(&circuit, Limits { max_work: 0, max_nodes: 0 }, || {
+                polled = true;
+                true
+            });
             assert_eq!(result, Err(OptimizeError::InvalidCircuit(error)));
             assert!(!polled, "validation must precede cancellation and limits");
         }
@@ -697,21 +734,14 @@ mod tests {
         assert_eq!(plan.ops.len(), circuit.ops.len());
         for (original, &op) in circuit.ops.iter().enumerate() {
             let slot = plan.original_to_slot()[original].unwrap();
-            assert_eq!(
-                plan.ops[slot],
-                op.remap(|net| plan.original_to_slot()[net].unwrap())
-            );
+            assert_eq!(plan.ops[slot], op.remap(|net| plan.original_to_slot()[net].unwrap()));
         }
         assert_eq!(plan.roots[0], plan.roots[2]);
         let mut scratch = vec![false; plan.scratch_len()];
         let mut roots = [false; 3];
-        plan.evaluate(&[true, false], &mut scratch, &mut roots)
-            .unwrap();
+        plan.evaluate(&[true, false], &mut scratch, &mut roots).unwrap();
         assert_eq!(roots, [true; 3]);
-        assert!(
-            !scratch[plan.original_to_slot()[6].unwrap()],
-            "unused Not survives reference inspection"
-        );
+        assert!(!scratch[plan.original_to_slot()[6].unwrap()], "unused Not survives reference inspection");
         let optimized = equivalent(&circuit);
         assert_eq!(optimized.original_to_slot()[6], None);
     }
@@ -739,8 +769,7 @@ mod tests {
         assert_eq!(plan.original_to_slot()[6], None);
         let mut scratch = vec![false; plan.scratch_len()];
         let mut roots = [false; 6];
-        plan.evaluate(&[true, false], &mut scratch, &mut roots)
-            .unwrap();
+        plan.evaluate(&[true, false], &mut scratch, &mut roots).unwrap();
         assert_eq!(roots, [true, false, true, true, true, true]);
     }
 
@@ -764,31 +793,13 @@ mod tests {
         assert_eq!(plan.original_to_slot()[0], plan.original_to_slot()[3]);
         assert_ne!(plan.original_to_slot()[0], plan.original_to_slot()[1]);
         assert_eq!(plan.original_to_slot()[4], plan.original_to_slot()[5]);
-        assert_eq!(
-            plan.ops
-                .iter()
-                .filter(|op| matches!(op, Op::And(..)))
-                .count(),
-            1
-        );
-        assert_eq!(
-            plan.ops
-                .iter()
-                .filter(|op| matches!(op, Op::Input(..)))
-                .count(),
-            3
-        );
+        assert_eq!(plan.ops.iter().filter(|op| matches!(op, Op::And(..))).count(), 1);
+        assert_eq!(plan.ops.iter().filter(|op| matches!(op, Op::Input(..))).count(), 3);
     }
 
     #[test]
     fn constants_buffers_inverses_xor_and_mux_identities_fold() {
-        let mut ops = vec![
-            Op::Input(7),
-            Op::Input(8),
-            Op::Const(false),
-            Op::Const(true),
-            Op::Not(0),
-        ];
+        let mut ops = vec![Op::Input(7), Op::Input(8), Op::Const(false), Op::Const(true), Op::Not(0)];
         let identities = [
             (Op::Buffer(0), 0),
             (Op::Not(4), 0),
@@ -818,10 +829,7 @@ mod tests {
         }
         let plan = equivalent(&Circuit::new(vec![7, 8], ops, roots));
         for (index, &(_, expected)) in identities.iter().enumerate() {
-            assert_eq!(
-                plan.original_to_slot()[5 + index],
-                plan.original_to_slot()[expected]
-            );
+            assert_eq!(plan.original_to_slot()[5 + index], plan.original_to_slot()[expected]);
         }
         assert_eq!(plan.ops.len(), 5);
         assert!(!plan.ops.iter().any(|op| matches!(op, Op::Buffer(..))));
@@ -829,14 +837,7 @@ mod tests {
 
     #[test]
     fn exhaustively_checks_every_boolean_op_over_small_functions() {
-        let basis = vec![
-            Op::Input(41),
-            Op::Input(2),
-            Op::Const(false),
-            Op::Const(true),
-            Op::Not(0),
-            Op::Not(1),
-        ];
+        let basis = vec![Op::Input(41), Op::Input(2), Op::Const(false), Op::Const(true), Op::Not(0), Op::Not(1)];
         let mut ops = basis.clone();
         for a in 0..basis.len() {
             ops.extend([Op::Buffer(a), Op::Not(a)]);
@@ -875,25 +876,12 @@ mod tests {
 
     #[test]
     fn budgets_fall_back_and_cancellation_aborts_after_validation() {
-        let circuit = Circuit::new(
-            vec![0],
-            vec![Op::Input(0), Op::Buffer(0), Op::Not(1)],
-            vec![2],
-        );
+        let circuit = Circuit::new(vec![0], vec![Op::Input(0), Op::Buffer(0), Op::Not(1)], vec![2]);
         let expected = reference(&circuit).unwrap();
         for limits in [
-            Limits {
-                max_work: 0,
-                max_nodes: 99,
-            },
-            Limits {
-                max_work: 99,
-                max_nodes: 0,
-            },
-            Limits {
-                max_work: 5,
-                max_nodes: 99,
-            },
+            Limits { max_work: 0, max_nodes: 99 },
+            Limits { max_work: 99, max_nodes: 0 },
+            Limits { max_work: 5, max_nodes: 99 },
         ] {
             let mut fallback = optimize(&circuit, limits, || false).unwrap();
             assert!(fallback.used_fallback());
@@ -901,14 +889,7 @@ mod tests {
             assert_eq!(fallback, expected);
         }
         assert_eq!(
-            optimize(
-                &circuit,
-                Limits {
-                    max_work: 0,
-                    max_nodes: 0
-                },
-                || true
-            ),
+            optimize(&circuit, Limits { max_work: 0, max_nodes: 0 }, || true),
             Err(OptimizeError::Cancelled)
         );
         let mut polls = 0;

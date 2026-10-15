@@ -18,8 +18,11 @@
 //! each accepted seed/Turbo query replaces six site-power samples with one. This
 //! pass runs with the other O1 transformations.
 
-use super::{GraphPass, PassContext};
+use super::PassContext;
+use super::planning::{PlanBuilder, PlanOutput};
 use crate::redpiler::PreparationTableStatistics;
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeKind, ComparatorOverride, CompileGraph, ComponentState, DeliveryKind, DustPathPlan, EntryState, Guard, InputPort,
     PowerPort, PowerTarget, ProfileElectrical, SiteId, SiteSource, WireRelationKind,
@@ -32,21 +35,21 @@ use std::collections::{BTreeMap, VecDeque};
 /// Recognizes short wire paths whose power can be queried from a certificate.
 pub(crate) struct ContractDustPaths;
 
-impl GraphPass for ContractDustPaths {
+impl PlanBuilder for ContractDustPaths {
     fn name(&self) -> &'static str {
         "contract-static-dust-paths"
     }
 
-    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
+    fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         let mut report = CandidateReport::default();
         let candidates = discover_wire_components(graph);
         report.candidates = candidates.len();
-        let already_assigned: FxHashSet<_> = graph.dust_paths.iter().flat_map(|path| path.wires.iter().copied()).collect();
+        let already_assigned: FxHashSet<_> = graph.plans.dust_paths.iter().flat_map(|path| path.wires.iter().copied()).collect();
         let mut accepted = Vec::new();
 
         for (index, component) in candidates.into_iter().enumerate() {
             if context.monitor.cancelled() {
-                return Ok(());
+                return Err("cancelled while certifying dust paths".into());
             }
             let component_len = component.len();
             if component_len > 3 {
@@ -75,26 +78,19 @@ impl GraphPass for ContractDustPaths {
                 }
             }
             if index % 64 == 0 && context.monitor.cancelled() {
-                return Ok(());
+                return Err("cancelled while certifying dust paths".into());
             }
         }
         if context.monitor.cancelled() {
-            return Ok(());
+            return Err("cancelled while certifying dust paths".into());
         }
 
         report.accepted = accepted.len();
         report.covered_wires = accepted.iter().map(|path| path.wires.len()).sum();
         report.record(context.monitor);
-        graph.dust_paths.extend(accepted);
-        Ok(())
-    }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
+        let mut paths = graph.plans.dust_paths.clone();
+        paths.extend(accepted);
+        Ok(PlanOutput::DustPaths(paths))
     }
 }
 
@@ -789,11 +785,11 @@ mod tests {
         let world = path_world();
         let mut first = run_pass(&world, vec![]);
         let second = run_pass(&world, vec![]);
-        assert_eq!(first.graph.dust_paths.len(), 1);
-        assert_eq!(first.graph.dust_paths, second.graph.dust_paths);
-        assert_eq!(first.graph.dust_paths[0].wires.len(), 3);
+        assert_eq!(first.graph.plans.dust_paths.len(), 1);
+        assert_eq!(first.graph.plans.dust_paths, second.graph.plans.dust_paths);
+        assert_eq!(first.graph.plans.dust_paths[0].wires.len(), 3);
         assert_eq!(
-            first.graph.dust_paths[0].input_node,
+            first.graph.plans.dust_paths[0].input_node,
             first
                 .graph
                 .nodes
@@ -802,7 +798,7 @@ mod tests {
                 .map(|index| crate::redpiler::program_graph::NodeId::new(index as u32))
                 .unwrap()
         );
-        let expected = first.graph.dust_paths.clone();
+        let expected = first.graph.plans.dust_paths.clone();
         let monitor = TaskMonitor::default();
         let entry = first.entry.clone();
         ContractDustPaths
@@ -815,13 +811,13 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(first.graph.dust_paths, expected);
+        assert_eq!(first.graph.plans.dust_paths, expected);
     }
 
     #[test]
     fn certifies_analog_comparator_ingress_without_feedback() {
         let prepared = run_pass(&analog_input_path_world(), vec![]);
-        assert_eq!(prepared.graph.dust_paths.len(), 1);
+        assert_eq!(prepared.graph.plans.dust_paths.len(), 1);
     }
 
     #[test]
@@ -861,25 +857,25 @@ mod tests {
             };
             let mut prepared = rich::prepare(&path_world(), BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
             let mut entries = vec![PassEntry {
-                pass: Box::new(GuardAndUpdateReduction),
+                pass: Pass::rewrite(GuardAndUpdateReduction),
                 enabled: true,
             }];
             if index_first {
                 entries.push(PassEntry {
-                    pass: Box::new(IndexTurboCallbacks),
+                    pass: Pass::build(IndexTurboCallbacks),
                     enabled: true,
                 });
                 entries.push(PassEntry {
-                    pass: Box::new(ContractDustPaths),
+                    pass: Pass::build(ContractDustPaths),
                     enabled: true,
                 });
             } else {
                 entries.push(PassEntry {
-                    pass: Box::new(ContractDustPaths),
+                    pass: Pass::build(ContractDustPaths),
                     enabled: true,
                 });
                 entries.push(PassEntry {
-                    pass: Box::new(IndexTurboCallbacks),
+                    pass: Pass::build(IndexTurboCallbacks),
                     enabled: true,
                 });
             }
@@ -890,13 +886,13 @@ mod tests {
         let index_first = compile_order(true);
         let dust_first = compile_order(false);
         for graph in [&index_first, &dust_first] {
-            assert_eq!(graph.dust_paths.len(), 1);
-            assert_eq!(graph.turbo_callback_indices.len(), graph.wires.len());
-            assert!(graph.turbo_callback_indices.iter().any(Option::is_some));
+            assert_eq!(graph.plans.dust_paths.len(), 1);
+            assert_eq!(graph.plans.turbo_callback_indices.len(), graph.wires.len());
+            assert!(graph.plans.turbo_callback_indices.iter().any(Option::is_some));
             graph.validate().unwrap();
         }
-        assert_eq!(index_first.dust_paths, dust_first.dust_paths);
-        assert_eq!(index_first.turbo_callback_indices, dust_first.turbo_callback_indices);
+        assert_eq!(index_first.plans.dust_paths, dust_first.plans.dust_paths);
+        assert_eq!(index_first.plans.turbo_callback_indices, dust_first.plans.turbo_callback_indices);
     }
 
     #[test]
@@ -910,7 +906,7 @@ mod tests {
         );
         branch.set_block(BlockPos::new(7, 19, 6), Block::Stone {});
         let branch = run_pass(&branch, vec![]);
-        assert!(branch.graph.dust_paths.is_empty());
+        assert!(branch.graph.plans.dust_paths.is_empty());
 
         let mut second_source = path_world();
         second_source.set_block(BlockPos::new(7, 19, 6), Block::Stone {});
@@ -921,7 +917,7 @@ mod tests {
             },
         );
         let second_source = run_pass(&second_source, vec![]);
-        assert!(second_source.graph.dust_paths.is_empty());
+        assert!(second_source.graph.plans.dust_paths.is_empty());
 
         let mut stale = path_world();
         stale.set_block(
@@ -934,7 +930,7 @@ mod tests {
             },
         );
         let stale = run_pass(&stale, vec![]);
-        assert!(stale.graph.dust_paths.is_empty());
+        assert!(stale.graph.plans.dust_paths.is_empty());
 
         let mut stale_sides = path_world();
         stale_sides.set_block(
@@ -947,12 +943,12 @@ mod tests {
             },
         );
         let stale_sides = run_pass(&stale_sides, vec![]);
-        assert!(stale_sides.graph.dust_paths.is_empty());
+        assert!(stale_sides.graph.plans.dust_paths.is_empty());
 
         let mut conducted = path_world();
         conducted.set_block(BlockPos::new(5, 19, 5), Block::RedstoneBlock);
         let conducted = run_pass(&conducted, vec![]);
-        assert!(conducted.graph.dust_paths.is_empty());
+        assert!(conducted.graph.plans.dust_paths.is_empty());
 
         let mut watched = path_world();
         watched.set_block(
@@ -966,7 +962,7 @@ mod tests {
         );
         watched.set_block(BlockPos::new(7, 19, 6), Block::Stone {});
         let watched = run_pass(&watched, vec![]);
-        assert!(watched.graph.dust_paths.is_empty());
+        assert!(watched.graph.plans.dust_paths.is_empty());
 
         let mut contact = path_world();
         contact.set_block(
@@ -980,7 +976,7 @@ mod tests {
             },
         );
         let contact = run_pass(&contact, vec![]);
-        assert!(contact.graph.dust_paths.is_empty());
+        assert!(contact.graph.plans.dust_paths.is_empty());
     }
 
     #[test]
@@ -998,7 +994,7 @@ mod tests {
             ),
         };
         let prepared = run_pass(&world, vec![tick.clone()]);
-        assert_eq!(prepared.graph.dust_paths.len(), 1);
+        assert_eq!(prepared.graph.plans.dust_paths.len(), 1);
         assert_eq!(prepared.entry.pending_ticks.len(), 1);
         assert_eq!(prepared.entry.pending_ticks[0].tick.ticks_left, 3);
         assert_eq!(prepared.entry.pending_ticks[0].tick.tick_priority, mchprs_world::TickPriority::Normal);
@@ -1006,7 +1002,7 @@ mod tests {
         let mut mismatched = tick;
         mismatched.block_type = Some(Block::Stone {}.registry_id());
         let prepared = run_pass(&world, vec![mismatched]);
-        assert!(prepared.graph.dust_paths.is_empty());
+        assert!(prepared.graph.plans.dust_paths.is_empty());
         assert_eq!(prepared.entry.pending_ticks.len(), 1);
         assert_eq!(prepared.entry.pending_ticks[0].tick.ticks_left, 3);
     }

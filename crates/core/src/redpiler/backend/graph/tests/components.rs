@@ -399,9 +399,9 @@ fn contact_resource_backend() -> GraphBackend {
             },
         ],
         routes: vec![],
-        turbo_callback_indices: vec![],
+
         wires: vec![],
-        dust_paths: vec![],
+
         wire_relations: vec![],
         sites: vec![
             SiteSpec {
@@ -421,9 +421,8 @@ fn contact_resource_backend() -> GraphBackend {
             contacts: vec![first, second].into_boxed_slice(),
         }],
         initial_pistons: vec![],
-        instant_regions: Vec::new(),
-        instant_proxies: Vec::new(),
-        instant_machine: None,
+
+        plans: Default::default(),
         initial_resources: vec![ResourceState {
             at: first,
             enabled: true,
@@ -496,9 +495,9 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         guards: vec![Guard::Always],
         contacts: vec![],
         routes: vec![],
-        turbo_callback_indices: vec![],
+
         wires: vec![],
-        dust_paths: vec![],
+
         wire_relations: vec![],
         sites: vec![
             SiteSpec {
@@ -516,9 +515,8 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
         resources: vec![],
         initial_pistons: vec![],
         initial_resources: vec![],
-        instant_regions: Vec::new(),
-        instant_proxies: Vec::new(),
-        instant_machine: None,
+
+        plans: Default::default(),
     }
     .lower()
     .unwrap();
@@ -3925,9 +3923,9 @@ fn site_geometry_guards_use_compiled_profile_facts() {
         }],
         contacts: vec![],
         routes: vec![],
-        turbo_callback_indices: vec![],
+
         wires: vec![],
-        dust_paths: vec![],
+
         wire_relations: vec![],
         sites: vec![SiteSpec {
             position: BlockPos::new(0, 0, 0),
@@ -3938,9 +3936,8 @@ fn site_geometry_guards_use_compiled_profile_facts() {
         resources: vec![],
         initial_pistons: vec![],
         initial_resources: vec![],
-        instant_regions: Vec::new(),
-        instant_proxies: Vec::new(),
-        instant_machine: None,
+
+        plans: Default::default(),
     }
     .lower()
     .unwrap();
@@ -4043,7 +4040,7 @@ fn compiler_returns_latched_execution_failure_without_advancing_host() {
         position: Some(LEVER_POS),
         kind: "injected execution failure",
     };
-    let crate::redpiler::backend::Runtime::Graph(backend) = compiler.backend.as_mut().unwrap();
+    let backend = compiler.backend.as_mut().unwrap();
     backend.failure = Some(error.clone());
     for _ in 0..2 {
         assert_eq!(compiler.tick_with_world(&mut world), Err(error.clone()));

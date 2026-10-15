@@ -8,25 +8,22 @@
 //! passes invalidate its table. Building costs one route scan per wire and
 //! retains 25 `u32` offsets for each eligible wire.
 
-use super::{GraphPass, PassContext};
+use super::PassContext;
+use super::planning::{PlanBuilder, PlanOutput};
 use crate::redpiler::PreparationTableStatistics;
-use crate::redpiler::program_graph::{CompileGraph, Route, WirePlan};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Delimits each canonical target's ordered slice in one wire's Turbo route.
-pub(crate) struct TurboCallbackIndex {
-    pub(crate) offsets: [u32; 25],
-}
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
+use crate::redpiler::program_graph::{CompileGraph, Route, TurboCallbackIndex, WirePlan};
 
 /// Adds the runtime lookup table for wires with canonical route grouping.
 pub(crate) struct IndexTurboCallbacks;
 
-impl GraphPass for IndexTurboCallbacks {
+impl PlanBuilder for IndexTurboCallbacks {
     fn name(&self) -> &'static str {
         "index-turbo-callbacks"
     }
 
-    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
+    fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         let mut indices = Vec::with_capacity(graph.wires.len());
         for wire in &graph.wires {
             if context.monitor.cancelled() {
@@ -36,7 +33,6 @@ impl GraphPass for IndexTurboCallbacks {
         }
         let indexed = indices.iter().filter(|index| index.is_some()).count();
         let wire_count = indices.len();
-        graph.turbo_callback_indices = indices;
         context.monitor.record_preparation_tables(vec![
             PreparationTableStatistics {
                 stage: "Turbo callback index",
@@ -60,11 +56,7 @@ impl GraphPass for IndexTurboCallbacks {
                 estimated_bytes: 0,
             },
         ]);
-        Ok(())
-    }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
+        Ok(PlanOutput::TurboCallbacks(indices))
     }
 }
 
@@ -153,17 +145,14 @@ mod tests {
             guards: vec![Guard::Always],
             contacts: vec![],
             routes: vec![route(deliveries)],
-            turbo_callback_indices: vec![index],
             wires: vec![WirePlan {
                 node: NodeId::new(0),
                 canonical_neighbors: targets,
                 shape_route: None,
                 turbo_route: Some(RouteId::new(0)),
-                query_facts: None,
-                instant_reset: None,
-                hop_root: None,
+                execution: Default::default(),
             }],
-            dust_paths: vec![],
+
             wire_relations: vec![],
             sites: (0..site_count)
                 .map(|index| SiteSpec {
@@ -176,9 +165,11 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: crate::redpiler::program_graph::ExecutionPlans {
+                turbo_callback_indices: vec![index],
+                ..Default::default()
+            },
         }
     }
 
@@ -232,9 +223,7 @@ mod tests {
             canonical_neighbors: targets,
             shape_route: None,
             turbo_route: None,
-            query_facts: None,
-            instant_reset: None,
-            hop_root: None,
+            execution: Default::default(),
         };
         assert!(index_wire(&no_route, &[]).is_none());
     }
@@ -277,14 +266,14 @@ mod tests {
         assert!(missing_route.validate().is_err());
 
         let mut wrong_length = graph(Some(index), rows.clone());
-        wrong_length.turbo_callback_indices = vec![None, None];
+        wrong_length.plans.turbo_callback_indices = vec![None, None];
         assert!(matches!(
             wrong_length.validate(),
             Err(crate::redpiler::program_graph::GraphBuildError::StateTableLength { .. })
         ));
 
         let mut disabled = graph(None, rows);
-        disabled.turbo_callback_indices.clear();
+        disabled.plans.turbo_callback_indices.clear();
         disabled.validate().unwrap();
     }
 
@@ -309,10 +298,10 @@ mod tests {
             entry: &entry,
         };
         IndexTurboCallbacks.run(&mut graph, &context).unwrap();
-        let expected = graph.turbo_callback_indices.clone();
+        let expected = graph.plans.turbo_callback_indices.clone();
         assert!(expected[0].is_some());
         IndexTurboCallbacks.run(&mut graph, &context).unwrap();
-        assert_eq!(graph.turbo_callback_indices, expected);
+        assert_eq!(graph.plans.turbo_callback_indices, expected);
 
         let mut cancelled = graph.clone();
         let cancelled_monitor = TaskMonitor::default();
@@ -323,22 +312,22 @@ mod tests {
             entry: &entry,
         };
         assert!(IndexTurboCallbacks.run(&mut cancelled, &cancelled_context).is_err());
-        assert_eq!(cancelled.turbo_callback_indices, expected);
+        assert_eq!(cancelled.plans.turbo_callback_indices, expected);
 
         let mut disabled = graph.clone();
-        let before = disabled.turbo_callback_indices.clone();
+        let before = disabled.plans.turbo_callback_indices.clone();
         run_graph_pipeline(
             &mut disabled,
             &options,
             &entry,
             &PassPipeline::new(vec![PassEntry {
-                pass: Box::new(IndexTurboCallbacks),
+                pass: Pass::build(IndexTurboCallbacks),
                 enabled: false,
             }]),
             &monitor,
         )
         .unwrap();
-        assert_eq!(disabled.turbo_callback_indices, before);
+        assert_eq!(disabled.plans.turbo_callback_indices, before);
     }
 
     #[test]
@@ -377,17 +366,17 @@ mod tests {
             &entry,
             &PassPipeline::new(vec![
                 PassEntry {
-                    pass: Box::new(IndexTurboCallbacks),
+                    pass: Pass::build(IndexTurboCallbacks),
                     enabled: true,
                 },
                 PassEntry {
-                    pass: Box::new(ClearRoute),
+                    pass: Pass::rewrite(ClearRoute),
                     enabled: true,
                 },
             ]),
             &TaskMonitor::default(),
         )
         .unwrap();
-        assert!(graph.turbo_callback_indices.is_empty());
+        assert!(graph.plans.turbo_callback_indices.is_empty());
     }
 }

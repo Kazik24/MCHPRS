@@ -3,6 +3,8 @@ use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::AnalysisLimits;
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::passes::{PassEntry, PassPipeline, rich, run_graph_pipeline};
 use crate::redpiler::program_graph::EntryState;
 use crate::redpiler::program_graph::*;
@@ -73,7 +75,7 @@ fn apply(graph: &mut CompileGraph) {
             pending_ticks: vec![],
         },
         &PassPipeline::new(vec![PassEntry {
-            pass: Box::new(SpecializeInstantPistons),
+            pass: Pass::rewrite(SpecializeInstantPistons),
             enabled: true,
         }]),
         &TaskMonitor::default(),
@@ -178,7 +180,7 @@ fn cancellation_and_disabled_pipeline_leave_the_graph_unchanged() {
             pending_ticks: vec![],
         },
         &PassPipeline::new(vec![PassEntry {
-            pass: Box::new(SpecializeInstantPistons),
+            pass: Pass::rewrite(SpecializeInstantPistons),
             enabled: false,
         }]),
         &TaskMonitor::default(),

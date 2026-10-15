@@ -1,6 +1,7 @@
 //! Compiled hops must retain the general walk's complete ordered execution.
 use super::*;
-use crate::redpiler::passes::{GraphPass, PassContext};
+use crate::redpiler::passes::PassContext;
+use crate::redpiler::passes::planning::PlanBuilder;
 
 fn prepare_hops(world: &PlotWorld) -> CompileGraph {
     passes::rich::prepare(world, BOUNDS, vec![], &TaskMonitor::default(), AnalysisLimits::default())
@@ -51,7 +52,7 @@ fn compiled_hops_preserve_all_analog_transitions_and_reuse_clean_scratch() {
     let graph = prepare_hops(&analog_dust_world());
     let mut general = hop_backend(graph.clone(), false);
     let mut compiled = hop_backend(graph, true);
-    assert!(compiled.program.wires().iter().all(|wire| wire.hop_root.is_some()));
+    assert!(compiled.program.wires().iter().all(|wire| wire.execution.hop_root.is_some()));
     let input = general.positions[&LEVER_POS];
     let wires: Vec<_> = (0..3)
         .map(|distance| general.positions[&(NEXT_POS + BlockPos::new(distance, 0, 0))])

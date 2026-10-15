@@ -17,6 +17,8 @@
 //! changed route. Runtime saves row visits and pure checks, never handler calls.
 
 use super::{GraphPass, PassContext};
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::{CompileGraph, DeliveryKind, SiteSource};
 
 /// Drops only deliveries without an explicit or ordinary fallback receiver.
@@ -48,14 +50,6 @@ impl GraphPass for PruneInertCallbacks {
             route.deliveries = deliveries.into_boxed_slice();
         }
         Ok(())
-    }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-
-    fn preserves_wire_query_facts(&self) -> bool {
-        true
     }
 }
 
@@ -131,9 +125,9 @@ mod tests {
                 source: component,
                 deliveries: Box::new([]),
             }],
-            turbo_callback_indices: vec![],
+
             wires: vec![],
-            dust_paths: vec![],
+
             wire_relations: vec![],
             sites: [
                 SiteSource::Component(component),
@@ -152,9 +146,8 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         }
     }
 
@@ -202,7 +195,7 @@ mod tests {
                 pending_ticks: vec![],
             },
             &PassPipeline::new(vec![PassEntry {
-                pass: Box::new(PruneInertCallbacks),
+                pass: Pass::rewrite(PruneInertCallbacks),
                 enabled,
             }]),
             monitor,
@@ -378,9 +371,7 @@ mod tests {
             canonical_neighbors: targets,
             shape_route: None,
             turbo_route: Some(RouteId::new(0)),
-            query_facts: None,
-            instant_reset: None,
-            hop_root: None,
+            execution: Default::default(),
         });
         set_deliveries(
             &mut graph,
@@ -405,20 +396,18 @@ mod tests {
             pipeline
         };
         run_graph_pipeline(&mut graph, &options, &entry, &index_pipeline(), &TaskMonitor::default()).unwrap();
-        assert!(graph.turbo_callback_indices[0].is_some());
+        assert!(graph.plans.turbo_callback_indices[0].is_some());
         run(&mut graph, false, &TaskMonitor::default()).unwrap();
-        assert!(graph.turbo_callback_indices[0].is_some());
+        assert!(graph.plans.turbo_callback_indices[0].is_some());
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
-        assert!(graph.turbo_callback_indices.is_empty());
+        assert!(graph.plans.turbo_callback_indices.is_empty());
         assert!(graph.routes[0].deliveries.is_empty());
         run_graph_pipeline(&mut graph, &options, &entry, &index_pipeline(), &TaskMonitor::default()).unwrap();
-        assert_eq!(graph.turbo_callback_indices[0].unwrap().offsets, [0; 25]);
-        assert!(PruneInertCallbacks.preserves_dust_paths());
-        assert!(!PruneInertCallbacks.preserves_turbo_callback_indices());
+        assert_eq!(graph.plans.turbo_callback_indices[0].unwrap().offsets, [0; 25]);
     }
 
     #[test]
-    fn composition_preserves_existing_dust_certificates_and_lowering() {
+    fn rewrite_discards_dust_certificates_without_changing_the_circuit() {
         use crate::plot::PlotWorld;
         use crate::redpiler::analysis::AnalysisLimits;
         use crate::world::World;
@@ -473,10 +462,10 @@ mod tests {
         let mut pipeline = default_graph_pipeline(&options);
         pipeline.entries.retain(|entry| entry.pass.name() != PruneInertCallbacks.name());
         run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).unwrap();
-        assert_eq!(prepared.graph.dust_paths.len(), 1);
+        assert_eq!(prepared.graph.plans.dust_paths.len(), 1);
         let mut expected = prepared.graph.clone();
         run(&mut prepared.graph, true, &monitor).unwrap();
-        assert_eq!(prepared.graph.dust_paths, expected.dust_paths);
+        assert!(prepared.graph.plans.dust_paths.is_empty());
         assert_eq!(prepared.graph.sites, expected.sites);
         assert_eq!(prepared.graph.wires, expected.wires);
         assert_eq!(prepared.graph.power_links, expected.power_links);
@@ -484,7 +473,7 @@ mod tests {
         for (old_route, new_route) in expected.routes.iter_mut().zip(&prepared.graph.routes) {
             old_route.deliveries = new_route.deliveries.clone();
         }
-        expected.turbo_callback_indices.clear();
+        expected.clear_execution_plans();
         assert_eq!(prepared.graph, expected);
         prepared.lower(&monitor).unwrap();
     }

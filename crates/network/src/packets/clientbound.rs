@@ -1270,7 +1270,7 @@ impl ClientBoundPacket for CBlockAction {
     }
 }
 
-pub struct CEntityTeleport {
+pub struct CEntityPositionSync {
     pub entity_id: i32,
     pub x: f64,
     pub y: f64,
@@ -1280,7 +1280,7 @@ pub struct CEntityTeleport {
     pub on_ground: bool,
 }
 
-impl ClientBoundPacket for CEntityTeleport {
+impl ClientBoundPacket for CEntityPositionSync {
     fn encode(&self) -> PacketEncoder {
         let mut buf = Vec::new();
         buf.write_varint(self.entity_id);
@@ -1292,8 +1292,8 @@ impl ClientBoundPacket for CEntityTeleport {
         }
         buf.write_float(self.yaw);
         buf.write_float(self.pitch);
-        buf.write_int(0);
         buf.write_bool(self.on_ground);
-        PacketEncoder::new(buf, 118)
+        // Entity Position Sync resets the client's base for subsequent relative movement.
+        PacketEncoder::new(buf, 0x1f)
     }
 }

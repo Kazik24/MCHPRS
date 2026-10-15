@@ -25,19 +25,22 @@
 //! them. Planning scans 24 sites per wire and uses one optional fact record per
 //! wire temporarily; publication is atomic after the final cancellation check.
 
-use super::{GraphPass, PassContext};
+use super::PassContext;
+use super::planning::{PlanBuilder, PlanOutput};
 use crate::redpiler::PreparationTableStatistics;
+#[cfg(test)]
+use crate::redpiler::passes::Pass;
 use crate::redpiler::program_graph::{CompileGraph, WireQueryFacts};
 
 /// Attaches checked static query facts without changing wire state or routing.
 pub(crate) struct SpecializeWireQueries;
 
-impl GraphPass for SpecializeWireQueries {
+impl PlanBuilder for SpecializeWireQueries {
     fn name(&self) -> &'static str {
         "specialize-wire-queries"
     }
 
-    fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
+    fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         let mut plans = Vec::with_capacity(graph.wires.len());
         for wire in &graph.wires {
             if context.monitor.cancelled() {
@@ -51,9 +54,6 @@ impl GraphPass for SpecializeWireQueries {
         }
         let isolated = plans.iter().flatten().filter(|facts| facts.isolated).count();
         let transfers = plans.iter().flatten().filter(|facts| facts.transfer.is_some()).count();
-        for (wire, facts) in graph.wires.iter_mut().zip(plans) {
-            wire.query_facts = facts;
-        }
         context.monitor.record_preparation_tables(
             [("certified isolated wires", isolated), ("compiled wire transfers", transfers)]
                 .into_iter()
@@ -66,19 +66,7 @@ impl GraphPass for SpecializeWireQueries {
                 })
                 .collect(),
         );
-        Ok(())
-    }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
-    }
-
-    fn preserves_wire_query_facts(&self) -> bool {
-        true
+        Ok(PlanOutput::WireQueries(plans))
     }
 }
 
@@ -86,6 +74,7 @@ impl GraphPass for SpecializeWireQueries {
 mod tests {
     use super::*;
     use crate::redpiler::components::{NodeState, NodeType};
+    use crate::redpiler::passes::GraphPass;
     use crate::redpiler::passes::{PassEntry, PassPipeline, PassPipelineError, run_graph_pipeline};
     use crate::redpiler::program_graph::{
         CircuitNodeDraft, CircuitNodeKind, ComponentState, ContactId, ContactSpec, ContactVariant, EntryState, Guard, GuardId, NodeId, Profile,
@@ -154,17 +143,15 @@ mod tests {
                 .into_boxed_slice(),
             }],
             routes: vec![],
-            turbo_callback_indices: vec![],
+
             wires: vec![WirePlan {
                 node: NodeId::new(0),
                 canonical_neighbors: std::array::from_fn(|slot| SiteId::new(slot as u32)),
                 shape_route: None,
                 turbo_route: None,
-                query_facts: None,
-                instant_reset: None,
-                hop_root: None,
+                execution: Default::default(),
             }],
-            dust_paths: vec![],
+
             wire_relations: vec![],
             sites: (0..24)
                 .map(|slot| SiteSpec {
@@ -183,9 +170,8 @@ mod tests {
             resources: vec![],
             initial_pistons: vec![],
             initial_resources: vec![],
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         }
     }
 
@@ -202,7 +188,7 @@ mod tests {
             &CompilerOptions::default(),
             &entry(),
             &PassPipeline::new(vec![PassEntry {
-                pass: Box::new(SpecializeWireQueries),
+                pass: Pass::build(SpecializeWireQueries),
                 enabled,
             }]),
             monitor,
@@ -214,7 +200,7 @@ mod tests {
         let mut graph = graph();
         let before = graph.clone();
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
-        let facts = graph.wires[0].query_facts.unwrap();
+        let facts = graph.wires[0].execution.query_facts.unwrap();
         assert_eq!(facts.known, ALL & !(1 << 4));
         assert_eq!(facts.solid, 1 << 1);
         assert_eq!(facts.wire, 1 << 3);
@@ -224,7 +210,7 @@ mod tests {
         assert_eq!(facts.transparent & 1, u32::from(graph.profiles[0].transparent));
         assert_eq!(facts.transparent & ((1 << 1) | (1 << 4)), 0);
         let mut expected = before;
-        expected.wires[0].query_facts = Some(facts);
+        expected.wires[0].execution.query_facts = Some(facts);
         assert_eq!(graph, expected);
     }
 
@@ -256,14 +242,14 @@ mod tests {
             site.source = SiteSource::Contact(ContactId::new(0));
         }
         let mut expected = graph.clone();
-        expected.wires[0].query_facts = Some(WireQueryFacts {
+        expected.wires[0].execution.query_facts = Some(WireQueryFacts {
             isolated: true,
             transfer: WireQueryFacts::infer(&graph, &graph.wires[0]).transfer,
             ..Default::default()
         });
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
         assert_eq!(graph, expected);
-        assert_eq!(graph.wires[0].query_facts.unwrap().known, 0);
+        assert_eq!(graph.wires[0].execution.query_facts.unwrap().known, 0);
     }
 
     #[test]
@@ -324,7 +310,7 @@ mod tests {
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
         for corrupt in 0..7 {
             let mut bad = graph.clone();
-            let facts = bad.wires[0].query_facts.as_mut().unwrap();
+            let facts = bad.wires[0].execution.query_facts.as_mut().unwrap();
             match corrupt {
                 0 => facts.known |= 1 << 24,
                 1 => facts.known |= 1 << 4,
@@ -369,9 +355,6 @@ mod tests {
         let once = graph.clone();
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
         assert_eq!(graph, once);
-        assert!(SpecializeWireQueries.preserves_dust_paths());
-        assert!(SpecializeWireQueries.preserves_turbo_callback_indices());
-        assert!(SpecializeWireQueries.preserves_wire_query_facts());
     }
 
     #[test]
@@ -391,20 +374,20 @@ mod tests {
         }
         let mut graph = graph();
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
-        assert!(graph.wires[0].query_facts.is_some());
+        assert!(graph.wires[0].execution.query_facts.is_some());
         run_graph_pipeline(
             &mut graph,
             &CompilerOptions::default(),
             &entry(),
             &PassPipeline::new(vec![PassEntry {
-                pass: Box::new(ChangeProfile),
+                pass: Pass::rewrite(ChangeProfile),
                 enabled: true,
             }]),
             &TaskMonitor::default(),
         )
         .unwrap();
-        assert_eq!(graph.wires[0].query_facts, None);
+        assert_eq!(graph.wires[0].execution.query_facts, None);
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
-        assert_eq!(graph.wires[0].query_facts.unwrap().known, ALL & !(1 | (1 << 4)));
+        assert_eq!(graph.wires[0].execution.query_facts.unwrap().known, ALL & !(1 | (1 << 4)));
     }
 }

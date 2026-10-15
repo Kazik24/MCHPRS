@@ -134,7 +134,7 @@ impl GraphBackend {
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
             return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
         }
-        if let Some(transfer) = plan.query_facts.and_then(|facts| facts.transfer) {
+        if let Some(transfer) = plan.execution.query_facts.and_then(|facts| facts.transfer) {
             let mut inputs = transfer.seed.selected(false, |slot| self.live_neighbor_geometry(plan, slot));
             let mut wire_power = 0;
             while inputs != 0 {
@@ -182,7 +182,7 @@ impl GraphBackend {
     }
 
     fn live_neighbor_geometry(&self, plan: &WirePlan, index: usize) -> (bool, bool) {
-        if let Some(geometry) = plan.query_facts.and_then(|facts| facts.geometry_at(index)) {
+        if let Some(geometry) = plan.execution.query_facts.and_then(|facts| facts.geometry_at(index)) {
             return geometry;
         }
         let site = self.live_site(plan.canonical_neighbors[index]);
@@ -190,7 +190,7 @@ impl GraphBackend {
     }
 
     fn live_neighbor_properties(&self, plan: &WirePlan, index: usize) -> (bool, bool, u8) {
-        if let Some((solid, transparent)) = plan.query_facts.and_then(|facts| facts.geometry_at(index)) {
+        if let Some((solid, transparent)) = plan.execution.query_facts.and_then(|facts| facts.geometry_at(index)) {
             return (solid, transparent, self.live_neighbor_wire_strength(plan, index));
         }
         // Resolve an uncertified neighbor once for both geometry and wire strength.
@@ -203,7 +203,7 @@ impl GraphBackend {
     }
 
     fn live_neighbor_wire_strength(&self, plan: &WirePlan, index: usize) -> u8 {
-        if let Some(facts) = plan.query_facts
+        if let Some(facts) = plan.execution.query_facts
             && facts.known & (1 << index) != 0
         {
             if facts.wire & (1 << index) == 0 {
@@ -224,7 +224,7 @@ impl GraphBackend {
 
     fn neighbor_power_no_dust(&self, plan: &WirePlan, index: usize, face: BlockFace, captured: Option<&ObservedSite>) -> u8 {
         let site = plan.canonical_neighbors[index];
-        if let Some(facts) = plan.query_facts {
+        if let Some(facts) = plan.execution.query_facts {
             let bit = 1 << index;
             if facts.zero_no_dust & bit != 0 {
                 return 0;
@@ -412,11 +412,11 @@ impl GraphBackend {
         if super::fixed_point::enabled() {
             return self.evaluate_fixed_point_wire(node);
         }
-        if let Some(instant) = self.wire_plan(node).instant_reset {
+        if let Some(instant) = self.wire_plan(node).execution.instant_reset {
             let plan = self.wire_plan(node).clone();
             return self.evaluate_instant_output(&plan, instant);
         }
-        if self.wire_plan(node).query_facts.is_some_and(|facts| facts.isolated) {
+        if self.wire_plan(node).execution.query_facts.is_some_and(|facts| facts.isolated) {
             let plan = self.wire_plan(node).clone();
             return self.evaluate_isolated_turbo_wire(&plan);
         }
@@ -456,7 +456,7 @@ impl GraphBackend {
     }
 
     fn evaluate_turbo_wire_inner(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        let compiled_root = self.wire_plan(node).hop_root;
+        let compiled_root = self.wire_plan(node).execution.hop_root;
         let root = compiled_root
             .or(self.component_sites[node.index()])
             .expect("wire root site was validated during preparation");
@@ -619,7 +619,7 @@ impl GraphBackend {
             self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
             return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
         }
-        if let Some(transfer) = plan.query_facts.and_then(|facts| facts.transfer) {
+        if let Some(transfer) = plan.execution.query_facts.and_then(|facts| facts.transfer) {
             let input_power = BlockFace::values()
                 .into_iter()
                 .zip([3, 2, 4, 5, 1, 0])
@@ -673,7 +673,7 @@ impl GraphBackend {
     }
 
     fn captured_neighbor_geometry(&self, plan: &WirePlan, index: usize, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (bool, bool) {
-        if let Some(geometry) = plan.query_facts.and_then(|facts| facts.geometry_at(index)) {
+        if let Some(geometry) = plan.execution.query_facts.and_then(|facts| facts.geometry_at(index)) {
             return geometry;
         }
         let site = self.walk_site(neighbors.slots[index], walk);

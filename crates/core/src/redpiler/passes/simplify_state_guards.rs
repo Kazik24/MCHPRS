@@ -90,14 +90,6 @@ impl GraphPass for SimplifyStateGuards {
         references.apply(graph, guards);
         Ok(())
     }
-
-    fn preserves_dust_paths(&self) -> bool {
-        true
-    }
-
-    fn preserves_turbo_callback_indices(&self) -> bool {
-        true
-    }
 }
 
 struct GuardInterner {
@@ -1311,9 +1303,9 @@ mod tests {
                 source: crate::redpiler::program_graph::NodeId::new(0),
                 deliveries: Vec::new().into_boxed_slice(),
             }],
-            turbo_callback_indices: Vec::new(),
+
             wires: Vec::new(),
-            dust_paths: Vec::new(),
+
             wire_relations: Vec::new(),
             sites: vec![SiteSpec {
                 position,
@@ -1324,9 +1316,8 @@ mod tests {
             resources: Vec::new(),
             initial_pistons: Vec::new(),
             initial_resources: Vec::new(),
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         }
     }
 }

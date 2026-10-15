@@ -11,7 +11,7 @@ const MAX_STATES: usize = 2048;
 const MAX_BYTES: usize = 16 * 1024 * 1024;
 
 fn controls(graph: &CompileGraph) -> Option<Vec<NodeId>> {
-    let [region] = graph.instant_regions.as_slice() else {
+    let [region] = graph.plans.instant.regions.as_slice() else {
         return None;
     };
     if !region.stable_inputs
@@ -43,7 +43,7 @@ fn controls(graph: &CompileGraph) -> Option<Vec<NodeId>> {
 
 fn evaluator(graph: &CompileGraph) -> Result<GraphBackend, String> {
     let mut base = graph.clone();
-    base.instant_machine = None;
+    base.plans.instant.machine = None;
     let (program, state) = base.lower().map_err(|e| e.to_string())?;
     GraphBackend::new(program, state, crate::redpiler::backend::graph::MACHINE_EPOCH).map_err(|e| e.to_string())
 }
@@ -262,7 +262,7 @@ fn empty_kernel() -> InstantKernel {
 }
 
 fn compile_kernel(graph: &CompileGraph, controls: &[NodeId], monitor: &TaskMonitor) -> Result<Option<InstantKernel>, String> {
-    let [region] = graph.instant_regions.as_slice() else {
+    let [region] = graph.plans.instant.regions.as_slice() else {
         return Ok(None);
     };
     // Whole-selection ingress is retained when its receiver is in the admitted component family.
@@ -271,7 +271,7 @@ fn compile_kernel(graph: &CompileGraph, controls: &[NodeId], monitor: &TaskMonit
     }
     let (program, state) = {
         let mut base = graph.clone();
-        base.instant_machine = None;
+        base.plans.instant.machine = None;
         base.lower().map_err(|error| error.to_string())?
     };
     let initial_backend = GraphBackend::new(program, state, crate::redpiler::backend::graph::MACHINE_EPOCH).map_err(|error| error.to_string())?;
@@ -384,7 +384,7 @@ fn prepare_kernel_entry(
     reverse: bool,
 ) -> Result<(MachineState, GraphBackend), String> {
     let mut base = graph.clone();
-    base.instant_machine = None;
+    base.plans.instant.machine = None;
     let (program, state) = base.lower().map_err(|error| error.to_string())?;
     let mut backend = GraphBackend::new(program, state, crate::redpiler::backend::graph::MACHINE_EPOCH).map_err(|error| error.to_string())?;
     let mut initial = MachineState::default();

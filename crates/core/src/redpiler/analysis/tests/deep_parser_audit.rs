@@ -311,18 +311,17 @@ fn fixture_callback_projection(name: &str) -> (FixturePrepStage, Option<String>)
             guards: electrical.guards,
             contacts: electrical.contacts,
             routes: callbacks.routes,
-            turbo_callback_indices: Vec::new(),
+
             wires: electrical.wires,
-            dust_paths: Vec::new(),
+
             wire_relations: electrical.wire_relations,
             sites: electrical.sites,
             pistons: callbacks.pistons,
             resources: geometry.draft.resources.iter().map(|resource| resource.spec.clone()).collect(),
             initial_pistons: geometry.draft.initial_pistons,
             initial_resources: geometry.draft.initial_resources,
-            instant_regions: Vec::new(),
-            instant_proxies: Vec::new(),
-            instant_machine: None,
+
+            plans: Default::default(),
         };
         println!(
             "{name}: nodes={}, routes={}, resources={}",

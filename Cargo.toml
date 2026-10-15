@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/proc_macros", "crates/redpiler_graph"]
+members = ["crates/proc_macros", "crates/redpiler_graph", "crates/redpiler_opt"]
 
 [package]
 name = "mroww"

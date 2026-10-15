@@ -144,7 +144,7 @@ fn movement_rotation_and_teleports_sync_the_model_without_echoing_it_to_owner() 
     packet(&mut viewer, false, 0x2f);
     packet(&mut viewer, false, 0x4c);
     plot.sync_small_models();
-    let mut position = packet(&mut viewer, false, 0x76);
+    let mut position = packet(&mut viewer, false, 0x1f);
     assert_eq!(position.read_varint().unwrap(), model as i32);
     for expected in [33.0, 21.0, 35.5] {
         assert_eq!(position.read_double().unwrap(), expected);
@@ -163,7 +163,7 @@ fn movement_rotation_and_teleports_sync_the_model_without_echoing_it_to_owner() 
     packet(&mut viewer, false, 0x72);
     plot.players[0].pos = PlayerPos::new(40.5, 25.0, 40.5);
     plot.sync_small_models();
-    let mut position = packet(&mut viewer, false, 0x76);
+    let mut position = packet(&mut viewer, false, 0x1f);
     assert_eq!(position.read_varint().unwrap(), model as i32);
     assert_eq!(position.read_double().unwrap(), 40.5);
     assert_eq!(position.read_double().unwrap(), 25.0);
@@ -318,7 +318,7 @@ fn small_animal_commands_spawn_generated_models_and_update_fox_equipment() {
             assert_eq!(item.item_count, 64);
 
             plot.sync_small_models();
-            packet(&mut viewer, false, 0x76);
+            packet(&mut viewer, false, 0x1f);
             packet(&mut viewer, false, 0x4c);
             proxy_held_item(&mut viewer, model, false);
             plot.players[0].selected_slot = 1;
