@@ -67,6 +67,9 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "-u",
         "-O0",
         "-O1",
+        "-O2",
+        "-O3",
+        "-O4",
         "--stable-instant-inputs",
     ]
     .into_iter()
@@ -1964,6 +1967,9 @@ mod security_tests {
                     "-u",
                     "-O0",
                     "-O1",
+                    "-O2",
+                    "-O3",
+                    "-O4",
                     "--stable-instant-inputs",
                 ],
             ),

@@ -15,7 +15,7 @@ fn main() {
     let graph_tier = args
         .windows(2)
         .find(|pair| pair[0] == "--graph-tier")
-        .map(|pair| pair[1].parse::<usize>().expect("--graph-tier needs 1 or 2"));
+        .map(|pair| pair[1].parse::<usize>().expect("--graph-tier needs 1, 2, 3 or 4"));
     let iterations = args
         .windows(2)
         .find(|pair| pair[0] == "--iterations")

@@ -9,6 +9,8 @@ mod instant_machine_tests;
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
 mod instant_recognition_tests;
+#[path = "kernel_projection.rs"]
+mod kernel_projection_tests;
 #[path = "reset_elision.rs"]
 mod reset_elision_tests;
 #[path = "stable_region.rs"]

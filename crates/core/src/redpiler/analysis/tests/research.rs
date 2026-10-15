@@ -202,12 +202,26 @@ fn cpu_bubblesort_head_matches_piston_and_missing_variant_is_rejected_transactio
 #[test]
 #[ignore = "explicit Graph-versus-interpreter timing episode"]
 fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
+    compare_bubblesort_execution(100, 0);
+}
+
+#[test]
+#[ignore = "full O4 CPU sort and interpreter continuation; explicit expensive validity check"]
+fn cpu_bubblesort_o4_completes_sort_and_preserves_interpreter_continuation() {
+    compare_bubblesort_execution(u64::from(cpus::CPUS[2].active_ticks), 4);
+}
+
+fn compare_bubblesort_execution(active_ticks: u64, optimization_level: usize) {
     let cpu = cpus::CPUS[2];
-    const MEASURED_ACTIVE_TICKS: u64 = 100;
     let mut fixture = manifest("cpu_bubblesort");
     fixture["origin"] = json!([cpu.origin.x, cpu.origin.y, cpu.origin.z]);
     let benchmark_sign = cpu.origin + BlockPos::new(186, 2, 184);
-    let checkpoints = [0, 10, MEASURED_ACTIVE_TICKS];
+    let mut checkpoints: BTreeSet<_> = cpus::CHECKPOINTS
+        .into_iter()
+        .map(u64::from)
+        .filter(|&tick| tick <= active_ticks)
+        .collect();
+    checkpoints.insert(active_ticks);
 
     let mut interpreter = cpus::load_cpu(cpu);
     assert!(matches!(interpreter.get_block(benchmark_sign), Block::WallSign { .. }));
@@ -216,13 +230,24 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     let mut interpreter_ram = BTreeMap::from([(0, cpu_words(&interpreter, &fixture))]);
     cpus::click_cpu(&mut interpreter, cpu, cpu.start);
     let interpreter_started = Instant::now();
-    for tick in 1..=MEASURED_ACTIVE_TICKS {
+    for tick in 1..=active_ticks {
         interpreter.tick_interpreted();
         if checkpoints.contains(&tick) {
             interpreter_ram.insert(tick, cpu_words(&interpreter, &fixture));
         }
     }
     let interpreter_runtime = interpreter_started.elapsed();
+    if active_ticks == u64::from(cpu.active_ticks) {
+        assert_eq!(
+            cpu_words(&interpreter, &fixture)["ram_y37"],
+            json!((0..16).collect::<Vec<u16>>()),
+            "completed interpreter sort"
+        );
+    }
+    for tick in 1..=32 {
+        interpreter.tick_interpreted();
+        interpreter_ram.insert(active_ticks + tick, cpu_words(&interpreter, &fixture));
+    }
     drop(interpreter);
 
     let mut graph_world = cpus::load_cpu(cpu);
@@ -245,7 +270,17 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     );
     let monitor = std::sync::Arc::new(crate::redpiler::TaskMonitor::default());
     let ticks = graph_world.scheduler().iter_entries().collect();
-    let mut graph = crate::redpiler::backend::graph::GraphBackend::compile(&graph_world, bounds, ticks, monitor.clone()).unwrap_or_else(|error| {
+    let mut graph = crate::redpiler::backend::graph::GraphBackend::compile_with_options(
+        &graph_world,
+        bounds,
+        ticks,
+        &crate::redpiler::CompilerOptions {
+            optimization_level: Some(optimization_level),
+            ..Default::default()
+        },
+        monitor.clone(),
+    )
+    .unwrap_or_else(|error| {
         panic!(
             "Graph preparation failed: {error}; preparation tables: {:?}",
             monitor.graph_statistics().preparation_tables
@@ -276,8 +311,10 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
     graph.use_block(button).unwrap();
     graph.set_test_recording(false);
     let graph_started = Instant::now();
-    for tick in 1..=MEASURED_ACTIVE_TICKS {
-        graph.tick().unwrap_or_else(|error| panic!("Graph failed at active tick {tick}: {error}"));
+    for tick in 1..=active_ticks {
+        graph
+            .tick_with_world(&mut graph_world)
+            .unwrap_or_else(|error| panic!("Graph failed at active tick {tick}: {error}"));
         if tick % 1_000 == 0 {
             eprintln!("Graph BubbleSort active tick {tick}");
         }
@@ -287,13 +324,30 @@ fn cpu_bubblesort_graph_and_interpreter_match_short_sign_free_episode() {
         }
     }
     let graph_runtime = graph_started.elapsed();
+    if active_ticks == u64::from(cpu.active_ticks) {
+        assert_eq!(
+            cpu_words(&graph_world, &fixture)["ram_y37"],
+            json!((0..16).collect::<Vec<u16>>()),
+            "completed Graph sort"
+        );
+    }
+    graph.reset(&mut graph_world);
+    for tick in 1..=32 {
+        graph_world.tick_interpreted();
+        graph_ram.insert(active_ticks + tick, cpu_words(&graph_world, &fixture));
+    }
     assert_eq!(graph_ram, interpreter_ram, "checkpoint RAM parity");
+    assert_eq!(
+        graph.execution_counts().instant_transitions,
+        0,
+        "this CPU validity run exercises the general fallback"
+    );
     eprintln!("Graph work counts: {:?}", graph.execution_counts());
     eprintln!(
-        "CPU sign-free short replay at {benchmark_sign:?}: Graph {} ticks in {:.2}s; interpreter {} ticks in {:.2}s",
-        MEASURED_ACTIVE_TICKS,
+        "CPU sign-free replay at {benchmark_sign:?}: Graph O{optimization_level} {} ticks in {:.2}s; interpreter {} ticks in {:.2}s",
+        active_ticks,
         graph_runtime.as_secs_f64(),
-        MEASURED_ACTIVE_TICKS,
+        active_ticks,
         interpreter_runtime.as_secs_f64()
     );
 }

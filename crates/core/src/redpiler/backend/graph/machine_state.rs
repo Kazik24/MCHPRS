@@ -1,5 +1,6 @@
 //! Exact state normalization: scheduler rotation, time origin and revision origins are unobservable.
 use super::*;
+use mchprs_world::PistonAction;
 
 pub(crate) const MACHINE_EPOCH: u64 = 64;
 
@@ -74,6 +75,13 @@ fn write_piston(state: &mut PistonState, value: u8) -> bool {
 impl GraphBackend {
     /// Reuse the lookup buffer; equality includes all ordered future obligations.
     pub(crate) fn capture_machine_state(&self, out: &mut MachineState) -> bool {
+        if self.kernel_cursor.is_some() {
+            let Some(state) = self.current_kernel_state() else {
+                return false;
+            };
+            *out = state;
+            return true;
+        }
         if self.clock.phase != GraphPhase::BetweenTicks || self.clock.scheduled_advanced || self.failure.is_some() {
             return false;
         }
@@ -167,6 +175,7 @@ impl GraphBackend {
 
     /// Only compilation/validation uses this: runtime transitions retain live revision origins.
     pub(crate) fn restore_machine_state(&mut self, state: &MachineState) -> Result<(), &'static str> {
+        self.kernel_cursor = None;
         if state.components.len() != self.state.components.len()
             || state.pistons.len() != self.state.pistons.len()
             || state.resources.len() != self.state.resources.len()
@@ -321,64 +330,310 @@ impl GraphBackend {
         Ok((after, edge))
     }
 
-    pub(super) fn try_machine_step(&mut self, action: usize) -> bool {
-        if self.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64 {
-            return false;
-        }
-        let Some(machine) = self.program.instant_machine().cloned() else {
+    pub(crate) fn materialize_kernel_state(&mut self) -> bool {
+        let Some(kernel) = self.program.instant_kernel().cloned() else {
             return false;
         };
-        let mut key = std::mem::take(&mut self.machine_key);
-        let source = if self.capture_machine_state(&mut key) {
-            machine.index.get(&key).copied()
-        } else {
-            None
+        let Some(cursor) = self.kernel_cursor.clone() else {
+            return true;
         };
-        self.machine_key = key;
-        let Some(source) = source else {
+        let Some(state) = self.current_kernel_state() else {
             return false;
         };
-        let Some(edge) = machine.transitions[source as usize].get(action).and_then(Option::as_ref) else {
+        if state.components.len() != self.state.components.len()
+            || state.pistons.len() != self.state.pistons.len()
+            || state.resources.len() != self.state.resources.len()
+        {
             return false;
-        };
-        let target = &machine.states[edge.next as usize];
-        graph_trace!(
-            self.clock.logical_tick,
-            self.clock.phase,
-            "instant transition source={source} action={action} target={}",
-            edge.next
-        );
-        if action == 0 {
-            self.clock.logical_tick += 1;
-            self.counts.ticks += 1;
         }
-        for &(node, value) in &edge.components {
-            let valid = write_component(&mut self.state.components[node.index()], value);
-            debug_assert!(valid);
+        for (component, &value) in self.state.components.iter_mut().zip(&state.components) {
+            if !write_component(component, value) {
+                return false;
+            }
         }
-        for &(actor, value, revision) in &edge.pistons {
-            let state = &mut self.state.pistons[actor.index()];
-            let valid = write_piston(state, value);
-            debug_assert!(valid);
-            state.revision = state.revision.wrapping_add(revision);
+        let piston_revisions = self.kernel_revision_totals(&kernel, &cursor, true);
+        for (index, (piston, &pose)) in self.state.pistons.iter_mut().zip(&state.pistons).enumerate() {
+            if !write_piston(piston, pose) {
+                return false;
+            }
+            piston.revision = cursor.piston_revisions[index].wrapping_add(piston_revisions[index]);
         }
-        for &(resource, at, enabled, revision) in &edge.resources {
-            let state = &mut self.state.resources[resource.index()];
-            state.at = at;
-            state.enabled = enabled;
-            state.revision = state.revision.wrapping_add(revision);
+        let resource_revisions = self.kernel_revision_totals(&kernel, &cursor, false);
+        for (index, (resource, &(contact, enabled))) in self.state.resources.iter_mut().zip(&state.resources).enumerate() {
+            if !self.program.resources()[index].contacts.contains(&contact) {
+                return false;
+            }
+            resource.at = contact;
+            resource.enabled = enabled;
+            resource.revision = cursor.resource_revisions[index].wrapping_add(resource_revisions[index]);
         }
-        for node in &edge.dirty {
-            self.dirty[node.index()] = true;
-        }
-        self.restore_machine_future(target);
-        for &(piston, action, extended) in &edge.effects {
-            self.accepted(PistonRequest { piston, action }, extended);
-        }
-        self.counts.scheduled_ticks += edge.scheduled;
-        debug_assert_eq!(edge.accepted, edge.effects.len() as u64);
-        self.counts.deferred_publications += edge.published;
-        self.counts.instant_transitions += 1;
+        self.restore_machine_future(&state);
         true
+    }
+
+    pub(super) fn try_enter_kernel(&mut self) {
+        let Some(kernel) = self.program.instant_kernel().cloned() else {
+            return;
+        };
+        if self.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64
+            || kernel.period == 0
+            || usize::from(kernel.prefix).checked_add(usize::from(kernel.period)) != Some(kernel.phases.len())
+        {
+            return;
+        }
+        let mut mask = 0u8;
+        for (bit, &node) in kernel.data_controls.iter().enumerate() {
+            if !matches!(self.state.components.get(node.index()), Some(ComponentState::Electrical(_))) {
+                return;
+            }
+            if self.node_state(node).powered {
+                mask |= 1 << bit;
+            }
+        }
+        if self.node_state(kernel.trigger).powered {
+            return;
+        }
+        let mut actual = MachineState::default();
+        if !self.capture_machine_state(&mut actual) {
+            return;
+        }
+        let Some(expected) = evaluate_kernel_state(&kernel, &kernel.entry, mask) else {
+            return;
+        };
+        if actual != expected {
+            return;
+        }
+        self.kernel_cursor = Some(KernelCursor {
+            mask,
+            phase: 0,
+            cycles: 0,
+            piston_revisions: self.state.pistons.iter().map(|state| state.revision).collect(),
+            resource_revisions: self.state.resources.iter().map(|state| state.revision).collect(),
+        });
+    }
+
+    pub(super) fn try_kernel_tick(&mut self) -> bool {
+        let Some((mask, phase)) = self.kernel_cursor.as_ref().map(|cursor| (cursor.mask, cursor.phase)) else {
+            return false;
+        };
+        if self.clock.phase != GraphPhase::BetweenTicks
+            || self.clock.scheduled_advanced
+            || self.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64
+        {
+            self.leave_kernel_before_general_execution();
+            return false;
+        }
+        let Some(kernel) = self.program.instant_kernel().cloned() else {
+            panic!("active kernel cursor has no lowered kernel");
+        };
+        let Some(frame) = kernel.phases.get(phase) else {
+            self.leave_kernel_before_general_execution();
+            return false;
+        };
+
+        graph_trace!(self.clock.logical_tick, self.clock.phase, "instant kernel phase={phase}");
+        for delta in &frame.components {
+            if kernel.evaluate(delta.changed, mask) != 0 {
+                let value = kernel.evaluate(delta.value, mask) as u16;
+                assert!(
+                    write_component(&mut self.state.components[delta.node.index()], value),
+                    "validated kernel component root must match its compiled owner"
+                );
+            }
+        }
+        for &(node, changed) in &frame.dirty {
+            if kernel.evaluate(changed, mask) != 0 {
+                self.dirty[node.index()] = true;
+            }
+        }
+        for effect in &frame.effects {
+            if kernel.evaluate(effect.enabled, mask) != 0 {
+                self.accepted(
+                    PistonRequest {
+                        piston: effect.piston,
+                        action: effect.action,
+                    },
+                    effect.extended,
+                );
+            }
+        }
+        self.clock.logical_tick += 1;
+        self.counts.ticks += 1;
+        self.counts.scheduled_ticks += kernel.evaluate(frame.scheduled, mask);
+        self.counts.deferred_publications += kernel.evaluate(frame.published, mask);
+        self.counts.instant_transitions += 1;
+        let cursor = self.kernel_cursor.as_mut().expect("active kernel cursor remains installed");
+        if phase + 1 == kernel.phases.len() {
+            cursor.phase = usize::from(kernel.prefix);
+            cursor.cycles = cursor.cycles.wrapping_add(1);
+        } else {
+            cursor.phase = phase + 1;
+        }
+        true
+    }
+
+    fn leave_kernel_before_general_execution(&mut self) {
+        assert!(
+            self.materialize_kernel_state(),
+            "validated kernel state must materialize before general Graph execution"
+        );
+        self.kernel_cursor = None;
+    }
+
+    pub(super) fn current_kernel_state(&self) -> Option<MachineState> {
+        let kernel = self.program.instant_kernel()?;
+        let cursor = self.kernel_cursor.as_ref()?;
+        let state = if cursor.phase == 0 && cursor.cycles == 0 {
+            &kernel.entry
+        } else {
+            let previous = if cursor.phase == 0 { kernel.phases.len() - 1 } else { cursor.phase - 1 };
+            &kernel.phases.get(previous)?.state
+        };
+        evaluate_kernel_state(kernel, state, cursor.mask)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn semantic_revisions(&self) -> (Vec<u64>, Vec<u64>) {
+        let Some(cursor) = self.kernel_cursor.as_ref() else {
+            return (
+                self.state.pistons.iter().map(|state| state.revision).collect(),
+                self.state.resources.iter().map(|state| state.revision).collect(),
+            );
+        };
+        let Some(kernel) = self.program.instant_kernel() else {
+            return (Vec::new(), Vec::new());
+        };
+        let piston_deltas = self.kernel_revision_totals(kernel, cursor, true);
+        let resource_deltas = self.kernel_revision_totals(kernel, cursor, false);
+        (
+            cursor
+                .piston_revisions
+                .iter()
+                .zip(piston_deltas)
+                .map(|(&origin, delta)| origin.wrapping_add(delta))
+                .collect(),
+            cursor
+                .resource_revisions
+                .iter()
+                .zip(resource_deltas)
+                .map(|(&origin, delta)| origin.wrapping_add(delta))
+                .collect(),
+        )
+    }
+
+    fn kernel_revision_totals(&self, kernel: &InstantKernel, cursor: &KernelCursor, pistons: bool) -> Vec<u64> {
+        let count = if pistons { self.state.pistons.len() } else { self.state.resources.len() };
+        let mut totals = vec![0u64; count];
+        let prefix = usize::from(kernel.prefix);
+        let end = prefix + usize::from(kernel.period);
+        if cursor.phase < prefix {
+            add_kernel_revisions(kernel, cursor.mask, 0, cursor.phase, pistons, &mut totals);
+            return totals;
+        }
+        add_kernel_revisions(kernel, cursor.mask, 0, prefix, pistons, &mut totals);
+        let mut cycle = vec![0u64; count];
+        add_kernel_revisions(kernel, cursor.mask, prefix, end, pistons, &mut cycle);
+        for (total, delta) in totals.iter_mut().zip(cycle) {
+            *total = total.wrapping_add(delta.wrapping_mul(cursor.cycles));
+        }
+        add_kernel_revisions(kernel, cursor.mask, prefix, cursor.phase, pistons, &mut totals);
+        totals
+    }
+}
+
+fn add_kernel_revisions(kernel: &InstantKernel, mask: u8, start: usize, end: usize, pistons: bool, totals: &mut [u64]) {
+    for frame in &kernel.phases[start..end] {
+        if pistons {
+            for &(id, expression) in &frame.piston_revisions {
+                let index = id.index();
+                totals[index] = totals[index].wrapping_add(kernel.evaluate(expression, mask));
+            }
+        } else {
+            for &(id, expression) in &frame.resource_revisions {
+                let index = id.index();
+                totals[index] = totals[index].wrapping_add(kernel.evaluate(expression, mask));
+            }
+        }
+    }
+}
+
+fn evaluate_kernel_state(kernel: &InstantKernel, expression: &KernelStateExpr, mask: u8) -> Option<MachineState> {
+    let mut state = MachineState {
+        components: expression
+            .components
+            .iter()
+            .map(|&id| u16::try_from(kernel.evaluate(id, mask)).ok())
+            .collect::<Option<_>>()?,
+        pistons: expression
+            .pistons
+            .iter()
+            .map(|&id| u8::try_from(kernel.evaluate(id, mask)).ok())
+            .collect::<Option<_>>()?,
+        resources: expression
+            .resources
+            .iter()
+            .map(|&(contact, enabled)| {
+                Some((
+                    ContactId::try_from_index(kernel.evaluate(contact, mask) as usize)?,
+                    kernel.evaluate(enabled, mask) != 0,
+                ))
+            })
+            .collect::<Option<_>>()?,
+        ticks: Vec::new(),
+        requests: Vec::new(),
+        deferred: Vec::new(),
+    };
+    let future = &expression.future;
+    let tick_len = usize::try_from(kernel.evaluate(future.tick_len, mask)).ok()?;
+    let request_len = usize::try_from(kernel.evaluate(future.request_len, mask)).ok()?;
+    let deferred_len = usize::try_from(kernel.evaluate(future.deferred_len, mask)).ok()?;
+    if tick_len > future.ticks.len() || request_len > future.requests.len() || deferred_len > future.deferred.len() {
+        return None;
+    }
+    for tick in &future.ticks[..tick_len] {
+        let node = NodeId::try_from_index(kernel.evaluate(tick.node, mask) as usize)?;
+        let delay = u32::try_from(kernel.evaluate(tick.delay, mask)).ok()?;
+        let priority = match kernel.evaluate(tick.priority, mask) {
+            0 => TickPriority::Highest,
+            1 => TickPriority::Higher,
+            2 => TickPriority::High,
+            3 => TickPriority::Normal,
+            _ => return None,
+        };
+        state.ticks.push(MachineTick { node, delay, priority });
+    }
+    for request in &future.requests[..request_len] {
+        let piston = PistonId::try_from_index(kernel.evaluate(request.piston, mask) as usize)?;
+        let action = decode_action(kernel.evaluate(request.action, mask))?;
+        state.requests.push((piston, action));
+    }
+    for event in &future.deferred[..deferred_len] {
+        let piston = PistonId::try_from_index(kernel.evaluate(event.piston, mask) as usize)?;
+        let revision = kernel.evaluate(event.revision, mask);
+        let resource = match kernel.evaluate(event.resource, mask) {
+            u64::MAX => None,
+            resource => Some((
+                ResourceId::try_from_index(resource as usize)?,
+                kernel.evaluate(event.resource_revision, mask),
+                ContactId::try_from_index(kernel.evaluate(event.contact, mask) as usize)?,
+            )),
+        };
+        state.deferred.push(MachineDeferred {
+            piston,
+            revision,
+            resource,
+            delay: kernel.evaluate(event.delay, mask),
+            extending: kernel.evaluate(event.extending, mask) != 0,
+        });
+    }
+    Some(state)
+}
+
+fn decode_action(value: u64) -> Option<PistonAction> {
+    match value {
+        0 => Some(PistonAction::Extend),
+        1 => Some(PistonAction::Retract),
+        2 => Some(PistonAction::RetractWithoutPull),
+        _ => None,
     }
 }

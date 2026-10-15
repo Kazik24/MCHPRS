@@ -538,6 +538,16 @@ mod tests {
         assert!(opt_2.entries.iter().take(8).all(|entry| entry.enabled));
         assert!(!opt_2.entries[8].enabled);
 
+        for level in [3, 4, 5] {
+            let pipeline = super::super::default_graph_pipeline(&CompilerOptions {
+                optimization_level: Some(level),
+                ..Default::default()
+            });
+            assert!(pipeline.entries[..13].iter().all(|entry| entry.enabled));
+            assert_eq!(pipeline.entries[13].pass.name(), "compile-instant-machine");
+            assert_eq!(pipeline.entries[13].enabled, level >= 4);
+        }
+
         let max_optimized = super::super::default_graph_pipeline(&CompilerOptions {
             optimization_level: None,
             ..Default::default()

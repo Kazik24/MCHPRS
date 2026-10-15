@@ -8,7 +8,7 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Promise stable external inputs from an activating falling edge through reset; enables composed O3 regions.
+    /// Promise stable inputs through reset; enables O3 region composition and O4 compact kernels.
     pub stable_instant_inputs: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
@@ -16,7 +16,7 @@ pub struct CompilerOptions {
     pub update: bool,
 }
 
-pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 3;
+pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 4;
 
 impl Default for CompilerOptions {
     fn default() -> Self {
@@ -73,7 +73,7 @@ impl CompilerOptions {
             }
         }
         if options.stable_instant_inputs && options.optimization_level.is_some_and(|level| level < 3) {
-            return Err("--stable-instant-inputs requires -O3 or --optimize".into());
+            return Err("--stable-instant-inputs requires -O3 or higher, or --optimize".into());
         }
         Ok(options)
     }

@@ -31,12 +31,16 @@ At O3, `identify_instant_regions` follows built-in reset compilation and
 general execution. Passes invalidate these certificates by default; opt into
 preservation only if ownership, original route rows, and reset witnesses remain valid.
 
-With `-O3 --stable-instant-inputs`, `compile_instant_machine` follows proxy compilation.
-It replaces internal execution for bounded closed selections with independently replayed,
-exact full-state transitions. Unknown states/actions retain general execution. The initial
-family covers the whole one-bit adder; larger regions remain ordered proxies. Read
-[CLOSED_INSTANT_MACHINE.md](../../../../../docs/notes/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md)
-before extending admission, normalization, or the bounded exploration budget.
+At `-O4` and above, `compile_instant_machine` follows O3 proxy compilation and requires `--stable-instant-inputs`.
+It derives a compact phase/expression program for bounded closed selections. Full snapshots
+remain compile-time proof data; hot ticks evaluate output and effect roots without state-table
+lookup or private propagation. Entry mismatches keep general execution; active control changes
+reconstruct exact private state and future work before ordinary callbacks. The initial family
+covers the whole one-bit adder; larger regions remain ordered proxies. Read
+[COMPACT_INSTANT_KERNEL.md](../../../../../docs/notes/redpiler-pistons-v4/COMPACT_INSTANT_KERNEL.md)
+before extending admission, normalization, or the bounded derivation budget. The superseded
+snapshot prototype is recorded in
+[CLOSED_INSTANT_MACHINE.md](../../../../../docs/notes/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md).
 
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.
 2. `mod.rs` holds registration and pipeline infrastructure. Do not implement unrelated transformations inside the runner, parser, compiler orchestration, or backend dispatch.

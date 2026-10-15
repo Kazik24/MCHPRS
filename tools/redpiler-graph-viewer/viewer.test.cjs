@@ -532,6 +532,31 @@ const closedMachine = (graph) => ({
   transitions: [[{next: 0}, null]],
 });
 
+const compactKernel = (graph) => {
+  const state = () => ({
+    components: graph.nodes.map(() => 0),
+    pistons: graph.pistons.map(() => 0),
+    resources: graph.resources.map(() => [0, 0]),
+    future: {tick_len: 0, ticks: [], request_len: 0, requests: [], deferred_len: 0, deferred: []},
+  });
+  return {
+    encoding: 'compact-instant-kernel-v1',
+    trigger: graph.nodes[0].id,
+    data_controls: [graph.nodes[1].id],
+    owners: {
+      components: graph.nodes.map((row) => row.id),
+      pistons: graph.pistons.map((row) => row.id),
+      resources: graph.resources.map((row) => row.id),
+      contacts: graph.contacts.map((row) => row.id),
+    },
+    prefix: 0, period: 1, estimated_runtime_bytes: 8,
+    expressions: [{kind: 'constant', value: '0'}],
+    entry: state(),
+    phases: [{components: [], dirty: [], piston_revisions: [], resource_revisions: [], effects: [],
+      scheduled: 0, accepted: 0, published: 0, state: state()}],
+  };
+};
+
 test('closed instant machines retain owner dimensions and bounded targets', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
@@ -550,4 +575,36 @@ test('closed instant machines retain owner dimensions and bounded targets', asyn
     await load(viewer, invalid);
     assert.equal(viewer.elements.get('error').hidden, false);
   }
+});
+
+test('compact instant kernels validate the bounded DAG, required roots, and typed owners', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const fixture = adderFixture();
+  fixture.graph.instant_kernel = compactKernel(fixture.graph);
+  await load(viewer, fixture);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  const previous = viewer.cy;
+  const mutations = [
+    (kernel) => { delete kernel.owners.components; },
+    (kernel) => { delete kernel.entry.future.ticks; },
+    (kernel) => { kernel.phases[0].effects.push({enabled: 0, action: 'extend', extended: false}); },
+    (kernel) => { kernel.trigger = fixture.graph.pistons[0].id; },
+    (kernel) => { kernel.phases[0].components.push({node: fixture.graph.pistons[0].id, changed: 0, value: 0}); },
+    (kernel) => { kernel.phases[0].effects.push({enabled: 0, piston: fixture.graph.nodes[0].id, action: 'extend', extended: false}); },
+    (kernel) => { kernel.expressions[0].value = '00'; },
+    (kernel) => { kernel.expressions[0].value = '9'.repeat(5000); },
+    (kernel) => { kernel.period = 0; },
+  ];
+  for (const mutation of mutations) {
+    const invalid = JSON.parse(JSON.stringify(fixture));
+    mutation(invalid.graph.instant_kernel);
+    await load(viewer, invalid);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+  const maxU64 = JSON.parse(JSON.stringify(fixture));
+  maxU64.graph.instant_kernel.expressions[0].value = '18446744073709551615';
+  await load(viewer, maxU64);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
 });

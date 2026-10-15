@@ -288,10 +288,25 @@ pub(crate) struct GraphBackend {
     effects: Vec<PresentationEffect>,
     failure: Option<GraphExecutionError>,
     counts: GraphExecutionCounts,
-    /// This reuses the complete-state lookup buffer for an optional instant machine.
-    machine_key: MachineState,
+    /// This stores only frozen controls, phase position, and live revision origins.
+    kernel_cursor: Option<KernelCursor>,
     #[cfg(test)]
     test_recorder: TestRecorder,
+}
+
+#[derive(Clone)]
+/// Minimal mutable memory for a certified periodic kernel.
+struct KernelCursor {
+    /// This selects the frozen external data-control assignment.
+    mask: u8,
+    /// This identifies the next certified phase transition for the current semantic state.
+    phase: usize,
+    /// This counts completed periodic cycles after the finite prefix.
+    cycles: u64,
+    /// These preserve live actor revision origins across compact execution.
+    piston_revisions: Vec<u64>,
+    /// These preserve live resource revision origins across compact execution.
+    resource_revisions: Vec<u64>,
 }
 
 #[cfg(test)]
@@ -566,7 +581,7 @@ impl GraphBackend {
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
-            machine_key: MachineState::default(),
+            kernel_cursor: None,
             #[cfg(test)]
             test_recorder: TestRecorder::default(),
         })
@@ -699,7 +714,7 @@ impl GraphBackend {
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        if self.try_machine_step(0) {
+        if self.try_kernel_tick() {
             if let Some(host) = host.as_mut() {
                 host.publish_logical_tick(self.clock.logical_tick);
             }
@@ -830,20 +845,22 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        let machine_action = self.program.instant_machine().and_then(|machine| {
-            machine
-                .controls
-                .iter()
-                .position(|&node| self.position(node) == position)
-                .map(|index| index + 1)
-        });
-        if let Some(action) = machine_action {
-            if self.try_machine_step(action) {
-                return Ok(());
-            }
+        if self.kernel_cursor.is_some() {
+            assert!(
+                self.materialize_kernel_state(),
+                "certified kernel state must materialize before input changes"
+            );
+            self.kernel_cursor = None;
         }
+        let activates_kernel = self
+            .program
+            .instant_kernel()
+            .is_some_and(|kernel| self.position(kernel.trigger) == position && self.node_state(kernel.trigger).powered);
         let result = self.use_block_inner(position);
         self.latch_error(&result);
+        if result.is_ok() && activates_kernel {
+            self.try_enter_kernel();
+        }
         result
     }
 
@@ -1627,6 +1644,7 @@ impl GraphBackend {
 
     #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
+        let virtual_state = self.current_kernel_state();
         self.program
             .nodes()
             .iter()
@@ -1638,16 +1656,29 @@ impl GraphBackend {
                 ) {
                     return None;
                 }
-                let ComponentState::Electrical(state) = &self.state.components[index] else {
-                    return None;
+                let strength = if let Some(state) = &virtual_state {
+                    (state.components[index] & 15) as u8
+                } else {
+                    let ComponentState::Electrical(state) = &self.state.components[index] else {
+                        return None;
+                    };
+                    state.output_strength
                 };
-                Some((node.position?, state.output_strength))
+                Some((node.position?, strength))
             })
             .collect()
     }
 
     pub(crate) fn inspect(&self, position: BlockPos) {
         match self.positions.get(&position) {
+            Some(&node) if self.kernel_cursor.is_some() => {
+                let state = self.current_kernel_state();
+                tracing::debug!(
+                    "Graph node {node:?}: {:?} kernel_state={:?}",
+                    self.program.nodes()[node.index()].kind,
+                    state.as_ref().and_then(|state| state.components.get(node.index()))
+                );
+            }
             Some(&node) => tracing::debug!(
                 "Graph node {node:?}: {:?} {:?}",
                 self.program.nodes()[node.index()].kind,

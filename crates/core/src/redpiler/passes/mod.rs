@@ -281,7 +281,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Box::new(compile_builtin_resets::CompileBuiltinResets)),
         (3, Box::new(identify_instant_regions::IdentifyInstantRegions)),
         (3, Box::new(compile_instant_proxies::CompileInstantProxies)),
-        (3, Box::new(compile_instant_machine::CompileInstantMachine)),
+        (4, Box::new(compile_instant_machine::CompileInstantMachine)),
     ];
     let entries = passes
         .into_iter()

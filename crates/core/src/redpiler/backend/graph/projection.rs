@@ -37,6 +37,9 @@ impl GraphBackend {
     /// Presentation only: writes current graph state and drains effects. It
     /// reads no World state, so suppressed display cannot alter execution.
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
+        if self.kernel_cursor.is_some() {
+            assert!(self.materialize_kernel_state(), "certified kernel projection must materialize");
+        }
         for index in 0..self.dirty.len() {
             let node = NodeId::try_from_index(index).unwrap();
             // Hidden nodes stay dirty; reset materializes every node regardless.
@@ -121,6 +124,7 @@ impl GraphBackend {
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
         self.flush(world, false);
+        self.kernel_cursor = None;
         self.project_future(world);
         self.dirty.fill(false);
         self.scheduler.clear();
@@ -134,6 +138,16 @@ impl GraphBackend {
     /// events, ordinary scheduled ticks, queued requests, and the clock.
     /// Reads no World state and changes no graph state.
     pub(crate) fn project_future<W: World>(&self, world: &mut W) {
+        if self.kernel_cursor.is_some() {
+            let mut projected = GraphBackend::new(self.program.clone(), self.state.clone(), self.clock.logical_tick)
+                .expect("a validated graph program can project its kernel state");
+            projected.clock = self.clock;
+            projected.kernel_cursor = self.kernel_cursor.clone();
+            assert!(projected.materialize_kernel_state(), "certified kernel projection must materialize");
+            projected.kernel_cursor = None;
+            projected.project_future(world);
+            return;
+        }
         debug_assert_eq!(self.clock.phase, GraphPhase::BetweenTicks);
         let interpreter = world.piston_state_mut();
         interpreter.logical_tick = self.clock.logical_tick;

@@ -752,7 +752,7 @@ impl CircuitDraft {
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
-            instant_machine: self.instant_machine,
+            instant_kernel: self.instant_machine.map(|machine| std::sync::Arc::new(machine.kernel.clone())),
             instant_proxies: self.instant_proxies.into_boxed_slice(),
             private_resource_owners: private_resource_owners.into_boxed_slice(),
             instant_route_by_route: instant_route_by_route.into_boxed_slice(),
@@ -1955,8 +1955,8 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
-    /// This owns certified closed-selection transitions; unsupported states retain general execution.
-    instant_machine: Option<std::sync::Arc<InstantMachine>>,
+    /// This owns reduced phase programs; unsupported states retain general Graph execution.
+    instant_kernel: Option<std::sync::Arc<InstantKernel>>,
     /// These private-cell programs reuse the existing actor, resource, and clock state.
     instant_proxies: Box<[InstantProxy]>,
     /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
@@ -2001,8 +2001,8 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
-    pub(crate) fn instant_machine(&self) -> Option<&std::sync::Arc<InstantMachine>> {
-        self.instant_machine.as_ref()
+    pub(crate) fn instant_kernel(&self) -> Option<&std::sync::Arc<InstantKernel>> {
+        self.instant_kernel.as_ref()
     }
     pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {
         self.private_resource_owners[resource.index()]

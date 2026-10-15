@@ -95,6 +95,7 @@ function validateGraph(data) {
     }
   }
   validateInstantMachine(data.graph.instant_machine, data.graph);
+  validateInstantKernel(data.graph.instant_kernel, data.graph);
   const instantWires = new Set();
   for (const wire of data.graph.wire_plans) {
     if (wire.hop_root != null) {
@@ -677,5 +678,77 @@ function validateInstantMachine(machine, graph) {
   for (const row of machine.transitions) {
     if (!Array.isArray(row) || row.length !== machine.controls.length + 1 || row.some((edge) => edge != null
       && (!Number.isInteger(edge.next) || edge.next < 0 || edge.next >= machine.states.length))) throw Error("Invalid instant machine transition.");
+  }
+}
+
+function validateInstantKernel(kernel, graph) {
+  if (kernel == null) return;
+  const fail = () => { throw Error("Invalid compact instant kernel."); };
+  const nodeIds = graph.nodes.map((row) => row.id);
+  const pistonIds = graph.pistons.map((row) => row.id);
+  const resourceIds = graph.resources.map((row) => row.id);
+  const contactIds = graph.contacts.map((row) => row.id);
+  const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  if (!isObject(kernel) || kernel.encoding !== "compact-instant-kernel-v1"
+    || !nodeIds.includes(kernel.trigger) || !Array.isArray(kernel.data_controls)
+    || kernel.data_controls.length > 3 || kernel.data_controls.some((id) => !nodeIds.includes(id))
+    || kernel.data_controls.includes(kernel.trigger) || new Set(kernel.data_controls).size !== kernel.data_controls.length
+    || !Array.isArray(kernel.expressions) || kernel.expressions.length < 1 || kernel.expressions.length > 1_000_000
+    || !Number.isSafeInteger(kernel.estimated_runtime_bytes) || kernel.estimated_runtime_bytes < 0) fail();
+
+  for (let index = 0; index < kernel.expressions.length; index++) {
+    const expression = kernel.expressions[index];
+    if (!isObject(expression)) fail();
+    if (expression.kind === "constant") {
+      if (typeof expression.value !== "string" || expression.value.length > 20 || !/^(0|[1-9][0-9]*)$/.test(expression.value)
+        || BigInt(expression.value) > 18446744073709551615n) fail();
+    } else if (expression.kind === "select") {
+      if (!Number.isInteger(expression.control) || expression.control < 0 || expression.control >= kernel.data_controls.length
+        || !Number.isInteger(expression.low) || expression.low < 0 || expression.low >= index
+        || !Number.isInteger(expression.high) || expression.high < 0 || expression.high >= index) fail();
+    } else fail();
+  }
+
+  const phases = kernel.phases;
+  if (!Number.isSafeInteger(kernel.prefix) || kernel.prefix < 0 || !Number.isSafeInteger(kernel.period)
+    || kernel.period < 1 || !Array.isArray(phases) || kernel.prefix + kernel.period !== phases.length || phases.length > 128) fail();
+  const owners = kernel.owners;
+  const sameIds = (values, expected) => Array.isArray(values) && values.length === expected.length
+    && new Set(values).size === expected.length && values.every((id) => expected.includes(id));
+  if (!isObject(owners) || !sameIds(owners.components, nodeIds) || !sameIds(owners.pistons, pistonIds)
+    || !sameIds(owners.resources, resourceIds) || !sameIds(owners.contacts, contactIds)) fail();
+
+  const root = (value) => Number.isInteger(value) && value >= 0 && value < kernel.expressions.length;
+  const roots = (values) => Array.isArray(values) && values.every(root);
+  const stateRoots = (state) => {
+    if (!isObject(state) || !roots(state.components) || state.components.length !== nodeIds.length
+      || !roots(state.pistons) || state.pistons.length !== pistonIds.length
+      || !Array.isArray(state.resources) || state.resources.length !== resourceIds.length
+      || state.resources.some((pair) => !Array.isArray(pair) || pair.length !== 2 || !roots(pair))) return false;
+    const future = state.future;
+    if (!isObject(future) || !root(future.tick_len) || !Array.isArray(future.ticks) || future.ticks.length > 128
+      || !future.ticks.every((tick) => isObject(tick) && ["node", "delay", "priority"].every((field) => root(tick[field])))
+      || !root(future.request_len) || !Array.isArray(future.requests) || future.requests.length > 64
+      || !future.requests.every((request) => isObject(request) && ["piston", "action"].every((field) => root(request[field])))
+      || !root(future.deferred_len) || !Array.isArray(future.deferred) || future.deferred.length > 128
+      || !future.deferred.every((event) => isObject(event)
+        && ["piston", "revision", "resource", "resource_revision", "contact", "delay", "extending"].every((field) => root(event[field])))) return false;
+    return true;
+  };
+  if (!stateRoots(kernel.entry)) fail();
+  for (const phase of phases) {
+    if (!isObject(phase) || !stateRoots(phase.state)
+      || !["scheduled", "accepted", "published"].every((field) => root(phase[field]))) fail();
+    if (!Array.isArray(phase.components) || !phase.components.every((delta) => isObject(delta)
+      && nodeIds.includes(delta.node) && root(delta.changed) && root(delta.value))) fail();
+    if (!Array.isArray(phase.dirty) || !phase.dirty.every((delta) => isObject(delta)
+      && nodeIds.includes(delta.node) && root(delta.touched))) fail();
+    if (!Array.isArray(phase.piston_revisions) || !phase.piston_revisions.every((delta) => isObject(delta)
+      && pistonIds.includes(delta.piston) && root(delta.increment))) fail();
+    if (!Array.isArray(phase.resource_revisions) || !phase.resource_revisions.every((delta) => isObject(delta)
+      && resourceIds.includes(delta.resource) && root(delta.increment))) fail();
+    if (!Array.isArray(phase.effects) || !phase.effects.every((effect) => isObject(effect)
+      && pistonIds.includes(effect.piston) && root(effect.enabled)
+      && ["extend", "retract", "retract_without_pull"].includes(effect.action) && typeof effect.extended === "boolean")) fail();
   }
 }

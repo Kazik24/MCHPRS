@@ -1,6 +1,8 @@
-# Closed instant transition kernel — first implementation
+# Historical snapshot kernel prototype
 
-Status: implemented for bounded closed selections; awaiting review and final benchmark results.
+> **Superseded runtime design.** This note records the first whole-state lookup prototype and its historical benchmarks. The active runtime uses the compact effect/phase program described in [COMPACT_INSTANT_KERNEL.md](COMPACT_INSTANT_KERNEL.md). Snapshot states and transitions are compile-time proof data; they are not lowered runtime lookup tables.
+
+The sections below describe the historical prototype unless explicitly marked otherwise.
 
 The ordered region proxy reduced dispatch overhead but still ran the internal Turbo walks and reset callbacks. `compile-instant-machine` is the next O3 pass: for a small closed instant selection it evaluates exact ordered transitions during compilation, then executes their checked memory writes and future work directly.
 
@@ -93,7 +95,7 @@ The ratio of before/after medians is **13.24×**; all five pairs favored the ker
 
 Every successful harness comparison checks interpreter observations, projected memory checkpoints, pending reset work and interpreter continuation. All ten reports passed. All five new samples used 512 transitions and zero actual callbacks, wire walks or piston samples; their ordered-proxy counterparts used 36,250 callbacks, 941 walks and 17,205 samples. Logical obligations stayed at 935 scheduled dispatches, 1,197 accepted actions and 1,190 publications.
 
-The tighter compiler records **292 states, 365 edges and 813,748 estimated bytes**. Estimated lowered table storage increases from 94,792 to 908,644 bytes, because the general graph remains available for exact fallback. These are allocation estimates, not peak RSS. This storage cost makes the current whole-selection table an experimental prototype; it must not be replicated per adder across a CPU. A compact shared causal program is the intended follow-up, with full snapshots retained as proof data where useful.
+The tighter compiler records **292 states, 365 edges and 813,748 estimated bytes**. Estimated lowered table storage increases from 94,792 to 908,644 bytes, because the general graph remains available for exact fallback. These are allocation estimates, not peak RSS. This storage cost made the whole-selection table unsuitable as runtime storage and motivated the compact kernel that supersedes this prototype.
 
 Pinned baseline SHA-256: `48e4f6fabf0c563c2aeb9a78bdbbb8b7afb32c2e92c5637afaab21cb664b3608`.
 New binary SHA-256: `02f541d7e35b747f855445211f944e831a17e31ec4ad4bc0973d4ea00db1acdf`.
@@ -117,7 +119,7 @@ The ordinary/composed median difference is about 0.19%, with overlapping ranges;
 
 Stable execution still performs 192,521 callbacks, 2,651 Turbo walks and 50,413 piston samples, with 2,550 scheduled dispatches, 2,907 accepted actions and 2,890 publications. It retains one composed region and one ordered proxy, but internal execution remains general. Estimated lowered tables are 942,436 bytes (ordinary O3: 863,692); these are not RSS measurements.
 
-The next scaling milestone should combine compact kernel storage with extraction/composition of small causal programs, preserving shared trigger and carry timing. Simply increasing table limits or naming the entire adder one region cannot provide this acceleration. Current full-state snapshots remain necessary for exact lookup and cannot all be discarded as compile-time proof data until a replacement runtime matching/reconstruction scheme is certified.
+The compact runtime has since replaced snapshot lookup for the bounded ADDER1BIT family. The proof snapshots remain useful to compile and validate the restricted program, but runtime activation and ticking use the compact relation and reconstruct private state only at observation or handoff boundaries.
 
 Reports: `target/closed-instant-bench/adder11.json`, `adder11.log`, `adder11-correctness.log`. Command: `target/closed-instant-bench/cpus.exe --graph-short --all-devices --cpu io/adder_11bits --graph-tier 3 --stable-instant-inputs --iterations 5 --label closed-instant-adder11-scaling --output target/closed-instant-bench/adder11.json`.
 

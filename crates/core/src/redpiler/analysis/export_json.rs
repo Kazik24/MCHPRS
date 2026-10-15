@@ -114,9 +114,12 @@ struct GraphTablesDto {
     routes: Option<Vec<RouteDto>>,
     instant_regions: Vec<InstantRegionDto>,
     instant_proxies: Vec<InstantProxyDto>,
-    /// This optional artifact exposes the complete checked transition program, including fallbacks.
+    /// This optional artifact exposes compile-time proof snapshots, not lowered runtime storage.
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_machine: Option<serde_json::Value>,
+    /// This exposes the compact runtime kernel separately from its compile-time proof snapshots.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_kernel: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -927,6 +930,9 @@ impl GraphExport {
         if let Some(machine) = &self.graph.instant_machine {
             machine::validate(machine, self)?;
         }
+        if let Some(kernel) = &self.graph.instant_kernel {
+            machine::validate_kernel(kernel, self)?;
+        }
         for snapshot in &self.snapshots {
             for component in &snapshot.components {
                 check_ref(&nodes, &component.node, "snapshot component")?;
@@ -1273,6 +1279,10 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             })
             .collect(),
         instant_machine: source.instant_machine.as_ref().map(|machine| machine::export(machine, source)),
+        instant_kernel: source
+            .instant_machine
+            .as_ref()
+            .map(|machine| machine::export_kernel(&machine.kernel, source)),
         comparator_plans: source
             .comparator_inputs
             .iter()
@@ -1379,6 +1389,7 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     }
     if source.instant_machine.is_some() {
         capabilities.push("instant_machine");
+        capabilities.push("instant_kernel");
     }
     if source.wires.iter().any(|wire| wire.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
@@ -1905,6 +1916,111 @@ mod wire_query_fact_validation_tests {
         ] {
             assert!(validate_wire_query_facts(Some(&bad)).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod compact_kernel_export_validation_tests {
+    use super::*;
+
+    fn state(graph: &GraphTablesDto) -> serde_json::Value {
+        serde_json::json!({
+            "components": vec![0; graph.nodes.len()],
+            "pistons": vec![0; graph.pistons.len()],
+            "resources": vec![[0, 0]; graph.resources.len()],
+            "future": {
+                "tick_len": 0, "ticks": [],
+                "request_len": 0, "requests": [],
+                "deferred_len": 0, "deferred": [],
+            },
+        })
+    }
+
+    fn kernel(graph: &GraphTablesDto) -> serde_json::Value {
+        let trigger = graph.nodes.first().expect("fixture node").id.clone();
+        serde_json::json!({
+            "encoding": "compact-instant-kernel-v1",
+            "trigger": trigger,
+            "data_controls": [],
+            "owners": {
+                "components": graph.nodes.iter().map(|row| row.id.clone()).collect::<Vec<_>>(),
+                "pistons": graph.pistons.iter().map(|row| row.id.clone()).collect::<Vec<_>>(),
+                "resources": graph.resources.iter().map(|row| row.id.clone()).collect::<Vec<_>>(),
+                "contacts": graph.contacts.iter().map(|row| row.id.clone()).collect::<Vec<_>>(),
+            },
+            "prefix": 0, "period": 1, "estimated_runtime_bytes": 1,
+            "expressions": [{"kind": "constant", "value": "0"}],
+            "entry": state(graph),
+            "phases": [{
+                "components": [], "dirty": [], "piston_revisions": [], "resource_revisions": [], "effects": [],
+                "scheduled": 0, "accepted": 0, "published": 0, "state": state(graph),
+            }],
+        })
+    }
+
+    fn fixture_export() -> GraphExport {
+        let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+        prepare(
+            &world,
+            bounds,
+            &[],
+            &CompilerOptions {
+                optimization_level: Some(0),
+                ..Default::default()
+            },
+            &TaskMonitor::default(),
+            AnalysisLimits::default(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn compact_kernel_export_rejects_missing_fields_and_wrong_id_namespaces() {
+        let document = fixture_export();
+        let mut valid = kernel(&document.graph);
+        assert!(machine::validate_kernel(&valid, &document).is_ok());
+
+        let mut missing_owners = valid.clone();
+        missing_owners["owners"].as_object_mut().unwrap().remove("components");
+        assert!(machine::validate_kernel(&missing_owners, &document).is_err());
+
+        let mut missing_future_field = valid.clone();
+        missing_future_field["entry"]["future"].as_object_mut().unwrap().remove("ticks");
+        assert!(machine::validate_kernel(&missing_future_field, &document).is_err());
+
+        let mut missing_effect_binding = valid.clone();
+        missing_effect_binding["phases"][0]["effects"] = serde_json::json!([{
+            "enabled": 0, "action": "extend", "extended": false,
+        }]);
+        assert!(machine::validate_kernel(&missing_effect_binding, &document).is_err());
+
+        let piston = document.graph.pistons.first().expect("fixture piston").id.clone();
+        let component = document.graph.nodes[0].id.clone();
+        let mut wrong_trigger_namespace = valid.clone();
+        wrong_trigger_namespace["trigger"] = serde_json::json!(piston);
+        assert!(machine::validate_kernel(&wrong_trigger_namespace, &document).is_err());
+
+        valid["phases"][0]["components"] = serde_json::json!([{
+            "node": piston, "changed": 0, "value": 0,
+        }]);
+        assert!(machine::validate_kernel(&valid, &document).is_err());
+
+        let mut wrong_effect_namespace = valid;
+        wrong_effect_namespace["phases"][0]["components"] = serde_json::json!([]);
+        wrong_effect_namespace["phases"][0]["effects"] = serde_json::json!([{
+            "enabled": 0, "piston": component, "action": "extend", "extended": false,
+        }]);
+        assert!(machine::validate_kernel(&wrong_effect_namespace, &document).is_err());
+    }
+
+    #[test]
+    fn compact_kernel_export_requires_canonical_u64_constants() {
+        let document = fixture_export();
+        let mut value = kernel(&document.graph);
+        value["expressions"][0]["value"] = serde_json::json!("00");
+        assert!(machine::validate_kernel(&value, &document).is_err());
+        value["expressions"][0]["value"] = serde_json::json!("18446744073709551615");
+        assert!(machine::validate_kernel(&value, &document).is_ok());
     }
 }
 

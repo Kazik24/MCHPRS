@@ -419,6 +419,7 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             ref("contact", resource.get("selected_contact"), identifier)
 
     _validate_instant_machine(graph.get("instant_machine"), records)
+    _validate_instant_kernel(graph.get("instant_kernel"), records)
     return records
 
 
@@ -477,3 +478,145 @@ def _validate_instant_machine(value: Any, records: dict) -> None:
             for child in value.values():
                 references(child)
     references(machine)
+
+
+def _validate_instant_kernel(value: Any, records: dict) -> None:
+    """Validate the compact runtime DAG; u64 constants stay decimal strings."""
+    if value is None:
+        return
+    kernel = _object(value, "instant_kernel")
+    if kernel.get("encoding") != "compact-instant-kernel-v1":
+        raise GraphFormatError("unknown compact instant kernel encoding")
+    node_ids = set(records["node"])
+    piston_ids = set(records["piston"])
+    resource_ids = set(records["resource"])
+    trigger = kernel.get("trigger")
+    controls = _array(kernel.get("data_controls"), "kernel data controls")
+    if not isinstance(trigger, str) or trigger not in node_ids or len(controls) > 3:
+        raise GraphFormatError("invalid compact kernel controls")
+    if any(not isinstance(control, str) or control not in node_ids for control in controls):
+        raise GraphFormatError("compact kernel control references a missing node")
+    if trigger in controls or len(set(controls)) != len(controls):
+        raise GraphFormatError("invalid compact kernel controls")
+
+    expressions = _array(kernel.get("expressions"), "kernel expressions")
+    if not expressions or len(expressions) > 1_000_000:
+        raise GraphFormatError("invalid compact kernel expression count")
+    for index, raw_expression in enumerate(expressions):
+        expression = _object(raw_expression, f"kernel expressions[{index}]")
+        if expression.get("kind") == "constant":
+            scalar = expression.get("value")
+            if not isinstance(scalar, str) or len(scalar) > 20 or not re.fullmatch(r"0|[1-9][0-9]*", scalar):
+                raise GraphFormatError("kernel scalar constants must be decimal strings")
+            if int(scalar) > (1 << 64) - 1:
+                raise GraphFormatError("kernel scalar constant exceeds u64")
+        elif expression.get("kind") == "select":
+            control, low, high = expression.get("control"), expression.get("low"), expression.get("high")
+            if (type(control) is not int or not 0 <= control < len(controls)
+                    or type(low) is not int or not 0 <= low < index
+                    or type(high) is not int or not 0 <= high < index):
+                raise GraphFormatError("invalid compact kernel DAG edge")
+        else:
+            raise GraphFormatError("unknown compact kernel expression")
+
+    prefix, period = kernel.get("prefix"), kernel.get("period")
+    phases = _array(kernel.get("phases"), "kernel phases")
+    if (type(prefix) is not int or type(period) is not int or period <= 0
+            or prefix < 0 or prefix + period != len(phases) or len(phases) > 128):
+        raise GraphFormatError("invalid compact kernel phase dimensions")
+    owners = _object(kernel.get("owners"), "kernel owners")
+    for field, prefix_name in (("components", "node"), ("pistons", "piston"),
+                               ("resources", "resource"), ("contacts", "contact")):
+        values = _array(owners.get(field), f"kernel {field} owners")
+        expected = list(records[prefix_name])
+        if (any(not isinstance(owner, str) for owner in values)
+                or len(values) != len(expected) or set(values) != set(expected)):
+            raise GraphFormatError("invalid compact kernel owners")
+    runtime_bytes = kernel.get("estimated_runtime_bytes")
+    if type(runtime_bytes) is not int or runtime_bytes < 0:
+        raise GraphFormatError("invalid compact kernel size estimate")
+
+    def root(item: Any, where: str) -> None:
+        if type(item) is not int or not 0 <= item < len(expressions):
+            raise GraphFormatError(f"{where} references an invalid expression")
+
+    def state_roots(raw_state: Any, where: str) -> None:
+        state = _object(raw_state, where)
+        for field, prefix_name in (("components", "node"), ("pistons", "piston"), ("resources", "resource")):
+            values = _array(state.get(field), f"{where}.{field}")
+            if len(values) != len(records[prefix_name]):
+                raise GraphFormatError(f"{where}.{field} dimensions do not match owners")
+            if field == "resources":
+                for pair in values:
+                    pair = _array(pair, f"{where}.resource roots")
+                    if len(pair) != 2:
+                        raise GraphFormatError("resource state roots must have two selectors")
+                    for selector in pair:
+                        root(selector, where)
+            else:
+                for selector in values:
+                    root(selector, where)
+        future = _object(state.get("future"), f"{where}.future")
+        for field, maximum in (("ticks", 128), ("requests", 64), ("deferred", 128)):
+            entries = _array(future.get(field), f"{where}.future.{field}")
+            if len(entries) > maximum:
+                raise GraphFormatError(f"{where}.future.{field} exceeds its bound")
+        root(future.get("tick_len"), where)
+        for index, tick in enumerate(future["ticks"]):
+            tick = _object(tick, f"{where}.future.ticks[{index}]")
+            for field in ("node", "delay", "priority"):
+                root(tick.get(field), where)
+        root(future.get("request_len"), where)
+        for index, request in enumerate(future["requests"]):
+            request = _object(request, f"{where}.future.requests[{index}]")
+            for field in ("piston", "action"):
+                root(request.get(field), where)
+        root(future.get("deferred_len"), where)
+        for index, event in enumerate(future["deferred"]):
+            event = _object(event, f"{where}.future.deferred[{index}]")
+            for field in ("piston", "revision", "resource", "resource_revision", "contact", "delay", "extending"):
+                root(event.get(field), where)
+
+    def ref(prefix_name: str, item: Any, where: str) -> None:
+        if not isinstance(item, str) or item not in records[prefix_name]:
+            raise GraphFormatError(f"{where} references an invalid {prefix_name} ID")
+
+    def references(item: Any) -> None:
+        if isinstance(item, str) and ":" in item:
+            match = ID_PATTERN.fullmatch(item)
+            if match is None or item not in records.get(match.group(1), {}):
+                raise GraphFormatError("invalid compact kernel graph reference")
+        elif isinstance(item, list):
+            for child in item:
+                references(child)
+        elif isinstance(item, dict):
+            for child in item.values():
+                references(child)
+
+    state_roots(kernel.get("entry"), "kernel entry")
+    for phase_index, raw_phase in enumerate(phases):
+        phase = _object(raw_phase, f"kernel phases[{phase_index}]")
+        state_roots(phase.get("state"), f"kernel phases[{phase_index}].state")
+        for field in ("scheduled", "accepted", "published"):
+            root(phase.get(field), f"kernel phases[{phase_index}]")
+        for item in _array(phase.get("components"), "kernel component deltas"):
+            item = _object(item, "kernel component delta")
+            ref("node", item.get("node"), "kernel component delta")
+            root(item.get("changed"), "kernel component delta")
+            root(item.get("value"), "kernel component delta")
+        for item in _array(phase.get("dirty"), "kernel dirty roots"):
+            item = _object(item, "kernel dirty root")
+            ref("node", item.get("node"), "kernel dirty root")
+            root(item.get("touched"), "kernel dirty root")
+        for field, prefix_name in (("piston_revisions", "piston"), ("resource_revisions", "resource")):
+            for item in _array(phase.get(field), f"kernel {field}"):
+                item = _object(item, f"kernel {field} entry")
+                ref(prefix_name, item.get(prefix_name), f"kernel {field} entry")
+                root(item.get("increment"), f"kernel {field} entry")
+        for item in _array(phase.get("effects"), "kernel effects"):
+            item = _object(item, "kernel effect")
+            ref("piston", item.get("piston"), "kernel effect")
+            root(item.get("enabled"), "kernel effect")
+            if item.get("action") not in ("extend", "retract", "retract_without_pull") or type(item.get("extended")) is not bool:
+                raise GraphFormatError("invalid compact kernel effect")
+    references(kernel)

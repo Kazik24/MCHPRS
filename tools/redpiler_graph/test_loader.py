@@ -65,6 +65,36 @@ def document() -> dict:
     }
 
 
+def compact_kernel(graph: dict) -> dict:
+    def state() -> dict:
+        return {
+            "components": [0] * len(graph["nodes"]),
+            "pistons": [0] * len(graph["pistons"]),
+            "resources": [[0, 0] for _ in graph["resources"]],
+            "future": {"tick_len": 0, "ticks": [], "request_len": 0, "requests": [],
+                       "deferred_len": 0, "deferred": []},
+        }
+
+    return {
+        "encoding": "compact-instant-kernel-v1",
+        "trigger": graph["nodes"][0]["id"],
+        "data_controls": [graph["nodes"][1]["id"]],
+        "owners": {
+            "components": [row["id"] for row in graph["nodes"]],
+            "pistons": [row["id"] for row in graph["pistons"]],
+            "resources": [row["id"] for row in graph["resources"]],
+            "contacts": [row["id"] for row in graph["contacts"]],
+        },
+        "prefix": 0,
+        "period": 1,
+        "estimated_runtime_bytes": 8,
+        "expressions": [{"kind": "constant", "value": "0"}],
+        "entry": state(),
+        "phases": [{"components": [], "dirty": [], "piston_revisions": [], "resource_revisions": [],
+                    "effects": [], "scheduled": 0, "accepted": 0, "published": 0, "state": state()}],
+    }
+
+
 class DustPathLoaderTests(unittest.TestCase):
     def test_wire_hop_roots_bind_their_wire_and_allow_older_exports(self):
         data = document()
@@ -256,6 +286,41 @@ class DustPathLoaderTests(unittest.TestCase):
             mutation(bad["graph"]["instant_machine"])
             with self.assertRaises(GraphFormatError):
                 self.load_data(bad)
+
+    def test_compact_instant_kernel_checks_required_roots_and_typed_ids(self):
+        data = self.instant_document()
+        graph = data["graph"]
+        graph["instant_kernel"] = compact_kernel(graph)
+        self.load_data(data)
+
+        piston_id = graph["pistons"][0]["id"]
+        node_id = graph["nodes"][0]["id"]
+        mutations = (
+            lambda kernel: kernel["owners"].pop("components"),
+            lambda kernel: kernel["entry"]["future"].pop("ticks"),
+            lambda kernel: kernel["phases"][0]["effects"].append(
+                {"enabled": 0, "action": "extend", "extended": False}
+            ),
+            lambda kernel: kernel.update(trigger=piston_id),
+            lambda kernel: kernel["phases"][0]["components"].append(
+                {"node": piston_id, "changed": 0, "value": 0}
+            ),
+            lambda kernel: kernel["phases"][0]["effects"].append(
+                {"enabled": 0, "piston": node_id, "action": "extend", "extended": False}
+            ),
+            lambda kernel: kernel["expressions"][0].update(value="00"),
+            lambda kernel: kernel["expressions"][0].update(value="9" * 5000),
+            lambda kernel: kernel.update(period=0),
+        )
+        for mutation in mutations:
+            invalid = json.loads(json.dumps(data))
+            mutation(invalid["graph"]["instant_kernel"])
+            with self.subTest(kernel=invalid["graph"]["instant_kernel"]), self.assertRaises(GraphFormatError):
+                self.load_data(invalid)
+
+        max_u64 = json.loads(json.dumps(data))
+        max_u64["graph"]["instant_kernel"]["expressions"][0]["value"] = "18446744073709551615"
+        self.load_data(max_u64)
 
     def test_rejects_invalid_wire_query_fact_masks(self):
         valid = {"known": 0xffffff, "solid": 1, "transparent": 2, "wire": 4, "zero_no_dust": 0xfffffe}

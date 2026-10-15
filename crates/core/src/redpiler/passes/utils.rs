@@ -218,7 +218,7 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
     let tables = vec![
         table::<crate::redpiler::program_graph::InstantMachine>(
             "lowering input",
-            "instant machine",
+            "instant proof + compact kernel",
             usize::from(graph.instant_machine.is_some()),
             usize::from(graph.instant_machine.is_some()),
             graph.instant_machine.as_ref().map_or(0, |machine| machine.estimated_bytes()),
@@ -356,12 +356,12 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
-        table::<crate::redpiler::program_graph::InstantMachine>(
+        table::<crate::redpiler::program_graph::InstantKernel>(
             "lowering",
-            "instant machine",
-            usize::from(program.instant_machine().is_some()),
-            usize::from(program.instant_machine().is_some()),
-            program.instant_machine().map_or(0, |machine| machine.estimated_bytes()),
+            "instant kernel",
+            usize::from(program.instant_kernel().is_some()),
+            usize::from(program.instant_kernel().is_some()),
+            program.instant_kernel().map_or(0, |kernel| kernel.estimated_bytes()),
         ),
         table::<crate::redpiler::program_graph::InstantProxy>(
             "lowering",

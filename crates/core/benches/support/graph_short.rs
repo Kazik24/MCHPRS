@@ -540,7 +540,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
     let mut blockers = 0;
     let mut workload = json!({"name":name,"manifest":episode.manifest,"normalization":if name=="cpu_bubblesort"{json!({"removed_wall_sign":[188,10,186]})}else{Value::Null},"samples":[],"pending_reset_validation":[]});
     if smoke {
-        for tier in [0, 2, 3] {
+        for tier in [0, 2, 3, 4] {
             let admitted = (|| -> Result<()> {
                 let world = episode.load()?;
                 episode.compile(&world, tier, episode.stable_inputs && tier == 3)?;
@@ -564,13 +564,13 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 vec![Some(tier), None]
             } else {
                 if episode.generic() {
-                    vec![Some(2), Some(3), None]
+                    vec![Some(2), Some(3), Some(4), None]
                 } else {
-                    vec![Some(0), Some(2), Some(3), None]
+                    vec![Some(0), Some(2), Some(3), Some(4), None]
                 }
             };
             let mut order: Vec<_> = if episode.stable_inputs && !interpreted {
-                vec![(Some(3), false), (Some(3), true), (None, false)]
+                vec![(selected_tier, false), (selected_tier, true), (None, false)]
             } else {
                 order.into_iter().map(|tier| (tier, false)).collect()
             };
@@ -681,7 +681,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
             workload["samples"].as_array_mut().unwrap().extend(results);
         }
         let mut summaries = Vec::new();
-        for executor in ["O0", "O1", "O2", "O3", "O3-stable", "interpreter"] {
+        for executor in ["O0", "O1", "O2", "O3", "O3-stable", "O4", "O4-stable", "interpreter"] {
             let mut times: Vec<_> = workload["samples"]
                 .as_array()
                 .unwrap()
@@ -713,11 +713,14 @@ pub fn main() -> Result<()> {
     let iterations = argument("--iterations").unwrap_or("5").parse::<usize>()?;
     ensure!(iterations > 0, "--iterations must be positive");
     let selected_tier = argument("--graph-tier").map(str::parse::<usize>).transpose()?;
-    ensure!(selected_tier.is_none_or(|tier| matches!(tier, 1 | 2 | 3)), "--graph-tier needs 1, 2 or 3");
+    ensure!(
+        selected_tier.is_none_or(|tier| (1..=4).contains(&tier)),
+        "--graph-tier needs 1, 2, 3 or 4"
+    );
     let stable_inputs = args.iter().any(|arg| arg == "--stable-instant-inputs");
     ensure!(
-        !stable_inputs || selected_tier == Some(3),
-        "--stable-instant-inputs requires --graph-tier 3"
+        !stable_inputs || selected_tier.is_some_and(|tier| tier >= 3),
+        "--stable-instant-inputs requires --graph-tier 3 or 4"
     );
     let interpreted = args.iter().any(|arg| arg == "--interpreted");
     let label = argument("--label").unwrap_or("current");

@@ -260,7 +260,7 @@ fn stable_adder_export_names_the_contract_and_every_instruction_target() {
     let export = exported_with_options(
         &world,
         &CompilerOptions {
-            optimization_level: Some(3),
+            optimization_level: Some(4),
             stable_instant_inputs: true,
             ..Default::default()
         },
@@ -288,6 +288,7 @@ fn stable_adder_export_names_the_contract_and_every_instruction_target() {
     assert_eq!(sampled.len(), 13);
     let machine = &graph["instant_machine"];
     assert_eq!(machine["encoding"], "closed-instant-machine-v1");
+    assert_eq!(machine["role"], "compile_time_certificate_only");
     assert_eq!(machine["controls"].as_array().unwrap().len(), 4);
     assert_eq!(
         machine["owners"]["components"].as_array().unwrap().len(),
@@ -297,6 +298,21 @@ fn stable_adder_export_names_the_contract_and_every_instruction_target() {
     assert_eq!(
         machine["states"].as_array().unwrap().len(),
         machine["transitions"].as_array().unwrap().len()
+    );
+    let kernel = &graph["instant_kernel"];
+    assert_eq!(kernel["encoding"], "compact-instant-kernel-v1");
+    assert_eq!(kernel["data_controls"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        kernel["phases"].as_array().unwrap().len(),
+        kernel["prefix"].as_u64().unwrap() as usize + kernel["period"].as_u64().unwrap() as usize
+    );
+    assert!(kernel["estimated_runtime_bytes"].as_u64().unwrap() > 0);
+    assert!(
+        kernel["expressions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|expression| { expression["kind"] == "constant" && expression["value"] == "18446744073709551615" })
     );
 }
 

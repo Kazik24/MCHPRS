@@ -4,13 +4,16 @@ use super::*;
 #[test]
 fn closed_adder_machine_covers_all_falling_edge_responses_without_turbo() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
-    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let machine = graph.instant_machine.as_ref().expect("the closed one-bit family must compile");
     eprintln!(
-        "machine: {} states, {} edges, {} estimated bytes",
+        "compile certificate: {} states, {} edges, {} bytes incl. kernel; runtime kernel: {} phases, {} expressions, {} bytes",
         machine.states.len(),
         machine.transitions.iter().flat_map(|r| r.iter()).flatten().count(),
-        machine.estimated_bytes()
+        machine.estimated_bytes(),
+        machine.kernel.phases.len(),
+        machine.kernel.expressions.len(),
+        machine.kernel_bytes()
     );
     let mut baseline = graph.clone();
     baseline.instant_machine = None;
@@ -45,7 +48,7 @@ fn closed_adder_machine_covers_all_falling_edge_responses_without_turbo() {
                 (b.ticks, b.scheduled_ticks, b.piston_actions, b.deferred_publications)
             );
             check_boundary(&compiled, &native, &mut scratch, &positions, &format!("{} step {index}", case["id"])).unwrap();
-            if index >= activation {
+            if index > activation {
                 assert_eq!(
                     b.instant_transitions,
                     before.instant_transitions + 1,
@@ -82,92 +85,119 @@ fn assert_memory_and_effects(exact: &GraphBackend, compiled: &GraphBackend) {
 }
 
 #[test]
-fn machine_transitions_preserve_revision_wrap_time_origins_and_future_work() {
-    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
-    let machine = graph.instant_machine.clone().unwrap();
+fn compact_kernel_phases_preserve_revision_origins_and_future_work() {
+    let circuit = load_adder("adder_1bit", ORIGIN, None);
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let mut baseline = graph.clone();
     baseline.instant_machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
     let (program, state) = graph.lower().unwrap();
     let mut exact = GraphBackend::new(base_program, base_state, 0).unwrap();
     let mut compiled = GraphBackend::new(program, state, 0).unwrap();
-    // Include every admitted pending/deferred shape and every operation, with independent origins.
-    for (source, row) in machine.transitions.iter().enumerate() {
-        for (action, edge) in row.iter().enumerate() {
-            if edge.is_none() {
-                continue;
-            }
+    let mut native = circuit.build();
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
+    let case = manifest["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["expectation"]["carry"] == 1)
+        .unwrap()
+        .clone();
+    let steps = case_steps(&circuit, &case, false, true);
+    for (index, &step) in steps.iter().enumerate() {
+        if index + 1 == steps.len() {
             for backend in [&mut exact, &mut compiled] {
-                backend.restore_machine_state(&machine.states[source]).unwrap();
-                backend.clock.logical_tick = 10_000;
-                for (i, actor) in backend.state.pistons.iter_mut().enumerate() {
-                    actor.revision = u64::MAX - i as u64;
+                for (actor, state) in backend.state.pistons.iter_mut().enumerate() {
+                    state.revision = u64::MAX - actor as u64;
                 }
-                for (i, resource) in backend.state.resources.iter_mut().enumerate() {
-                    resource.revision = u64::MAX - 2 * i as u64;
+                for (resource, state) in backend.state.resources.iter_mut().enumerate() {
+                    state.revision = u64::MAX - 2 * resource as u64;
                 }
-                for event in &mut backend.deferred_pistons {
-                    event.due_tick += 10_000 - super::super::machine_state::MACHINE_EPOCH;
-                    event.revision = event.revision.wrapping_add(backend.state.pistons[event.piston.index()].revision);
-                    if let Some(resource) = &mut event.resource {
-                        resource.revision = resource
-                            .revision
-                            .wrapping_add(backend.state.resources[resource.resource.index()].revision);
-                    }
-                }
-                // Dirty entries and unflushed presentation from previous calls are append-only.
-                backend.dirty.fill(true);
             }
-            if action == 0 {
-                exact.tick().unwrap();
-            } else {
-                exact.use_block(exact.position(machine.controls[action - 1])).unwrap();
-            }
-            assert!(compiled.try_machine_step(action));
-            assert_memory_and_effects(&exact, &compiled);
         }
+        let toggle = match step {
+            Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
+            Step::Tick => false,
+        };
+        native_step(&mut native, step);
+        graph_step(&mut exact, step, toggle).unwrap();
+        graph_step(&mut compiled, step, toggle).unwrap();
+        assert_memory_and_effects(&exact, &compiled);
     }
+    for _ in 0..64 {
+        exact.tick().unwrap();
+        compiled.tick().unwrap();
+        assert_memory_and_effects(&exact, &compiled);
+    }
+    assert!(compiled.execution_counts().instant_transitions >= 64);
 }
 
 #[test]
-fn exact_state_lookup_and_missing_edges_fall_back_before_effects() {
-    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
+fn stale_entry_work_prevents_compact_kernel_admission() {
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let mut baseline = graph.clone();
     baseline.instant_machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
     let (program, state) = graph.lower().unwrap();
     let mut exact = GraphBackend::new(base_program, base_state, 0).unwrap();
     let mut compiled = GraphBackend::new(program, state, 0).unwrap();
-    // A stale external obligation cannot be normalized as a compiled receiver.
-    let node = compiled.program.instant_machine().unwrap().controls[0];
-    for backend in [&mut exact, &mut compiled] {
-        let registry = backend.registry_type(node);
-        let tick = ScheduledNodeTick {
-            node: Some(node),
-            position: backend.position(node),
-            block_type: Some(registry + 1),
-            registry_type: registry,
-            current_registry_type: registry,
+    let node = compiled.program.instant_kernel().unwrap().data_controls[0];
+    let circuit = load_adder("adder_1bit", ORIGIN, None);
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
+    let case = manifest["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["expectation"].is_object())
+        .unwrap();
+    let mut native = circuit.build();
+    let steps = case_steps(&circuit, case, false, true);
+    let activation_index = steps.len() - 1;
+    for (index, step) in steps.into_iter().enumerate() {
+        if index == activation_index {
+            for backend in [&mut exact, &mut compiled] {
+                let registry = backend.registry_type(node);
+                let tick = ScheduledNodeTick {
+                    node: Some(node),
+                    position: backend.position(node),
+                    block_type: Some(registry + 1),
+                    registry_type: registry,
+                    current_registry_type: registry,
+                };
+                backend.scheduler.schedule_half_tick(tick, 3, TickPriority::Normal);
+                backend.pending.insert(tick.into(), 1);
+            }
+        }
+        let toggle = match step {
+            Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
+            Step::Tick => false,
         };
-        backend.scheduler.schedule_half_tick(tick, 3, TickPriority::Normal);
-        backend.pending.insert(tick.into(), 1);
+        native_step(&mut native, step);
+        graph_step(&mut exact, step, toggle).unwrap();
+        graph_step(&mut compiled, step, toggle).unwrap();
+        assert_memory_and_effects(&exact, &compiled);
     }
-    assert!(!compiled.try_machine_step(0));
-    assert_memory_and_effects(&exact, &compiled);
+    assert_eq!(
+        compiled.execution_counts().instant_transitions,
+        0,
+        "unrepresentable work prevents kernel admission"
+    );
     for _ in 0..12 {
         exact.tick().unwrap();
         compiled.tick().unwrap();
         assert_memory_and_effects(&exact, &compiled);
     }
     assert!(
-        compiled.execution_counts().instant_transitions > 0,
-        "exact execution can rejoin the table after stale work expires"
+        compiled.execution_counts().instant_transitions == 0,
+        "a missed activation stays on the exact Graph executor"
     );
 }
 
 #[test]
 fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
-    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let original = graph.instant_machine.as_ref().unwrap();
     let (source, action) = original
         .transitions
@@ -203,8 +233,91 @@ fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
 }
 
 #[test]
-fn arbitrary_control_histories_keep_complete_state_even_when_table_misses() {
-    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
+fn compact_kernel_validation_rejects_malformed_programs_before_lowering() {
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let valid = graph.instant_machine.as_ref().unwrap();
+    let select = valid
+        .kernel
+        .expressions
+        .iter()
+        .position(|expression| matches!(expression, KernelExpr::Select { .. }))
+        .unwrap();
+    for corruption in 0..6 {
+        let mut bad = graph.clone();
+        let machine = Arc::make_mut(bad.instant_machine.as_mut().unwrap());
+        match corruption {
+            0 => {
+                if let KernelExpr::Select { low, .. } = &mut machine.kernel.expressions[select] {
+                    *low = KernelExprId(select as u32);
+                }
+            }
+            1 => {
+                if let KernelExpr::Select { high, .. } = &mut machine.kernel.expressions[select] {
+                    *high = KernelExprId(u32::MAX);
+                }
+            }
+            2 => {
+                if let KernelExpr::Select { control, .. } = &mut machine.kernel.expressions[select] {
+                    *control = u8::MAX;
+                }
+            }
+            3 => machine.kernel.entry.components[0] = KernelExprId(u32::MAX),
+            4 => machine.kernel.period = 0,
+            _ => {
+                machine.kernel.prefix = u16::MAX;
+                machine.kernel.period = 1;
+            }
+        }
+        assert!(
+            matches!(bad.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })),
+            "malformed kernel case {corruption} must be rejected before DAG evaluation"
+        );
+    }
+}
+
+#[test]
+fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() {
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let kernel = &graph.instant_machine.as_ref().unwrap().kernel;
+    let other_root = |original: KernelExprId| {
+        (0..kernel.expressions.len())
+            .map(|index| KernelExprId(index as u32))
+            .find(|&candidate| candidate != original)
+            .unwrap()
+    };
+    let mut hot = graph.clone();
+    let machine = Arc::make_mut(hot.instant_machine.as_mut().unwrap());
+    let delta = machine.kernel.phases.iter_mut().find_map(|phase| phase.components.first_mut()).unwrap();
+    delta.value = other_root(delta.value);
+    assert!(matches!(hot.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
+
+    let mut future = graph.clone();
+    let machine = Arc::make_mut(future.instant_machine.as_mut().unwrap());
+    let phase = machine
+        .kernel
+        .phases
+        .iter_mut()
+        .find(|phase| !phase.state.future.ticks.is_empty())
+        .unwrap();
+    phase.state.future.tick_len = other_root(phase.state.future.tick_len);
+    assert!(matches!(future.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
+
+    let mut effects = graph.clone();
+    let machine = Arc::make_mut(effects.instant_machine.as_mut().unwrap());
+    let phase = machine
+        .kernel
+        .phases
+        .iter_mut()
+        .find(|phase| phase.effects.windows(2).any(|pair| pair[0] != pair[1]))
+        .unwrap();
+    let index = phase.effects.windows(2).position(|pair| pair[0] != pair[1]).unwrap();
+    phase.effects.swap(index, index + 1);
+    assert!(matches!(effects.validate(), Err(GraphBuildError::InvalidInstantMachine { .. })));
+}
+
+#[test]
+fn arbitrary_control_histories_deopt_and_keep_complete_state() {
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let controls = graph.instant_machine.as_ref().unwrap().controls.clone();
     let mut baseline = graph.clone();
     baseline.instant_machine = None;
@@ -232,9 +345,9 @@ fn arbitrary_control_histories_keep_complete_state_even_when_table_misses() {
 fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() {
     use crate::redpiler::passes::compile_instant_machine::CompileInstantMachine;
     use crate::redpiler::passes::{GraphPass, PassContext, PassEntry, PassPipeline};
-    let (graph, entry) = stable_region_tests::stable_graph("adder_1bit");
+    let (graph, entry) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
     let options = crate::redpiler::CompilerOptions {
-        optimization_level: Some(3),
+        optimization_level: Some(4),
         stable_instant_inputs: true,
         ..Default::default()
     };

@@ -3,12 +3,16 @@ use super::*;
 use crate::redpiler::CompilerOptions;
 
 pub(super) fn stable_graph(id: &'static str) -> (CompileGraph, EntryState) {
+    stable_graph_at_level(id, 3)
+}
+
+pub(super) fn stable_graph_at_level(id: &'static str, level: usize) -> (CompileGraph, EntryState) {
     let circuit = load_adder(id, ORIGIN, None);
     let world = circuit.build();
     let monitor = TaskMonitor::default();
     let mut prepared = passes::rich::prepare(&world, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
     let options = CompilerOptions {
-        optimization_level: Some(3),
+        optimization_level: Some(level),
         stable_instant_inputs: true,
         ..Default::default()
     };
@@ -26,7 +30,11 @@ pub(super) fn stable_graph(id: &'static str) -> (CompileGraph, EntryState) {
 #[test]
 fn stable_contract_is_explicit_and_requires_the_instant_pass_tier() {
     assert!(!CompilerOptions::default().stable_instant_inputs);
-    for flags in ["-O3 --stable-instant-inputs", "--stable-instant-inputs --optimize"] {
+    for flags in [
+        "-O3 --stable-instant-inputs",
+        "-O4 --stable-instant-inputs",
+        "--stable-instant-inputs --optimize",
+    ] {
         assert!(CompilerOptions::parse(flags).unwrap().stable_instant_inputs);
     }
     for flags in ["--stable-instant-inputs", "-O2 --stable-instant-inputs"] {
@@ -45,11 +53,7 @@ fn both_adders_compose_all_their_actors_into_one_ordered_region() {
             graph.instant_regions.iter().map(|r| r.wires.len()).collect::<Vec<_>>(),
             graph.instant_proxies.len()
         );
-        assert_eq!(
-            graph.instant_machine.is_some(),
-            id == "adder_1bit",
-            "only the bounded closed family gets a kernel"
-        );
+        assert!(graph.instant_machine.is_none(), "O3 composes regions without O4 compact compilation");
         assert_eq!(graph.instant_regions.len(), 1);
         let region = &graph.instant_regions[0];
         assert!(region.stable_inputs);

@@ -1,7 +1,6 @@
-//! Replace bounded closed instant selections with checked, pre-evaluated state transitions.
-//! Compilation runs ordered Graph semantics; execution applies only the resulting writes and
-//! future obligations. Exact full-state lookup prevents input-only caching and stale reuse.
-//! Unknown states/operations keep general execution before effects; no table is learned at runtime.
+//! O4 compiles bounded closed instant selections into validated phase/expression kernels.
+//! Full-state entry checks and cold reconstruction preserve exact fallback and continuation;
+//! hot ticks evaluate only compiled outputs and effects, without private propagation.
 use super::{GraphPass, PassContext};
 use crate::redpiler::program_graph::CompileGraph;
 
