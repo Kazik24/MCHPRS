@@ -52,7 +52,7 @@ impl GraphBackend {
 
         let scalars = self.scalar_values()?;
         for (index, kernel) in self.program.symbolic_kernels().iter().enumerate() {
-            if kernel.trigger != trigger {
+            if kernel.trigger != trigger || self.node_state(trigger).powered == kernel.powered_after {
                 continue;
             }
             let inputs = kernel

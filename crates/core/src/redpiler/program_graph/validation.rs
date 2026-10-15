@@ -49,15 +49,38 @@ impl CircuitDraft {
         }
         self.validate_instant_resets()?;
         self.validate_instant_regions()?;
-        if !self.plans.instant.symbolic_actors.is_empty() {
-            let derived = crate::redpiler::analysis::instant_regions::symbolic_actor::compile(self, &crate::redpiler::TaskMonitor::default())
+        if !self.plans.instant.symbolic_regions.is_empty() || !self.plans.instant.symbolic_region_declines.is_empty() {
+            for (index, program) in self.plans.instant.symbolic_regions.iter().enumerate() {
+                let Some(region) = self.plans.instant.regions.get(program.region) else {
+                    return Err(GraphBuildError::InvalidInstantRegion {
+                        table: "symbolic regions",
+                        index,
+                    });
+                };
+                let actors: Vec<_> = program.actors.iter().map(|actor| actor.actor).collect();
+                let resets: Vec<_> = program.resets.iter().map(|reset| reset.node).collect();
+                if region.actors != actors || region.resets != resets {
+                    return Err(GraphBuildError::InvalidInstantRegion {
+                        table: "symbolic region ownership",
+                        index,
+                    });
+                }
+                program
+                    .boundary
+                    .validate(self, region)
+                    .map_err(|_| GraphBuildError::InvalidInstantRegion {
+                        table: "symbolic region boundary",
+                        index,
+                    })?;
+            }
+            let derived = crate::redpiler::analysis::instant_regions::symbolic_region::compile(self, &crate::redpiler::TaskMonitor::default())
                 .map_err(|_| GraphBuildError::InvalidInstantRegion {
-                    table: "symbolic actors",
+                    table: "symbolic regions",
                     index: 0,
                 })?;
-            if derived != self.plans.instant.symbolic_actors {
+            if derived.programs != self.plans.instant.symbolic_regions || derived.declines != self.plans.instant.symbolic_region_declines {
                 return Err(GraphBuildError::InvalidInstantRegion {
-                    table: "symbolic actors",
+                    table: "symbolic regions",
                     index: 0,
                 });
             }
@@ -438,7 +461,7 @@ impl CircuitDraft {
         Ok(())
     }
 
-    fn validate_guards(&self) -> Result<(), GraphBuildError> {
+    pub(crate) fn validate_guards(&self) -> Result<(), GraphBuildError> {
         for guard in &self.guards {
             match guard {
                 Guard::Always => {}

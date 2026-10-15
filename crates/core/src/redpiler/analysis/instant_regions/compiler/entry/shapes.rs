@@ -86,6 +86,22 @@ fn raw_shapes(graph: &CompileGraph, plan: &WirePlan) -> Vec<[RedstoneWireSide; 4
     shapes
 }
 
+pub(super) fn captured(graph: &CompileGraph) -> Result<Vec<ShapeMemory>> {
+    graph
+        .wires
+        .iter()
+        .map(|plan| {
+            let ComponentState::Wire(initial) = graph.nodes[plan.node.index()].state else {
+                return Err(CompileError::UnsupportedNode(plan.node));
+            };
+            Ok(ShapeMemory {
+                node: plan.node,
+                values: vec![sides(initial)],
+            })
+        })
+        .collect()
+}
+
 pub(super) fn infer(compiler: &mut Compiler<'_>) -> Result<Vec<ShapeMemory>> {
     let graph = compiler.graph;
     let mut memories = Vec::new();

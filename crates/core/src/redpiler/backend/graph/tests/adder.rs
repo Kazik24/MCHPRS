@@ -1,5 +1,7 @@
 //! Full adder fixture replays against the interpreter and compact graph inventory.
 use crate::redpiler::passes::Pass;
+#[path = "boundary_contract.rs"]
+mod boundary_contract_tests;
 #[path = "builtin_reset.rs"]
 mod builtin_reset_tests;
 #[path = "fixed_point_adder.rs"]
@@ -16,6 +18,8 @@ mod kernel_projection_tests;
 mod reset_elision_tests;
 #[path = "stable_region.rs"]
 mod stable_region_tests;
+#[path = "symbolic_activation.rs"]
+mod symbolic_activation_tests;
 #[path = "symbolic_cycle.rs"]
 mod symbolic_cycle_tests;
 #[path = "symbolic_entry.rs"]

@@ -3,11 +3,52 @@ use super::*;
 use crate::redpiler::analysis::instant_regions::symbolic::{SymbolicBuilder, SymbolicLimits, SymbolicValue, ValueKind};
 use crate::redpiler::passes::Pass;
 use crate::redpiler::passes::planning::PlanBuilder;
-use crate::redpiler::program_graph::{CircuitNodeKind, KernelBoundary, KernelInput, SiteSource};
+use crate::redpiler::passes::{PassContext, compile_instant_machine::CompileInstantMachine};
+use crate::redpiler::program_graph::{CircuitNodeKind, KernelBoundary, KernelInput, KernelOutput, SiteSource};
+
+fn machine_graph() -> (CompileGraph, EntryState) {
+    let (mut graph, entry) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    // These tests explicitly exercise the legacy finite whole-selection machine.
+    graph.plans.instant.symbolic_regions.clear();
+    graph.plans.instant.symbolic_region_declines.clear();
+    let options = crate::redpiler::CompilerOptions {
+        optimization_level: Some(4),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    CompileInstantMachine
+        .run(
+            &mut graph,
+            &PassContext {
+                monitor: &TaskMonitor::default(),
+                options: &options,
+                entry: &entry,
+            },
+        )
+        .unwrap();
+    assert!(graph.plans.instant.machine.is_some());
+    (graph, entry)
+}
+
+#[test]
+fn boundary_effects_preserve_duplicate_callback_occurrences() {
+    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 3);
+    let mut region = graph.plans.instant.regions[0].clone();
+    let event = *region.outgoing.first().expect("fixture has an external callback effect");
+    region.outgoing = vec![event, event];
+
+    let boundary = KernelBoundary::from_region(&graph, &region);
+    assert_eq!(boundary.effects, [event, event]);
+    assert_eq!(
+        boundary.outputs.iter().filter(|output| **output == KernelOutput::Callback(event)).count(),
+        2,
+        "the event port retains both occurrences in order"
+    );
+}
 
 #[test]
 fn lowered_kernel_effects_match_every_frozen_assignment_and_preserve_occurrences() {
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let (program, _) = graph.lower().unwrap();
     let kernel = program.instant_kernel().unwrap();
     let execution = program.instant_execution().unwrap();
@@ -63,7 +104,7 @@ fn adder_symbolic_ir_uses_graph_ports_without_compiling_finite_machine() {
         graph.plans.instant.machine.is_none(),
         "O3 symbolic tracing must not invoke finite compilation"
     );
-    let boundary = KernelBoundary::from_region(&graph.plans.instant.regions[0]);
+    let boundary = KernelBoundary::from_region(&graph, &graph.plans.instant.regions[0]);
     let mut data_ports = [None; 3];
     for (port, input) in boundary.inputs.iter().enumerate() {
         let KernelInput::Power(link) = input else { continue };
@@ -142,7 +183,7 @@ fn adder_symbolic_ir_uses_graph_ports_without_compiling_finite_machine() {
 #[test]
 fn closed_adder_machine_covers_all_falling_edge_responses_without_turbo() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let machine = graph.plans.instant.machine.as_ref().expect("the closed one-bit family must compile");
     eprintln!(
         "compile certificate: {} states, {} edges, {} bytes incl. kernel; runtime kernel: {} phases, {} expressions, {} bytes",
@@ -225,7 +266,7 @@ fn assert_memory_and_effects(exact: &GraphBackend, compiled: &GraphBackend) {
 #[test]
 fn compact_kernel_phases_preserve_revision_origins_and_future_work() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let mut baseline = graph.clone();
     baseline.plans.instant.machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
@@ -273,7 +314,7 @@ fn compact_kernel_phases_preserve_revision_origins_and_future_work() {
 
 #[test]
 fn stale_entry_work_prevents_compact_kernel_admission() {
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let mut baseline = graph.clone();
     baseline.plans.instant.machine = None;
     let (base_program, base_state) = baseline.lower().unwrap();
@@ -335,7 +376,7 @@ fn stale_entry_work_prevents_compact_kernel_admission() {
 
 #[test]
 fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let original = graph.plans.instant.machine.as_ref().unwrap();
     let (source, action) = original
         .transitions
@@ -372,7 +413,7 @@ fn transition_validation_rejects_wrong_writes_deadlines_effects_and_targets() {
 
 #[test]
 fn compact_kernel_validation_rejects_malformed_programs_before_lowering() {
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let valid = graph.plans.instant.machine.as_ref().unwrap();
     let select = valid
         .kernel
@@ -415,7 +456,7 @@ fn compact_kernel_validation_rejects_malformed_programs_before_lowering() {
 
 #[test]
 fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() {
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let kernel = &graph.plans.instant.machine.as_ref().unwrap().kernel;
     let other_root = |original: KernelExprId| {
         (0..kernel.expressions.len())
@@ -455,7 +496,7 @@ fn compact_kernel_validation_rederives_hot_effect_order_and_cold_future_roots() 
 
 #[test]
 fn arbitrary_control_histories_deopt_and_keep_complete_state() {
-    let (graph, _) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, _) = machine_graph();
     let controls = graph.plans.instant.machine.as_ref().unwrap().controls.clone();
     let mut baseline = graph.clone();
     baseline.plans.instant.machine = None;
@@ -483,7 +524,7 @@ fn arbitrary_control_histories_deopt_and_keep_complete_state() {
 fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() {
     use crate::redpiler::passes::compile_instant_machine::CompileInstantMachine;
     use crate::redpiler::passes::{GraphPass, PassContext, PassEntry, PassPipeline};
-    let (graph, entry) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (graph, entry) = machine_graph();
     let options = crate::redpiler::CompilerOptions {
         optimization_level: Some(4),
         stable_instant_inputs: true,

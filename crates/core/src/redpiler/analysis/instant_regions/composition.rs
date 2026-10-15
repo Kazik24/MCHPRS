@@ -25,13 +25,8 @@ impl Connections<'_> {
     }
 
     fn source_node(&self, node: NodeId) -> Option<usize> {
-        self.internal_node(node).or_else(|| match self.graph.nodes[node.index()].kind {
-            // External variable sources join their fanout, but remain boundary inputs.
-            CircuitNodeKind::Electrical(crate::redpiler::components::NodeType::Constant)
-            | CircuitNodeKind::Contact(_)
-            | CircuitNodeKind::Piston(_) => None,
-            _ => Some(self.nodes_start + node.index()),
-        })
+        // An outside component is a boundary port; its fanout must not join owners.
+        self.internal_node(node)
     }
 
     fn site(&self, site: SiteId) -> Option<usize> {

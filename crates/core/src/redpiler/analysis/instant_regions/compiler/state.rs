@@ -82,6 +82,38 @@ pub(crate) struct State {
 }
 
 impl State {
+    /// Substitute only constants proved by the entry equations; all other memory remains symbolic.
+    pub(crate) fn bind_inputs(&mut self, logic: &mut Diagram, bindings: &[(usize, bool)]) -> Result<()> {
+        let mut values = logic.bind_roots(&self.scalar_roots(), bindings)?.into_iter();
+        let mut next = || values.next().expect("binding preserves the scalar layout");
+        for component in &mut self.components {
+            component.signal = Signal::from_bits(std::array::from_fn(|_| next()));
+            component.powered = next();
+            component.locked = next();
+            if let Some(shape) = &mut component.shape {
+                for side in &mut shape.sides {
+                    side.up = next();
+                    side.flat = next();
+                }
+            }
+        }
+        for actor in &mut self.actors {
+            actor.extended = next();
+            actor.head = next();
+            for value in &mut actor.availability {
+                *value = next();
+            }
+        }
+        for resource in &mut self.resources {
+            for (_, at) in &mut resource.contacts {
+                *at = next();
+            }
+            resource.enabled = next();
+        }
+        assert!(values.next().is_none(), "binding consumes the complete scalar layout");
+        Ok(())
+    }
+
     /// Count revision writes without binding them to any concrete runtime origin.
     pub(crate) fn revision_counts(&self, logic: &mut Diagram) -> Result<Vec<Vec<Formula>>> {
         let mut counts = Vec::with_capacity(self.actors.len() + self.resources.len());

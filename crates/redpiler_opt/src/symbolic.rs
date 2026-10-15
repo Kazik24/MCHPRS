@@ -6,6 +6,9 @@
 use crate::{Circuit, InputId, Limits, Op};
 use std::collections::{BTreeSet, HashMap};
 
+#[path = "symbolic_constraints.rs"]
+mod constraints;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// A Boolean function owned by the Diagram that constructed it.
 pub struct Formula(u32);
@@ -138,14 +141,47 @@ impl Diagram {
     }
 
     pub fn and(&mut self, left: Formula, right: Formula) -> Result<Formula, SymbolicError> {
+        self.validate(left)?;
+        self.validate(right)?;
+        if left == Formula::FALSE || right == Formula::FALSE {
+            return Ok(Formula::FALSE);
+        }
+        if left == Formula::TRUE || left == right {
+            return Ok(right);
+        }
+        if right == Formula::TRUE {
+            return Ok(left);
+        }
         self.select(left, right, Formula::FALSE)
     }
 
     pub fn or(&mut self, left: Formula, right: Formula) -> Result<Formula, SymbolicError> {
+        self.validate(left)?;
+        self.validate(right)?;
+        if left == Formula::TRUE || right == Formula::TRUE {
+            return Ok(Formula::TRUE);
+        }
+        if left == Formula::FALSE || left == right {
+            return Ok(right);
+        }
+        if right == Formula::FALSE {
+            return Ok(left);
+        }
         self.select(left, Formula::TRUE, right)
     }
 
     pub fn xor(&mut self, left: Formula, right: Formula) -> Result<Formula, SymbolicError> {
+        self.validate(left)?;
+        self.validate(right)?;
+        if left == right {
+            return Ok(Formula::FALSE);
+        }
+        if left == Formula::FALSE {
+            return Ok(right);
+        }
+        if right == Formula::FALSE {
+            return Ok(left);
+        }
         let inverse = self.not(right)?;
         self.select(left, inverse, right)
     }
@@ -249,6 +285,12 @@ impl Diagram {
     }
 
     pub fn maximum(&mut self, left: Signal, right: Signal) -> Result<Signal, SymbolicError> {
+        if left == right || left == Signal::literal(0)? || right == Signal::literal(0)? {
+            for bit in left.bits.into_iter().chain(right.bits) {
+                self.validate(bit)?;
+            }
+            return Ok(if left == Signal::literal(0)? { right } else { left });
+        }
         let mut borrow = Formula::FALSE;
         for (a, b) in left.bits.into_iter().zip(right.bits) {
             let not_a = self.not(a)?;

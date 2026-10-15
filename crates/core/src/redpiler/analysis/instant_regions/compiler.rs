@@ -30,6 +30,8 @@ type Result<T> = std::result::Result<T, CompileError>;
 pub(crate) enum CompileError {
     /// This symbolic operation exceeded its budget or rejected invalid values.
     Logic(SymbolicError),
+    /// The ready-state equations contradict each other, so this candidate has no admissible entry.
+    InconsistentEntry,
     /// This node contains host-owned data that this symbolic semantic family does not model.
     UnsupportedNode(NodeId),
     /// This power dependency recurses without a certified transfer relation.

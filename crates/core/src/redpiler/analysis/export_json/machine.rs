@@ -150,7 +150,7 @@ pub(super) fn export_kernel(kernel: &InstantKernel, graph: &CompileGraph) -> Val
         .instant
         .regions
         .first()
-        .map(KernelBoundary::from_region)
+        .map(|region| KernelBoundary::from_region(graph, region))
         .map(|boundary| boundary_json(&boundary));
     json!({
         "encoding": "compact-instant-kernel-v1",
@@ -174,9 +174,27 @@ pub(super) fn export_kernel(kernel: &InstantKernel, graph: &CompileGraph) -> Val
 
 pub(super) fn boundary_json(boundary: &KernelBoundary) -> Value {
     let occurrence = |event: crate::redpiler::program_graph::RouteOccurrence| json!({ "route": event.route.index(), "ordinal": event.ordinal });
+    let guard_owner = |owner: crate::redpiler::program_graph::KernelGuardUse| match owner {
+        crate::redpiler::program_graph::KernelGuardUse::Power(link) => json!({ "kind": "power", "link": link }),
+        crate::redpiler::program_graph::KernelGuardUse::Callback(event) => json!({ "kind": "callback", "event": occurrence(event) }),
+        crate::redpiler::program_graph::KernelGuardUse::ContactVariant { contact, ordinal } => {
+            json!({ "kind": "contact_variant", "contact": typed_id("contact", contact.index()), "ordinal": ordinal })
+        }
+        crate::redpiler::program_graph::KernelGuardUse::ComparatorOverride(plan) => {
+            json!({ "kind": "comparator_override", "plan": typed_id("comparator_plan", plan as usize) })
+        }
+        crate::redpiler::program_graph::KernelGuardUse::WireRelation(relation) => json!({ "kind": "wire_relation", "relation": relation }),
+    };
     let inputs = boundary.inputs.iter().map(|input| match input {
         KernelInput::Power(link) => json!({ "kind": "power", "link": link }),
         KernelInput::Callback(event) => json!({ "kind": "callback", "event": occurrence(*event) }),
+        KernelInput::Guard(read) => json!({
+            "kind": "guard", "guard": typed_id("guard", read.guard.index()), "owner": guard_owner(read.owner),
+        }),
+        KernelInput::WireNeighbor { wire, slot, site } => json!({
+            "kind": "wire_neighbor", "wire": typed_id("node", wire.index()), "slot": slot,
+            "site": typed_id("site", site.index()),
+        }),
     });
     let state = boundary.state.iter().map(|slot| match slot {
         KernelStateSlot::Reset(id) => json!({ "kind": "reset", "node": typed_id("node", id.index()) }),
@@ -188,6 +206,17 @@ pub(super) fn boundary_json(boundary: &KernelBoundary) -> Value {
         KernelOutput::Power(link) => json!({ "kind": "power", "link": link }),
         KernelOutput::Callback(event) => json!({ "kind": "callback", "event": occurrence(*event) }),
         KernelOutput::Observer(id) => json!({ "kind": "observer", "node": typed_id("node", id.index()) }),
+        KernelOutput::WireReader { wire, slot, site } => json!({
+            "kind": "wire_reader", "wire": typed_id("node", wire.index()), "slot": slot,
+            "site": typed_id("site", site.index()),
+        }),
+        KernelOutput::Guard(read) => json!({
+            "kind": "guard", "guard": typed_id("guard", read.guard.index()), "owner": guard_owner(read.owner),
+        }),
+        KernelOutput::CallbackSite { event, site, view } => json!({
+            "kind": "callback_site", "event": occurrence(*event), "site": typed_id("site", site.index()),
+            "view": operand_view(*view),
+        }),
     });
     json!({
         "inputs": inputs.collect::<Vec<_>>(),
@@ -198,6 +227,123 @@ pub(super) fn boundary_json(boundary: &KernelBoundary) -> Value {
     })
 }
 
+pub(super) fn validate_boundary_json(value: &Value, graph: &super::GraphTablesDto) -> bool {
+    let Some(inputs) = value["inputs"].as_array() else { return false };
+    let Some(state) = value["state"].as_array() else { return false };
+    let Some(outputs) = value["outputs"].as_array() else { return false };
+    let Some(effects) = value["effects"].as_array() else { return false };
+    let Some(projection_roots) = value["projection_roots"].as_array() else {
+        return false;
+    };
+    let guard_matches = |item: &Value| {
+        let Some(guard) = graph.guards.iter().find(|guard| item["guard"] == guard.id) else {
+            return false;
+        };
+        let owner = &item["owner"];
+        match owner["kind"].as_str() {
+            Some("power") => owner["link"]
+                .as_u64()
+                .and_then(|index| graph.power_links.get(index as usize))
+                .is_some_and(|link| link.guard == guard.id),
+            Some("callback") => occurrence_guard(owner.get("event"), graph).is_some_and(|id| id == guard.id),
+            Some("contact_variant") => graph
+                .contacts
+                .iter()
+                .find(|contact| owner["contact"] == contact.id)
+                .and_then(|contact| owner["ordinal"].as_u64().and_then(|ordinal| contact.variants.get(ordinal as usize)))
+                .is_some_and(|variant| variant.when == guard.id),
+            Some("comparator_override") => graph
+                .comparator_plans
+                .iter()
+                .find(|plan| owner["plan"] == plan.id)
+                .and_then(|plan| plan.far_override.as_ref())
+                .is_some_and(|far| far.guard == guard.id),
+            Some("wire_relation") => owner["relation"]
+                .as_u64()
+                .and_then(|index| graph.wire_relations.get(index as usize))
+                .is_some_and(|relation| relation.guard == guard.id),
+            _ => false,
+        }
+    };
+    let valid_reference = |item: &Value| match item["kind"].as_str() {
+        Some("power") => item["link"].as_u64().is_some_and(|index| index < graph.power_links.len() as u64),
+        Some("callback") => occurrence_guard(item.get("event"), graph).is_some(),
+        Some("guard") => guard_matches(item),
+        Some("wire_neighbor") | Some("wire_reader") => {
+            let wire = item["wire"].as_str();
+            let site = item["site"].as_str();
+            let slot = item["slot"].as_u64().and_then(|slot| usize::try_from(slot).ok());
+            graph
+                .wire_plans
+                .iter()
+                .find(|plan| wire == Some(plan.node.as_str()))
+                .zip(site)
+                .zip(slot)
+                .is_some_and(|((plan, site), slot)| plan.canonical_neighbors.get(slot).is_some_and(|candidate| candidate == site))
+        }
+        Some("callback_site") => callback_site_matches(item, graph),
+        Some("observer") => graph.nodes.iter().any(|node| item["node"] == node.id),
+        _ => false,
+    };
+    let valid_input = |item: &Value| matches!(item["kind"].as_str(), Some("power" | "callback" | "guard" | "wire_neighbor")) && valid_reference(item);
+    let valid_output = |item: &Value| {
+        matches!(
+            item["kind"].as_str(),
+            Some("power" | "callback" | "observer" | "wire_reader" | "guard" | "callback_site")
+        ) && valid_reference(item)
+    };
+    let valid_state = |item: &Value| match item["kind"].as_str() {
+        Some("reset") | Some("wire") => graph.nodes.iter().any(|node| item["node"] == node.id),
+        Some("piston") => graph.pistons.iter().any(|piston| item["piston"] == piston.id),
+        Some("resource") => graph.resources.iter().any(|resource| item["resource"] == resource.id),
+        _ => false,
+    };
+    let valid_occurrence = |item: &Value| occurrence_guard(Some(item), graph).is_some();
+    inputs.iter().all(valid_input)
+        && outputs.iter().all(valid_output)
+        && state.iter().all(valid_state)
+        && effects.iter().all(valid_occurrence)
+        && projection_roots
+            .iter()
+            .all(|site| graph.sites.iter().any(|candidate| site == &candidate.id))
+}
+
+fn callback_site_matches(item: &Value, graph: &super::GraphTablesDto) -> bool {
+    let Some(event) = item.get("event") else { return false };
+    let Some(route_index) = event["route"].as_u64().and_then(|index| usize::try_from(index).ok()) else {
+        return false;
+    };
+    let Some(ordinal) = event["ordinal"].as_u64().and_then(|ordinal| usize::try_from(ordinal).ok()) else {
+        return false;
+    };
+    graph
+        .routes
+        .as_ref()
+        .and_then(|routes| routes.get(route_index))
+        .and_then(|route| route.deliveries.get(ordinal))
+        .is_some_and(|delivery| delivery.target == item["site"] && Some(delivery.view) == item["view"].as_str())
+}
+
+fn operand_view(view: crate::redpiler::program_graph::OperandView) -> &'static str {
+    match view {
+        crate::redpiler::program_graph::OperandView::Live => "live",
+        crate::redpiler::program_graph::OperandView::Captured => "captured",
+    }
+}
+
+fn occurrence_guard(value: Option<&Value>, graph: &super::GraphTablesDto) -> Option<String> {
+    let value = value?;
+    let route_index = usize::try_from(value["route"].as_u64()?).ok()?;
+    let ordinal = usize::try_from(value["ordinal"].as_u64()?).ok()?;
+    graph
+        .routes
+        .as_ref()?
+        .get(route_index)?
+        .deliveries
+        .get(ordinal)
+        .map(|delivery| delivery.guard.clone())
+}
+
 pub(super) fn validate(value: &Value, document: &GraphExport) -> Result<(), ExportError> {
     let invalid = || ExportError::new("validation", "invalid closed instant machine export");
     let graph = &document.graph;
@@ -206,6 +352,15 @@ pub(super) fn validate(value: &Value, document: &GraphExport) -> Result<(), Expo
     ids.extend(graph.pistons.iter().map(|n| n.id.as_str()));
     ids.extend(graph.resources.iter().map(|n| n.id.as_str()));
     ids.extend(graph.contacts.iter().map(|n| n.id.as_str()));
+    ids.extend(graph.profiles.iter().map(|n| n.id.as_str()));
+    ids.extend(graph.sites.iter().map(|n| n.id.as_str()));
+    ids.extend(graph.guards.iter().map(|n| n.id.as_str()));
+    ids.extend(graph.power_links.iter().map(|n| n.id.as_str()));
+    ids.extend(graph.wire_plans.iter().map(|n| n.id.as_str()));
+    ids.extend(graph.wire_relations.iter().map(|n| n.id.as_str()));
+    if let Some(routes) = &graph.routes {
+        ids.extend(routes.iter().map(|n| n.id.as_str()));
+    }
     fn references(value: &Value, ids: &HashSet<&str>) -> bool {
         match value {
             Value::String(s) if s.contains(':') => ids.contains(s.as_str()),
@@ -277,8 +432,10 @@ pub(super) fn validate_kernel(value: &Value, document: &GraphExport) -> Result<(
     let prefix = value["prefix"].as_u64().ok_or_else(invalid)?;
     let period = value["period"].as_u64().ok_or_else(invalid)?;
     let phases = value["phases"].as_array().ok_or_else(invalid)?;
+    let boundary_valid = value.get("boundary").is_none_or(Value::is_null) || validate_boundary_json(&value["boundary"], graph);
     if value["encoding"] != "compact-instant-kernel-v1"
         || !references(value, &ids)
+        || !boundary_valid
         || controls.len() > 3
         || expressions.is_empty()
         || expressions.len() > 1_000_000

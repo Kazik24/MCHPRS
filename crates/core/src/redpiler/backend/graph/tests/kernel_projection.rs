@@ -1,6 +1,8 @@
 //! Independent checks of display projection and deoptimization against exact execution.
 use super::*;
-use crate::redpiler::CompilerOptions;
+use crate::redpiler::analysis::AnalysisLimits;
+use crate::redpiler::passes;
+use crate::redpiler::{CompilerOptions, TaskMonitor};
 
 fn manifest_cases() -> Vec<Value> {
     let path = root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json");
@@ -14,19 +16,29 @@ fn manifest_cases() -> Vec<Value> {
         .collect()
 }
 
-fn backend(circuit: &Adder, compact: bool) -> GraphBackend {
-    GraphBackend::compile_with_options(
-        &circuit.build(),
-        circuit.bounds(),
-        vec![],
-        &CompilerOptions {
-            optimization_level: Some(4),
-            stable_instant_inputs: compact,
-            ..Default::default()
-        },
-        Arc::default(),
-    )
-    .unwrap()
+fn backend(circuit: &Adder, legacy_aot: bool) -> GraphBackend {
+    let world = circuit.build();
+    let monitor = Arc::new(TaskMonitor::default());
+    let options = CompilerOptions {
+        optimization_level: Some(4),
+        stable_instant_inputs: legacy_aot,
+        ..Default::default()
+    };
+    let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
+    let mut prepared = passes::rich::prepare(&world, circuit.bounds(), vec![], &monitor, limits).unwrap();
+    let mut pipeline = passes::default_graph_pipeline(&options);
+    if legacy_aot {
+        let region_compiler = pipeline
+            .entries
+            .iter_mut()
+            .find(|entry| matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-symbolic-regions"))
+            .expect("the O4 pipeline contains the regional compiler");
+        region_compiler.enabled = false;
+    }
+    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).unwrap();
+    prepared.finish_pipeline_statistics(&monitor);
+    let lowered = prepared.lower(&monitor).unwrap();
+    GraphBackend::from_lowered(lowered, &monitor).unwrap()
 }
 
 fn apply_step(native: &mut PlotWorld, exact: &mut GraphBackend, compact: &mut GraphBackend, step: Step) {

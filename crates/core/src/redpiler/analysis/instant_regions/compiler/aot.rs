@@ -1,6 +1,6 @@
 //! Build immutable symbolic phase programs from the graph's ordered execution semantics.
 use super::cycle::Snapshot;
-use super::entry::Entry;
+use super::entry::{Entry, ShapeEntry};
 use super::execution::Execution;
 use super::*;
 use crate::redpiler::{TaskMonitor, program_graph::SymbolicKernel};
@@ -9,92 +9,109 @@ use std::sync::Arc;
 
 const MAX_PROOF_TICKS: usize = 48;
 
-/// Compile every lever entering a stable instant region whose recurrence can be proven.
+/// Compile both control edges where complete state and ordered future recurrence can be proven.
 pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> std::result::Result<Vec<Arc<SymbolicKernel>>, String> {
     let candidates = activation_candidates(graph);
     let mut kernels = Vec::new();
     for trigger in candidates {
-        if monitor.cancelled() {
-            return Err("cancelled while compiling symbolic instant kernels".into());
-        }
-        if let Some(kernel) = compile_candidate(graph, trigger, monitor)? {
-            kernels.push(Arc::new(kernel));
+        for powered_after in [false, true] {
+            if monitor.cancelled() {
+                return Err("cancelled while compiling symbolic instant kernels".into());
+            }
+            let result = compile_candidate(graph, trigger, powered_after, monitor);
+            if monitor.cancelled() {
+                return Err("cancelled while compiling symbolic instant kernels".into());
+            }
+            match result {
+                Ok(kernel) => kernels.push(Arc::new(kernel)),
+                Err(reason) => {
+                    tracing::debug!(?trigger, position = ?graph.nodes[trigger.index()].position, powered_after, %reason, "symbolic kernel declined")
+                }
+            }
         }
     }
     Ok(kernels)
 }
 
-fn activation_candidates(graph: &CompileGraph) -> Vec<NodeId> {
-    let mut found = vec![false; graph.nodes.len()];
-    for region in graph.plans.instant.regions.iter().filter(|region| region.stable_inputs) {
-        for occurrence in &region.incoming {
-            let Some(route) = graph.routes.get(occurrence.route.index()) else {
-                continue;
-            };
-            let source = route.source;
-            if matches!(
-                graph.nodes[source.index()].kind,
-                CircuitNodeKind::Electrical(crate::redpiler::components::NodeType::Lever)
-            ) {
-                found[source.index()] = true;
-            }
-        }
+pub(crate) fn activation_candidates(graph: &CompileGraph) -> Vec<NodeId> {
+    if !graph.plans.instant.regions.iter().any(|region| region.stable_inputs) {
+        return Vec::new();
     }
-    found
-        .into_iter()
+    // A control can reach an instant through wires or diodes, without a direct incoming callback.
+    // The complete-state proof, rather than adjacency, decides whether its program is safe.
+    graph
+        .nodes
+        .iter()
         .enumerate()
-        .filter_map(|(index, found)| found.then_some(NodeId::new(index as u32)))
+        .filter_map(|(index, node)| {
+            matches!(node.kind, CircuitNodeKind::Electrical(crate::redpiler::components::NodeType::Lever)).then_some(NodeId::new(index as u32))
+        })
         .collect()
 }
 
-fn compile_candidate(graph: &CompileGraph, trigger: NodeId, monitor: &TaskMonitor) -> std::result::Result<Option<SymbolicKernel>, String> {
+pub(crate) fn compile_candidate(
+    graph: &CompileGraph,
+    trigger: NodeId,
+    powered_after: bool,
+    monitor: &TaskMonitor,
+) -> std::result::Result<SymbolicKernel, String> {
+    let mut declines = Vec::new();
+    for shapes in [ShapeEntry::Histories, ShapeEntry::Captured] {
+        match compile_for_entry(graph, trigger, powered_after, shapes, monitor) {
+            Ok(kernel) => return Ok(kernel),
+            Err(reason) => declines.push(format!("{shapes:?}: {reason}")),
+        }
+        if monitor.cancelled() {
+            return Err("cancelled while compiling symbolic instant kernels".into());
+        }
+    }
+    Err(declines.join("; "))
+}
+
+pub(crate) fn compile_for_entry(
+    graph: &CompileGraph,
+    trigger: NodeId,
+    powered_after: bool,
+    shapes: ShapeEntry,
+    monitor: &TaskMonitor,
+) -> std::result::Result<SymbolicKernel, String> {
     let limits = Limits {
-        max_work: 256 * 1024 * 1024,
-        ..Limits::default()
+        max_work: (256usize * 1024 * 1024).saturating_mul(monitor.budget_multiplier()),
+        max_nodes: Limits::default().max_nodes.saturating_mul(monitor.budget_multiplier()),
     };
-    let Ok(mut compiler) = Compiler::new(graph, limits) else {
-        return Ok(None);
-    };
-    let Ok(entry) = Entry::derive(&mut compiler, trigger) else {
-        return Ok(None);
-    };
+    let mut compiler = Compiler::new(graph, limits).map_err(|error| format!("initial state: {error:?}"))?;
+    let entry = Entry::derive_for_shapes(&mut compiler, trigger, !powered_after, shapes)
+        .map_err(|error| proof_error("ready entry", error, &compiler, limits))?;
 
     let mut roots = Vec::new();
     let conditions = append_roots(&mut roots, entry.conditions.iter().copied());
     let entry_state = append_roots(&mut roots, compiler.state.scalar_roots());
-    let Ok(revisions) = compiler.state.revision_counts(&mut compiler.logic) else {
-        return Ok(None);
-    };
+    let revisions = compiler
+        .state
+        .revision_counts(&mut compiler.logic)
+        .map_err(|error| format!("entry revisions: {error:?}"))?;
     let entry_revisions = revisions.iter().map(|bits| append_roots(&mut roots, bits.iter().copied())).collect();
 
     let mut execution = Execution::empty(graph);
     let first_effect = execution.accepted.len();
-    if execution.set_control(&mut compiler, trigger, Formula::FALSE).is_err() {
-        return Ok(None);
-    }
-    let activation_snapshot = match Snapshot::capture(&mut compiler, &execution, first_effect) {
-        Ok(snapshot) => snapshot,
-        Err(_) if monitor.cancelled() => return Err("cancelled while compiling symbolic activation".into()),
-        Err(_) => return Ok(None),
-    };
+    execution
+        .set_control(&mut compiler, trigger, if powered_after { Formula::TRUE } else { Formula::FALSE })
+        .map_err(|error| proof_error("activation", error, &compiler, limits))?;
+    let activation_snapshot = Snapshot::capture(&mut compiler, &execution, first_effect).map_err(|error| format!("activation roots: {error:?}"))?;
     let activation = activation_snapshot.append_roots(&mut roots);
     let mut snapshots = vec![activation_snapshot];
     let mut phases = Vec::new();
     let mut recurrence = None;
 
-    for _ in 1..=MAX_PROOF_TICKS {
+    for tick in 1..=MAX_PROOF_TICKS {
         if monitor.cancelled() {
             return Err("cancelled while proving symbolic instant recurrence".into());
         }
         let first_effect = execution.accepted.len();
-        if execution.run_tick(&mut compiler).is_err() {
-            return Ok(None);
-        }
-        let snapshot = match Snapshot::capture(&mut compiler, &execution, first_effect) {
-            Ok(snapshot) => snapshot,
-            Err(_) if monitor.cancelled() => return Err("cancelled while capturing symbolic phase".into()),
-            Err(_) => return Ok(None),
-        };
+        execution
+            .run_tick(&mut compiler)
+            .map_err(|error| proof_error(&format!("tick {tick}"), error, &compiler, limits))?;
+        let snapshot = Snapshot::capture(&mut compiler, &execution, first_effect).map_err(|error| format!("tick {tick} roots: {error:?}"))?;
         phases.push(snapshot.append_roots(&mut roots));
         for (prefix, earlier) in snapshots.iter().enumerate() {
             match earlier.proves_same(&snapshot, &mut compiler) {
@@ -103,8 +120,7 @@ fn compile_candidate(graph: &CompileGraph, trigger: NodeId, monitor: &TaskMonito
                     break;
                 }
                 Ok(false) => {}
-                Err(_) if monitor.cancelled() => return Err("cancelled while proving symbolic recurrence".into()),
-                Err(_) => return Ok(None),
+                Err(error) => return Err(format!("tick {tick} recurrence: {error:?}")),
             }
         }
         if recurrence.is_some() {
@@ -113,24 +129,17 @@ fn compile_candidate(graph: &CompileGraph, trigger: NodeId, monitor: &TaskMonito
         snapshots.push(snapshot);
     }
     let Some((prefix, period)) = recurrence else {
-        return Ok(None);
+        return Err(format!("no complete-state recurrence within {MAX_PROOF_TICKS} ticks"));
     };
 
-    let circuit = match compiler.logic.circuit(&roots) {
-        Ok(circuit) => circuit,
-        Err(_) if monitor.cancelled() => return Err("cancelled while lowering symbolic roots".into()),
-        Err(_) => return Ok(None),
-    };
-    let plan = match optimize(&circuit, limits, || monitor.cancelled()) {
-        Ok(plan) => plan,
-        Err(_) if monitor.cancelled() => return Err("cancelled while optimizing symbolic kernel".into()),
-        Err(_) => return Ok(None),
-    };
+    let circuit = compiler.logic.circuit(&roots).map_err(|error| format!("lowering roots: {error:?}"))?;
+    let plan = optimize(&circuit, limits, || monitor.cancelled()).map_err(|error| format!("Boolean optimization: {error:?}"))?;
     if phases.len() != prefix + period {
-        return Ok(None);
+        return Err("invalid recurrence layout".into());
     }
     let kernel = SymbolicKernel {
         trigger,
+        powered_after,
         inputs: entry.inputs.into_boxed_slice(),
         shapes: entry.shapes.into_boxed_slice(),
         hot_components: SymbolicKernel::component_bindings(graph),
@@ -145,7 +154,26 @@ fn compile_candidate(graph: &CompileGraph, trigger: NodeId, monitor: &TaskMonito
         prefix,
         period,
     };
-    Ok(kernel.validate(graph).then_some(kernel))
+    if !kernel.validate(graph) {
+        return Err("invalid kernel root layout or binding".into());
+    }
+    Ok(kernel)
+}
+
+fn proof_error(stage: &str, error: CompileError, compiler: &Compiler<'_>, limits: Limits) -> String {
+    let detail = match error {
+        CompileError::UnsupportedNode(node) => match compiler.graph.nodes.get(node.index()) {
+            Some(node) => format!("unsupported {:?} at {:?}", node.kind, node.position),
+            None => format!("unknown node {node:?}"),
+        },
+        error => format!("{error:?}"),
+    };
+    format!(
+        "{stage}: {detail}; decisions={}, logic work={}, semantic work={}",
+        compiler.logic.node_count(),
+        compiler.logic.work(),
+        limits.max_work - compiler.remaining_work()
+    )
 }
 
 fn append_roots(roots: &mut Vec<Formula>, values: impl IntoIterator<Item = Formula>) -> std::ops::Range<usize> {

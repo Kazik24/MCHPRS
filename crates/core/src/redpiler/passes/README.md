@@ -36,7 +36,8 @@ plans before it changes the circuit, so plan builders need no preservation flags
 At `-O4` and above, `compile_instant_machine` follows O3 proxy compilation and requires `--stable-instant-inputs`.
 The O4 pipeline also runs `compile_symbolic_kernels`, which derives and validates an immutable
 symbolic kernel and lowers it into `CircuitProgram`. A production-pipeline test confirms this for
-ADDER1BIT and ADDER11BIT. Runtime admission freezes typed inputs before the falling edge and checks
+ADDER1BIT and ADDER11BIT. Both rising and falling lever edges are candidates, including controls
+that reach an instant through intermediate components. Runtime admission freezes typed inputs before the edge and checks
 the complete stationary entry relation and empty future. Compiled activation and later
 prefix/period phases apply prebound electrical writes and ordered effects. Private wires,
 actor/resource revisions and future queues
@@ -48,6 +49,15 @@ enumerator and release performance validation are still pending. Read
 before extending admission, normalization, or the bounded derivation budget. The superseded
 snapshot prototype is recorded in
 [CLOSED_INSTANT_MACHINE.md](../../../../../docs/notes/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md).
+
+Ready-entry reduction may substitute only memory constants proved by the original admission
+conditions; keep those conditions in the emitted kernel. Captured stored-wire shapes may form a
+checked entry specialization, but must not freeze later shape changes or assume that native
+stored shapes always equal regulated shapes. Unsupported entries retain general execution.
+Divider still exceeds its first-tick Boolean-node budget, and Counter lacks the required
+complete-state recurrence. Neither is established kernel coverage. See
+[SYMBOLIC_VIRTUAL_CIRCUIT.md](../../../../../docs/notes/redpiler-pistons-v4/SYMBOLIC_VIRTUAL_CIRCUIT.md)
+for proof arguments, rejected approaches and current validation limits.
 
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.
 2. `mod.rs` holds registration and pipeline infrastructure. Do not implement unrelated transformations inside the runner, parser, compiler orchestration, or backend dispatch.
@@ -123,7 +133,7 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | Build | O3 | `compile-instant-resets` | General Turbo execution of the certified two-wire reset output. |
 | Build | O3 | `identify-instant-regions` | Instant region ownership boundaries. |
 | Build | O3 | `compile-instant-proxies` | Boundary execution proxies. |
-| Build | O4 | `compile-symbolic-actors` | Compile single-actor request, acceptance and reset conditions; shared Graph primitives still apply their effects. |
+| Build | O4 | `compile-symbolic-regions` | Compile each supported region's actor sample/accept and unique reset event routines against one shared boundary. |
 | Build | O4 | `compile-instant-machine` | Compact execution for a bounded closed selection. |
 | Build | O4 | `compile-symbolic-kernels` | AOT prefix/period programs over typed inputs, without enumerating their values. |
 
@@ -290,6 +300,6 @@ This is a first exact lowering of connecting dust calculations, not an atomic in
 `mchprs_redpiler_opt` provides pure Boolean rewriting and known-input specialization. O4 lowering uses it to compile the admitted frozen-input kernel into unconditional ordered effect lists; it is not a new graph transformation pass. Keep graph ownership, timing, callback admission and state reconstruction in Redpiler. Pure rewrites must preserve ordered root occurrences and may not erase a dirty touch merely because its value is unchanged. The source kernel remains the validation/export definition; specialized lists are derived runtime data, reported separately in lowered storage estimates. See `COMPACT_INSTANT_KERNEL.md` for the current bounds and measured tradeoff.
 
 
-### O4 symbolic actor event builder
+### O4 boundary-driven region event compiler
 
-`compile_symbolic_actors.rs` emits one actor/reset region's event routines before the finite prototype. It uses graph-bound power reads and the pure optimizer; it does not enumerate input combinations. Each event evaluates only its reachable reads, then applies the existing ordered state/resource/scheduler primitives. This is event lowering, not callback deletion or whole-region contraction. Plans are regenerated for validation and discarded after any upstream rebuild. JSON `symbolic_actors` and lowered table statistics expose the derived program. See `COMPACT_INSTANT_KERNEL.md` for the supported family, proof argument and remaining composition work.
+`compile_symbolic_regions.rs` emits one grouped program for an entire supported ownership region. Every actor gets sample and accept routines, while each unique reset node gets update and tick routines; a region is published atomically or carries an explicit decline with its source index and actor/reset counts. The shared boundary remains graph-bound in the draft and export, then is dropped during lowering because route and power-link ordinals are rewritten there. Actor reads retain copied link operands, and runtime dispatch uses direct actor/reset bindings at the original callback and tick positions. Programs execute during the ordinary global schedule and can share that schedule with unrelated pending devices. These routines reuse ordinary Graph state, wire walks, callbacks, resources and scheduler primitives; this milestone does not contract internal wires or bypass their synchronous effects. JSON `symbolic_regions` and `symbolic_region_declines` expose the program and coverage. See `SYMBOLIC_VIRTUAL_CIRCUIT.md` for limits and remaining event/boundary contraction work.

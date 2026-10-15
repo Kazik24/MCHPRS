@@ -167,7 +167,7 @@ fn both_adders_have_a_symbolically_proven_cycle_with_exact_repeated_future_and_i
         let (graph, _) = stable_region_tests::stable_graph_at_level(id, 1);
         let trigger = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(circuit.trigger())).unwrap() as u32);
         let mut compiler = SymbolicCompiler::new(&graph, limits()).unwrap();
-        let entry = Entry::derive(&mut compiler, trigger).unwrap();
+        let entry = Entry::derive(&mut compiler, trigger, true).unwrap();
         let mut execution = Execution::empty(&graph);
         execution.set_control(&mut compiler, trigger, Formula::FALSE).unwrap();
         let mut snapshots = vec![Snapshot::capture(&mut compiler, &execution, execution.accepted.len()).unwrap()];
@@ -311,7 +311,15 @@ fn eleven_bit_aot_kernel_preserves_memory_ordered_future_and_interpreter_handoff
 
 fn verify_production_kernel(id: &'static str) {
     let circuit = load_adder(id, ORIGIN, None);
-    let (graph, _) = stable_region_tests::stable_graph_at_level(id, 4);
+    let (mut graph, _) = stable_region_tests::stable_graph_at_level(id, 4);
+    // This test explicitly exercises the legacy whole-selection AOT compiler.
+    graph.plans.instant.symbolic_regions.clear();
+    graph.plans.instant.symbolic_region_declines.clear();
+    graph.plans.instant.symbolic_kernels = crate::redpiler::analysis::instant_regions::compiler::aot::compile(
+        &graph,
+        &TaskMonitor::default(),
+    )
+    .unwrap();
     let trigger = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(circuit.trigger())).unwrap() as u32);
     let kernel = graph
         .plans

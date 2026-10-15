@@ -5,12 +5,39 @@ impl CircuitDraft {
     pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         self.validate()?;
 
-        let enabled = !self.plans.instant.symbolic_actors.is_empty();
-        let mut symbolic_actors = vec![None; if enabled { self.pistons.len() } else { 0 }];
-        let mut symbolic_resets = vec![None; if enabled { self.nodes.len() } else { 0 }];
-        for actor in &self.plans.instant.symbolic_actors {
-            symbolic_actors[actor.actor.index()] = Some(std::sync::Arc::new(actor.clone()));
-            symbolic_resets[actor.reset.index()] = Some(actor.actor);
+        let enabled = !self.plans.instant.symbolic_regions.is_empty();
+        let mut symbolic_regions = Vec::with_capacity(self.plans.instant.symbolic_regions.len());
+        let mut symbolic_actor_bindings = vec![None; if enabled { self.pistons.len() } else { 0 }];
+        let mut symbolic_reset_bindings = vec![None; if enabled { self.nodes.len() } else { 0 }];
+        for (region_index, region) in self.plans.instant.symbolic_regions.iter().enumerate() {
+            let region_index = u32::try_from(region_index).map_err(|_| GraphBuildError::TooManyEntries { table: "symbolic regions" })?;
+            for (routine_index, actor) in region.actors.iter().enumerate() {
+                if symbolic_actor_bindings[actor.actor.index()]
+                    .replace((region_index, routine_index as u32))
+                    .is_some()
+                {
+                    return Err(GraphBuildError::InvalidInstantRegion {
+                        table: "symbolic actor bindings",
+                        index: actor.actor.index(),
+                    });
+                }
+            }
+            for (routine_index, reset) in region.resets.iter().enumerate() {
+                if symbolic_reset_bindings[reset.node.index()]
+                    .replace((region_index, routine_index as u32))
+                    .is_some()
+                {
+                    return Err(GraphBuildError::InvalidInstantRegion {
+                        table: "symbolic reset bindings",
+                        index: reset.node.index(),
+                    });
+                }
+            }
+            symbolic_regions.push(std::sync::Arc::new(SymbolicRegionProgram {
+                region: region.region,
+                actors: region.actors.clone(),
+                resets: region.resets.clone(),
+            }));
         }
 
         let mut instant_route_by_route = vec![None; self.routes.len()];
@@ -173,8 +200,10 @@ impl CircuitDraft {
         };
         let program = CircuitProgram {
             instant: InstantProgram {
-                symbolic_actors: symbolic_actors.into_boxed_slice(),
-                symbolic_resets: symbolic_resets.into_boxed_slice(),
+                symbolic_regions: symbolic_regions.into_boxed_slice(),
+                symbolic_region_declines: self.plans.instant.symbolic_region_declines.into_boxed_slice(),
+                symbolic_actor_bindings: symbolic_actor_bindings.into_boxed_slice(),
+                symbolic_reset_bindings: symbolic_reset_bindings.into_boxed_slice(),
                 execution: instant_execution,
                 kernel: self.plans.instant.machine.map(|machine| std::sync::Arc::new(machine.kernel.clone())),
                 symbolic_kernels: self.plans.instant.symbolic_kernels.into_boxed_slice(),

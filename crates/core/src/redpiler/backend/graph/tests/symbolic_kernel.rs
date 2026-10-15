@@ -4,9 +4,9 @@ use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::AnalysisLimits;
 use crate::redpiler::analysis::instant_regions::symbolic::{SymbolicLimits, SymbolicValue, compile_power_query};
 use crate::redpiler::passes::rich;
-use crate::redpiler::program_graph::{InputPort, NodeId, PowerTarget};
+use crate::redpiler::program_graph::{CircuitNodeKind, InputPort, NodeId, PowerTarget};
 
-fn load_mechanism(id: &'static str) -> Adder {
+pub(super) fn load_mechanism(id: &'static str) -> Adder {
     let directory = root().join("test_data/instant-pistons-io");
     let manifest: Value = serde_json::from_slice(&std::fs::read(directory.join("fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
     let bytes = std::fs::read(root().join(manifest["fixture"].as_str().unwrap())).unwrap();
@@ -54,6 +54,30 @@ fn stable_graph_at(circuit: &Adder, level: usize) -> (crate::redpiler::program_g
     let world = circuit.build();
     let monitor = TaskMonitor::default();
     let mut prepared = rich::prepare(&world, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(level),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    (prepared.graph, prepared.entry)
+}
+
+fn stable_graph_in_bounds(
+    circuit: &Adder,
+    level: usize,
+    bounds: (BlockPos, BlockPos),
+) -> (crate::redpiler::program_graph::CompileGraph, crate::redpiler::program_graph::EntryState) {
+    let world = circuit.build();
+    let monitor = TaskMonitor::default();
+    let mut prepared = rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
     let options = CompilerOptions {
         optimization_level: Some(level),
         stable_instant_inputs: true,
@@ -145,11 +169,16 @@ fn symbolic_actor_runs_request_accept_reset_and_exact_handoff() {
     let positions = circuit.positions();
     let trigger = circuit.trigger();
     let (graph, _) = stable_graph_at(&circuit, 4);
-    assert_eq!(graph.plans.instant.symbolic_actors.len(), 1);
+    assert!(
+        graph.plans.instant.symbolic_kernels.is_empty(),
+        "regional execution does not publish the whole-selection AOT cursor"
+    );
+    assert_eq!(graph.plans.instant.symbolic_regions.len(), 1);
     assert!(graph.plans.instant.machine.is_none());
-    let reset = graph.plans.instant.symbolic_actors[0].reset;
+    let reset = graph.plans.instant.symbolic_regions[0].resets[0].node;
     let mut general_graph = graph.clone();
-    general_graph.plans.instant.symbolic_actors.clear();
+    general_graph.plans.instant.symbolic_regions.clear();
+    general_graph.plans.instant.symbolic_region_declines.clear();
     let (program, state) = graph.lower().unwrap();
     let (general_program, general_state) = general_graph.lower().unwrap();
     let mut saw_request = false;
@@ -215,7 +244,7 @@ fn symbolic_actor_runs_request_accept_reset_and_exact_handoff() {
         }
         if cut >= 3 {
             assert!(
-                actual.execution_counts().symbolic_actor_steps > 0,
+                actual.execution_counts().symbolic_region_steps > 0,
                 "the symbolic program must execute after the input-torch delay"
             );
         }
@@ -234,6 +263,102 @@ fn symbolic_actor_runs_request_accept_reset_and_exact_handoff() {
         saw_reset_pending && saw_reset_powered,
         "fixture must schedule and execute its reset clock"
     );
+}
+
+#[test]
+fn external_component_callback_runs_region_without_selected_lever_or_global_tick_gate() {
+    use crate::redpiler::components::NodeType;
+    use crate::redpiler::program_graph::ComponentState;
+    use mchprs_world::TickPriority;
+
+    let circuit = load_mechanism("instant_observer");
+    let (mut low, high) = circuit.bounds();
+    low.z = circuit.trigger().z + 1;
+    let (graph, _) = stable_graph_in_bounds(&circuit, 4, (low, high));
+    assert!(
+        graph
+            .nodes
+            .iter()
+            .all(|node| !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lever)))
+    );
+    assert!(graph.plans.instant.machine.is_none());
+    assert!(graph.plans.instant.symbolic_kernels.is_empty());
+    assert_eq!(graph.plans.instant.symbolic_region_declines.len(), 0);
+    assert!(!graph.plans.instant.symbolic_regions.is_empty());
+
+    let region = &graph.plans.instant.regions[0];
+    let event_source = region
+        .incoming
+        .iter()
+        .map(|event| graph.routes[event.route.index()].source)
+        .find(|&node| {
+            matches!(
+                graph.nodes[node.index()].kind,
+                CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. })
+            )
+        })
+        .expect("fixture has an ordinary external source callback into the owned region");
+    assert!(!region.actors.iter().any(|actor| graph.pistons[actor.index()].node == event_source));
+    let unrelated = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .find_map(|(index, node)| {
+            (matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
+                && NodeId::new(index as u32) != event_source
+                && !region.resets.contains(&NodeId::new(index as u32)))
+            .then_some(NodeId::new(index as u32))
+        })
+        .expect("fixture has an unrelated repeater with ordinary scheduled work");
+
+    let mut general_graph = graph.clone();
+    general_graph.plans.instant.symbolic_regions.clear();
+    general_graph.plans.instant.symbolic_region_declines.clear();
+    let (program, state) = graph.lower().unwrap();
+    let (general_program, general_state) = general_graph.lower().unwrap();
+    let mut actual = GraphBackend::new(program, state, 0).unwrap();
+    let mut general = GraphBackend::new(general_program, general_state, 0).unwrap();
+    actual.set_test_recording(true);
+    general.set_test_recording(true);
+    actual.schedule(unrelated, 1, TickPriority::Normal);
+    general.schedule(unrelated, 1, TickPriority::Normal);
+    let next_power = match &actual.state.components[event_source.index()] {
+        ComponentState::Electrical(source_state) => !source_state.powered,
+        _ => panic!("ordinary callback source has electrical state"),
+    };
+    actual
+        .set_node(event_source, next_power, if next_power { 15 } else { 0 }, None, true)
+        .unwrap();
+    general
+        .set_node(event_source, next_power, if next_power { 15 } else { 0 }, None, true)
+        .unwrap();
+
+    assert!(
+        actual.execution_counts().symbolic_region_steps > 0,
+        "the callback must enter a compiled actor or reset routine"
+    );
+    assert_eq!(general.execution_counts().symbolic_region_steps, 0);
+    assert!(actual.is_pending(unrelated), "an unrelated pending tick remains in the global scheduler");
+    instant_proxy_tests::assert_same_memory(&general, &actual);
+    assert_eq!(actual.callback_order, general.callback_order);
+    assert_eq!(actual.observed_operations, general.observed_operations);
+
+    let scheduled_before = actual.execution_counts().scheduled_ticks;
+    actual.clear_test_traces();
+    general.clear_test_traces();
+    for _ in 0..2 {
+        actual.tick().unwrap();
+        general.tick().unwrap();
+    }
+    instant_proxy_tests::assert_same_memory(&general, &actual);
+    assert!(
+        actual.execution_counts().scheduled_ticks > scheduled_before,
+        "the unrelated device's pending tick executes independently"
+    );
+    assert!(actual.trace().iter().any(|line| line == &format!("dispatch {unrelated:?}")));
+    assert!(general.trace().iter().any(|line| line == &format!("dispatch {unrelated:?}")));
+    assert!(actual.execution_counts().symbolic_region_steps > 0);
+    assert_eq!(actual.observed_operations, general.observed_operations);
 }
 
 #[test]
@@ -285,11 +410,12 @@ fn symbolic_requests_are_deduplicated_and_revalidated_against_live_reset_power()
     use crate::redpiler::program_graph::ComponentState;
     let circuit = load_mechanism("instant_observer");
     let (graph, _) = stable_graph_at(&circuit, 4);
-    let actor = graph.plans.instant.symbolic_actors[0].actor;
-    let reset = graph.plans.instant.symbolic_actors[0].reset;
+    let actor = graph.plans.instant.symbolic_regions[0].actors[0].actor;
+    let reset = graph.plans.instant.symbolic_regions[0].resets[0].node;
     let node = graph.pistons[actor.index()].node;
     let mut general_graph = graph.clone();
-    general_graph.plans.instant.symbolic_actors.clear();
+    general_graph.plans.instant.symbolic_regions.clear();
+    general_graph.plans.instant.symbolic_region_declines.clear();
     let (program, state) = graph.lower().unwrap();
     let (general_program, general_state) = general_graph.lower().unwrap();
     let mut actual = GraphBackend::new(program, state, 0).unwrap();
@@ -330,20 +456,20 @@ fn symbolic_requests_are_deduplicated_and_revalidated_against_live_reset_power()
         assert!(backend.future.deferred_pistons.is_empty());
     }
     assert_eq!(actual.state, general.state);
-    assert!(actual.execution_counts().symbolic_actor_steps > 0);
+    assert!(actual.execution_counts().symbolic_region_steps > 0);
 }
 
 #[test]
-fn symbolic_actor_build_budgets_cancellation_and_stale_plans_are_checked() {
+fn symbolic_region_build_budgets_cancellation_and_stale_plans_are_checked() {
     let circuit = load_mechanism("instant_observer");
     let (mut graph, _) = stable_graph_at(&circuit, 4);
-    let actor = graph.plans.instant.symbolic_actors[0].actor;
+    let actor = graph.plans.instant.symbolic_regions[0].actors[0].actor;
     let node = graph.pistons[actor.index()].node;
     let cancelled = TaskMonitor::default();
     cancelled.cancel();
-    assert!(crate::redpiler::analysis::instant_regions::symbolic_actor::compile(&graph, &cancelled).is_err());
+    assert!(crate::redpiler::analysis::instant_regions::symbolic_region::compile(&graph, &cancelled).is_err());
     let mut stale = graph.clone();
-    stale.plans.instant.symbolic_actors[0].reads = Box::new([]);
+    std::sync::Arc::make_mut(&mut stale.plans.instant.symbolic_regions[0].actors[0]).reads = Box::new([]);
     assert!(stale.validate().is_err());
     let link = *graph
         .power_links
@@ -351,6 +477,11 @@ fn symbolic_actor_build_budgets_cancellation_and_stale_plans_are_checked() {
         .find(|link| matches!(link.to, PowerTarget::Input { node: target, .. } if target == node))
         .unwrap();
     graph.power_links.extend(std::iter::repeat_n(link, 1024));
-    let plans = crate::redpiler::analysis::instant_regions::symbolic_actor::compile(&graph, &TaskMonitor::default()).unwrap();
-    assert!(plans.is_empty(), "construction must decline before exceeding bounded scratch storage");
+    let plans = crate::redpiler::analysis::instant_regions::symbolic_region::compile(&graph, &TaskMonitor::default()).unwrap();
+    assert!(
+        plans.programs.is_empty(),
+        "construction must decline before exceeding bounded scratch storage"
+    );
+    assert_eq!(plans.declines.len(), 1);
+    assert_eq!(plans.declines[0].reason, "actor_event_plan_unsupported");
 }

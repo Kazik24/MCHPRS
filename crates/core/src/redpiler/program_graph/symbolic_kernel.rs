@@ -4,10 +4,12 @@ use mchprs_redpiler_opt::Plan;
 use mchprs_world::{PistonAction, TickPriority};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-/// One compiled recurrence family admitted by a falling control edge.
+/// One compiled recurrence family admitted by a control edge.
 pub(crate) struct SymbolicKernel {
-    /// This identifies the graph-derived falling edge that starts the recurrence.
+    /// This identifies the graph control whose transition starts the recurrence.
     pub(crate) trigger: NodeId,
+    /// This is the control's powered value after the admitted transition.
+    pub(crate) powered_after: bool,
     /// These typed bindings freeze the external and retained-memory inputs at admission.
     pub(crate) inputs: Box<[InstantInput]>,
     /// These local codebooks decode stored wire shapes into the frozen input vector.
@@ -18,7 +20,7 @@ pub(crate) struct SymbolicKernel {
     pub(crate) plan: Plan,
     /// These roots describe the complete ready state and its independent admission clauses.
     pub(crate) entry: KernelEntryLayout,
-    /// This frame represents the synchronous falling-edge callback wave before the first tick.
+    /// This frame represents the synchronous control callback wave before the first tick.
     pub(crate) activation: KernelFrameLayout,
     /// These frames represent one proven prefix followed by a repeated cycle.
     pub(crate) phases: Box<[KernelFrameLayout]>,
@@ -29,6 +31,31 @@ pub(crate) struct SymbolicKernel {
 }
 
 impl SymbolicKernel {
+    pub(crate) fn estimated_heap_bytes(&self) -> usize {
+        use std::mem::{size_of, size_of_val};
+        self.plan.estimated_heap_bytes()
+            + size_of_val(self.inputs.as_ref())
+            + size_of_val(self.shapes.as_ref())
+            + self
+                .shapes
+                .iter()
+                .map(|shape| shape.values.capacity() * size_of::<[mchprs_blocks::blocks::RedstoneWireSide; 4]>())
+                .sum::<usize>()
+            + size_of_val(self.hot_components.as_ref())
+            + size_of_val(self.entry.revision_deltas.as_ref())
+            + size_of_val(self.phases.as_ref())
+            + std::iter::once(&self.activation)
+                .chain(self.phases.iter())
+                .map(|frame| {
+                    size_of_val(frame.revision_deltas.as_ref())
+                        + size_of_val(frame.ticks.as_ref())
+                        + size_of_val(frame.requests.as_ref())
+                        + size_of_val(frame.publications.as_ref())
+                        + size_of_val(frame.effects.as_ref())
+                })
+                .sum::<usize>()
+    }
+
     /// Bind electrical scalar slots once, without scanning graph nodes during a kernel tick.
     pub(crate) fn component_bindings(graph: &CompileGraph) -> Box<[KernelComponentBinding]> {
         let mut scalar = 0;

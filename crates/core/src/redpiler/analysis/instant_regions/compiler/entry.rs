@@ -8,6 +8,14 @@ pub(crate) use crate::redpiler::program_graph::WireShapeMemory as ShapeMemory;
 
 pub(crate) use crate::redpiler::program_graph::InstantInput as Input;
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ShapeEntry {
+    /// All certified local shape histories remain explicit memory inputs.
+    Histories,
+    /// The captured stored shapes are constants verified by complete state admission.
+    Captured,
+}
+
 pub(crate) struct Entry {
     /// These typed reads supply symbolic variables in their declared decision order.
     pub(crate) inputs: Vec<Input>,
@@ -21,7 +29,11 @@ impl Entry {
     pub(crate) fn read_inputs(&self, graph: &CompileGraph, state: &CircuitState) -> Option<Vec<bool>> {
         self.inputs.iter().map(|input| input.read_draft(graph, state, &self.shapes)).collect()
     }
-    pub(crate) fn derive(compiler: &mut Compiler<'_>, activation: NodeId) -> Result<Self> {
+    pub(crate) fn derive(compiler: &mut Compiler<'_>, activation: NodeId, powered_before: bool) -> Result<Self> {
+        Self::derive_for_shapes(compiler, activation, powered_before, ShapeEntry::Histories)
+    }
+
+    pub(crate) fn derive_for_shapes(compiler: &mut Compiler<'_>, activation: NodeId, powered_before: bool, shape_entry: ShapeEntry) -> Result<Self> {
         let graph = compiler.graph;
         if !graph
             .nodes
@@ -30,7 +42,10 @@ impl Entry {
         {
             return Err(CompileError::UnsupportedNode(activation));
         }
-        let shapes = shapes::infer(compiler)?;
+        let shapes = match shape_entry {
+            ShapeEntry::Histories => shapes::infer(compiler)?,
+            ShapeEntry::Captured => shapes::captured(graph)?,
+        };
         let inputs = Self::ordered_inputs(graph, &shapes, activation)?;
         let mut values = FxHashMap::default();
         let mut resource_bits: FxHashMap<ResourceId, Vec<(u8, Formula)>> = FxHashMap::default();
@@ -64,8 +79,8 @@ impl Entry {
                 Input::ShapeBit { .. } => {}
             }
         }
-        compiler.state.components[activation.index()].powered = Formula::TRUE;
-        compiler.state.components[activation.index()].signal = Signal::literal(15)?;
+        compiler.state.components[activation.index()].powered = if powered_before { Formula::TRUE } else { Formula::FALSE };
+        compiler.state.components[activation.index()].signal = Signal::literal(if powered_before { 15 } else { 0 })?;
         let mut conditions = Vec::new();
         for (index, state) in compiler.state.resources.iter_mut().enumerate() {
             let resource = ResourceId::new(index as u32);
@@ -120,7 +135,22 @@ impl Entry {
         }
         compiler.state_written();
         Self::derive_steady_electrical(compiler, &mut conditions)?;
+        Self::reduce_memory(compiler, &conditions)?;
         Ok(Self { inputs, shapes, conditions })
+    }
+
+    fn reduce_memory(compiler: &mut Compiler<'_>, conditions: &[Formula]) -> Result<()> {
+        let mut unresolved = conditions.to_vec();
+        loop {
+            let bindings = compiler.logic.forced_inputs(&unresolved)?.ok_or(CompileError::InconsistentEntry)?;
+            if bindings.is_empty() {
+                break;
+            }
+            compiler.state.bind_inputs(&mut compiler.logic, &bindings)?;
+            unresolved = compiler.logic.bind_roots(&unresolved, &bindings)?;
+            compiler.state_written();
+        }
+        Ok(())
     }
 
     fn settle_wires(compiler: &mut Compiler<'_>) -> Result<()> {
@@ -132,6 +162,14 @@ impl Entry {
                 .iter()
                 .map(|wire| compiler.seed_power(wire.node))
                 .collect::<Result<Vec<_>>>()?;
+            if graph
+                .wires
+                .iter()
+                .zip(&next)
+                .all(|(wire, &power)| compiler.state.components[wire.node.index()].signal == power)
+            {
+                break;
+            }
             for (wire, power) in graph.wires.iter().zip(next) {
                 compiler.state.components[wire.node.index()].signal = power;
             }
@@ -177,38 +215,7 @@ impl Entry {
             })
             .collect();
         let ready = Execution::empty(graph);
-        // An acyclic chain settles in its component count; feedback keeps symbolic memory and explicit equations.
-        for _ in 0..=nodes.len() + actors.len() {
-            Self::settle_wires(compiler)?;
-            let next = nodes
-                .iter()
-                .map(|&node| Execution::steady_component(compiler, node).map(|value| value.expect("ordinary electrical entry node")))
-                .collect::<Result<Vec<_>>>()?;
-            let poses = actors
-                .iter()
-                .map(|&actor| ready.steady_actor_pose(compiler, actor))
-                .collect::<Result<Vec<_>>>()?;
-            let changed = nodes
-                .iter()
-                .zip(&next)
-                .any(|(node, value)| compiler.state.components[node.index()] != *value)
-                || actors
-                    .iter()
-                    .zip(&poses)
-                    .any(|(actor, &pose)| compiler.state.actors[actor.index()].extended != pose);
-            for (&node, value) in nodes.iter().zip(next) {
-                compiler.state.components[node.index()] = value;
-            }
-            for (&actor, pose) in actors.iter().zip(poses) {
-                compiler.state.actors[actor.index()].extended = pose;
-                compiler.state.actors[actor.index()].head = pose;
-            }
-            let resources_changed = Self::resolve_resources(compiler, conditions)?;
-            if !changed && !resources_changed {
-                break;
-            }
-            compiler.state_written();
-        }
+        // These are admission equations, not a simulation that moves payloads or erases BUD memory.
         Self::settle_wires(compiler)?;
         for &actor in &actors {
             let pose = ready.steady_actor_pose(compiler, actor)?;
@@ -242,36 +249,6 @@ impl Entry {
         Ok(())
     }
 
-    fn resolve_resources(compiler: &mut Compiler<'_>, conditions: &mut Vec<Formula>) -> Result<bool> {
-        let graph = compiler.graph;
-        let mut changed = false;
-        for resource in &mut compiler.state.resources {
-            let possible: Vec<_> = resource
-                .contacts
-                .iter()
-                .filter_map(|&(contact, _)| {
-                    let blocked = graph
-                        .pistons
-                        .iter()
-                        .zip(&compiler.state.actors)
-                        .any(|(actor, state)| actor.base == contact || (actor.near == contact && state.head == Formula::TRUE));
-                    (!blocked).then_some(contact)
-                })
-                .collect();
-            let [only] = possible.as_slice() else { continue };
-            if resource.at(*only) == Formula::TRUE {
-                continue;
-            }
-            // A conserved payload with one unblocked contact has no independent position memory.
-            conditions.push(resource.at(*only));
-            for (contact, at) in &mut resource.contacts {
-                *at = if contact == only { Formula::TRUE } else { Formula::FALSE };
-            }
-            changed = true;
-        }
-        Ok(changed)
-    }
-
     fn ordered_inputs(graph: &CompileGraph, shapes: &[ShapeMemory], activation: NodeId) -> Result<Vec<Input>> {
         let mut inputs = Vec::new();
         for (index, node) in graph.nodes.iter().enumerate() {
@@ -282,9 +259,9 @@ impl Entry {
             let position = node.position;
             let mut push = |input| inputs.push((position.expect("electrical nodes have positions"), input));
             match node.kind {
-                CircuitNodeKind::Electrical(NodeType::Lever | NodeType::PressurePlate | NodeType::Torch | NodeType::Lamp | NodeType::Hopper) => {
-                    push(Input::Powered(id))
-                }
+                CircuitNodeKind::Electrical(
+                    NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Torch | NodeType::Lamp | NodeType::Hopper,
+                ) => push(Input::Powered(id)),
                 CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => {
                     push(Input::Powered(id));
                     push(Input::Locked(id));

@@ -518,8 +518,9 @@ mod tests {
             (3, "compile-instant-resets"),
             (3, "identify-instant-regions"),
             (3, "compile-instant-proxies"),
-            (4, "compile-symbolic-actors"),
+            (4, "compile-symbolic-regions"),
             (4, "compile-instant-machine"),
+            (4, "compile-symbolic-kernels"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {

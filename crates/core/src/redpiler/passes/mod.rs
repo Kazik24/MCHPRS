@@ -3,7 +3,7 @@ pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_instant_machine;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
-pub(crate) mod compile_symbolic_actors;
+pub(crate) mod compile_symbolic_regions;
 pub(crate) mod compile_symbolic_kernels;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod contract_dust_paths;
@@ -272,7 +272,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::build(compile_instant_resets::CompileInstantResets)),
         (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
         (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
-        (4, Pass::build(compile_symbolic_actors::CompileSymbolicActors)),
+        (4, Pass::build(compile_symbolic_regions::CompileSymbolicRegions)),
         (4, Pass::build(compile_instant_machine::CompileInstantMachine)),
         (4, Pass::build(compile_symbolic_kernels::CompileSymbolicKernels)),
     ];

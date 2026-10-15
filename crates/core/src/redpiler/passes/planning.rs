@@ -32,17 +32,18 @@ pub(crate) enum PlanOutput {
     Proxies(Vec<InstantProxy>),
     Machine(Option<Arc<InstantMachine>>),
     SymbolicKernels(Vec<Arc<SymbolicKernel>>),
-    SymbolicActors(Vec<crate::redpiler::program_graph::SymbolicActor>),
+    SymbolicRegions(crate::redpiler::program_graph::SymbolicRegionCompilation),
 }
 
 impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
         // A rebuilt input must not leave a machine proof tied to the previous plans.
-        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_)) {
+        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_) | Self::SymbolicRegions(_)) {
             graph.plans.instant.machine = None;
         }
-        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_)) {
-            graph.plans.instant.symbolic_actors.clear();
+        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_) | Self::SymbolicRegions(_)) {
+            graph.plans.instant.symbolic_regions.clear();
+            graph.plans.instant.symbolic_region_declines.clear();
         }
         if !matches!(&self, Self::SymbolicKernels(_)) {
             graph.plans.instant.symbolic_kernels.clear();
@@ -75,7 +76,10 @@ impl PlanOutput {
             Self::Proxies(proxies) => graph.plans.instant.proxies = proxies,
             Self::Machine(machine) => graph.plans.instant.machine = machine,
             Self::SymbolicKernels(kernels) => graph.plans.instant.symbolic_kernels = kernels,
-            Self::SymbolicActors(actors) => graph.plans.instant.symbolic_actors = actors,
+            Self::SymbolicRegions(compilation) => {
+                graph.plans.instant.symbolic_regions = compilation.programs;
+                graph.plans.instant.symbolic_region_declines = compilation.declines;
+            }
         }
     }
 }

@@ -33,27 +33,37 @@ impl GraphBackend {
 
     fn sample_piston_inner(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
-        let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
         let state = self.state.pistons[piston.index()];
         if state.availability.base_pending() {
             return Ok(());
         }
-        self.counts.piston_samples += 1;
-        #[cfg(test)]
-        if self.test_recording {
-            self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
-                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                extended: state.extended,
-                powered,
-            });
-        }
-        let action = if let Some(plan) = self.program.symbolic_actor(piston).cloned() {
-            let roots = self.symbolic_roots(&plan, crate::redpiler::program_graph::ActorEvent::Sample, None);
-            let Some(action) = crate::redpiler::program_graph::SymbolicActor::requested(&roots) else {
+        let action = if let Some(plan) = self.program.symbolic_actor_routine(piston).cloned() {
+            self.counts.piston_samples += 1;
+            let roots = self.symbolic_actor_roots(&plan, crate::redpiler::program_graph::ActorEvent::Sample);
+            #[cfg(test)]
+            if self.test_recording {
+                let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
+                self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
+                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                    extended: state.extended,
+                    powered,
+                });
+            }
+            let Some(action) = crate::redpiler::program_graph::SymbolicActorRoutine::requested(&roots) else {
                 return Ok(());
             };
             action
         } else {
+            self.counts.piston_samples += 1;
+            let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
+            #[cfg(test)]
+            if self.test_recording {
+                self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
+                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                    extended: state.extended,
+                    powered,
+                });
+            }
             match (powered, state.extended) {
                 (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
                 (false, true) if self.early_resource_retraction(piston) => mchprs_world::PistonAction::RetractWithoutPull,
@@ -118,9 +128,9 @@ impl GraphBackend {
                 action: request.action,
             });
         }
-        let accepted = if let Some(plan) = self.program.symbolic_actor(request.piston).cloned() {
-            let roots = self.symbolic_roots(&plan, crate::redpiler::program_graph::ActorEvent::Accept, None);
-            crate::redpiler::program_graph::SymbolicActor::accepts(&roots, request.action)
+        let accepted = if let Some(plan) = self.program.symbolic_actor_routine(request.piston).cloned() {
+            let roots = self.symbolic_actor_roots(&plan, crate::redpiler::program_graph::ActorEvent::Accept);
+            crate::redpiler::program_graph::SymbolicActorRoutine::accepts(&roots, request.action)
         } else {
             let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
             match request.action {

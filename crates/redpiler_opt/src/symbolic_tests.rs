@@ -2,6 +2,144 @@ use super::*;
 use crate::{Plan, optimize};
 
 #[test]
+fn binary_implications_prove_exactly_the_forced_bits_of_all_two_variable_relations() {
+    let mut diagram = Diagram::new(Limits::default()).unwrap();
+    let a = diagram.input(2).unwrap();
+    let b = diagram.input(5).unwrap();
+    let functions: Vec<_> = (0u16..16)
+        .map(|mask| {
+            let bit = |index: u32| if mask & (1u16 << index) != 0u16 { Formula::TRUE } else { Formula::FALSE };
+            let low = diagram.select(b, bit(2), bit(0)).unwrap();
+            let high = diagram.select(b, bit(3), bit(1)).unwrap();
+            diagram.select(a, high, low).unwrap()
+        })
+        .collect();
+    for first in 0u16..16 {
+        for second in 0u16..16 {
+            let models: Vec<_> = (0..4).filter(|input| first & second & (1 << input) != 0).collect();
+            let bindings = diagram.forced_inputs(&[functions[first as usize], functions[second as usize]]).unwrap();
+            if models.is_empty() {
+                assert!(bindings.is_none());
+            } else {
+                let expected: Vec<_> = [(2, 1), (5, 2)]
+                    .into_iter()
+                    .filter_map(|(input, mask)| {
+                        let first = models[0] & mask != 0;
+                        models.iter().all(|model| (model & mask != 0) == first).then_some((input, first))
+                    })
+                    .collect();
+                assert_eq!(bindings.unwrap(), expected);
+            }
+        }
+    }
+    assert_eq!(
+        diagram.forced_inputs(&[Formula::FALSE, Formula(u32::MAX)]),
+        Err(SymbolicError::InvalidFormula)
+    );
+}
+
+#[test]
+fn higher_arity_conditions_never_produce_an_unproven_constant() {
+    let mut diagram = Diagram::new(Limits {
+        max_work: 1_000_000,
+        ..Limits::default()
+    })
+    .unwrap();
+    let variables: Vec<_> = (0..3).map(|input| diagram.input(input).unwrap()).collect();
+    let mut functions = Vec::new();
+    for mask in 0u16..256 {
+        let bit = |index: u32| if mask & (1u16 << index) != 0u16 { Formula::TRUE } else { Formula::FALSE };
+        let low_zero = diagram.select(variables[2], bit(4), bit(0)).unwrap();
+        let low_one = diagram.select(variables[2], bit(6), bit(2)).unwrap();
+        let low = diagram.select(variables[1], low_one, low_zero).unwrap();
+        let high_zero = diagram.select(variables[2], bit(5), bit(1)).unwrap();
+        let high_one = diagram.select(variables[2], bit(7), bit(3)).unwrap();
+        let high = diagram.select(variables[1], high_one, high_zero).unwrap();
+        functions.push(diagram.select(variables[0], high, low).unwrap());
+    }
+    let mut random = 0x91f3_7ad5u32;
+    for _ in 0..1024 {
+        random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+        let first = random as usize & 255;
+        let second = (random >> 16) as usize & 255;
+        let models: Vec<_> = (0..8).filter(|input| first & second & (1 << input) != 0).collect();
+        match diagram.forced_inputs(&[functions[first], functions[second]]).unwrap() {
+            None => assert!(models.is_empty()),
+            Some(bindings) => {
+                for (input, value) in bindings {
+                    assert!(models.iter().all(|model| (model & (1 << input) != 0) == value));
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn binding_proven_inputs_preserves_functions_and_root_layout() {
+    let mut diagram = Diagram::new(Limits::default()).unwrap();
+    let a = diagram.input(0).unwrap();
+    let b = diagram.input(1).unwrap();
+    let root = diagram.xor(a, b).unwrap();
+    for bindings in [
+        vec![],
+        vec![(0, false)],
+        vec![(0, true)],
+        vec![(1, false)],
+        vec![(1, true)],
+        vec![(0, true), (1, false)],
+    ] {
+        let roots = diagram.bind_roots(&[root, root, a, Formula::TRUE], &bindings).unwrap();
+        assert_eq!(roots[0], roots[1]);
+        let plan = plan(&diagram, &roots);
+        for original in [[false, false], [true, false], [false, true], [true, true]] {
+            let mut bound = original;
+            for &(input, value) in &bindings {
+                bound[input] = value;
+            }
+            assert_eq!(evaluate(&plan, &original), [bound[0] ^ bound[1], bound[0] ^ bound[1], bound[0], true]);
+        }
+    }
+    assert_eq!(diagram.bind_roots(&[root], &[(0, true), (0, false)]), Err(SymbolicError::InvalidInput));
+    assert_eq!(diagram.bind_roots(&[root], &[(99, true)]), Err(SymbolicError::InvalidInput));
+    assert_eq!(diagram.bind_roots(&[Formula(u32::MAX)], &[]), Err(SymbolicError::InvalidFormula));
+    diagram.limits.max_work = diagram.work();
+    assert_eq!(diagram.forced_inputs(&[a]), Err(SymbolicError::BudgetExceeded));
+    assert_eq!(diagram.bind_roots(&[root], &[(0, true)]), Err(SymbolicError::BudgetExceeded));
+}
+
+#[test]
+fn neutral_boolean_and_signal_inputs_fold_without_spending_the_proof_budget() {
+    let mut diagram = Diagram::new(Limits::default()).unwrap();
+    let input = diagram.input(0).unwrap();
+    let signal = Signal::from_bits([input; 4]);
+    let zero = Signal::literal(0).unwrap();
+    let before = diagram.work();
+    for _ in 0..4096 {
+        for (value, expected) in [(Formula::FALSE, Formula::FALSE), (Formula::TRUE, input), (input, input)] {
+            assert_eq!(diagram.and(input, value).unwrap(), expected);
+            assert_eq!(diagram.and(value, input).unwrap(), expected);
+        }
+        assert_eq!(diagram.or(input, Formula::FALSE).unwrap(), input);
+        assert_eq!(diagram.or(Formula::FALSE, input).unwrap(), input);
+        assert_eq!(diagram.or(input, Formula::TRUE).unwrap(), Formula::TRUE);
+        assert_eq!(diagram.or(Formula::TRUE, input).unwrap(), Formula::TRUE);
+        assert_eq!(diagram.or(input, input).unwrap(), input);
+        assert_eq!(diagram.xor(input, input).unwrap(), Formula::FALSE);
+        assert_eq!(diagram.xor(input, Formula::FALSE).unwrap(), input);
+        assert_eq!(diagram.xor(Formula::FALSE, input).unwrap(), input);
+        assert_eq!(diagram.maximum(signal, signal).unwrap(), signal);
+        assert_eq!(diagram.maximum(signal, zero).unwrap(), signal);
+        assert_eq!(diagram.maximum(zero, signal).unwrap(), signal);
+    }
+    assert_eq!(diagram.work(), before);
+    let invalid = Formula(u32::MAX);
+    assert_eq!(diagram.and(Formula::FALSE, invalid), Err(SymbolicError::InvalidFormula));
+    assert_eq!(diagram.or(Formula::TRUE, invalid), Err(SymbolicError::InvalidFormula));
+    assert_eq!(diagram.xor(invalid, invalid), Err(SymbolicError::InvalidFormula));
+    assert_eq!(diagram.maximum(zero, Signal::from_bits([invalid; 4])), Err(SymbolicError::InvalidFormula));
+}
+
+#[test]
 fn lowering_discards_unreachable_proof_work_before_building_the_plan_layout() {
     let mut diagram = Diagram::new(Limits::default()).unwrap();
     let variables: Vec<_> = (0..16).map(|input| diagram.input(input).unwrap()).collect();

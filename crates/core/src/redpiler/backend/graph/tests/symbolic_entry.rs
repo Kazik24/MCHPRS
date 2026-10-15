@@ -24,7 +24,7 @@ fn local_shape_memories_cover_native_updates_across_sampled_profile_alternatives
             },
         )
         .unwrap();
-        let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger())).unwrap();
+        let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger()), true).unwrap();
         let mut random = 0x9387_a19du32;
         for (memory, wire) in entry.shapes.iter().zip(&graph.wires) {
             assert_eq!(memory.node, wire.node);
@@ -78,8 +78,8 @@ fn ready_entry_retains_quasi_only_actor_memory_and_rejects_missing_activation() 
         .power_links
         .retain(|link| link.to != PowerTarget::Input { node, port: InputPort::Main });
     let mut compiler = SymbolicCompiler::new(&graph, Limits::default()).unwrap();
-    assert!(matches!(Entry::derive(&mut compiler, NodeId::new(u32::MAX)), Err(_)));
-    let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger())).unwrap();
+    assert!(matches!(Entry::derive(&mut compiler, NodeId::new(u32::MAX), true), Err(_)));
+    let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger()), true).unwrap();
     let variable = entry
         .inputs
         .iter()
@@ -106,7 +106,7 @@ fn both_adder_ready_relations_reconstruct_every_prepared_fixture_without_wire_st
             ..Limits::default()
         };
         let mut compiler = SymbolicCompiler::new(&graph, limits).unwrap();
-        let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger())).unwrap_or_else(|error| {
+        let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger()), true).unwrap_or_else(|error| {
             panic!(
                 "{id} entry {error:?}, decisions={}, work={}",
                 compiler.logic.node_count(),
@@ -194,7 +194,7 @@ fn symbolic_response_and_reset_reuse_one_program_after_changed_operands_with_exa
             ..Limits::default()
         };
         let mut compiler = SymbolicCompiler::new(&graph, limits).unwrap();
-        let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger())).unwrap();
+        let entry = Entry::derive(&mut compiler, activation(&graph, circuit.trigger()), true).unwrap();
         let mut roots = entry.conditions.clone();
         let entry_state_start = roots.len();
         roots.extend(symbolic_execution_tests::state_roots(&compiler));

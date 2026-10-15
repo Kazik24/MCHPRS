@@ -23,7 +23,7 @@ const NAMES: [&str; 4] = ["cpu_bubblesort", "anpu_pong", "fpu_divider", "counter
 const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     ticks: 100,
     instant_transitions: 0,
-    symbolic_actor_steps: 0,
+    symbolic_region_steps: 0,
     scheduled_ticks: 20_005,
     callbacks: 2_059_909,
     wire_walks: 32_505,
@@ -46,8 +46,12 @@ struct Episode {
 impl Episode {
     fn new(name: &str, stable_inputs: bool) -> Result<Self> {
         ensure!(
-            !stable_inputs || matches!(name, "io/adder_1bit" | "io/adder_11bits" | "io/instant_observer" | "fpu_divider"),
-            "stable-input measurements require a prepared adder, observer, or Divider protocol"
+            !stable_inputs
+                || matches!(
+                    name,
+                    "io/adder_1bit" | "io/adder_11bits" | "io/instant_observer" | "fpu_divider" | "counter_basic"
+                ),
+            "stable-input measurements require a prepared adder, observer, Divider, or Counter protocol"
         );
         let cpu = CPUS.iter().copied().find(|cpu| cpu.name == name);
         let manifest = if let Some(cpu) = cpu {
@@ -281,7 +285,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"ticks":value.ticks,"instant_transitions":value.instant_transitions,"symbolic_actor_steps":value.symbolic_actor_steps,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
+    json!({"ticks":value.ticks,"instant_transitions":value.instant_transitions,"symbolic_region_steps":value.symbolic_region_steps,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
         "wire_walks":value.wire_walks,"dust_path_power_samples_elided":value.dust_path_power_samples_elided,
         "piston_samples":value.piston_samples,"piston_actions":value.piston_actions,"deferred_publications":value.deferred_publications})
 }
@@ -290,7 +294,7 @@ fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> V
     counts(GraphExecutionCounts {
         ticks: after.ticks - before.ticks,
         instant_transitions: after.instant_transitions - before.instant_transitions,
-        symbolic_actor_steps: after.symbolic_actor_steps - before.symbolic_actor_steps,
+        symbolic_region_steps: after.symbolic_region_steps - before.symbolic_region_steps,
         scheduled_ticks: after.scheduled_ticks - before.scheduled_ticks,
         callbacks: after.callbacks - before.callbacks,
         wire_walks: after.wire_walks - before.wire_walks,
@@ -519,8 +523,8 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
     if !reset_pending && episode.stable_inputs && episode.name == "io/instant_observer" && tier == Some(4) && compose_regions {
         let (before, after) = before.zip(work).context("stable O4 observer needs Graph work counters")?;
         ensure!(
-            after.symbolic_actor_steps > before.symbolic_actor_steps,
-            "timed stable O4 observer window did not execute its symbolic actor"
+            after.symbolic_region_steps > before.symbolic_region_steps,
+            "timed stable O4 observer window did not execute its symbolic region routine"
         );
         ensure!(
             after.instant_transitions == before.instant_transitions,
@@ -575,7 +579,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
         for tier in [0, 2, 3, 4] {
             let admitted = (|| -> Result<()> {
                 let world = episode.load()?;
-                episode.compile(&world, tier, episode.stable_inputs && tier == 3)?;
+                episode.compile(&world, tier, episode.stable_inputs && tier >= 3)?;
                 Ok(())
             })();
             let admission = match admitted {
@@ -621,6 +625,18 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                     result["executor"],
                     result["seconds"].as_f64().unwrap()
                 );
+                if compose_regions {
+                    let kernels = result["tables"]["preparation_tables"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .find(|table| table["stage"] == "lowering" && table["table"] == "symbolic kernels")
+                        .map_or(0, |table| table["entries"].as_u64().unwrap());
+                    println!(
+                        "{name}: compiled symbolic kernels={kernels}, instant transitions={}, wire walks={}",
+                        result["work_in_window"]["instant_transitions"], result["work_in_window"]["wire_walks"]
+                    );
+                }
                 results.push(result);
             }
             let native = results.iter().find(|result| result["executor"] == "interpreter").unwrap();

@@ -466,7 +466,7 @@ pub(crate) fn compile_power_query(
     {
         return Ok(Err(SymbolicDecline::TargetOutsideRegion));
     }
-    let boundary = KernelBoundary::from_region(region);
+    let boundary = KernelBoundary::from_region(graph, region);
     let query_boundary = KernelBoundary {
         inputs: boundary.inputs.clone(),
         ..KernelBoundary::default()

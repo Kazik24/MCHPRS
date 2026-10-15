@@ -4,7 +4,7 @@ mod execution_plans;
 mod instant_entry;
 mod instant_execution;
 mod lowering;
-mod symbolic_actor;
+mod symbolic_region;
 mod symbolic_kernel;
 mod validation;
 pub(crate) use execution_plans::*;
@@ -13,7 +13,7 @@ mod instant_regions;
 pub(crate) use instant_entry::*;
 pub(crate) use instant_execution::*;
 pub(crate) use instant_machine::*;
-pub(crate) use symbolic_actor::*;
+pub(crate) use symbolic_region::*;
 pub(crate) use symbolic_kernel::*;
 mod wire_query_facts;
 pub(crate) use instant_regions::*;
@@ -804,10 +804,14 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Lowered instant instructions and bindings; compile-time proofs are not retained.
 struct InstantProgram {
-    /// These symbolic control programs share original actor/reset state and ordered effect primitives.
-    symbolic_actors: Box<[Option<std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>>]>,
-    /// This binds each compiled reset receiver directly to its actor program.
-    symbolic_resets: Box<[Option<PistonId>]>,
+    /// These grouped programs own one boundary and their existing actor/resource/reset state.
+    symbolic_regions: Box<[std::sync::Arc<crate::redpiler::program_graph::SymbolicRegionProgram>]>,
+    /// This retains small coverage diagnostics while state execution uses only complete programs.
+    symbolic_region_declines: Box<[crate::redpiler::program_graph::SymbolicRegionDecline]>,
+    /// This maps each actor directly to its region and actor-routine ordinal.
+    symbolic_actor_bindings: Box<[Option<(u32, u32)>]>,
+    /// This maps each reset clock directly to its region and reset-routine ordinal.
+    symbolic_reset_bindings: Box<[Option<(u32, u32)>]>,
     /// These lowered effects contain only operations active for each held-input mask.
     execution: Option<std::sync::Arc<KernelExecution>>,
     /// This owns reduced phase programs; unsupported states retain general Graph execution.
@@ -864,20 +868,30 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
-    pub(crate) fn symbolic_actor_programs(&self) -> impl Iterator<Item = &crate::redpiler::program_graph::SymbolicActor> {
-        self.instant.symbolic_actors.iter().filter_map(|actor| actor.as_deref())
+    pub(crate) fn symbolic_region_programs(&self) -> impl Iterator<Item = &crate::redpiler::program_graph::SymbolicRegionProgram> {
+        self.instant.symbolic_regions.iter().map(std::sync::Arc::as_ref)
     }
-    pub(crate) fn symbolic_actor(&self, actor: PistonId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>> {
-        self.instant.symbolic_actors.get(actor.index()).and_then(Option::as_ref)
+    #[cfg(test)]
+    pub(crate) fn symbolic_region_counts(&self) -> (usize, usize, usize, usize) {
+        (
+            self.instant.symbolic_regions.len(),
+            self.instant.symbolic_regions.iter().map(|region| region.actors.len()).sum(),
+            self.instant.symbolic_regions.iter().map(|region| region.resets.len()).sum(),
+            self.instant.symbolic_region_declines.len(),
+        )
+    }
+    pub(crate) fn symbolic_region_binding_bytes(&self) -> usize {
+        self.instant.symbolic_actor_bindings.len() * std::mem::size_of::<Option<(u32, u32)>>()
+            + self.instant.symbolic_reset_bindings.len() * std::mem::size_of::<Option<(u32, u32)>>()
+    }
+    pub(crate) fn symbolic_actor_routine(&self, actor: PistonId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActorRoutine>> {
+        let (region, routine) = self.instant.symbolic_actor_bindings.get(actor.index()).copied().flatten()?;
+        self.instant.symbolic_regions.get(region as usize)?.actors.get(routine as usize)
     }
 
-    pub(crate) fn symbolic_reset(&self, node: NodeId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>> {
-        self.instant
-            .symbolic_resets
-            .get(node.index())
-            .copied()
-            .flatten()
-            .and_then(|actor| self.symbolic_actor(actor))
+    pub(crate) fn symbolic_reset(&self, node: NodeId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicResetProgram>> {
+        let (region, routine) = self.instant.symbolic_reset_bindings.get(node.index()).copied().flatten()?;
+        self.instant.symbolic_regions.get(region as usize)?.resets.get(routine as usize)
     }
     pub(crate) fn instant_execution(&self) -> Option<&std::sync::Arc<KernelExecution>> {
         self.instant.execution.as_ref()

@@ -115,9 +115,12 @@ struct GraphTablesDto {
     routes: Option<Vec<RouteDto>>,
     instant_regions: Vec<InstantRegionDto>,
     instant_proxies: Vec<InstantProxyDto>,
-    /// These graph-derived event routines retain the existing ordered state-changing primitives.
+    /// These grouped event programs share one boundary and retain existing ordered primitives.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    symbolic_actors: Vec<serde_json::Value>,
+    symbolic_regions: Vec<serde_json::Value>,
+    /// These regions remain on general Graph execution because one routine was unsupported.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    symbolic_region_declines: Vec<serde_json::Value>,
     /// This optional artifact exposes compile-time proof snapshots, not lowered runtime storage.
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_machine: Option<serde_json::Value>,
@@ -931,7 +934,7 @@ impl GraphExport {
                 }
             }
         }
-        symbolic::validate(&self.graph.symbolic_actors, &self.graph)?;
+        symbolic::validate(&self.graph.symbolic_regions, &self.graph.symbolic_region_declines, &self.graph)?;
         if let Some(machine) = &self.graph.instant_machine {
             machine::validate(machine, self)?;
         }
@@ -1288,12 +1291,19 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                     .collect(),
             })
             .collect(),
-        symbolic_actors: source
+        symbolic_regions: source
             .plans
             .instant
-            .symbolic_actors
+            .symbolic_regions
             .iter()
-            .map(|actor| symbolic::export(actor, source))
+            .map(|region| symbolic::export(region, source))
+            .collect(),
+        symbolic_region_declines: source
+            .plans
+            .instant
+            .symbolic_region_declines
+            .iter()
+            .map(symbolic::export_decline)
             .collect(),
         instant_machine: source.plans.instant.machine.as_ref().map(|machine| machine::export(machine, source)),
         instant_kernel: source
@@ -1410,8 +1420,8 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         capabilities.push("instant_machine");
         capabilities.push("instant_kernel");
     }
-    if !source.plans.instant.symbolic_actors.is_empty() {
-        capabilities.push("symbolic_actor_events");
+    if !source.plans.instant.symbolic_regions.is_empty() {
+        capabilities.push("symbolic_region_events");
     }
     if source.wires.iter().any(|wire| wire.execution.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");

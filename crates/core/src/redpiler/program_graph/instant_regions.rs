@@ -22,7 +22,48 @@ pub(crate) enum KernelInput {
     /// This supplies source power after port filtering but before link attenuation.
     Power(u32),
     /// This route occurrence is an external callback that may activate owned work.
+    /// The occurrence retains its original captured site operands and receiver ordering.
     Callback(RouteOccurrence),
+    /// This graph guard reads one or more external operands at this exact use.
+    Guard(KernelGuardRead),
+    /// This owned wire reads one external neighbor while rebuilding its live shape.
+    WireNeighbor {
+        /// This identifies the owned wire whose geometry reads the neighbor.
+        wire: NodeId,
+        /// This is the wire's canonical neighbor ordinal.
+        slot: u8,
+        /// This is the external dynamic site read at that ordinal.
+        site: SiteId,
+    },
+}
+
+/// One graph occurrence whose guard reads a typed operand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct KernelGuardRead {
+    /// This identifies the exact link, delivery, contact variant, wire relation, or comparator override.
+    pub(crate) owner: KernelGuardUse,
+    /// This is the original graph guard evaluated at that occurrence.
+    pub(crate) guard: GuardId,
+}
+
+/// One graph occurrence that evaluates a guard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum KernelGuardUse {
+    /// This is one directional power-link row.
+    Power(u32),
+    /// This is one ordered route delivery, retaining duplicate rows.
+    Callback(RouteOccurrence),
+    /// This is one contact variant at its original ordinal.
+    ContactVariant {
+        /// This identifies the contact whose occupied profile is tested.
+        contact: ContactId,
+        /// This is the original contact-variant ordinal.
+        ordinal: u32,
+    },
+    /// This is one comparator far-override guard at its original plan row.
+    ComparatorOverride(u32),
+    /// This is one wire relation at its original ordinal.
+    WireRelation(u32),
 }
 
 /// One persistent mutable owner retained across activations.
@@ -47,90 +88,37 @@ pub(crate) enum KernelOutput {
     Callback(RouteOccurrence),
     /// This site is sampled by an observer outside the region.
     Observer(NodeId),
+    /// This external wire reads one owned site while rebuilding its live shape.
+    WireReader {
+        /// This identifies the outside wire whose geometry reads the site.
+        wire: NodeId,
+        /// This is the wire's canonical neighbor ordinal.
+        slot: u8,
+        /// This is the region-owned dynamic site read at that ordinal.
+        site: SiteId,
+    },
+    /// This external guard use reads an operand owned by the region.
+    Guard(KernelGuardRead),
+    /// This outside callback reads an owned delivery target using the original view.
+    CallbackSite {
+        /// This identifies the exact external delivery and its ordinal.
+        event: RouteOccurrence,
+        /// This is the graph target read by that delivery.
+        site: SiteId,
+        /// This preserves whether the callback reads a live site or event capture.
+        view: OperandView,
+    },
 }
 
 impl KernelBoundary {
-    /// Copy the validated ownership boundary into deterministic, typed kernel ports.
-    pub(crate) fn from_region(region: &InstantRegion) -> Self {
-        let mut inputs: Vec<_> = region.power_inputs.iter().copied().map(KernelInput::Power).collect();
-        inputs.extend(region.incoming.iter().copied().map(KernelInput::Callback));
-        inputs.sort_by_key(|input| match input {
-            KernelInput::Power(link) => (0, *link, 0),
-            KernelInput::Callback(event) => (1, event.route.index() as u32, event.ordinal),
-        });
-
-        let mut state = Vec::new();
-        state.extend(region.resets.iter().copied().map(KernelStateSlot::Reset));
-        state.extend(region.actors.iter().copied().map(KernelStateSlot::Piston));
-        state.extend(region.resources.iter().copied().map(KernelStateSlot::Resource));
-        state.extend(region.wires.iter().copied().map(KernelStateSlot::Wire));
-
-        let mut outputs: Vec<_> = region.power_readers.iter().copied().map(KernelOutput::Power).collect();
-        outputs.extend(region.outgoing.iter().copied().map(KernelOutput::Callback));
-        outputs.extend(region.observers.iter().copied().map(KernelOutput::Observer));
-        outputs.sort_by_key(|output| match output {
-            KernelOutput::Power(link) => (0, *link, 0),
-            KernelOutput::Callback(event) => (1, event.route.index() as u32, event.ordinal),
-            KernelOutput::Observer(node) => (2, node.index() as u32, 0),
-        });
-
-        let mut projection_roots = region.readable_sites.clone();
-        projection_roots.sort_unstable();
-        projection_roots.dedup();
-
-        Self {
-            inputs,
-            state,
-            outputs,
-            effects: region.outgoing.clone(),
-            projection_roots,
-        }
+    /// Derive typed ports; the graph must have passed full graph validation first.
+    pub(crate) fn from_region(graph: &CompileGraph, region: &InstantRegion) -> Self {
+        crate::redpiler::analysis::instant_regions::boundary::derive(graph, region)
     }
-}
 
-#[cfg(test)]
-mod kernel_boundary_tests {
-    use super::*;
-
-    #[test]
-    fn boundary_ports_are_ordered_and_keep_duplicate_effects() {
-        let event = RouteOccurrence {
-            route: RouteId::new(4),
-            ordinal: 2,
-        };
-        let region = InstantRegion {
-            stable_inputs: true,
-            wires: vec![NodeId::new(3)],
-            actors: vec![PistonId::new(1)],
-            resources: vec![ResourceId::new(0)],
-            resets: vec![NodeId::new(2)],
-            contacts: vec![],
-            readable_sites: vec![SiteId::new(5), SiteId::new(1), SiteId::new(5)],
-            power_inputs: vec![7, 1],
-            power_readers: vec![9, 3],
-            routes: vec![],
-            incoming: vec![event],
-            outgoing: vec![event, event],
-            wire_readers: vec![],
-            observers: vec![NodeId::new(8)],
-        };
-
-        let boundary = KernelBoundary::from_region(&region);
-        assert_eq!(
-            boundary.inputs,
-            [KernelInput::Power(1), KernelInput::Power(7), KernelInput::Callback(event)]
-        );
-        assert_eq!(
-            boundary.state,
-            [
-                KernelStateSlot::Reset(NodeId::new(2)),
-                KernelStateSlot::Piston(PistonId::new(1)),
-                KernelStateSlot::Resource(ResourceId::new(0)),
-                KernelStateSlot::Wire(NodeId::new(3)),
-            ]
-        );
-        assert_eq!(boundary.effects, [event, event]);
-        assert_eq!(boundary.projection_roots, [SiteId::new(1), SiteId::new(5)]);
+    /// Check this boundary against a graph and region that passed graph validation.
+    pub(crate) fn validate(&self, graph: &CompileGraph, region: &InstantRegion) -> Result<(), &'static str> {
+        crate::redpiler::analysis::instant_regions::boundary::validate(self, graph, region)
     }
 }
 

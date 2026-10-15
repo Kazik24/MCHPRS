@@ -11,7 +11,7 @@ impl PlanBuilder for CompileSymbolicKernels {
     }
 
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
-        if !context.options.stable_instant_inputs || !context.entry.pending_ticks.is_empty() {
+        if !context.options.stable_instant_inputs || !context.entry.pending_ticks.is_empty() || !graph.plans.instant.symbolic_regions.is_empty() {
             return Ok(PlanOutput::SymbolicKernels(Vec::new()));
         }
         let kernels = crate::redpiler::analysis::instant_regions::compiler::aot::compile(graph, context.monitor)?;

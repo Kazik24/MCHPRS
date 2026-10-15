@@ -104,7 +104,7 @@ pub struct GraphExecutionCounts {
     /// Exact compiled transitions executed in place of internal graph propagation.
     pub instant_transitions: u64,
     /// Symbolic actor/reset event routines executed; these retain ordered effect primitives.
-    pub symbolic_actor_steps: u64,
+    pub symbolic_region_steps: u64,
     pub scheduled_ticks: u64,
     pub callbacks: u64,
     pub wire_walks: u64,

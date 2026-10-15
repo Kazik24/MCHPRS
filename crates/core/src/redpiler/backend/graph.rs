@@ -867,7 +867,10 @@ impl GraphBackend {
             self.future.symbolic_cursor = None;
         }
         let symbolic_admission = self.positions.get(&position).and_then(|&node| {
-            (self.program.symbolic_kernels().iter().any(|kernel| kernel.trigger == node) && self.node_state(node).powered)
+            self.program
+                .symbolic_kernels()
+                .iter()
+                .any(|kernel| kernel.trigger == node && self.node_state(node).powered != kernel.powered_after)
                 .then(|| self.prepare_symbolic_kernel(node))
                 .flatten()
         });

@@ -64,6 +64,8 @@ pub(crate) struct InstantPlans {
     pub(crate) machine: Option<std::sync::Arc<InstantMachine>>,
     /// These universally proven AOT programs retain typed inputs and one periodic phase layout.
     pub(crate) symbolic_kernels: Vec<std::sync::Arc<SymbolicKernel>>,
-    /// These symbolic event programs keep state and pending work in their existing owners.
-    pub(crate) symbolic_actors: Vec<crate::redpiler::program_graph::SymbolicActor>,
+    /// These grouped event programs retain one boundary with actor and unique reset routines.
+    pub(crate) symbolic_regions: Vec<crate::redpiler::program_graph::SymbolicRegion>,
+    /// These exact region omissions remain on the ordinary Graph executor.
+    pub(crate) symbolic_region_declines: Vec<crate::redpiler::program_graph::SymbolicRegionDecline>,
 }

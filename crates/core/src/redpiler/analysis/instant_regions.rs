@@ -4,11 +4,12 @@ use crate::redpiler::TaskMonitor;
 use crate::redpiler::passes::utils::instant_mechanisms::{InstantMechanism, discover_mechanisms};
 use crate::redpiler::program_graph::*;
 mod composition;
+pub(crate) mod boundary;
 pub(crate) mod compiler;
 pub(crate) mod machine;
 #[cfg(test)]
 pub(crate) mod symbolic;
-pub(crate) mod symbolic_actor;
+pub(crate) mod symbolic_region;
 pub(crate) use composition::infer_stable_regions;
 
 fn check_cancelled(monitor: &TaskMonitor) -> Result<(), String> {

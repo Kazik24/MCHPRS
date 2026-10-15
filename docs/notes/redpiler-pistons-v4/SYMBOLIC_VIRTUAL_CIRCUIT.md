@@ -1,6 +1,6 @@
 # Required AOT symbolic virtual circuit
 
-Status: implementation contract; whole-region compilation is not implemented yet. The target is an **AOT symbolic virtual circuit derived from the instant graph**, not an input-mask table or a loop learned while the circuit runs. The rejected experiment and its observations are archived in [INSTANT_LOOP_COMPILER.md](INSTANT_LOOP_COMPILER.md). Its work-count reductions do not establish this compiler's performance or completion.
+Status: O4 now compiles and executes grouped boundary-driven event programs for supported instant regions. Full symbolic wire contraction remains unimplemented. The target is an **AOT symbolic virtual circuit derived from the instant graph**, not an input-mask table or a loop learned while the circuit runs. The rejected experiment and its observations are archived in [INSTANT_LOOP_COMPILER.md](INSTANT_LOOP_COMPILER.md). Its work-count reductions do not establish this compiler's performance or completion. See [BOUNDARY_DRIVEN_INSTANT_COMPILER.md](BOUNDARY_DRIVEN_INSTANT_COMPILER.md) for the current implementation contract and evidence.
 
 The stable-input contract freezes external data from activation through reset. Inputs remain variables in the compiled program: changing a legal operand must not require learning or recompiling a trajectory. The assumption does not authorize unordered internal execution. The existing stable-input adder counterexample still requires preserving causal order and live action revalidation.
 
@@ -16,7 +16,7 @@ The semantic program is a stateful transducer, not just `outputs = f(inputs)`: i
 
 ## Implementation boundaries
 
-The current `analysis/instant_regions/symbolic_actor.rs` compiles conditions only. It is not the complete symbolic executor described above. The research state/effect DAG in `symbolic.rs` is also not production whole-region tracing. Both may supply existing operations and tests, but neither is evidence that ADDER11BIT has been contracted.
+At the earlier single-actor checkpoint, `analysis/instant_regions/symbolic_actor.rs` compiled conditions only. It was not the complete symbolic executor described above. The research state/effect DAG in `symbolic.rs` is also not production whole-region tracing. The grouped event programs described below go beyond that checkpoint, but do not establish that ADDER11BIT's wire propagation has been contracted.
 
 Connect graph-derived symbolic state, ordered execution and effect lowering end to end. Construction budgets may decline an uncertified region to ordinary Graph; they must not enumerate all global operand valuations, impose the finite prototype's three-data-input limit, or substitute concrete execution histories for a symbolic derivation.
 
@@ -61,7 +61,7 @@ Perform backward liveness separately for hot causal roots and cold projection ro
 
 Lower the reduced DAG and its ordered effects to one virtual instruction set. Validation checks typed references, state ownership, effect order, phase obligations and projection completeness. The runtime must not contain compilation buffers, input-mask tables, concrete proof trajectories or a learner. Report unresolved dependencies and declined regions so an uncontracted ADDER11BIT cannot be mistaken for success.
 
-## Implementation checkpoint, 2026-10-15
+## Historical compiler checkpoint, 2026-10-15
 
 The compiler-side semantic derivation now exists under `analysis/instant_regions/compiler/`. It is not registered in the production O4 pipeline yet. The old finite compiler remains the production whole-region path; this checkpoint does not change that fact.
 
@@ -69,17 +69,17 @@ The compiler-side semantic derivation now exists under `analysis/instant_regions
 
 The graph semantic modules have these responsibilities:
 
-| Module | Responsibility |
-|---|---|
-| `compiler.rs` | Guard reads, guarded contact alternatives, live caches, captured site values and construction work bounds. |
-| `state.rs` | SSA component/actor/resource bindings, guarded writes and revision witnesses. |
-| `power.rs` | Stored/live/captured power channels, maximum strength and attenuation. |
-| `shape.rs` | Raw/regulated dust sides and exact neighbor-shape transitions. |
-| `wire.rs` | Seed and captured-neighborhood strength expressions. |
-| `walk.rs` | Compiler-only conditional captures, visited flags, directional bias, layers and ordered queues. |
-| `routes.rs` | Synchronous ordered callback expansion into the receiving semantic compiler. |
-| `work.rs` | Guarded request deduplication and the existing priority ring scheduler, reused during compilation. |
-| `execution/` | Scheduled phases, live piston action acceptance, payload transfers, discrete connection publication and supported host-free component transitions. |
+| Module        | Responsibility                                                                                                                                     |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `compiler.rs` | Guard reads, guarded contact alternatives, live caches, captured site values and construction work bounds.                                         |
+| `state.rs`    | SSA component/actor/resource bindings, guarded writes and revision witnesses.                                                                      |
+| `power.rs`    | Stored/live/captured power channels, maximum strength and attenuation.                                                                             |
+| `shape.rs`    | Raw/regulated dust sides and exact neighbor-shape transitions.                                                                                     |
+| `wire.rs`     | Seed and captured-neighborhood strength expressions.                                                                                               |
+| `walk.rs`     | Compiler-only conditional captures, visited flags, directional bias, layers and ordered queues.                                                    |
+| `routes.rs`   | Synchronous ordered callback expansion into the receiving semantic compiler.                                                                       |
+| `work.rs`     | Guarded request deduplication and the existing priority ring scheduler, reused during compilation.                                                 |
+| `execution/`  | Scheduled phases, live piston action acceptance, payload transfers, discrete connection publication and supported host-free component transitions. |
 
 The traversal direction loop covers nine finite direction encodings, not global data valuations. A guarded FIFO occurrence is present only for its selecting valuations; a duplicate request is removed only where an equivalent request is still queued. Nested walks own separate capture environments. Those compiler structures must never become runtime kernel instructions.
 
@@ -140,10 +140,10 @@ Earlier dense/sparse suffix-product comparisons and a global rank-count comparis
 
 Both prepared adders now have a **universal symbolic recurrence**:
 
-| Graph | Prefix in ticks | Period in ticks | Scratch decisions | Diagnostic pure operations |
-|---|---:|---:|---:|---:|
-| ADDER1BIT | 5 | 12 | 5,142 | 383 |
-| ADDER11BIT | 4 | 6 | 176,667 | 5,976 |
+| Graph      | Prefix in ticks | Period in ticks | Scratch decisions | Diagnostic pure operations |
+| ---------- | --------------: | --------------: | ----------------: | -------------------------: |
+| ADDER1BIT  |               5 |              12 |             5,142 |                        383 |
+| ADDER11BIT |               4 |               6 |           176,667 |                      5,976 |
 
 These figures precede the final dead-proof-work lowering edit; they describe diagnostic plans containing cold state/future/effect roots, not a final hot instruction layout. The periods are proven periods, not claims of the smallest possible periods. Construction uses one symbolic derivation per graph. Verification alone iterates the fixture vectors.
 
@@ -204,3 +204,154 @@ Remaining work:
   placement explicitly.
 
 No release speed result or completed-goal claim follows from this checkpoint.
+
+### Larger-device admission audit (2026-10-15)
+
+The successful adder tests do not establish kernel coverage for Divider, Counter, or CPU.
+The larger-device benchmarks reported zero instant transitions. Ordinary O4 does not request
+symbolic compilation: `--stable-instant-inputs` is also required. The benchmark now permits
+that protocol for `counter_basic`, whose external trigger stays held while internal count memory changes.
+
+Three admission gaps were corrected:
+
+- Candidate discovery previously required a lever to own a direct incoming region callback.
+  It missed Divider's indirect trigger and Counter's trigger. All levers are now considered when
+  a stable region exists; the complete symbolic proof still decides eligibility.
+- Entry construction and execution now support both rising and falling lever edges. The immutable
+  kernel records the powered value after its edge; admission checks the opposite current value.
+- Stationary buttons are supported as typed powered inputs. Their state is preserved; a pending
+  release still blocks admission, and a user input interrupts the kernel before ordinary execution.
+
+Candidate failures retain their construction stage and are available through `tracing::debug!`.
+The opt-in `divider_and_counter_report_symbolic_kernel_admission` test reports the actual fixture
+trigger's eligibility and proof result. Retained-table statistics now include symbolic kernel
+counts and nested storage; the benchmark prints those counts alongside executed transitions and wire walks.
+
+The remaining limits concern the current whole-selection proof family:
+
+- Divider's actual trigger is considered, but its ready-entry derivation exhausts the Boolean
+  work budget. An attempt to specialize unrelated button state did not fix this and was removed.
+- Counter's rising activation traces through the 48-tick proof horizon, but no complete-state
+  recurrence is proven. Stable external inputs do not freeze count memory. A reusable symbolic
+  state transition with explicit memory registers is needed; repeating an old count state or
+  weakening ordered future equality would be incorrect.
+
+These declines preserve general Graph execution. No work-budget increase, input-mask enumeration,
+runtime learning, or order-independence assumption was introduced.
+
+Counter release measurement used five fresh, alternating O4/O4-stable/interpreter runs, each with
+1,800 timed ticks after the existing warm-up. Setup, compilation, stimulus, per-tick observation,
+projection, reset, and continuation were outside the timer. Median times were O4 **0.659791 s**,
+O4-stable **0.657184 s**, interpreter **0.779916 s**. O4 and O4-stable ranges overlap; there is no
+demonstrated stable-input speedup. All output traces, projected reset states and ordered future work,
+and interpreter continuation comparisons passed. O4-stable compiled **zero symbolic kernels** and
+executed **zero instant transitions**; its 33,868 wire walks and 430,034 piston samples were unchanged.
+Callback counts fell from 2,484,060 to 2,456,176 through the existing stable-input plans.
+
+```text
+cargo bench -p mchprs_core --bench cpus --locked -- --graph-short --component counter_basic --graph-tier 4 --stable-instant-inputs --iterations 5 --output target/stable-counter-benchmark-5.json
+```
+
+The new control-edge regression covers both edges, a held button, a pending release, opposite-edge
+deoptimization and interpreter handoff. It passes, as do the ADDER1BIT AOT fixture test and the three
+symbolic projection tests. The ADDER11BIT AOT fixture test also passes on these changes (139.30 s,
+debug test profile). `cargo check --tests --locked`, focused formatting and diff checks pass.
+Package-wide formatting still reports existing drift in `messages.rs`, `plot/worldedit/safety.rs`
+and module declarations outside this change. Release-wide validation and larger-device kernel
+execution are not established by these results.
+
+Divider's main release comparison subsequently completed: O4 **0.320416 s**, O4-stable
+**0.338594 s**, interpreter **0.252349 s** for 512 timed ticks. All main trace, reset-state/future,
+and continuation comparisons passed, but O4-stable produced zero symbolic kernels and zero
+instant transitions. This is one sample, not a speedup estimate. The separate first-tick reset
+replay was intentionally stopped during its repeated symbolic compilation to investigate the
+compiler's missing coverage; the harness did not finish or write a complete report for this run.
+
+The O3 stable-region census provides a second, independent coverage failure: Divider contains
+**2,055 actors**, of which mechanism discovery recognizes **1,389**; ownership covers **1,679**
+actors across **382** groups. Only two composed groups are marked stable, with **917** and **2**
+actors. These counts establish neither complete instant recognition nor kernel execution.
+
+Full Divider coverage is the required target for the intended instant fixture. A proof-budget
+decline is a compiler limitation, not evidence that a piston is non-instant. The next implementation
+must address missing mechanism/reset families and compile explicit region boundary/memory
+transitions; correct general Graph execution must not count as a passing kernel-coverage test.
+
+### Ready-state reduction and Divider proof limit (2026-10-16)
+
+Entry construction now retains the actual component, piston and shared-resource memory and
+collects steady-state equations. It no longer repeatedly overwrites actor poses or forces payloads
+between contacts while deriving the ready state. QC-only actor memory remains independent.
+
+The pure Boolean library extracts unit and binary consequences from the entry equations.
+Implication reachability proves fixed input bits; only those constants are substituted into the
+symbolic starting state. The original equations remain runtime admission conditions. Each
+extracted clause is implied by an equation, and each substituted constant follows from those
+clauses, so the reduction cannot admit a new initial state. Higher-arity facts that this solver
+cannot prove remain symbolic. The solver has bounded work and uses no input-mask enumeration.
+
+Wire shape has two checked entry families. The compiler first tries the existing set of possible
+stored-shape histories, then an exact captured-shape entry if the broad proof declines. Captured
+shapes restrict admission only: the full entry-state comparison rejects other shapes, and ordinary
+Graph handles them. Shape changes during an admitted execution are still traced normally.
+Requiring every stored shape to equal its currently regulated shape was tested and rejected:
+native prepared adder states can legitimately retain a different stored shape.
+
+The final Divider diagnosis establishes progress at entry but **does not establish kernel
+compilation or execution**:
+
+| Stage                                                            | Result                                                                                        |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Broad ready entry                                                | 6,197 symbolic inputs, 100,284 Boolean decisions, 16,600,170 logic-work units                 |
+| Proven starting actor poses                                      | 2,055 of 2,055 constant                                                                       |
+| Proven starting resource locations                               | 1,566 of 1,566 constant                                                                       |
+| First traced tick, broad shapes, default budget                  | Declined at 1,048,576 decisions                                                               |
+| First traced tick, captured shapes, default budget               | Declined at 1,048,576 decisions                                                               |
+| First traced tick, captured shapes, explicit budget multiplier 8 | Declined at 8,388,608 decisions; 379,879,869 logic-work units and 257,610 semantic-work units |
+
+The larger probe completed; it did not emit a kernel. The configured proof-budget multiplier now
+applies to both Boolean node and work limits; default limits are unchanged. Increasing this
+explicit multiplier did not solve the representation problem. The ready-entry counts above are
+from the broad entry diagnostic, not a count of retained inputs in a successful captured kernel.
+
+Counter still proves no complete-state recurrence within 48 ticks, for either entry family.
+Its evolving count memory requires a reusable state-transition kernel; stable external inputs
+do not justify replaying an old complete count state. Neither decline proves that the device's
+pistons are non-instant.
+
+The remaining Divider blocker is the global canonical Boolean representation during ordered
+first-tick execution. Proven starting poses alone do not prevent intermediate expression growth.
+Further work should trace explicit region boundary and memory transitions using shared local
+expressions, and reserve canonical/equivalence reasoning for the proof boundaries. This is an
+unimplemented direction, not a demonstrated fix. Callback order, action revalidation, pending
+work and cold-state reconstruction must remain part of that proof.
+
+Rejected prototypes included a monolithic conjunction of entry equations, generalized
+cofactoring, and partitioned cofactoring: they exhausted proof limits, and the partitioned
+version also regressed ADDER11BIT admission. None remains in the implementation.
+
+Validation of the retained constant solver includes all 256 pairs of two-variable relations and
+1,024 sampled higher-arity relation pairs, checking inferred bits against every model. All 24
+pure-library tests pass. The focused adder entry tests (4), recurrence/execution tests (5), and
+captured-shape admission/fallback/handoff test (1) passed. The enlarged ignored Divider/Counter
+diagnostic passed as a reporting test; a pass here means it reported the decline correctly,
+not that either device ran a kernel. No new runtime speedup is claimed or benchmarked.
+
+The broader debug `symbolic_` filter discovered 39 tests: 37 passed, the ignored device
+diagnostic was skipped, and one actor-executor test failed because the newly admitted rising-edge
+whole-circuit kernel bypassed the executor being asserted. That test now removes whole-circuit
+kernels from both sides before execution, retaining the actor-step assertion and all semantic
+comparisons. Its entire five-test suite passes after the isolation fix. The other 37 results
+precede this test-only edit; the complete filter was not repeated. Core test compilation, focused
+formatting and diff checks pass. Final-source release validation and runtime benchmarking remain
+unchecked.
+
+## Superseding implementation status: grouped regional event programs (2026-10-16)
+
+The earlier actor-only implementation note above is historical. O4 now builds one `SymbolicRegion` program per supported ownership region. It keeps the region index and a shared boundary description in the graph plan, compiles event routines for every supported owned piston and each unique reset clock, then lowers direct actor/reset bindings into `CircuitProgram`. It does not require a selected lever, a complete-selection recurrence, or an empty global scheduler. The old whole-selection finite/AOT builders are skipped when regional programs are admitted.
+
+Boundary derivation covers power links, ordered callback occurrences, observers and external wire readers, wire neighborhoods, shared payload state, contact alternatives, and guard dependencies. Guard-use indexing includes comparator far overrides. One outside component may supply an input and receive an output; common outside fanout does not merge independent owners. Boundary JSON validates the referenced plan, route, guard, observer and facing against the source graph.
+
+At runtime, existing Graph callback and scheduler dispatch remains authoritative. Event routines evaluate local actor/reset predicates and use existing FIFO, action, and scheduling primitives, while `CircuitState` and `GraphFuture` remain the state owners. Independent devices continue to tick. Ordinary internal wire propagation and callback delivery still run in Graph, so this milestone does not claim a contracted virtual circuit, eliminated wire work, or Divider acceleration. Unsupported region programs decline to ordinary Graph with a reason.
+
+Focused validation passed: six boundary-contract tests (including external callback activation with no selected lever, independent BUD data/update histories and comparator geometry reads), six symbolic-kernel tests, eight stable-region tests including differential execution on ADDER1BIT and ADDER11BIT with interpreter handoff, grouped export and malformed-facing checks, and the O4 pass-name/tier assertion. The adder checks require complete actor/reset coverage and positive regional steps while comparing owned state/future behavior against general Graph and native execution. Parent release-suite validation is in progress; no benchmark or Divider-kernel claim follows from these tests.

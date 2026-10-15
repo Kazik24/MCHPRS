@@ -1,45 +1,85 @@
-//! Inspection of symbolic event routines; expression roots retain their effect order.
-use super::*;
-use crate::redpiler::program_graph::{ActorRead, SymbolicActor};
+//! Inspection and validation of grouped symbolic region event programs.
+use super::{ExportError, GraphTablesDto, typed_id};
+use crate::redpiler::program_graph::{ActorRead, CompileGraph, EventRoutine, ResetRead, SymbolicRegion, SymbolicRegionDecline};
 use mchprs_redpiler_opt::Op;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 
-pub(super) fn export(actor: &SymbolicActor, graph: &CompileGraph) -> Value {
-    let reads: Vec<_> = actor
-        .reads
+pub(super) fn export(region: &SymbolicRegion, graph: &CompileGraph) -> Value {
+    let actors = region
+        .actors
+        .iter()
+        .map(|actor| {
+            json!({
+                "actor": typed_id("piston", actor.actor.index()),
+                "reads": reads_json(&actor.reads, graph),
+                "routines": [routine_json(&actor.routines[0], "sample"), routine_json(&actor.routines[1], "accept")],
+            })
+        })
+        .collect::<Vec<_>>();
+    let resets = region
+        .resets
+        .iter()
+        .map(|reset| {
+            json!({
+                "node": typed_id("node", reset.node.index()),
+                "facing": super::face(reset.facing),
+                "reads": reset_reads_json(&reset.reads),
+                "routines": [routine_json(&reset.routines[0], "update"), routine_json(&reset.routines[1], "tick")],
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "region": typed_id("instant_region", region.region),
+        "boundary": super::machine::boundary_json(&region.boundary),
+        "actors": actors,
+        "resets": resets,
+    })
+}
+
+pub(super) fn export_decline(decline: &SymbolicRegionDecline) -> Value {
+    json!({
+        "region": typed_id("instant_region", decline.region),
+        "actor_count": decline.actor_count,
+        "reset_count": decline.reset_count,
+        "reason": decline.reason,
+    })
+}
+
+fn reads_json(reads: &[ActorRead], graph: &CompileGraph) -> Vec<Value> {
+    reads
         .iter()
         .map(|read| match read {
-            ActorRead::Power(link) => json!({"kind": "power", "link": typed_id("power_link",
-            graph.power_links.iter().position(|candidate| candidate == link).expect("validated power binding"))}),
-            ActorRead::Guard(guard) => json!({"kind": "guard", "guard": typed_id("guard", guard.index())}),
-            _ => json!({"kind": read_name(*read)}),
+            ActorRead::Power(link) => json!({
+                "kind": "power",
+                "link": typed_id("power_link", graph.power_links.iter().position(|candidate| *candidate == *link).expect("validated power binding")),
+            }),
+            _ => json!({ "kind": read_name(*read) }),
         })
-        .collect();
-    let routines: Vec<_> = actor
-        .routines
+        .collect()
+}
+
+fn reset_reads_json(reads: &[ResetRead]) -> Vec<Value> {
+    reads.iter().map(|read| json!({"kind": reset_read_name(*read)})).collect()
+}
+
+fn routine_json(routine: &EventRoutine, event: &str) -> Value {
+    let expressions: Vec<_> = routine
+        .plan
+        .ops()
         .iter()
-        .zip(["sample", "accept", "reset_update", "reset_tick"])
-        .map(|(routine, event)| {
-            let expressions: Vec<_> = routine
-                .plan
-                .ops()
-                .iter()
-                .map(|op| match *op {
-                    Op::Input(input) => json!({"op": "input", "input": input}),
-                    Op::Const(value) => json!({"op": "constant", "value": value}),
-                    Op::Buffer(a) => json!({"op": "buffer", "args": [a]}),
-                    Op::Not(a) => json!({"op": "not", "args": [a]}),
-                    Op::And(a, b) => json!({"op": "and", "args": [a,b]}),
-                    Op::Or(a, b) => json!({"op": "or", "args": [a,b]}),
-                    Op::Xor(a, b) => json!({"op": "xor", "args": [a,b]}),
-                    Op::Select(c, a, b) => json!({"op": "select", "args": [c,a,b]}),
-                })
-                .collect();
-            json!({"event": event, "expressions": expressions, "roots": routine.plan.roots()})
+        .map(|op| match *op {
+            Op::Input(input) => json!({"op": "input", "input": input}),
+            Op::Const(value) => json!({"op": "constant", "value": value}),
+            Op::Buffer(a) => json!({"op": "buffer", "args": [a]}),
+            Op::Not(a) => json!({"op": "not", "args": [a]}),
+            Op::And(a, b) => json!({"op": "and", "args": [a,b]}),
+            Op::Or(a, b) => json!({"op": "or", "args": [a,b]}),
+            Op::Xor(a, b) => json!({"op": "xor", "args": [a,b]}),
+            Op::Select(c, a, b) => json!({"op": "select", "args": [c,a,b]}),
         })
         .collect();
-    json!({"actor": typed_id("piston", actor.actor.index()), "reset": typed_id("node", actor.reset.index()),
-        "boundary": super::machine::boundary_json(&actor.boundary), "reads": reads, "routines": routines})
+    json!({"event": event, "expressions": expressions, "roots": routine.plan.roots()})
 }
 
 fn read_name(read: ActorRead) -> &'static str {
@@ -51,166 +91,251 @@ fn read_name(read: ActorRead) -> &'static str {
         ActorRead::RetractionAvailable => "retraction_available",
         ActorRead::EarlyRetractionAvailable => "early_retraction_available",
         ActorRead::EarlyResource => "early_resource",
-        ActorRead::ResetPowered => "reset_powered",
-        ActorRead::ResetPending => "reset_pending",
-        ActorRead::ResetQualifies => "reset_qualifies",
-        ActorRead::Power(_) | ActorRead::Guard(_) => unreachable!("typed references are exported separately"),
+        ActorRead::Power(_) => unreachable!("typed power references are exported separately"),
     }
 }
 
-pub(super) fn validate(values: &[Value], graph: &GraphTablesDto) -> Result<(), ExportError> {
-    let invalid = || ExportError::new("validation", "invalid symbolic actor event program");
-    let mut seen = HashSet::new();
-    for actor in values {
-        let owner = actor["actor"].as_str().ok_or_else(invalid)?;
-        if !seen.insert(owner) || !graph.pistons.iter().any(|item| item.id == owner) || !graph.nodes.iter().any(|item| actor["reset"] == item.id) {
+fn reset_read_name(read: ResetRead) -> &'static str {
+    match read {
+        ResetRead::Powered => "reset_powered",
+        ResetRead::Pending => "reset_pending",
+        ResetRead::Qualifies => "reset_qualifies",
+    }
+}
+
+pub(super) fn validate(values: &[Value], declines: &[Value], graph: &GraphTablesDto) -> Result<(), ExportError> {
+    let invalid = || ExportError::new("validation", "invalid symbolic region event program");
+    let mut seen_regions = HashSet::new();
+    for region in values {
+        let region_id = region["region"].as_str().ok_or_else(invalid)?;
+        let Some(owner) = graph.instant_regions.iter().find(|item| item.id == region_id) else {
+            return Err(invalid());
+        };
+        if !seen_regions.insert(region_id) || !super::machine::validate_boundary_json(&region["boundary"], graph) {
             return Err(invalid());
         }
-        let reads = actor["reads"].as_array().ok_or_else(invalid)?;
-        if reads.len() > crate::redpiler::program_graph::MAX_ACTOR_INPUTS {
-            return Err(invalid());
-        }
-        for read in reads {
-            let kind = read["kind"].as_str().ok_or_else(invalid)?;
-            let valid = match kind {
-                "power" => graph.power_links.iter().any(|link| read["link"] == link.id),
-                "guard" => graph.guards.iter().any(|guard| read["guard"] == guard.id),
-                "extended"
-                | "base_pending"
-                | "ready"
-                | "lane_available"
-                | "retraction_available"
-                | "early_retraction_available"
-                | "early_resource"
-                | "reset_powered"
-                | "reset_pending"
-                | "reset_qualifies" => true,
-                _ => false,
-            };
-            if !valid {
-                return Err(invalid());
-            }
-        }
-        let routines = actor["routines"].as_array().ok_or_else(invalid)?;
-        if routines.len() != 4 {
-            return Err(invalid());
-        }
-        for (routine, (event, root_count)) in routines
+        let actors = region["actors"].as_array().ok_or_else(invalid)?;
+        let actor_ids = actors
             .iter()
-            .zip([("sample", 3), ("accept", 3), ("reset_update", 1), ("reset_tick", 2)])
-        {
-            if routine["event"] != event {
-                return Err(invalid());
-            }
-            let expressions = routine["expressions"].as_array().ok_or_else(invalid)?;
-            if expressions.len() > crate::redpiler::program_graph::MAX_ACTOR_OPS {
-                return Err(invalid());
-            }
-            let mut ops = Vec::new();
-            for (index, expression) in expressions.iter().enumerate() {
-                let args: Vec<_> = expression["args"]
-                    .as_array()
-                    .map(|values| {
-                        values
-                            .iter()
-                            .map(|value| {
-                                value
-                                    .as_u64()
-                                    .and_then(|id| usize::try_from(id).ok())
-                                    .filter(|&id| id < index)
-                                    .ok_or_else(invalid)
-                            })
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .transpose()?
-                    .unwrap_or_default();
-                let op = match (expression["op"].as_str(), args.as_slice()) {
-                    (Some("input"), []) => Op::Input(expression["input"].as_u64().and_then(|id| usize::try_from(id).ok()).ok_or_else(invalid)?),
-                    (Some("constant"), []) => Op::Const(expression["value"].as_bool().ok_or_else(invalid)?),
-                    (Some("buffer"), [a]) => Op::Buffer(*a),
-                    (Some("not"), [a]) => Op::Not(*a),
-                    (Some("and"), [a, b]) => Op::And(*a, *b),
-                    (Some("or"), [a, b]) => Op::Or(*a, *b),
-                    (Some("xor"), [a, b]) => Op::Xor(*a, *b),
-                    (Some("select"), [c, a, b]) => Op::Select(*c, *a, *b),
-                    _ => return Err(invalid()),
-                };
-                ops.push(op);
-            }
-            let roots = routine["roots"]
-                .as_array()
-                .ok_or_else(invalid)?
-                .iter()
-                .map(|root| root.as_u64().and_then(|id| usize::try_from(id).ok()).ok_or_else(invalid))
-                .collect::<Result<Vec<_>, _>>()?;
-            if roots.len() != root_count {
-                return Err(invalid());
-            }
-            mchprs_redpiler_opt::reference(&mchprs_redpiler_opt::Circuit::new((0..reads.len()).collect(), ops, roots)).map_err(|_| invalid())?;
+            .map(|actor| actor["actor"].as_str().ok_or_else(invalid))
+            .collect::<Result<Vec<_>, _>>()?;
+        if actor_ids != owner.actors.iter().map(String::as_str).collect::<Vec<_>>() {
+            return Err(invalid());
         }
+        for actor in actors {
+            let reads = actor["reads"].as_array().ok_or_else(invalid)?;
+            validate_reads(reads, graph, ReadFamily::Actor).map_err(|_| invalid())?;
+            validate_routines(&actor["routines"], reads.len(), &[("sample", 3), ("accept", 3)]).map_err(|_| invalid())?;
+        }
+        let resets = region["resets"].as_array().ok_or_else(invalid)?;
+        let reset_ids = resets
+            .iter()
+            .map(|reset| reset["node"].as_str().ok_or_else(invalid))
+            .collect::<Result<Vec<_>, _>>()?;
+        if reset_ids != owner.resets.iter().map(String::as_str).collect::<Vec<_>>() {
+            return Err(invalid());
+        }
+        for reset in resets {
+            let reset_id = reset["node"].as_str().ok_or_else(invalid)?;
+            let Some(node) = graph.nodes.iter().find(|node| node.id == reset_id) else {
+                return Err(invalid());
+            };
+            let super::NodeKindDto::Observer { facing, .. } = &node.kind else {
+                return Err(invalid());
+            };
+            if reset["facing"].as_str() != Some(facing) {
+                return Err(invalid());
+            }
+            let reads = reset["reads"].as_array().ok_or_else(invalid)?;
+            validate_reads(reads, graph, ReadFamily::Reset).map_err(|_| invalid())?;
+            validate_routines(&reset["routines"], reads.len(), &[("update", 1), ("tick", 2)]).map_err(|_| invalid())?;
+        }
+    }
+    for decline in declines {
+        let region_id = decline["region"].as_str().ok_or_else(invalid)?;
+        let Some(owner) = graph.instant_regions.iter().find(|item| item.id == region_id) else {
+            return Err(invalid());
+        };
+        let reason = decline["reason"].as_str();
+        if !seen_regions.insert(region_id)
+            || decline["actor_count"].as_u64() != Some(owner.actors.len() as u64)
+            || decline["reset_count"].as_u64() != Some(owner.resets.len() as u64)
+            || !matches!(reason, Some("actor_event_plan_unsupported" | "reset_event_plan_unsupported"))
+        {
+            return Err(invalid());
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum ReadFamily {
+    Actor,
+    Reset,
+}
+
+fn validate_reads(reads: &[Value], graph: &GraphTablesDto, family: ReadFamily) -> Result<(), ()> {
+    if reads.len() > crate::redpiler::program_graph::MAX_ACTOR_INPUTS {
+        return Err(());
+    }
+    for read in reads {
+        let kind = read["kind"].as_str().ok_or(())?;
+        let valid = match (family, kind) {
+            (ReadFamily::Actor, "power") => graph.power_links.iter().any(|link| read["link"] == link.id),
+            (
+                ReadFamily::Actor,
+                "extended" | "base_pending" | "ready" | "lane_available" | "retraction_available" | "early_retraction_available" | "early_resource",
+            ) => true,
+            (ReadFamily::Reset, "reset_powered" | "reset_pending" | "reset_qualifies") => true,
+            _ => false,
+        };
+        if !valid {
+            return Err(());
+        }
+    }
+    Ok(())
+}
+
+fn validate_routines(values: &Value, read_count: usize, expected: &[(&str, usize)]) -> Result<(), ()> {
+    let routines = values.as_array().ok_or(())?;
+    if routines.len() != expected.len() {
+        return Err(());
+    }
+    for (routine, (event, root_count)) in routines.iter().zip(expected) {
+        if routine["event"] != *event {
+            return Err(());
+        }
+        let expressions = routine["expressions"].as_array().ok_or(())?;
+        if expressions.len() > crate::redpiler::program_graph::MAX_ACTOR_OPS {
+            return Err(());
+        }
+        let mut ops = Vec::new();
+        for (index, expression) in expressions.iter().enumerate() {
+            let args: Vec<_> = expression["args"]
+                .as_array()
+                .map(|values| {
+                    values
+                        .iter()
+                        .map(|value| value.as_u64().and_then(|id| usize::try_from(id).ok()).filter(|&id| id < index).ok_or(()))
+                        .collect::<Result<Vec<_>, _>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+            let op = match (expression["op"].as_str(), args.as_slice()) {
+                (Some("input"), []) => {
+                    let input = expression["input"].as_u64().and_then(|id| usize::try_from(id).ok()).ok_or(())?;
+                    if input >= read_count {
+                        return Err(());
+                    }
+                    Op::Input(input)
+                }
+                (Some("constant"), []) => Op::Const(expression["value"].as_bool().ok_or(())?),
+                (Some("buffer"), [a]) => Op::Buffer(*a),
+                (Some("not"), [a]) => Op::Not(*a),
+                (Some("and"), [a, b]) => Op::And(*a, *b),
+                (Some("or"), [a, b]) => Op::Or(*a, *b),
+                (Some("xor"), [a, b]) => Op::Xor(*a, *b),
+                (Some("select"), [c, a, b]) => Op::Select(*c, *a, *b),
+                _ => return Err(()),
+            };
+            ops.push(op);
+        }
+        let roots = routine["roots"]
+            .as_array()
+            .ok_or(())?
+            .iter()
+            .map(|root| root.as_u64().and_then(|id| usize::try_from(id).ok()).ok_or(()))
+            .collect::<Result<Vec<_>, _>>()?;
+        if roots.len() != *root_count {
+            return Err(());
+        }
+        mchprs_redpiler_opt::reference(&mchprs_redpiler_opt::Circuit::new((0..read_count).collect(), ops, roots)).map_err(|_| ())?;
     }
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::{GraphTablesDto, InstantRegionDto, NodeDto, NodeKindDto};
     use super::*;
-    use crate::plot::{
-        PlotWorld,
-        worldedit::{load_schematic, paste_clipboard},
-    };
-    use crate::world::storage::Chunk;
+
+    fn routine(event: &str, roots: usize) -> Value {
+        json!({
+            "event": event,
+            "expressions": [{"op": "constant", "value": false}],
+            "roots": vec![0; roots],
+        })
+    }
 
     #[test]
-    fn symbolic_event_export_preserves_program_and_rejects_malformed_references() {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/INSTANT_OBSERVER.schem");
-        let clip = load_schematic(std::io::Cursor::new(std::fs::read(path).unwrap())).unwrap();
-        let mut world = PlotWorld::from_chunks(
-            0,
-            0,
-            (0..2).flat_map(|x| (0..2).map(move |z| Chunk::empty(x, z))).collect(),
-            Default::default(),
-        );
-        paste_clipboard(
-            &mut world,
-            &clip,
-            BlockPos::new(4 + clip.offset_x, 30 + clip.offset_y, 4 + clip.offset_z),
-            false,
-        );
-        let options = CompilerOptions {
-            optimization_level: Some(4),
-            stable_instant_inputs: true,
-            ..Default::default()
+    fn grouped_region_export_rejects_a_reset_facing_that_disagrees_with_its_owner() {
+        let graph = GraphTablesDto {
+            nodes: vec![NodeDto {
+                id: "node:0".into(),
+                kind: NodeKindDto::Observer {
+                    watched: "site:0".into(),
+                    facing: "north".into(),
+                    builtin_reset: None,
+                },
+                position: None,
+                output_route: None,
+            }],
+            profiles: vec![],
+            sites: vec![],
+            guards: vec![],
+            contacts: vec![],
+            pistons: vec![],
+            resources: vec![],
+            power_links: vec![],
+            wire_plans: vec![],
+            dust_paths: vec![],
+            wire_relations: vec![],
+            comparator_plans: vec![],
+            callback_links: vec![],
+            routes: None,
+            instant_regions: vec![InstantRegionDto {
+                stable_inputs: true,
+                wires: vec![],
+                id: "instant_region:0".into(),
+                actors: vec!["piston:0".into()],
+                resources: vec![],
+                resets: vec!["node:0".into()],
+                contacts: vec![],
+                readable_sites: vec![],
+                power_inputs: vec![],
+                power_readers: vec![],
+                routes: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+                wire_readers: vec![],
+                observers: vec![],
+            }],
+            instant_proxies: vec![],
+            symbolic_regions: vec![],
+            symbolic_region_declines: vec![],
+            instant_machine: None,
+            instant_kernel: None,
         };
-        let mut export = super::super::prepare(
-            &world,
-            (
-                BlockPos::new(4, 30, 4),
-                BlockPos::new(4 + clip.size_x as i32 - 1, 30 + clip.size_y as i32 - 1, 4 + clip.size_z as i32 - 1),
-            ),
-            &[],
-            &options,
-            &TaskMonitor::default(),
-            AnalysisLimits::default(),
-        )
-        .unwrap();
-        assert_eq!(export.graph.symbolic_actors.len(), 1);
-        assert!(export.graph.instant_machine.is_none());
-        export.to_bytes().unwrap();
-        let valid = export.graph.symbolic_actors[0].clone();
-        let mut bad = valid.clone();
-        bad["actor"] = json!("piston:999999");
-        assert!(validate(&[bad], &export.graph).is_err());
-        let mut bad = valid.clone();
-        bad["routines"][0]["roots"][0] = json!(999999);
-        assert!(validate(&[bad], &export.graph).is_err());
-        let mut bad = valid.clone();
-        bad["routines"][0]["expressions"][0] = json!({"op": "not", "args": [0]});
-        assert!(validate(&[bad], &export.graph).is_err());
-        let mut bad = valid.clone();
-        bad["reads"][0] = json!({"kind": "power", "link": "power_link:999999"});
-        export.graph.symbolic_actors = vec![bad];
-        assert!(export.to_bytes().is_err());
-        assert!(validate(&[valid.clone(), valid], &export.graph).is_err());
+        let actor = json!({
+            "actor": "piston:0",
+            "reads": [],
+            "routines": [routine("sample", 3), routine("accept", 3)],
+        });
+        let reset = json!({
+            "node": "node:0",
+            "facing": "north",
+            "reads": [],
+            "routines": [routine("update", 1), routine("tick", 2)],
+        });
+        let mut region = json!({
+            "region": "instant_region:0",
+            "boundary": {"inputs": [], "state": [], "outputs": [], "effects": [], "projection_roots": []},
+            "actors": [actor],
+            "resets": [reset],
+        });
+        assert!(validate(&[region.clone()], &[], &graph).is_ok());
+
+        region["resets"][0]["facing"] = json!("south");
+        assert!(validate(&[region], &[], &graph).is_err());
     }
 }
