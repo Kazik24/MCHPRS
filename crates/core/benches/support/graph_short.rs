@@ -23,6 +23,7 @@ const NAMES: [&str; 4] = ["cpu_bubblesort", "anpu_pong", "fpu_divider", "counter
 const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     ticks: 100,
     instant_transitions: 0,
+    symbolic_actor_steps: 0,
     scheduled_ticks: 20_005,
     callbacks: 2_059_909,
     wire_walks: 32_505,
@@ -45,8 +46,8 @@ struct Episode {
 impl Episode {
     fn new(name: &str, stable_inputs: bool) -> Result<Self> {
         ensure!(
-            !stable_inputs || matches!(name, "io/adder_1bit" | "io/adder_11bits" | "fpu_divider"),
-            "stable-input measurements require a prepared adder or Divider protocol"
+            !stable_inputs || matches!(name, "io/adder_1bit" | "io/adder_11bits" | "io/instant_observer" | "fpu_divider"),
+            "stable-input measurements require a prepared adder, observer, or Divider protocol"
         );
         let cpu = CPUS.iter().copied().find(|cpu| cpu.name == name);
         let manifest = if let Some(cpu) = cpu {
@@ -280,7 +281,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"ticks":value.ticks,"instant_transitions":value.instant_transitions,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
+    json!({"ticks":value.ticks,"instant_transitions":value.instant_transitions,"symbolic_actor_steps":value.symbolic_actor_steps,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
         "wire_walks":value.wire_walks,"dust_path_power_samples_elided":value.dust_path_power_samples_elided,
         "piston_samples":value.piston_samples,"piston_actions":value.piston_actions,"deferred_publications":value.deferred_publications})
 }
@@ -289,6 +290,7 @@ fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> V
     counts(GraphExecutionCounts {
         ticks: after.ticks - before.ticks,
         instant_transitions: after.instant_transitions - before.instant_transitions,
+        symbolic_actor_steps: after.symbolic_actor_steps - before.symbolic_actor_steps,
         scheduled_ticks: after.scheduled_ticks - before.scheduled_ticks,
         callbacks: after.callbacks - before.callbacks,
         wire_walks: after.wire_walks - before.wire_walks,
@@ -310,6 +312,9 @@ fn future(world: &PlotWorld) -> Value {
 
 fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<Option<BlockPos>> {
     if episode.stable_inputs && episode.generic() {
+        if episode.name == "io/instant_observer" {
+            return prepare_stable_observer(episode, compiler, world).map(Some);
+        }
         return prepare_stable_adder(episode, compiler, world).map(Some);
     }
     let trigger = match episode.name.as_str() {
@@ -388,6 +393,22 @@ fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, worl
         publish(compiler, world);
     }
     Ok(episode.bounds.0 + manifest_position(&episode.manifest["ports"]["inputs"]["trigger"]))
+}
+
+/// Turn on the observer fixture's initially-off lever before timing, then keep it held.
+fn prepare_stable_observer(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<BlockPos> {
+    let trigger = episode.bounds.0 + manifest_position(&episode.manifest["ports"]["inputs"]["trigger"]);
+    ensure!(
+        matches!(world.get_block(trigger), Block::Lever { lever } if !lever.powered),
+        "Observer fixture must start with its trigger OFF"
+    );
+    toggle(compiler, world, trigger)?;
+    publish(compiler, world);
+    ensure!(
+        matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered),
+        "Observer trigger did not remain ON after warm-up"
+    );
+    Ok(trigger)
 }
 
 fn episode_tick_phases(episode: &Episode) -> &'static [u32] {
@@ -495,6 +516,17 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
         verify_phase_response(episode, phase, &trace[phase_start..])?;
     }
     let work = compiler.as_ref().and_then(Compiler::graph_execution_counts);
+    if !reset_pending && episode.stable_inputs && episode.name == "io/instant_observer" && tier == Some(4) && compose_regions {
+        let (before, after) = before.zip(work).context("stable O4 observer needs Graph work counters")?;
+        ensure!(
+            after.symbolic_actor_steps > before.symbolic_actor_steps,
+            "timed stable O4 observer window did not execute its symbolic actor"
+        );
+        ensure!(
+            after.instant_transitions == before.instant_transitions,
+            "timed stable O4 observer window used the finite instant machine"
+        );
+    }
     if episode.name == "cpu_bubblesort" && tier == Some(0) && !reset_pending {
         ensure!(work == Some(CPU_COUNTS), "O0 CPU frozen work changed: {work:?}");
     }

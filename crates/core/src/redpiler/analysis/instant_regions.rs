@@ -4,7 +4,11 @@ use crate::redpiler::TaskMonitor;
 use crate::redpiler::passes::utils::instant_mechanisms::{InstantMechanism, discover_mechanisms};
 use crate::redpiler::program_graph::*;
 mod composition;
+pub(crate) mod compiler;
 pub(crate) mod machine;
+#[cfg(test)]
+pub(crate) mod symbolic;
+pub(crate) mod symbolic_actor;
 pub(crate) use composition::infer_stable_regions;
 
 fn check_cancelled(monitor: &TaskMonitor) -> Result<(), String> {
@@ -186,10 +190,11 @@ fn collect_power_boundary(graph: &CompileGraph, owners: &Ownership, regions: &mu
             PowerTarget::Input { node, .. } => owners.nodes[node.index()],
             PowerTarget::Conductor { site, .. } => owners.sites[site.index()],
         };
-        if let Some(owner) = target {
+        let source = owners.sites[link.from.index()];
+        if let Some(owner) = target.filter(|&owner| source != Some(owner)) {
             regions[owner].power_inputs.push(index as u32);
         }
-        if let Some(owner) = owners.sites[link.from.index()] {
+        if let Some(owner) = source {
             if target != Some(owner) {
                 regions[owner].power_readers.push(index as u32);
             }
@@ -385,4 +390,68 @@ fn classify_internal_delivery(
         }
     }
     InstantStepKind::Dispatch
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mchprs_blocks::{BlockFace, BlockPos};
+
+    #[test]
+    fn power_boundary_excludes_internal_links_and_keeps_cross_region_links() {
+        let graph = CompileGraph {
+            nodes: vec![CircuitNodeDraft {
+                position: None,
+                raw_state: None,
+                kind: CircuitNodeKind::Contact(ContactId::new(0)),
+                state: ComponentState::Specialized,
+                output_route: None,
+            }],
+            links: vec![],
+            power_links: [0, 1, 2]
+                .map(|site| PowerLink {
+                    from: SiteId::new(site),
+                    from_port: PowerPort::Output,
+                    to: PowerTarget::Input {
+                        node: NodeId::new(0),
+                        port: InputPort::Main,
+                    },
+                    face: BlockFace::North,
+                    attenuation: 0,
+                    guard: GuardId::new(0),
+                })
+                .to_vec(),
+            comparator_inputs: vec![],
+            profiles: vec![],
+            guards: vec![Guard::Always],
+            contacts: vec![],
+            routes: vec![],
+            wires: vec![],
+            wire_relations: vec![],
+            sites: (0..3)
+                .map(|_| SiteSpec {
+                    position: BlockPos::new(0, 0, 0),
+                    source: SiteSource::Constant(ProfileId::new(0)),
+                    source_strength: 0,
+                })
+                .collect(),
+            pistons: vec![],
+            resources: vec![],
+            initial_pistons: vec![],
+            initial_resources: vec![],
+            plans: ExecutionPlans::default(),
+        };
+        let owners = Ownership {
+            actors: vec![],
+            contacts: vec![],
+            nodes: vec![Some(0)],
+            sites: vec![Some(0), None, Some(1)],
+        };
+        let mut regions = vec![InstantRegion::default(), InstantRegion::default()];
+
+        collect_power_boundary(&graph, &owners, &mut regions, &TaskMonitor::default()).unwrap();
+
+        assert_eq!(regions[0].power_inputs, [1, 2]);
+        assert_eq!(regions[1].power_readers, [2]);
+    }
 }

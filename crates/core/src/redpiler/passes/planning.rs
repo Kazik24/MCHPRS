@@ -1,7 +1,8 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, InstantMachine, InstantProxy, InstantRegion, InstantResetPlan, SiteId, TurboCallbackIndex, WireQueryFacts,
+    CompileGraph, DustPathPlan, InstantMachine, InstantProxy, InstantRegion, InstantResetPlan, SiteId, SymbolicKernel, TurboCallbackIndex,
+    WireQueryFacts,
 };
 use std::sync::Arc;
 
@@ -30,12 +31,22 @@ pub(crate) enum PlanOutput {
     Regions(Vec<InstantRegion>),
     Proxies(Vec<InstantProxy>),
     Machine(Option<Arc<InstantMachine>>),
+    SymbolicKernels(Vec<Arc<SymbolicKernel>>),
+    SymbolicActors(Vec<crate::redpiler::program_graph::SymbolicActor>),
 }
 
 impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
         // A rebuilt input must not leave a machine proof tied to the previous plans.
-        graph.plans.instant.machine = None;
+        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_)) {
+            graph.plans.instant.machine = None;
+        }
+        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_)) {
+            graph.plans.instant.symbolic_actors.clear();
+        }
+        if !matches!(&self, Self::SymbolicKernels(_)) {
+            graph.plans.instant.symbolic_kernels.clear();
+        }
         match self {
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
@@ -63,6 +74,8 @@ impl PlanOutput {
             }
             Self::Proxies(proxies) => graph.plans.instant.proxies = proxies,
             Self::Machine(machine) => graph.plans.instant.machine = machine,
+            Self::SymbolicKernels(kernels) => graph.plans.instant.symbolic_kernels = kernels,
+            Self::SymbolicActors(actors) => graph.plans.instant.symbolic_actors = actors,
         }
     }
 }

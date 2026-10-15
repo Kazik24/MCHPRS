@@ -1,4 +1,8 @@
 //! Graph backend differential and regression tests.
+#[path = "symbolic_walk.rs"]
+mod symbolic_walk;
+#[path = "symbolic_work.rs"]
+mod symbolic_work;
 #[path = "wire_hops.rs"]
 mod wire_hops;
 
@@ -550,15 +554,15 @@ fn graph_route_powers_lamp_synchronously_and_flush_only_projects_state() {
 
     let state = backend.state.clone();
     let scheduled = backend.scheduled_ticks();
-    let pending = backend.pending.clone();
-    let clock = backend.clock;
+    let pending = backend.future.pending.clone();
+    let clock = backend.future.clock;
     backend.flush(&mut graph_world, false);
     assert_eq!(backend.state, state);
     assert_eq!(backend.scheduled_ticks(), scheduled);
-    assert_eq!(backend.pending, pending);
-    assert_eq!(backend.clock.logical_tick, clock.logical_tick);
-    assert_eq!(backend.clock.phase, clock.phase);
-    assert_eq!(backend.clock.scheduled_advanced, clock.scheduled_advanced);
+    assert_eq!(backend.future.pending, pending);
+    assert_eq!(backend.future.clock.logical_tick, clock.logical_tick);
+    assert_eq!(backend.future.clock.phase, clock.phase);
+    assert_eq!(backend.future.clock.scheduled_advanced, clock.scheduled_advanced);
     assert_eq!(graph_world.get_block(lamp_pos), native.get_block(lamp_pos));
 }
 
@@ -1176,7 +1180,7 @@ fn observer_filters_direction_suppresses_pending_and_uses_two_tick_edges() {
         backend.flush(&mut graph_world, false);
         assert_eq!(state_at(&backend, observer_pos).powered, expected_powered, "tick {tick}");
         assert_eq!(graph_world.get_block(observer_pos), native.get_block(observer_pos), "tick {tick}");
-        assert_eq!(backend.clock.logical_tick, native.piston_state().logical_tick);
+        assert_eq!(backend.future.clock.logical_tick, native.piston_state().logical_tick);
     }
 
     let mut recovery_world = empty_world();
@@ -1603,11 +1607,11 @@ fn graph_command_results_are_synchronous_and_hostless_ticks_preserve_work() {
     let mut backend = recording_graph(&world, vec![]);
     backend.use_block(lever_pos).unwrap();
     backend.flush(&mut world, true);
-    let due_before = backend.scheduler.iter().count();
-    let clock_before = backend.clock.logical_tick;
+    let due_before = backend.future.scheduler.iter().count();
+    let clock_before = backend.future.clock.logical_tick;
     assert_eq!(backend.tick(), Err(GraphExecutionError::CommandHostUnavailable { position: command_pos }));
-    assert_eq!(backend.scheduler.iter().count(), due_before);
-    assert_eq!(backend.clock.logical_tick, clock_before);
+    assert_eq!(backend.future.scheduler.iter().count(), due_before);
+    assert_eq!(backend.future.clock.logical_tick, clock_before);
     assert!(matches!(
         world.get_block_entity(command_pos),
         Some(BlockEntity::CommandBlock(entity)) if entity.powered
@@ -1878,10 +1882,10 @@ fn hostless_tick_preserves_work_that_can_activate_a_command() {
     let world = make_world();
     let mut backend = GraphBackend::compile(&world, BOUNDS, vec![entry], Arc::default()).unwrap();
     let pending_before = backend.scheduled_ticks();
-    let clock_before = backend.clock.logical_tick;
+    let clock_before = backend.future.clock.logical_tick;
     assert_eq!(backend.tick(), Err(GraphExecutionError::CommandHostUnavailable { position: command_pos }));
     assert_eq!(backend.scheduled_ticks(), pending_before);
-    assert_eq!(backend.clock.logical_tick, clock_before);
+    assert_eq!(backend.future.clock.logical_tick, clock_before);
     assert!(!state_at(&backend, repeater_pos).powered);
 
     let mut world_with_host = make_world();
@@ -2432,7 +2436,7 @@ fn removed_repeater_tick_keeps_its_deadline_until_native_stale_dispatch() {
                 dispatches.push(records.iter().filter(|record| record["kind"] == "scheduled_tick").count());
                 backend.tick().unwrap();
                 assert_eq!(backend.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
-                assert_eq!(backend.clock.logical_tick, native.piston_state().logical_tick);
+                assert_eq!(backend.future.clock.logical_tick, native.piston_state().logical_tick);
             }
             assert_eq!(dispatches, [0, 0, 0, 1]);
             assert_eq!(native.get_block(removed), Block::Air);
@@ -2761,7 +2765,7 @@ fn shared_payload_opposite_direction_does_not_request_early_retraction() {
         let native_request = native.piston_state().events.back().unwrap();
         assert_eq!(native_request.pos, bases[retracting_actor]);
         assert_eq!(native_request.action, mchprs_world::PistonAction::Retract);
-        let graph_request = backend.piston_requests.back().unwrap();
+        let graph_request = backend.future.piston_requests.back().unwrap();
         assert_eq!(graph_request.piston, piston_id_at(&backend, bases[retracting_actor]));
         assert_eq!(graph_request.action, native_request.action);
     }
@@ -2806,7 +2810,7 @@ fn shared_payload_deadline_reversal_executes_notified_actor_in_same_tick() {
             "the notified actor must retract in the resource's interruption tick"
         );
         assert!(native.piston_state().events.is_empty());
-        assert!(backend.piston_requests.is_empty());
+        assert!(backend.future.piston_requests.is_empty());
         assert_eq!(backend.state.resources[0].at, contact_at(&backend, near[notified_actor]));
         assert!(!backend.state.resources[0].enabled);
 
@@ -2896,6 +2900,7 @@ fn shared_payload_overlapping_repeated_triggers_keep_fifo_and_conserve_one_token
 
         let native_order: Vec<_> = native.piston_state().events.iter().map(|event| event.pos).collect();
         let graph_order: Vec<_> = backend
+            .future
             .piston_requests
             .iter()
             .map(|request| {
@@ -3011,7 +3016,7 @@ fn shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event() {
         Some(event) if event.action == mchprs_world::PistonAction::RetractWithoutPull
     ));
     assert!(
-        backend.piston_requests.iter().any(|request| {
+        backend.future.piston_requests.iter().any(|request| {
             request.piston == piston_id_at(&backend, bases[0]) && request.action == mchprs_world::PistonAction::RetractWithoutPull
         })
     );
@@ -3053,7 +3058,7 @@ fn stale_resource_publication_does_not_cancel_a_valid_actor_publication() {
     backend.set_test_recording(true);
     let actor = piston_id_at(&backend, bases[0]);
     backend.retract_connections(actor, false).unwrap();
-    let event = backend.deferred_pistons.pop_front().unwrap();
+    let event = backend.future.deferred_pistons.pop_front().unwrap();
     assert_eq!(backend.state.pistons[actor.index()].availability, PistonAvailability::BasePending);
 
     // Model a legal recapture at the shared contact before the original restore arrives.
@@ -3277,7 +3282,7 @@ fn tick_shared_and_compare_callbacks(native: &mut PlotWorld, backend: &mut Graph
         graph_callbacks,
         native_callbacks,
         "shared callbacks at tick {}: {:#?}",
-        backend.clock.logical_tick,
+        backend.future.clock.logical_tick,
         backend.trace.iter().rev().take(24).collect::<Vec<_>>()
     );
     assert_resource_invariants(backend);
@@ -3404,7 +3409,7 @@ fn same_value_quasi_updates_match_native_and_deduplicate_extension() {
             .unwrap();
     }
     assert_eq!(native.piston_state().events.len(), 1);
-    assert_eq!(backend.piston_requests.len(), 1);
+    assert_eq!(backend.future.piston_requests.len(), 1);
 
     tick_native_bounded(&mut native);
     backend.tick().unwrap();
@@ -3446,7 +3451,7 @@ fn blocked_piston_lane_rejects_extension_at_sampling_and_acceptance() {
         _ => unreachable!(),
     };
     backend.sample_piston(id).unwrap();
-    assert!(backend.piston_requests.is_empty(), "sampling must reject the blocked lane");
+    assert!(backend.future.piston_requests.is_empty(), "sampling must reject the blocked lane");
 
     backend.enqueue_piston(PistonRequest {
         piston: id,

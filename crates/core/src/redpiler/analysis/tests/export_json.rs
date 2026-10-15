@@ -226,7 +226,11 @@ fn callback_preparation_stops_reading_after_cancellation() {
 fn adder_1bit_fixture_matches_graph_json() {
     for level in 0..=crate::redpiler::MAX_OPTIMIZATION_LEVEL {
         let bytes = adder_1bit_export(Some(level));
-        assert_eq!(bytes, std::fs::read(adder_1bit_export_path(level)).unwrap());
+        let expected = std::fs::read(adder_1bit_export_path(level)).unwrap();
+        assert!(
+            bytes == expected,
+            "ADDER_1BIT O{level} export differs from its checked-in fixture; inspect the change before running write_adder_1bit_graph_json_fixtures"
+        );
         let document: Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(document["version"]["major"], 1);
         assert_eq!(document["stage"], "callback_draft");

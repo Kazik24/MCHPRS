@@ -243,9 +243,9 @@ pub(super) fn assert_same_future(general: &GraphBackend, proxy: &GraphBackend) {
 }
 
 pub(super) fn assert_same_memory(general: &GraphBackend, proxy: &GraphBackend) {
-    assert_eq!(proxy.clock.logical_tick, general.clock.logical_tick);
-    assert_eq!(proxy.clock.phase, general.clock.phase);
-    assert_eq!(proxy.clock.scheduled_advanced, general.clock.scheduled_advanced);
+    assert_eq!(proxy.future.clock.logical_tick, general.future.clock.logical_tick);
+    assert_eq!(proxy.future.clock.phase, general.future.clock.phase);
+    assert_eq!(proxy.future.clock.scheduled_advanced, general.future.clock.scheduled_advanced);
     let mut expected = MachineState::default();
     let mut actual = MachineState::default();
     if general.capture_machine_state(&mut expected) && proxy.capture_machine_state(&mut actual) {
@@ -256,14 +256,16 @@ pub(super) fn assert_same_memory(general: &GraphBackend, proxy: &GraphBackend) {
     } else {
         assert_eq!(proxy.state, general.state);
         assert_eq!(proxy.scheduled_ticks(), general.scheduled_ticks());
-        assert_eq!(proxy.pending, general.pending);
+        assert_eq!(proxy.future.pending, general.future.pending);
         assert_eq!(
             proxy
+                .future
                 .piston_requests
                 .iter()
                 .map(|request| (request.piston, request.action))
                 .collect::<Vec<_>>(),
             general
+                .future
                 .piston_requests
                 .iter()
                 .map(|request| (request.piston, request.action))
@@ -271,6 +273,7 @@ pub(super) fn assert_same_memory(general: &GraphBackend, proxy: &GraphBackend) {
         );
         let deferred = |backend: &GraphBackend| {
             backend
+                .future
                 .deferred_pistons
                 .iter()
                 .map(|event| {

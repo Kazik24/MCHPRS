@@ -56,7 +56,7 @@ fn assert_rendered(exact: &PlotWorld, compact: &PlotWorld, positions: &[BlockPos
 }
 
 #[test]
-fn compact_kernel_flush_modes_preserve_projection_and_pending_continuation() {
+fn symbolic_kernel_flush_modes_preserve_projection_and_pending_continuation() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
     let positions = circuit.positions();
     for case in manifest_cases() {
@@ -73,6 +73,7 @@ fn compact_kernel_flush_modes_preserve_projection_and_pending_continuation() {
             compact.flush(&mut compact_world, io_only);
             assert_rendered(&exact_world, &compact_world, &positions, &format!("{} preparation {index}", case["id"]));
         }
+        assert!(compact.future.symbolic_cursor.is_some(), "the symbolic AOT path must be active");
         let before = compact.execution_counts().instant_transitions;
         for tick in 0..64 {
             apply_step(&mut native, &mut exact, &mut compact, Step::Tick);
@@ -110,7 +111,7 @@ fn compact_kernel_flush_modes_preserve_projection_and_pending_continuation() {
 }
 
 #[test]
-fn compact_kernel_control_change_reconstructs_before_general_callbacks() {
+fn symbolic_kernel_control_change_reconstructs_before_general_callbacks() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
     let positions = circuit.positions();
     let case = manifest_cases().into_iter().find(|case| case["expectation"]["carry"] == 1).unwrap();
@@ -122,6 +123,7 @@ fn compact_kernel_control_change_reconstructs_before_general_callbacks() {
         for step in case_steps(&circuit, &case, false, true) {
             apply_step(&mut native, &mut exact, &mut compact, step);
         }
+        assert!(compact.future.symbolic_cursor.is_some(), "the symbolic AOT path must be active");
         let before = compact.execution_counts().instant_transitions;
         for _ in 0..cut {
             apply_step(&mut native, &mut exact, &mut compact, Step::Tick);
@@ -140,6 +142,35 @@ fn compact_kernel_control_change_reconstructs_before_general_callbacks() {
                 powered: !lever.powered,
             },
         );
+        // A later quiescent transaction must re-enter AOT with the changed operand and memory.
+        apply_step(
+            &mut native,
+            &mut exact,
+            &mut compact,
+            Step::SetLever {
+                position: circuit.trigger(),
+                powered: true,
+            },
+        );
+        for _ in 0..32 {
+            apply_step(&mut native, &mut exact, &mut compact, Step::Tick);
+        }
+        apply_step(
+            &mut native,
+            &mut exact,
+            &mut compact,
+            Step::SetLever {
+                position: circuit.trigger(),
+                powered: false,
+            },
+        );
+        assert!(
+            compact.future.symbolic_cursor.is_some(),
+            "changed operands must admit a fresh symbolic transaction"
+        );
+        for _ in 0..24 {
+            apply_step(&mut native, &mut exact, &mut compact, Step::Tick);
+        }
         let mut exact_world = circuit.build();
         let mut compact_world = circuit.build();
         exact.reset(&mut exact_world);
@@ -163,7 +194,7 @@ fn compact_kernel_control_change_reconstructs_before_general_callbacks() {
 }
 
 #[test]
-fn compact_kernel_projection_preserves_independent_revision_origins_and_clock_epoch() {
+fn symbolic_kernel_projection_preserves_independent_revision_origins_and_clock_epoch() {
     let circuit = load_adder("adder_1bit", ORIGIN, None);
     let positions = circuit.positions();
     for case in manifest_cases() {
@@ -177,10 +208,15 @@ fn compact_kernel_projection_preserves_independent_revision_origins_and_clock_ep
         assert!(native.piston_state().motions.is_empty(), "origins move only at quiescent entry");
         native.piston_state_mut().logical_tick += 5_000;
         for backend in [&mut exact, &mut compact] {
-            assert!(backend.scheduler.iter().next().is_none());
-            assert!(backend.piston_requests.is_empty());
-            assert!(backend.deferred_pistons.is_empty());
-            backend.clock.logical_tick += 5_000;
+            if backend.has_active_kernel() {
+                assert!(backend.materialize_kernel_state());
+                backend.future.symbolic_cursor = None;
+                backend.future.kernel_cursor = None;
+            }
+            assert!(backend.future.scheduler.iter().next().is_none());
+            assert!(backend.future.piston_requests.is_empty());
+            assert!(backend.future.deferred_pistons.is_empty());
+            backend.future.clock.logical_tick += 5_000;
             for (index, actor) in backend.state.pistons.iter_mut().enumerate() {
                 actor.revision = u64::MAX - index as u64;
             }
@@ -189,6 +225,7 @@ fn compact_kernel_projection_preserves_independent_revision_origins_and_clock_ep
             }
         }
         apply_step(&mut native, &mut exact, &mut compact, *steps.last().unwrap());
+        assert!(compact.future.symbolic_cursor.is_some(), "the symbolic AOT path must be active");
         let before = compact.execution_counts().instant_transitions;
         for _ in 0..36 {
             apply_step(&mut native, &mut exact, &mut compact, Step::Tick);

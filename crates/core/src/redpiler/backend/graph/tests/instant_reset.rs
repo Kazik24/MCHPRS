@@ -105,9 +105,10 @@ fn assert_same_execution(general: &GraphBackend, certified: &GraphBackend, owned
     };
     assert_eq!(writes(certified), writes(general), "every intermediate wire strength and shape write");
     assert_eq!(certified.scheduled_ticks(), general.scheduled_ticks(), "ordered scheduler");
-    assert_eq!(certified.pending, general.pending, "pending membership and multiplicity");
+    assert_eq!(certified.future.pending, general.future.pending, "pending membership and multiplicity");
     let requests = |backend: &GraphBackend| {
         backend
+            .future
             .piston_requests
             .iter()
             .map(|request| (request.piston, request.action))
@@ -116,6 +117,7 @@ fn assert_same_execution(general: &GraphBackend, certified: &GraphBackend, owned
     assert_eq!(requests(certified), requests(general), "piston request FIFO");
     let deferred = |backend: &GraphBackend| {
         backend
+            .future
             .deferred_pistons
             .iter()
             .map(|event| {
@@ -132,9 +134,9 @@ fn assert_same_execution(general: &GraphBackend, certified: &GraphBackend, owned
     assert_eq!(deferred(certified), deferred(general), "deferred publication FIFO");
     assert_eq!(certified.dirty, general.dirty);
     assert_eq!(effects(certified), effects(general));
-    assert_eq!(certified.clock.logical_tick, general.clock.logical_tick);
-    assert_eq!(certified.clock.phase, general.clock.phase);
-    assert_eq!(certified.clock.scheduled_advanced, general.clock.scheduled_advanced);
+    assert_eq!(certified.future.clock.logical_tick, general.future.clock.logical_tick);
+    assert_eq!(certified.future.clock.phase, general.future.clock.phase);
+    assert_eq!(certified.future.clock.scheduled_advanced, general.future.clock.scheduled_advanced);
     assert_eq!(certified.failure, general.failure);
     let mut expected_counts = general.execution_counts();
     let removed = owned_wire_deliveries(general, owned) - owned_wire_deliveries(certified, owned);
@@ -385,8 +387,8 @@ fn instant_output_matches_native_histories_and_every_reset_continuation_cut() {
                 );
             }
             replayed += certified.trace().iter().filter(|line| line.starts_with("wire instant output ")).count();
-            pending_cuts += usize::from(!certified.scheduled_ticks().is_empty() || !certified.deferred_pistons.is_empty());
-            request_cuts += usize::from(!certified.piston_requests.is_empty());
+            pending_cuts += usize::from(!certified.scheduled_ticks().is_empty() || !certified.future.deferred_pistons.is_empty());
+            request_cuts += usize::from(!certified.future.piston_requests.is_empty());
             // Snapshot projections must not become a second owner of pending work.
             clear_projection(&mut general_world);
             clear_projection(&mut certified_world);

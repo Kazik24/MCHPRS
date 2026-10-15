@@ -22,6 +22,7 @@ impl CircuitDraft {
             ("wire relations", self.wire_relations.len()),
             ("instant regions", self.plans.instant.regions.len()),
             ("instant proxies", self.plans.instant.proxies.len()),
+            ("symbolic instant kernels", self.plans.instant.symbolic_kernels.len()),
         ] {
             if u32::try_from(len).is_err() {
                 return Err(GraphBuildError::TooManyEntries { table: name });
@@ -48,8 +49,26 @@ impl CircuitDraft {
         }
         self.validate_instant_resets()?;
         self.validate_instant_regions()?;
+        if !self.plans.instant.symbolic_actors.is_empty() {
+            let derived = crate::redpiler::analysis::instant_regions::symbolic_actor::compile(self, &crate::redpiler::TaskMonitor::default())
+                .map_err(|_| GraphBuildError::InvalidInstantRegion {
+                    table: "symbolic actors",
+                    index: 0,
+                })?;
+            if derived != self.plans.instant.symbolic_actors {
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "symbolic actors",
+                    index: 0,
+                });
+            }
+        }
         if let Some(machine) = &self.plans.instant.machine {
             crate::redpiler::analysis::instant_regions::machine::validate(self, machine)?;
+        }
+        for (index, kernel) in self.plans.instant.symbolic_kernels.iter().enumerate() {
+            if !kernel.validate(self) {
+                return Err(GraphBuildError::InvalidSymbolicKernel { index });
+            }
         }
         Ok(())
     }

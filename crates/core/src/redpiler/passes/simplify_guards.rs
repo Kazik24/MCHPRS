@@ -518,6 +518,7 @@ mod tests {
             (3, "compile-instant-resets"),
             (3, "identify-instant-regions"),
             (3, "compile-instant-proxies"),
+            (4, "compile-symbolic-actors"),
             (4, "compile-instant-machine"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {

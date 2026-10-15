@@ -37,7 +37,7 @@ impl GraphBackend {
     /// Presentation only: writes current graph state and drains effects. It
     /// reads no World state, so suppressed display cannot alter execution.
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
-        if self.kernel_cursor.is_some() {
+        if self.has_active_kernel() {
             assert!(self.materialize_kernel_state(), "certified kernel projection must materialize");
         }
         for index in 0..self.dirty.len() {
@@ -124,13 +124,14 @@ impl GraphBackend {
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
         self.flush(world, false);
-        self.kernel_cursor = None;
+        self.future.kernel_cursor = None;
+        self.future.symbolic_cursor = None;
         self.project_future(world);
         self.dirty.fill(false);
-        self.scheduler.clear();
-        self.pending.clear();
-        self.piston_requests.clear();
-        self.deferred_pistons.clear();
+        self.future.scheduler.clear();
+        self.future.pending.clear();
+        self.future.piston_requests.clear();
+        self.future.deferred_pistons.clear();
     }
 
     /// Write the interpreter state equivalent to the current graph future:
@@ -138,19 +139,21 @@ impl GraphBackend {
     /// events, ordinary scheduled ticks, queued requests, and the clock.
     /// Reads no World state and changes no graph state.
     pub(crate) fn project_future<W: World>(&self, world: &mut W) {
-        if self.kernel_cursor.is_some() {
-            let mut projected = GraphBackend::new(self.program.clone(), self.state.clone(), self.clock.logical_tick)
+        if self.has_active_kernel() {
+            let mut projected = GraphBackend::new(self.program.clone(), self.state.clone(), self.future.clock.logical_tick)
                 .expect("a validated graph program can project its kernel state");
-            projected.clock = self.clock;
-            projected.kernel_cursor = self.kernel_cursor.clone();
+            projected.future.clock = self.future.clock;
+            projected.future.kernel_cursor = self.future.kernel_cursor.clone();
+            projected.future.symbolic_cursor = self.future.symbolic_cursor.clone();
             assert!(projected.materialize_kernel_state(), "certified kernel projection must materialize");
-            projected.kernel_cursor = None;
+            projected.future.kernel_cursor = None;
+            projected.future.symbolic_cursor = None;
             projected.project_future(world);
             return;
         }
-        debug_assert_eq!(self.clock.phase, GraphPhase::BetweenTicks);
+        debug_assert_eq!(self.future.clock.phase, GraphPhase::BetweenTicks);
         let interpreter = world.piston_state_mut();
-        interpreter.logical_tick = self.clock.logical_tick;
+        interpreter.logical_tick = self.future.clock.logical_tick;
         interpreter.phase = mchprs_world::AdvancePhase::BetweenTicks;
         interpreter.scheduled_advanced = false;
         interpreter.events.clear();
@@ -178,7 +181,7 @@ impl GraphBackend {
             motion.materialize(world);
         }
 
-        for (tick, delay, priority) in self.scheduler.iter() {
+        for (tick, delay, priority) in self.future.scheduler.iter() {
             world.restore_scheduled_tick(TickEntry {
                 pos: tick.position,
                 block_type: tick.block_type,
@@ -186,7 +189,7 @@ impl GraphBackend {
                 tick_priority: priority,
             });
         }
-        for request in &self.piston_requests {
+        for request in &self.future.piston_requests {
             let spec = self.program.pistons()[request.piston.index()];
             world.enqueue_piston_event(PistonEvent {
                 pos: self.program.contacts()[spec.base.index()].position,
@@ -202,14 +205,14 @@ impl GraphBackend {
     /// have no interpreter motion.
     fn pending_motions(&self) -> Vec<MotionProjection> {
         let mut motions = Vec::new();
-        for event in &self.deferred_pistons {
+        for event in &self.future.deferred_pistons {
             let spec = self.program.pistons()[event.piston.index()];
             let piston = RedstonePiston {
                 facing: spec.facing.into(),
                 sticky: spec.sticky,
                 extended: false,
             };
-            let remaining = event.due_tick.saturating_sub(self.clock.logical_tick);
+            let remaining = event.due_tick.saturating_sub(self.future.clock.logical_tick);
             debug_assert!((1..=2).contains(&remaining), "deferred event outside its window");
             let position = |contact: ContactId| self.program.contacts()[contact.index()].position;
             let actor = (self.state.pistons[event.piston.index()].revision == event.revision).then(|| MotionProjection {

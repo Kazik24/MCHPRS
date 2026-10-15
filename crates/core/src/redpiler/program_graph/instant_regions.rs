@@ -19,7 +19,7 @@ pub(crate) struct KernelBoundary {
 /// One external dependency entering the region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum KernelInput {
-    /// This power-link ordinal supplies a region-owned component input.
+    /// This supplies source power after port filtering but before link attenuation.
     Power(u32),
     /// This route occurrence is an external callback that may activate owned work.
     Callback(RouteOccurrence),
@@ -94,7 +94,10 @@ mod kernel_boundary_tests {
 
     #[test]
     fn boundary_ports_are_ordered_and_keep_duplicate_effects() {
-        let event = RouteOccurrence { route: RouteId::new(4), ordinal: 2 };
+        let event = RouteOccurrence {
+            route: RouteId::new(4),
+            ordinal: 2,
+        };
         let region = InstantRegion {
             stable_inputs: true,
             wires: vec![NodeId::new(3)],
@@ -113,19 +116,25 @@ mod kernel_boundary_tests {
         };
 
         let boundary = KernelBoundary::from_region(&region);
-        assert_eq!(boundary.inputs, [KernelInput::Power(1), KernelInput::Power(7), KernelInput::Callback(event)]);
-        assert_eq!(boundary.state, [
-            KernelStateSlot::Reset(NodeId::new(2)),
-            KernelStateSlot::Piston(PistonId::new(1)),
-            KernelStateSlot::Resource(ResourceId::new(0)),
-            KernelStateSlot::Wire(NodeId::new(3)),
-        ]);
+        assert_eq!(
+            boundary.inputs,
+            [KernelInput::Power(1), KernelInput::Power(7), KernelInput::Callback(event)]
+        );
+        assert_eq!(
+            boundary.state,
+            [
+                KernelStateSlot::Reset(NodeId::new(2)),
+                KernelStateSlot::Piston(PistonId::new(1)),
+                KernelStateSlot::Resource(ResourceId::new(0)),
+                KernelStateSlot::Wire(NodeId::new(3)),
+            ]
+        );
         assert_eq!(boundary.effects, [event, event]);
         assert_eq!(boundary.projection_roots, [SiteId::new(1), SiteId::new(5)]);
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct RouteOccurrence {
     /// This identifies the original ordered route containing the boundary event.
     pub(crate) route: RouteId,

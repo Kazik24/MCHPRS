@@ -14,6 +14,8 @@ mod power;
 mod projection;
 mod reset;
 mod sites;
+mod symbolic;
+mod symbolic_kernel;
 mod wire;
 
 use pistons::{DeferredPistonEvent, PistonRequest};
@@ -279,19 +281,26 @@ pub(crate) struct GraphBackend {
     component_sites: Vec<Option<SiteId>>,
     /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
     wire_walks: Vec<WireWalk>,
+    future: GraphFuture,
+    dirty: Vec<bool>,
+    effects: Vec<PresentationEffect>,
+    failure: Option<GraphExecutionError>,
+    counts: GraphExecutionCounts,
+    #[cfg(test)]
+    test_recorder: TestRecorder,
+}
+
+/// All pending execution and its clock. Component/piston/resource values stay in CircuitState.
+struct GraphFuture {
     scheduler: TickScheduler<ScheduledNodeTick>,
     pending: FxHashMap<PendingNodeTick, usize>,
     piston_requests: VecDeque<PistonRequest>,
     deferred_pistons: VecDeque<DeferredPistonEvent>,
     clock: Clock,
-    dirty: Vec<bool>,
-    effects: Vec<PresentationEffect>,
-    failure: Option<GraphExecutionError>,
-    counts: GraphExecutionCounts,
     /// This stores only frozen controls, phase position, and live revision origins.
     kernel_cursor: Option<KernelCursor>,
-    #[cfg(test)]
-    test_recorder: TestRecorder,
+    /// This stores the evaluated AOT phase roots for one admitted symbolic kernel.
+    symbolic_cursor: Option<symbolic_kernel::SymbolicCursor>,
 }
 
 #[derive(Clone)]
@@ -568,20 +577,23 @@ impl GraphBackend {
             positions,
             component_sites,
             wire_walks: Vec::new(),
-            scheduler: TickScheduler::default(),
-            pending: FxHashMap::default(),
-            piston_requests: VecDeque::new(),
-            deferred_pistons: VecDeque::new(),
-            clock: Clock {
-                logical_tick,
-                phase: GraphPhase::BetweenTicks,
-                scheduled_advanced: false,
+            future: GraphFuture {
+                scheduler: TickScheduler::default(),
+                pending: FxHashMap::default(),
+                piston_requests: VecDeque::new(),
+                deferred_pistons: VecDeque::new(),
+                clock: Clock {
+                    logical_tick,
+                    phase: GraphPhase::BetweenTicks,
+                    scheduled_advanced: false,
+                },
+                kernel_cursor: None,
+                symbolic_cursor: None,
             },
             dirty: vec![false; node_count],
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
-            kernel_cursor: None,
             #[cfg(test)]
             test_recorder: TestRecorder::default(),
         })
@@ -630,8 +642,8 @@ impl GraphBackend {
                 registry_type,
                 current_registry_type,
             };
-            self.scheduler.schedule_half_tick(scheduled, tick.delay as usize, tick.priority);
-            *self.pending.entry(scheduled.into()).or_default() += 1;
+            self.future.scheduler.schedule_half_tick(scheduled, tick.delay as usize, tick.priority);
+            *self.future.pending.entry(scheduled.into()).or_default() += 1;
         }
         Ok(())
     }
@@ -660,11 +672,11 @@ impl GraphBackend {
             current_registry_type: self.registry_type(node),
         };
         let key = tick.into();
-        if self.pending.contains_key(&key) {
+        if self.future.pending.contains_key(&key) {
             return;
         }
-        self.scheduler.schedule_half_tick(tick, delay, priority);
-        self.pending.insert(key, 1);
+        self.future.scheduler.schedule_half_tick(tick, delay, priority);
+        self.future.pending.insert(key, 1);
         #[cfg(test)]
         graph_test_trace!(
             self,
@@ -678,7 +690,7 @@ impl GraphBackend {
     }
 
     fn is_pending(&self, node: NodeId) -> bool {
-        self.pending.contains_key(&PendingNodeTick {
+        self.future.pending.contains_key(&PendingNodeTick {
             node: Some(node),
             position: self.position(node),
             block_type: Some(self.registry_type(node)),
@@ -689,10 +701,10 @@ impl GraphBackend {
 
     fn popped(&mut self, tick: ScheduledNodeTick) {
         let key = tick.into();
-        if let Some(count) = self.pending.get_mut(&key) {
+        if let Some(count) = self.future.pending.get_mut(&key) {
             *count -= 1;
             if *count == 0 {
-                self.pending.remove(&key);
+                self.future.pending.remove(&key);
             }
         }
     }
@@ -716,7 +728,7 @@ impl GraphBackend {
         }
         if self.try_kernel_tick() {
             if let Some(host) = host.as_mut() {
-                host.publish_logical_tick(self.clock.logical_tick);
+                host.publish_logical_tick(self.future.clock.logical_tick);
             }
             return Ok(());
         }
@@ -730,7 +742,8 @@ impl GraphBackend {
     }
 
     fn due_command_position(&self) -> Option<BlockPos> {
-        self.scheduler
+        self.future
+            .scheduler
             .iter()
             .find(|(tick, delay, _)| {
                 *delay <= 1
@@ -747,7 +760,7 @@ impl GraphBackend {
 
     fn command_host_preflight_position(&self) -> Option<BlockPos> {
         self.due_command_position().or_else(|| {
-            if !self.scheduler.iter().any(|(_, delay, _)| delay <= 1) {
+            if !self.future.scheduler.iter().any(|(_, delay, _)| delay <= 1) {
                 return None;
             }
             // shortcut: any due work in a command-containing graph may activate a command, until callback reachability can prove it cannot.
@@ -766,61 +779,61 @@ impl GraphBackend {
 
     fn tick_phases<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         self.counts.ticks += 1;
-        self.clock.logical_tick += 1;
+        self.future.clock.logical_tick += 1;
         if let Some(host) = host.as_mut() {
-            host.publish_logical_tick(self.clock.logical_tick);
+            host.publish_logical_tick(self.future.clock.logical_tick);
         }
-        self.clock.phase = GraphPhase::ScheduledTicks;
-        self.clock.scheduled_advanced = false;
-        graph_trace!(self.clock.logical_tick, self.clock.phase, "phase start");
+        self.future.clock.phase = GraphPhase::ScheduledTicks;
+        self.future.clock.scheduled_advanced = false;
+        graph_trace!(self.future.clock.logical_tick, self.future.clock.phase, "phase start");
         #[cfg(test)]
         graph_test_trace!(self, "phase scheduled_ticks".into());
         let drain_result = self.drain_current_ticks(host);
         if let Err(error) = drain_result {
-            self.clock.phase = GraphPhase::BetweenTicks;
+            self.future.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
 
-        self.scheduler.end_last_tick_move_next();
-        self.clock.scheduled_advanced = true;
+        self.future.scheduler.end_last_tick_move_next();
+        self.future.clock.scheduled_advanced = true;
         #[cfg(test)]
         graph_test_trace!(self, "clock.advance".into());
         #[cfg(test)]
         graph_test_trace!(self, "phase scheduled_ticks_after_advance".into());
         let drain_result = self.drain_current_ticks(host);
         if let Err(error) = drain_result {
-            self.clock.phase = GraphPhase::BetweenTicks;
-            self.clock.scheduled_advanced = false;
+            self.future.clock.phase = GraphPhase::BetweenTicks;
+            self.future.clock.scheduled_advanced = false;
             return Err(error);
         }
 
-        self.clock.phase = GraphPhase::PistonActions;
-        graph_trace!(self.clock.logical_tick, self.clock.phase, "phase start");
+        self.future.clock.phase = GraphPhase::PistonActions;
+        graph_trace!(self.future.clock.logical_tick, self.future.clock.phase, "phase start");
         #[cfg(test)]
         graph_test_trace!(self, "phase piston_actions".into());
         let action_result = self.drain_piston_actions();
         if let Err(error) = action_result {
-            self.clock.phase = GraphPhase::BetweenTicks;
+            self.future.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
-        self.clock.phase = GraphPhase::DeferredConnections;
-        graph_trace!(self.clock.logical_tick, self.clock.phase, "phase start");
+        self.future.clock.phase = GraphPhase::DeferredConnections;
+        graph_trace!(self.future.clock.logical_tick, self.future.clock.phase, "phase start");
         #[cfg(test)]
         graph_test_trace!(self, "phase deferred_connections".into());
         let deferred_result = self.publish_deferred_pistons();
         if let Err(error) = deferred_result {
-            self.clock.phase = GraphPhase::BetweenTicks;
+            self.future.clock.phase = GraphPhase::BetweenTicks;
             return Err(error);
         }
-        self.clock.phase = GraphPhase::BetweenTicks;
-        self.clock.scheduled_advanced = false;
+        self.future.clock.phase = GraphPhase::BetweenTicks;
+        self.future.clock.scheduled_advanced = false;
         #[cfg(test)]
         graph_test_trace!(self, "phase between_ticks".into());
         Ok(())
     }
 
     fn drain_current_ticks<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
-        while let Some(tick) = self.scheduler.this_tick().pop_first() {
+        while let Some(tick) = self.future.scheduler.this_tick().pop_first() {
             self.popped(tick);
             if tick.registry_type != tick.current_registry_type {
                 #[cfg(test)]
@@ -832,7 +845,7 @@ impl GraphBackend {
                 graph_test_trace!(self, format!("unbound {:?} skipped", tick.position));
                 continue;
             };
-            graph_trace!(self.clock.logical_tick, self.clock.phase, "dispatch node={}", node.index());
+            graph_trace!(self.future.clock.logical_tick, self.future.clock.phase, "dispatch node={}", node.index());
             #[cfg(test)]
             graph_test_trace!(self, format!("dispatch {node:?}"));
             self.counts.scheduled_ticks += 1;
@@ -845,12 +858,22 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        if self.kernel_cursor.is_some() {
+        if self.has_active_kernel() {
             assert!(
                 self.materialize_kernel_state(),
                 "certified kernel state must materialize before input changes"
             );
-            self.kernel_cursor = None;
+            self.future.kernel_cursor = None;
+            self.future.symbolic_cursor = None;
+        }
+        let symbolic_admission = self.positions.get(&position).and_then(|&node| {
+            (self.program.symbolic_kernels().iter().any(|kernel| kernel.trigger == node) && self.node_state(node).powered)
+                .then(|| self.prepare_symbolic_kernel(node))
+                .flatten()
+        });
+        if let Some(prepared) = symbolic_admission {
+            self.enter_symbolic_kernel(prepared);
+            return Ok(());
         }
         let activates_kernel = self
             .program
@@ -888,6 +911,14 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
+        if self.has_active_kernel() {
+            assert!(
+                self.materialize_kernel_state(),
+                "certified kernel state must materialize before input changes"
+            );
+            self.future.kernel_cursor = None;
+            self.future.symbolic_cursor = None;
+        }
         let result = self.set_pressure_plate_inner(position, powered);
         self.latch_error(&result);
         result
@@ -910,6 +941,10 @@ impl GraphBackend {
         if let Err(error) = result {
             self.failure = Some(error.clone());
         }
+    }
+
+    pub(super) fn has_active_kernel(&self) -> bool {
+        self.future.kernel_cursor.is_some() || self.future.symbolic_cursor.is_some()
     }
 
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
@@ -1112,7 +1147,7 @@ impl GraphBackend {
         if host.is_none() {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        let tick = self.clock.logical_tick.min(i64::MAX as u64) as i64;
+        let tick = self.future.clock.logical_tick.min(i64::MAX as u64) as i64;
         if entity.update_last_execution && entity.last_execution == tick {
             return Ok(false);
         }
@@ -1207,6 +1242,9 @@ impl GraphBackend {
             CircuitNodeKind::Observer { facing, .. } => facing,
             _ => unreachable!(),
         };
+        if self.symbolic_reset_update(node, facing, direction, captured) {
+            return Ok(());
+        }
         let powered = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Electrical { powered, .. } => Some(powered),
@@ -1224,6 +1262,9 @@ impl GraphBackend {
     }
 
     fn tick_observer(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        if let Some(result) = self.symbolic_reset_tick(node, true) {
+            return result;
+        }
         let powered = self.node_state(node).powered;
         if !powered {
             self.schedule(node, 1, TickPriority::Normal);
@@ -1671,7 +1712,7 @@ impl GraphBackend {
 
     pub(crate) fn inspect(&self, position: BlockPos) {
         match self.positions.get(&position) {
-            Some(&node) if self.kernel_cursor.is_some() => {
+            Some(&node) if self.has_active_kernel() => {
                 let state = self.current_kernel_state();
                 tracing::debug!(
                     "Graph node {node:?}: {:?} kernel_state={:?}",
@@ -1708,7 +1749,8 @@ impl GraphBackend {
 
     #[cfg(test)]
     fn scheduled_ticks(&self) -> Vec<TickEntry> {
-        self.scheduler
+        self.future
+            .scheduler
             .iter()
             .map(|(tick, delay, priority)| TickEntry {
                 pos: tick.position,

@@ -465,11 +465,12 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
         assert_eq!(frame.read_varint().unwrap(), 42);
         assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
         assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_string().unwrap(), "-O0");
-        assert!(!frame.read_bool().unwrap());
-        assert_eq!(frame.read_string().unwrap(), "-O1");
-        assert!(!frame.read_bool().unwrap());
+        assert_eq!(frame.read_varint().unwrap(), 5);
+        for expected in ["-O0", "-O1", "-O2", "-O3", "-O4"] {
+            assert_eq!(frame.read_string().unwrap(), expected);
+            assert!(!frame.read_bool().unwrap());
+        }
+        assert_eq!(frame.position() as usize, frame.get_ref().len());
     }
 }
 

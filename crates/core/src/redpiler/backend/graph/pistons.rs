@@ -47,33 +47,41 @@ impl GraphBackend {
                 powered,
             });
         }
-        let action = match (powered, state.extended) {
-            (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
-            (false, true) => {
-                let early_resource_retraction = match spec.lane {
-                    PistonLane::SingleResource { far } => self
-                        .piston_resource_at(piston, far)
-                        .and_then(|resource| self.pending_resource_extension(resource, far, spec.facing))
-                        .is_some_and(|event| {
-                            event.due_tick > self.clock.logical_tick
-                                || matches!(self.clock.phase, GraphPhase::ScheduledTicks | GraphPhase::PistonActions)
-                        }),
-                    PistonLane::Empty => false,
-                };
-                if early_resource_retraction {
-                    mchprs_world::PistonAction::RetractWithoutPull
-                } else {
-                    mchprs_world::PistonAction::Retract
-                }
+        let action = if let Some(plan) = self.program.symbolic_actor(piston).cloned() {
+            let roots = self.symbolic_roots(&plan, crate::redpiler::program_graph::ActorEvent::Sample, None);
+            let Some(action) = crate::redpiler::program_graph::SymbolicActor::requested(&roots) else {
+                return Ok(());
+            };
+            action
+        } else {
+            match (powered, state.extended) {
+                (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
+                (false, true) if self.early_resource_retraction(piston) => mchprs_world::PistonAction::RetractWithoutPull,
+                (false, true) => mchprs_world::PistonAction::Retract,
+                _ => return Ok(()),
             }
-            _ => return Ok(()),
         };
         self.enqueue_piston(PistonRequest { piston, action });
         Ok(())
     }
 
+    pub(super) fn early_resource_retraction(&self, piston: PistonId) -> bool {
+        let spec = self.program.pistons()[piston.index()];
+        match spec.lane {
+            PistonLane::SingleResource { far } => self
+                .piston_resource_at(piston, far)
+                .and_then(|resource| self.pending_resource_extension(resource, far, spec.facing))
+                .is_some_and(|event| {
+                    event.due_tick > self.future.clock.logical_tick
+                        || matches!(self.future.clock.phase, GraphPhase::ScheduledTicks | GraphPhase::PistonActions)
+                }),
+            PistonLane::Empty => false,
+        }
+    }
+
     pub(super) fn enqueue_piston(&mut self, request: PistonRequest) {
         if !self
+            .future
             .piston_requests
             .iter()
             .any(|queued| queued.piston == request.piston && queued.action == request.action)
@@ -89,12 +97,12 @@ impl GraphBackend {
             }
             #[cfg(test)]
             graph_test_trace!(self, format!("piston request {:?} {:?}", request.piston, request.action));
-            self.piston_requests.push_back(request);
+            self.future.piston_requests.push_back(request);
         }
     }
 
     pub(super) fn drain_piston_actions(&mut self) -> Result<(), GraphExecutionError> {
-        while let Some(request) = self.piston_requests.pop_front() {
+        while let Some(request) = self.future.piston_requests.pop_front() {
             self.accept_action(request)?;
         }
         Ok(())
@@ -110,11 +118,25 @@ impl GraphBackend {
                 action: request.action,
             });
         }
-        let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
+        let accepted = if let Some(plan) = self.program.symbolic_actor(request.piston).cloned() {
+            let roots = self.symbolic_roots(&plan, crate::redpiler::program_graph::ActorEvent::Accept, None);
+            crate::redpiler::program_graph::SymbolicActor::accepts(&roots, request.action)
+        } else {
+            let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
+            match request.action {
+                mchprs_world::PistonAction::Extend => {
+                    powered && !state.extended && state.availability == PistonAvailability::Ready && self.piston_lane_available(request.piston)
+                }
+                mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull => {
+                    !powered
+                        && state.extended
+                        && !state.availability.base_pending()
+                        && self.piston_retraction_available(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)
+                }
+            }
+        };
         match request.action {
-            mchprs_world::PistonAction::Extend
-                if powered && !state.extended && state.availability == PistonAvailability::Ready && self.piston_lane_available(request.piston) =>
-            {
+            mchprs_world::PistonAction::Extend if accepted => {
                 #[cfg(test)]
                 graph_test_trace!(self, format!("piston accept {:?} {:?}", request.piston, request.action));
                 self.extend_connections(request.piston)?;
@@ -127,12 +149,7 @@ impl GraphBackend {
                     });
                 }
             }
-            mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull
-                if !powered
-                    && state.extended
-                    && !state.availability.base_pending()
-                    && self.piston_retraction_available(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull) =>
-            {
+            mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull if accepted => {
                 #[cfg(test)]
                 graph_test_trace!(self, format!("piston accept {:?} {:?}", request.piston, request.action));
                 self.retract_connections(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)?;
@@ -202,7 +219,7 @@ impl GraphBackend {
         if state.enabled || state.at != contact {
             return None;
         }
-        self.deferred_pistons.iter().find(|event| {
+        self.future.deferred_pistons.iter().find(|event| {
             event.extending
                 && self.program.pistons()[event.piston.index()].facing == facing
                 && event
@@ -277,7 +294,7 @@ impl GraphBackend {
         self.contact_block(contact) == Block::Air
     }
 
-    fn piston_retraction_available(&self, piston: PistonId, without_pull: bool) -> bool {
+    pub(super) fn piston_retraction_available(&self, piston: PistonId, without_pull: bool) -> bool {
         let spec = self.program.pistons()[piston.index()];
         let PistonLane::SingleResource { far } = spec.lane else {
             return true;
@@ -305,7 +322,7 @@ impl GraphBackend {
             .expect("compiled contact profile was validated")
     }
 
-    fn piston_lane_available(&self, piston: PistonId) -> bool {
+    pub(super) fn piston_lane_available(&self, piston: PistonId) -> bool {
         let spec = self.program.pistons()[piston.index()];
         let near = self.contact_block(spec.near);
         if ContainerType::from_block(near).is_some() || matches!(near, Block::MovingPiston { .. } | Block::PistonHead { .. }) {
@@ -357,11 +374,11 @@ impl GraphBackend {
             },
         });
         // Nested callbacks must see the transfer's direction and deadline.
-        self.deferred_pistons.push_back(DeferredPistonEvent {
+        self.future.deferred_pistons.push_back(DeferredPistonEvent {
             piston,
             revision,
             resource: deferred_resource,
-            due_tick: self.clock.logical_tick + 2,
+            due_tick: self.future.clock.logical_tick + 2,
             extending: true,
         });
         if resource.is_some()
@@ -452,11 +469,11 @@ impl GraphBackend {
             revision,
             contact: spec.near,
         });
-        self.deferred_pistons.push_back(DeferredPistonEvent {
+        self.future.deferred_pistons.push_back(DeferredPistonEvent {
             piston,
             revision,
             resource: deferred_resource,
-            due_tick: self.clock.logical_tick + 2,
+            due_tick: self.future.clock.logical_tick + 2,
             extending: false,
         });
         #[cfg(test)]
@@ -466,12 +483,13 @@ impl GraphBackend {
 
     pub(super) fn publish_deferred_pistons(&mut self) -> Result<(), GraphExecutionError> {
         let due = self
+            .future
             .deferred_pistons
             .iter()
-            .take_while(|event| event.due_tick <= self.clock.logical_tick)
+            .take_while(|event| event.due_tick <= self.future.clock.logical_tick)
             .count();
         for _ in 0..due {
-            let event = self.deferred_pistons.pop_front().unwrap();
+            let event = self.future.deferred_pistons.pop_front().unwrap();
             self.apply_deferred_event(event)?;
         }
         Ok(())

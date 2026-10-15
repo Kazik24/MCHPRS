@@ -1,7 +1,9 @@
 //! Real input histories compare complete memory, deadlines and interpreter boundary outputs.
 use super::*;
+use crate::redpiler::analysis::instant_regions::symbolic::{SymbolicBuilder, SymbolicLimits, SymbolicValue, ValueKind};
 use crate::redpiler::passes::Pass;
 use crate::redpiler::passes::planning::PlanBuilder;
+use crate::redpiler::program_graph::{CircuitNodeKind, KernelBoundary, KernelInput, SiteSource};
 
 #[test]
 fn lowered_kernel_effects_match_every_frozen_assignment_and_preserve_occurrences() {
@@ -51,6 +53,90 @@ fn lowered_kernel_effects_match_every_frozen_assignment_and_preserve_occurrences
         "kernel candidate operations={candidates}, active operations={retained}, execution bytes={}",
         execution.estimated_bytes()
     );
+}
+
+#[test]
+fn adder_symbolic_ir_uses_graph_ports_without_compiling_finite_machine() {
+    let circuit = load_adder("adder_1bit", ORIGIN, None);
+    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
+    assert!(
+        graph.plans.instant.machine.is_none(),
+        "O3 symbolic tracing must not invoke finite compilation"
+    );
+    let boundary = KernelBoundary::from_region(&graph.plans.instant.regions[0]);
+    let mut data_ports = [None; 3];
+    for (port, input) in boundary.inputs.iter().enumerate() {
+        let KernelInput::Power(link) = input else { continue };
+        let link = graph.power_links[*link as usize];
+        let SiteSource::Component(source) = graph.sites[link.from.index()].source else {
+            continue;
+        };
+        if graph.nodes[source.index()].kind != CircuitNodeKind::Electrical(crate::redpiler::components::NodeType::Lever) {
+            continue;
+        }
+        if let Some(input_index) = ["A", "B", "Cin"].iter().position(|name| {
+            let position = circuit.port_positions("inputs", name)[0];
+            graph.nodes[source.index()].position == Some(position)
+        }) {
+            data_ports[input_index] = Some(port);
+        }
+    }
+    assert!(data_ports.iter().all(Option::is_some), "graph boundary must expose A, B, and Cin");
+
+    let mut builder = SymbolicBuilder::new(
+        boundary.clone(),
+        vec![ValueKind::Boolean; boundary.state.len()],
+        SymbolicLimits::default(),
+    )
+    .unwrap();
+    let inputs: Vec<_> = data_ports
+        .iter()
+        .map(|port| builder.input(port.unwrap(), ValueKind::Boolean).unwrap())
+        .collect();
+    let ab = builder.xor(inputs[0], inputs[1]).unwrap();
+    let sum = builder.xor(ab, inputs[2]).unwrap();
+    let carry_ab = builder.and(inputs[0], inputs[1]).unwrap();
+    let carry_ac = builder.and(inputs[0], inputs[2]).unwrap();
+    let carry_bc = builder.and(inputs[1], inputs[2]).unwrap();
+    let carry_bc_or_ac = builder.or(carry_ac, carry_bc).unwrap();
+    let carry = builder.or(carry_ab, carry_bc_or_ac).unwrap();
+    builder.hot_root(sum).unwrap();
+    builder.hot_root(carry).unwrap();
+    let program = builder.finish();
+    let mut values = vec![SymbolicValue::Boolean(false); program.expressions.len()];
+    let mut port_values = vec![SymbolicValue::Boolean(false); boundary.inputs.len()];
+
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
+    let cases = manifest["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| case["expectation"].is_object());
+    let mut count = 0;
+    for case in cases {
+        let bits = [
+            case["inputs"][0].as_u64().unwrap() != 0,
+            case["inputs"][1].as_u64().unwrap() != 0,
+            case["inputs"][2].as_u64().unwrap() != 0,
+        ];
+        for (index, port) in data_ports.iter().enumerate() {
+            port_values[port.unwrap()] = SymbolicValue::Boolean(bits[index]);
+        }
+        program.evaluate(&port_values, &[], &mut values).unwrap();
+        let actual = (
+            u16::from(values[sum.index()] == SymbolicValue::Boolean(true)),
+            u16::from(values[carry.index()] == SymbolicValue::Boolean(true)),
+        );
+        assert_eq!(actual, expectation(&circuit, case), "symbolic IR case {}", case["id"]);
+        let mut steps = case_steps(&circuit, case, false, true);
+        let response_start = steps.len();
+        steps.extend(std::iter::repeat_n(Step::Tick, case["ticks"].as_u64().unwrap() as usize));
+        replay(&circuit, &steps, Some(response_start), Some(actual), None)
+            .unwrap_or_else(|error| panic!("symbolic IR Graph/interpreter comparison for {}: {error}", case["id"]));
+        count += 1;
+    }
+    assert_eq!(count, 8);
 }
 
 #[test]
@@ -218,8 +304,8 @@ fn stale_entry_work_prevents_compact_kernel_admission() {
                     registry_type: registry,
                     current_registry_type: registry,
                 };
-                backend.scheduler.schedule_half_tick(tick, 3, TickPriority::Normal);
-                backend.pending.insert(tick.into(), 1);
+                backend.future.scheduler.schedule_half_tick(tick, 3, TickPriority::Normal);
+                backend.future.pending.insert(tick.into(), 1);
             }
         }
         let toggle = match step {

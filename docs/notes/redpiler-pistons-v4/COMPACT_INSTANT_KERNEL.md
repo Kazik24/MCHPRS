@@ -114,3 +114,34 @@ Reproduction: `cargo test -p mchprs_redpiler_opt --release --locked`; the standa
 Not repeated for this lowering: full CPU sorting, broad fuzzing, peak RSS or sampled profiling. General Graph execution is unchanged.
 
 Final integration caveat: subsequent concurrent pass-metadata edits changed the combined worktree after the successful test/benchmark snapshots. The final graph-trace core check and server check failed on incomplete metadata migration (including DTO/runtime `plans` references and pass API names). Those edits were preserved; the completed suite results above do not certify the later combined source. Focused formatting also reports drift in concurrently edited files; `git diff --check` passes.
+
+## Symbolic event compilation: first executable slice
+
+O4 with `--stable-instant-inputs` now attempts `compile-symbolic-actors` before the finite machine compiler. This builder admits an ownership region containing exactly one actor and one Observer/BuiltinReset clock. It compiles four symbolic event routines from the actor's actual incoming power links and the existing primitive transition semantics:
+
+1. Sample: generate Extend, Retract or RetractWithoutPull request guards.
+2. Acceptance: re-read live power, pose and occupancy before applying a queued action.
+3. Reset update: qualify direction/captured power and arm the existing deduplicated tick.
+4. Reset tick: schedule the follow-up before publishing the toggled output.
+
+`analysis/instant_regions/symbolic_actor.rs` builds Boolean DAGs using `redpiler_opt`. No external input masks or concrete trajectories are enumerated for these routines. Each event gets its own optimized plan and reachable-read list, so reset events do not sample unrelated power or lane conditions. Construction is bounded while appending inputs/operations; exhaustion declines the candidate. The bounds limit code size, not the circuit's operand space.
+
+`backend/graph/symbolic.rs` executes the plans with fixed stack scratch. State remains in CircuitState, while the existing FIFO, scheduler and deferred revision witnesses remain in GraphFuture. Accepted action effects use the same ordered resource-transfer and callback procedures as ordinary Graph. Cold projection and handoff therefore use the actual complete state, without synthesizing a second reconstruction representation. Arbitrary control changes remain safe for this event-level program because each event re-reads its live dependencies.
+
+Power bindings retain the full PowerLink value, not its draft vector index: lowering sorts the power table. Runtime port filtering and attenuation retain four-bit signal semantics before conversion to a nonzero Boolean. Guards are live reads. Boundary ports still describe external ownership; internal reset feedback is a state dependency, not an external input.
+
+The proof is per event: symbolic roots encode the same sample/accept/reset predicates; evaluation performs no state writes or callbacks; selected effects use the same state and ordered scheduling/delivery primitives. Thus both paths have identical successor state and future work for each admitted event. This is an equivalence argument for the primitive event lowering, not a proof that internal notifications may be deleted. Runtime test counters distinguish `symbolic_actor_steps` from the older compact kernel's `instant_transitions`.
+
+When these programs exist, the O4 finite machine compiler is skipped. Other families can still use the old enumerative prototype or general Graph. New routine data is validated by deterministic regeneration, is invalidated by upstream plan builders/rewrites, and appears in optional JSON `symbolic_actors` inspection records and preparation/lowered memory statistics. Export roots preserve effect occurrence order. Viewers can continue using the unchanged general graph when they do not execute this optimization metadata.
+
+### Verification and explicit remaining scope
+
+The original INSTANT_TORCH query fixture was wrong for observer-region discovery: it has a torch reset and produces no recognized observer region. The executed actor/reset slice uses the pinned INSTANT_OBSERVER fixture instead. Its O4 pipeline test asserts a symbolic program exists and the finite machine is absent, compares full projected cells/entities/pending work and callback/operation order against ordinary Graph and the interpreter, then checks eight interpreter continuation ticks after cuts at 1, 2, 3, 8 and 24 ticks. Positive assertions require requests, both accepted directions, and reset scheduling/power.
+
+Additional focused tests cover all 16-by-16 Main/Quasi source strengths at several attenuations, explicit query declines/budgets, queue deduplication, cancellation after reset power changes, stale plans, cancelled construction and malformed JSON references/expressions. Parent has run the initial three fixture/query tests successfully; final focused/broad validation and benchmark reporting are delegated to Luna and must be reported separately against the frozen source.
+
+The earlier bounded symbolic state/effect IR in `symbolic.rs` is test-only research support. The hand-written adder expressions remain test oracles. Production Boolean event code uses the existing pure optimizer, avoiding a second Boolean execution engine.
+
+This is NOT whole-region symbolic tracing or contraction. Internal callbacks, Turbo walks and deferred publication effects remain. No whole-adder or CPU acceleration follows from event compilation alone. ADDER1BIT's multi-actor region and larger builds still need symbolic state/effect composition, boundary liveness and elimination of internal computation. The finite prototype's three-data-input limit remains in that separate fallback compiler; it is not raised by this change.
+
+The earlier test-build CEntityPositionSync failure was resolved without source changes by cleaning stale mchprs_network build artifacts. Source schematics were preserved. Heavy validation and timings are intentionally outside the parent's implementation batch.

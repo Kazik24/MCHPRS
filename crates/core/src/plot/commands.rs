@@ -1979,10 +1979,20 @@ mod security_tests {
             };
             for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
-                let lines = messages("Transformations: none configured.");
+                let lines = messages("Transformations:");
                 assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
                 assert!(lines.iter().any(|line| line.starts_with("Graph after required preparation:")));
-                assert!(lines.iter().any(|line| line == "Transformations: none configured."));
+                let summary = lines.iter().find(|line| line.starts_with("Transformations:")).unwrap();
+                let counts: Vec<usize> = summary.split_whitespace().filter_map(|part| part.parse().ok()).collect();
+                let [enabled, skipped] = counts.as_slice() else {
+                    panic!("missing enabled/skipped pass counts: {summary}");
+                };
+                // The pipeline registry tests exact names/order; this UI checks the selected mode.
+                if args.contains(&"--optimize") {
+                    assert!(*enabled > 0 && *skipped == 0, "{summary}");
+                } else {
+                    assert!(*enabled == 0 && *skipped > 0, "{summary}");
+                }
                 assert!(!plot.redpiler.is_active());
             }
             plot.handle_redpiler_command(0, "analyze", &[]);

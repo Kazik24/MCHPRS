@@ -365,7 +365,7 @@ fn remaining_frozen_targets_report_their_first_parser_stage() {
         ("ADDER_11BITS.schem", FixturePrepStage::Admitted),
         ("AND_1.schem", FixturePrepStage::Admitted),
         ("AND_2.schem", FixturePrepStage::Admitted),
-        ("AND_3.schem", FixturePrepStage::Geometry),
+        ("AND_3.schem", FixturePrepStage::Admitted),
         ("BUD_InstantMemoryCellObserverUpdate.schem", FixturePrepStage::Admitted),
         ("BUD_InstantPistonUpdate.schem", FixturePrepStage::Admitted),
         ("BUD_NonInstantInputs.schem", FixturePrepStage::Admitted),

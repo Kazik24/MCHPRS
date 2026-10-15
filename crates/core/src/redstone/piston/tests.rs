@@ -1098,3 +1098,76 @@ fn malformed_moving_progress_is_rejected() {
         assert!(BlockEntity::from_nbt(&nbt.content).is_err());
     }
 }
+
+#[test]
+fn signs_keep_support_only_on_retracting_source_bases() {
+    let base = BlockPos::new(40, 30, 40);
+    let sign_pos = base.offset(BlockFace::Top);
+    let side_pos = base.offset(BlockFace::East);
+    let sign = Block::from_name("oak_sign").unwrap();
+    let mut wall_sign = Block::from_name("oak_wall_sign").unwrap();
+    wall_sign.set_properties([("facing", "east")].into_iter().collect());
+    let mut world = empty_world();
+    world.set_block(sign_pos, sign);
+    world.set_block(side_pos, wall_sign);
+    let piston = RedstonePiston {
+        facing: BlockFacing::South,
+        sticky: true,
+        extended: false,
+    };
+    world.set_block(base, Block::MovingPiston { moving: piston.into() });
+    for (source, extending, stored, valid) in [
+        (true, false, Block::Piston { piston }, true),
+        (false, false, Block::Piston { piston }, false),
+        (true, true, Block::Piston { piston }, false),
+        (true, false, Block::RedstoneBlock {}, false),
+    ] {
+        world.set_block_entity(
+            base,
+            BlockEntity::MovingPiston(MovingPistonEntity {
+                source,
+                extending,
+                block_state: stored.get_id(),
+                facing: BlockFace::South,
+                ..Default::default()
+            }),
+        );
+        assert_eq!(crate::interaction::is_valid_position(sign, &world, sign_pos), valid);
+        assert_eq!(crate::interaction::is_valid_position(wall_sign, &world, side_pos), valid);
+    }
+}
+
+#[test]
+fn signs_on_piston_bases_survive_repeated_extension_and_retraction() {
+    for sticky in [false, true] {
+        let mut world = empty_world();
+        let pos = base();
+        let top = pos.offset(BlockFace::Top);
+        let side = pos.offset(BlockFace::South);
+        let power = pos.offset(BlockFace::North);
+        let sign = Block::from_name("oak_sign").unwrap();
+        let mut wall_sign = Block::from_name("oak_wall_sign").unwrap();
+        wall_sign.set_properties([("facing", "south")].into_iter().collect());
+        world.set_block(
+            pos,
+            Block::Piston {
+                piston: piston(BlockFacing::East, sticky, false),
+            },
+        );
+        world.set_block(top, sign);
+        world.set_block(side, wall_sign);
+        for _ in 0..2 {
+            for source in [Block::RedstoneBlock {}, Block::Air] {
+                world.set_block(power, source);
+                crate::redstone::update(world.get_block(pos), &mut world, pos, None);
+                for _ in 0..80 {
+                    world.picotick_advance(1);
+                    assert_eq!(world.get_block(top), sign);
+                    assert_eq!(world.get_block(side), wall_sign);
+                }
+                assert!(matches!(world.get_block(pos), Block::Piston { piston }
+                    if piston.extended == matches!(source, Block::RedstoneBlock {})));
+            }
+        }
+    }
+}

@@ -311,14 +311,14 @@ fn pending_extension_projects_motions_from_logical_state_only() {
 
     let (_, piston) = graph_piston(&backend, fixture.base);
     let resource = backend.state.resources[0];
-    let event = backend.deferred_pistons[0];
+    let event = backend.future.deferred_pistons[0];
     eprintln!(
         "runtime: tick={} piston={piston:?} resource={resource:?} deferred={event:?}",
-        backend.clock.logical_tick
+        backend.future.clock.logical_tick
     );
     assert_eq!(piston.availability, PistonAvailability::HeadPending);
     assert!(!resource.enabled);
-    assert_eq!(event.due_tick, backend.clock.logical_tick + 2);
+    assert_eq!(event.due_tick, backend.future.clock.logical_tick + 2);
 
     backend.reset(&mut world);
     let projected = future(&world);

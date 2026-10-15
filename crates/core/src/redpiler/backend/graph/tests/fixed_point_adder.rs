@@ -169,9 +169,13 @@ fn fixed_point_reordered_adder_requests_change_the_sum_payload() {
         super::super::fixed_point::with_mode(true, || graph_step(&mut stable, step, toggle)).unwrap();
         super::super::fixed_point::with_mode(true, || graph_step(&mut reordered, step, toggle)).unwrap();
     }
-    println!("initial exact requests {:?}; fixed {:?}", exact.piston_requests, stable.piston_requests);
+    println!(
+        "initial exact requests {:?}; fixed {:?}",
+        exact.future.piston_requests, stable.future.piston_requests
+    );
     for (label, backend) in [("exact", &exact), ("fixed", &stable)] {
         let requests: Vec<_> = backend
+            .future
             .piston_requests
             .iter()
             .map(|request| {
@@ -189,7 +193,7 @@ fn fixed_point_reordered_adder_requests_change_the_sum_payload() {
     }
 
     // Counterfactual: change only the initial FIFO order, retaining fixed-point propagation.
-    reordered.piston_requests = exact.piston_requests.clone();
+    reordered.future.piston_requests = exact.future.piston_requests.clone();
     exact.observed_operations.clear();
     stable.observed_operations.clear();
     reordered.observed_operations.clear();

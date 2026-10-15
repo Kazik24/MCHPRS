@@ -10,15 +10,16 @@ An optimization must preserve the supported circuit's observable behavior and fu
 Read-only blocks and imported work
     -> required geometry, electrical, and callback preparation
     -> CompileGraph + EntryState
-    -> optional, ordered graph passes
+    -> ordered graph rewrites
+    -> immutable plan builders
     -> validated graph
     -> lowering to CircuitProgram + CircuitState + imported work
     -> GraphBackend execution
 ```
 
-`CompileGraph` is the general `CircuitDraft`, not the removed legacy electrical graph. It contains components, power queries, guarded contacts, shared resources, ordered callback routes, generalized dust, and initial state. Power availability and delivered updates are separate relationships.
+`CompileGraph` is the general `CircuitDraft`, not the removed legacy electrical graph. It contains components, power queries, guarded contacts, shared resources, ordered callback routes, generalized dust, and initial state. Its `ExecutionPlans` field contains derived tables and certificates. Rewrites own changes to the circuit; plan builders read the circuit and return typed plan data for the runner to publish. Power availability and delivered updates are separate relationships.
 
-[rich.rs](rich.rs) coordinates required preparation and lowering. [mod.rs](mod.rs) owns the transformation API and runner. [utils.rs](utils.rs) holds shared pass reporting and table-memory accounting, including preparation limits. [program_graph.rs](../program_graph.rs) defines the graph and structural validation; [graph.rs](../backend/graph.rs) executes lowered data. Runtime redstone executes on the graph without spatial World queries, physical Motion objects, or progress simulation. The independent interpreter remains the behavioral test oracle.
+[rich.rs](rich.rs) coordinates required preparation and lowering. [mod.rs](mod.rs) owns the rewrite/builder pipeline. [planning.rs](planning.rs) defines read-only builders and typed outputs. [execution_plans.rs](../program_graph/execution_plans.rs) owns all derived graph plans. [validation.rs](../program_graph/validation.rs) checks the draft; [lowering.rs](../program_graph/lowering.rs) turns it into a `CircuitProgram` and `CircuitState`. `CircuitProgram` owns compiled circuit tables and the lowered instant program. `CircuitState` owns component, piston, and resource values. `GraphBackend` owns the runtime `GraphFuture`: scheduler, pending work, piston requests, and clock. Runtime redstone executes on the graph without spatial World queries, physical Motion objects, or progress simulation. The independent interpreter remains the behavioral test oracle.
 
 Execution and inspection use shared preparation and pass infrastructure. Preserve the graph actually produced by the selected pipeline in [JSON export](../analysis/export_json.rs); never export an earlier draft while executing a rewritten one.
 
@@ -26,17 +27,23 @@ Execution and inspection use shared preparation and pass infrastructure. Preserv
 
 Instant region boundaries and the private-cell instruction proxy are documented in
 [INSTANT_REGIONS_AND_PROXIES.md](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_REGIONS_AND_PROXIES.md).
-At O3, `identify_instant_regions` follows built-in reset compilation and
-`compile_instant_proxies` follows boundary identification. Shared regions remain
-general execution. Passes invalidate these certificates by default; opt into
-preservation only if ownership, original route rows, and reset witnesses remain valid.
+At O3, rewrites run before plan builders. `compile-instant-resets` derives reset
+certificates after the reset-related rewrites; `identify-instant-regions` then
+builds boundaries, and `compile-instant-proxies` builds their execution proxies.
+Shared regions remain general execution. Every enabled rewrite clears derived
+plans before it changes the circuit, so plan builders need no preservation flags.
 
 At `-O4` and above, `compile_instant_machine` follows O3 proxy compilation and requires `--stable-instant-inputs`.
-It derives a compact phase/expression program for bounded closed selections. Full snapshots
-remain compile-time proof data; hot ticks evaluate output and effect roots without state-table
-lookup or private propagation. Entry mismatches keep general execution; active control changes
-reconstruct exact private state and future work before ordinary callbacks. The initial family
-covers the whole one-bit adder; larger regions remain ordered proxies. Read
+The O4 pipeline also runs `compile_symbolic_kernels`, which derives and validates an immutable
+symbolic kernel and lowers it into `CircuitProgram`. A production-pipeline test confirms this for
+ADDER1BIT and ADDER11BIT. Runtime admission freezes typed inputs before the falling edge and checks
+the complete stationary entry relation and empty future. Compiled activation and later
+prefix/period phases apply prebound electrical writes and ordered effects. Private wires,
+actor/resource revisions and future queues
+are reconstructed at projection or input interruption. No symbolic compilation or mask enumeration
+runs at runtime. The old finite machine remains a migration fallback; its three-input limit does
+not constrain the symbolic path. Export migration, removal of the old
+enumerator and release performance validation are still pending. Read
 [COMPACT_INSTANT_KERNEL.md](../../../../../docs/notes/redpiler-pistons-v4/COMPACT_INSTANT_KERNEL.md)
 before extending admission, normalization, or the bounded derivation budget. The superseded
 snapshot prototype is recorded in
@@ -84,40 +91,45 @@ Use descriptive function names such as `find_candidates`, `check_boundary`, `pro
 
 ## Use the existing pass API
 
-| API                         | Responsibility                                                                        |
-| --------------------------- | ------------------------------------------------------------------------------------- |
-| `GraphPass::name`           | A stable, nonempty name, unique within the supplied pipeline.                         |
-| `GraphPass::validate_input` | Check required whole-input invariants before mutation; an error stops compilation.    |
-| `GraphPass::run`            | Discover, prove, and rewrite eligible candidates using the provided context.          |
-| `PassContext::monitor`      | Cancellation and progress reporting.                                                  |
-| `PassContext::options`      | Compiler settings; the supplied pipeline determines which passes run.                 |
-| `PassContext::entry`        | Read-only entry clock and pending work, which must participate in eligibility checks. |
-| `PassEntry::enabled`        | Enable or skip an individual entry without changing caller-supplied order.            |
-| `PassPipeline`              | The exact requested pass sequence, including parameterized implementations.           |
+| API | Responsibility |
+| --- | --- |
+| `GraphPass::run` | Mutate the circuit graph. The runner clears derived plans before an enabled rewrite. |
+| `GraphPass::validate_input` | Check whole-input invariants before mutation; an error stops compilation. |
+| `PlanBuilder::build` | Read the graph and return one typed `PlanOutput`; it cannot mutate the circuit. |
+| `Pass::Rewrite` / `Pass::Build` | Select the access and publication rules for a pipeline entry. |
+| `PassContext` | Provide cancellation/progress, compiler options, and read-only entry time and pending work. |
+| `PassEntry::enabled` | Enable or skip an entry without changing caller-supplied order. |
+| `PassPipeline` | Preserve the exact requested sequence, including parameterized implementations. |
 
-The runner checks cancellation, validates the graph before execution and after each enabled pass, and records transformation statistics. It rejects empty or duplicate names, precondition failures, pass errors, and malformed output. Disabled entries do not validate or run that pass.
+The runner checks cancellation, validates the graph before execution and after each enabled entry, and records transformation statistics. A builder's output is published only after it succeeds and cancellation is checked. The runner rejects empty or duplicate names, precondition failures, builder/rewrite errors, and malformed output. Disabled entries do not validate or run and leave plans untouched.
 
 **A candidate that is not optimizable is not an invalid circuit.** Leave it unchanged and continue. Use errors for actual violated pass contracts or failed execution, not ordinary lack of an eligible motif. A proof timeout, excessive state space, unknown dependency, or unsupported optimization case retains general execution.
 
-The API and custom compiler entry point remain crate-private. `O0` skips optimization passes. The default transformation order is:
+The API and custom compiler entry point remain crate-private. `O0` skips optimization entries. The default order is grouped by ownership: first all graph rewrites, then all plan builders. Entries below the selected optimization level remain disabled in their original positions.
 
-| Tier | Pass | Work removed |
-| --- | --- | --- |
-| O1 | `guard-and-update-reduction` | Proven constant conditions and ineffective contributions. |
-| O1 | `prune-inert-callbacks` | Delivery rows with neither an explicit receiver nor an ordinary dispatcher fallback. |
-| O1 | `prune-unhandled-updates` | Live ordinary notifications whose fixed handler is an identity. |
-| O1 | `index-turbo-callbacks` | Repeated searches through unrelated callback rows. |
-| O1 | `contract-static-dust-paths` | General power queries on certified private dust paths. |
-| O2 | `simplify-state-guards` | Redundant predicates on the same state field. |
-| O2 | `specialize-wire-queries` | Repeated property/strength queries through compiled wire input expressions; whole Turbo walks whose distinct neighbors can never contain a wire. |
-| O2 | `compile-wire-hops` | Per-walk hash indexing, full block-view construction during capture, and repeated neighbor-slot mapping. |
-| O3 | `simplify-instant-resets` | Two conductor traversals in a private reset mechanism and general Turbo execution of its certified two-wire output. |
-| O3 | `specialize-instant-pistons` | Exact fixed-conductor power reads in observer-reset mechanisms, including shared payloads and shared reset drivers. |
-| O3 | `compile-builtin-resets` | Ordinary reset-observer execution and empty output-route dispatch, replaced by shared built-in reset clocks. |
+| Phase | Tier | Entry | Work |
+| --- | --- | --- | --- |
+| Rewrite | O1 | `guard-and-update-reduction` | Proven constant conditions and ineffective contributions. |
+| Rewrite | O1 | `prune-inert-callbacks` | Delivery rows with neither an explicit receiver nor an ordinary dispatcher fallback. |
+| Rewrite | O1 | `prune-unhandled-updates` | Live ordinary notifications whose fixed handler is an identity. |
+| Rewrite | O2 | `simplify-state-guards` | Redundant predicates on the same state field. |
+| Rewrite | O3 | `simplify-instant-resets` | Remove the two conductor traversals in a recognized private reset mechanism. |
+| Rewrite | O3 | `specialize-instant-pistons` | Expand exact fixed-conductor power reads in observer-reset mechanisms. |
+| Rewrite | O3 | `compile-builtin-resets` | Replace ordinary reset-observer execution with built-in reset clocks. |
+| Build | O1 | `index-turbo-callbacks` | Repeated searches through unrelated callback rows. |
+| Build | O1 | `contract-static-dust-paths` | General power queries on certified private dust paths. |
+| Build | O2 | `specialize-wire-queries` | Repeated property/strength queries through compiled wire input expressions. |
+| Build | O2 | `compile-wire-hops` | Per-walk hash indexing, full block-view construction during capture, and repeated neighbor-slot mapping. |
+| Build | O3 | `compile-instant-resets` | General Turbo execution of the certified two-wire reset output. |
+| Build | O3 | `identify-instant-regions` | Instant region ownership boundaries. |
+| Build | O3 | `compile-instant-proxies` | Boundary execution proxies. |
+| Build | O4 | `compile-symbolic-actors` | Compile single-actor request, acceptance and reset conditions; shared Graph primitives still apply their effects. |
+| Build | O4 | `compile-instant-machine` | Compact execution for a bounded closed selection. |
+| Build | O4 | `compile-symbolic-kernels` | AOT prefix/period programs over typed inputs, without enumerating their values. |
 
-The unoptimized pipeline still runs the complete general graph. Keep pass order explicit; do not silently reorder passes or turn a custom pipeline into the default. When adding a pass, add it to the corresponding optimization tier; do not introduce a dedicated setting for the pass.
+The unoptimized pipeline still runs the complete general graph. Keep both phases and their order explicit; do not silently reorder entries or turn a custom pipeline into the default. When adding an entry, place it in the correct phase and optimization tier; do not introduce a dedicated setting for it.
 
-Derived dust paths, Turbo offsets, wire-query facts and instant-reset plans are invalidated before enabled passes by default. Override a `preserves_*` method only with an argument that the affected references and assumptions remain valid. Disabled entries preserve metadata. Wire-query facts certify geometry, block class, possible wire inputs, and absence of neighboring wires, never strength or contact selection; their shared inference rule lives in `program_graph/wire_query_facts.rs` so graph validation can independently reject stale certificates. An isolated-wire certificate preserves the complete captured callback schedule, including duplicate deliveries and nested execution; it does not permit dropping those callbacks.
+The circuit draft owns semantic graph data. `ExecutionPlans` owns Turbo indices, dust paths, wire facts/hops, instant-reset certificates, regions, proxies, and the optional machine. A graph rewrite clears these derived plans; a builder reads the unchanged graph and returns the plan type it owns. The runner publishes the result only after successful construction. Wire-query facts certify geometry, block class, possible wire inputs, and absence of neighboring wires, never strength or contact selection; their shared inference rule lives in `program_graph/wire_query_facts.rs` so graph validation can independently reject stale certificates. An isolated-wire certificate preserves the complete captured callback schedule, including duplicate deliveries and nested execution; it does not permit dropping those callbacks.
 
 The private instant-output pass recognizes a closed graph pattern, not a schematic name. Its two-wire transfer removes internal wire callbacks, discovery, maps and queues while retaining every intermediate write and outside callback. The actor, resource, observer and global scheduler remain their existing state owners. Recognition deliberately declines shared resources, extra sources/readers, unsupported orientations and uncertain routes. O2 is the pass-off baseline and O3 enables this first family; recognition and execution checks live in [simplify_instant_resets.rs](simplify_instant_resets.rs) and [graph_instant_reset_tests.rs](../backend/graph/tests/instant_reset.rs).
 
@@ -148,7 +160,7 @@ This lowering avoids ordinary observer handling, a duplicate pending lookup, emp
 
 The optimization preserves heading, layer queues, admission-time guards, captured versus live reads, intermediate writes, callbacks and scheduler work. It does not replace an arbitrary network with its settled voltages or collapse a whole wire chain into a single observable event. Those stronger reductions still need a region-boundary proof. See [COMPILED_WIRE_HOPS.md](../../../../../docs/notes/redpiler-pistons-v4/COMPILED_WIRE_HOPS.md).
 
-The `preserves_wire_hops` hook defaults to false. Later passes retain root bindings only if component-site ownership remains valid; the three O3 instant/reset rewrites preserve these roots explicitly. Validation rejects dangling, ambiguous and wrong-owner roots. JSON adds optional `hop_root` references; older exports remain valid.
+Compiled hop roots are derived from existing component-site ownership and canonical wire neighbors. Validation rejects dangling, ambiguous and wrong-owner roots. JSON adds optional `hop_root` references; older exports remain valid.
 
 ## Behavioral contract
 
@@ -276,3 +288,8 @@ This is a first exact lowering of connecting dust calculations, not an atomic in
 ### Pure optimization inside O4 kernel lowering
 
 `mchprs_redpiler_opt` provides pure Boolean rewriting and known-input specialization. O4 lowering uses it to compile the admitted frozen-input kernel into unconditional ordered effect lists; it is not a new graph transformation pass. Keep graph ownership, timing, callback admission and state reconstruction in Redpiler. Pure rewrites must preserve ordered root occurrences and may not erase a dirty touch merely because its value is unchanged. The source kernel remains the validation/export definition; specialized lists are derived runtime data, reported separately in lowered storage estimates. See `COMPACT_INSTANT_KERNEL.md` for the current bounds and measured tradeoff.
+
+
+### O4 symbolic actor event builder
+
+`compile_symbolic_actors.rs` emits one actor/reset region's event routines before the finite prototype. It uses graph-bound power reads and the pure optimizer; it does not enumerate input combinations. Each event evaluates only its reachable reads, then applies the existing ordered state/resource/scheduler primitives. This is event lowering, not callback deletion or whole-region contraction. Plans are regenerated for validation and discarded after any upstream rebuild. JSON `symbolic_actors` and lowered table statistics expose the derived program. See `COMPACT_INSTANT_KERNEL.md` for the supported family, proof argument and remaining composition work.

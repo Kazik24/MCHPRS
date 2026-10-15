@@ -1,14 +1,20 @@
 //! Typed construction and immutable program storage for the general graph.
 
 mod execution_plans;
+mod instant_entry;
 mod instant_execution;
 mod lowering;
+mod symbolic_actor;
+mod symbolic_kernel;
 mod validation;
 pub(crate) use execution_plans::*;
 mod instant_machine;
 mod instant_regions;
+pub(crate) use instant_entry::*;
 pub(crate) use instant_execution::*;
 pub(crate) use instant_machine::*;
+pub(crate) use symbolic_actor::*;
+pub(crate) use symbolic_kernel::*;
 mod wire_query_facts;
 pub(crate) use instant_regions::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
@@ -595,6 +601,10 @@ pub(crate) enum GraphBuildError {
         /// This identifies tick column zero or the corresponding lever-toggle column.
         action: usize,
     },
+    InvalidSymbolicKernel {
+        /// This identifies the AOT kernel whose root layout or graph binding is invalid.
+        index: usize,
+    },
     PreparationMemoryLimit {
         stage: &'static str,
         estimated_bytes: usize,
@@ -730,6 +740,7 @@ impl std::fmt::Display for GraphBuildError {
             Self::InvalidInstantMachine { state, action } => {
                 write!(f, "instant machine state {state}, action {action} has an invalid transition certificate")
             }
+            Self::InvalidSymbolicKernel { index } => write!(f, "symbolic instant kernel {index} has an invalid root layout or binding"),
             Self::InvalidInstantReset { wire } => write!(f, "wire {wire} has a stale or invalid instant reset certificate"),
             Self::InvalidNodeState { node } => {
                 write!(f, "node {} has state that does not match its kind", node.index())
@@ -793,10 +804,16 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Lowered instant instructions and bindings; compile-time proofs are not retained.
 struct InstantProgram {
+    /// These symbolic control programs share original actor/reset state and ordered effect primitives.
+    symbolic_actors: Box<[Option<std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>>]>,
+    /// This binds each compiled reset receiver directly to its actor program.
+    symbolic_resets: Box<[Option<PistonId>]>,
     /// These lowered effects contain only operations active for each held-input mask.
     execution: Option<std::sync::Arc<KernelExecution>>,
     /// This owns reduced phase programs; unsupported states retain general Graph execution.
     kernel: Option<std::sync::Arc<InstantKernel>>,
+    /// These AOT programs derive their phase values from the shared pure Boolean-plan evaluator.
+    symbolic_kernels: Box<[std::sync::Arc<SymbolicKernel>]>,
     /// These private-cell programs reuse the existing actor, resource, and clock state.
     proxies: Box<[InstantProxy]>,
     /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
@@ -847,11 +864,29 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn symbolic_actor_programs(&self) -> impl Iterator<Item = &crate::redpiler::program_graph::SymbolicActor> {
+        self.instant.symbolic_actors.iter().filter_map(|actor| actor.as_deref())
+    }
+    pub(crate) fn symbolic_actor(&self, actor: PistonId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>> {
+        self.instant.symbolic_actors.get(actor.index()).and_then(Option::as_ref)
+    }
+
+    pub(crate) fn symbolic_reset(&self, node: NodeId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>> {
+        self.instant
+            .symbolic_resets
+            .get(node.index())
+            .copied()
+            .flatten()
+            .and_then(|actor| self.symbolic_actor(actor))
+    }
     pub(crate) fn instant_execution(&self) -> Option<&std::sync::Arc<KernelExecution>> {
         self.instant.execution.as_ref()
     }
     pub(crate) fn instant_kernel(&self) -> Option<&std::sync::Arc<InstantKernel>> {
         self.instant.kernel.as_ref()
+    }
+    pub(crate) fn symbolic_kernels(&self) -> &[std::sync::Arc<SymbolicKernel>] {
+        &self.instant.symbolic_kernels
     }
     pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {
         self.instant.private_resource_owners[resource.index()]

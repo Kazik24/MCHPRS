@@ -703,6 +703,10 @@ fn validate_support<W: World>(
                     support_state: probe.block(actor, support)?.get_id(),
                 }));
             }
+            // Signs remain attached to a base in both poses and during retraction.
+            if block.is_sign() && actors.iter().any(|owner| owner.position == changed) {
+                continue;
+            }
             // Like interaction::supports_dust, a retracting downward base keeps
             // its upper face; its moving-base view only arises from retraction.
             let keeps_dust = |id: PistonId, support: Block| {

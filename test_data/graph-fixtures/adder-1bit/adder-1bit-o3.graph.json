@@ -46765,27 +46765,20 @@
         "power_inputs": [
           "power_link:3",
           "power_link:114",
-          "power_link:116",
           "power_link:118",
           "power_link:125",
-          "power_link:126",
           "power_link:127",
           "power_link:128",
           "power_link:129",
-          "power_link:132",
           "power_link:134",
           "power_link:142",
-          "power_link:144",
-          "power_link:158",
           "power_link:159",
           "power_link:161",
-          "power_link:162",
           "power_link:175",
           "power_link:176",
           "power_link:177",
           "power_link:181",
           "power_link:182",
-          "power_link:183",
           "power_link:184",
           "power_link:185"
         ],
@@ -47520,23 +47513,17 @@
           "site:334"
         ],
         "power_inputs": [
-          "power_link:119",
           "power_link:120",
-          "power_link:122",
           "power_link:124",
           "power_link:139",
-          "power_link:140",
-          "power_link:153",
           "power_link:154",
           "power_link:156",
-          "power_link:157",
           "power_link:163",
           "power_link:164",
           "power_link:165",
           "power_link:169",
           "power_link:170",
           "power_link:171",
-          "power_link:172",
           "power_link:173",
           "power_link:174"
         ],
@@ -48172,8 +48159,7 @@
           "site:300"
         ],
         "power_inputs": [
-          "power_link:135",
-          "power_link:137"
+          "power_link:135"
         ],
         "power_readers": [
           "power_link:29",
@@ -48250,7 +48236,6 @@
         "power_inputs": [
           "power_link:146",
           "power_link:148",
-          "power_link:149",
           "power_link:152"
         ],
         "power_readers": [
@@ -48366,7 +48351,6 @@
         "power_inputs": [
           "power_link:186",
           "power_link:188",
-          "power_link:189",
           "power_link:192"
         ],
         "power_readers": [
@@ -48502,8 +48486,7 @@
         ],
         "power_inputs": [
           "power_link:193",
-          "power_link:195",
-          "power_link:197"
+          "power_link:195"
         ],
         "power_readers": [
           "power_link:58",

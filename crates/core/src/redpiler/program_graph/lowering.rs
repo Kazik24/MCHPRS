@@ -5,6 +5,14 @@ impl CircuitDraft {
     pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         self.validate()?;
 
+        let enabled = !self.plans.instant.symbolic_actors.is_empty();
+        let mut symbolic_actors = vec![None; if enabled { self.pistons.len() } else { 0 }];
+        let mut symbolic_resets = vec![None; if enabled { self.nodes.len() } else { 0 }];
+        for actor in &self.plans.instant.symbolic_actors {
+            symbolic_actors[actor.actor.index()] = Some(std::sync::Arc::new(actor.clone()));
+            symbolic_resets[actor.reset.index()] = Some(actor.actor);
+        }
+
         let mut instant_route_by_route = vec![None; self.routes.len()];
         let mut private_resource_owners = vec![None; self.resources.len()];
         for (proxy_index, proxy) in self.plans.instant.proxies.iter().enumerate() {
@@ -165,8 +173,11 @@ impl CircuitDraft {
         };
         let program = CircuitProgram {
             instant: InstantProgram {
+                symbolic_actors: symbolic_actors.into_boxed_slice(),
+                symbolic_resets: symbolic_resets.into_boxed_slice(),
                 execution: instant_execution,
                 kernel: self.plans.instant.machine.map(|machine| std::sync::Arc::new(machine.kernel.clone())),
+                symbolic_kernels: self.plans.instant.symbolic_kernels.into_boxed_slice(),
                 proxies: self.plans.instant.proxies.into_boxed_slice(),
                 private_resource_owners: private_resource_owners.into_boxed_slice(),
                 route_by_route: instant_route_by_route.into_boxed_slice(),

@@ -22,7 +22,7 @@ fn component_bits(state: &ComponentState) -> Option<u16> {
     })
 }
 
-fn write_component(state: &mut ComponentState, value: u16) -> bool {
+pub(super) fn write_component(state: &mut ComponentState, value: u16) -> bool {
     match state {
         ComponentState::Electrical(s) if value < 128 => {
             s.output_strength = (value & 15) as u8;
@@ -58,7 +58,7 @@ fn piston_bits(state: &PistonState) -> u8 {
     u8::from(state.extended) | (u8::from(state.head_present) << 1) | ((state.availability as u8) << 2)
 }
 
-fn write_piston(state: &mut PistonState, value: u8) -> bool {
+pub(super) fn write_piston(state: &mut PistonState, value: u8) -> bool {
     state.availability = match value >> 2 {
         0 => PistonAvailability::Ready,
         1 => PistonAvailability::HeadPending,
@@ -75,14 +75,19 @@ fn write_piston(state: &mut PistonState, value: u8) -> bool {
 impl GraphBackend {
     /// Reuse the lookup buffer; equality includes all ordered future obligations.
     pub(crate) fn capture_machine_state(&self, out: &mut MachineState) -> bool {
-        if self.kernel_cursor.is_some() {
+        self.capture_graph_boundary(out) && out.ticks.len() <= 128 && out.requests.len() <= 64 && out.deferred.len() <= 128
+    }
+
+    /// Capture a complete boundary without the retired finite compiler's queue-size limits.
+    pub(super) fn capture_graph_boundary(&self, out: &mut MachineState) -> bool {
+        if self.has_active_kernel() {
             let Some(state) = self.current_kernel_state() else {
                 return false;
             };
             *out = state;
             return true;
         }
-        if self.clock.phase != GraphPhase::BetweenTicks || self.clock.scheduled_advanced || self.failure.is_some() {
+        if self.future.clock.phase != GraphPhase::BetweenTicks || self.future.clock.scheduled_advanced || self.failure.is_some() {
             return false;
         }
         out.components.clear();
@@ -97,7 +102,7 @@ impl GraphBackend {
         out.resources.clear();
         out.resources.extend(self.state.resources.iter().map(|s| (s.at, s.enabled)));
         out.ticks.clear();
-        for (tick, delay, priority) in self.scheduler.iter() {
+        for (tick, delay, priority) in self.future.scheduler.iter() {
             let Some(node) = tick.node else {
                 return false;
             };
@@ -116,16 +121,16 @@ impl GraphBackend {
             });
         }
         // Generated work is unique; imported duplicates or inconsistent membership stay general.
-        if self.pending.len() != out.ticks.len()
-            || self.pending.values().any(|&count| count != 1)
+        if self.future.pending.len() != out.ticks.len()
+            || self.future.pending.values().any(|&count| count != 1)
             || out.ticks.iter().any(|tick| !self.is_pending(tick.node))
         {
             return false;
         }
         out.requests.clear();
-        out.requests.extend(self.piston_requests.iter().map(|r| (r.piston, r.action)));
+        out.requests.extend(self.future.piston_requests.iter().map(|r| (r.piston, r.action)));
         out.deferred.clear();
-        out.deferred.extend(self.deferred_pistons.iter().map(|event| MachineDeferred {
+        out.deferred.extend(self.future.deferred_pistons.iter().map(|event| MachineDeferred {
             piston: event.piston,
             revision: event.revision.wrapping_sub(self.state.pistons[event.piston.index()].revision),
             resource: event.resource.map(|r| {
@@ -135,15 +140,15 @@ impl GraphBackend {
                     r.contact,
                 )
             }),
-            delay: event.due_tick.wrapping_sub(self.clock.logical_tick),
+            delay: event.due_tick.wrapping_sub(self.future.clock.logical_tick),
             extending: event.extending,
         }));
-        out.ticks.len() <= 128 && out.requests.len() <= 64 && out.deferred.len() <= 128
+        true
     }
 
-    fn restore_machine_future(&mut self, state: &MachineState) {
-        self.scheduler.clear();
-        self.pending.clear();
+    pub(super) fn restore_machine_future(&mut self, state: &MachineState) {
+        self.future.scheduler.clear();
+        self.future.pending.clear();
         for entry in &state.ticks {
             let registry_type = self.registry_type(entry.node);
             let tick = ScheduledNodeTick {
@@ -153,29 +158,33 @@ impl GraphBackend {
                 registry_type,
                 current_registry_type: registry_type,
             };
-            self.scheduler.schedule_half_tick(tick, entry.delay as usize, entry.priority);
-            *self.pending.entry(tick.into()).or_default() += 1;
+            self.future.scheduler.schedule_half_tick(tick, entry.delay as usize, entry.priority);
+            *self.future.pending.entry(tick.into()).or_default() += 1;
         }
-        self.piston_requests.clear();
-        self.piston_requests
+        self.future.piston_requests.clear();
+        self.future
+            .piston_requests
             .extend(state.requests.iter().map(|&(piston, action)| PistonRequest { piston, action }));
-        self.deferred_pistons.clear();
-        self.deferred_pistons.extend(state.deferred.iter().map(|event| DeferredPistonEvent {
-            piston: event.piston,
-            revision: self.state.pistons[event.piston.index()].revision.wrapping_add(event.revision),
-            resource: event.resource.map(|(resource, revision, contact)| pistons::DeferredResourceEvent {
-                resource,
-                revision: self.state.resources[resource.index()].revision.wrapping_add(revision),
-                contact,
-            }),
-            due_tick: self.clock.logical_tick.wrapping_add(event.delay),
-            extending: event.extending,
-        }));
+        self.future.deferred_pistons.clear();
+        self.future
+            .deferred_pistons
+            .extend(state.deferred.iter().map(|event| DeferredPistonEvent {
+                piston: event.piston,
+                revision: self.state.pistons[event.piston.index()].revision.wrapping_add(event.revision),
+                resource: event.resource.map(|(resource, revision, contact)| pistons::DeferredResourceEvent {
+                    resource,
+                    revision: self.state.resources[resource.index()].revision.wrapping_add(revision),
+                    contact,
+                }),
+                due_tick: self.future.clock.logical_tick.wrapping_add(event.delay),
+                extending: event.extending,
+            }));
     }
 
     /// Only compilation/validation uses this: runtime transitions retain live revision origins.
     pub(crate) fn restore_machine_state(&mut self, state: &MachineState) -> Result<(), &'static str> {
-        self.kernel_cursor = None;
+        self.future.kernel_cursor = None;
+        self.future.symbolic_cursor = None;
         if state.components.len() != self.state.components.len()
             || state.pistons.len() != self.state.pistons.len()
             || state.resources.len() != self.state.resources.len()
@@ -235,7 +244,7 @@ impl GraphBackend {
                 }
             }
         }
-        self.clock = Clock {
+        self.future.clock = Clock {
             logical_tick: MACHINE_EPOCH,
             phase: GraphPhase::BetweenTicks,
             scheduled_advanced: false,
@@ -331,10 +340,13 @@ impl GraphBackend {
     }
 
     pub(crate) fn materialize_kernel_state(&mut self) -> bool {
+        if self.future.symbolic_cursor.is_some() {
+            return self.materialize_symbolic_kernel();
+        }
         let Some(kernel) = self.program.instant_kernel().cloned() else {
             return false;
         };
-        let Some(cursor) = self.kernel_cursor.clone() else {
+        let Some(cursor) = self.future.kernel_cursor.clone() else {
             return true;
         };
         let Some(state) = self.current_kernel_state() else {
@@ -375,7 +387,7 @@ impl GraphBackend {
         let Some(kernel) = self.program.instant_kernel().cloned() else {
             return;
         };
-        if self.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64
+        if self.future.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64
             || kernel.period == 0
             || usize::from(kernel.prefix).checked_add(usize::from(kernel.period)) != Some(kernel.phases.len())
         {
@@ -403,7 +415,7 @@ impl GraphBackend {
         if actual != expected {
             return;
         }
-        self.kernel_cursor = Some(KernelCursor {
+        self.future.kernel_cursor = Some(KernelCursor {
             mask,
             phase: 0,
             cycles: 0,
@@ -413,12 +425,15 @@ impl GraphBackend {
     }
 
     pub(super) fn try_kernel_tick(&mut self) -> bool {
-        let Some((mask, phase)) = self.kernel_cursor.as_ref().map(|cursor| (cursor.mask, cursor.phase)) else {
+        if self.future.symbolic_cursor.is_some() {
+            return self.try_symbolic_kernel_tick();
+        }
+        let Some((mask, phase)) = self.future.kernel_cursor.as_ref().map(|cursor| (cursor.mask, cursor.phase)) else {
             return false;
         };
-        if self.clock.phase != GraphPhase::BetweenTicks
-            || self.clock.scheduled_advanced
-            || self.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64
+        if self.future.clock.phase != GraphPhase::BetweenTicks
+            || self.future.clock.scheduled_advanced
+            || self.future.clock.logical_tick > u64::MAX - SCHEDULER_BUCKETS as u64
         {
             self.leave_kernel_before_general_execution();
             return false;
@@ -431,7 +446,7 @@ impl GraphBackend {
             return false;
         };
 
-        graph_trace!(self.clock.logical_tick, self.clock.phase, "instant kernel phase={phase}");
+        graph_trace!(self.future.clock.logical_tick, self.future.clock.phase, "instant kernel phase={phase}");
         for &(node, value) in &frame.writes {
             assert!(
                 write_component(&mut self.state.components[node.index()], value),
@@ -444,12 +459,12 @@ impl GraphBackend {
         for &(piston, action, extended) in &frame.effects {
             self.accepted(PistonRequest { piston, action }, extended);
         }
-        self.clock.logical_tick += 1;
+        self.future.clock.logical_tick += 1;
         self.counts.ticks += 1;
         self.counts.scheduled_ticks += frame.scheduled;
         self.counts.deferred_publications += frame.published;
         self.counts.instant_transitions += 1;
-        let cursor = self.kernel_cursor.as_mut().expect("active kernel cursor remains installed");
+        let cursor = self.future.kernel_cursor.as_mut().expect("active kernel cursor remains installed");
         if phase + 1 == execution.phase_count {
             cursor.phase = execution.prefix;
             cursor.cycles = cursor.cycles.wrapping_add(1);
@@ -464,12 +479,15 @@ impl GraphBackend {
             self.materialize_kernel_state(),
             "validated kernel state must materialize before general Graph execution"
         );
-        self.kernel_cursor = None;
+        self.future.kernel_cursor = None;
     }
 
     pub(super) fn current_kernel_state(&self) -> Option<MachineState> {
+        if self.future.symbolic_cursor.is_some() {
+            return self.current_symbolic_boundary();
+        }
         let kernel = self.program.instant_kernel()?;
-        let cursor = self.kernel_cursor.as_ref()?;
+        let cursor = self.future.kernel_cursor.as_ref()?;
         let state = if cursor.phase == 0 && cursor.cycles == 0 {
             &kernel.entry
         } else {
@@ -481,7 +499,10 @@ impl GraphBackend {
 
     #[cfg(test)]
     pub(crate) fn semantic_revisions(&self) -> (Vec<u64>, Vec<u64>) {
-        let Some(cursor) = self.kernel_cursor.as_ref() else {
+        if let Some(revisions) = self.current_symbolic_revisions() {
+            return revisions;
+        }
+        let Some(cursor) = self.future.kernel_cursor.as_ref() else {
             return (
                 self.state.pistons.iter().map(|state| state.revision).collect(),
                 self.state.resources.iter().map(|state| state.revision).collect(),

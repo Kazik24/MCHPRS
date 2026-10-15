@@ -56,7 +56,7 @@ fn assert_same_execution(general: &GraphBackend, isolated: &GraphBackend) {
     assert_eq!(isolated.callback_order, general.callback_order);
     assert_eq!(isolated.observed_operations, general.observed_operations);
     assert_eq!(isolated.scheduled_ticks(), general.scheduled_ticks());
-    assert_eq!(isolated.pending, general.pending);
+    assert_eq!(isolated.future.pending, general.future.pending);
     let sounds = |backend: &GraphBackend| {
         backend
             .effects

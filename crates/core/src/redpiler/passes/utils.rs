@@ -216,6 +216,13 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
         .sum();
     let tables = vec![
+        table::<crate::redpiler::program_graph::SymbolicActor>(
+            "lowering input",
+            "symbolic actor events",
+            graph.plans.instant.symbolic_actors.len(),
+            graph.plans.instant.symbolic_actors.capacity(),
+            graph.plans.instant.symbolic_actors.iter().map(|actor| actor.estimated_heap_bytes()).sum(),
+        ),
         table::<crate::redpiler::program_graph::InstantMachine>(
             "lowering input",
             "instant proof + compact kernel",
@@ -357,6 +364,19 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
+        table::<crate::redpiler::program_graph::SymbolicActor>(
+            "lowering",
+            "symbolic actor events",
+            program.symbolic_actor_programs().count(),
+            program.symbolic_actor_programs().count(),
+            program.symbolic_actor_programs().map(|actor| actor.estimated_heap_bytes()).sum::<usize>()
+                + if program.symbolic_actor_programs().next().is_some() {
+                    program.pistons().len() * std::mem::size_of::<Option<std::sync::Arc<crate::redpiler::program_graph::SymbolicActor>>>()
+                        + program.nodes().len() * std::mem::size_of::<Option<crate::redpiler::program_graph::PistonId>>()
+                } else {
+                    0
+                },
+        ),
         table::<crate::redpiler::program_graph::KernelExecution>(
             "lowering",
             "instant active effects",

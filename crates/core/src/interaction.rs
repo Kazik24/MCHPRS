@@ -526,6 +526,18 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
         return supports_dust(world, pos.offset(BlockFace::Bottom));
     }
     if let Some((support, face)) = attachment_support(block, pos) {
+        if block.is_sign() {
+            // Signs stay attached to the base, including its temporary retraction state.
+            let support_block = world.get_block(support);
+            if matches!(support_block, Block::Piston { .. })
+                || matches!(support_block, Block::MovingPiston { .. })
+                    && matches!(world.get_block_entity(support), Some(BlockEntity::MovingPiston(entity))
+                        if entity.source && !entity.extending
+                            && matches!(Block::from_id(entity.block_state), Block::Piston { .. }))
+            {
+                return true;
+            }
+        }
         return supports_attachment(world.get_block(support), face);
     }
     match block {

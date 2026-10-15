@@ -16,6 +16,18 @@ mod kernel_projection_tests;
 mod reset_elision_tests;
 #[path = "stable_region.rs"]
 mod stable_region_tests;
+#[path = "symbolic_cycle.rs"]
+mod symbolic_cycle_tests;
+#[path = "symbolic_entry.rs"]
+mod symbolic_entry_tests;
+#[path = "symbolic_execution.rs"]
+mod symbolic_execution_tests;
+#[path = "symbolic_kernel.rs"]
+mod symbolic_kernel_tests;
+#[path = "symbolic_observation.rs"]
+mod symbolic_observation_tests;
+#[path = "symbolic_semantics.rs"]
+mod symbolic_semantics_tests;
 use super::fuzz_tests::{Operation, graph_operations_since, native_operations};
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};

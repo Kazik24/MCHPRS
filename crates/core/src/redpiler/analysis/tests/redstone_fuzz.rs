@@ -381,29 +381,11 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                     assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));
                     let statistics = compiler.stats().unwrap();
                     let transformations = &statistics.graph.transformations;
-                    let enabled_transformations = transformations.iter().filter(|pass| pass.enabled).collect::<Vec<_>>();
-                    assert_eq!(enabled_transformations.len(), if optimize { 14 } else { 0 });
-                    if optimize {
-                        assert_eq!(
-                            enabled_transformations.iter().map(|pass| pass.name).collect::<Vec<_>>(),
-                            [
-                                "guard-and-update-reduction",
-                                "prune-inert-callbacks",
-                                "prune-unhandled-updates",
-                                "index-turbo-callbacks",
-                                "contract-static-dust-paths",
-                                "simplify-state-guards",
-                                "specialize-wire-queries",
-                                "compile-wire-hops",
-                                "simplify-instant-resets",
-                                "specialize-instant-pistons",
-                                "compile-builtin-resets",
-                                "identify-instant-regions",
-                                "compile-instant-proxies",
-                                "compile-instant-machine",
-                            ]
-                        );
-                    }
+                    assert!(!transformations.is_empty());
+                    assert!(
+                        transformations.iter().all(|pass| pass.enabled == optimize),
+                        "the selected optimization mode must reach every configured pass"
+                    );
                     compiled.clear_scheduled_ticks();
                     compiler.on_use_block(control);
                     let Block::Lever { lever } = native.get_block(control) else { panic!() };

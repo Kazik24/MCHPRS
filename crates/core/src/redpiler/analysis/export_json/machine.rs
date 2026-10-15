@@ -1,8 +1,8 @@
 //! Complete inspection form of the finite program; integer vectors follow explicit owner tables.
 use super::*;
 use crate::redpiler::program_graph::{
-    InstantKernel, InstantMachine, KernelBoundary, KernelEffect, KernelExpr, KernelExprId, KernelInput, KernelOutput,
-    KernelStateSlot, KernelStateExpr,
+    InstantKernel, InstantMachine, KernelBoundary, KernelEffect, KernelExpr, KernelExprId, KernelInput, KernelOutput, KernelStateExpr,
+    KernelStateSlot,
 };
 use mchprs_world::PistonAction;
 use serde_json::{Value, json};
@@ -172,10 +172,8 @@ pub(super) fn export_kernel(kernel: &InstantKernel, graph: &CompileGraph) -> Val
     })
 }
 
-fn boundary_json(boundary: &KernelBoundary) -> Value {
-    let occurrence = |event: crate::redpiler::program_graph::RouteOccurrence| {
-        json!({ "route": event.route.index(), "ordinal": event.ordinal })
-    };
+pub(super) fn boundary_json(boundary: &KernelBoundary) -> Value {
+    let occurrence = |event: crate::redpiler::program_graph::RouteOccurrence| json!({ "route": event.route.index(), "ordinal": event.ordinal });
     let inputs = boundary.inputs.iter().map(|input| match input {
         KernelInput::Power(link) => json!({ "kind": "power", "link": link }),
         KernelInput::Callback(event) => json!({ "kind": "callback", "event": occurrence(*event) }),
@@ -261,6 +259,7 @@ pub(super) fn validate_kernel(value: &Value, document: &GraphExport) -> Result<(
     ids.extend(graph.pistons.iter().map(|piston| piston.id.as_str()));
     ids.extend(graph.resources.iter().map(|resource| resource.id.as_str()));
     ids.extend(graph.contacts.iter().map(|contact| contact.id.as_str()));
+    ids.extend(graph.sites.iter().map(|site| site.id.as_str()));
     fn references(value: &Value, ids: &HashSet<&str>) -> bool {
         match value {
             Value::String(value) if value.contains(':') => ids.contains(value.as_str()),

@@ -65,6 +65,7 @@ fn cpu_fixed_point_matches_initial_cells_but_changes_resources_and_pending_order
         }).collect();
         let requests = |backend: &GraphBackend| {
             backend
+                .future
                 .piston_requests
                 .iter()
                 .map(|request| (request.piston, request.action))
@@ -80,7 +81,7 @@ fn cpu_fixed_point_matches_initial_cells_but_changes_resources_and_pending_order
             .collect();
         let requests_equal = requests(&exact) == requests(&settled);
         let scheduled_equal = exact.scheduled_ticks() == settled.scheduled_ticks();
-        let deferred_equal = format!("{:?}", exact.deferred_pistons) == format!("{:?}", settled.deferred_pistons);
+        let deferred_equal = format!("{:?}", exact.future.deferred_pistons) == format!("{:?}", settled.future.deferred_pistons);
         println!(
             "CPU t{tick}: {} component differences, {} piston differences; exact {:?}; settled {:?}",
             differences.len(),

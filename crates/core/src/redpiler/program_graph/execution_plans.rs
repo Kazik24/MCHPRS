@@ -56,10 +56,14 @@ pub(crate) struct ExecutionPlans {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-/// Instant compilation dependencies: regions -> proxies -> closed machine.
+/// Instant compiler plans from ownership analysis through finite or symbolic programs.
 pub(crate) struct InstantPlans {
     pub(crate) regions: Vec<InstantRegion>,
     pub(crate) proxies: Vec<InstantProxy>,
     /// Full proof data is released when lowering retains the compact kernel.
     pub(crate) machine: Option<std::sync::Arc<InstantMachine>>,
+    /// These universally proven AOT programs retain typed inputs and one periodic phase layout.
+    pub(crate) symbolic_kernels: Vec<std::sync::Arc<SymbolicKernel>>,
+    /// These symbolic event programs keep state and pending work in their existing owners.
+    pub(crate) symbolic_actors: Vec<crate::redpiler::program_graph::SymbolicActor>,
 }

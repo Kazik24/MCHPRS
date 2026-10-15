@@ -1,5 +1,6 @@
 //! Versioned inspection JSON for the richer graph drafts.
 mod machine;
+mod symbolic;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
@@ -114,6 +115,9 @@ struct GraphTablesDto {
     routes: Option<Vec<RouteDto>>,
     instant_regions: Vec<InstantRegionDto>,
     instant_proxies: Vec<InstantProxyDto>,
+    /// These graph-derived event routines retain the existing ordered state-changing primitives.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    symbolic_actors: Vec<serde_json::Value>,
     /// This optional artifact exposes compile-time proof snapshots, not lowered runtime storage.
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_machine: Option<serde_json::Value>,
@@ -927,6 +931,7 @@ impl GraphExport {
                 }
             }
         }
+        symbolic::validate(&self.graph.symbolic_actors, &self.graph)?;
         if let Some(machine) = &self.graph.instant_machine {
             machine::validate(machine, self)?;
         }
@@ -1283,6 +1288,13 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                     .collect(),
             })
             .collect(),
+        symbolic_actors: source
+            .plans
+            .instant
+            .symbolic_actors
+            .iter()
+            .map(|actor| symbolic::export(actor, source))
+            .collect(),
         instant_machine: source.plans.instant.machine.as_ref().map(|machine| machine::export(machine, source)),
         instant_kernel: source
             .plans
@@ -1397,6 +1409,9 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if source.plans.instant.machine.is_some() {
         capabilities.push("instant_machine");
         capabilities.push("instant_kernel");
+    }
+    if !source.plans.instant.symbolic_actors.is_empty() {
+        capabilities.push("symbolic_actor_events");
     }
     if source.wires.iter().any(|wire| wire.execution.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
@@ -2018,6 +2033,19 @@ mod compact_kernel_export_validation_tests {
             "enabled": 0, "piston": component, "action": "extend", "extended": false,
         }]);
         assert!(machine::validate_kernel(&wrong_effect_namespace, &document).is_err());
+    }
+
+    #[test]
+    fn compact_kernel_export_accepts_existing_boundary_sites_and_rejects_missing_ones() {
+        let document = fixture_export();
+        let mut value = kernel(&document.graph);
+        value["boundary"] = serde_json::json!({
+            "inputs": [], "state": [], "outputs": [], "effects": [],
+            "projection_roots": [document.graph.sites[0].id],
+        });
+        machine::validate_kernel(&value, &document).unwrap();
+        value["boundary"]["projection_roots"][0] = serde_json::json!("site:999999");
+        assert!(machine::validate_kernel(&value, &document).is_err());
     }
 
     #[test]

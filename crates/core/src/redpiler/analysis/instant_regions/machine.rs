@@ -44,6 +44,7 @@ fn controls(graph: &CompileGraph) -> Option<Vec<NodeId>> {
 fn evaluator(graph: &CompileGraph) -> Result<GraphBackend, String> {
     let mut base = graph.clone();
     base.plans.instant.machine = None;
+    base.plans.instant.symbolic_kernels.clear();
     let (program, state) = base.lower().map_err(|e| e.to_string())?;
     GraphBackend::new(program, state, crate::redpiler::backend::graph::MACHINE_EPOCH).map_err(|e| e.to_string())
 }

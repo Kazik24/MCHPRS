@@ -6,6 +6,8 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
+pub mod symbolic;
+
 pub type NetId = usize;
 pub type InputId = usize;
 
@@ -199,6 +201,15 @@ impl Plan {
     }
     pub fn scratch_len(&self) -> usize {
         self.ops.len()
+    }
+
+    /// Allocated table storage, excluding this Plan's inline Vec headers and caller scratch.
+    pub fn estimated_heap_bytes(&self) -> usize {
+        self.inputs.capacity() * std::mem::size_of::<InputId>()
+            + self.ops.capacity() * std::mem::size_of::<Op>()
+            + self.roots.capacity() * std::mem::size_of::<NetId>()
+            + self.original_to_slot.capacity() * std::mem::size_of::<Option<NetId>>()
+            + self.input_ordinals.capacity() * std::mem::size_of::<usize>()
     }
     pub fn used_fallback(&self) -> bool {
         self.used_fallback

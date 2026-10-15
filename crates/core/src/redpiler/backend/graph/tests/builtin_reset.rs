@@ -121,7 +121,7 @@ fn builtin_resets_keep_one_clock_per_shared_driver_and_reject_output_circuits() 
 fn assert_clock_equivalent(general: &GraphBackend, builtin: &GraphBackend) {
     assert_eq!(builtin.state, general.state);
     assert_eq!(builtin.scheduled_ticks(), general.scheduled_ticks());
-    assert_eq!(builtin.pending, general.pending);
+    assert_eq!(builtin.future.pending, general.future.pending);
     assert_eq!(builtin.dirty, general.dirty);
     assert_eq!(builtin.execution_counts(), general.execution_counts());
     for actor in general.program.pistons() {

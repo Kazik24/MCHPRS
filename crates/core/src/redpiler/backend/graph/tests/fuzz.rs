@@ -694,6 +694,7 @@ fn native_requests(world: &PlotWorld) -> Vec<PistonEvent> {
 
 fn graph_requests(backend: &GraphBackend) -> Vec<PistonEvent> {
     backend
+        .future
         .piston_requests
         .iter()
         .map(|request| {
@@ -745,7 +746,7 @@ fn native_deadlines(world: &PlotWorld, fixture: &Fixture) -> Vec<Deadline> {
 
 fn graph_deadlines(backend: &GraphBackend, fixture: &Fixture) -> Vec<Deadline> {
     let mut deadlines = Vec::new();
-    for event in &backend.deferred_pistons {
+    for event in &backend.future.deferred_pistons {
         let state = backend.state.pistons[event.piston.index()];
         let actor_valid = state.revision == event.revision;
         let spec = backend.program.pistons()[event.piston.index()];
@@ -855,7 +856,7 @@ fn observe_native(world: &PlotWorld, fixture: &Fixture, ordinal: usize, action: 
 fn observe_graph(backend: &GraphBackend, fixture: &Fixture, ordinal: usize, action: usize, operations: Vec<Operation>) -> Boundary {
     let (spec, state) = graph_piston(backend, fixture.base);
     Boundary {
-        tick: backend.clock.logical_tick,
+        tick: backend.future.clock.logical_tick,
         ordinal,
         action,
         normal_strength: backend.input_strength(spec.node, InputPort::Main),
@@ -1380,6 +1381,7 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         ));
         assert!(
             backend
+                .future
                 .piston_requests
                 .iter()
                 .any(|request| { request.action == PistonAction::RetractWithoutPull })
@@ -1411,7 +1413,13 @@ fn dropped_payload_reuse_keeps_far_resource_live() {
         let expected_input = native_operations(&native_input, &fixture.watched);
         let actual_input = graph_operations_since(&backend, input_start, &fixture.watched);
         assert!(native.piston_state().events.iter().any(|event| { event.action == PistonAction::Extend }));
-        assert!(backend.piston_requests.iter().any(|request| request.action == PistonAction::Extend));
+        assert!(
+            backend
+                .future
+                .piston_requests
+                .iter()
+                .any(|request| request.action == PistonAction::Extend)
+        );
         if expected_input != actual_input && failure.is_none() {
             failure = Some(format!(
                 "{form:?} re-extension input operations differ: native={expected_input:?}, graph={actual_input:?}"

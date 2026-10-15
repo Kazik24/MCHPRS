@@ -360,7 +360,7 @@ fn compare_bubblesort_execution(active_ticks: u64, optimization_level: usize) {
 }
 
 #[test]
-fn cpu_bubblesort_sign_on_piston_reports_transition_support_loss() {
+fn cpu_bubblesort_piston_base_sign_passes_geometry_but_external_callbacks_still_reject() {
     let fixture = manifest("cpu_bubblesort");
     let (world, _) = load(&fixture);
     let sign = BlockPos::new(187, 10, 185);
@@ -377,21 +377,23 @@ fn cpu_bubblesort_sign_on_piston_reports_transition_support_loss() {
     assert!(matches!(world.get_block(head), Block::PistonHead { .. }));
 
     let before = cpus::checkpoint(&world, 0, &[]);
+    let bounds = (sign, head.offset(BlockFace::East));
+    assert!(crate::interaction::is_valid_position(world.get_block(sign), &world, sign));
+    prepare_geometry(&world, bounds, &[], &TaskMonitor::default(), AnalysisLimits::default()).unwrap();
     let mut compiler = crate::redpiler::Compiler::default();
     let error = compiler
         .compile(
             &world,
-            (sign, head.offset(BlockFace::East)),
+            bounds,
             crate::redpiler::CompilerOptions::default(),
             Vec::new(),
             Default::default(),
         )
         .unwrap_err();
     let message = error.to_string();
-    assert!(message.contains("oak_wall_sign"), "{message}");
-    assert!(message.contains("BlockPos { x: 187, y: 10, z: 185 }"), "{message}");
+    assert!(message.contains("uncompiled receiver"), "{message}");
     assert!(message.contains("BlockPos { x: 188, y: 10, z: 185 }"), "{message}");
-    assert!(message.contains("moving_piston"), "{message}");
+    assert!(message.contains("BlockPos { x: 191, y: 10, z: 185 }"), "{message}");
     assert!(!compiler.is_active());
     assert!(compiler.stats().is_none());
     assert_eq!(cpus::checkpoint(&world, 0, &[]), before);

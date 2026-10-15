@@ -3,6 +3,7 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
+mod power_rules;
 mod options;
 mod passes;
 pub(crate) mod program_graph;
@@ -102,6 +103,8 @@ pub struct GraphExecutionCounts {
     pub ticks: u64,
     /// Exact compiled transitions executed in place of internal graph propagation.
     pub instant_transitions: u64,
+    /// Symbolic actor/reset event routines executed; these retain ordered effect primitives.
+    pub symbolic_actor_steps: u64,
     pub scheduled_ticks: u64,
     pub callbacks: u64,
     pub wire_walks: u64,

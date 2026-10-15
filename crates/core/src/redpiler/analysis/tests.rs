@@ -1468,6 +1468,56 @@ fn geometry_reports_unknown_external_occupancy_instead_of_air() {
 }
 
 #[test]
+fn signs_on_piston_bases_compile_in_both_poses() {
+    for sticky in [false, true] {
+        for extended in [false, true] {
+            let mut world = empty();
+            let base = piston_block(BlockFace::South, sticky, extended);
+            world.set_block(BASE, base);
+            if extended {
+                let Block::Piston { piston } = base else { unreachable!() };
+                world.set_block(BASE.offset(BlockFace::South), Block::PistonHead { head: piston.into() });
+            }
+            let top = BASE.offset(BlockFace::Top);
+            let side = BASE.offset(BlockFace::East);
+            let sign = Block::from_name("oak_sign").unwrap();
+            let mut wall_sign = Block::from_name("oak_wall_sign").unwrap();
+            wall_sign.set_properties([("facing", "east")].into_iter().collect());
+            world.set_block(top, sign);
+            world.set_block(side, wall_sign);
+            assert!(crate::interaction::is_valid_position(sign, &world, top));
+            assert!(crate::interaction::is_valid_position(wall_sign, &world, side));
+            let bounds = (BASE, BASE + BlockPos::new(1, 1, 2));
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(&world, bounds, Default::default(), Vec::new(), Default::default())
+                .unwrap();
+            compiler.reset(&mut world, bounds);
+            assert_eq!(world.get_block(top), sign);
+            assert_eq!(world.get_block(side), wall_sign);
+        }
+    }
+}
+
+#[test]
+fn signs_on_movable_payloads_still_reject_support_loss() {
+    for (name, offset) in [("oak_sign", BlockPos::new(0, 1, 0)), ("oak_wall_sign", BlockPos::new(1, 0, 0))] {
+        let mut world = empty();
+        world.set_block(BASE, piston_block(BlockFace::South, true, false));
+        let payload = BASE.offset(BlockFace::South);
+        world.set_block(payload, Block::RedstoneBlock {});
+        let mut sign = Block::from_name(name).unwrap();
+        if name == "oak_wall_sign" {
+            sign.set_properties([("facing", "east")].into_iter().collect());
+        }
+        world.set_block(payload + offset, sign);
+        assert!(matches!(prepare_geometry_for(&world),
+            Err(GeometryError::Rejected(GeometryIssue::SupportLoss { changed, dependent, .. }))
+                if changed == payload && dependent == payload + offset));
+    }
+}
+
+#[test]
 fn geometry_rejects_support_loss_and_leaves_all_entry_state_untouched() {
     let mut world = empty();
     world.set_block(BASE, piston_block(BlockFace::South, true, false));
