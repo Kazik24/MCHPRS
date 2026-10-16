@@ -1,4 +1,4 @@
-//! Bounded, paired execution episodes. Publication and observation are outside tick timers.
+//! Bounded, paired execution episodes. Publication and observation are outside execution timers.
 use crate::cpu_support::*;
 use anyhow::{Context, Result, bail, ensure};
 use mchprs_blocks::{
@@ -314,12 +314,23 @@ fn future(world: &PlotWorld) -> Value {
             json!([motion.pos,motion.progress,motion.previous_progress,motion.last_tick])).collect::<Vec<_>>()})
 }
 
-fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<Option<BlockPos>> {
+/// Include synchronous activation work without timing publication or correctness observations.
+fn measure<T>(elapsed: &mut Duration, operation: impl FnOnce() -> Result<T>) -> Result<T> {
+    let started = Instant::now();
+    let result = operation();
+    *elapsed += started.elapsed();
+    result
+}
+
+fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<(Option<BlockPos>, Duration)> {
+    let mut elapsed = Duration::ZERO;
     if episode.stable_inputs && episode.generic() {
         if episode.name == "io/instant_observer" {
-            return prepare_stable_observer(episode, compiler, world).map(Some);
+            let trigger = prepare_stable_observer(episode, compiler, world, &mut elapsed)?;
+            return Ok((Some(trigger), elapsed));
         }
-        return prepare_stable_adder(episode, compiler, world).map(Some);
+        let trigger = prepare_stable_adder(episode, compiler, world, &mut elapsed)?;
+        return Ok((Some(trigger), elapsed));
     }
     let trigger = match episode.name.as_str() {
         "fpu_divider" => Some(episode.bounds.0 + manifest_position(&episode.manifest["protocol"]["trigger"])),
@@ -327,22 +338,25 @@ fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotW
         _ => None,
     };
     if let Some(cpu) = episode.cpu {
-        if let Some(compiler) = compiler {
-            compiler.on_use_block(cpu.origin + cpu.start);
-        } else {
-            click_cpu(world, cpu, cpu.start);
-        }
+        measure(&mut elapsed, || {
+            if let Some(compiler) = compiler {
+                compiler.on_use_block(cpu.origin + cpu.start);
+            } else {
+                click_cpu(world, cpu, cpu.start);
+            }
+            Ok(())
+        })?;
     } else if episode.name == "counter_basic" {
         ensure!(
             matches!(world.get_block(trigger.unwrap()), Block::Lever { lever } if !lever.powered),
             "Counter must start OFF"
         );
         for _ in 0..24 {
-            tick(compiler, world)?;
+            measure(&mut elapsed, || tick(compiler, world))?;
         }
-        toggle(compiler, world, trigger.unwrap())?;
+        measure(&mut elapsed, || toggle(compiler, world, trigger.unwrap()))?;
         for _ in 0..600 {
-            tick(compiler, world)?;
+            measure(&mut elapsed, || tick(compiler, world))?;
         }
     } else if episode.name == "fpu_divider" {
         ensure!(
@@ -350,12 +364,12 @@ fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotW
             "Divider must start ON"
         );
         for _ in 0..64 {
-            tick(compiler, world)?;
+            measure(&mut elapsed, || tick(compiler, world))?;
         }
         for _ in 0..2 {
-            toggle(compiler, world, trigger.unwrap())?;
+            measure(&mut elapsed, || toggle(compiler, world, trigger.unwrap()))?;
             for _ in 0..128 {
-                tick(compiler, world)?;
+                measure(&mut elapsed, || tick(compiler, world))?;
             }
         }
     } else {
@@ -365,11 +379,11 @@ fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotW
         );
     }
     publish(compiler, world);
-    Ok(trigger)
+    Ok((trigger, elapsed))
 }
 
 /// Use a pinned arithmetic case, then hold every external lever throughout the timed episode.
-fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<BlockPos> {
+fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld, elapsed: &mut Duration) -> Result<BlockPos> {
     let case = episode.manifest["cases"]
         .as_array()
         .context("missing adder cases")?
@@ -384,12 +398,12 @@ fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, worl
                     bail!("missing adder control {position:?}");
                 };
                 if lever.powered != action["powered"].as_bool().context("missing lever value")? {
-                    toggle(compiler, world, position)?;
+                    measure(elapsed, || toggle(compiler, world, position))?;
                 }
             }
             Some("wait" | "wait_ready") => {
                 for _ in 0..action["ticks"].as_u64().context("missing preparation wait")? {
-                    tick(compiler, world)?;
+                    measure(elapsed, || tick(compiler, world))?;
                 }
             }
             _ => bail!("unsupported stable adder preparation {action}"),
@@ -400,13 +414,13 @@ fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, worl
 }
 
 /// Turn on the observer fixture's initially-off lever before timing, then keep it held.
-fn prepare_stable_observer(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld) -> Result<BlockPos> {
+fn prepare_stable_observer(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld, elapsed: &mut Duration) -> Result<BlockPos> {
     let trigger = episode.bounds.0 + manifest_position(&episode.manifest["ports"]["inputs"]["trigger"]);
     ensure!(
         matches!(world.get_block(trigger), Block::Lever { lever } if !lever.powered),
         "Observer fixture must start with its trigger OFF"
     );
-    toggle(compiler, world, trigger)?;
+    measure(elapsed, || toggle(compiler, world, trigger))?;
     publish(compiler, world);
     ensure!(
         matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered),
@@ -478,18 +492,20 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
             "preparation_tables":stats.graph.preparation_tables.iter().map(|table|
             json!({"stage":table.stage,"table":table.table,"entries":table.entries,"capacity":table.capacity,"estimated_bytes":table.estimated_bytes})).collect::<Vec<_>>()})
     });
-    let trigger = warm_up(episode, &mut compiler, &mut world)?;
+    let preparation_work_before = compiler.as_ref().and_then(Compiler::graph_execution_counts);
+    let (trigger, preparation_elapsed) = warm_up(episode, &mut compiler, &mut world)?;
     let before = compiler.as_ref().and_then(Compiler::graph_execution_counts);
     let phases = episode_tick_phases(episode);
     let active_ticks = phases.iter().sum::<u32>();
     let mut elapsed = Duration::ZERO;
+    let mut phase_stimulus_elapsed = Duration::ZERO;
     let mut trace = vec![episode.observe(&world)?];
     let mut chat = Vec::new();
     collect_chat(&world, 0, &mut chat);
     let mut reset_work = None;
     for (phase, &ticks) in phases.iter().enumerate() {
         if episode.name == "fpu_divider" {
-            toggle(&mut compiler, &mut world, trigger.unwrap())?;
+            measure(&mut phase_stimulus_elapsed, || toggle(&mut compiler, &mut world, trigger.unwrap()))?;
         } else if episode.generic() && !episode.stable_inputs {
             let started = Instant::now();
             toggle(&mut compiler, &mut world, episode.controls[phase % episode.controls.len()])?;
@@ -552,6 +568,10 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
     let continuation_future = future(&world);
     Ok(
         json!({"executor":tier.map_or("interpreter".to_owned(),|tier| if compose_regions { format!("O{tier}-stable") } else { format!("O{tier}") }),"seconds":elapsed.as_secs_f64(),
+        "preparation_execution_seconds":preparation_elapsed.as_secs_f64(),
+        "phase_stimulus_seconds":phase_stimulus_elapsed.as_secs_f64(),
+        "episode_execution_seconds":(preparation_elapsed + phase_stimulus_elapsed + elapsed).as_secs_f64(),
+        "episode_timed_operations":"all preparation/start operations, preparation tick calls, phase stimuli and active tick calls; loading, compilation, publication, observations, reset and continuation excluded",
         "stable_input_protocol":episode.stable_inputs,"composed_instant_regions":compose_regions,
         "timed_operations":if episode.generic() && !episode.stable_inputs {"64 round-robin lever operations and 512 tick calls; observations and projection excluded"}else{"tick calls only; setup and start stimulus excluded"},
         "compile_seconds_metadata":compile_seconds,"active_ticks":active_ticks,"initial":initial,
@@ -559,6 +579,7 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
         "reset_checkpoint":reset_checkpoint,"reset_future":reset_future,
         "continuation_checkpoint":continuation_checkpoint,"continuation_future":continuation_future,
         "pending_scheduler_entries_after_reset":pending_after_reset,"pending_reset":reset_work,
+        "work_in_preparation":preparation_work_before.zip(before).map(|(before, after)|window_counts(before, after)),
         "work_before_window":before.map(counts),"work_after_window":work.map(counts),
         "work_in_window":before.zip(work).map(|(before,after)|window_counts(before,after)),"tables":tables}),
     )
@@ -606,7 +627,12 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 }
             };
             let mut order: Vec<_> = if episode.stable_inputs && !interpreted {
-                vec![(selected_tier, false), (selected_tier, true), (None, false)]
+                if selected_tier == Some(4) {
+                    // Compare regional replacement with the same stable-input O3 composition.
+                    vec![(Some(4), false), (Some(3), true), (Some(4), true), (None, false)]
+                } else {
+                    vec![(selected_tier, false), (selected_tier, true), (None, false)]
+                }
             } else {
                 order.into_iter().map(|tier| (tier, false)).collect()
             };
@@ -620,21 +646,22 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 result["sample"] = json!(sample + 1);
                 result["order"] = json!(position + 1);
                 println!(
-                    "{name} sample {} {}: {:.6}s",
+                    "{name} sample {} {}: {:.6}s active; {:.6}s including preparation and activation",
                     sample + 1,
                     result["executor"],
-                    result["seconds"].as_f64().unwrap()
+                    result["seconds"].as_f64().unwrap(),
+                    result["episode_execution_seconds"].as_f64().unwrap()
                 );
                 if compose_regions {
-                    let kernels = result["tables"]["preparation_tables"]
+                    let regions = result["tables"]["preparation_tables"]
                         .as_array()
                         .unwrap()
                         .iter()
-                        .find(|table| table["stage"] == "lowering" && table["table"] == "symbolic kernels")
+                        .find(|table| table["stage"] == "lowering" && table["table"] == "symbolic region events")
                         .map_or(0, |table| table["entries"].as_u64().unwrap());
                     println!(
-                        "{name}: compiled symbolic kernels={kernels}, instant transitions={}, wire walks={}",
-                        result["work_in_window"]["instant_transitions"], result["work_in_window"]["wire_walks"]
+                        "{name}: compiled regional programs={regions}, regional entries={}, wire walks={}",
+                        result["work_in_window"]["symbolic_region_steps"], result["work_in_window"]["wire_walks"]
                     );
                 }
                 results.push(result);
@@ -741,7 +768,19 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 continue;
             }
             times.sort_by(f64::total_cmp);
-            summaries.push(json!({"executor":executor,"median_seconds":times[times.len()/2],"range_seconds":[times[0],times[times.len()-1]]}));
+            let mut episode_times: Vec<_> = workload["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|sample| sample["executor"] == executor)
+                .map(|sample| sample["episode_execution_seconds"].as_f64().unwrap())
+                .collect();
+            episode_times.sort_by(f64::total_cmp);
+            summaries.push(
+                json!({"executor":executor,"median_seconds":times[times.len()/2],"range_seconds":[times[0],times[times.len()-1]],
+                "episode_median_seconds":episode_times[episode_times.len()/2],
+                "episode_range_seconds":[episode_times[0],episode_times[episode_times.len()-1]]}),
+            );
         }
         workload["summaries"] = json!(summaries);
     }
@@ -777,7 +816,7 @@ pub fn main() -> Result<()> {
         ensure!(output.status.success(), "git metadata failed");
         Ok(String::from_utf8(output.stdout)?)
     };
-    let mut report = json!({"schema":5,"label":label,"profile":"bench/release","admission_smoke":smoke,
+    let mut report = json!({"schema":6,"label":label,"profile":"bench/release","admission_smoke":smoke,
         "binary_sha256":hash(&std::fs::read(std::env::current_exe()?)?),"git_head":git(&["rev-parse","HEAD"])?.trim(),
         "working_tree_diff":git(&["diff","HEAD","--"] )?,"working_tree_status":git(&["status","--short"] )?,
         "harness_source_sha256":hash(include_bytes!("graph_short.rs")),"cpu_loader_source_sha256":hash(include_bytes!("cpus.rs")),

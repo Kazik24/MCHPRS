@@ -1,7 +1,10 @@
 //! Synchronous callback expansion during AOT compilation; no route is a runtime instruction.
 use super::*;
 
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct Delivery {
+    /// This identifies the exact source route row for an outgoing boundary effect.
+    pub(crate) occurrence: Option<RouteOccurrence>,
     /// This guard selects the valuations under which this occurrence is delivered.
     pub(crate) when: Formula,
     /// This identifies the observed boundary position without retaining physical execution.
@@ -25,7 +28,7 @@ impl Compiler<'_> {
             return Ok(());
         }
         let graph = self.graph;
-        for delivery in graph.routes[route.index()].deliveries.iter() {
+        for (ordinal, delivery) in graph.routes[route.index()].deliveries.iter().enumerate() {
             self.step()?;
             let guard = self.guard(delivery.guard, capture)?;
             let active = self.logic.and(when, guard)?;
@@ -49,6 +52,10 @@ impl Compiler<'_> {
                 receivers.deliver(
                     self,
                     Delivery {
+                        occurrence: Some(RouteOccurrence {
+                            route,
+                            ordinal: ordinal as u32,
+                        }),
                         when: active,
                         target: delivery.target,
                         receiver,
@@ -62,6 +69,7 @@ impl Compiler<'_> {
     }
 
     pub(super) fn captured_component(&mut self, node: NodeId, captured: Option<&SiteView>) -> Result<Component> {
+        self.symbolize_component(node)?;
         let mut result = self.state.components[node.index()].clone();
         if let Some(view) = captured {
             for variant in &view.variants {
@@ -82,13 +90,17 @@ impl Compiler<'_> {
         if when == Formula::FALSE {
             return Ok(());
         }
+        self.set_trace_stage("seed_wire captured_component");
         let mut value = self.captured_component(node, captured)?;
+        self.set_trace_stage("seed_wire seed_power");
         let power = self.seed_power(node)?;
+        self.set_trace_stage("seed_wire compare_power");
         let equal = self.logic.signal_equal(power, value.signal)?;
         let differs = self.logic.not(equal)?;
         let changes = self.logic.and(when, differs)?;
         value.signal = power;
         self.write_wire(node, changes, &value)?;
+        self.set_trace_stage("seed_wire walk");
         self.walk(node, changes, receivers)
     }
 

@@ -1,13 +1,16 @@
 //! Bounded Boolean reduction for AOT symbolic execution, without enumerating input values.
 //!
-//! Reduced ordered decision nodes give equivalent Boolean functions the same identity.
-//! Four-bit signals use those same functions, so guards and power can be reduced together.
-//! This is compiler scratch; lowering produces the existing allocation-free Boolean Plan.
+//! Canonical mode gives equivalent Boolean functions the same identity for proofs.
+//! Structural mode shares expressions without expanding their decision trees during tracing.
+//! Both use four-bit signals and lower to the existing allocation-free Boolean Plan.
 use crate::{Circuit, InputId, Limits, Op};
 use std::collections::{BTreeSet, HashMap};
 
 #[path = "symbolic_constraints.rs"]
 mod constraints;
+
+#[path = "symbolic_propagation.rs"]
+mod propagation;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// A Boolean function owned by the Diagram that constructed it.
@@ -62,6 +65,8 @@ pub enum SymbolicError {
     InvalidSignal,
     /// The reserved terminal variable identifier cannot name an input.
     InvalidInput,
+    /// This proof requires canonical decision nodes rather than structural expressions.
+    RequiresCanonicalDiagram,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -84,12 +89,20 @@ struct Selection {
     no: Formula,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Node {
+    /// This is an ordered input decision, including the two terminal placeholders.
+    Decision(Decision),
+    /// This retains a conditional expression without expanding its Boolean decision tree.
+    Selection(Selection),
+}
+
 pub struct Diagram {
-    /// These reduced decisions follow their children; the first two entries are terminals.
-    nodes: Vec<Decision>,
-    /// This interns reduced decisions so functional equality is identity equality.
+    /// These shared nodes follow their children; the first two entries are terminals.
+    nodes: Vec<Node>,
+    /// This interns input/decision nodes; canonical mode also identifies equivalent functions.
     unique: HashMap<Decision, Formula>,
-    /// This memoizes completed conditional-function applications during compilation.
+    /// This caches canonical applications or interns structural conditional nodes.
     selections: HashMap<Selection, Formula>,
     /// These are all declared inputs, including declarations later removed by reduction.
     inputs: BTreeSet<InputId>,
@@ -97,10 +110,21 @@ pub struct Diagram {
     limits: Limits,
     /// This counts charged construction steps across the whole compilation.
     work: usize,
+    /// This keeps traced expressions structural instead of requiring canonical Boolean functions.
+    structural: bool,
 }
 
 impl Diagram {
     pub fn new(limits: Limits) -> Result<Self, SymbolicError> {
+        Self::with_representation(limits, false)
+    }
+
+    /// Build a shared expression DAG; equality proves identical structure, not all equivalent functions.
+    pub fn new_structural(limits: Limits) -> Result<Self, SymbolicError> {
+        Self::with_representation(limits, true)
+    }
+
+    fn with_representation(limits: Limits, structural: bool) -> Result<Self, SymbolicError> {
         if limits.max_nodes < 2 {
             return Err(SymbolicError::BudgetExceeded);
         }
@@ -110,12 +134,13 @@ impl Diagram {
             high: Formula::TRUE,
         };
         Ok(Self {
-            nodes: vec![terminal; 2],
+            nodes: vec![Node::Decision(terminal); 2],
             unique: HashMap::new(),
             selections: HashMap::new(),
             inputs: BTreeSet::new(),
             limits,
             work: 0,
+            structural,
         })
     }
 
@@ -137,6 +162,16 @@ impl Diagram {
     }
 
     pub fn not(&mut self, value: Formula) -> Result<Formula, SymbolicError> {
+        self.validate(value)?;
+        if self.structural
+            && let Node::Selection(Selection {
+                condition,
+                yes: Formula::FALSE,
+                no: Formula::TRUE,
+            }) = self.nodes[value.0 as usize]
+        {
+            return Ok(condition);
+        }
         self.select(value, Formula::FALSE, Formula::TRUE)
     }
 
@@ -152,6 +187,23 @@ impl Diagram {
         if right == Formula::TRUE {
             return Ok(left);
         }
+        if self.structural && self.complements(left, right) {
+            return Ok(Formula::FALSE);
+        }
+        if self.structural {
+            if self.negated(right).is_some_and(|value| self.structurally_implies(left, value))
+                || self.negated(left).is_some_and(|value| self.structurally_implies(right, value))
+            {
+                return Ok(Formula::FALSE);
+            }
+            if self.structurally_implies(left, right) {
+                return Ok(left);
+            }
+            if self.structurally_implies(right, left) {
+                return Ok(right);
+            }
+        }
+        let (left, right) = self.commutative_operands(left, right);
         self.select(left, right, Formula::FALSE)
     }
 
@@ -167,6 +219,23 @@ impl Diagram {
         if right == Formula::FALSE {
             return Ok(left);
         }
+        if self.structural && self.complements(left, right) {
+            return Ok(Formula::TRUE);
+        }
+        if self.structural {
+            if self.negated(right).is_some_and(|value| self.structurally_implies(value, left))
+                || self.negated(left).is_some_and(|value| self.structurally_implies(value, right))
+            {
+                return Ok(Formula::TRUE);
+            }
+            if self.structurally_implies(left, right) {
+                return Ok(right);
+            }
+            if self.structurally_implies(right, left) {
+                return Ok(left);
+            }
+        }
+        let (left, right) = self.commutative_operands(left, right);
         self.select(left, Formula::TRUE, right)
     }
 
@@ -182,6 +251,10 @@ impl Diagram {
         if right == Formula::FALSE {
             return Ok(left);
         }
+        if self.structural && self.complements(left, right) {
+            return Ok(Formula::TRUE);
+        }
+        let (left, right) = self.commutative_operands(left, right);
         let inverse = self.not(right)?;
         self.select(left, inverse, right)
     }
@@ -224,11 +297,14 @@ impl Diagram {
         for value in [condition, yes, no] {
             self.validate(value)?;
         }
+        let root = Selection { condition, yes, no };
+        if self.structural {
+            return self.structural_selection(root);
+        }
         // Memo entries are disposable; clear between ITE calls without discarding canonical function identities.
         if self.selections.len() >= self.limits.max_nodes / 2 {
             self.selections.clear();
         }
-        let root = Selection { condition, yes, no };
         // An explicit stack avoids recursion proportional to a circuit's input count.
         let mut pending = vec![root];
         while let Some(&selection) = pending.last() {
@@ -239,7 +315,7 @@ impl Diagram {
             }
             let variable = [selection.condition, selection.yes, selection.no]
                 .into_iter()
-                .map(|value| self.nodes[value.0 as usize].variable)
+                .map(|value| self.ordered_decision(value).variable)
                 .min()
                 .expect("three operands");
             let low = self.cofactor(selection, variable, false);
@@ -334,19 +410,39 @@ impl Diagram {
 
     /// Lower to the existing pure IR; root order and duplicates remain observable.
     pub fn circuit(&self, roots: &[Formula]) -> Result<Circuit, SymbolicError> {
+        self.lower_circuit(roots, true)
+    }
+
+    /// Lower only reachable input bindings, retaining their original identifiers and root order.
+    pub fn circuit_live_inputs(&self, roots: &[Formula]) -> Result<Circuit, SymbolicError> {
+        self.lower_circuit(roots, false)
+    }
+
+    fn lower_circuit(&self, roots: &[Formula], retain_declared_inputs: bool) -> Result<Circuit, SymbolicError> {
         for &root in roots {
             self.validate(root)?;
         }
         let mut live = vec![false; self.nodes.len()];
+        let mut live_inputs = BTreeSet::new();
         let mut pending = roots.to_vec();
         while let Some(value) = pending.pop() {
             let index = value.0 as usize;
             if std::mem::replace(&mut live[index], true) || index < 2 {
                 continue;
             }
-            pending.extend([self.nodes[index].low, self.nodes[index].high]);
+            match self.nodes[index] {
+                Node::Decision(node) => {
+                    live_inputs.insert(node.variable);
+                    pending.extend([node.low, node.high]);
+                }
+                Node::Selection(node) => pending.extend([node.condition, node.yes, node.no]),
+            }
         }
-        let inputs: Vec<_> = self.inputs.iter().copied().collect();
+        let inputs: Vec<_> = if retain_declared_inputs {
+            self.inputs.iter().copied().collect()
+        } else {
+            live_inputs.into_iter().collect()
+        };
         let mut ops: Vec<_> = inputs.iter().copied().map(Op::Input).collect();
         let variables: HashMap<_, _> = inputs.iter().enumerate().map(|(net, &input)| (input, net)).collect();
         let mut translated = vec![usize::MAX; self.nodes.len()];
@@ -354,13 +450,21 @@ impl Diagram {
         translated[1] = ops.len() + 1;
         ops.extend([Op::Const(false), Op::Const(true)]);
         // Proof scratch must not survive indirectly through Plan's original-net layout map.
-        for (index, decision) in self.nodes.iter().enumerate().skip(2).filter(|(index, _)| live[*index]) {
+        for (index, node) in self.nodes.iter().enumerate().skip(2).filter(|(index, _)| live[*index]) {
             translated[index] = ops.len();
-            ops.push(Op::Select(
-                variables[&decision.variable],
-                translated[decision.high.0 as usize],
-                translated[decision.low.0 as usize],
-            ));
+            let (condition, yes, no) = match node {
+                Node::Decision(node) => (
+                    variables[&node.variable],
+                    translated[node.high.0 as usize],
+                    translated[node.low.0 as usize],
+                ),
+                Node::Selection(node) => (
+                    translated[node.condition.0 as usize],
+                    translated[node.yes.0 as usize],
+                    translated[node.no.0 as usize],
+                ),
+            };
+            ops.push(Op::Select(condition, yes, no));
         }
         Ok(Circuit::new(inputs, ops, roots.iter().map(|root| translated[root.0 as usize]).collect()))
     }
@@ -389,7 +493,7 @@ impl Diagram {
 
     fn cofactor(&self, selection: Selection, variable: InputId, high: bool) -> Selection {
         let branch = |value: Formula| {
-            let node = self.nodes[value.0 as usize];
+            let node = self.ordered_decision(value);
             if node.variable == variable {
                 if high { node.high } else { node.low }
             } else {
@@ -416,9 +520,116 @@ impl Diagram {
             return Err(SymbolicError::BudgetExceeded);
         }
         let value = Formula(u32::try_from(self.nodes.len()).map_err(|_| SymbolicError::BudgetExceeded)?);
-        self.nodes.push(node);
+        self.nodes.push(Node::Decision(node));
         self.unique.insert(node, value);
         Ok(value)
+    }
+
+    fn structural_selection(&mut self, selection: Selection) -> Result<Formula, SymbolicError> {
+        if let Some(value) = self.known(selection) {
+            return Ok(value);
+        }
+        self.charge()?;
+        if self.nodes.len() >= self.limits.max_nodes {
+            return Err(SymbolicError::BudgetExceeded);
+        }
+        let value = Formula(u32::try_from(self.nodes.len()).map_err(|_| SymbolicError::BudgetExceeded)?);
+        self.nodes.push(Node::Selection(selection));
+        self.selections.insert(selection, value);
+        Ok(value)
+    }
+
+    fn ordered_decision(&self, value: Formula) -> Decision {
+        match self.nodes[value.0 as usize] {
+            Node::Decision(node) => node,
+            Node::Selection(_) => unreachable!("ordered-decision algorithms require a canonical diagram"),
+        }
+    }
+
+    fn complements(&self, left: Formula, right: Formula) -> bool {
+        self.negated(left) == Some(right) || self.negated(right) == Some(left)
+    }
+
+    fn negated(&self, value: Formula) -> Option<Formula> {
+        match self.nodes[value.0 as usize] {
+            Node::Selection(Selection {
+                condition,
+                yes: Formula::FALSE,
+                no: Formula::TRUE,
+            }) => Some(condition),
+            _ => None,
+        }
+    }
+
+    fn conjunction(&self, value: Formula) -> Option<(Formula, Formula)> {
+        match self.nodes[value.0 as usize] {
+            Node::Selection(Selection {
+                condition,
+                yes,
+                no: Formula::FALSE,
+            }) => Some((condition, yes)),
+            _ => None,
+        }
+    }
+
+    fn disjunction(&self, value: Formula) -> Option<(Formula, Formula)> {
+        match self.nodes[value.0 as usize] {
+            Node::Selection(Selection {
+                condition,
+                yes: Formula::TRUE,
+                no,
+            }) => Some((condition, no)),
+            _ => None,
+        }
+    }
+
+    // Bounded Boolean structure proves some dead paths without constructing a canonical relation.
+    fn structurally_implies(&self, left: Formula, right: Formula) -> bool {
+        self.implies_with_budget(left, right, &mut 64)
+    }
+
+    fn implies_with_budget(&self, left: Formula, right: Formula, remaining: &mut usize) -> bool {
+        if *remaining == 0 {
+            return false;
+        }
+        *remaining -= 1;
+        if left == right || left == Formula::FALSE || right == Formula::TRUE {
+            return true;
+        }
+        if let (Some(a), Some(b)) = (self.negated(left), self.negated(right)) {
+            return self.implies_with_budget(b, a, remaining);
+        }
+        if let Some((a, b)) = self.conjunction(right)
+            && self.implies_with_budget(left, a, remaining)
+            && self.implies_with_budget(left, b, remaining)
+        {
+            return true;
+        }
+        if let Some((a, b)) = self.disjunction(left)
+            && self.implies_with_budget(a, right, remaining)
+            && self.implies_with_budget(b, right, remaining)
+        {
+            return true;
+        }
+        if let Some((a, b)) = self.conjunction(left)
+            && (self.implies_with_budget(a, right, remaining) || self.implies_with_budget(b, right, remaining))
+        {
+            return true;
+        }
+        if let Some((a, b)) = self.disjunction(right)
+            && (self.implies_with_budget(left, a, remaining) || self.implies_with_budget(left, b, remaining))
+        {
+            return true;
+        }
+        false
+    }
+
+    fn commutative_operands(&self, left: Formula, right: Formula) -> (Formula, Formula) {
+        if self.structural && left.0 > right.0 {
+            (right, left)
+        } else {
+            (left, right)
+        }
     }
 
     fn validate(&self, value: Formula) -> Result<(), SymbolicError> {

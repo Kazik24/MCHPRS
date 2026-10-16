@@ -64,6 +64,7 @@ impl Compiler<'_> {
 
     /// Captured geometry and dust strengths are frozen; conducted sources are read live.
     pub(crate) fn captured_wire_power(&mut self, node: NodeId, captured: &Capture, heading: usize) -> Result<Signal> {
+        debug_assert!(heading < crate::redstone::wire::TURBO_ORDER.len());
         self.step()?;
         let neighbors = self.wire_neighbors(node)?;
         let views = neighbors.map(|site| captured.get(&site).expect("wire neighborhood must be captured before its query"));
@@ -72,24 +73,23 @@ impl Compiler<'_> {
             let power = self.power_no_dust(neighbors[slot], face, Some(views[slot]))?;
             direct = self.logic.maximum(direct, power)?;
         }
-        let order = crate::redstone::wire::TURBO_ORDER[heading];
+        let order = crate::redstone::wire::TURBO_ORDER[0];
         let up_solid = self.site_test(views[order[1]], |variant| variant.solid)?;
         let clear = self.logic.not(up_solid)?;
         let mut dust = Signal::literal(0)?;
-        for index in 0..4 {
-            let slot = order[4 + index];
+        for (slot, down, up) in captured_wire_groups(0) {
             let power = self.wire_strength(views[slot])?;
             dust = self.logic.maximum(dust, power)?;
             let solid = self.site_test(views[slot], |variant| variant.solid)?;
             let transparent = self.site_test(views[slot], |variant| variant.transparent)?;
             let descends = self.logic.not(solid)?;
-            let power = self.wire_strength(views[order[[8, 10, 12, 14][index]]])?;
+            let power = self.wire_strength(views[down])?;
             let power = self.logic.signal_select(descends, power, Signal::literal(0)?)?;
             dust = self.logic.maximum(dust, power)?;
             let opaque = self.logic.not(transparent)?;
             let climbs = self.logic.and(clear, opaque)?;
             let climbs = self.logic.and(climbs, solid)?;
-            let power = self.wire_strength(views[order[[9, 11, 13, 15][index]]])?;
+            let power = self.wire_strength(views[up])?;
             let power = self.logic.signal_select(climbs, power, Signal::literal(0)?)?;
             dust = self.logic.maximum(dust, power)?;
         }
@@ -112,5 +112,61 @@ impl Compiler<'_> {
         current.shape = Some(shape);
         self.state_written();
         Ok(())
+    }
+}
+
+fn captured_wire_groups(heading: usize) -> [(usize, usize, usize); 4] {
+    let order = crate::redstone::wire::TURBO_ORDER[heading];
+    std::array::from_fn(|index| (order[4 + index], order[[8, 10, 12, 14][index]], order[[9, 11, 13, 15][index]]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::captured_wire_groups;
+    use crate::redstone::wire::TURBO_ORDER;
+
+    fn scalar_power(heading: usize, power: [u8; 24], solid: [bool; 24], transparent: [bool; 24]) -> u8 {
+        let direct = [3, 2, 4, 5, 1, 0].into_iter().map(|slot| power[slot]).max().unwrap();
+        let order = TURBO_ORDER[heading];
+        let clear = !solid[order[1]];
+        let mut dust = 0;
+        for (slot, down, up) in captured_wire_groups(heading) {
+            dust = dust.max(power[slot]);
+            if !solid[slot] {
+                dust = dust.max(power[down]);
+            }
+            if clear && solid[slot] && !transparent[slot] {
+                dust = dust.max(power[up]);
+            }
+        }
+        direct.max(dust.saturating_sub(1))
+    }
+
+    #[test]
+    fn captured_power_uses_the_same_neighbor_groups_for_every_heading() {
+        let expected = captured_wire_groups(0);
+        let mut expected = expected.to_vec();
+        expected.sort_unstable();
+        for heading in 0..4 {
+            assert_eq!(TURBO_ORDER[heading][1], 3, "the support-above slot is heading independent");
+            let mut actual = captured_wire_groups(heading).to_vec();
+            actual.sort_unstable();
+            assert_eq!(actual, expected, "heading {heading}");
+        }
+
+        let mut seed = 0x6d2b_79f5_u32;
+        for _ in 0..256 {
+            let mut next = || {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                seed
+            };
+            let power = std::array::from_fn(|_| (next() & 15) as u8);
+            let solid = std::array::from_fn(|_| next() & 1 != 0);
+            let transparent = std::array::from_fn(|_| next() & 1 != 0);
+            let expected = scalar_power(0, power, solid, transparent);
+            for heading in 1..4 {
+                assert_eq!(scalar_power(heading, power, solid, transparent), expected, "heading {heading}");
+            }
+        }
     }
 }

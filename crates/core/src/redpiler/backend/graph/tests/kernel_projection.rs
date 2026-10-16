@@ -36,6 +36,11 @@ fn backend(circuit: &Adder, legacy_aot: bool) -> GraphBackend {
         region_compiler.enabled = false;
     }
     passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).unwrap();
+    if legacy_aot {
+        // Exercise this legacy proof family explicitly; production must not select it on regional decline.
+        prepared.graph.plans.instant.symbolic_kernels =
+            crate::redpiler::analysis::instant_regions::compiler::aot::compile(&prepared.graph, &monitor).unwrap();
+    }
     prepared.finish_pipeline_statistics(&monitor);
     let lowered = prepared.lower(&monitor).unwrap();
     GraphBackend::from_lowered(lowered, &monitor).unwrap()

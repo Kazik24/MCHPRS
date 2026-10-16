@@ -8,6 +8,9 @@ impl Diagram {
         for &condition in conditions {
             self.validate(condition)?;
         }
+        if self.structural {
+            return Err(SymbolicError::RequiresCanonicalDiagram);
+        }
         if conditions.contains(&Formula::FALSE) {
             return Ok(None);
         }
@@ -20,14 +23,14 @@ impl Diagram {
             if condition == Formula::TRUE {
                 continue;
             }
-            let first = self.nodes[condition.0 as usize];
+            let first = self.ordered_decision(condition);
             for (value, child) in [(false, first.low), (true, first.high)] {
                 self.charge()?;
                 let a = ordinals[&first.variable] * 2 + usize::from(value);
                 if child == Formula::FALSE {
                     edges[a].push(a ^ 1);
                 } else if child != Formula::TRUE {
-                    let second = self.nodes[child.0 as usize];
+                    let second = self.ordered_decision(child);
                     for (value, child) in [(false, second.low), (true, second.high)] {
                         if child == Formula::FALSE {
                             let b = ordinals[&second.variable] * 2 + usize::from(value);
@@ -94,8 +97,10 @@ impl Diagram {
                 continue;
             }
             self.charge()?;
-            let node = self.nodes[value.0 as usize];
-            pending.extend([node.low, node.high]);
+            match self.nodes[value.0 as usize] {
+                Node::Decision(node) => pending.extend([node.low, node.high]),
+                Node::Selection(node) => pending.extend([node.condition, node.yes, node.no]),
+            }
         }
         let mut translated = vec![Formula::FALSE; original_count];
         translated[1] = Formula::TRUE;
@@ -104,13 +109,21 @@ impl Diagram {
                 continue;
             }
             self.charge()?;
-            let node = self.nodes[index];
-            let low = translated[node.low.0 as usize];
-            let high = translated[node.high.0 as usize];
-            translated[index] = match assignments.get(&node.variable) {
-                Some(false) => low,
-                Some(true) => high,
-                None => self.decision(node.variable, low, high)?,
+            translated[index] = match self.nodes[index] {
+                Node::Decision(node) => {
+                    let low = translated[node.low.0 as usize];
+                    let high = translated[node.high.0 as usize];
+                    match assignments.get(&node.variable) {
+                        Some(false) => low,
+                        Some(true) => high,
+                        None => self.decision(node.variable, low, high)?,
+                    }
+                }
+                Node::Selection(node) => self.select(
+                    translated[node.condition.0 as usize],
+                    translated[node.yes.0 as usize],
+                    translated[node.no.0 as usize],
+                )?,
             };
         }
         Ok(roots.iter().map(|root| translated[root.0 as usize]).collect())

@@ -198,7 +198,7 @@ impl Execution {
         Ok(())
     }
 
-    pub(super) fn tick_component(&mut self, compiler: &mut Compiler<'_>, node: NodeId, when: Formula) -> Result<()> {
+    pub(crate) fn tick_component(&mut self, compiler: &mut Compiler<'_>, node: NodeId, when: Formula) -> Result<()> {
         let current = compiler.state.components[node.index()].clone();
         match compiler.graph.nodes[node.index()].kind {
             CircuitNodeKind::Wire(_) => Ok(()),

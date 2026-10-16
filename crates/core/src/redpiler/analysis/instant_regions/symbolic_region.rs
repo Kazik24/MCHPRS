@@ -11,6 +11,31 @@ pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Sym
         if region.actors.is_empty() {
             continue;
         }
+        if !region.stable_inputs {
+            compilation.declines.push(region_decline(region_index, region, "region inputs are not certified stable"));
+            continue;
+        }
+        let event_kernel = match crate::redpiler::analysis::instant_regions::compiler::event::compile(graph, region_index, monitor) {
+            Ok(kernel) => {
+                let plan_bytes: Vec<_> = kernel.entries.iter().map(|entry| entry.plan.estimated_heap_bytes()).collect();
+                eprintln!(
+                    "REGIONAL_COMPILE region={region_index} entries={} ops={} roots={} plan_bytes={plan_bytes:?}",
+                    kernel.entries.len(),
+                    kernel.entries.iter().map(|entry| entry.plan.ops().len()).sum::<usize>(),
+                    kernel.entries.iter().map(|entry| entry.plan.roots().len()).sum::<usize>(),
+                );
+                Some(std::sync::Arc::new(kernel))
+            }
+            Err(reason) => {
+                if monitor.cancelled() {
+                    return Err(reason);
+                }
+                tracing::debug!(region_index, %reason, "regional event kernel declined");
+                eprintln!("REGIONAL_DECLINE region={region_index} actors={} resets={} reason={reason}", region.actors.len(), region.resets.len());
+                compilation.declines.push(region_decline(region_index, region, reason));
+                continue;
+            }
+        };
         let mut actors = Vec::with_capacity(region.actors.len());
         let mut decline = None;
         for &actor in &region.actors {
@@ -40,18 +65,19 @@ pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Sym
                 boundary: KernelBoundary::from_region(graph, region),
                 actors: actors.into_boxed_slice(),
                 resets: resets.into_boxed_slice(),
+                event_kernel,
             });
         }
     }
     Ok(compilation)
 }
 
-fn region_decline(region_index: usize, region: &InstantRegion, reason: &'static str) -> SymbolicRegionDecline {
+fn region_decline(region_index: usize, region: &InstantRegion, reason: impl Into<String>) -> SymbolicRegionDecline {
     SymbolicRegionDecline {
         region: region_index,
         actor_count: region.actors.len(),
         reset_count: region.resets.len(),
-        reason,
+        reason: reason.into(),
     }
 }
 

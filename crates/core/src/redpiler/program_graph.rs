@@ -229,7 +229,7 @@ pub(crate) enum Guard {
     Any(Box<[GuardId]>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// The kind of compiled receiver notified by a callback delivery.
 pub(crate) enum CallbackReceiver {
     Component(NodeId),
@@ -812,6 +812,8 @@ struct InstantProgram {
     symbolic_actor_bindings: Box<[Option<(u32, u32)>]>,
     /// This maps each reset clock directly to its region and reset-routine ordinal.
     symbolic_reset_bindings: Box<[Option<(u32, u32)>]>,
+    /// This maps semantic event keys directly to their compiled region and entry-plan ordinals.
+    symbolic_event_bindings: FxHashMap<SymbolicRegionEntry, (u32, u32)>,
     /// These lowered effects contain only operations active for each held-input mask.
     execution: Option<std::sync::Arc<KernelExecution>>,
     /// This owns reduced phase programs; unsupported states retain general Graph execution.
@@ -883,6 +885,12 @@ impl CircuitProgram {
     pub(crate) fn symbolic_region_binding_bytes(&self) -> usize {
         self.instant.symbolic_actor_bindings.len() * std::mem::size_of::<Option<(u32, u32)>>()
             + self.instant.symbolic_reset_bindings.len() * std::mem::size_of::<Option<(u32, u32)>>()
+            + self.instant.symbolic_event_bindings.capacity() * std::mem::size_of::<(SymbolicRegionEntry, (u32, u32))>()
+    }
+
+    pub(crate) fn symbolic_event_routine(&self, key: SymbolicRegionEntry) -> Option<&std::sync::Arc<SymbolicRegionEventRoutine>> {
+        let (region, routine) = self.instant.symbolic_event_bindings.get(&key).copied()?;
+        self.instant.symbolic_regions.get(region as usize)?.event_kernel.as_ref()?.entries.get(routine as usize)
     }
     pub(crate) fn symbolic_actor_routine(&self, actor: PistonId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActorRoutine>> {
         let (region, routine) = self.instant.symbolic_actor_bindings.get(actor.index()).copied().flatten()?;

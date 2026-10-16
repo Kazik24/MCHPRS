@@ -6,7 +6,7 @@ use std::time::Duration;
 #[derive(Default)]
 /// Tracks cancellation, progress, messages, and graph statistics during compilation.
 pub struct TaskMonitor {
-    cancelled: AtomicBool,
+    cancelled: Arc<AtomicBool>,
     max_progress: AtomicUsize,
     progress: AtomicUsize,
     message: Mutex<Option<Arc<String>>>,
@@ -15,6 +15,9 @@ pub struct TaskMonitor {
 }
 
 impl TaskMonitor {
+    pub(crate) fn cancellation_flag(&self) -> Arc<AtomicBool> {
+        self.cancelled.clone()
+    }
     pub fn graph_statistics(&self) -> GraphStatistics {
         self.graph_statistics.lock().unwrap().clone()
     }

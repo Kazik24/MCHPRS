@@ -224,7 +224,7 @@ impl GraphBackend {
         (self.state.resources[resource.index()].at == contact).then_some(resource)
     }
 
-    fn pending_resource_extension(&self, resource_id: ResourceId, contact: ContactId, facing: BlockFace) -> Option<&DeferredPistonEvent> {
+    pub(super) fn pending_resource_extension(&self, resource_id: ResourceId, contact: ContactId, facing: BlockFace) -> Option<&DeferredPistonEvent> {
         let state = self.state.resources[resource_id.index()];
         if state.enabled || state.at != contact {
             return None;

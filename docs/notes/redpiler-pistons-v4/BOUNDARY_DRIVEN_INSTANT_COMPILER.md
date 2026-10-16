@@ -1,26 +1,56 @@
 # Boundary-driven instant compilation
 
-Status: grouped regional event programs are implemented for supported regions; full internal
-wire contraction is still incomplete. This document records the contract, current evidence and
-remaining work rather than claiming completion of the full virtual-circuit target.
+Status: active goal revised by the user. Boundary discovery is useful groundwork; the existing
+per-piston event programs do not meet the goal and measurably slow execution. Whole-region
+replacement and significant runtime acceleration remain required.
+
+All discovered edge cases and their evidence are maintained in the single register
+[INSTANT_COMPILER_EDGE_CASES.md](INSTANT_COMPILER_EDGE_CASES.md).
 
 ## Goal
 
-Compile an owned instant region through its actual connections to the surrounding circuit.
-No dedicated lever, common trigger, globally empty scheduler, or repeated complete device
-state is required. Stable external data during an admitted instant/reset transaction remains
-an explicit supported assumption. Callback order remains observable.
+Build an AOT compiler that replaces an instant region with an equivalent optimized symbolic
+virtual circuit and significantly accelerates execution. For ADDER1BIT and ADDER11BIT, almost
+the entire internal computation should run through the virtual circuit instead of physical
+graph propagation. Derive the circuit from graph semantics, never hand-written arithmetic,
+global input-mask enumeration, runtime learning, or JIT.
+
+Identify boundaries where instant logic meets ordinary devices through power/QC, Update/Shape,
+and observable geometry dependencies. Any qualifying boundary event may activate the region;
+no dedicated lever, common trigger, globally empty scheduler, or complete-device recurrence
+is required. Keep normal components and BUD-switch memory in ordinary Graph execution: do not
+classify logical BUD memory as an instant merely to include it in a kernel.
+
+Stable external data during an admitted instant/reset transaction remains an explicit
+assumption. The user additionally permits reordering **external callbacks within one logical
+tick**. This does not permit dropping their payloads or multiplicity, moving them to another
+tick, or reordering internal piston work in a way that changes circuit outputs or memory.
 
 ```text
-boundary power + incoming event + owned memory
+boundary power/QC + incoming event + external normal/BUD memory
                     |
              compiled region
                     |
-boundary power + ordered effects + next memory + scheduled work
+boundary outputs + same-tick effects + ordinary Graph memory/scheduled work
 ```
 
-The parser, graph, CircuitState and GraphFuture remain the existing owners. A compiled region
-does not acquire a private World, another scheduler, or a second payload state.
+Replace covered internal wires, Turbo walks, reset computation and unnecessary notifications
+in execution. Kernel phase/reset state and cold reconstruction data may remain where needed
+for display, reset and interpreter handoff. Unrelated Graph devices, BUD memory and
+scheduled ticks must continue normally. A private World or another physical simulator is not
+an implementation of the virtual circuit.
+
+The user additionally permits interpreter handoff to complete a few logical ticks after the
+request. If necessary, finish the current compiled transaction and materialize at a certified
+safe point. This relaxes immediate reconstruction of transient internal geometry, not output
+timing, BUD memory or scheduled work. All ordinary Graph execution continues during the wait;
+do not silently tick the region alone or jump the world clock. A deferred handoff needs an
+explicit pending/completed lifecycle and a justified bound. The existing stronger immediate
+handoff may remain where it is cheap; it is no longer a mandatory hot-path design constraint.
+
+Success requires measured release acceleration, actual execution of compiled kernels and
+substantial removal of internal work. Passing tests, recognizing actors, or translating
+individual piston predicates without replacing the internal circuit is insufficient.
 
 ## Boundary contract
 
@@ -28,21 +58,23 @@ does not acquire a private World, another scheduler, or a second payload state.
    and receive an output port. Shared external fanout alone does not require shared ownership.
 2. Keep power availability separate from activation. A QC data change can affect the next read
    while leaving the piston unchanged until a qualifying callback arrives.
-3. Retain each incoming/outgoing Update or Shape occurrence, including target, direction,
-   guard, live/captured view, order and meaningful duplicates. A callback with unchanged power
-   can still matter.
+3. Retain incoming/outgoing Update or Shape semantics: target, direction, guard, live/captured
+   values, logical tick and meaningful duplicates. External same-tick ordering may differ under
+   the explicit user assumption; required internal causal ordering remains. Unchanged power
+   does not by itself justify deleting an update.
 4. Account for external reads hidden in guards, contact variants, conducted power, wire shape
    and captured neighborhoods. An internal-to-internal edge can still depend on outside state.
 5. Account for outside observations of owned geometry, including observers and Turbo wire
    readers. An unchanged final output does not make an intermediate observed change removable.
 6. Close ownership over shared payloads and coupled piston footprints. Every mutable owner
    belongs to one execution state. Unrecognized mechanisms are reported as such.
-7. Preserve reset deadlines, priority, FIFO request order, action revalidation and independently
-   revision-checked payload publications. Evolving memory is an output of a transition; it does
-   not have to repeat its original value.
-8. Deliver effects at their original causal positions. If an outside callback immediately
-   reenters the region, its reads must see the correct preceding writes. End-of-routine batching
-   needs an independent proof.
+7. Preserve reset deadlines, scheduled priority, required internal request causality, action
+   revalidation and independently revision-checked payload publications. Keep ordinary/BUD
+   memory outside instant ownership; evolving memory need not repeat its initial value.
+8. External callback order within a tick may be canonicalized or batched. Preserve boundary
+   values, occurrence semantics, logical deadlines and the supported memory behavior. This
+   relaxation is not a certificate for unordered internal propagation; the stable-input adder
+   counterexample still forbids changing internal request order when outputs change.
 9. Unrelated devices and pending ticks continue normally. Regional execution must not replace
    the complete backend tick or require the entire circuit to be idle.
 10. Unsupported dependencies decline explicitly. A general Graph fallback preserves behavior
@@ -81,6 +113,53 @@ does not acquire a private World, another scheduler, or a second payload state.
   graph-table reduction, or an unexecuted compiled artifact does not establish kernel success.
 - Benchmark only after semantic execution checks pass. Separate preparation from runtime and
   include activation/effect costs in a transaction measurement.
+
+### Work-replacement and measurement gate
+
+`compiled_adder_regions_replace_internal_propagation_and_preserve_outputs` exercises a real
+carry-producing transaction for each adder, compares projected state and future work with
+the interpreter after each operation, checks arithmetic output windows and interpreter
+continuation, and compares executed work with stable O3. Its initial work gate requires at
+least 75% fewer Turbo walks and 50% fewer callbacks over preparation, activation and reset.
+These are acceptance thresholds for the intended replacement, not measured results. A
+per-actor predicate VM cannot pass by reporting more compiled steps while replaying all
+internal propagation. Boundary-only work may remain; report it separately when judging the
+remaining cost.
+
+The benchmark keeps its original active-window `seconds` field for historical comparison.
+Schema 6 additionally reports `preparation_execution_seconds`, `phase_stimulus_seconds` and
+`episode_execution_seconds`, plus preparation work counters and episode medians. The episode
+metric includes input/start operations, preparation ticks and the active ticks. It excludes
+loading, compilation, display flush, observations, reset and interpreter continuation.
+Report both time metrics: moving computation into an untimed activation is not a speedup.
+
+External callback batching also needs a reentrancy check: an outside receiver may change
+power and synchronously call back into the region before the original cascade finishes.
+Either preserve that causal boundary with a continuation or decline the unsafe closure.
+The allowed external ordering relaxation does not permit freezing an outside source or
+substituting final owned state for an earlier captured observation.
+
+### Event-program implementation contract
+
+The existing Graph scheduler remains the sole clock. A callback, reset tick, piston request
+acceptance or deferred publication selects a regional event routine. Compile the entire owned
+propagation closure for that entry, reduce its symbolic expressions and retain reachable
+reads, actual writes and boundary effects. No runtime Turbo walk is needed for the covered
+closure. Do not replace the backend tick with a whole-selection cursor.
+
+Emit future changes in one ordered stream: scheduled ticks, FIFO requests, publications,
+accepted presentation actions and outside deliveries. Replay those changes incrementally
+into the existing Graph future. An outside handler must see only the earlier emitted work;
+it may append its own work normally. Pending membership and imported publication witnesses
+are event inputs, not assumed-empty compiler queues.
+
+An outside delivery also needs its event-time owned-state view. A repeater can observe a
+transient high signal before the region finishes low, even without synchronous reentry.
+A sparse temporary owned-state overlay may supply that view while the ordinary handler
+runs, provided admission proves the handler cannot mutate/reenter owned execution. Restore
+only the owned fields after delivery, retaining ordinary-component changes and newly queued
+work. An overlay must not spuriously increment revisions or generate display changes.
+Preserve actual captured operands separately from this live event-time view.
 
 ## Current baseline limitation
 
@@ -152,5 +231,23 @@ Focused debug validation on the current source passed:
 
 These programs compile and execute local event predicates; they do not contract ordinary internal
 wire propagation or callback delivery. No Divider kernel, whole-device acceleration, or wire-work
-reduction is established. The release Redpiler suite is a separate validation step and no
-benchmark has run for this checkpoint.
+reduction is established.
+
+## Parent integration validation
+
+The final release Redpiler suite passed **395 tests, with 10 ignored and no failures**:
+
+```text
+cargo test -p mchprs_core --lib redpiler:: --release --locked -- --test-threads=1
+```
+
+The log is `target/boundary-regional-release-suite.log`; execution took 270.69 seconds.
+The earlier broad debug run passed 392 tests and exposed three legacy projection tests that
+still assumed the old default executor. Their setup now explicitly selects that AOT family;
+all three passed a focused debug rerun, and the final release run includes the corrections.
+The whole debug suite was not repeated after this test-only migration.
+
+Core test/bench compilation (`cargo check -p mchprs_core --tests --benches --locked`), server
+compilation (`cargo check -p mroww --locked`), focused formatting checks, and `git diff --check`
+also passed. Full workspace tests and broad fuzz campaigns were not run. Performance is being
+measured separately; compilation coverage and passing equivalence tests are not speedup evidence.

@@ -1,4 +1,89 @@
 use super::*;
+
+#[test]
+fn local_propagation_proves_hidden_path_contradictions_without_enumeration() {
+    let mut diagram = Diagram::new_structural(Limits::default()).unwrap();
+    let a = diagram.input(0).unwrap();
+    let b = diagram.input(1).unwrap();
+    let not_b = diagram.not(b).unwrap();
+    let ab = diagram.and(a, b).unwrap();
+    let a_not_b = diagram.and(a, not_b).unwrap();
+    let partition = diagram.or(ab, a_not_b).unwrap();
+    let not_partition = diagram.not(partition).unwrap();
+    let impossible = diagram.and(a, not_partition).unwrap();
+    assert_ne!(
+        impossible,
+        Formula::FALSE,
+        "the structural identities alone do not prove this contradiction"
+    );
+    let budget = Limits {
+        max_nodes: 64,
+        max_work: 4096,
+    };
+    assert!(diagram.prove_false(impossible, budget).unwrap());
+    assert!(!diagram.prove_false(impossible, Limits { max_nodes: 1, ..budget }).unwrap());
+    assert!(!diagram.prove_false(impossible, Limits { max_work: 0, ..budget }).unwrap());
+    assert!(!diagram.prove_false(partition, budget).unwrap());
+    assert!(!diagram.prove_false(a, budget).unwrap());
+}
+
+#[test]
+fn local_propagation_never_rejects_a_satisfiable_generated_guard_even_with_a_cut_cone() {
+    let mut diagram = Diagram::new_structural(Limits::default()).unwrap();
+    let mut values = vec![(Formula::FALSE, 0u8), (Formula::TRUE, 255u8)];
+    for bit in 0..3 {
+        let mask = (0..8).fold(0, |mask, input| mask | (u8::from(input & (1 << bit) != 0) << input));
+        values.push((diagram.input(bit).unwrap(), mask));
+    }
+    let mut random = 7u32;
+    for index in 0..192 {
+        let mut operand = || {
+            random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+            values[random as usize % values.len()]
+        };
+        let (a, a_mask) = operand();
+        let (b, b_mask) = operand();
+        let (c, c_mask) = operand();
+        let result = match index % 5 {
+            0 => (diagram.and(a, b).unwrap(), a_mask & b_mask),
+            1 => (diagram.or(a, b).unwrap(), a_mask | b_mask),
+            2 => (diagram.xor(a, b).unwrap(), a_mask ^ b_mask),
+            3 => (diagram.not(a).unwrap(), !a_mask),
+            _ => (diagram.select(a, b, c).unwrap(), (a_mask & b_mask) | (!a_mask & c_mask)),
+        };
+        values.push(result);
+    }
+    for &(formula, truth_mask) in &values {
+        for max_nodes in [0, 1, 8, 32, 128] {
+            for max_work in [0, 64, 4096] {
+                if diagram.prove_false(formula, Limits { max_nodes, max_work }).unwrap() {
+                    assert_eq!(truth_mask, 0, "a truncated or exhausted proof must never reject a feasible path");
+                }
+            }
+        }
+    }
+    let roots: Vec<_> = values.iter().map(|&(formula, _)| formula).collect();
+    let plan = plan(&diagram, &roots);
+    for input in 0..8 {
+        let actual = evaluate(&plan, &std::array::from_fn::<_, 3, _>(|bit| input & (1 << bit) != 0));
+        for (&actual, &(_, truth_mask)) in actual.iter().zip(&values) {
+            assert_eq!(actual, truth_mask & (1 << input) != 0);
+        }
+    }
+}
+
+#[test]
+fn local_propagation_validates_roots_and_keeps_canonical_proofs_trivial() {
+    for structural in [false, true] {
+        let mut diagram = Diagram::with_representation(Limits::default(), structural).unwrap();
+        let a = diagram.input(0).unwrap();
+        let empty = Limits { max_nodes: 0, max_work: 0 };
+        assert!(diagram.prove_false(Formula::FALSE, empty).unwrap());
+        assert!(!diagram.prove_false(Formula::TRUE, empty).unwrap());
+        assert!(!diagram.prove_false(a, Limits::default()).unwrap());
+        assert_eq!(diagram.prove_false(Formula(u32::MAX), empty), Err(SymbolicError::InvalidFormula));
+    }
+}
 use crate::{Plan, optimize};
 
 #[test]
@@ -162,6 +247,220 @@ fn lowering_discards_unreachable_proof_work_before_building_the_plan_layout() {
         let inputs: Vec<_> = (0..16).map(|bit| mask & (1 << bit) != 0).collect();
         assert_eq!(evaluate(&plan, &inputs), [inputs[0] ^ inputs[1]; 2]);
     }
+}
+
+#[test]
+fn live_input_lowering_preserves_sparse_identifiers_and_all_selected_outputs() {
+    let mut diagram = Diagram::new(Limits::default()).unwrap();
+    let a = diagram.input(2).unwrap();
+    let unused = diagram.input(9).unwrap();
+    let b = diagram.input(100).unwrap();
+    diagram.and(a, unused).unwrap();
+    let root = diagram.xor(a, b).unwrap();
+    let roots = [root, Formula::TRUE, root, Formula::FALSE];
+    let original = optimize(&diagram.circuit(&roots).unwrap(), Limits::default(), || false).unwrap();
+    let compact = optimize(&diagram.circuit_live_inputs(&roots).unwrap(), Limits::default(), || false).unwrap();
+    assert_eq!(original.inputs(), &[2, 9, 100], "the existing declared-input API is unchanged");
+    assert_eq!(
+        compact.inputs(),
+        &[2, 100],
+        "runtime bindings omit unreachable inputs without renumbering them"
+    );
+    for mask in 0..8 {
+        let all = [mask & 1 != 0, mask & 2 != 0, mask & 4 != 0];
+        assert_eq!(evaluate(&compact, &[all[0], all[2]]), evaluate(&original, &all));
+    }
+}
+
+#[test]
+fn live_input_lowering_keeps_constant_empty_and_invalid_root_contracts() {
+    let mut diagram = Diagram::new(Limits::default()).unwrap();
+    diagram.input(500).unwrap();
+    for roots in [vec![], vec![Formula::TRUE, Formula::FALSE, Formula::TRUE]] {
+        let circuit = diagram.circuit_live_inputs(&roots).unwrap();
+        assert!(circuit.inputs().is_empty());
+        let compact = optimize(&circuit, Limits::default(), || false).unwrap();
+        let expected: Vec<_> = roots.iter().map(|root| root.constant().unwrap()).collect();
+        assert_eq!(evaluate(&compact, &[]), expected);
+    }
+    assert_eq!(diagram.circuit_live_inputs(&[Formula(u32::MAX)]), Err(SymbolicError::InvalidFormula));
+}
+
+#[test]
+fn structural_boolean_traces_match_canonical_functions_for_every_input() {
+    let mut canonical = Diagram::new(Limits::default()).unwrap();
+    let mut structural = Diagram::new_structural(Limits::default()).unwrap();
+    let mut ordered: Vec<_> = (0..3).map(|input| canonical.input(input).unwrap()).collect();
+    let mut shared: Vec<_> = (0..3).map(|input| structural.input(input).unwrap()).collect();
+    let mut random = 0x81ac_047du32;
+    for step in 0..128 {
+        let mut next = || {
+            random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+            random as usize % ordered.len()
+        };
+        let [a, b, c] = [next(), next(), next()];
+        let operation = |diagram: &mut Diagram, values: &[Formula]| match step % 5 {
+            0 => diagram.not(values[a]),
+            1 => diagram.and(values[a], values[b]),
+            2 => diagram.or(values[a], values[b]),
+            3 => diagram.xor(values[a], values[b]),
+            _ => diagram.select(values[a], values[b], values[c]),
+        };
+        ordered.push(operation(&mut canonical, &ordered).unwrap());
+        shared.push(operation(&mut structural, &shared).unwrap());
+    }
+    ordered.extend([ordered[3], Formula::TRUE, ordered[3]]);
+    shared.extend([shared[3], Formula::TRUE, shared[3]]);
+    let reference = plan(&canonical, &ordered);
+    let compiled = optimize(&structural.circuit_live_inputs(&shared).unwrap(), Limits::default(), || false).unwrap();
+    for mask in 0..8 {
+        let inputs = [mask & 1 != 0, mask & 2 != 0, mask & 4 != 0];
+        assert_eq!(evaluate(&compiled, &inputs), evaluate(&reference, &inputs));
+    }
+}
+
+#[test]
+fn structural_four_bit_operations_preserve_all_strengths_and_attenuations() {
+    let mut diagram = Diagram::new_structural(Limits::default()).unwrap();
+    let mut bits = [Formula::FALSE; 8];
+    for (input, bit) in bits.iter_mut().enumerate() {
+        *bit = diagram.input(input).unwrap();
+    }
+    let left = Signal::from_bits(bits[..4].try_into().unwrap());
+    let right = Signal::from_bits(bits[4..].try_into().unwrap());
+    let mut roots = diagram.maximum(left, right).unwrap().bits().to_vec();
+    roots.push(diagram.signal_equal(left, right).unwrap());
+    roots.push(diagram.powered(left).unwrap());
+    for attenuation in 0..=16 {
+        roots.extend(diagram.attenuate(left, attenuation).unwrap().bits());
+    }
+    let compiled = optimize(&diagram.circuit_live_inputs(&roots).unwrap(), Limits::default(), || false).unwrap();
+    for a in 0u8..16 {
+        for b in 0u8..16 {
+            let inputs: Vec<_> = (0..8)
+                .map(|bit| if bit < 4 { a & (1 << bit) != 0 } else { b & (1 << (bit - 4)) != 0 })
+                .collect();
+            let values = evaluate(&compiled, &inputs);
+            let signal = |values: &[bool]| values.iter().enumerate().fold(0u8, |value, (bit, &set)| value | (u8::from(set) << bit));
+            assert_eq!(signal(&values[..4]), a.max(b));
+            assert_eq!(values[4], a == b);
+            assert_eq!(values[5], a != 0);
+            for attenuation in 0u8..=16 {
+                let start = 6 + usize::from(attenuation) * 4;
+                assert_eq!(signal(&values[start..start + 4]), a.saturating_sub(attenuation));
+            }
+        }
+    }
+}
+
+#[test]
+fn structural_sharing_substitution_and_proof_boundaries_are_explicit() {
+    let mut diagram = Diagram::new_structural(Limits::default()).unwrap();
+    let a = diagram.input(2).unwrap();
+    let b = diagram.input(7).unwrap();
+    let inverse = diagram.not(a).unwrap();
+    assert_eq!(diagram.not(inverse).unwrap(), a);
+    assert_eq!(diagram.and(a, inverse).unwrap(), Formula::FALSE);
+    assert_eq!(diagram.or(inverse, a).unwrap(), Formula::TRUE);
+    assert_eq!(diagram.xor(inverse, a).unwrap(), Formula::TRUE);
+    assert_eq!(diagram.and(a, b).unwrap(), diagram.and(b, a).unwrap());
+    let difference = diagram.xor(a, b).unwrap();
+    let roots = diagram.bind_roots(&[difference, a, difference], &[(2, true)]).unwrap();
+    let compiled = optimize(&diagram.circuit_live_inputs(&roots).unwrap(), Limits::default(), || false).unwrap();
+    assert_eq!(compiled.inputs(), &[7]);
+    for b in [false, true] {
+        assert_eq!(evaluate(&compiled, &[b]), [!b, true, !b]);
+    }
+    assert_eq!(diagram.forced_inputs(&[a]), Err(SymbolicError::RequiresCanonicalDiagram));
+    let invalid = Formula(u32::MAX);
+    assert_eq!(diagram.forced_inputs(&[invalid]), Err(SymbolicError::InvalidFormula));
+    assert_eq!(diagram.and(Formula::FALSE, invalid), Err(SymbolicError::InvalidFormula));
+    let mut bounded = Diagram::new_structural(Limits {
+        max_nodes: 3,
+        ..Limits::default()
+    })
+    .unwrap();
+    let input = bounded.input(0).unwrap();
+    assert_eq!(bounded.not(input), Err(SymbolicError::BudgetExceeded));
+    assert_eq!(bounded.and(input, Formula::FALSE).unwrap(), Formula::FALSE);
+}
+
+#[test]
+fn structural_late_data_selection_has_linear_storage_instead_of_a_truth_relation() {
+    const WIDTH: usize = 24;
+    let mut diagram = Diagram::new_structural(Limits {
+        max_nodes: 256,
+        ..Limits::default()
+    })
+    .unwrap();
+    let controls: Vec<_> = (0..WIDTH).map(|input| diagram.input(input).unwrap()).collect();
+    let data: Vec<_> = (WIDTH..WIDTH * 2).map(|input| diagram.input(input).unwrap()).collect();
+    let mut result = Formula::FALSE;
+    for (&control, &value) in controls.iter().zip(&data) {
+        let selected = diagram.and(control, value).unwrap();
+        result = diagram.or(result, selected).unwrap();
+    }
+    assert!(diagram.node_count() < WIDTH * 5);
+    let compiled = optimize(&diagram.circuit_live_inputs(&[result]).unwrap(), Limits::default(), || false).unwrap();
+    let mut random = 0x9de4_7ab1u32;
+    for _ in 0..128 {
+        let inputs: Vec<_> = (0..WIDTH * 2)
+            .map(|_| {
+                random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+                random & (1 << 30) != 0
+            })
+            .collect();
+        let expected = inputs[..WIDTH].iter().zip(&inputs[WIDTH..]).any(|(&control, &value)| control && value);
+        assert_eq!(evaluate(&compiled, &inputs), [expected]);
+    }
+}
+
+#[test]
+fn bounded_structural_implication_never_proves_a_false_two_variable_consequence() {
+    let mut diagram = Diagram::new_structural(Limits::default()).unwrap();
+    let a = diagram.input(0).unwrap();
+    let b = diagram.input(1).unwrap();
+    let mut functions = vec![(a, 0b1010u8), (b, 0b1100u8), (Formula::FALSE, 0), (Formula::TRUE, 15)];
+    for mask in 0u8..16 {
+        let bit = |index: u32| if mask & (1u8 << index) != 0 { Formula::TRUE } else { Formula::FALSE };
+        let low = diagram.select(b, bit(2), bit(0)).unwrap();
+        let high = diagram.select(b, bit(3), bit(1)).unwrap();
+        functions.push((diagram.select(a, high, low).unwrap(), mask));
+    }
+    let original = functions.clone();
+    for &(function, mask) in &original {
+        functions.push((diagram.not(function).unwrap(), !mask & 15));
+        for &(other, other_mask) in &original[..4] {
+            functions.push((diagram.and(function, other).unwrap(), mask & other_mask));
+            functions.push((diagram.or(function, other).unwrap(), mask | other_mask));
+        }
+    }
+    for &(left, left_mask) in &functions {
+        for &(right, right_mask) in &functions {
+            if diagram.structurally_implies(left, right) {
+                assert_eq!(left_mask & !right_mask, 0, "a structural proof must be valid for every valuation");
+            }
+        }
+    }
+    let roots: Vec<_> = functions.iter().map(|&(function, _)| function).collect();
+    let compiled = optimize(&diagram.circuit_live_inputs(&roots).unwrap(), Limits::default(), || false).unwrap();
+    for mask in 0..4 {
+        let expected: Vec<_> = functions.iter().map(|&(_, table)| table & (1 << mask) != 0).collect();
+        assert_eq!(evaluate(&compiled, &[mask & 1 != 0, mask & 2 != 0]), expected);
+    }
+    let both = diagram.and(a, b).unwrap();
+    let either = diagram.or(a, b).unwrap();
+    let not_either = diagram.not(either).unwrap();
+    assert_eq!(
+        diagram.and(both, not_either).unwrap(),
+        Formula::FALSE,
+        "a visited superset must prune the next path"
+    );
+    assert_eq!(diagram.or(both, a).unwrap(), a, "visited subsets need not accumulate indefinitely");
+    assert!(
+        !diagram.implies_with_budget(a, b, &mut 0),
+        "an exhausted proof returns unknown, not a guessed result"
+    );
 }
 
 #[test]

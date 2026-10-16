@@ -73,7 +73,7 @@ impl Execution {
         }
         let view = Self::contact(compiler, contact)?;
         let air = compiler.site_test(&view, |variant| variant.block == Block::Air)?;
-        let state = &compiler.state.resources[resource.index()];
+        let state = compiler.state.resources[resource.index()].clone();
         let stationary = compiler.logic.and(state.at(contact), state.enabled)?;
         let mut free = compiler.logic.or(air, stationary)?;
         if vacated_head.is_some_and(|actor| graph.pistons[actor.index()].near == contact) {
@@ -117,10 +117,20 @@ impl Execution {
         facing: BlockFace,
         early_only: bool,
     ) -> Result<Formula> {
-        let state = &compiler.state.resources[resource.index()];
+        let state = compiler.state.resources[resource.index()].clone();
         let disabled = compiler.logic.not(state.enabled)?;
         let present = compiler.logic.and(state.at(contact), disabled)?;
         let mut matched = Formula::FALSE;
+        if compiler.region.is_some() {
+            let queued = compiler.region_input(RegionRead::PendingExtension {
+                resource,
+                contact,
+                facing,
+                early_only,
+            })?;
+            let unchanged = state.revision.unchanged(0, &mut compiler.logic)?;
+            matched = compiler.logic.and(queued, unchanged)?;
+        }
         for event in &self.publications {
             if !event.extending
                 || compiler.graph.pistons[event.actor.index()].facing != facing

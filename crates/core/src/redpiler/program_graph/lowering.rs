@@ -7,6 +7,7 @@ impl CircuitDraft {
 
         let enabled = !self.plans.instant.symbolic_regions.is_empty();
         let mut symbolic_regions = Vec::with_capacity(self.plans.instant.symbolic_regions.len());
+        let mut symbolic_event_bindings = FxHashMap::default();
         let mut symbolic_actor_bindings = vec![None; if enabled { self.pistons.len() } else { 0 }];
         let mut symbolic_reset_bindings = vec![None; if enabled { self.nodes.len() } else { 0 }];
         for (region_index, region) in self.plans.instant.symbolic_regions.iter().enumerate() {
@@ -33,10 +34,21 @@ impl CircuitDraft {
                     });
                 }
             }
+            if let Some(kernel) = &region.event_kernel {
+                for (routine_index, routine) in kernel.entries.iter().enumerate() {
+                    if symbolic_event_bindings.insert(routine.key, (region_index, routine_index as u32)).is_some() {
+                        return Err(GraphBuildError::InvalidInstantRegion {
+                            table: "symbolic event bindings",
+                            index: routine_index,
+                        });
+                    }
+                }
+            }
             symbolic_regions.push(std::sync::Arc::new(SymbolicRegionProgram {
                 region: region.region,
                 actors: region.actors.clone(),
                 resets: region.resets.clone(),
+                event_kernel: region.event_kernel.clone(),
             }));
         }
 
@@ -204,6 +216,7 @@ impl CircuitDraft {
                 symbolic_region_declines: self.plans.instant.symbolic_region_declines.into_boxed_slice(),
                 symbolic_actor_bindings: symbolic_actor_bindings.into_boxed_slice(),
                 symbolic_reset_bindings: symbolic_reset_bindings.into_boxed_slice(),
+                symbolic_event_bindings,
                 execution: instant_execution,
                 kernel: self.plans.instant.machine.map(|machine| std::sync::Arc::new(machine.kernel.clone())),
                 symbolic_kernels: self.plans.instant.symbolic_kernels.into_boxed_slice(),

@@ -3,29 +3,14 @@ use super::*;
 use crate::redpiler::analysis::instant_regions::symbolic::{SymbolicBuilder, SymbolicLimits, SymbolicValue, ValueKind};
 use crate::redpiler::passes::Pass;
 use crate::redpiler::passes::planning::PlanBuilder;
-use crate::redpiler::passes::{PassContext, compile_instant_machine::CompileInstantMachine};
 use crate::redpiler::program_graph::{CircuitNodeKind, KernelBoundary, KernelInput, KernelOutput, SiteSource};
 
 fn machine_graph() -> (CompileGraph, EntryState) {
-    let (mut graph, entry) = stable_region_tests::stable_graph_at_level("adder_1bit", 4);
+    let (mut graph, entry) = stable_region_tests::stable_graph_at_level("adder_1bit", 3);
     // These tests explicitly exercise the legacy finite whole-selection machine.
     graph.plans.instant.symbolic_regions.clear();
     graph.plans.instant.symbolic_region_declines.clear();
-    let options = crate::redpiler::CompilerOptions {
-        optimization_level: Some(4),
-        stable_instant_inputs: true,
-        ..Default::default()
-    };
-    CompileInstantMachine
-        .run(
-            &mut graph,
-            &PassContext {
-                monitor: &TaskMonitor::default(),
-                options: &options,
-                entry: &entry,
-            },
-        )
-        .unwrap();
+    graph.plans.instant.machine = crate::redpiler::analysis::instant_regions::machine::compile(&graph, &TaskMonitor::default()).unwrap();
     assert!(graph.plans.instant.machine.is_some());
     (graph, entry)
 }
@@ -598,8 +583,10 @@ fn machine_compilation_is_opt_in_cancellable_and_invalidated_by_graph_changes() 
             },
         )
         .unwrap();
-    assert_eq!(
-        rebuilt.plans.instant.machine, graph.plans.instant.machine,
-        "deterministic rebuild is idempotent"
+    assert!(
+        rebuilt.plans.instant.machine.is_none(),
+        "regional candidates must not silently select the old whole-selection machine"
     );
+    let explicit = crate::redpiler::analysis::instant_regions::machine::compile(&graph, &monitor).unwrap();
+    assert_eq!(explicit, graph.plans.instant.machine, "an explicit legacy proof rebuild is deterministic");
 }

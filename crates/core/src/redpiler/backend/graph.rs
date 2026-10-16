@@ -281,6 +281,8 @@ pub(crate) struct GraphBackend {
     component_sites: Vec<Option<SiteId>>,
     /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
     wire_walks: Vec<WireWalk>,
+    /// This pool reuses Boolean scratch for event plans, including nested boundary callbacks.
+    symbolic_region_frames: Vec<symbolic::SymbolicRegionFrame>,
     future: GraphFuture,
     dirty: Vec<bool>,
     effects: Vec<PresentationEffect>,
@@ -577,6 +579,7 @@ impl GraphBackend {
             positions,
             component_sites,
             wire_walks: Vec::new(),
+            symbolic_region_frames: Vec::new(),
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),

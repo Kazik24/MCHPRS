@@ -142,6 +142,7 @@ impl Compiler<'_> {
     }
 
     pub(crate) fn wire_emits(&mut self, node: NodeId, face: BlockFace) -> Result<Formula> {
+        self.symbolize_component(node)?;
         match face {
             BlockFace::Top => return Ok(Formula::TRUE),
             BlockFace::Bottom => return Ok(Formula::FALSE),

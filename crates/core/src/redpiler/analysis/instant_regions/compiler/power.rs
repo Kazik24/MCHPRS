@@ -45,6 +45,7 @@ impl Compiler<'_> {
         if matches!(port, PowerPort::Output | PowerPort::Stored)
             && let SiteSource::Component(node) = self.graph.sites[site.index()].source
         {
+            self.symbolize_component(node)?;
             return Ok(self.state.components[node.index()].signal);
         }
         // Conducted reads always follow live neighbors, even if the emitter was captured.
@@ -68,8 +69,9 @@ impl Compiler<'_> {
         Ok(maximum)
     }
 
-    fn stored_strength(&self, site: SiteId, variant: &SiteVariant) -> Result<Signal> {
+    fn stored_strength(&mut self, site: SiteId, variant: &SiteVariant) -> Result<Signal> {
         if let Some(CallbackReceiver::Component(node)) = variant.receiver {
+            self.symbolize_component(node)?;
             return Ok(self.state.components[node.index()].signal);
         }
         if matches!(self.graph.sites[site.index()].source, SiteSource::Constant(_)) {
@@ -110,6 +112,7 @@ impl Compiler<'_> {
                 CircuitNodeKind::Electrical(NodeType::Comparator { .. })
             )
         {
+            self.symbolize_component(node)?;
             return Ok(self.state.components[node.index()].signal);
         }
         if matches!(self.graph.sites[site.index()].source, SiteSource::Contact(_)) && variant.component.is_none() {

@@ -51,6 +51,7 @@ impl Work {
         let active = compiler.logic.and(when, absent)?;
         if active != Formula::FALSE {
             self.requests.push_back(Guarded { value, when: active });
+            compiler.record_effect(super::execution::Effect::Request { when: active, request: value })?;
         }
         Ok(active)
     }
@@ -72,6 +73,12 @@ impl Work {
         if active != Formula::FALSE {
             self.scheduler.schedule_half_tick(Guarded { when: active, value: node }, delay, priority);
             self.pending[node.index()] = compiler.logic.or(self.pending[node.index()], active)?;
+            compiler.record_effect(super::execution::Effect::Schedule {
+                when: active,
+                node,
+                delay,
+                priority,
+            })?;
         }
         Ok(active)
     }

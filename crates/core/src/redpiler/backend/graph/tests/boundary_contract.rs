@@ -303,6 +303,15 @@ fn regional_bud_memory_changes_only_after_the_independent_update() {
         assert!(backend.program.instant_kernel().is_none());
         assert!(backend.program.symbolic_kernels().is_empty());
         assert!(backend.program.symbolic_region_counts().1 > 0);
+        for region in backend.program.symbolic_region_programs() {
+            assert!(
+                region
+                    .actors
+                    .iter()
+                    .all(|actor| backend.program.pistons()[actor.actor.index()].position != memory),
+                "the BUD memory must remain an ordinary Graph component outside the instant program"
+            );
+        }
         let initial_memory = native.get_block(memory);
         let steps = std::iter::once(Step::SetLever { position: data, powered })
             .chain(std::iter::repeat_n(Step::Tick, 32))
@@ -353,4 +362,210 @@ fn regional_bud_memory_changes_only_after_the_independent_update() {
         sampled_memory[0], sampled_memory[1],
         "the update must actually sample the two distinct QC data values"
     );
+}
+
+/// An event VM alone passes functional comparisons; this also requires propagation to disappear.
+#[test]
+fn compiled_adder_regions_replace_internal_propagation_and_preserve_outputs() {
+    for id in FAMILY {
+        let circuit = load_adder(id, ORIGIN, None);
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
+        let case = manifest["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["expectation"]["carry"].as_u64() == Some(1))
+            .expect("the fixture has a carry-producing transaction");
+        let positions = circuit.positions();
+        let mut native = circuit.build();
+        let mut projected = circuit.build();
+        let compile = |level| {
+            GraphBackend::compile_with_options(
+                &native,
+                circuit.bounds(),
+                vec![],
+                &CompilerOptions {
+                    optimization_level: Some(level),
+                    stable_instant_inputs: true,
+                    ..Default::default()
+                },
+                Arc::default(),
+            )
+            .unwrap()
+        };
+        let mut general = compile(3);
+        let mut compiled = compile(4);
+        let coverage = compiled.program.symbolic_region_counts();
+        assert_eq!(coverage.0, 1, "{id} needs a complete regional program; coverage={coverage:?}");
+        assert_eq!(coverage.3, 0, "{id} must not pass through a regional compilation decline");
+        assert!(
+            compiled.program.symbolic_region_programs().all(|region| region.event_kernel.is_some()),
+            "{id} must use complete propagation plans, not the old actor-predicate VM"
+        );
+        assert!(
+            compiled.program.instant_kernel().is_none(),
+            "a regional kernel must not use a global finite machine"
+        );
+        assert!(
+            compiled.program.symbolic_kernels().is_empty(),
+            "a regional kernel must not take over the whole selection"
+        );
+        let mut steps = case_steps(&circuit, case, false, true);
+        let response_start = steps.len();
+        steps.extend(std::iter::repeat_n(Step::Tick, 24));
+        for (index, step) in steps.into_iter().enumerate() {
+            let toggle = match step {
+                Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
+                Step::Tick => false,
+            };
+            native_step(&mut native, step);
+            graph_step(&mut general, step, toggle).unwrap();
+            graph_step(&mut compiled, step, toggle).unwrap();
+            check_boundary(&compiled, &native, &mut projected, &positions, &format!("compiled {id} step {index}")).unwrap();
+            if index >= response_start {
+                let (sum, carry) = expectation(&circuit, case);
+                assert_math_window(&circuit, &projected, sum, carry, index - response_start + 1);
+            }
+        }
+        let before = general.execution_counts();
+        let after = compiled.execution_counts();
+        eprintln!("{id} work: general={before:?}; compiled={after:?}");
+        assert!(before.wire_walks > 0 && before.callbacks > 0, "the baseline must exercise propagation");
+        assert!(
+            after.wire_walks * 4 <= before.wire_walks,
+            "{id} must eliminate most Turbo walks, rather than evaluate extra predicates around them"
+        );
+        assert!(
+            after.callbacks * 2 <= before.callbacks,
+            "{id} must absorb internal callback delivery, rather than replay the physical routes"
+        );
+        compiled.reset(&mut projected);
+        for tick in 0..8 {
+            assert_eq!(future(&native, &positions), future(&projected, &positions), "{id} handoff tick {tick}");
+            native.tick_interpreted();
+            projected.tick_interpreted();
+        }
+    }
+}
+
+#[test]
+fn regional_external_power_reads_stay_dynamic_without_rebinding_internal_writes() {
+    use crate::redpiler::analysis::instant_regions::compiler::{Compiler as SymbolicCompiler, RegionRead};
+    use mchprs_redpiler_opt::{Limits, symbolic::Signal};
+
+    let (graph, _) = stable_region_tests::stable_graph("adder_1bit");
+    let region = &graph.plans.instant.regions[0];
+    let (site, source) = graph
+        .sites
+        .iter()
+        .enumerate()
+        .find_map(|(index, site)| match site.source {
+            SiteSource::Component(node) if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Lever)) => {
+                Some((SiteId::new(index as u32), node))
+            }
+            _ => None,
+        })
+        .expect("the adder has an external component source");
+    let mut compiler = SymbolicCompiler::new_region(&graph, region, Limits::default()).unwrap();
+    let stored = compiler.site_power(site, PowerPort::Stored).unwrap();
+    assert_eq!(stored, compiler.site_power(site, PowerPort::Output).unwrap());
+    let circuit = compiler.logic.circuit(&stored.bits()).unwrap();
+    let plan = mchprs_redpiler_opt::optimize(&circuit, Limits::default(), || false).unwrap();
+    let mut scratch = vec![false; plan.scratch_len()];
+    let mut roots = [false; 4];
+    // The compiled source must follow all signal values after preparation, including analog values.
+    for strength in 0u8..16 {
+        let inputs: Vec<_> = plan
+            .inputs()
+            .iter()
+            .map(|&input| match compiler.region_reads[input] {
+                RegionRead::ComponentSignal { node, bit } if node == source => strength & (1 << bit) != 0,
+                _ => false,
+            })
+            .collect();
+        plan.evaluate(&inputs, &mut scratch, &mut roots).unwrap();
+        let actual = roots.iter().enumerate().fold(0u8, |value, (bit, &set)| value | (u8::from(set) << bit));
+        assert_eq!(actual, strength, "external power must not freeze at the schematic value");
+    }
+
+    let wire = region.wires[0];
+    let written = Signal::literal(7).unwrap();
+    compiler.state.components[wire.index()].signal = written;
+    compiler.state_written();
+    compiler.symbolize_component(wire).unwrap();
+    assert_eq!(
+        compiler.state.components[wire.index()].signal,
+        written,
+        "a subsequent read must keep the sequential wire write instead of restoring its entry input"
+    );
+}
+
+#[test]
+fn compiled_adders_preserve_every_pinned_arithmetic_history_and_safe_handoff() {
+    let mut checked = 0;
+    for id in FAMILY {
+        let circuit = load_adder(id, ORIGIN, None);
+        let manifest: Value =
+            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
+        let positions = circuit.positions();
+        let (draft, _) = stable_region_tests::stable_graph_at_level(id, 4);
+        let (program, initial_state) = draft.lower().unwrap();
+        assert_eq!(program.symbolic_region_counts().0, 1, "{id} must use the regional compiler");
+        assert_eq!(program.symbolic_region_counts().3, 0, "{id} must not pass through a compilation decline");
+        assert!(program.symbolic_region_programs().all(|region| region.event_kernel.is_some()));
+        assert!(program.instant_kernel().is_none() && program.symbolic_kernels().is_empty());
+        // Compile once; every prepared case executes the same immutable program from fresh state.
+        for case in manifest["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|case| case["expectation"].is_object())
+        {
+            let mut native = circuit.build();
+            let mut projected = circuit.build();
+            let mut backend = GraphBackend::new(program.clone(), initial_state.clone(), 0).unwrap();
+            let mut steps = case_steps(&circuit, case, false, true);
+            let response_start = steps.len();
+            steps.extend(std::iter::repeat_n(Step::Tick, 24));
+            for (index, step) in steps.into_iter().enumerate() {
+                let toggle = match step {
+                    Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
+                    Step::Tick => false,
+                };
+                native_step(&mut native, step);
+                graph_step(&mut backend, step, toggle).unwrap();
+                check_boundary(
+                    &backend,
+                    &native,
+                    &mut projected,
+                    &positions,
+                    &format!("{id}/{} event {index}", case["id"]),
+                )
+                .unwrap();
+                if index >= response_start {
+                    let (sum, carry) = expectation(&circuit, case);
+                    assert_math_window(&circuit, &projected, sum, carry, index - response_start + 1);
+                }
+            }
+            assert!(
+                backend.execution_counts().symbolic_region_steps > 0,
+                "{id}/{} must exercise compiled execution",
+                case["id"]
+            );
+            backend.reset(&mut projected);
+            for tick in 0..8 {
+                assert_eq!(
+                    future(&native, &positions),
+                    future(&projected, &positions),
+                    "{id}/{} handoff {tick}",
+                    case["id"]
+                );
+                native.tick_interpreted();
+                projected.tick_interpreted();
+            }
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 48, "all pinned cases must execute, rather than an empty or partial filter");
 }

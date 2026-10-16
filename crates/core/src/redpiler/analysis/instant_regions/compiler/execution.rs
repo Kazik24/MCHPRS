@@ -6,8 +6,10 @@ use super::*;
 use crate::redpiler::components::NodeType;
 use mchprs_world::{PistonAction, TickPriority};
 use std::collections::VecDeque;
-use work::{Guarded, Request, Work};
+pub(crate) use work::{Guarded, Request};
+use work::Work;
 
+#[derive(Clone)]
 pub(crate) struct ResourcePublication {
     /// This selects the valuations where an accepted action actually transferred this payload.
     pub(crate) when: Formula,
@@ -19,9 +21,12 @@ pub(crate) struct ResourcePublication {
     pub(crate) contact: ContactId,
 }
 
+#[derive(Clone)]
 pub(crate) struct Publication {
     /// This selects the valuations where the actor accepted the action.
     pub(crate) when: Formula,
+    /// This independently validates the actor transition without suppressing payload publication.
+    pub(crate) actor_valid: Formula,
     /// This is the actuator whose stationary connections will be restored.
     pub(crate) actor: PistonId,
     /// This records the actor revision-write position after acceptance.
@@ -34,6 +39,7 @@ pub(crate) struct Publication {
     pub(crate) extending: bool,
 }
 
+#[derive(Clone)]
 pub(crate) struct Accepted {
     /// This selects the valuations in which this ordered action occurs.
     pub(crate) when: Formula,
@@ -43,6 +49,39 @@ pub(crate) struct Accepted {
     pub(crate) previous_extended: Formula,
     /// This preserves the phase deadline of the action effect.
     pub(crate) tick: u64,
+}
+
+#[derive(Clone)]
+pub(crate) enum Effect {
+    /// This schedules one node through the existing half-tick priority queues.
+    Schedule {
+        /// This selects inputs where the schedule is newly inserted.
+        when: Formula,
+        /// This is the scheduled component identity.
+        node: NodeId,
+        /// This preserves the exact native half-tick delay.
+        delay: usize,
+        /// This preserves the native ordering within a scheduler bucket.
+        priority: TickPriority,
+    },
+    /// This appends one action request after preserving current FIFO deduplication.
+    Request {
+        /// This selects inputs where this request is newly inserted.
+        when: Formula,
+        /// This is the action owner and exact requested action.
+        request: Request,
+    },
+    /// This creates one deferred actor/resource publication witness.
+    Publication(Publication),
+    /// This records one accepted-action presentation occurrence.
+    Accepted(Accepted),
+    /// This dispatches one outside callback with the sparse owned-state snapshot it observes.
+    Callback {
+        /// This retains target, direction, payload and occurrence identity for native dispatch.
+        delivery: Delivery,
+        /// These changed owned fields reproduce live reads at this exact event occurrence.
+        snapshot: Vec<(RegionStateSlot, Formula)>,
+    },
 }
 
 pub(crate) struct Execution {
@@ -56,6 +95,10 @@ pub(crate) struct Execution {
     pub(crate) tick: u64,
     /// This marks the scheduled/action phases where a due extension still counts as an early drop.
     early_phase: bool,
+    /// This limits recursive callback execution to one region when compiling a local event routine.
+    scope: Option<RegionScope>,
+    /// These outside deliveries are boundary roots instead of recursively executed components.
+    pub(crate) outgoing: Vec<Delivery>,
 }
 
 impl Execution {
@@ -67,7 +110,22 @@ impl Execution {
             accepted: Vec::new(),
             tick: 0,
             early_phase: false,
+            scope: None,
+            outgoing: Vec::new(),
         }
+    }
+
+    /// Build one callback cascade that stops at the region boundary and retains its outside effects.
+    pub(crate) fn for_region(
+        compiler: &mut Compiler<'_>,
+        region: &crate::redpiler::program_graph::InstantRegion,
+    ) -> Result<Self> {
+        let mut execution = Self::empty(compiler.graph);
+        execution.scope = Some(RegionScope::new(compiler.graph, region));
+        for &node in &region.resets {
+            execution.work.pending[node.index()] = compiler.pending_input(node)?;
+        }
+        Ok(execution)
     }
 
     pub(crate) fn run_tick(&mut self, compiler: &mut Compiler<'_>) -> Result<()> {
@@ -121,6 +179,14 @@ impl Execution {
 impl Receivers for Execution {
     fn deliver(&mut self, compiler: &mut Compiler<'_>, delivery: Delivery) -> Result<()> {
         if delivery.when == Formula::FALSE {
+            return Ok(());
+        }
+        if self.scope.as_ref().is_some_and(|scope| !scope.owns(delivery.receiver)) {
+            compiler.record_effect(Effect::Callback {
+                delivery: delivery.clone(),
+                snapshot: Vec::new(),
+            })?;
+            self.outgoing.push(delivery);
             return Ok(());
         }
         compiler.step()?;

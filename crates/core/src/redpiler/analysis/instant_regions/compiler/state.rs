@@ -150,11 +150,19 @@ impl State {
     }
 
     pub(crate) fn initial(graph: &CompileGraph) -> Result<Self> {
+        Self::initial_impl(graph, true)
+    }
+
+    pub(crate) fn initial_region(graph: &CompileGraph) -> Result<Self> {
+        Self::initial_impl(graph, false)
+    }
+
+    fn initial_impl(graph: &CompileGraph, reject_host_state: bool) -> Result<Self> {
         let mut components = Vec::new();
         for (index, node) in graph.nodes.iter().enumerate() {
             let (strength, powered, locked, shape) = match &node.state {
                 ComponentState::Electrical(state) => {
-                    if state.command_entity.is_some() || state.note_instrument.is_some() {
+                    if reject_host_state && (state.command_entity.is_some() || state.note_instrument.is_some()) {
                         return Err(CompileError::UnsupportedNode(NodeId::new(index as u32)));
                     }
                     (state.output_strength, state.powered, state.repeater_locked, None)

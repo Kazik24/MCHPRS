@@ -20,7 +20,7 @@ impl Execution {
         Ok(compiler.logic.or(main, quasi)?)
     }
 
-    pub(super) fn sample(&mut self, compiler: &mut Compiler<'_>, actor: PistonId, when: Formula) -> Result<()> {
+    pub(crate) fn sample(&mut self, compiler: &mut Compiler<'_>, actor: PistonId, when: Formula) -> Result<()> {
         let powered = Self::powered(compiler, actor)?;
         let extended = compiler.state.actors[actor.index()].extended;
         let pending = Self::base_pending(compiler, actor)?;
@@ -69,7 +69,7 @@ impl Execution {
         Ok(())
     }
 
-    pub(super) fn accept(&mut self, compiler: &mut Compiler<'_>, event: Guarded<Request>) -> Result<()> {
+    pub(crate) fn accept(&mut self, compiler: &mut Compiler<'_>, event: Guarded<Request>) -> Result<()> {
         let request = event.value;
         let powered = Self::powered(compiler, request.actor)?;
         let previous_extended = compiler.state.actors[request.actor.index()].extended;
@@ -98,12 +98,14 @@ impl Execution {
         } else {
             self.retract(compiler, request.actor, request.action == PistonAction::RetractWithoutPull, when)?;
         }
-        self.accepted.push(Accepted {
+        let accepted = Accepted {
             when,
             request,
             previous_extended,
             tick: self.tick,
-        });
+        };
+        compiler.record_effect(Effect::Accepted(accepted.clone()))?;
+        self.accepted.push(accepted);
         Ok(())
     }
 
@@ -137,14 +139,17 @@ impl Execution {
             _ => None,
         };
         let moved = payload.as_ref().map_or(Formula::FALSE, |event| event.when);
-        self.publications.push_back(Publication {
+        let publication = Publication {
             when,
+            actor_valid: Formula::TRUE,
             actor,
             stamp,
             resource: payload,
             due_tick: self.tick + 2,
             extending: true,
-        });
+        };
+        compiler.record_effect(Effect::Publication(publication.clone()))?;
+        self.publications.push_back(publication);
         // The transfer must be visible to nested callbacks before any notification is expanded.
         if let Some(route) = spec.routes.far_shape_changed {
             compiler.route(route, moved, None, self)?;
@@ -199,14 +204,17 @@ impl Execution {
             compiler.route(route, moved, None, self)?;
         }
         compiler.route(spec.routes.near_changed, when, None, self)?;
-        self.publications.push_back(Publication {
+        let publication = Publication {
             when,
+            actor_valid: Formula::TRUE,
             actor,
             stamp,
             resource: payload,
             due_tick: self.tick + 2,
             extending: false,
-        });
+        };
+        compiler.record_effect(Effect::Publication(publication.clone()))?;
+        self.publications.push_back(publication);
         Ok(())
     }
 
@@ -237,11 +245,12 @@ impl Execution {
         Ok(())
     }
 
-    pub(super) fn publish(&mut self, compiler: &mut Compiler<'_>, event: Publication) -> Result<()> {
+    pub(crate) fn publish(&mut self, compiler: &mut Compiler<'_>, event: Publication) -> Result<()> {
         let unchanged = compiler.state.actors[event.actor.index()]
             .revision
             .unchanged(event.stamp, &mut compiler.logic)?;
         let valid = compiler.logic.and(event.when, unchanged)?;
+        let valid = compiler.logic.and(valid, event.actor_valid)?;
         let spec = compiler.graph.pistons[event.actor.index()];
         if event.extending {
             self.publish_resource(compiler, &event)?;
