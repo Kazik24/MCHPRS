@@ -55,6 +55,27 @@ impl GraphBackend {
     }
 
     fn query_power(&self, target: PowerTarget) -> u8 {
+        #[cfg(feature = "native-demo")]
+        if let Some(query_id) = self.native_power_queries.as_ref().and_then(|native| native.target_id(target)) {
+            // shortcut: fan-ins above 256 stay on Graph; raise the cap when a real target needs it.
+            let links = self.program.power_links_to(target);
+            let mut powers = [0u8; 256];
+            for (slot, link) in links.iter().enumerate() {
+                let SiteSource::Component(node) = self.program.sites()[link.from.index()].source else {
+                    unreachable!("native query plan only contains component sources");
+                };
+                powers[slot] = self.stored_component_strength(node);
+            }
+            return self
+                .native_power_queries
+                .as_mut()
+                .expect("native query id came from the attached program")
+                .evaluate(query_id, &powers[..links.len()]);
+        }
+        #[cfg(feature = "native-demo")]
+        if let Some(native) = &mut self.native_power_queries {
+            native.fallback();
+        }
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]

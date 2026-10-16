@@ -597,8 +597,12 @@ Unexpanded expressions are independent variables, so omitted constraints only re
 problem: a contradiction remains a sound proof, while failure or exhausted work means
 unknown. It never guesses that a path is impossible. Three targeted tests cover a hidden
 partition contradiction, invalid roots, and generated three-input expressions across
-truncated node/work budgets; all 34 optimizer-library tests passed in debug and release. Integration into
-the actual walk and successful ADDER1BIT event-plan construction are still unverified.
+truncated node/work budgets; all 34 optimizer-library tests passed in debug and release.
+The helper is integrated into walk-layer control points. Layer coalescing plus those proofs
+reached 141,908 semantic steps before exhausting the same node budget at wire-power
+derivation. Legal wire-side encoding alone then reached 141,880 steps and failed at
+`walk.identify.bias-write`. Both attempts still stopped before the first event Plan existed.
+The final canonical-heading power change has not had a fixture rerun.
 
 ### E36. Repeated layer occurrences must not become separate symbolic state alternatives
 
@@ -619,10 +623,10 @@ is disjoint from each such guard. Only rows below the target need the `AND NOT a
 rewrite; rewriting the other rows constructs an identity the generic simplifier then has
 to rediscover.
 
-**Status:** this is a source-derived representation correction sent to the implementation
-agent. The transformation is algebraic; successful Graph fixture compilation and the
-partition-equivalence regression are not yet established. It does not authorize unordered
-wire propagation or removal of callbacks.
+**Status:** implemented in `advance_layer`; the former 560-row failure no longer stops
+the first entry at that point. Successful Graph fixture compilation and an independently
+executed partition-equivalence regression are not established. It does not authorize
+unordered wire propagation or removal of callbacks.
 
 ### E37. Independent predicates can describe impossible enum and geometry states
 
@@ -641,10 +645,11 @@ A compact shared enum encoding can derive all equality predicates from the same 
 any unused codes need a stated interpretation or an enforced admission check. Do not
 substitute the fixture's initial state for live memory merely to shrink the formula.
 
-**Status:** the independent Boolean imports are confirmed in source. Their contribution
-to the current ADDER1BIT budget failure is a review hypothesis, not measured attribution.
-Test every valid enum/contact/side value against runtime bindings before changing the
-representation, and preserve dynamic SSA writes after binding.
+**Status:** wire-side input encoding is now None=00, Side=01, Up=10, with 11 also selecting
+Up; captured wire sides use the same encoding. Independent availability/contact predicates
+remain. The side change alone did not avoid the ADDER1BIT node limit (E35); do not attribute
+the entire failure to invalid side combinations. Runtime bindings still need complete
+valid-value coverage; dynamic SSA writes must survive subsequent reads.
 
 ### E38. A specialized wire visitor can bypass the regional ownership boundary
 
@@ -661,9 +666,10 @@ an unrelated net. Checking ordinary receiver dispatch alone does not establish c
 wire receives an explicit captured boundary callback; owned wires retain their original
 walk semantics. Do not quietly enlarge ownership to include a neighboring ordinary device.
 
-**Status:** source review found the bypass in the new draft; no failing fixture replay has
-yet established its observable consequence. Add a targeted owned-wire/outside-wire test
-which checks emitted delivery, unchanged outside SSA state, and retained captured values.
+**Status:** the specialized wire path now checks regional ownership and sends outside wire
+receivers through the boundary receiver path. No targeted executed fixture replay yet
+establishes the correction's observable behavior. The remaining regression must check emitted
+delivery, unchanged outside SSA state, and retained captured values.
 
 ## Updating this register
 

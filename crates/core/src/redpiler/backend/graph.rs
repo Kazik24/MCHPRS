@@ -8,6 +8,10 @@ mod fixed_point_cpu_tests;
 mod instant;
 mod instant_proxy;
 mod machine_state;
+#[cfg(feature = "native-demo")]
+mod native_query;
+#[cfg(feature = "native-demo")]
+pub(crate) use native_query::{NativePowerQueries, NativeQueryError, NativeQueryStats};
 pub(crate) use machine_state::MACHINE_EPOCH;
 mod pistons;
 mod power;
@@ -288,6 +292,8 @@ pub(crate) struct GraphBackend {
     effects: Vec<PresentationEffect>,
     failure: Option<GraphExecutionError>,
     counts: GraphExecutionCounts,
+    #[cfg(feature = "native-demo")]
+    native_power_queries: Option<NativePowerQueries>,
     #[cfg(test)]
     test_recorder: TestRecorder,
 }
@@ -409,6 +415,24 @@ impl GraphBackend {
             return Err(GraphBackendError::Cancelled);
         }
         Ok(backend)
+    }
+
+    #[cfg(feature = "native-demo")]
+    pub(crate) fn enable_native_power_demo(
+        &mut self,
+        clang: &std::path::Path,
+        linker: Option<&std::path::Path>,
+        artifact_dir: &std::path::Path,
+    ) -> Result<NativeQueryStats, NativeQueryError> {
+        let native = NativePowerQueries::compile(&self.program, clang, linker, artifact_dir)?;
+        let stats = native.stats();
+        self.native_power_queries = Some(native);
+        Ok(stats)
+    }
+
+    #[cfg(feature = "native-demo")]
+    pub(crate) fn native_power_query_stats(&self) -> Option<NativeQueryStats> {
+        self.native_power_queries.as_ref().map(NativePowerQueries::stats)
     }
 
     fn validate_supported(program: &CircuitProgram) -> Result<(), GraphBackendError> {
@@ -597,6 +621,8 @@ impl GraphBackend {
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
+            #[cfg(feature = "native-demo")]
+            native_power_queries: None,
             #[cfg(test)]
             test_recorder: TestRecorder::default(),
         })

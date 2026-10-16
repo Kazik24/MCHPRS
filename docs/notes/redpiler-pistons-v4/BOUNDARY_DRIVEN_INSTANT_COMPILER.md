@@ -1,11 +1,77 @@
 # Boundary-driven instant compilation
 
-Status: active goal revised by the user. Boundary discovery is useful groundwork; the existing
-per-piston event programs do not meet the goal and measurably slow execution. Whole-region
-replacement and significant runtime acceleration remain required.
+Status: stopped at the user's request on 2026-10-16 for a different experiment. This is an
+incomplete compiler checkpoint, not a working whole-region replacement or a demonstrated
+acceleration. Preserve the observations below when deciding what to reuse.
 
 All discovered edge cases and their evidence are maintained in the single register
 [INSTANT_COMPILER_EDGE_CASES.md](INSTANT_COMPILER_EDGE_CASES.md).
+
+## Stop checkpoint: 2026-10-16
+
+The implementation snapshot is commit `ad1573f` (`Compiler`). The worker was stopped and
+its long-running fixture test was interrupted. No more algorithm work or benchmarks were
+authorized for this wrap-up; compilation verification was explicitly requested afterward.
+
+### Present implementation
+
+- The scoped event compiler in `compiler/event.rs` derives callback, actor-sample,
+  action-acceptance, reset-tick and deferred-publication routines. It records ordered
+  future effects and sparse owned state, including event-time views for outside callbacks.
+- `redpiler_opt::Diagram` now supports a shared structural ITE DAG as well as canonical
+  BDD construction. Reachable-input lowering removes unused runtime bindings. Bounded
+  implication and local unit-propagation helpers prove some impossible paths; failure to
+  prove means unknown. All 34 optimizer-library tests passed in both debug and release.
+- Symbolic Turbo layer state coalesces rows with the same numeric layer. Wire-side reads
+  use a legal three-state encoding. Specialized wire dispatch now checks regional ownership.
+- Captured wire-power derivation now uses one canonical neighbor order. All four heading
+  tables have identical horizontal/down/up neighbor groups; queue heading/order remains
+  unchanged. A table-invariant and scalar comparison test was added but not executed in
+  the final snapshot.
+- The runtime evaluator and per-routine sparse revision-owner lists are drafted in
+  `backend/graph/symbolic.rs`. **No callback/sample/accept/tick/publication dispatch calls
+  `run_symbolic_region`. Its callback-effect branch is a no-op placeholder.** Do not hook
+  this routine into execution without completing boundary delivery, captured operands,
+  event-time overlays and reentrancy/admission handling.
+- The benchmark reports full-episode execution cost as well as the historical active
+  window, so untimed input preparation cannot masquerade as an optimization.
+
+### Observed blocker
+
+The first ADDER1BIT event entry is an uncaptured Update from Top at `SiteId(419)`,
+receiver `Component(NodeId(89))`, in a region with 13 actors and nine reset nodes.
+It still cannot produce an event Plan within 1,048,576 symbolic nodes.
+
+After layer coalescing and local contradiction proofs, the failure moved from repeated
+layer-row updates to `walk.visit-wire.power`, after 141,908 semantic steps. Compact wire
+side encoding alone did not resolve it: the next run failed at `walk.identify.bias-write`
+after 141,880 steps. Both reached 1,048,576 nodes / 1,048,575 charged logic operations.
+These results precede the final heading-independent power change; it has not had a fixture
+rerun. There is no successful new adder kernel, runtime-replacement result or speedup.
+
+The remaining suspected costs are conditional walk/capture histories and the very broad
+entry relation: every internal wire strength is arbitrary independent state at every
+micro-event. Snapshot-variant coalescing and a local ready-state relation were discussed,
+not implemented or proven. Neither increasing budgets nor falling back to general Graph
+would establish the intended virtual-circuit compiler.
+
+### Validation at shutdown
+
+The parent reran these successfully after the final heading-power source edit:
+
+```text
+cargo check -p mchprs_core --tests --benches --locked
+cargo check -p mroww --locked
+cargo build -p mroww --locked
+```
+
+The complete server build succeeded, including code generation/linking, in 39.52 seconds;
+its log is `target/instant-wrap-up-build.log`. These commands report dead-code warnings
+for the unfinished runtime path and one unused import. No compile fix was needed.
+The later validation sections in this document describe the **previous per-actor program
+checkpoint**, not equivalence of this new event compiler. New full-transaction/all-history
+adder tests remain acceptance gates; they do not currently pass the compilation gate.
+No final full-suite run, new performance measurement, or broad fuzz campaign was completed.
 
 ## Goal
 

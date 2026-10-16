@@ -1563,6 +1563,7 @@ dependencies = [
  "hmac 0.12.1",
  "impls",
  "itertools",
+ "libloading",
  "lz4_flex",
  "mchprs_blocks",
  "mchprs_network",

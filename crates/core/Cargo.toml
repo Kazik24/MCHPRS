@@ -8,6 +8,8 @@ edition = "2024"
 graph-trace = []
 # Deliberately incorrect experiment; never enable in a production build.
 unsafe-turbo-fixed-point = []
+# Opt-in benchmark experiment that compiles selected lowered power queries to C.
+native-demo = ["dep:libloading"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -41,6 +43,7 @@ harness = false
 
 [dependencies]
 mchprs_redpiler_opt = { path = "../redpiler_opt" }
+libloading = { version = "0.8", optional = true }
 hmac = "0.12"
 sha2 = "0.10"
 mchprs_proc_macros = { path = "../proc_macros" }
