@@ -68,7 +68,7 @@ impl GraphBackend {
             }
             return self
                 .native_power_queries
-                .as_mut()
+                .as_ref()
                 .expect("native query id came from the attached program")
                 .evaluate(query_id, &powers[..links.len()]);
         }

@@ -28,6 +28,12 @@ pub struct NativeQueryStats {
 #[derive(Debug)]
 pub struct NativeQueryError(String);
 
+impl NativeQueryError {
+    pub(crate) fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
 impl std::fmt::Display for NativeQueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
