@@ -1,10 +1,9 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, InstantMachine, InstantProxy, InstantRegion, InstantResetPlan, SiteId, SymbolicKernel, TurboCallbackIndex,
+    CompileGraph, DustPathPlan, InstantProxy, InstantRegion, InstantResetPlan, SiteId, TurboCallbackIndex,
     WireQueryFacts,
 };
-use std::sync::Arc;
 
 pub(crate) trait PlanBuilder {
     fn name(&self) -> &'static str;
@@ -31,24 +30,10 @@ pub(crate) enum PlanOutput {
     InstantResets(Vec<(usize, InstantResetPlan)>),
     Regions(Vec<InstantRegion>),
     Proxies(Vec<InstantProxy>),
-    Machine(Option<Arc<InstantMachine>>),
-    SymbolicKernels(Vec<Arc<SymbolicKernel>>),
-    SymbolicRegions(crate::redpiler::program_graph::SymbolicRegionCompilation),
 }
 
 impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
-        // A rebuilt input must not leave a machine proof tied to the previous plans.
-        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_) | Self::SymbolicRegions(_)) {
-            graph.plans.instant.machine = None;
-        }
-        if !matches!(&self, Self::Machine(_) | Self::SymbolicKernels(_) | Self::SymbolicRegions(_)) {
-            graph.plans.instant.symbolic_regions.clear();
-            graph.plans.instant.symbolic_region_declines.clear();
-        }
-        if !matches!(&self, Self::SymbolicKernels(_)) {
-            graph.plans.instant.symbolic_kernels.clear();
-        }
         match self {
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
@@ -76,12 +61,6 @@ impl PlanOutput {
                 graph.plans.instant.proxies.clear();
             }
             Self::Proxies(proxies) => graph.plans.instant.proxies = proxies,
-            Self::Machine(machine) => graph.plans.instant.machine = machine,
-            Self::SymbolicKernels(kernels) => graph.plans.instant.symbolic_kernels = kernels,
-            Self::SymbolicRegions(compilation) => {
-                graph.plans.instant.symbolic_regions = compilation.programs;
-                graph.plans.instant.symbolic_region_declines = compilation.declines;
-            }
         }
     }
 }

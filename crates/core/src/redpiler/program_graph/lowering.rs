@@ -9,56 +9,6 @@ impl CircuitDraft {
     pub(crate) fn lower_with_monitor(mut self,monitor:&crate::redpiler::TaskMonitor) -> Result<(CircuitProgram,CircuitState),GraphBuildError> {
         self.validate_with_monitor(monitor)?;
 
-        let enabled = !self.plans.instant.symbolic_regions.is_empty();
-        let mut symbolic_regions = Vec::with_capacity(self.plans.instant.symbolic_regions.len());
-        let mut symbolic_event_bindings = FxHashMap::default();
-        let mut symbolic_actor_bindings = vec![None; if enabled { self.pistons.len() } else { 0 }];
-        let mut symbolic_reset_bindings = vec![None; if enabled { self.nodes.len() } else { 0 }];
-        for (region_index, region) in self.plans.instant.symbolic_regions.iter().enumerate() {
-            let region_index = u32::try_from(region_index).map_err(|_| GraphBuildError::TooManyEntries { table: "symbolic regions" })?;
-            for (routine_index, actor) in region.actors.iter().enumerate() {
-                if symbolic_actor_bindings[actor.actor.index()]
-                    .replace((region_index, routine_index as u32))
-                    .is_some()
-                {
-                    return Err(GraphBuildError::InvalidInstantRegion {
-                        table: "symbolic actor bindings",
-                        index: actor.actor.index(),
-                    });
-                }
-            }
-            for (routine_index, reset) in region.resets.iter().enumerate() {
-                if symbolic_reset_bindings[reset.node.index()]
-                    .replace((region_index, routine_index as u32))
-                    .is_some()
-                {
-                    return Err(GraphBuildError::InvalidInstantRegion {
-                        table: "symbolic reset bindings",
-                        index: reset.node.index(),
-                    });
-                }
-            }
-            if let Some(kernel) = &region.event_kernel {
-                for (routine_index, routine) in kernel.entries.iter().enumerate() {
-                    if symbolic_event_bindings
-                        .insert(routine.key, (region_index, routine_index as u32))
-                        .is_some()
-                    {
-                        return Err(GraphBuildError::InvalidInstantRegion {
-                            table: "symbolic event bindings",
-                            index: routine_index,
-                        });
-                    }
-                }
-            }
-            symbolic_regions.push(std::sync::Arc::new(SymbolicRegionProgram {
-                region: region.region,
-                actors: region.actors.clone(),
-                resets: region.resets.clone(),
-                event_kernel: region.event_kernel.clone(),
-            }));
-        }
-
         let mut instant_route_by_route = vec![None; self.routes.len()];
         let mut private_resource_owners = vec![None; self.resources.len()];
         for (proxy_index, proxy) in self.plans.instant.proxies.iter().enumerate() {
@@ -205,13 +155,6 @@ impl CircuitDraft {
             }
         }
 
-        let instant_execution = self
-            .plans
-            .instant
-            .machine
-            .as_ref()
-            .map(|machine| KernelExecution::compile(&machine.kernel).map(std::sync::Arc::new))
-            .transpose()?;
         let state = CircuitState {
             classic_signals: self.plans.classic_nets.iter().map(|net| net.initial_signal).collect(),
             components: self.nodes.into_iter().map(|node| node.state).collect::<Vec<_>>().into_boxed_slice(),
@@ -221,14 +164,6 @@ impl CircuitDraft {
         let program = CircuitProgram {
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {
-                symbolic_regions: symbolic_regions.into_boxed_slice(),
-                symbolic_region_declines: self.plans.instant.symbolic_region_declines.into_boxed_slice(),
-                symbolic_actor_bindings: symbolic_actor_bindings.into_boxed_slice(),
-                symbolic_reset_bindings: symbolic_reset_bindings.into_boxed_slice(),
-                symbolic_event_bindings,
-                execution: instant_execution,
-                kernel: self.plans.instant.machine.map(|machine| std::sync::Arc::new(machine.kernel.clone())),
-                symbolic_kernels: self.plans.instant.symbolic_kernels.into_boxed_slice(),
                 proxies: self.plans.instant.proxies.into_boxed_slice(),
                 private_resource_owners: private_resource_owners.into_boxed_slice(),
                 route_by_route: instant_route_by_route.into_boxed_slice(),

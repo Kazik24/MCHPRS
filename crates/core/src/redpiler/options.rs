@@ -8,7 +8,7 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Promise stable inputs through reset; enables O3 region composition, while synthesis stays disabled.
+    /// Promise stable inputs through reset; enables O3 region composition.
     pub stable_instant_inputs: bool,
     /// Experimental committed-signal nets; requires O2 and remains opt-in pending acceptance.
     pub classic_redstone: bool,

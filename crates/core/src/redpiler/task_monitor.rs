@@ -15,9 +15,6 @@ pub struct TaskMonitor {
 }
 
 impl TaskMonitor {
-    pub(crate) fn cancellation_flag(&self) -> Arc<AtomicBool> {
-        self.cancelled.clone()
-    }
     pub fn graph_statistics(&self) -> GraphStatistics {
         self.graph_statistics.lock().unwrap().clone()
     }

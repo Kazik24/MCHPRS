@@ -2,6 +2,7 @@
 use super::*;
 
 impl CircuitDraft {
+    #[cfg(test)]
     pub(crate) fn validate(&self) -> Result<(), GraphBuildError> {
         self.validate_with_monitor(&crate::redpiler::TaskMonitor::default())
     }
@@ -27,7 +28,6 @@ impl CircuitDraft {
             ("wire relations", self.wire_relations.len()),
             ("instant regions", self.plans.instant.regions.len()),
             ("instant proxies", self.plans.instant.proxies.len()),
-            ("symbolic instant kernels", self.plans.instant.symbolic_kernels.len()),
         ] {
             if u32::try_from(len).is_err() {
                 return Err(GraphBuildError::TooManyEntries { table: name });
@@ -54,50 +54,6 @@ impl CircuitDraft {
         }
         self.validate_instant_resets()?;
         self.validate_instant_regions()?;
-        if !self.plans.instant.symbolic_regions.is_empty() || !self.plans.instant.symbolic_region_declines.is_empty() {
-            for (index, program) in self.plans.instant.symbolic_regions.iter().enumerate() {
-                let Some(region) = self.plans.instant.regions.get(program.region) else {
-                    return Err(GraphBuildError::InvalidInstantRegion {
-                        table: "symbolic regions",
-                        index,
-                    });
-                };
-                let actors: Vec<_> = program.actors.iter().map(|actor| actor.actor).collect();
-                let resets: Vec<_> = program.resets.iter().map(|reset| reset.node).collect();
-                if region.actors != actors || region.resets != resets {
-                    return Err(GraphBuildError::InvalidInstantRegion {
-                        table: "symbolic region ownership",
-                        index,
-                    });
-                }
-                program
-                    .boundary
-                    .validate(self, region)
-                    .map_err(|_| GraphBuildError::InvalidInstantRegion {
-                        table: "symbolic region boundary",
-                        index,
-                    })?;
-            }
-            let derived = crate::redpiler::analysis::instant_regions::symbolic_region::compile(self, &crate::redpiler::TaskMonitor::default())
-                .map_err(|_| GraphBuildError::InvalidInstantRegion {
-                    table: "symbolic regions",
-                    index: 0,
-                })?;
-            if derived.programs != self.plans.instant.symbolic_regions || derived.declines != self.plans.instant.symbolic_region_declines {
-                return Err(GraphBuildError::InvalidInstantRegion {
-                    table: "symbolic regions",
-                    index: 0,
-                });
-            }
-        }
-        if let Some(machine) = &self.plans.instant.machine {
-            crate::redpiler::analysis::instant_regions::machine::validate(self, machine)?;
-        }
-        for (index, kernel) in self.plans.instant.symbolic_kernels.iter().enumerate() {
-            if !kernel.validate(self) {
-                return Err(GraphBuildError::InvalidSymbolicKernel { index });
-            }
-        }
         Ok(())
     }
 

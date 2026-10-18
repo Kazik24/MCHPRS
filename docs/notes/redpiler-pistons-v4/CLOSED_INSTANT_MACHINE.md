@@ -1,5 +1,10 @@
 # Historical snapshot kernel prototype
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 > **Superseded runtime design.** This note records the first whole-state lookup prototype and its historical benchmarks. The active runtime uses the compact effect/phase program described in [COMPACT_INSTANT_KERNEL.md](COMPACT_INSTANT_KERNEL.md). Snapshot states and transitions are compile-time proof data; they are not lowered runtime lookup tables.
 
 The sections below describe the historical prototype unless explicitly marked otherwise.

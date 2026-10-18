@@ -112,11 +112,6 @@ impl GraphBackend {
     /// Presentation only: writes current graph state and drains effects. It
     /// reads no World state, so suppressed display cannot alter execution.
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
-        #[cfg(feature = "native-demo")]
-        self.sync_native_graph(false);
-        if self.has_active_kernel() {
-            assert!(self.materialize_kernel_state(), "certified kernel projection must materialize");
-        }
         for index in 0..self.dirty.len() {
             let node = NodeId::try_from_index(index).unwrap();
             // Hidden nodes stay dirty; reset materializes every node regardless.
@@ -156,11 +151,6 @@ impl GraphBackend {
                     pitch,
                 } => world.play_sound(position, id, category, volume, pitch),
             }
-        }
-        #[cfg(feature = "native-demo")]
-        if let Some(oracle) = self.native_oracle.as_mut() {
-            oracle.effects.clear();
-            oracle.dirty.clone_from(&self.dirty);
         }
     }
 
@@ -255,11 +245,7 @@ impl GraphBackend {
     /// boundary and drop graph-owned pending work. Pending transitions are
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
-        #[cfg(feature = "native-demo")]
-        self.sync_native_graph(true);
         self.flush(world, false);
-        self.future.kernel_cursor = None;
-        self.future.symbolic_cursor = None;
         self.project_future(world);
         self.dirty.fill(false);
         self.contact_dirty.fill(false);
@@ -277,18 +263,6 @@ impl GraphBackend {
     /// events, ordinary scheduled ticks, queued requests, and the clock.
     /// Reads no World state and changes no graph state.
     pub(crate) fn project_future<W: World>(&self, world: &mut W) {
-        if self.has_active_kernel() {
-            let mut projected = GraphBackend::new(self.program.clone(), self.state.clone(), self.future.clock.logical_tick)
-                .expect("a validated graph program can project its kernel state");
-            projected.future.clock = self.future.clock;
-            projected.future.kernel_cursor = self.future.kernel_cursor.clone();
-            projected.future.symbolic_cursor = self.future.symbolic_cursor.clone();
-            assert!(projected.materialize_kernel_state(), "certified kernel projection must materialize");
-            projected.future.kernel_cursor = None;
-            projected.future.symbolic_cursor = None;
-            projected.project_future(world);
-            return;
-        }
         debug_assert_eq!(self.future.clock.phase, GraphPhase::BetweenTicks);
         let interpreter = world.piston_state_mut();
         interpreter.logical_tick = self.future.clock.logical_tick;

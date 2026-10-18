@@ -114,7 +114,7 @@ impl GraphBackend {
         (wires, edges)
     }
 
-    fn fixed_point_wire_neighbors(&self, node: NodeId) -> Vec<NodeId> {
+    pub(super) fn fixed_point_wire_neighbors(&self, node: NodeId) -> Vec<NodeId> {
         let plan = self.wire_plan(node);
         let view = |index| {
             self.resolve_site_view(plan.canonical_neighbors[index], None)

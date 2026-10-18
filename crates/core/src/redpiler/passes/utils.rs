@@ -216,27 +216,6 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
         .sum();
     let tables = vec![
-        symbolic_kernel_table("lowering input", &graph.plans.instant.symbolic_kernels),
-        table::<crate::redpiler::program_graph::SymbolicRegion>(
-            "lowering input",
-            "symbolic region events",
-            graph.plans.instant.symbolic_regions.len(),
-            graph.plans.instant.symbolic_regions.capacity(),
-            graph
-                .plans
-                .instant
-                .symbolic_regions
-                .iter()
-                .map(|region| region.estimated_heap_bytes())
-                .sum(),
-        ),
-        table::<crate::redpiler::program_graph::InstantMachine>(
-            "lowering input",
-            "instant proof + compact kernel",
-            usize::from(graph.plans.instant.machine.is_some()),
-            usize::from(graph.plans.instant.machine.is_some()),
-            graph.plans.instant.machine.as_ref().map_or(0, |machine| machine.estimated_bytes()),
-        ),
         table::<crate::redpiler::program_graph::ClassicNetPlan>(
             "lowering input","classic certificates",graph.plans.classic_nets.len(),graph.plans.classic_nets.capacity(),
             graph.plans.classic_nets.iter().map(|net|std::mem::size_of_val(net.wires.as_ref())+std::mem::size_of_val(net.inputs.as_ref())+std::mem::size_of_val(net.entries.as_ref())+net.entries.iter().map(|entry|std::mem::size_of_val(entry.ops.as_ref())).sum::<usize>()).sum(),
@@ -378,32 +357,6 @@ pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
     vec![
         PreparationTableStatistics { stage:"lowering",table:"classic signal tables".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().estimated_bytes() },
         PreparationTableStatistics { stage:"lowering",table:"committed classic signals".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().nets.len() },
-        symbolic_kernel_table("lowering", program.symbolic_kernels()),
-        table::<crate::redpiler::program_graph::SymbolicRegion>(
-            "lowering",
-            "symbolic region events",
-            program.symbolic_region_programs().count(),
-            program.symbolic_region_programs().count(),
-            program
-                .symbolic_region_programs()
-                .map(|region| region.estimated_heap_bytes())
-                .sum::<usize>()
-                + program.symbolic_region_binding_bytes(),
-        ),
-        table::<crate::redpiler::program_graph::KernelExecution>(
-            "lowering",
-            "instant active effects",
-            usize::from(program.instant_execution().is_some()),
-            usize::from(program.instant_execution().is_some()),
-            program.instant_execution().map_or(0, |execution| execution.estimated_bytes()),
-        ),
-        table::<crate::redpiler::program_graph::InstantKernel>(
-            "lowering",
-            "instant kernel",
-            usize::from(program.instant_kernel().is_some()),
-            usize::from(program.instant_kernel().is_some()),
-            program.instant_kernel().map_or(0, |kernel| kernel.estimated_bytes()),
-        ),
         table::<crate::redpiler::program_graph::InstantProxy>(
             "lowering",
             "instant proxies",
@@ -523,23 +476,6 @@ pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
             boxed_bytes::<std::ops::Range<u32>>(program.contacts().len()),
         ),
     ]
-}
-
-fn symbolic_kernel_table(
-    stage: &'static str,
-    kernels: &[std::sync::Arc<crate::redpiler::program_graph::SymbolicKernel>],
-) -> PreparationTableStatistics {
-    use crate::redpiler::program_graph::SymbolicKernel;
-    table::<std::sync::Arc<SymbolicKernel>>(
-        stage,
-        "symbolic kernels",
-        kernels.len(),
-        kernels.len(),
-        kernels
-            .iter()
-            .map(|kernel| std::mem::size_of::<SymbolicKernel>() + kernel.estimated_heap_bytes())
-            .sum(),
-    )
 }
 
 pub(super) fn record_preparation_pass(monitor: &TaskMonitor, name: &'static str, before: GraphCounts, after: GraphCounts, start: Instant) {

@@ -1,5 +1,10 @@
 # Archived experiment: runtime learning of instant reset loops
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 **Status: rejected for the compiler and removed from production code.** These are historical research notes, not instructions for an available pass or API. The required compiler is AOT: it must derive a symbolic virtual circuit before execution, with inputs represented as variables. Learning one concrete input history at runtime does not satisfy that goal.
 
 The idea may still be useful for the interpreter: exact periodic-state detection can accelerate repeated work without claiming to derive a general circuit function. No interpreter implementation is included in this experiment.

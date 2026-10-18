@@ -2,31 +2,20 @@
 //! compilation; flush and reset project graph state back to it.
 
 mod fixed_point;
+#[cfg(test)]
+#[path = "graph/tests/unchecked_classic_anpu.rs"]
+mod unchecked_classic_anpu;
 pub(crate) mod classic;
 #[cfg(test)]
 #[path = "graph/tests/fixed_point_cpu.rs"]
 mod fixed_point_cpu_tests;
 mod instant;
 mod instant_proxy;
-mod machine_state;
-#[cfg(feature = "native-demo")]
-mod native_query;
-#[cfg(feature = "native-demo")]
-mod native_engine;
-#[cfg(feature = "native-demo")]
-pub use native_engine::NativeEngineStats;
-pub(crate) use machine_state::MACHINE_EPOCH;
-#[cfg(feature = "native-demo")]
-use native_query::NativePowerQueries;
-#[cfg(feature = "native-demo")]
-pub use native_query::{NativeQueryError, NativeQueryStats};
 mod pistons;
 mod power;
 mod projection;
 mod reset;
 mod sites;
-mod symbolic;
-mod symbolic_kernel;
 mod wire;
 
 use pistons::{DeferredPistonEvent, PistonRequest};
@@ -241,22 +230,9 @@ enum PresentationEffect {
     },
 }
 
-#[cfg(feature = "native-demo")]
-impl fmt::Debug for PresentationEffect {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::BlockAction { position, action: BlockAction::Piston { action, piston } } => write!(f, "Piston({position:?},{action:?},{piston:?})"),
-            Self::BlockAction { position, action: BlockAction::BlockChange { pos, block_id } } => write!(f, "BlockChange({position:?},{pos:?},{block_id})"),
-            Self::Sound { position, id, category, volume, pitch } => write!(f, "Sound({position:?},{id},{category},{volume:?},{pitch:?})"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A runtime failure that requires falling back from graph execution.
 pub enum GraphExecutionError {
-    #[cfg(feature = "native-demo")]
-    Native(String),
     /// The selected component kind has no graph execution implementation.
     UnsupportedComponent { position: Option<BlockPos>, kind: &'static str },
     /// Scheduled command block work reached execution without a world command host.
@@ -266,8 +242,6 @@ pub enum GraphExecutionError {
 impl fmt::Display for GraphExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            #[cfg(feature = "native-demo")]
-            Self::Native(message) => f.write_str(message),
             Self::UnsupportedComponent { position, kind } => {
                 write!(f, "graph execution does not support {kind} at {position:?}")
             }
@@ -307,9 +281,9 @@ pub(crate) struct GraphBackend {
     component_sites: Vec<Option<SiteId>>,
     /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
     wire_walks: Vec<WireWalk>,
-    /// This pool reuses Boolean scratch for event plans, including nested boundary callbacks.
-    symbolic_region_frames: Vec<symbolic::SymbolicRegionFrame>,
     classic_proof: Option<classic::ProofRecorder>,
+    #[cfg(test)]
+    unchecked_classic: Option<std::sync::Arc<unchecked_classic_anpu::UncheckedProgram>>,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -325,12 +299,6 @@ pub(crate) struct GraphBackend {
     effects: Vec<PresentationEffect>,
     failure: Option<GraphExecutionError>,
     counts: GraphExecutionCounts,
-    #[cfg(feature = "native-demo")]
-    native_power_queries: Option<NativePowerQueries>,
-    #[cfg(feature = "native-demo")]
-    native_engine: Option<native_engine::NativeEngine>,
-    #[cfg(feature = "native-demo")]
-    native_oracle: Option<Box<GraphBackend>>,
     #[cfg(test)]
     test_recorder: TestRecorder,
 }
@@ -342,25 +310,6 @@ struct GraphFuture {
     piston_requests: VecDeque<PistonRequest>,
     deferred_pistons: VecDeque<DeferredPistonEvent>,
     clock: Clock,
-    /// This stores only frozen controls, phase position, and live revision origins.
-    kernel_cursor: Option<KernelCursor>,
-    /// This stores the evaluated AOT phase roots for one admitted symbolic kernel.
-    symbolic_cursor: Option<symbolic_kernel::SymbolicCursor>,
-}
-
-#[derive(Clone)]
-/// Minimal mutable memory for a certified periodic kernel.
-struct KernelCursor {
-    /// This selects the frozen external data-control assignment.
-    mask: u8,
-    /// This identifies the next certified phase transition for the current semantic state.
-    phase: usize,
-    /// This counts completed periodic cycles after the finite prefix.
-    cycles: u64,
-    /// These preserve live actor revision origins across compact execution.
-    piston_revisions: Vec<u64>,
-    /// These preserve live resource revision origins across compact execution.
-    resource_revisions: Vec<u64>,
 }
 
 #[cfg(test)]
@@ -452,94 +401,6 @@ impl GraphBackend {
             return Err(GraphBackendError::Cancelled);
         }
         Ok(backend)
-    }
-
-    #[cfg(feature = "native-demo")]
-    pub(crate) fn enable_native_power_demo(
-        &mut self,
-        clang: &std::path::Path,
-        linker: Option<&std::path::Path>,
-        artifact_dir: &std::path::Path,
-        verify_general: bool,
-    ) -> Result<NativeQueryStats, NativeQueryError> {
-        let native = NativePowerQueries::compile(&self.program, &self.state, clang, linker, artifact_dir, verify_general)?;
-        let stats = native.stats();
-        self.native_power_queries = Some(native);
-        Ok(stats)
-    }
-
-    #[cfg(feature = "native-demo")]
-    pub(crate) fn native_power_query_stats(&self) -> Option<NativeQueryStats> {
-        self.native_power_queries.as_ref().map(NativePowerQueries::stats)
-    }
-
-    #[cfg(feature = "native-demo")]
-    pub(crate) fn enable_native_graph_demo(&mut self, clang: &std::path::Path, linker: Option<&std::path::Path>, artifacts: &std::path::Path) -> Result<NativeEngineStats, NativeQueryError> {
-        if self.native_engine.is_some() || self.native_power_queries.is_some() {
-            return Err(NativeQueryError::new("a native execution experiment is already attached"));
-        }
-        let engine = native_engine::NativeEngine::compile(self, clang, linker, artifacts)?;
-        let stats = engine.stats();
-        self.native_engine = Some(engine);
-        Ok(stats)
-    }
-
-    #[cfg(feature = "native-demo")]
-    pub(crate) fn native_graph_stats(&self) -> Option<NativeEngineStats> {
-        self.native_engine.as_ref().map(native_engine::NativeEngine::stats)
-    }
-
-    #[cfg(feature = "native-demo")]
-    pub(crate) fn enable_native_graph_verification(&mut self) -> Result<(), NativeQueryError> {
-        if self.native_engine.is_none() || self.counts.ticks != 0 {
-            return Err(NativeQueryError::new("enable native verification before activation"));
-        }
-        let mut oracle = Self::new_with_positions(self.program.clone(), self.state.clone(), self.future.clock.logical_tick, self.positions.clone()).map_err(|e| NativeQueryError::new(e.to_string()))?;
-        for (tick, delay, priority) in self.future.scheduler.iter() {
-            oracle.future.scheduler.schedule_half_tick(*tick, delay, priority);
-        }
-        oracle.future.pending = self.future.pending.clone();
-        self.native_engine.as_mut().unwrap().verify_power_queries();
-        self.native_oracle = Some(Box::new(oracle));
-        Ok(())
-    }
-
-    #[cfg(feature = "native-demo")]
-    fn verify_native_graph(&mut self) -> Result<(), GraphExecutionError> {
-        if self.native_oracle.is_none() { return Ok(()); }
-        self.sync_native_graph(true);
-        let oracle = self.native_oracle.as_ref().unwrap();
-        let projected = (!self.program.classic().nets.is_empty()).then(|| (
-            native_engine::projected_classic_state(&self.program, &self.state),
-            native_engine::projected_classic_state(&self.program, &oracle.state),
-        ));
-        let (actual_state, expected_state) = projected.as_ref().map_or((&self.state, &oracle.state), |(a,b)| (a,b));
-        let mismatch = if actual_state != expected_state {
-            let component = actual_state.components.iter().zip(&expected_state.components).enumerate().find(|(_, (a,b))| a != b);
-            format!("state: component={component:?}, pistons_equal={}, resources_equal={}, classic_signals_equal={}", actual_state.pistons == expected_state.pistons, actual_state.resources == expected_state.resources, actual_state.classic_signals == expected_state.classic_signals)
-        } else {
-            let actual: Vec<_> = self.future.scheduler.iter().collect();
-            let expected: Vec<_> = oracle.future.scheduler.iter().collect();
-            if actual != expected { format!("scheduler: C={actual:?}, Graph={expected:?}") }
-            else if self.future.pending != oracle.future.pending { "pending tick membership".into() }
-            else if self.future.clock.logical_tick != oracle.future.clock.logical_tick { "logical tick".into() }
-            else if format!("{:?}{:?}", self.future.piston_requests, self.future.deferred_pistons) != format!("{:?}{:?}", oracle.future.piston_requests, oracle.future.deferred_pistons) { "piston future".into() }
-            else if format!("{:?}", self.effects) != format!("{:?}", oracle.effects) { "ordered presentation effects".into() }
-            else { return Ok(()); }
-        };
-        let error = GraphExecutionError::Native(format!("native verification at tick {}: {mismatch}", self.future.clock.logical_tick));
-        self.failure = Some(error.clone());
-        Err(error)
-    }
-
-    #[cfg(feature = "native-demo")]
-    fn sync_native_graph(&mut self, future: bool) {
-        if let Some(engine) = self.native_engine.as_mut() {
-            engine.sync_state(&mut self.state, &mut self.dirty, &mut self.effects).expect("native graph projection failed");
-            if future { engine.sync_future(&mut self.future).expect("native graph future projection failed"); }
-            self.counts = engine.counts();
-            self.future.clock.logical_tick = engine.logical_tick();
-        }
     }
 
     fn validate_supported(program: &CircuitProgram) -> Result<(), GraphBackendError> {
@@ -724,8 +585,9 @@ impl GraphBackend {
             positions,
             component_sites,
             wire_walks: Vec::new(),
-            symbolic_region_frames: Vec::new(),
             classic_proof: None,
+            #[cfg(test)]
+            unchecked_classic: None,
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
@@ -736,8 +598,6 @@ impl GraphBackend {
                     phase: GraphPhase::BetweenTicks,
                     scheduled_advanced: false,
                 },
-                kernel_cursor: None,
-                symbolic_cursor: None,
             },
             dirty: vec![false; node_count],
             contact_dirty,
@@ -751,12 +611,6 @@ impl GraphBackend {
             effects: Vec::new(),
             failure: None,
             counts: GraphExecutionCounts::default(),
-            #[cfg(feature = "native-demo")]
-            native_power_queries: None,
-            #[cfg(feature = "native-demo")]
-            native_engine: None,
-            #[cfg(feature = "native-demo")]
-            native_oracle: None,
             #[cfg(test)]
             test_recorder: TestRecorder::default(),
         })
@@ -884,27 +738,10 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        #[cfg(feature = "native-demo")]
-        if let Some(engine) = self.native_engine.as_mut() {
-            let result = engine.tick().map_err(|error| GraphExecutionError::Native(error.to_string()));
-            self.counts = engine.counts();
-            self.future.clock.logical_tick = engine.logical_tick();
-            if let Some(host) = host.as_mut() { host.publish_logical_tick(self.future.clock.logical_tick); }
-            if let Err(error) = &result { self.failure = Some(error.clone()); }
-            result?;
-            if let Some(oracle) = self.native_oracle.as_mut() { oracle.tick()?; }
-            return self.verify_native_graph();
-        }
         if host.is_none()
             && let Some(position) = self.command_host_preflight_position()
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
-        }
-        if self.try_kernel_tick() {
-            if let Some(host) = host.as_mut() {
-                host.publish_logical_tick(self.future.clock.logical_tick);
-            }
-            return Ok(());
         }
         let result = self.tick_phases(&mut host);
         if let Err(error) = &result {
@@ -1030,44 +867,8 @@ impl GraphBackend {
 
     pub(crate) fn use_block(&mut self, position: BlockPos) -> Result<(), GraphExecutionError> {
         if let Some(error) = &self.failure { return Err(error.clone()); }
-        #[cfg(feature = "native-demo")]
-        if let Some(engine) = self.native_engine.as_mut() {
-            let Some(&node) = self.positions.get(&position) else { return Ok(()) };
-            let result = engine.use_block(node).map_err(|e| GraphExecutionError::Native(e.to_string()));
-            self.latch_error(&result);
-            result?;
-            if let Some(oracle) = self.native_oracle.as_mut() { oracle.use_block(position)?; }
-            return self.verify_native_graph();
-        }
-        if self.has_active_kernel() {
-            assert!(
-                self.materialize_kernel_state(),
-                "certified kernel state must materialize before input changes"
-            );
-            self.future.kernel_cursor = None;
-            self.future.symbolic_cursor = None;
-        }
-        let symbolic_admission = self.positions.get(&position).and_then(|&node| {
-            self.program
-                .symbolic_kernels()
-                .iter()
-                .any(|kernel| kernel.trigger == node && self.node_state(node).powered != kernel.powered_after)
-                .then(|| self.prepare_symbolic_kernel(node))
-                .flatten()
-        });
-        if let Some(prepared) = symbolic_admission {
-            self.enter_symbolic_kernel(prepared);
-            return Ok(());
-        }
-        let activates_kernel = self
-            .program
-            .instant_kernel()
-            .is_some_and(|kernel| self.position(kernel.trigger) == position && self.node_state(kernel.trigger).powered);
         let result = self.use_block_inner(position);
         self.latch_error(&result);
-        if result.is_ok() && activates_kernel {
-            self.try_enter_kernel();
-        }
         result
     }
 
@@ -1093,23 +894,6 @@ impl GraphBackend {
 
     pub(crate) fn set_pressure_plate(&mut self, position: BlockPos, powered: bool) -> Result<(), GraphExecutionError> {
         if let Some(error) = &self.failure { return Err(error.clone()); }
-        #[cfg(feature = "native-demo")]
-        if let Some(engine) = self.native_engine.as_mut() {
-            let Some(&node) = self.positions.get(&position) else { return Ok(()) };
-            let result = engine.plate(node, powered).map_err(|e| GraphExecutionError::Native(e.to_string()));
-            self.latch_error(&result);
-            result?;
-            if let Some(oracle) = self.native_oracle.as_mut() { oracle.set_pressure_plate(position, powered)?; }
-            return self.verify_native_graph();
-        }
-        if self.has_active_kernel() {
-            assert!(
-                self.materialize_kernel_state(),
-                "certified kernel state must materialize before input changes"
-            );
-            self.future.kernel_cursor = None;
-            self.future.symbolic_cursor = None;
-        }
         let result = self.set_pressure_plate_inner(position, powered);
         self.latch_error(&result);
         result
@@ -1132,10 +916,6 @@ impl GraphBackend {
         if let Err(error) = result {
             self.failure = Some(error.clone());
         }
-    }
-
-    pub(super) fn has_active_kernel(&self) -> bool {
-        self.future.kernel_cursor.is_some() || self.future.symbolic_cursor.is_some()
     }
 
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
@@ -1436,9 +1216,6 @@ impl GraphBackend {
             CircuitNodeKind::Observer { facing, .. } => facing,
             _ => unreachable!(),
         };
-        if self.symbolic_reset_update(node, facing, direction, captured) {
-            return Ok(());
-        }
         let powered = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Electrical { powered, .. } => Some(powered),
@@ -1456,9 +1233,6 @@ impl GraphBackend {
     }
 
     fn tick_observer(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        if let Some(result) = self.symbolic_reset_tick(node, true) {
-            return result;
-        }
         let powered = self.node_state(node).powered;
         if !powered {
             self.schedule(node, 1, TickPriority::Normal);
@@ -1889,7 +1663,6 @@ impl GraphBackend {
 
     #[cfg(test)]
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
-        let virtual_state = self.current_kernel_state();
         self.program
             .nodes()
             .iter()
@@ -1901,31 +1674,17 @@ impl GraphBackend {
                 ) {
                     return None;
                 }
-                let strength = if let Some(state) = &virtual_state {
-                    (state.components[index] & 15) as u8
-                } else {
-                    let ComponentState::Electrical(state) = &self.state.components[index] else {
-                        return None;
-                    };
-                    state.output_strength
+                let ComponentState::Electrical(state) = &self.state.components[index] else {
+                    return None;
                 };
+                let strength = state.output_strength;
                 Some((node.position?, strength))
             })
             .collect()
     }
 
-    pub(crate) fn inspect(&mut self, position: BlockPos) {
-        #[cfg(feature = "native-demo")]
-        self.sync_native_graph(true);
+    pub(crate) fn inspect(&self, position: BlockPos) {
         match self.positions.get(&position) {
-            Some(&node) if self.has_active_kernel() => {
-                let state = self.current_kernel_state();
-                tracing::debug!(
-                    "Graph node {node:?}: {:?} kernel_state={:?}",
-                    self.program.nodes()[node.index()].kind,
-                    state.as_ref().and_then(|state| state.components.get(node.index()))
-                );
-            }
             Some(&node) => tracing::debug!(
                 "Graph node {node:?}: {:?} {:?}",
                 self.program.nodes()[node.index()].kind,

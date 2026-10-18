@@ -6,23 +6,6 @@ pub(super) fn stable_graph(id: &'static str) -> (CompileGraph, EntryState) {
     stable_graph_at_level(id, 3)
 }
 
-/// Synthesis tests select their experimental builders explicitly; public compilation keeps them disabled.
-pub(super) fn experimental_pipeline(options: &CompilerOptions) -> passes::PassPipeline {
-    let mut pipeline = passes::default_graph_pipeline(options);
-    if options.optimization_level.is_none_or(|level| level >= 4) {
-        for entry in &mut pipeline.entries {
-            if matches!(
-                &entry.pass,
-                passes::Pass::Build(builder)
-                    if matches!(builder.name(), "compile-symbolic-regions" | "compile-instant-machine" | "compile-symbolic-kernels")
-            ) {
-                entry.enabled = true;
-            }
-        }
-    }
-    pipeline
-}
-
 pub(super) fn stable_graph_at_level(id: &'static str, level: usize) -> (CompileGraph, EntryState) {
     let circuit = load_adder(id, ORIGIN, None);
     let world = circuit.build();
@@ -33,7 +16,7 @@ pub(super) fn stable_graph_at_level(id: &'static str, level: usize) -> (CompileG
         stable_instant_inputs: true,
         ..Default::default()
     };
-    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &experimental_pipeline(&options), &monitor).unwrap();
+    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &passes::default_graph_pipeline(&options), &monitor).unwrap();
     (prepared.graph, prepared.entry)
 }
 
@@ -63,10 +46,6 @@ fn both_adders_compose_all_their_actors_into_one_ordered_region() {
             graph.plans.instant.regions.iter().map(|r| r.wires.len()).collect::<Vec<_>>(),
             graph.plans.instant.proxies.len()
         );
-        assert!(
-            graph.plans.instant.machine.is_none(),
-            "O3 composes regions without O4 compact compilation"
-        );
         assert_eq!(graph.plans.instant.regions.len(), 1);
         let region = &graph.plans.instant.regions[0];
         assert!(region.stable_inputs);
@@ -95,41 +74,6 @@ fn both_adders_compose_all_their_actors_into_one_ordered_region() {
     }
 }
 
-#[test]
-fn symbolic_region_programs_cover_every_adder_actor_and_unique_reset_clock() {
-    for (id, actor_count) in [("adder_1bit", 13), ("adder_11bits", 142)] {
-        let (graph, _) = stable_graph_at_level(id, 4);
-        assert!(graph.plans.instant.symbolic_region_declines.is_empty(), "{id} must compile completely");
-        assert_eq!(graph.plans.instant.symbolic_regions.len(), 1, "{id} compiles as one shared region");
-        let region = &graph.plans.instant.symbolic_regions[0];
-        assert_eq!(region.region, 0);
-        assert_eq!(region.actors.len(), actor_count, "{id} must represent every owned actor");
-        assert!(!region.boundary.inputs.is_empty(), "{id} retains explicit external entry ports");
-        assert!(
-            !graph.plans.instant.regions[0].wires.is_empty(),
-            "ordinary wire execution remains in Graph"
-        );
-
-        let resets: std::collections::HashSet<_> = region.resets.iter().map(|reset| reset.node).collect();
-        assert_eq!(resets.len(), region.resets.len(), "shared reset clocks have one routine owner");
-        assert_eq!(
-            region.resets.iter().map(|reset| reset.node).collect::<Vec<_>>(),
-            graph.plans.instant.regions[0].resets,
-            "each original reset node has exactly one update/tick program"
-        );
-
-        let actor_ids = graph.plans.instant.regions[0].actors.clone();
-        let (program, _) = graph.clone().lower().unwrap();
-        assert_eq!(program.symbolic_region_counts(), (1, actor_count, resets.len(), 0));
-        for actor in &actor_ids {
-            assert!(program.symbolic_actor_routine(*actor).is_some(), "each actor has a direct event binding");
-        }
-        for reset in resets {
-            assert!(program.symbolic_reset(reset).is_some(), "each reset node has a direct event binding");
-        }
-    }
-}
-
 fn stable_backend(circuit: &Adder, world: &PlotWorld) -> GraphBackend {
     stable_backend_at(circuit, world, 3)
 }
@@ -143,123 +87,9 @@ pub(super) fn stable_backend_at(circuit: &Adder, world: &PlotWorld, level: usize
     let monitor = TaskMonitor::default();
     let ticks = world.scheduler().iter_entries().collect();
     let mut prepared = passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).unwrap();
-    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &experimental_pipeline(&options), &monitor).unwrap();
+    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &passes::default_graph_pipeline(&options), &monitor).unwrap();
     prepared.finish_pipeline_statistics(&monitor);
     GraphBackend::from_lowered(prepared.lower(&monitor).unwrap(), &monitor).unwrap()
-}
-
-#[test]
-fn regional_adder_execution_matches_general_graph_and_interpreter_handoff() {
-    for id in FAMILY {
-        let circuit = load_adder(id, ORIGIN, None);
-        let manifest: Value =
-            serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
-        let case = manifest["cases"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|case| case["expectation"]["carry"].as_u64() == Some(1))
-            .expect("fixture includes a carry-producing input history");
-        let positions = circuit.positions();
-        let mut native = circuit.build();
-        let mut projected = circuit.build();
-        let (draft, _) = stable_graph_at_level(id, 4);
-        let mut sorted_links = draft.power_links.clone();
-        sorted_links.sort_by_key(|link| link.to);
-        assert_ne!(
-            draft.power_links, sorted_links,
-            "{id} draft must exercise a nontrivial power-link permutation"
-        );
-        let (program, state) = draft.lower().unwrap();
-        let mut regional = GraphBackend::new(program, state, 0).unwrap();
-        let mut general = GraphBackend::compile_with_options(
-            &native,
-            circuit.bounds(),
-            vec![],
-            &CompilerOptions {
-                optimization_level: Some(3),
-                stable_instant_inputs: true,
-                ..Default::default()
-            },
-            Arc::default(),
-        )
-        .unwrap();
-        assert_eq!(
-            regional.program.symbolic_region_counts().0,
-            1,
-            "{id} must execute one complete local region"
-        );
-        assert_eq!(regional.program.symbolic_region_counts().3, 0, "{id} must not hide a partial decline");
-        assert!(
-            regional.program.symbolic_kernels().is_empty(),
-            "{id} must not depend on a whole-selection AOT cursor"
-        );
-        assert!(
-            regional.program.instant_kernel().is_none(),
-            "{id} must not depend on a finite whole-selection machine"
-        );
-        assert!(
-            regional.program.instant_proxies().len() == 1,
-            "the fixture must exercise lowered route proxies"
-        );
-        assert!(regional.program.power_links().windows(2).all(|pair| pair[0].to <= pair[1].to));
-        for region in regional.program.symbolic_region_programs() {
-            for actor in region.actors.iter() {
-                for read in actor.reads.iter() {
-                    if let crate::redpiler::program_graph::ActorRead::Power(link) = read {
-                        assert!(
-                            regional.program.power_links().contains(link),
-                            "{id} actor reads retain the intended graph link after lowering sorts the shared table"
-                        );
-                    }
-                }
-            }
-        }
-
-        regional.set_test_recording(true);
-        general.set_test_recording(true);
-        let mut steps = case_steps(&circuit, case, false, true);
-        steps.extend(std::iter::repeat_n(Step::Tick, 24));
-        for (index, step) in steps.into_iter().enumerate() {
-            let toggle = match step {
-                Step::SetLever { position, powered } => matches!(native.get_block(position), Block::Lever { lever } if lever.powered != powered),
-                Step::Tick => false,
-            };
-            native_step(&mut native, step);
-            graph_step(&mut general, step, toggle).unwrap();
-            graph_step(&mut regional, step, toggle).unwrap();
-            instant_proxy_tests::assert_same_memory(&general, &regional);
-            assert_eq!(general.callback_order, regional.callback_order, "{id} callback order at step {index}");
-            assert_eq!(
-                general.observed_operations, regional.observed_operations,
-                "{id} operations at step {index}"
-            );
-            check_boundary(
-                &regional,
-                &native,
-                &mut projected,
-                &positions,
-                &format!("{id}/{} step {index}", case["id"]),
-            )
-            .unwrap();
-        }
-        assert!(
-            regional.execution_counts().symbolic_region_steps > 0,
-            "{id} must hit regional routines on the real input history"
-        );
-
-        let mut handed_back = circuit.build();
-        regional.reset(&mut handed_back);
-        for tick in 0..8 {
-            assert_eq!(
-                future(&native, &positions),
-                future(&handed_back, &positions),
-                "{id} complete state at interpreter handoff tick {tick}"
-            );
-            native.tick_interpreted();
-            handed_back.tick_interpreted();
-        }
-    }
 }
 
 fn input_levels(circuit: &Adder, world: &PlotWorld) -> Vec<(BlockPos, bool)> {

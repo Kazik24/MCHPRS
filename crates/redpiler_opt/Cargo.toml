@@ -1,6 +1,0 @@
-[package]
-name = "mchprs_redpiler_opt"
-version = "0.1.0"
-authors = ["kazik24", "lord225"]
-edition = "2024"
-publish = false

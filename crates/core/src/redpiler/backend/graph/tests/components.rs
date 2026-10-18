@@ -1,8 +1,4 @@
 //! Graph backend differential and regression tests.
-#[path = "symbolic_walk.rs"]
-mod symbolic_walk;
-#[path = "symbolic_work.rs"]
-mod symbolic_work;
 #[path = "wire_hops.rs"]
 mod wire_hops;
 #[path = "classic_redstone.rs"]

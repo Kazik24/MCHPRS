@@ -530,9 +530,6 @@ impl<'a> ClassicAnalysis<'a> {
         {
             return Err("instant region ownership overlap");
         }
-        if graph.plans.instant.machine.is_some() || !graph.plans.instant.symbolic_kernels.is_empty() {
-            return Err("whole-circuit kernel ownership overlap");
-        }
         Ok(ClassicNetPlan {
             source,
             initial_signal,

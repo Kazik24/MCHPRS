@@ -33,26 +33,12 @@ builds boundaries, and `compile-instant-proxies` builds their execution proxies.
 Shared regions remain general execution. Every enabled rewrite clears derived
 plans before it changes the circuit, so plan builders need no preservation flags.
 
-Instant synthesis is disabled in the default pipeline at every optimization level, including
-`-O4`, higher levels, and `--stable-instant-inputs`. The three builders
-`compile-symbolic-regions`, `compile-instant-machine`, and `compile-symbolic-kernels` remain
-registered as skipped passes. Their code is retained for explicit developer-supplied
-experimental pipelines. O3 piston/reset specialization, region discovery and proxies remain
-enabled normally. The unfinished event compiler must not be substituted with the older
-finite machine or whole-selection symbolic compiler automatically.
-
-See [BOUNDARY_DRIVEN_INSTANT_COMPILER.md](../../../../../docs/notes/redpiler-pistons-v4/BOUNDARY_DRIVEN_INSTANT_COMPILER.md)
-for the stop checkpoint and known compilation/runtime blockers. The synthesis descriptions
-below document the retained experiments, not active production behavior.
-
-Ready-entry reduction may substitute only memory constants proved by the original admission
-conditions; keep those conditions in the emitted kernel. Captured stored-wire shapes may form a
-checked entry specialization, but must not freeze later shape changes or assume that native
-stored shapes always equal regulated shapes. Unsupported entries retain general execution.
-Divider still exceeds its first-tick Boolean-node budget, and Counter lacks the required
-complete-state recurrence. Neither is established kernel coverage. See
-[SYMBOLIC_VIRTUAL_CIRCUIT.md](../../../../../docs/notes/redpiler-pistons-v4/SYMBOLIC_VIRTUAL_CIRCUIT.md)
-for proof arguments, rejected approaches and current validation limits.
+C/LLVM execution and the finite/symbolic synthesis experiments have been removed,
+including their pass registrations, runtime integration and synthesis-only optimizer crate.
+O3 piston/reset specialization, stable region composition, proxies and opt-in classic
+redstone remain. Higher levels add no synthesis passes. The algorithms and exact recovery
+commits are preserved in
+[ALGORITHMS_AND_RECOVERY.md](../../../../../docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
 
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.
 2. `mod.rs` holds registration and pipeline infrastructure. Do not implement unrelated transformations inside the runner, parser, compiler orchestration, or backend dispatch.
@@ -128,9 +114,6 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | Build | O3 | `compile-instant-resets` | General Turbo execution of the certified two-wire reset output. |
 | Build | O3 | `identify-instant-regions` | Instant region ownership boundaries. |
 | Build | O3 | `compile-instant-proxies` | Boundary execution proxies. |
-| Build | Disabled | `compile-symbolic-regions` | Experimental region event compiler; requires an explicitly supplied pipeline. |
-| Build | Disabled | `compile-instant-machine` | Experimental compact execution for a bounded closed selection. |
-| Build | Disabled | `compile-symbolic-kernels` | Experimental AOT prefix/period programs over typed inputs. |
 
 The unoptimized pipeline still runs the complete general graph. Keep both phases and their order explicit; do not silently reorder entries or turn a custom pipeline into the default. When adding an entry, place it in the correct phase and optimization tier; do not introduce a dedicated setting for it.
 
@@ -289,15 +272,6 @@ Runtime reads the selected live wire strengths for a seed and the selected walk 
 
 This is a first exact lowering of connecting dust calculations, not an atomic instant-region contraction or an electrical fixed-point solver. General Turbo still orders propagation. Evidence is in `program_graph/wire_query_facts.rs` (6,656 local geometry cases), `backend/graph/tests/wire_query.rs` (live/captured dynamic contact and strength checks), and `backend/graph/tests/instant_recognition.rs` (all 32 ADDER1BIT wires, all headings, changed snapshots). Preserving every intermediate write and outside callback deliberately leaves semantic work counts unchanged; benchmark the runtime cost rather than claiming event elimination.
 
-
-### Pure optimization inside O4 kernel lowering
-
-`mchprs_redpiler_opt` provides pure Boolean rewriting and known-input specialization. O4 lowering uses it to compile the admitted frozen-input kernel into unconditional ordered effect lists; it is not a new graph transformation pass. Keep graph ownership, timing, callback admission and state reconstruction in Redpiler. Pure rewrites must preserve ordered root occurrences and may not erase a dirty touch merely because its value is unchanged. The source kernel remains the validation/export definition; specialized lists are derived runtime data, reported separately in lowered storage estimates. See `COMPACT_INSTANT_KERNEL.md` for the current bounds and measured tradeoff.
-
-
-### O4 boundary-driven region event compiler
-
-`compile_symbolic_regions.rs` emits one grouped program for an entire supported ownership region. Every actor gets sample and accept routines, while each unique reset node gets update and tick routines; a region is published atomically or carries an explicit decline with its source index and actor/reset counts. The shared boundary remains graph-bound in the draft and export, then is dropped during lowering because route and power-link ordinals are rewritten there. Actor reads retain copied link operands, and runtime dispatch uses direct actor/reset bindings at the original callback and tick positions. Programs execute during the ordinary global schedule and can share that schedule with unrelated pending devices. These routines reuse ordinary Graph state, wire walks, callbacks, resources and scheduler primitives; this milestone does not contract internal wires or bypass their synchronous effects. JSON `symbolic_regions` and `symbolic_region_declines` expose the program and coverage. See `SYMBOLIC_VIRTUAL_CIRCUIT.md` for limits and remaining event/boundary contraction work.
 
 ### Opt-in committed-signal classic redstone nets
 

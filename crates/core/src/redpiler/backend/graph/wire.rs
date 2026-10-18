@@ -114,8 +114,18 @@ impl GraphBackend {
         if wire.power == power {
             return Ok(());
         }
+        #[cfg(test)]
+        let unchecked_sampled_old = wire.power;
         wire.power = power;
         self.set_wire(node, wire);
+        #[cfg(test)]
+        if let Some(program) = self.unchecked_classic.clone() {
+            if program.handles(node) {
+                return program.run(self, node, captured, unchecked_sampled_old);
+            }
+            self.counts.wire_walks += 1;
+            return super::fixed_point::with_mode(false,||self.evaluate_turbo_wire(node));
+        }
         self.counts.wire_walks += 1;
         self.evaluate_turbo_wire(node)
     }

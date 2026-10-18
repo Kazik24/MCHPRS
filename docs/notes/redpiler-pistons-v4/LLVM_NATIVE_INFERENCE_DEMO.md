@@ -1,5 +1,10 @@
 # LLVM native inference demo: append-only work log
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 Append new dated sections at the end. Preserve earlier observations, including failed
 experiments; supersede an incorrect conclusion explicitly in a later section. Separate
 plans, successful compilation, actual native execution, correctness checks and performance.

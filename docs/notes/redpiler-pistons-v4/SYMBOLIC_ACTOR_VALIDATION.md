@@ -1,5 +1,10 @@
 # Symbolic actor validation
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 Validation ran against the shared, uncommitted worktree at `ec08c1f99ee4493311f7314a229073473118c78b` (HEAD), after the nine test failures below were fixed. The validated tree includes concurrent edits and is not a clean commit. In particular, the current tree includes the event compiler/runtime, its tests, the export validator and test, the compact-kernel boundary regression, the piston-base sign changes, the O3/O4 graph fixture updates, and the benchmark protocol below. The benchmark harness SHA-256 was `ba4d4c6adb5ab6b5d46fb10847907de7c32ec02526d209cc281ceaba3482617c`. `git diff --check` passed.
 
 The tested symbolic path is O4 stable-input event lowering for one `instant_observer` piston actor and its reset clock. The graph pipeline builds one symbolic actor and leaves the finite instant machine absent. The runtime test confirms at least one symbolic actor step, both accepted piston directions, reset scheduling and powered reset state, and matching callback/effect order and handoff against the ordinary Graph backend and interpreter. Separate tests cover duplicate request coalescing, stale-request revalidation after reset power rises, construction budgets, cancellation and stale plans. The power-query test checks main/quasi channels over strengths 0–15 at attenuations 0, 1 and 15, plus structured declines. The `instant_torch` lifecycle test exercises ordinary Graph/interpreter behavior; it is not evidence of symbolic actor activation.

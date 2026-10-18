@@ -1,5 +1,11 @@
 # Stable-input instant regions
 
+> Status, 2026-10-18: O3 stable-input composition and proxies remain. The finite
+> and symbolic synthesis implementations described below have been removed;
+> their last combined source is commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> See [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current execution
+> and restoration instructions. Historical evidence below is preserved.
+
 This is an explicit, experimental O3 input contract, selected by `-O3 --stable-instant-inputs` (or `--optimize --stable-instant-inputs`). Ordinary O3 keeps its arbitrary-input-history contract and original ownership groups.
 
 ## Assumption and observation boundary

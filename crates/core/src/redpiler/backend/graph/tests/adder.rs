@@ -6,32 +6,14 @@ mod boundary_contract_tests;
 mod builtin_reset_tests;
 #[path = "fixed_point_adder.rs"]
 mod fixed_point_tests;
-#[path = "instant_machine.rs"]
-mod instant_machine_tests;
 #[path = "instant_proxy.rs"]
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
 mod instant_recognition_tests;
-#[path = "kernel_projection.rs"]
-mod kernel_projection_tests;
 #[path = "reset_elision.rs"]
 mod reset_elision_tests;
 #[path = "stable_region.rs"]
 mod stable_region_tests;
-#[path = "symbolic_activation.rs"]
-mod symbolic_activation_tests;
-#[path = "symbolic_cycle.rs"]
-mod symbolic_cycle_tests;
-#[path = "symbolic_entry.rs"]
-mod symbolic_entry_tests;
-#[path = "symbolic_execution.rs"]
-mod symbolic_execution_tests;
-#[path = "symbolic_kernel.rs"]
-mod symbolic_kernel_tests;
-#[path = "symbolic_observation.rs"]
-mod symbolic_observation_tests;
-#[path = "symbolic_semantics.rs"]
-mod symbolic_semantics_tests;
 use super::fuzz_tests::{Operation, graph_operations_since, native_operations};
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};

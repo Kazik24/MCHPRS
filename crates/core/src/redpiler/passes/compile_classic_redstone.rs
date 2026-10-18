@@ -1,5 +1,9 @@
-//! Read-only discovery checkpoint for committed-signal nets.
-//! Counts are structural candidates, never a claim of boundary equivalence.
+//! Certify whole fixed wire regions and replace private propagation with committed signals.
+//! One-ingress, delayed-receiver regions are checked against ordered Graph samples for
+//! every old/new strength pair; compact masks select receiver scheduling at original
+//! route occurrences. Unsupported boundaries and exhausted proof budgets stay general.
+//! Runs after rewrites and before instant plans, only with the O2+ classic option.
+//! See docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md for the algorithm.
 use super::{
     PassContext,
     planning::{PlanBuilder, PlanOutput},

@@ -1,11 +1,8 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
-pub(crate) mod compile_instant_machine;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
-pub(crate) mod compile_symbolic_kernels;
-pub(crate) mod compile_symbolic_regions;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_regions;
@@ -274,13 +271,6 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
         (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
     ];
-    // Synthesis is unfinished; keep explicit experimental use available without running it publicly.
-    let disabled_synthesis = [
-        Pass::build(compile_symbolic_regions::CompileSymbolicRegions),
-        Pass::build(compile_instant_machine::CompileInstantMachine),
-        Pass::build(compile_symbolic_kernels::CompileSymbolicKernels),
-    ]
-    .map(|pass| PassEntry { pass, enabled: false });
     let entries = rewrites
         .into_iter()
         .map(|(minimum_level, pass)| PassEntry {
@@ -289,7 +279,6 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         })
         .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
         .chain(plans.into_iter().map(|(minimum_level,pass)|PassEntry { pass,enabled:level>=minimum_level }))
-        .chain(disabled_synthesis)
         .collect();
     let pipeline = PassPipeline::new(entries);
     #[cfg(feature = "unsafe-turbo-fixed-point")]
@@ -542,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn instant_synthesis_stays_disabled_at_o4_and_default_with_stable_inputs() {
+    fn removed_synthesis_is_absent_at_every_level_with_stable_inputs() {
         let synthesis = ["compile-symbolic-regions", "compile-instant-machine", "compile-symbolic-kernels"];
         for optimization_level in [Some(0), Some(3), Some(4), None] {
             for stable_instant_inputs in [false, true] {
@@ -567,14 +556,8 @@ mod tests {
                 .unwrap();
                 let statistics = monitor.graph_statistics();
                 for name in synthesis {
-                    let record = statistics.passes.iter().find(|pass| pass.name == name).unwrap();
-                    assert!(!record.enabled, "{name} must not run for {options:?}");
-                    assert!(record.duration.is_zero());
+                    assert!(statistics.passes.iter().all(|pass| pass.name != name), "{name} must remain removed for {options:?}");
                 }
-                assert!(graph.plans.instant.machine.is_none());
-                assert!(graph.plans.instant.symbolic_kernels.is_empty());
-                assert!(graph.plans.instant.symbolic_regions.is_empty());
-                assert!(graph.plans.instant.symbolic_region_declines.is_empty());
             }
         }
     }

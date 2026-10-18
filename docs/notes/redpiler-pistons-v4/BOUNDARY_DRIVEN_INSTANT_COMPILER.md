@@ -1,5 +1,15 @@
 # Boundary-driven instant compilation
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 Status: stopped at the user's request on 2026-10-16 for a different experiment. This is an
 incomplete compiler checkpoint, not a working whole-region replacement or a demonstrated
 acceleration. Preserve the observations below when deciding what to reuse.
@@ -157,6 +167,13 @@ individual piston predicates without replacing the internal circuit is insuffici
    the complete backend tick or require the entire circuit to be idle.
 10. Unsupported dependencies decline explicitly. A general Graph fallback preserves behavior
     but does not count as successful regional compilation.
+
+For the gate-extraction proposal clarified on 2026-10-18, one logical input edge supplies
+one sampled input frame. Compiler traversal order is not circuit timing. Buffer/inhibition
+dependencies can affect nanotick behavior and must be accounted for while deriving the
+transfer function, even when runtime buffers and notifications are later eliminated.
+An explicit causal relation or derived condition may replace those events; generic Turbo
+replay is not a requirement. Atomic-edge agreement for the fixtures remains to be validated.
 
 ## Implementation checkpoints
 

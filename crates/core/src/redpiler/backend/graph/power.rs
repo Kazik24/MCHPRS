@@ -65,32 +65,10 @@ impl GraphBackend {
     }
 
     fn query_power(&self, target: PowerTarget) -> u8 {
-        #[cfg(feature = "native-demo")]
-        if let Some(query_id) = self.native_power_queries.as_ref().and_then(|native| native.target_id(target)) {
-            let native = self
-                .native_power_queries
-                .as_ref()
-                .expect("native query id came from the attached program");
-            let result = native.evaluate(query_id, &self.state);
-            if native.verify_general() {
-                let expected = self.query_power_general(target);
-                native.verified();
-                assert_eq!(result, expected, "native power query differs from Graph for {target:?}");
-            }
-            return result;
-        }
-        #[cfg(feature = "native-demo")]
-        if let Some(native) = &self.native_power_queries {
-            native.fallback();
-        }
-        self.query_power_general(target)
-    }
-
-    fn query_power_general(&self, target: PowerTarget) -> u8 {
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]
-            self.test_recorder.power_links_examined.set(self.power_links_examined.get() + 1);
+            self.test_recorder.power_links_examined.set(self.test_recorder.power_links_examined.get() + 1);
             if !self.guard_matches(link.guard, None) {
                 continue;
             }

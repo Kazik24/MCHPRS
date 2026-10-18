@@ -10,109 +10,6 @@ mod notification_routes;
 #[allow(dead_code)]
 mod cpus;
 
-#[test]
-#[ignore = "explicit symbolic admission diagnosis for larger devices"]
-fn divider_and_counter_report_symbolic_kernel_admission() {
-    use crate::redpiler::analysis::instant_regions::compiler::aot;
-    use crate::redpiler::{CompilerOptions, passes};
-
-    for name in ["fpu_divider", "counter_basic"] {
-        let descriptor = if name == "fpu_divider" {
-            manifest(name)
-        } else {
-            let bytes = std::fs::read(root().join("test_data/instant-pistons-io/fixtures/counter_basic.json")).unwrap();
-            let mut value: Value = serde_json::from_slice(&bytes).unwrap();
-            value["loader_offset"] = value["coordinates"]["loader_offset"].clone();
-            value["origin"] = value["coordinates"]["origin"].clone();
-            value
-        };
-        let trigger = if name == "fpu_divider" {
-            descriptor["protocol"]["trigger"].clone()
-        } else {
-            descriptor["ports"]["inputs"]["trigger"].clone()
-        };
-        let (world, bounds) = load(&descriptor);
-        let monitor = TaskMonitor::default();
-        monitor.set_budget_multiplier(8);
-        let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
-        let options = CompilerOptions {
-            optimization_level: Some(3),
-            stable_instant_inputs: true,
-            ..Default::default()
-        };
-        passes::run_graph_pipeline(
-            &mut prepared.graph,
-            &options,
-            &prepared.entry,
-            &passes::default_graph_pipeline(&options),
-            &monitor,
-        )
-        .unwrap();
-        let graph = &prepared.graph;
-        let position = origin(&descriptor) + local_pos(&trigger) - BASE;
-        let trigger =
-            crate::redpiler::program_graph::NodeId::new(graph.nodes.iter().position(|node| node.position == Some(position)).unwrap() as u32);
-        let candidates = aot::activation_candidates(graph);
-        assert!(candidates.contains(&trigger), "{name}: an indirect control must still be a candidate");
-        eprintln!(
-            "{name}: {} stable regions, {} candidates, trigger {position:?} eligible={}",
-            graph.plans.instant.regions.iter().filter(|region| region.stable_inputs).count(),
-            candidates.len(),
-            candidates.contains(&trigger)
-        );
-        {
-            use crate::redpiler::analysis::instant_regions::compiler::{Compiler as SymbolicCompiler, entry::Entry};
-            let mut symbolic = SymbolicCompiler::new(
-                graph,
-                mchprs_redpiler_opt::Limits {
-                    max_work: 256 * 1024 * 1024,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-            let entry = Entry::derive(&mut symbolic, trigger, name != "counter_basic").unwrap();
-            eprintln!(
-                "{name}: ready inputs={}, constant actor poses={}/{}, constant resource locations={}/{}, decisions={}, work={}",
-                entry.inputs.len(),
-                symbolic.state.actors.iter().filter(|actor| actor.extended.constant().is_some()).count(),
-                symbolic.state.actors.len(),
-                symbolic
-                    .state
-                    .resources
-                    .iter()
-                    .filter(|resource| resource.contacts.iter().all(|(_, at)| at.constant().is_some()))
-                    .count(),
-                symbolic.state.resources.len(),
-                symbolic.logic.node_count(),
-                symbolic.logic.work()
-            );
-        }
-        let result = if name == "fpu_divider" {
-            aot::compile_for_entry(
-                graph,
-                trigger,
-                false,
-                crate::redpiler::analysis::instant_regions::compiler::entry::ShapeEntry::Captured,
-                &monitor,
-            )
-        } else {
-            aot::compile_candidate(graph, trigger, true, &monitor)
-        };
-        match result {
-            Ok(kernel) => {
-                assert!(kernel.validate(graph));
-                eprintln!(
-                    "{name}: {} inputs, prefix {}, period {}",
-                    kernel.inputs.len(),
-                    kernel.prefix,
-                    kernel.period
-                );
-            }
-            Err(reason) => eprintln!("{name}: kernel declined: {reason}"),
-        }
-    }
-}
-
 fn origin(manifest: &Value) -> BlockPos {
     manifest.get("origin").map_or(BASE, |p| local_pos(p) - BASE)
 }
@@ -447,11 +344,6 @@ fn compare_bubblesort_execution(active_ticks: u64, optimization_level: usize) {
         graph_ram.insert(active_ticks + tick, cpu_words(&graph_world, &fixture));
     }
     assert_eq!(graph_ram, interpreter_ram, "checkpoint RAM parity");
-    assert_eq!(
-        graph.execution_counts().instant_transitions,
-        0,
-        "this CPU validity run exercises the general fallback"
-    );
     eprintln!("Graph work counts: {:?}", graph.execution_counts());
     eprintln!(
         "CPU sign-free replay at {benchmark_sign:?}: Graph O{optimization_level} {} ticks in {:.2}s; interpreter {} ticks in {:.2}s",

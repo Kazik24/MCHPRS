@@ -1,5 +1,15 @@
 # Required AOT symbolic virtual circuit
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 Status: O4 now compiles and executes grouped boundary-driven event programs for supported instant regions. Full symbolic wire contraction remains unimplemented. The target is an **AOT symbolic virtual circuit derived from the instant graph**, not an input-mask table or a loop learned while the circuit runs. The rejected experiment and its observations are archived in [INSTANT_LOOP_COMPILER.md](INSTANT_LOOP_COMPILER.md). Its work-count reductions do not establish this compiler's performance or completion. See [BOUNDARY_DRIVEN_INSTANT_COMPILER.md](BOUNDARY_DRIVEN_INSTANT_COMPILER.md) for the current implementation contract and evidence.
 
 The stable-input contract freezes external data from activation through reset. Inputs remain variables in the compiled program: changing a legal operand must not require learning or recompiling a trajectory. The assumption does not authorize unordered internal execution. The existing stable-input adder counterexample still requires preserving causal order and live action revalidation.

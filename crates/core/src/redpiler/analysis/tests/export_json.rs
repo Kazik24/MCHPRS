@@ -290,13 +290,9 @@ fn stable_adder_export_keeps_proxies_without_running_disabled_synthesis() {
         }
     }
     assert_eq!(sampled.len(), 13);
-    assert!(graph["instant_machine"].is_null(), "finite-state synthesis is disabled");
-    assert!(graph["instant_kernel"].is_null(), "whole-selection kernel synthesis is disabled");
-    assert!(graph["symbolic_region_declines"].as_array().is_none_or(|declines| declines.is_empty()));
-    assert!(
-        graph["symbolic_regions"].as_array().is_none_or(Vec::is_empty),
-        "O4 and stable inputs must not enable unfinished synthesis"
-    );
+    for removed in ["instant_machine", "instant_kernel", "symbolic_region_declines", "symbolic_regions"] {
+        assert!(graph.get(removed).is_none(), "removed synthesis artifact {removed} must not be exported");
+    }
 }
 
 #[test]

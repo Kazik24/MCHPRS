@@ -1,12 +1,12 @@
 [workspace]
-members = ["crates/proc_macros", "crates/redpiler_graph", "crates/redpiler_opt"]
+members = ["crates/proc_macros", "crates/redpiler_graph"]
 
 [package]
 name = "mroww"
 version = "0.4.1"
 authors = ["kazik24", "lord225"]
 edition = "2024"
-description = "MROWW — Minecraft Redstone o Wysokiej Wydajności. A multithreaded redstone server based on MCHPRS."
+description = "MROWW â€” Minecraft Redstone o Wysokiej WydajnoĹ›ci. A multithreaded redstone server based on MCHPRS."
 readme = "README.md"
 license = "MIT"
 keywords = ["minecraft", "server", "redstone"]

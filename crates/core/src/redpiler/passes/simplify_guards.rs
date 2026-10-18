@@ -519,9 +519,6 @@ mod tests {
             (3, "compile-instant-resets"),
             (3, "identify-instant-regions"),
             (3, "compile-instant-proxies"),
-            (4, "compile-symbolic-regions"),
-            (4, "compile-instant-machine"),
-            (4, "compile-symbolic-kernels"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {
@@ -532,8 +529,7 @@ mod tests {
             assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);
-                // The three O4 synthesis experiments are registered but disabled at every tier.
-                let enabled = minimum < 4 && name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);
+                let enabled = name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);
                 assert_eq!(entry.enabled, enabled, "{name} at {level:?}");
                 assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 7);
             }

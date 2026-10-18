@@ -246,50 +246,40 @@ pub(super) fn assert_same_memory(general: &GraphBackend, proxy: &GraphBackend) {
     assert_eq!(proxy.future.clock.logical_tick, general.future.clock.logical_tick);
     assert_eq!(proxy.future.clock.phase, general.future.clock.phase);
     assert_eq!(proxy.future.clock.scheduled_advanced, general.future.clock.scheduled_advanced);
-    let mut expected = MachineState::default();
-    let mut actual = MachineState::default();
-    if general.capture_machine_state(&mut expected) && proxy.capture_machine_state(&mut actual) {
-        assert_eq!(
-            actual, expected,
-            "the virtual semantic projection retains exact memory and ordered future work"
-        );
-    } else {
-        assert_eq!(proxy.state, general.state);
-        assert_eq!(proxy.scheduled_ticks(), general.scheduled_ticks());
-        assert_eq!(proxy.future.pending, general.future.pending);
-        assert_eq!(
-            proxy
-                .future
-                .piston_requests
-                .iter()
-                .map(|request| (request.piston, request.action))
-                .collect::<Vec<_>>(),
-            general
-                .future
-                .piston_requests
-                .iter()
-                .map(|request| (request.piston, request.action))
-                .collect::<Vec<_>>()
-        );
-        let deferred = |backend: &GraphBackend| {
-            backend
-                .future
-                .deferred_pistons
-                .iter()
-                .map(|event| {
-                    (
-                        event.piston,
-                        event.revision,
-                        event.resource.map(|resource| (resource.resource, resource.revision, resource.contact)),
-                        event.due_tick,
-                        event.extending,
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(deferred(proxy), deferred(general));
-    }
-    assert_eq!(proxy.semantic_revisions(), general.semantic_revisions());
+    assert_eq!(proxy.state, general.state);
+    assert_eq!(proxy.scheduled_ticks(), general.scheduled_ticks());
+    assert_eq!(proxy.future.pending, general.future.pending);
+    assert_eq!(
+        proxy
+            .future
+            .piston_requests
+            .iter()
+            .map(|request| (request.piston, request.action))
+            .collect::<Vec<_>>(),
+        general
+            .future
+            .piston_requests
+            .iter()
+            .map(|request| (request.piston, request.action))
+            .collect::<Vec<_>>()
+    );
+    let deferred = |backend: &GraphBackend| {
+        backend
+            .future
+            .deferred_pistons
+            .iter()
+            .map(|event| {
+                (
+                    event.piston,
+                    event.revision,
+                    event.resource.map(|resource| (resource.resource, resource.revision, resource.contact)),
+                    event.due_tick,
+                    event.extending,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(deferred(proxy), deferred(general));
     assert_eq!(proxy.dirty, general.dirty);
 }
 

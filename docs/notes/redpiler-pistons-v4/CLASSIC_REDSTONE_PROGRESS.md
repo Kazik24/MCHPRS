@@ -184,3 +184,356 @@ The pass remains opt-in while broader coverage/performance work is outstanding.
 ## 2026-10-16: parent follow-up checks complete
 
 The corrected `optimization_levels_select_rewrites_before_dependent_plan_builders` test passed in the parent's feature-enabled debug test binary. The final native classic/cache test passed again after the native guard/context and capture-index work (0.65 s), and `cargo check --workspace --locked` passed including the server and feature-disabled core. These supersede the earlier pending pipeline-list rerun. The C BubbleSort experiment independently completed all 10,036 native shadow ticks plus its paired full sort; it accepted zero classic nets, so its native throughput gain is separate from this pass's small-fixture gain. Native performance details and remaining limits are in `LLVM_NATIVE_INFERENCE_DEMO.md`.
+
+## 2026-10-18: explicitly unchecked full-ANPU experiment
+
+The user authorized ignoring boundary safety to measure coverage, speed and
+outputs. This experiment is compiled only under `cfg(test)` in
+`backend/graph/tests/unchecked_classic_anpu.rs`; production admission, defaults,
+certificates and native C are unchanged. It is an UNSAFE compiled weighted
+final-state collapse, not the certified classic old/new-mask runtime.
+
+The model accepts every typed component wire, without the production 32-wire,
+one-ingress or boundary restrictions. Initial resolved directed wire edges form
+weakly connected ownership groups; direction remains part of each attenuation
+path. A breadth-first traversal limited by the four-bit signal range compiles
+all external source-to-wire minimum weights. Multi-ingress maxima read live
+component output strengths. Any external query containing selectable contacts
+or state guards, including inactive branches, instead samples live general
+block power at the wire. Only dust topology and the initial candidate boundary
+selection are frozen; external contact power is not frozen to its initial value.
+
+Execution writes final strengths and issues one callback per surviving boundary
+site, in sorted wire / canonical-slot order, discarding intermediate dust states,
+duplicate notifications, original Turbo ordering and meaningful transient samples.
+Ordinary receiver handlers and the global scheduler still run. Nested callbacks
+keep the experiment hook installed. A separate existing dynamic fixed-point mode
+provides the broad live-geometry comparison.
+
+The harness uses the existing frozen ANPU SHA, origin and start button, no
+prewarm, all 1,024 screen pixels and the latest frozen frame at every game tick.
+It continues through output mismatches, recording first differing pixel, state,
+ordered scheduled work / pending membership, changed-frame count and whole screen
+trace hash. The future comparison specifically covers scheduler entries and
+pending membership, not all piston request/deferred internals. Three alternating
+400-tick samples are followed by a 5,000-tick sample when practical.
+
+Reported times are exploratory release UNIT-TEST execution, not production TPS:
+mode ticks are interleaved, with state/future/output comparisons outside execution
+timers, so caches are perturbed. Activation and projection are separate timers;
+source sampling and explicit work counters are charged to execution. Existing
+unit-test power-link instrumentation and trace branches remain in normal Graph;
+the collapse bypasses many such queries. No claim isolates that instrumentation
+or predicts an equivalent production speedup. No other compilation or performance
+job runs while sampling.
+
+### Unchecked v1: all wires covered, weighted output is wrong
+
+The pinned v1 release unit-test executable is
+`target/unchecked-classic-anpu-v1-tests.exe`, SHA256
+`72c4e3ba581684e4571bfef8a77ef088db11bc79e05f1268ab442bc7800e7ca5`.
+Raw reports/logs are `target/unchecked-classic-anpu-v1-{400,5000}.{json,log}`.
+The weighted model compiles all **34,781 component wires** into **5,543** nets:
+4,477 single-source, 1,019 multi-source, 47 zero-source; largest 189 wires;
+66,183 retained source-to-wire terms and 1,803 live contact-block samples across
+net source tables. There are no admission declines. This initial resolved
+partition differs from the production census of potential electrical regions.
+Its first extra weighted compilation took 87.6 ms (outside inference timers).
+
+For three 400-tick samples, median execution was normal O2 **0.758306 s**,
+dynamic fixed point **0.714011 s**, compiled weights **0.119330 s**. The apparent
+6.355x compiled ratio is not a correctness-preserving speedup. Compiled queued
+work/pending first differs at tick 12, full state at tick 150 (component at
+102,36,62), and screen at tick 316: pixel 646 / position (148,77,52), actual 0
+versus expected 1. It has 85 mismatching screen observations out of 401 and
+retains only the initial screen frame, while the exact run has three frames.
+The dynamic fixed-point run matches every screen/full-state observation through
+400, but ordered queued work/pending differs first at tick 14 (375 observations).
+The v1 combined diagnostic does not establish whether this is queue order only.
+
+The 5,000-tick run completed without aborting on mismatches. Normal O2 took
+**6.326481 s**, dynamic fixed point **5.649015 s** (1.120x ratio), and compiled
+weights **0.898799 s** (7.039x apparent ratio). Normal and dynamic fixed point
+both match all 5,001 frozen-screen observations, all 14 frames and full
+CircuitState; their screen trace hash is `442eec413f9abf91`. Dynamic fixed point
+still differs in the combined scheduler/pending diagnostic at 3,414 observations.
+Compiled weights mismatch screen at 4,685 observations, state at 4,851 and
+scheduler/pending at 4,987; its screen trace hash is `559362f421edac01`.
+
+Actual 5,000-tick Graph callback counts are 16,389,687 normal, 5,062,613 dynamic
+fixed point and 1,233,561 compiled. Walk counts are 183,752 / 347,433 / 0.
+The compiled path invokes 594,685 nets, samples 2,112,709 source values, evaluates
+23,338,323 weighted terms, writes 219,625 final wire powers, and delivers 582,253
+boundary callbacks. It also performs fewer piston actions and schedules fewer
+jobs, consistent with executing the wrong history. Projection times are separate:
+0.411689 / 0.370148 / 0.260399 s. Activation times are separate as well.
+
+All measurements retain the unit-test instrumentation/cache caveats above.
+The dynamic solver's matched outputs do not certify future equivalence, other
+inputs or circuits. V1's failure does not by itself identify a root cause:
+its frozen boundary selection, arbitrary sorted-wire notification order and
+final-state/source timing assumptions differ simultaneously.
+
+The one follow-up ablation keeps the compiled weights and final writes but
+uses root-first BFS over precompiled directed dust adjacency, live callback
+selection, site deduplication and pre-dispatch snapshots like the dynamic solver.
+It counts changed members outside the root's directed closure. New diagnostics
+separate ordered scheduler, scheduler multiset and pending membership differences.
+V1 evidence is preserved independently; no production admission changes follow.
+
+### Boundary-order ablation and correction
+
+V2 preserves `target/unchecked-classic-anpu-v2-tests.exe` (SHA256
+`7958e8fcdfc098feae9dbd8a38e842edc2ac7a3522e39557f911e7ce0dfb8531`)
+and separate `target/unchecked-classic-anpu-v2-{400,5000}.{json,log}` reports.
+Its root-first traversal/live boundary selection exposed an implementation bug:
+it still wrote all final powers across a weak ownership group, then notified
+only the root's directed incoming closure. The diagnostic caught 53 changed
+wires outside that closure. The circuit nearly stopped. V2 timings are discarded
+as evidence of algorithm performance; this is an experiment implementation defect,
+not a demonstration that preserving boundary order fails.
+
+The added independent future diagnostics do clarify the dynamic fixed-point
+comparison: through 5,000 ticks, 3,414 ordered scheduler observations differ, but
+scheduler multisets (including positions, delay, type and priority) and pending
+maps remain equal at every observation. Full CircuitState and all frozen screen
+pixels also match. Thus the observed discrepancy is queue order within the
+compared scheduler representation; unexamined future fields and other histories
+remain outside that result.
+
+V3 corrects the mismatch between write ownership and notifications: it finds the
+root's directed incoming closure first and computes/writes only those members,
+then notifies that same closure. All typed wires retain a compiled owner and
+source weights. No production validation/default is changed. A final rebuilt
+release executable repeats the same 400/5,000-tick measurements.
+
+### Final coherent v3 result: compiled weighted run remains incorrect
+
+The final executable is `target/unchecked-classic-anpu-v3-tests.exe`, SHA256
+`e72d77528294c4a6b2876bb6ab90ec95f4782c662b4c1d405835d9eedcc107ea`.
+Reproduce the normal short experiment with:
+
+```powershell
+& target/unchecked-classic-anpu-v3-tests.exe unchecked_classic_anpu_benchmark --ignored --nocapture
+```
+
+For the complete active window, set `MCHPRS_UNCHECKED_ANPU_TICKS=5000` and
+`MCHPRS_UNCHECKED_ANPU_SAMPLES=1`. Exact reports/logs are preserved as
+`target/unchecked-classic-anpu-v3-{400,5000}.{json,log}`. The default short run
+uses 400 ticks and three samples. No compiler/other performance job ran while
+sampling. A normal-Graph mismatch with the frozen screen would fail the harness;
+experimental mismatches deliberately do not abort it.
+
+V3 retains all 34,781 wire owners, 5,543 groups and the same source/weight
+coverage as v1. Each invocation evaluates and writes only its directed root
+closure. Changed wire writes outside that closure are **zero**. Source sampling
+still includes the full owning group's live source table, and is charged to
+execution. Extra weighted compilation took 60.9 ms in the 5,000-tick run,
+outside activation/execution/projection timers.
+
+| Execution mode | 400 ticks, median of 3 | 5,000 ticks, one sample | Frozen screen / full state |
+| --- | ---: | ---: | --- |
+| Normal O2 Graph | 0.631572 s | 5.740476 s | All observations match |
+| Dynamic fixed point, unchecked | 0.603147 s | 5.158906 s | All observations match |
+| Compiled weighted v3, unchecked | 0.156709 s | 1.253482 s | Wrong |
+
+The compiled ratios are 4.03x (400) and 4.58x (5,000), but do **not** establish
+a correct speedup. At 5,000 ticks, compiled state differs at 4,851 observations,
+first at tick 150, component (102,36,62). Pending maps and queued job multisets
+also first differ at tick 150 and differ at 4,851 observations. Ordered scheduler
+entries first differ at tick 14 and differ at 4,975 observations. The screen
+first differs at tick 316, pixel 646 / (148,77,52), actual 0 versus expected 1;
+4,685 observations mismatch. Only the initial frame survives. Its whole trace
+hash is `559362f421edac01`, versus exact `442eec413f9abf91`.
+
+Dynamic fixed point uses about 10.13% less execution time in the long sample
+(1.113x ratio). It matches all 5,001 screen/full-CircuitState observations and
+all 14 frozen frames. Pending maps and queued job multisets match at every check.
+Ordered scheduler entries differ at 3,414 observations, first tick 14. Thus it
+is an interesting output-matching result for this one pinned activation episode,
+not scheduler equivalence or a general redstone correctness result. The report
+still does not compare every piston request/deferred field.
+
+Actual 5,000-tick work:
+
+| Work | Normal O2 | Dynamic fixed point | Compiled v3 |
+| --- | ---: | ---: | ---: |
+| Graph callbacks | 16,389,687 | 5,062,613 | 1,270,663 |
+| Wire walks | 183,752 | 347,433 | 0 |
+| Scheduled ticks | 267,998 | 267,998 | 80,562 |
+| Piston actions | 10,682 | 10,682 | 7,367 |
+| Projection time | 0.360752 s | 0.332406 s | 0.233703 s |
+
+Compiled-specific counters: 621,348 net invocations; 2,217,304 source samples;
+23,596,628 weighted terms; 219,624 final wire writes; 616,836 boundary callbacks.
+Lower work partly reflects the wrong/stalled execution and cannot be credited
+as useful optimization. Activation was separately measured at 0.240 / 0.048 /
+0.039 ms, respectively. Instrumentation, interleaving, cache effects and the
+single long sample remain the explicit limits of these unit-test timings.
+
+The coherent root-closure/live-boundary variant does not repair compiled output.
+This rules out treating v1's arbitrary sorted notification order alone as an
+established explanation. Frozen dust topology, sampled source/transfer assumptions
+and lost transient samples still differ; this experiment does not identify which
+causes the first substantive divergence. No further algorithm variants were made.
+
+Final pinned release checks passed: ordinary Graph namespace **96 passed / 1
+ignored**; `classic_` focused filter **11 passed / 3 ignored** (including the new
+algebra check and excluding explicitly ignored full/native experiments).
+`git diff --check` passed. Production admission/defaults and native C/compiler
+size are unchanged. Parent runs the final workspace compilation check separately.
+
+### Final checks and reproduction
+
+Parent's final `cargo check --workspace --locked` passed (3.77 seconds), with
+13 existing warnings from disabled symbolic experiments. Targeted rustfmt check
+of the new experiment module passed. No additional test or timing run followed.
+The last diff check passed; a subsequent attempt to preview a report used the
+wrong filename, which did not change the successfully written reports or notes.
+
+The preserved final evidence is [400 ticks / 3 samples](../../../target/unchecked-classic-anpu-v3-400.json)
+and [5,000 ticks / 1 sample](../../../target/unchecked-classic-anpu-v3-5000.json),
+with [short log](../../../target/unchecked-classic-anpu-v3-400.log) and
+[long log](../../../target/unchecked-classic-anpu-v3-5000.log). The final executable
+hash remains `e72d77528294c4a6b2876bb6ab90ec95f4782c662b4c1d405835d9eedcc107ea`.
+
+Execution plus separately timed projection totals for the long sample are
+6.101228 s normal, 5.491312 s dynamic fixed point, and 1.487184 s incorrect
+compiled v3. These are still instrumented unit-test measurements, with activation
+and setup excluded.
+
+To rebuild and repeat the short experiment from source:
+
+```powershell
+$env:MCHPRS_UNCHECKED_ANPU_TICKS='400'
+$env:MCHPRS_UNCHECKED_ANPU_SAMPLES='3'
+cargo test -p mchprs_core --release --lib unchecked_classic_anpu_benchmark --locked -- --ignored --nocapture
+```
+
+To repeat the long episode using the preserved final executable:
+
+```powershell
+$env:MCHPRS_UNCHECKED_ANPU_TICKS='5000'
+$env:MCHPRS_UNCHECKED_ANPU_SAMPLES='1'
+& target/unchecked-classic-anpu-v3-tests.exe unchecked_classic_anpu_benchmark --ignored --nocapture
+```
+
+## 2026-10-18: causal diagnosis and conservative hybrid
+
+Two separate local witnesses explain why blindly accepting ANPU was unsafe.
+The bounded debug recorder compares compiled transfer and an independently
+collected LIVE adjacency / block-power / 15-round solver on the same current
+state, before weighted writes. It retains captured/live root samples, source
+terms, neighbor selections, contact observations and piston state. Evidence is
+`target/unchecked-classic-local-v3-start0.{jsonl,log}` and
+`target/unchecked-classic-local-entry-fixed-t150.{jsonl,log}`.
+
+First, at tick 14, root (123,29,71) has sampled/live old power 0 and ordinary
+seed power 0. Graph and the live fixed-point mode therefore do not enter a
+wire episode. V3 nevertheless reads already-new source Node13961 strength 15
+and writes root 7 (attenuation 8) and wire (123,28,72) strength 8 (attenuation 7).
+Frozen and live incoming neighbors agree at this witness. This is premature
+publication at an unchanged seed, not proof that a nearby piston caused it.
+The test-only hook now runs only AFTER the ordinary seed equality check and
+root publication. A genuine admitted episode still forces its root boundary
+notification even if weighted evaluation makes no additional writes. A tiny
+three-wire regression sets a source to 15 without delivering its output route,
+then checks that a far seed remaining 0 does not invoke or publish the net.
+
+Second, fixing entry semantics alone exposes a real topology failure at tick
+150. At root (112,37,75), sampled old is 0, ordinary seed is 14, and the live
+solver yields 14; frozen weights yield 0. Live incoming now includes powered
+wire Node24706 at (113,38,75), strength 15, absent from the initial adjacency.
+The ABOVE site70528 / Contact1472 at (112,38,75) was initially black concrete
+and is now air, opening the staircase connection. Piston490 at (112,40,75) is
+extended, facing down, with head absent and BasePending state (revision 1) at
+this observation. Repeated compiled rewrites of seed 14 back to 0 cause nested
+notifications and a cycle between roots (112,37,75) and (110,37,75). A 64 MiB
+thread-stack rerun also overflows: this was not merely the debug default stack.
+The later first post-tick difference at (102,36,62) is downstream evidence,
+not the earliest local cause.
+
+The user explicitly requested preserving piston and other effectful interfaces.
+The hybrid forms whole potential electrical wire regions over all possible
+staircase slots and recursively conducted wire dependencies, ignoring guard
+selection and including contact variants. It marks regions for ordinary Turbo
+when they touch selectable contacts/pistons, resource/contact guards, all possible
+captured/guarded effectful callback receivers, observer/reset watches, side/quasi
+reads or other synchronous effectful power readers. Preservation also propagates
+backwards across cross-region wire callbacks. Delayed torches, proved unlocked
+repeaters and inert controls can remain external handlers. Entire regions fall
+through to ordinary Turbo with fixed-point mode explicitly false; the experiment
+hook stays installed for nested eligible calls. No arbitrary piston radius or
+global exclusion of otherwise unrelated pistons is used.
+
+Concurrent user cleanup deleted/refactored unrelated symbolic/native/export
+code. The first hybrid debug build encountered 141 unrelated missing-helper
+errors in that work in progress. It was not reverted. Validation proceeds in
+an isolated detached HEAD576ae31 worktree at
+`F:/rustrepos/MCHPRS-boundary-experiment-20261018`, overlaying only the experiment
+module and minimal test-only Graph/wire/fixed-point hooks. The only main-file
+cleanup typo repaired was the explicitly authorized test-recorder getter.
+
+
+## 2026-10-18: compiler experiment removal
+
+C/LLVM and the older disabled finite/symbolic synthesis code have been removed.
+The certified classic pass, Rust direct-net execution, JSON/viewer support and
+the existing test-only unchecked ANPU experiment remain. Native integration
+results above are historical: the DLL feature, APIs and native-only tests no
+longer exist in this checkout. Sparse contact projection remains shared Graph
+behavior. Production admission and default enablement were not broadened.
+
+The complete pre-removal compiler source is preserved in commit
+`576ae3137492dfa3dcacaf787ac6c9e482840d6e`. See
+[ALGORITHMS_AND_RECOVERY.md](ALGORITHMS_AND_RECOVERY.md) for the current classic
+algorithm, archived compiler algorithms, source locations and recovery steps.
+
+### Hybrid debug validation and exact preservation coverage
+
+The isolated hybrid debug run passes all 5,001 screen observations, all 14 frozen
+frames, full CircuitState, pending maps, queued-job multisets, and the newly
+compared ordered piston requests / deferred work / clock. Ordered scheduler
+entries still differ at 974 observations, first tick 144; this is not future
+execution equivalence. Raw debug reports are
+`target/unchecked-classic-v4-debug-{400,5000}.json`.
+
+The source at the tick-14 premature-publication witness, Node13961, is now
+resolved as an ordinary delay-1 repeater at **(127,28,68)**. The new entry regression
+passes. The small piston preservation fixture was adjusted so its base has a
+normal compiled component site; it then passes, showing that an entire three-wire
+contact region is preserved while a remote independent three-wire line remains
+compiled. All three focused unchecked regressions pass; the full experiment
+remains explicitly ignored.
+
+The hybrid keeps **32,757 of 34,781 wires** on ordinary O2 Turbo and compiles
+**2,024 wires** in **483 initial static nets**. There are 2,971 potential electrical
+regions: 2,491 preserved and 480 eligible (initial resolved nets can split one
+potential region). Reasons overlap and are counted after whole-region closure:
+
+| Preservation reason | Regions | Wires |
+| --- | ---: | ---: |
+| Callback into preserved region | 1,406 | 13,181 |
+| Contact/resource callback guard | 448 | 10,814 |
+| Contact/resource power guard | 236 | 4,045 |
+| Effectful callback receiver | 1,070 | 19,158 |
+| Effectful electrical dependency | 281 | 6,822 |
+| Effectful power reader | 350 | 11,209 |
+| Observer/reset watch | 32 | 32 |
+| Piston/contact dependency | 3 | 307 |
+| Piston/effectful neighborhood | 1,073 | 19,407 |
+| Selectable contact callback | 448 | 10,814 |
+| Selectable contact dependency | 236 | 4,045 |
+| Selectable contact neighborhood | 461 | 11,485 |
+| Side/quasi power reader | 90 | 5,789 |
+
+The long debug trace executes both paths: 11,164 weighted invocations, 59,635
+weighted final writes and 127,707 boundary callbacks, alongside positive ordinary
+fallback walk work. No timing claim uses these debug measurements.
+
+The stronger future checks also qualify the historical dynamic fixed-point
+result: although its screen/full state/pending/job multisets match in the same
+5,000-tick trace, ordered piston/deferred/clock observations differ at **1,461**
+checks (the short trace first differs at tick 74). Thus earlier order-only
+statements apply specifically to scheduler entries, not every future-work field.
+The new hybrid does not exhibit that piston/deferred difference in this trace.

@@ -1563,12 +1563,10 @@ dependencies = [
  "hmac 0.12.1",
  "impls",
  "itertools",
- "libloading",
  "lz4_flex",
  "mchprs_blocks",
  "mchprs_network",
  "mchprs_proc_macros",
- "mchprs_redpiler_opt",
  "mchprs_save_data",
  "mchprs_utils",
  "mchprs_world",
@@ -1615,10 +1613,6 @@ dependencies = [
  "serde_json",
  "syn 1.0.109",
 ]
-
-[[package]]
-name = "mchprs_redpiler_opt"
-version = "0.1.0"
 
 [[package]]
 name = "mchprs_save_data"

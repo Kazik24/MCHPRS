@@ -58,16 +58,8 @@ pub(crate) struct ExecutionPlans {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-/// Instant compiler plans from ownership analysis through finite or symbolic programs.
+/// Instant region ownership and private-cell proxy plans.
 pub(crate) struct InstantPlans {
     pub(crate) regions: Vec<InstantRegion>,
     pub(crate) proxies: Vec<InstantProxy>,
-    /// Full proof data is released when lowering retains the compact kernel.
-    pub(crate) machine: Option<std::sync::Arc<InstantMachine>>,
-    /// These universally proven AOT programs retain typed inputs and one periodic phase layout.
-    pub(crate) symbolic_kernels: Vec<std::sync::Arc<SymbolicKernel>>,
-    /// These grouped event programs retain one boundary with actor and unique reset routines.
-    pub(crate) symbolic_regions: Vec<crate::redpiler::program_graph::SymbolicRegion>,
-    /// These exact region omissions remain on the ordinary Graph executor.
-    pub(crate) symbolic_region_declines: Vec<crate::redpiler::program_graph::SymbolicRegionDecline>,
 }

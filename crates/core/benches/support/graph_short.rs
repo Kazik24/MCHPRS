@@ -24,8 +24,6 @@ const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     classic_net_invocations: 0,
     classic_receiver_ops: 0,
     ticks: 100,
-    instant_transitions: 0,
-    symbolic_region_steps: 0,
     scheduled_ticks: 20_005,
     callbacks: 2_059_909,
     wire_walks: 32_505,
@@ -287,7 +285,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"ticks":value.ticks,"instant_transitions":value.instant_transitions,"symbolic_region_steps":value.symbolic_region_steps,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
+    json!({"ticks":value.ticks,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
         "wire_walks":value.wire_walks,"dust_path_power_samples_elided":value.dust_path_power_samples_elided,
         "piston_samples":value.piston_samples,"piston_actions":value.piston_actions,"deferred_publications":value.deferred_publications})
 }
@@ -297,8 +295,6 @@ fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> V
         classic_net_invocations: after.classic_net_invocations-before.classic_net_invocations,
         classic_receiver_ops: after.classic_receiver_ops-before.classic_receiver_ops,
         ticks: after.ticks - before.ticks,
-        instant_transitions: after.instant_transitions - before.instant_transitions,
-        symbolic_region_steps: after.symbolic_region_steps - before.symbolic_region_steps,
         scheduled_ticks: after.scheduled_ticks - before.scheduled_ticks,
         callbacks: after.callbacks - before.callbacks,
         wire_walks: after.wire_walks - before.wire_walks,
@@ -540,12 +536,6 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
         verify_phase_response(episode, phase, &trace[phase_start..])?;
     }
     let work = compiler.as_ref().and_then(Compiler::graph_execution_counts);
-    if let Some(work) = work {
-        ensure!(
-            work.symbolic_region_steps == 0 && work.instant_transitions == 0,
-            "the default pipeline unexpectedly executed disabled instant synthesis"
-        );
-    }
     if episode.name == "cpu_bubblesort" && tier == Some(0) && !reset_pending {
         ensure!(work == Some(CPU_COUNTS), "O0 CPU frozen work changed: {work:?}");
     }
@@ -651,18 +641,6 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                     result["seconds"].as_f64().unwrap(),
                     result["episode_execution_seconds"].as_f64().unwrap()
                 );
-                if compose_regions {
-                    let regions = result["tables"]["preparation_tables"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .find(|table| table["stage"] == "lowering" && table["table"] == "symbolic region events")
-                        .map_or(0, |table| table["entries"].as_u64().unwrap());
-                    println!(
-                        "{name}: compiled regional programs={regions}, regional entries={}, wire walks={}",
-                        result["work_in_window"]["symbolic_region_steps"], result["work_in_window"]["wire_walks"]
-                    );
-                }
                 results.push(result);
             }
             let native = results.iter().find(|result| result["executor"] == "interpreter").unwrap();
@@ -815,7 +793,7 @@ pub fn main() -> Result<()> {
         ensure!(output.status.success(), "git metadata failed");
         Ok(String::from_utf8(output.stdout)?)
     };
-    let mut report = json!({"schema":6,"label":label,"profile":"bench/release","admission_smoke":smoke,
+    let mut report = json!({"schema":7,"label":label,"profile":"bench/release","admission_smoke":smoke,
         "binary_sha256":hash(&std::fs::read(std::env::current_exe()?)?),"git_head":git(&["rev-parse","HEAD"])?.trim(),
         "working_tree_diff":git(&["diff","HEAD","--"] )?,"working_tree_status":git(&["status","--short"] )?,
         "harness_source_sha256":hash(include_bytes!("graph_short.rs")),"cpu_loader_source_sha256":hash(include_bytes!("cpus.rs")),

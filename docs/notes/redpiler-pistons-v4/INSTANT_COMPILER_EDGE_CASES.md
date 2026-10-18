@@ -1,5 +1,10 @@
 # Instant compiler: edge cases and correctness obligations
 
+> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
+> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> Historical results and plans below remain preserved; see
+> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+
 This is the single running register for edge cases discovered while developing the
 boundary-driven instant compiler. Add new cases here instead of scattering them across
 agent reports. Keep the smallest example, its observable consequence, the compiler rule and
@@ -76,6 +81,16 @@ internal propagation.
 **Evidence:** `fixed_point_reordered_adder_requests_change_the_sum_payload` in
 [fixed_point_adder.rs](../../../crates/core/src/redpiler/backend/graph/tests/fixed_point_adder.rs).
 Inspected existing counterexample; not rerun during this entry.
+
+**Input-edge clarification (2026-10-18):** the proposed gate compiler treats inputs applied
+on one logical edge as one sampled input frame. Its DFS/BFS traversal order must not select
+the answer. The counterexample demonstrates sensitivity to changing physical propagation
+order; it does not require reproducing that traversal at runtime or invalidate gate extraction.
+Buffer chains can affect the circuit's internal nanotick dependencies. Derive those effects
+before removing the buffers, retaining only the resulting output/activation conditions where
+possible. Sequential lever API calls are not automatically an atomic input frame; compare
+the same declared stimulus protocol before attributing a difference to the compiler.
+This is a design clarification, not a newly executed atomic-edge regression.
 
 ### E04. A shared external source does not own both devices it powers
 

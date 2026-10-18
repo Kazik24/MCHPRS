@@ -37,23 +37,7 @@ impl GraphBackend {
         if state.availability.base_pending() {
             return Ok(());
         }
-        let action = if let Some(plan) = self.program.symbolic_actor_routine(piston).cloned() {
-            self.counts.piston_samples += 1;
-            let roots = self.symbolic_actor_roots(&plan, crate::redpiler::program_graph::ActorEvent::Sample);
-            #[cfg(test)]
-            if self.test_recording {
-                let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
-                self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
-                    actor: self.program.nodes()[spec.node.index()].position.unwrap(),
-                    extended: state.extended,
-                    powered,
-                });
-            }
-            let Some(action) = crate::redpiler::program_graph::SymbolicActorRoutine::requested(&roots) else {
-                return Ok(());
-            };
-            action
-        } else {
+        let action = {
             self.counts.piston_samples += 1;
             let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
             #[cfg(test)]
@@ -128,10 +112,7 @@ impl GraphBackend {
                 action: request.action,
             });
         }
-        let accepted = if let Some(plan) = self.program.symbolic_actor_routine(request.piston).cloned() {
-            let roots = self.symbolic_actor_roots(&plan, crate::redpiler::program_graph::ActorEvent::Accept);
-            crate::redpiler::program_graph::SymbolicActorRoutine::accepts(&roots, request.action)
-        } else {
+        let accepted = {
             let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
             match request.action {
                 mchprs_world::PistonAction::Extend => {

@@ -3,20 +3,10 @@
 mod execution_plans;
 mod classic_redstone;
 pub(crate) use classic_redstone::*;
-mod instant_entry;
-mod instant_execution;
 mod lowering;
-mod symbolic_kernel;
-mod symbolic_region;
 mod validation;
 pub(crate) use execution_plans::*;
-mod instant_machine;
 mod instant_regions;
-pub(crate) use instant_entry::*;
-pub(crate) use instant_execution::*;
-pub(crate) use instant_machine::*;
-pub(crate) use symbolic_kernel::*;
-pub(crate) use symbolic_region::*;
 mod wire_query_facts;
 pub(crate) use instant_regions::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
@@ -598,16 +588,6 @@ pub(crate) enum GraphBuildError {
         /// This identifies the first stale or missing certificate in that table.
         index: usize,
     },
-    InvalidInstantMachine {
-        /// This identifies the normalized snapshot whose transition proof failed.
-        state: usize,
-        /// This identifies tick column zero or the corresponding lever-toggle column.
-        action: usize,
-    },
-    InvalidSymbolicKernel {
-        /// This identifies the AOT kernel whose root layout or graph binding is invalid.
-        index: usize,
-    },
     PreparationMemoryLimit {
         stage: &'static str,
         estimated_bytes: usize,
@@ -741,10 +721,6 @@ impl std::fmt::Display for GraphBuildError {
             Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
             Self::InvalidClassicNet { net,reason } => write!(f,"classic net {net} has an invalid certificate: {reason}"),
             Self::InvalidInstantRegion { table, index } => write!(f, "instant {table}[{index}] has a stale or invalid certificate"),
-            Self::InvalidInstantMachine { state, action } => {
-                write!(f, "instant machine state {state}, action {action} has an invalid transition certificate")
-            }
-            Self::InvalidSymbolicKernel { index } => write!(f, "symbolic instant kernel {index} has an invalid root layout or binding"),
             Self::InvalidInstantReset { wire } => write!(f, "wire {wire} has a stale or invalid instant reset certificate"),
             Self::InvalidNodeState { node } => {
                 write!(f, "node {} has state that does not match its kind", node.index())
@@ -808,22 +784,6 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Lowered instant instructions and bindings; compile-time proofs are not retained.
 struct InstantProgram {
-    /// These grouped programs own one boundary and their existing actor/resource/reset state.
-    symbolic_regions: Box<[std::sync::Arc<crate::redpiler::program_graph::SymbolicRegionProgram>]>,
-    /// This retains small coverage diagnostics while state execution uses only complete programs.
-    symbolic_region_declines: Box<[crate::redpiler::program_graph::SymbolicRegionDecline]>,
-    /// This maps each actor directly to its region and actor-routine ordinal.
-    symbolic_actor_bindings: Box<[Option<(u32, u32)>]>,
-    /// This maps each reset clock directly to its region and reset-routine ordinal.
-    symbolic_reset_bindings: Box<[Option<(u32, u32)>]>,
-    /// This maps semantic event keys directly to their compiled region and entry-plan ordinals.
-    symbolic_event_bindings: FxHashMap<SymbolicRegionEntry, (u32, u32)>,
-    /// These lowered effects contain only operations active for each held-input mask.
-    execution: Option<std::sync::Arc<KernelExecution>>,
-    /// This owns reduced phase programs; unsupported states retain general Graph execution.
-    kernel: Option<std::sync::Arc<InstantKernel>>,
-    /// These AOT programs derive their phase values from the shared pure Boolean-plan evaluator.
-    symbolic_kernels: Box<[std::sync::Arc<SymbolicKernel>]>,
     /// These private-cell programs reuse the existing actor, resource, and clock state.
     proxies: Box<[InstantProxy]>,
     /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
@@ -876,52 +836,6 @@ pub(crate) struct CircuitProgram {
 
 impl CircuitProgram {
     pub(crate) fn classic(&self) -> &ClassicProgram { &self.classic }
-    pub(crate) fn symbolic_region_programs(&self) -> impl Iterator<Item = &crate::redpiler::program_graph::SymbolicRegionProgram> {
-        self.instant.symbolic_regions.iter().map(std::sync::Arc::as_ref)
-    }
-    #[cfg(test)]
-    pub(crate) fn symbolic_region_counts(&self) -> (usize, usize, usize, usize) {
-        (
-            self.instant.symbolic_regions.len(),
-            self.instant.symbolic_regions.iter().map(|region| region.actors.len()).sum(),
-            self.instant.symbolic_regions.iter().map(|region| region.resets.len()).sum(),
-            self.instant.symbolic_region_declines.len(),
-        )
-    }
-    pub(crate) fn symbolic_region_binding_bytes(&self) -> usize {
-        self.instant.symbolic_actor_bindings.len() * std::mem::size_of::<Option<(u32, u32)>>()
-            + self.instant.symbolic_reset_bindings.len() * std::mem::size_of::<Option<(u32, u32)>>()
-            + self.instant.symbolic_event_bindings.capacity() * std::mem::size_of::<(SymbolicRegionEntry, (u32, u32))>()
-    }
-
-    pub(crate) fn symbolic_event_routine(&self, key: SymbolicRegionEntry) -> Option<&std::sync::Arc<SymbolicRegionEventRoutine>> {
-        let (region, routine) = self.instant.symbolic_event_bindings.get(&key).copied()?;
-        self.instant
-            .symbolic_regions
-            .get(region as usize)?
-            .event_kernel
-            .as_ref()?
-            .entries
-            .get(routine as usize)
-    }
-    pub(crate) fn symbolic_actor_routine(&self, actor: PistonId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActorRoutine>> {
-        let (region, routine) = self.instant.symbolic_actor_bindings.get(actor.index()).copied().flatten()?;
-        self.instant.symbolic_regions.get(region as usize)?.actors.get(routine as usize)
-    }
-
-    pub(crate) fn symbolic_reset(&self, node: NodeId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicResetProgram>> {
-        let (region, routine) = self.instant.symbolic_reset_bindings.get(node.index()).copied().flatten()?;
-        self.instant.symbolic_regions.get(region as usize)?.resets.get(routine as usize)
-    }
-    pub(crate) fn instant_execution(&self) -> Option<&std::sync::Arc<KernelExecution>> {
-        self.instant.execution.as_ref()
-    }
-    pub(crate) fn instant_kernel(&self) -> Option<&std::sync::Arc<InstantKernel>> {
-        self.instant.kernel.as_ref()
-    }
-    pub(crate) fn symbolic_kernels(&self) -> &[std::sync::Arc<SymbolicKernel>] {
-        &self.instant.symbolic_kernels
-    }
     pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {
         self.instant.private_resource_owners[resource.index()]
     }

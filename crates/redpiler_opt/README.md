@@ -1,5 +1,10 @@
 # Pure circuit optimization
 
+> Archived on 2026-10-18: this synthesis-only crate and its workspace/dependency wiring
+> were removed. Source is preserved in commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
+> See [algorithms and recovery](../../docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
+> Commands and integration descriptions below apply to that historical checkout.
+
 This crate optimizes acyclic Boolean expressions. It has no World access, timing,
 callback delivery, piston ownership or reset semantics. The caller must first prove
 that a fragment is a pure expression and declare every required output and state-write
