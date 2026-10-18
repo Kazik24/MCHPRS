@@ -40,6 +40,8 @@ impl GraphBackend {
     }
 
     pub(super) fn wire_state(&self, node: NodeId) -> RedstoneWire {
+        #[cfg(test)]
+        if let Some(tapes) = &self.wire_tapes { tapes.read(self, node); }
         match &self.state.components[node.index()] {
             ComponentState::Wire(wire) => {
                 let mut wire = *wire;
@@ -53,6 +55,8 @@ impl GraphBackend {
     }
 
     pub(super) fn set_wire(&mut self, node: NodeId, wire: RedstoneWire) {
+        #[cfg(test)]
+        if let Some(tapes) = &self.wire_tapes { tapes.write(self, node, wire); }
         let ComponentState::Wire(current) = &mut self.state.components[node.index()] else {
             unreachable!("wire node has non-wire state");
         };
@@ -118,6 +122,10 @@ impl GraphBackend {
         let unchecked_sampled_old = wire.power;
         wire.power = power;
         self.set_wire(node, wire);
+        #[cfg(test)]
+        if let Some(tapes) = self.wire_tapes.clone() {
+            return tapes.run(self, node);
+        }
         #[cfg(test)]
         if let Some(program) = self.unchecked_classic.clone() {
             if program.handles(node) {
@@ -279,6 +287,8 @@ impl GraphBackend {
                 observed.properties
             )
         );
+        #[cfg(test)]
+        if let Some(tapes) = &self.wire_tapes { tapes.capture(self, site, &observed); }
         walk.insert_site(
             site,
             WalkSite {
@@ -423,6 +433,12 @@ impl GraphBackend {
         walk.queues[2].clear();
     }
 
+    #[cfg(test)]
+    pub(super) fn run_wire_tape_reference(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        self.counts.wire_walks += 1;
+        super::fixed_point::with_mode(false, || self.evaluate_turbo_wire(node))
+    }
+
     #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         if super::fixed_point::enabled() {
@@ -452,6 +468,10 @@ impl GraphBackend {
                 .expect("wire traversal site was validated during preparation")
                 .observed()
         });
+        #[cfg(test)]
+        if let Some(tapes) = &self.wire_tapes {
+            for (site, observed) in plan.canonical_neighbors.iter().zip(&observed) { tapes.capture(self, *site, observed); }
+        }
         // Both original enqueue loops finish before any callback can change a guard.
         let selected: [bool; 24] = std::array::from_fn(|slot| {
             self.wire_route_delivery(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot])
@@ -553,6 +573,8 @@ impl GraphBackend {
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
+        #[cfg(test)]
+        if let Some(tapes) = &self.wire_tapes { tapes.call(self, site, observed, layer); }
         self.record_turbo_delivery(site, receiver, layer);
         match receiver {
             CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(observed)),
@@ -562,6 +584,8 @@ impl GraphBackend {
     }
 
     fn evaluate_turbo_wire_node(&mut self, node: NodeId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
+        #[cfg(test)]
+        if let Some(tapes) = &self.wire_tapes { tapes.visit(node); }
         let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");
         let root_slot = self.capture_walk_site(walk, root);
         walk.sites[root_slot].visited = true;

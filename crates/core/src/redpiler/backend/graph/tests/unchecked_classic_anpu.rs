@@ -734,6 +734,10 @@ fn unchecked_weighted_expression_combines_two_sources_and_attenuates_constants()
 }
 
 fn small_lines(piston: bool) -> GraphBackend {
+    small_lines_receiver(piston, None)
+}
+
+fn small_lines_receiver(piston: bool, receiver: Option<Block>) -> GraphBackend {
     use crate::plot::PlotWorld;
     use crate::world::storage::Chunk;
     use mchprs_blocks::blocks::{Lever, LeverFace, RedstonePiston};
@@ -752,6 +756,9 @@ fn small_lines(piston: bool) -> GraphBackend {
         for x in 3..=5 {
             world.set_block(BlockPos::new(x, 20, z), Block::RedstoneWire { wire: Default::default() });
         }
+    }
+    if let Some(block) = receiver {
+        world.set_block(BlockPos::new(6, 20, 2), block);
     }
     if piston {
         world.set_block(
@@ -852,10 +859,16 @@ fn unchecked_classic_anpu_benchmark() {
         println!("ENTRY WITNESS source13961 position{:?} kind{:?}", source.position, source.kind);
     }
     let state = template.state.clone();
+    let tape_mode = std::env::var_os("MCHPRS_UNCHECKED_ANPU_TAPES").is_some();
     let compile_started = Instant::now();
     let unchecked = Arc::new(UncheckedProgram::compile(&template));
     let compiled_seconds = compile_started.elapsed().as_secs_f64();
-    let coverage = unchecked.coverage();
+    let coverage = if tape_mode {
+        let mut probe = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        TapeProgram::attach(&mut probe).coverage()
+    } else {
+        unchecked.coverage()
+    };
     assert_eq!(coverage["wires"], program.wires().len());
     assert_eq!(program.wires().len(), 34_781, "pinned ANPU wire inventory");
     drop(template);
@@ -878,7 +891,12 @@ fn unchecked_classic_anpu_benchmark() {
             .map(|_| GraphBackend::new(program.clone(), state.clone(), 0).unwrap())
             .collect::<Vec<_>>();
         let experiment = Arc::new(UncheckedProgram::compile(&backends[2]));
-        backends[2].unchecked_classic = Some(experiment.clone());
+        let tapes = if tape_mode {
+            Some(TapeProgram::attach(&mut backends[2]))
+        } else {
+            backends[2].unchecked_classic = Some(experiment.clone());
+            None
+        };
         let mut worlds = (0..3).map(|_| cpus::load_cpu(cpu)).collect::<Vec<_>>();
         let mut execution = [Duration::ZERO; 3];
         let mut projection = [Duration::ZERO; 3];
@@ -1005,10 +1023,22 @@ fn unchecked_classic_anpu_benchmark() {
                 }
             }
         }
-        let names = ["normal_graph_o2", "dynamic_fixed_point_unsafe", "compiled_weighted_unsafe"];
+        let names = [
+            "normal_graph_o2",
+            "dynamic_fixed_point_unsafe",
+            if tape_mode {
+                "guarded_ordered_tapes_experimental"
+            } else {
+                "compiled_weighted_unsafe"
+            },
+        ];
         assert_eq!(screen_mismatch_ticks[0], 0, "normal Graph must match the frozen screen at every tick");
         assert!(backends[0].counts.callbacks > 0 && backends[0].counts.wire_walks > 0);
-        assert!(experiment.calls.load(Ordering::Relaxed) > 0, "unchecked hook must actually execute");
+        if let Some(tapes) = &tapes {
+            assert!(tapes.counts()["misses"].as_u64().unwrap() > 0);
+        } else {
+            assert!(experiment.calls.load(Ordering::Relaxed) > 0, "unchecked hook must actually execute");
+        }
         if std::env::var_os("MCHPRS_UNCHECKED_ANPU_HYBRID").is_some() {
             assert!(backends[2].counts.wire_walks > 0, "hybrid must execute preserved general wire work");
         }
@@ -1025,12 +1055,589 @@ fn unchecked_classic_anpu_benchmark() {
             mode["piston_deferred_clock_mismatch_ticks"] = json!(other_future_mismatch_ticks[index]);
             mode["first_piston_deferred_clock_mismatch"] = json!(first_other_future[index]);
         }
-        let row = json!({"sample":sample,"modes":modes,"compiled_work":experiment.counts()});
+        let row = json!({"sample":sample,"modes":modes,"compiled_work":tapes.as_ref().map_or_else(||experiment.counts(), |tapes|tapes.counts())});
         println!("UNSAFE ANPU sample {row}");
         reports.push(row);
     }
-    let report = json!({"experiment":"UNSAFE v4 seed-admitted weighted hybrid with complete potential-region preservation, not certified classic mask runtime","timing_protocol":"tick-interleaved modes, alternating first/last per sample; state/future/screen checks and projection outside execution timers; cache-perturbed exploratory timing","profile":if cfg!(debug_assertions){"debug"}else{"release"},"schematic_sha256":cpu.sha256,"ticks":ticks,"samples":samples,"coverage":coverage,"compile_seconds":compiled_seconds,"reports":reports});
+    let report = json!({"experiment":if tape_mode {"v5 complete native Turbo episode tape cache with live boundary handlers and initial-state guards, experimental"} else {"UNSAFE v4 seed-admitted weighted hybrid with complete potential-region preservation, not certified classic mask runtime"},"timing_protocol":"tick-interleaved modes, alternating first/last per sample; state/future/screen checks and projection outside execution timers; cache-perturbed exploratory timing","profile":if cfg!(debug_assertions){"debug"}else{"release"},"schematic_sha256":cpu.sha256,"ticks":ticks,"samples":samples,"coverage":coverage,"compile_seconds":compiled_seconds,"reports":reports});
     let destination = root.join(format!("target/unchecked-classic-anpu-{ticks}.json"));
     std::fs::write(&destination, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("UNSAFE ANPU result {}", destination.display());
+}
+
+// Research cache: replay one complete native Turbo episode, never a final-state collapse.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TapeGuard {
+    Wire(RedstoneWire),
+    Source { powered: bool, locked: bool, strength: u8 },
+}
+
+impl TapeGuard {
+    fn current(backend: &GraphBackend, node: NodeId) -> Option<Self> {
+        match &backend.state.components[node.index()] {
+            ComponentState::Wire(wire) => Some(Self::Wire(*wire)),
+            ComponentState::Electrical(state) if tape_emitter(backend, node) => Some(Self::Source {
+                powered: state.powered,
+                locked: state.repeater_locked,
+                strength: state.output_strength,
+            }),
+            _ => None,
+        }
+    }
+}
+
+fn tape_emitter(backend: &GraphBackend, node: NodeId) -> bool {
+    matches!(
+        backend.program.nodes()[node.index()].kind,
+        CircuitNodeKind::Observer { .. }
+            | CircuitNodeKind::BuiltinReset { .. }
+            | CircuitNodeKind::Electrical(
+                NodeType::Torch
+                    | NodeType::Repeater { .. }
+                    | NodeType::Comparator { .. }
+                    | NodeType::Observer { .. }
+                    | NodeType::Lever
+                    | NodeType::Button
+                    | NodeType::PressurePlate
+                    | NodeType::Constant
+            )
+    )
+}
+
+fn tape_handler(backend: &GraphBackend, receiver: CallbackReceiver) -> bool {
+    match receiver {
+        CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => true,
+        CallbackReceiver::Contact(_) => false,
+        CallbackReceiver::Component(node) => matches!(
+            backend.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Wire(_)
+                | CircuitNodeKind::BuiltinReset { .. }
+                | CircuitNodeKind::Electrical(
+                    NodeType::Torch
+                        | NodeType::Repeater { .. }
+                        | NodeType::Comparator { .. }
+                        | NodeType::Lamp
+                        | NodeType::Hopper
+                        | NodeType::Lever
+                        | NodeType::Button
+                        | NodeType::PressurePlate
+                        | NodeType::Constant
+                )
+        ),
+    }
+}
+
+// None means the condition can vary during simulation; captured tests need their actual target.
+fn tape_static_guard(backend: &GraphBackend, guard: GuardId, captured: Option<(SiteId, &ObservedSite)>) -> Option<bool> {
+    match &backend.program.guards()[guard.index()] {
+        Guard::Always => Some(true),
+        Guard::State(_) => None,
+        Guard::Site { site, view, .. } => {
+            if *view == OperandView::Captured && !captured.is_some_and(|(target, _)| target == *site) {
+                return Some(false);
+            }
+            if matches!(backend.program.sites()[site.index()].source, SiteSource::Contact(_)) {
+                return None;
+            }
+            Some(match captured {
+                Some((site, observed)) => backend.guard_matches_for_site(guard, site, observed),
+                None => backend.guard_matches(guard, None),
+            })
+        }
+        Guard::Not(child) => tape_static_guard(backend, *child, captured).map(|value| !value),
+        Guard::All(children) => {
+            let values = children
+                .iter()
+                .map(|&child| tape_static_guard(backend, child, captured))
+                .collect::<Vec<_>>();
+            if values.contains(&Some(false)) {
+                Some(false)
+            } else if values.contains(&None) {
+                None
+            } else {
+                Some(true)
+            }
+        }
+        Guard::Any(children) => {
+            let values = children
+                .iter()
+                .map(|&child| tape_static_guard(backend, child, captured))
+                .collect::<Vec<_>>();
+            if values.contains(&Some(true)) {
+                Some(true)
+            } else if values.contains(&None) {
+                None
+            } else {
+                Some(false)
+            }
+        }
+    }
+}
+
+fn tape_dynamic_query(backend: &GraphBackend, target: PowerTarget, depth: usize) -> bool {
+    assert!(depth < 16);
+    backend.program.power_links_to(target).iter().any(|link| {
+        match tape_static_guard(backend, link.guard, None) {
+            Some(false) => false,
+            None => true,
+            Some(true) => matches!(backend.program.sites()[link.from.index()].source, SiteSource::Contact(_))
+                || matches!(link.from_port, PowerPort::Conducted { include_dust } if tape_dynamic_query(backend, PowerTarget::Conductor { site: link.from, include_dust }, depth+1)),
+        }
+    })
+}
+
+#[derive(Clone)]
+enum TapeOp {
+    Capture(SiteId),
+    Write(NodeId, RedstoneWire),
+    Call { site: SiteId, capture: usize, layer: u32 },
+}
+struct EpisodeTape {
+    guards: Box<[(NodeId, TapeGuard)]>,
+    ops: Box<[TapeOp]>,
+    private_callbacks: u64,
+}
+#[derive(Default)]
+struct TapeRecording {
+    guards: BTreeMap<NodeId, TapeGuard>,
+    captures: BTreeMap<SiteId, usize>,
+    ops: Vec<TapeOp>,
+    wires: BTreeSet<NodeId>,
+    private_callbacks: u64,
+    abort: Option<&'static str>,
+}
+#[derive(Default)]
+struct TapeCache {
+    recording: Option<TapeRecording>,
+    replaying: bool,
+    variants: BTreeMap<NodeId, Vec<Arc<EpisodeTape>>>,
+    hits: u64,
+    misses: u64,
+    learning_sealed: bool,
+    fallbacks: BTreeMap<&'static str, u64>,
+    build_seconds: f64,
+    retained_bytes: usize,
+    capture_ops: u64,
+    write_ops: u64,
+    call_ops: u64,
+    private_callbacks_elided: u64,
+    represented: BTreeSet<NodeId>,
+    fallback_wires: BTreeSet<NodeId>,
+}
+
+pub(super) struct TapeProgram {
+    core: Vec<bool>,
+    coverage: serde_json::Value,
+    cache: std::sync::Mutex<TapeCache>,
+    recording_active: std::sync::atomic::AtomicBool,
+}
+impl TapeProgram {
+    pub(super) fn attach(backend: &mut GraphBackend) -> Arc<Self> {
+        let mut core = vec![false; backend.program.nodes().len()];
+        let mut reasons = BTreeMap::<&str, usize>::new();
+        let mut impossible = 0;
+        for plan in backend.program.wires() {
+            let mut why = BTreeSet::new();
+            if plan
+                .canonical_neighbors
+                .iter()
+                .any(|site| matches!(backend.program.sites()[site.index()].source, SiteSource::Contact(_)))
+            {
+                why.insert("direct_contact_neighborhood");
+            }
+            if tape_dynamic_query(
+                backend,
+                PowerTarget::Input {
+                    node: plan.node,
+                    port: InputPort::Main,
+                },
+                0,
+            ) {
+                why.insert("direct_dynamic_power_query");
+            }
+            if plan.execution.instant_reset.is_some() {
+                why.insert("instant_execution");
+            }
+            if let Some(route) = plan.turbo_route {
+                for delivery in &backend.program.routes()[route.index()].deliveries {
+                    let observed = backend.observe_site(delivery.target).unwrap();
+                    let captured = (delivery.view == OperandView::Captured).then_some((delivery.target, &observed));
+                    match tape_static_guard(backend, delivery.guard, captured) {
+                        Some(false) => {
+                            impossible += 1;
+                            continue;
+                        }
+                        None => {
+                            why.insert("dynamic_delivery_selection");
+                        }
+                        _ => (),
+                    }
+                    if let Some(receiver) = delivery.receiver
+                        && !tape_handler(backend, receiver)
+                    {
+                        why.insert("synchronous_or_effectful_handler");
+                    }
+                }
+            }
+            core[plan.node.index()] = !why.is_empty();
+            for reason in why {
+                *reasons.entry(reason).or_default() += 1;
+            }
+        }
+        let direct = backend.program.wires().iter().filter(|plan| core[plan.node.index()]).count();
+        let coverage = json!({"wires":backend.program.wires().len(), "direct_core_wires":direct,
+            "structurally_eligible_wires":backend.program.wires().len()-direct,"propagated_region_rejection_wires":0,
+            "direct_reasons_overlapping":reasons,"statically_impossible_deliveries":impossible,
+            "variants_per_root_limit":8,"retained_byte_limit":33554432,"ops_per_episode_limit":65536,"memory_accounting":"boxed tape ops and guards plus EpisodeTape/Arc payload; fixed core/index and BTreeMap allocation overhead excluded","cache_policy":"8 variants/root; seal recording after first admitted episode exceeding remaining payload budget; retain guards for removed captures"});
+        let program = Arc::new(Self {
+            core,
+            coverage,
+            cache: Default::default(),
+            recording_active: false.into(),
+        });
+        backend.wire_tapes = Some(program.clone());
+        program
+    }
+    pub(super) fn coverage(&self) -> serde_json::Value {
+        self.coverage.clone()
+    }
+    pub(super) fn counts(&self) -> serde_json::Value {
+        let cache = self.cache.lock().unwrap();
+        json!({"hits":cache.hits,"misses":cache.misses,"build_seconds":cache.build_seconds,
+            "variants":cache.variants.values().map(Vec::len).sum::<usize>(),"retained_bytes":cache.retained_bytes,"learning_sealed":cache.learning_sealed,
+            "capture_ops":cache.capture_ops,"write_ops":cache.write_ops,"call_ops":cache.call_ops,
+            "private_wire_callbacks_elided":cache.private_callbacks_elided,"wires_in_accepted_tapes":cache.represented.len(),
+            "distinct_fallback_prefix_wires":cache.fallback_wires.len(),"fallbacks":cache.fallbacks})
+    }
+    pub(super) fn read(&self, backend: &GraphBackend, node: NodeId) {
+        if !self.recording_active.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(recording) = &mut cache.recording
+            && recording.abort.is_none()
+        {
+            if let Some(value) = TapeGuard::current(backend, node) {
+                recording.guards.entry(node).or_insert(value);
+            }
+        }
+    }
+    pub(super) fn source_site(&self, backend: &GraphBackend, site: SiteId) {
+        if !self.recording_active.load(Ordering::Relaxed) {
+            return;
+        }
+        match backend.program.sites()[site.index()].source {
+            SiteSource::Component(node) => self.read(backend, node),
+            SiteSource::Contact(_) => self.abort("dynamic_source_contact"),
+            _ => (),
+        }
+    }
+    fn abort(&self, reason: &'static str) {
+        if !self.recording_active.swap(false, Ordering::Relaxed) {
+            return;
+        }
+        if let Some(recording) = &mut self.cache.lock().unwrap().recording {
+            recording.abort.get_or_insert(reason);
+        }
+    }
+    pub(super) fn visit(&self, node: NodeId) {
+        if !self.recording_active.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(recording) = &mut cache.recording {
+            recording.wires.insert(node);
+            recording.private_callbacks += 1;
+            if self.core[node.index()] {
+                recording.abort.get_or_insert("core_crossing");
+                self.recording_active.store(false, Ordering::Relaxed);
+            }
+        }
+    }
+    pub(super) fn write(&self, backend: &GraphBackend, node: NodeId, wire: RedstoneWire) {
+        if !self.recording_active.load(Ordering::Relaxed) {
+            return;
+        }
+        self.read(backend, node);
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(recording) = &mut cache.recording
+            && recording.abort.is_none()
+        {
+            if backend.state.components[node.index()] != ComponentState::Wire(wire) {
+                recording.ops.push(TapeOp::Write(node, wire));
+            }
+            if recording.ops.len() > 65536 {
+                recording.abort = Some("episode_op_limit");
+            }
+        }
+    }
+    pub(super) fn capture(&self, backend: &GraphBackend, site: SiteId, observed: &ObservedSite) {
+        if !self.recording_active.load(Ordering::Relaxed) {
+            return;
+        }
+        self.source_site(backend, site);
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(recording) = &mut cache.recording
+            && recording.abort.is_none()
+        {
+            if observed.receiver.is_some_and(|receiver| !tape_handler(backend, receiver)) {
+                recording.abort = Some("effectful_capture");
+                self.recording_active.store(false, Ordering::Relaxed);
+                return;
+            }
+            let slot = recording.captures.len();
+            if recording.captures.insert(site, slot).is_some() {
+                recording.abort = Some("duplicate_capture");
+                self.recording_active.store(false, Ordering::Relaxed);
+                return;
+            }
+            if recording.ops.len() >= 65536 {
+                recording.abort = Some("episode_op_limit");
+                self.recording_active.store(false, Ordering::Relaxed);
+            } else {
+                recording.ops.push(TapeOp::Capture(site));
+            }
+        }
+    }
+    pub(super) fn call(&self, _backend: &GraphBackend, site: SiteId, _observed: &ObservedSite, layer: u32) {
+        if !self.recording_active.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut cache = self.cache.lock().unwrap();
+        if let Some(recording) = &mut cache.recording
+            && recording.abort.is_none()
+        {
+            if let Some(&capture) = recording.captures.get(&site) {
+                if recording.ops.len() >= 65536 {
+                    recording.abort = Some("episode_op_limit");
+                    self.recording_active.store(false, Ordering::Relaxed);
+                } else {
+                    recording.ops.push(TapeOp::Call { site, capture, layer });
+                }
+            } else {
+                recording.abort = Some("uncaptured_call");
+                self.recording_active.store(false, Ordering::Relaxed);
+            }
+        }
+    }
+    pub(super) fn run(&self, backend: &mut GraphBackend, node: NodeId) -> Result<(), GraphExecutionError> {
+        let tape = {
+            let mut cache = self.cache.lock().unwrap();
+            assert!(!cache.replaying, "synchronous reentry into admitted wire tape");
+            if let Some(recording) = &mut cache.recording {
+                recording.abort = Some("synchronous_reentry");
+                self.recording_active.store(false, Ordering::Relaxed);
+                drop(cache);
+                return backend.run_wire_tape_reference(node);
+            }
+            let found = cache.variants.get(&node).and_then(|variants| {
+                variants
+                    .iter()
+                    .find(|tape| {
+                        tape.guards
+                            .iter()
+                            .all(|(node, guard)| TapeGuard::current(backend, *node).as_ref() == Some(guard))
+                    })
+                    .cloned()
+            });
+            if found.is_some() {
+                cache.hits += 1;
+                cache.replaying = true;
+            } else {
+                cache.misses += 1;
+                if self.core[node.index()] || cache.learning_sealed {
+                    let reason = if self.core[node.index()] { "root_core" } else { "sealed_byte_budget" };
+                    *cache.fallbacks.entry(reason).or_default() += 1;
+                    cache.fallback_wires.insert(node);
+                    drop(cache);
+                    return backend.run_wire_tape_reference(node);
+                }
+                let mut recording = TapeRecording::default();
+                recording.wires.insert(node);
+                cache.recording = Some(recording);
+                self.recording_active.store(true, Ordering::Relaxed);
+            }
+            found
+        };
+        if let Some(tape) = tape {
+            let mut captures = Vec::new();
+            let result = super::fixed_point::with_mode(false, || {
+                for op in &tape.ops {
+                    match *op {
+                        TapeOp::Capture(site) => captures.push(backend.observe_site(site).expect("fixed tape capture")),
+                        TapeOp::Write(node, wire) => backend.set_wire(node, wire),
+                        TapeOp::Call { site, capture, layer } => backend.dispatch_turbo_nonwire(site, &captures[capture], layer)?,
+                    }
+                }
+                Ok(())
+            });
+            let mut cache = self.cache.lock().unwrap();
+            cache.replaying = false;
+            cache.private_callbacks_elided += tape.private_callbacks;
+            for op in &tape.ops {
+                match op {
+                    TapeOp::Capture(_) => cache.capture_ops += 1,
+                    TapeOp::Write(..) => cache.write_ops += 1,
+                    TapeOp::Call { .. } => cache.call_ops += 1,
+                }
+            }
+            return result;
+        }
+        self.read(backend, node);
+        if self.core[node.index()] {
+            self.abort("root_core");
+        }
+        let started = Instant::now();
+        let result = backend.run_wire_tape_reference(node);
+        self.recording_active.store(false, Ordering::Relaxed);
+        let mut cache = self.cache.lock().unwrap();
+        cache.build_seconds += started.elapsed().as_secs_f64();
+        let mut recording = cache.recording.take().unwrap();
+        for (node, guard) in &recording.guards {
+            if matches!(guard, TapeGuard::Source { .. }) && TapeGuard::current(backend, *node).as_ref() != Some(guard) {
+                recording.abort.get_or_insert("source_mutation");
+            }
+        }
+        // Only boundary callbacks consume captured snapshots. Keep their original discovery points.
+        let used = recording
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                TapeOp::Call { capture, .. } => Some(*capture),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let mut remap = BTreeMap::new();
+        let mut ordinal = 0;
+        recording.ops = recording
+            .ops
+            .into_iter()
+            .filter_map(|op| match op {
+                TapeOp::Capture(site) => {
+                    let old = ordinal;
+                    ordinal += 1;
+                    if used.contains(&old) {
+                        remap.insert(old, remap.len());
+                        Some(TapeOp::Capture(site))
+                    } else {
+                        None
+                    }
+                }
+                TapeOp::Call { site, capture, layer } => Some(TapeOp::Call {
+                    site,
+                    capture: remap[&capture],
+                    layer,
+                }),
+                other => Some(other),
+            })
+            .collect();
+        let bytes = recording.ops.len() * std::mem::size_of::<TapeOp>()
+            + recording.guards.len() * std::mem::size_of::<(NodeId, TapeGuard)>()
+            + std::mem::size_of::<EpisodeTape>()
+            + 2 * std::mem::size_of::<usize>();
+        if recording.abort.is_none() && cache.retained_bytes + bytes > 33554432 {
+            recording.abort = Some("cache_byte_limit");
+            cache.learning_sealed = true;
+        }
+        if cache.variants.get(&node).is_some_and(|variants| variants.len() >= 8) {
+            recording.abort.get_or_insert("root_variant_limit");
+        }
+        if let Some(reason) = recording.abort {
+            *cache.fallbacks.entry(reason).or_default() += 1;
+            cache.fallback_wires.extend(recording.wires);
+        } else if result.is_ok() {
+            cache.represented.extend(recording.wires.iter().copied());
+            cache.retained_bytes += bytes;
+            cache.variants.entry(node).or_default().push(Arc::new(EpisodeTape {
+                guards: recording.guards.into_iter().collect::<Vec<_>>().into_boxed_slice(),
+                ops: recording.ops.into_boxed_slice(),
+                private_callbacks: recording.private_callbacks,
+            }));
+        }
+        result
+    }
+}
+
+#[test]
+fn unchecked_tape_rebinds_receiver_capture_and_uses_live_pending() {
+    let mut template = small_lines_receiver(false, Some(Block::RedstoneLamp { lit: true }));
+    let root = template.positions[&BlockPos::new(3, 20, 2)];
+    let lamp = template.positions[&BlockPos::new(6, 20, 2)];
+    for x in 3..=5 {
+        let node = template.positions[&BlockPos::new(x, 20, 2)];
+        let mut wire = template.wire_state(node);
+        wire.power = if x == 3 { 14 } else { 15 };
+        template.set_wire(node, wire);
+    }
+    let state = template.state.clone();
+    let program = template.program.clone();
+    let tapes = TapeProgram::attach(&mut template);
+    for (powered, pending) in [(true, false), (false, false), (true, true)] {
+        let mut native = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        let mut replay = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        for backend in [&mut native, &mut replay] {
+            let ComponentState::Electrical(lamp_state) = &mut backend.state.components[lamp.index()] else {
+                unreachable!()
+            };
+            lamp_state.powered = powered;
+            lamp_state.repeater_locked = !powered;
+            if pending {
+                backend.schedule(lamp, 2, TickPriority::Normal);
+            }
+        }
+        replay.wire_tapes = Some(tapes.clone());
+        native.run_wire_tape_reference(root).unwrap();
+        tapes.run(&mut replay, root).unwrap();
+        assert_eq!(replay.state, native.state, "receiver powered={powered}, pending={pending}");
+        assert_eq!(format!("{:?}", replay.future.pending), format!("{:?}", native.future.pending));
+        assert_eq!(replay.scheduled_ticks(), native.scheduled_ticks());
+    }
+    assert_eq!(tapes.counts()["misses"], 1, "one initial native episode");
+    assert_eq!(tapes.counts()["hits"], 2, "receiver flags and pending are live, not cache guards");
+    assert!(tapes.counts()["call_ops"].as_u64().unwrap() > 0);
+}
+
+#[test]
+fn unchecked_tape_source_properties_guard_replay() {
+    let mut template = small_lines(false);
+    let root = template.positions[&BlockPos::new(3, 20, 2)];
+    let source = template.positions[&BlockPos::new(2, 20, 2)];
+    let mut wire = template.wire_state(root);
+    wire.power = 1;
+    template.set_wire(root, wire);
+    let state = template.state.clone();
+    let program = template.program.clone();
+    let tapes = TapeProgram::attach(&mut template);
+    for strength in [0, 0, 1] {
+        let mut backend = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        let ComponentState::Electrical(source_state) = &mut backend.state.components[source.index()] else {
+            unreachable!()
+        };
+        source_state.output_strength = strength;
+        backend.wire_tapes = Some(tapes.clone());
+        tapes.run(&mut backend, root).unwrap();
+    }
+    assert_eq!(tapes.counts()["hits"], 1);
+    assert_eq!(
+        tapes.counts()["misses"],
+        2,
+        "even a property not changing this episode must invalidate its recorded source guard"
+    );
+}
+
+#[test]
+fn unchecked_tape_unchanged_seed_does_not_publish_undelivered_source() {
+    let mut backend = small_lines(false);
+    let tapes = TapeProgram::attach(&mut backend);
+    let source = backend.positions[&BlockPos::new(2, 20, 2)];
+    let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
+        unreachable!()
+    };
+    state.powered = true;
+    state.output_strength = 15;
+    let far = backend.positions[&BlockPos::new(5, 20, 2)];
+    backend.evaluate_seed(far, None).unwrap();
+    assert_eq!(tapes.counts()["misses"], 0);
+    assert_eq!(tapes.counts()["hits"], 0);
+    assert!(backend.program.wires().iter().all(|plan| backend.wire_state(plan.node).power == 0));
 }

@@ -284,6 +284,8 @@ pub(crate) struct GraphBackend {
     classic_proof: Option<classic::ProofRecorder>,
     #[cfg(test)]
     unchecked_classic: Option<std::sync::Arc<unchecked_classic_anpu::UncheckedProgram>>,
+    #[cfg(test)]
+    wire_tapes: Option<std::sync::Arc<unchecked_classic_anpu::TapeProgram>>,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -588,6 +590,8 @@ impl GraphBackend {
             classic_proof: None,
             #[cfg(test)]
             unchecked_classic: None,
+            #[cfg(test)]
+            wire_tapes: None,
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),

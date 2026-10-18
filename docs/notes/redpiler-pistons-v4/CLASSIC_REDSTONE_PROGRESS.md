@@ -537,3 +537,130 @@ result: although its screen/full state/pending/job multisets match in the same
 checks (the short trace first differs at tick 74). Thus earlier order-only
 statements apply specifically to scheduler entries, not every future-work field.
 The new hybrid does not exhibit that piston/deferred difference in this trace.
+
+### Final isolated release hybrid: observed output fixed, no useful speedup
+
+The frozen executable is `target/unchecked-classic-anpu-v4-hybrid-tests.exe`,
+SHA256 `2b2d51fad82f8a5772e1e94c7e3cc7e20d549b5db6bd97188d76257ffbe1c572`.
+It was built from isolated HEAD576ae31 plus the synchronized test-only overlay,
+so its embedded fixture root is the isolated worktree. Main/source and isolated
+experiment, wire and fixed-point files were synchronized; no production
+admission/default or native C change was made by this experiment. Concurrent
+user cleanup remains separate.
+
+Final release measurements, with no other compilation/performance job active:
+
+| Mode | 400 ticks, median of 3 | 5,000 ticks, one sample |
+| --- | ---: | ---: |
+| Normal O2 Graph | 0.651153 s | 5.896580 s |
+| Dynamic fixed point, unchecked | 0.618797 s | 5.355971 s |
+| Seed-admitted weighted hybrid | 0.648084 s | 5.993920 s |
+
+The short median differs by only about 0.47%, within this exploratory run's
+variation. In the long sample the hybrid is **1.65% slower**, so this experiment
+shows **no useful speedup**. Execution plus separately measured projection is
+6.281922 s normal versus 6.358326 s hybrid (1.22% slower). Projection alone is
+0.385343 / 0.364405 s, and activation is 0.242 / 0.034 ms, respectively.
+Extra hybrid compilation/mask construction took 165.9 ms, outside those timers.
+All earlier unit-test instrumentation/interleaving/cache caveats still apply;
+these values are not production TPS estimates.
+
+The hybrid now matches all 5,001 frozen screen observations, all 14 frames and
+full CircuitState. Trace hash is exact `442eec413f9abf91`. Pending maps, queued-job
+multisets and ordered piston requests / deferred work / clock also match at
+every observation. Ordered scheduler entries differ on **974** observations,
+first tick **144**, so there is still no future-order equivalence or general
+correctness certificate. The first mismatch is at queued ordinal 22: normal
+orders two-tick Normal-priority jobs at (125,44,62), (125,44,64), (125,44,66),
+while the hybrid orders the same job set beginning at (125,44,76), (125,44,74),
+(125,44,72). Full first queue windows are retained in the JSON report. No further
+algorithm changes were made after observing this limitation.
+
+Actual 5,000-tick work shows both paths execute:
+
+| Work | Normal O2 | Hybrid |
+| --- | ---: | ---: |
+| Graph callbacks | 16,389,687 | 15,835,892 |
+| General wire walks | 183,752 | 172,629 |
+| Scheduled ticks | 267,998 | 267,998 |
+| Piston actions | 10,682 | 10,682 |
+| Piston samples | 327,585 | 327,585 |
+
+Hybrid-specific work: 11,164 weighted invocations, 14,541 source samples,
+85,493 weighted terms, 59,635 weighted final writes (ordinary admitted root
+publication is separate), and 127,707 boundary callbacks. Writes outside the
+directed root closure are zero. Only **2,024 wires (about 5.82%)** are compiled;
+**32,757 (about 94.18%)** retain ordinary Turbo under the whole-region protection
+rules. This conservative preservation explains why the previous incorrect
+all-wire ratios do not translate into useful performance here.
+
+Final frozen release tests passed: focused unchecked regressions **3 passed /
+1 ignored**; ordinary Graph **96 passed / 1 ignored**; `classic_` filter
+**13 passed / 3 ignored**. The larger main-workspace cleanup is not silently
+restored or represented as validation of this isolated snapshot.
+
+Final linked evidence: [short report](../../../target/unchecked-classic-v4-release-400.json),
+[long report](../../../target/unchecked-classic-v4-release-5000.json),
+[short log](../../../target/unchecked-classic-v4-release-400.log),
+[long log](../../../target/unchecked-classic-v4-release-5000.log).
+The JSON mode named `compiled_weighted_unsafe` is the hybrid when the report's
+`coverage.preservation` is populated; exact retained/general counts are explicit.
+
+Repeat the short measurement using the preserved executable (keep the isolated
+fixture worktree present):
+
+```powershell
+$env:MCHPRS_UNCHECKED_ANPU_HYBRID='1'
+$env:MCHPRS_UNCHECKED_ANPU_TICKS='400'
+$env:MCHPRS_UNCHECKED_ANPU_SAMPLES='3'
+& F:/rustrepos/MCHPRS/target/unchecked-classic-anpu-v4-hybrid-tests.exe unchecked_classic_anpu_benchmark --ignored --nocapture
+```
+
+Use `TICKS=5000` and `SAMPLES=1` for the long run. To rebuild the isolated frozen
+overlay, run from `F:/rustrepos/MCHPRS-boundary-experiment-20261018`:
+
+```powershell
+$env:CARGO_TARGET_DIR='F:/rustrepos/MCHPRS/target'
+cargo test -p mchprs_core --release --lib unchecked_ --locked --no-run
+```
+
+Final integration check: parent's `cargo check --workspace --all-targets --locked`
+passed on the current main workingtree in 4.43 seconds, without warnings. This
+also compiles the experiment tests against the completed concurrent cleanup.
+The measured executable still belongs to the explicitly recorded isolated
+HEAD576ae31 snapshot; the check does not relabel its measurements as a main-tree
+benchmark. Targeted rustfmt and owned-file diff checks passed.
+
+No production integration or default enablement follows. The remaining ordered
+scheduler mismatch is a real limit, and genuine multi-ingress episodes still
+lack a proof against sampling another ingress's newest undelivered output. The
+next useful investigation is the first tick-144 receiver/scheduling trace:
+preserve original signal-commit occurrences and first effective receiver attempts
+before trying to lower more protected wiring. The present hybrid fixes the
+observed screen/state failure but does not deliver a useful speedup.
+
+### Follow-up: the 94% preservation rate is an over-approximation
+
+The user correctly challenged interpreting the hybrid's low admission as an
+inherent property of ANPU. This mask preserves whole potential electrical regions
+when any member meets its narrow effectful-receiver rules, then propagates
+preservation backward across all wire callback deliveries. Of the 32,757 retained
+wires, 19,576 belong to initially marked regions and **13,181 additional wires**
+are retained solely by that callback propagation. This is not a measurement of
+how many wires must remain interpreted with precise boundary operations.
+
+The experiment also unions every candidate staircase slot without first
+eliminating edges whose fixed geometry guards can never hold, and scans callback
+variants without filtering statically false guards. Its ordinary receiver list
+is deliberately narrow: lamps, comparators and potentially locked repeaters can
+cause whole-net preservation. These are conservative experiment shortcuts, not
+proof that all incoming wiring must retain Turbo walks.
+
+The next useful design is to cut at real interfaces: keep stateful component
+handlers and genuinely movable topology on general execution; compile fixed
+wire interiors; retain each input's last delivered value; and publish the ordered
+receiver samples/callbacks at those interfaces. Physical proximity or a callback
+path alone must not infect the entire upstream network. The remaining FIFO
+witness is evidence that final strengths alone do not implement this contract.
+No new coverage or speed claim follows from this analysis; those require a new
+boundary-aware census and implementation.

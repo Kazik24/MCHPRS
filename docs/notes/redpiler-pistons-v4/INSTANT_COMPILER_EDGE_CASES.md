@@ -686,6 +686,70 @@ receivers through the boundary receiver path. No targeted executed fixture repla
 establishes the correction's observable behavior. The remaining regression must check emitted
 delivery, unchanged outside SSA state, and retained captured values.
 
+### E39. An unsuccessful early AND sample cannot consume the computation use
+
+**Situation:** A reaches an AND-like cell before B. The early sample does not qualify an
+accepted computation. B then arrives in the same wave and makes the cell eligible.
+
+**Consequence:** a visited/fired bit set on first traversal or first request loses the later
+result. Marking an entire cable visited can similarly discard another contributor.
+
+**Required rule:** consumption means accepted computation under its live validity predicate.
+Retain value availability and activation separately; a failed sample does not consume either
+the actor or every contributor to its input net.
+
+**Status:** logical counterexample motivating the proposed layer algorithm, not a newly
+executed native fixture regression. Step 01/02 must establish the physical decoder and
+step 04 must test both arrival orders before claiming this case is handled.
+
+### E40. Single-use per wave does not mean single-use per tick or held-input episode
+
+**Situation:** reset/restoration can cause another response while external power remains
+held. A physical actor can therefore perform reset work and later computation again.
+
+**Consequence:** a permanent fired bit swallows later responses; clearing it on every
+notification allows feedback to refire the current computation. One shared game-tick number
+does not distinguish computation, reset and a newly admitted wave.
+
+**Required rule:** define a certified wave cut and actor role. Consumption is scoped to
+one computation wave. Reset clock wakeups can start another wave through the existing
+scheduler; no new external lever edge is universally required.
+
+**Evidence/status:** PISTON_MODEL section 5 distinguishes held zero, internal observer/
+restoration callbacks and subsequent response cycles. Existing reset fixtures provide
+test inputs; the new compiler's wave classification has not been implemented or verified.
+
+### E41. A finite-use bound does not prove a small symbolic compiler artifact
+
+**Situation:** N actors may each be consumed at most once for one concrete input frame,
+while different input/activation conditions place candidates in different causal orders.
+
+**Consequence:** a compiler can still enumerate exponentially many conditional histories.
+N accepted uses is not a bound of N candidate records, layers or Boolean expressions.
+
+**Required rule:** share logical pin/owner expressions, analyze SCCs locally, preserve only
+necessary causal blocks and budget construction work/bytes. Decline a candidate rather than
+truncate a trace or increase limits repeatedly. Compiler DFS order cannot choose its result.
+
+**Status:** general construction risk supported by the historical E35/E36 failures, not a
+measured failure of the proposed gate-level compiler, which does not exist yet.
+
+### E42. Deferred handoff cannot depend on global reset-clock alignment
+
+**Situation:** independent reset clocks can keep future work pending and need not reach a
+globally idle or identical combined phase within the allowed handoff interval.
+
+**Consequence:** waiting for global quiescence can stall indefinitely even though each local
+mechanism has a usable safe cut. Advancing only one region changes its relation to ordinary
+devices and deadlines.
+
+**Required rule:** use a certified local reconstruction cut with a justified wait bound;
+continue the ordinary global clock, preserve unrelated work, and transfer future obligations
+once. If no supported bound/recipe exists, decline kernel admission before it owns execution.
+
+**Status:** lifecycle review obligation, not an executed failing handoff test. The new reset
+and handoff step must cover staggered clocks and repeated requests explicitly.
+
 ## Updating this register
 
 For each newly found case, add the smallest scenario and distinguish:

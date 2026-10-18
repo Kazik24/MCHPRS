@@ -1,5 +1,9 @@
 # Boundary-driven instant compilation
 
+The new implementation proposal is [the layered instant compiler plan](layered-instant-compiler/README.md).
+This document records the previous symbolic-event approach and its stop checkpoint;
+its implementation paths describe that historical snapshot, not code to restore.
+
 > Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
 > Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
 > Historical results and plans below remain preserved; see
