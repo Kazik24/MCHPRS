@@ -4,7 +4,7 @@ use crate::redpiler::power_rules::{emits_strong, emits_weak};
 impl GraphBackend {
     fn site_source_strength(&self, site: SiteId, resolved: &ResolvedSiteView) -> u8 {
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes { tapes.source_site(self, site); }
+        if let Some(tapes) = &self.test_recorder.wire_tapes { tapes.source_site(self, site); }
         if let Some(proof) = &self.classic_proof
             && self.program.sites()[site.index()].source == SiteSource::Component(proof.source) {
             return proof.signal;
@@ -133,7 +133,7 @@ impl GraphBackend {
 
     fn stored_component_strength(&self, node: NodeId) -> u8 {
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes { tapes.read(self, node); }
+        if let Some(tapes) = &self.test_recorder.wire_tapes { tapes.read(self, node); }
         match &self.state.components[node.index()] {
             ComponentState::Electrical(state) => state.output_strength,
             ComponentState::Wire(_) => self.wire_state(node).power,

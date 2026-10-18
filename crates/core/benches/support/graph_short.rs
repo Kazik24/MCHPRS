@@ -653,9 +653,9 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 vec![Some(tier), None]
             } else {
                 if episode.generic() {
-                    vec![Some(2), Some(3), Some(4), None]
+                    vec![Some(2), Some(3), Some(4), Some(5), None]
                 } else {
-                    vec![Some(0), Some(2), Some(3), Some(4), None]
+                    vec![Some(0), Some(2), Some(3), Some(4), Some(5), None]
                 }
             };
             let mut order: Vec<_> = if episode.stable_inputs && !interpreted {
@@ -776,7 +776,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
             workload["samples"].as_array_mut().unwrap().extend(results);
         }
         let mut summaries = Vec::new();
-        for executor in ["O0", "O1", "O2", "O3", "O3-stable", "O4", "O4-stable", "interpreter"] {
+        for executor in ["O0", "O1", "O2", "O3", "O3-stable", "O4", "O4-stable", "O5", "O5-stable", "interpreter"] {
             let mut times: Vec<_> = workload["samples"]
                 .as_array()
                 .unwrap()
@@ -821,13 +821,13 @@ pub fn main() -> Result<()> {
     ensure!(iterations > 0, "--iterations must be positive");
     let selected_tier = argument("--graph-tier").map(str::parse::<usize>).transpose()?;
     ensure!(
-        selected_tier.is_none_or(|tier| (1..=4).contains(&tier)),
-        "--graph-tier needs 1, 2, 3 or 4"
+        selected_tier.is_none_or(|tier| (1..=5).contains(&tier)),
+        "--graph-tier needs 1, 2, 3, 4 or 5"
     );
     let stable_inputs = args.iter().any(|arg| arg == "--stable-instant-inputs");
     ensure!(
         !stable_inputs || selected_tier.is_some_and(|tier| tier >= 3),
-        "--stable-instant-inputs requires --graph-tier 3 or 4"
+        "--stable-instant-inputs requires --graph-tier 3 or higher"
     );
     let interpreted = args.iter().any(|arg| arg == "--interpreted");
     let label = argument("--label").unwrap_or("current");

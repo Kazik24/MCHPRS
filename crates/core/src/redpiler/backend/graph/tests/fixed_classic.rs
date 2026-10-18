@@ -173,8 +173,8 @@ fn fixed_classic_multiple_analog_sources_main_side_and_reset() {
             }
         }
     }
-    assert!(candidate.fixed_classic_counts.seed_calls > 0);
-    assert!(candidate.fixed_classic_counts.wire_steps > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.seed_calls > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.wire_steps > 0);
     let mut left = analog_world();
     let mut right = analog_world();
     reference.reset(&mut left);
@@ -240,7 +240,7 @@ fn assert_native(candidate: &GraphBackend, native: &PlotWorld, tick: usize) {
 }
 
 #[test]
-#[ignore = "research: full CHUNGUS lowering and paired execution with optional independent interpreter"]
+#[ignore = "expensive: default O5 CHUNGUS versus general O2 and optional independent interpreter"]
 fn fixed_classic_whole_chungus_compilation_and_execution() {
     let ticks = std::env::var("MCHPRS_CHUNGUS_TICKS")
         .ok()
@@ -252,7 +252,20 @@ fn fixed_classic_whole_chungus_compilation_and_execution() {
     let mut reference = compile(&world, world.get_corners());
     let general_compile_seconds = started.elapsed().as_secs_f64();
     let started = Instant::now();
-    let mut candidate = compile_mode(&world, world.get_corners(), true);
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.set_budget_multiplier(8);
+    let mut candidate = GraphBackend::compile_with_options(
+        &world,
+        world.get_corners(),
+        world.scheduler().iter_entries().collect(),
+        &crate::redpiler::CompilerOptions {
+            optimization_level: Some(5),
+            budget_multiplier: 8,
+            ..Default::default()
+        },
+        monitor,
+    )
+    .unwrap();
     let fixed_compile_seconds = started.elapsed().as_secs_f64();
     let program = candidate.fixed_classic.as_ref().unwrap();
     assert_eq!(program.nodes.len(), reference.program.nodes().len());
@@ -296,18 +309,18 @@ fn fixed_classic_whole_chungus_compilation_and_execution() {
             assert_native(&candidate, &world, tick);
         }
     }
-    assert!(candidate.fixed_classic_counts.seed_calls > 0);
-    assert!(candidate.fixed_classic_counts.wire_steps > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.seed_calls > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.wire_steps > 0);
     let report = json!({"experiment":"whole fixed classic circuit, exact ordered compiled propagation; not wholly queue-free weighted collapse", "ticks":ticks,"checked_boundaries":ticks+1,"independent_interpreter":interpreter,
         "profile":if cfg!(debug_assertions){"debug"}else{"release"},"inventory":inventory,
         "general_compile_seconds":general_compile_seconds,"fixed_compile_seconds":fixed_compile_seconds,
         "general_seconds":execution[0].as_secs_f64(),"fixed_seconds":execution[1].as_secs_f64(),
         "speed_ratio_general_over_fixed":execution[0].as_secs_f64()/execution[1].as_secs_f64(),
         "activation_seconds":[activation[0].as_secs_f64(),activation[1].as_secs_f64()],
-        "general_counts":format!("{:?}",reference.execution_counts()),"fixed_counts":format!("{:?}",candidate.fixed_classic_counts),
+        "general_counts":format!("{:?}",reference.execution_counts()),"fixed_counts":format!("{:?}",candidate.test_recorder.fixed_classic_counts),
         "fixed_general_counts":format!("{:?}",candidate.execution_counts()),
-        "limits":"default O2 pipeline; shared scheduler and component state; original Graph retained for oracle/projection; unit-test instrumentation enabled; ordered dust frontiers retained"});
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/chungus-whole-fixed-classic-{ticks}.json"));
+        "limits":"default O5 candidate versus general O2; shared scheduler and component state; original Graph retained for oracle/projection; unit-test instrumentation enabled; ordered dust frontiers retained"});
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/chungus-o5-native-{ticks}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("FIXED CLASSIC RESULT {report}");

@@ -41,7 +41,7 @@ impl GraphBackend {
 
     pub(super) fn wire_state(&self, node: NodeId) -> RedstoneWire {
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes {
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
             tapes.read(self, node);
         }
         match &self.state.components[node.index()] {
@@ -63,7 +63,7 @@ impl GraphBackend {
             self.deopt_classic_net(net as usize);
         }
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes {
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
             tapes.write(self, node, wire);
         }
         let ComponentState::Wire(current) = &mut self.state.components[node.index()] else {
@@ -138,11 +138,11 @@ impl GraphBackend {
         wire.power = power;
         self.set_wire(node, wire);
         #[cfg(test)]
-        if let Some(tapes) = self.wire_tapes.clone() {
+        if let Some(tapes) = self.test_recorder.wire_tapes.clone() {
             return tapes.run(self, node);
         }
         #[cfg(test)]
-        if let Some(program) = self.unchecked_classic.clone() {
+        if let Some(program) = self.test_recorder.unchecked_classic.clone() {
             if program.handles(node) {
                 return program.run(self, node, captured, unchecked_sampled_old);
             }
@@ -306,7 +306,7 @@ impl GraphBackend {
             )
         );
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes {
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
             tapes.capture(self, site, &observed);
         }
         walk.insert_site(
@@ -496,7 +496,7 @@ impl GraphBackend {
                 .observed()
         });
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes {
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
             for (site, observed) in plan.canonical_neighbors.iter().zip(&observed) {
                 tapes.capture(self, *site, observed);
             }
@@ -602,7 +602,7 @@ impl GraphBackend {
             return Ok(());
         };
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes {
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
             tapes.call(self, site, observed, layer);
         }
         self.record_turbo_delivery(site, receiver, layer);
@@ -631,7 +631,7 @@ impl GraphBackend {
 
     fn evaluate_turbo_wire_node(&mut self, node: NodeId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
         #[cfg(test)]
-        if let Some(tapes) = &self.wire_tapes {
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
             tapes.visit(node);
         }
         let root = self.component_sites[node.index()].expect("wire root site was validated during preparation");

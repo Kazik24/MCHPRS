@@ -14,6 +14,24 @@ fn pm1_layers_preserve_mixed_devices_and_native_boot_history() {
 }
 
 #[test]
+#[ignore = "explicit fresh mixed PM1 save, layer census, boot and early instructions"]
+fn pm1_fresh_layers_and_native_boot_history_match() {
+    // The documented fresh save translates the old control by (-31,+32,-3).
+    check_cpu(
+        cpus::Cpu {
+            name: "pm1_fresh_compilation",
+            schematic: "piston-research/pm1-compilation-1-20261008-fresh/PM1_FIXED_COMPILATION_1.schem",
+            sha256: "cf5ef6b5e62defbc02dc3b201b9bb29766feb310f6abfcad2941486312e0bd7c",
+            start: BlockPos::new(148, 59, 61),
+            stop: Some(BlockPos::new(148, 56, 61)),
+            origin: BlockPos::new(8, 8, 8),
+            active_ticks: 512,
+        },
+        512,
+    );
+}
+
+#[test]
 #[ignore = "explicit FPU layer census and stable-input activation/reset comparisons"]
 fn fpu_layers_and_stable_input_histories_match_native() {
     let mut fixture = manifest("fpu_legal");

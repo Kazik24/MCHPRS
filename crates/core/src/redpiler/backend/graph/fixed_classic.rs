@@ -132,7 +132,7 @@ impl GraphBackend {
         let program = self.fixed_classic.as_deref().expect("fixed seed requires an attached fixed program");
         #[cfg(test)]
         {
-            self.fixed_classic_counts.seed_calls += 1;
+            self.test_recorder.fixed_classic_counts.seed_calls += 1;
         }
         let wire_index = match program.nodes[node.index()].kind {
             FixedClassicKind::Wire(index) => index as usize,
@@ -155,7 +155,7 @@ impl GraphBackend {
         self.set_wire(node, wire);
         #[cfg(test)]
         {
-            self.fixed_classic_counts.episodes += 1;
+            self.test_recorder.fixed_classic_counts.episodes += 1;
         }
 
         let mut scratch = self
@@ -211,7 +211,7 @@ impl GraphBackend {
             let operation = self.fixed_classic.as_deref().unwrap().ops[index];
             #[cfg(test)]
             {
-                self.fixed_classic_counts.route_ops += 1;
+                self.test_recorder.fixed_classic_counts.route_ops += 1;
             }
             self.counts.callbacks += 1;
             match operation.kind {
@@ -235,28 +235,28 @@ impl GraphBackend {
             FixedClassicKind::Torch => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.tick_torch(node)
             }
             FixedClassicKind::Repeater { delay, .. } => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.tick_repeater(node, delay)
             }
             FixedClassicKind::Comparator { mode, facing_diode } => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.fixed_classic_tick_comparator(node, mode, facing_diode)
             }
             FixedClassicKind::Lamp => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.tick_lamp(node)
             }
@@ -264,7 +264,7 @@ impl GraphBackend {
             FixedClassicKind::Button => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 if self.node_state(node).powered {
                     self.effects.push(PresentationEffect::Sound {
@@ -309,7 +309,7 @@ impl GraphBackend {
     ) -> Result<(), GraphExecutionError> {
         #[cfg(test)]
         {
-            self.fixed_classic_counts.wire_steps += 1;
+            self.test_recorder.fixed_classic_counts.wire_steps += 1;
         }
         let wire_index = match program.nodes[node.index()].kind {
             FixedClassicKind::Wire(index) => index as usize,
@@ -346,7 +346,7 @@ impl GraphBackend {
                 self.counts.callbacks += 1;
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.wire_steps += 1;
+                    self.test_recorder.fixed_classic_counts.wire_steps += 1;
                 }
                 self.fixed_classic_evaluate_wire_node(program, node, scratch)
             }
@@ -591,42 +591,42 @@ impl GraphBackend {
             FixedClassicKind::Torch => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.update_torch(node, captured)
             }
             FixedClassicKind::Repeater { .. } => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.update_repeater(node, captured)
             }
             FixedClassicKind::Comparator { .. } => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.fixed_classic_update_comparator(node)
             }
             FixedClassicKind::Lamp => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.update_lamp(node, captured)
             }
             FixedClassicKind::Hopper => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 self.update_hopper(node, captured)
             }
             FixedClassicKind::Lever | FixedClassicKind::Button | FixedClassicKind::PressurePlate | FixedClassicKind::Constant => {
                 #[cfg(test)]
                 {
-                    self.fixed_classic_counts.gate_ops += 1;
+                    self.test_recorder.fixed_classic_counts.gate_ops += 1;
                 }
                 Ok(())
             }

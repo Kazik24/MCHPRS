@@ -224,6 +224,8 @@ fn check_manifest_device(name: &str, fixture: &Value, budget: usize) {
     for case in cases {
         let (mut native, _) = load(fixture);
         let mut projected = load(fixture).0;
+        native.disable_command_output_limits_for_replay();
+        projected.disable_command_output_limits_for_replay();
         let mut backend = backend(&graph);
         let positions = observation_positions(fixture);
         let mut steps = case.get("steps").or_else(|| case.get("actions")).unwrap().as_array().unwrap().clone();
@@ -234,7 +236,7 @@ fn check_manifest_device(name: &str, fixture: &Value, budget: usize) {
             if let Some(count) = step.get("advance") {
                 for _ in 0..count.as_u64().unwrap() {
                     native.tick_interpreted();
-                    backend.tick().unwrap();
+                    backend.tick_with_world(&mut projected).unwrap();
                     project(&backend, &mut projected);
                     assert_observations(&native, &projected, &positions, case["id"].as_str().unwrap());
                     ticks += 1;
@@ -334,6 +336,11 @@ fn assert_observations(native: &PlotWorld, projected: &PlotWorld, positions: &[B
             "{context}: observed entity at {position:?}"
         );
     }
+    assert_eq!(
+        native.command_output().collect::<Vec<_>>(),
+        projected.command_output().collect::<Vec<_>>(),
+        "{context}: command output"
+    );
     assert_future_work(native, projected, context);
 }
 

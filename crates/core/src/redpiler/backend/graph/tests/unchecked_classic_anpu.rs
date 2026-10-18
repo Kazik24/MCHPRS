@@ -382,7 +382,7 @@ impl UncheckedProgram {
                 .all(|wire| wire.execution.query_facts.is_some_and(|facts| facts.known == (1 << 24) - 1))
         );
         let program = Arc::new(Self::compile_mode(backend, false));
-        backend.unchecked_classic = Some(program.clone());
+        backend.test_recorder.unchecked_classic = Some(program.clone());
         program
     }
 
@@ -913,7 +913,7 @@ fn small_lines_receiver(piston: bool, receiver: Option<Block>) -> GraphBackend {
 fn unchecked_entry_does_not_publish_undelivered_source_on_unchanged_seed() {
     let mut backend = small_lines(false);
     let program = Arc::new(UncheckedProgram::compile_mode(&backend, false));
-    backend.unchecked_classic = Some(program.clone());
+    backend.test_recorder.unchecked_classic = Some(program.clone());
     let source = backend.positions[&BlockPos::new(2, 20, 2)];
     let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
         unreachable!()
@@ -1012,7 +1012,7 @@ fn unchecked_classic_anpu_benchmark() {
         let tapes = if tape_mode {
             Some(TapeProgram::attach(&mut backends[2]))
         } else {
-            backends[2].unchecked_classic = Some(experiment.clone());
+            backends[2].test_recorder.unchecked_classic = Some(experiment.clone());
             None
         };
         let mut worlds = (0..3).map(|_| cpus::load_cpu(cpu)).collect::<Vec<_>>();
@@ -1413,7 +1413,7 @@ impl TapeProgram {
             cache: Default::default(),
             recording_active: false.into(),
         });
-        backend.wire_tapes = Some(program.clone());
+        backend.test_recorder.wire_tapes = Some(program.clone());
         program
     }
     pub(super) fn coverage(&self) -> serde_json::Value {
@@ -1715,7 +1715,7 @@ fn unchecked_tape_rebinds_receiver_capture_and_uses_live_pending() {
                 backend.schedule(lamp, 2, TickPriority::Normal);
             }
         }
-        replay.wire_tapes = Some(tapes.clone());
+        replay.test_recorder.wire_tapes = Some(tapes.clone());
         native.run_wire_tape_reference(root).unwrap();
         tapes.run(&mut replay, root).unwrap();
         assert_eq!(replay.state, native.state, "receiver powered={powered}, pending={pending}");
@@ -1744,7 +1744,7 @@ fn unchecked_tape_source_properties_guard_replay() {
             unreachable!()
         };
         source_state.output_strength = strength;
-        backend.wire_tapes = Some(tapes.clone());
+        backend.test_recorder.wire_tapes = Some(tapes.clone());
         tapes.run(&mut backend, root).unwrap();
     }
     assert_eq!(tapes.counts()["hits"], 1);

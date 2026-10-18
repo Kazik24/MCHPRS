@@ -42,7 +42,7 @@ fn fixed_classic_redstone_block_emits_literal_fifteen_with_false_powered_flag() 
     candidate.evaluate_seed(dust_node, None).unwrap();
     assert_equivalent(&reference, &candidate, 0);
     assert_eq!(candidate.wire_state(dust_node).power, 15);
-    assert!(candidate.fixed_classic_counts.seed_calls > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.seed_calls > 0);
 }
 #[test]
 fn fixed_classic_boundary_wire_is_rejected_before_execution() {
@@ -198,7 +198,7 @@ fn fixed_classic_invariant_shape_routes_are_elided_and_preserve_native_updates()
     }
     // Fixed actors emit power updates. Exercise shape inputs explicitly through
     // the same interpreter callback, without introducing piston geometry.
-    let before_shape_ops = candidate.fixed_classic_counts.route_ops;
+    let before_shape_ops = candidate.test_recorder.fixed_classic_counts.route_ops;
     for face in BlockFace::values() {
         for position in [MAIN.offset(BlockFace::East), MAIN.offset(BlockFace::East).offset(BlockFace::East)] {
             let node = candidate.positions[&position];
@@ -211,7 +211,7 @@ fn fixed_classic_invariant_shape_routes_are_elided_and_preserve_native_updates()
         }
     }
     assert_eq!(
-        candidate.fixed_classic_counts.route_ops, before_shape_ops,
+        candidate.test_recorder.fixed_classic_counts.route_ops, before_shape_ops,
         "invariant shape inputs cannot enter the removed body"
     );
     for tick in 0..4 {
@@ -239,14 +239,14 @@ fn fixed_classic_stale_entry_sides_keep_shape_routes_and_native_changes() {
     let plan = fixed.wires.iter().find(|wire| wire.node == dust).unwrap();
     assert_eq!(plan.inert_sides, None);
     assert!(!fixed.routes[plan.shape_route.expect("shape route").index()].is_empty());
-    let before_shape_ops = candidate.fixed_classic_counts.route_ops;
+    let before_shape_ops = candidate.test_recorder.fixed_classic_counts.route_ops;
     let position = MAIN.offset(BlockFace::East);
     reference.update_wire_shape(dust, BlockFace::Bottom, None).unwrap();
     candidate.update_wire_shape(dust, BlockFace::Bottom, None).unwrap();
     let block = native.get_block(position);
     crate::interaction::change(block, &mut native, position, BlockFace::Bottom);
     assert!(
-        candidate.fixed_classic_counts.route_ops > before_shape_ops,
+        candidate.test_recorder.fixed_classic_counts.route_ops > before_shape_ops,
         "stale shape must execute its retained neighbor updates"
     );
     assert_ne!(
@@ -402,8 +402,8 @@ fn fixed_classic_locking_repeater_lamp_and_hopper_preserve_native_future() {
     assert!(locked, "fixture must actually exercise a live lock transition");
     assert!(lit, "fixture must actually light the lamp");
     assert!(disabled, "fixture must actually disable the hopper");
-    assert!(candidate.fixed_classic_counts.wire_steps > 0);
-    assert!(candidate.fixed_classic_counts.gate_ops > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.wire_steps > 0);
+    assert!(candidate.test_recorder.fixed_classic_counts.gate_ops > 0);
 }
 
 #[test]

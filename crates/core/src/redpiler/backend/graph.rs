@@ -203,15 +203,21 @@ enum GraphObservedOperation {
 #[cfg(test)]
 #[derive(Default)]
 pub(crate) struct TestRecorder {
+    // Recording and benchmark controls.
     /// Benchmark control; production reads the dense canonical pending index.
     general_pending_queries: bool,
     test_recording: bool,
+    comparator_tick_focus: Option<(NodeId, u64)>,
+    // Episode observations; clear() resets only these logs.
     trace: Vec<String>,
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     comparator_updates: Vec<BlockPos>,
-    comparator_tick_focus: Option<(NodeId, u64)>,
-    power_links_examined: Cell<usize>,
     observed_operations: Vec<GraphObservedOperation>,
+    // Experimental executor bindings and counters outlive individual trace episodes.
+    power_links_examined: Cell<usize>,
+    unchecked_classic: Option<Arc<unchecked_classic_anpu::UncheckedProgram>>,
+    wire_tapes: Option<Arc<unchecked_classic_anpu::TapeProgram>>,
+    fixed_classic_counts: fixed_classic::FixedClassicCounts,
 }
 
 #[cfg(test)]
@@ -290,14 +296,8 @@ pub(crate) struct GraphBackend {
     /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
     wire_walks: Vec<WireWalk>,
     classic_proof: Option<classic::ProofRecorder>,
-    #[cfg(test)]
-    unchecked_classic: Option<std::sync::Arc<unchecked_classic_anpu::UncheckedProgram>>,
-    #[cfg(test)]
-    wire_tapes: Option<std::sync::Arc<unchecked_classic_anpu::TapeProgram>>,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
-    #[cfg(test)]
-    fixed_classic_counts: fixed_classic::FixedClassicCounts,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -642,14 +642,8 @@ impl GraphBackend {
             component_sites,
             wire_walks: Vec::new(),
             classic_proof: None,
-            #[cfg(test)]
-            unchecked_classic: None,
-            #[cfg(test)]
-            wire_tapes: None,
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
-            #[cfg(test)]
-            fixed_classic_counts: Default::default(),
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),

@@ -23,7 +23,7 @@ fn ordered_wire_tapes_preserve_adder_fifo_and_native_response() {
         let mut projection = circuit.build();
         let mut exact = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
         let mut replay = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
-        replay.wire_tapes = Some(tapes.clone());
+        replay.test_recorder.wire_tapes = Some(tapes.clone());
         exact.set_test_recording(true);
         replay.set_test_recording(true);
         let mut steps = case_steps(&circuit, case, false, true);
