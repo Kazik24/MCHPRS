@@ -267,7 +267,7 @@ impl GraphBackend {
                 powered: state.powered,
                 locked: state.repeater_locked,
             },
-            ComponentState::Wire(wire) => ObservedProperties::Wire(*wire),
+            ComponentState::Wire(_) => ObservedProperties::Wire(self.wire_state(node)),
             ComponentState::Specialized => match self.program.nodes()[node.index()].kind {
                 CircuitNodeKind::Piston(piston) => ObservedProperties::Piston {
                     extended: self.state.pistons[piston.index()].extended,

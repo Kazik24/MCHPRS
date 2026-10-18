@@ -3,9 +3,9 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
-mod power_rules;
 mod options;
 mod passes;
+mod power_rules;
 pub(crate) mod program_graph;
 mod statistics;
 mod task_monitor;
@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 use tracing::debug;
 
 pub use backend::graph::GraphExecutionError;
+#[cfg(feature = "native-demo")]
+pub use backend::graph::{NativeEngineStats, NativeQueryError, NativeQueryStats};
 pub use backend::{Queues, TickScheduler};
 pub use options::CompilerOptions;
 #[cfg(test)]
@@ -100,6 +102,8 @@ pub enum BackendKind {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// Cumulative work counters for an active graph backend.
 pub struct GraphExecutionCounts {
+    pub classic_net_invocations: u64,
+    pub classic_receiver_ops: u64,
     pub ticks: u64,
     /// Exact compiled transitions executed in place of internal graph propagation.
     pub instant_transitions: u64,
@@ -150,6 +154,39 @@ impl Compiler {
     /// Executed graph work; None unless the active backend is the graph.
     pub fn graph_execution_counts(&self) -> Option<GraphExecutionCounts> {
         Some(self.backend.as_ref()?.execution_counts())
+    }
+
+    #[cfg(feature = "native-demo")]
+    pub fn enable_native_power_demo(
+        &mut self,
+        clang: &std::path::Path,
+        linker: Option<&std::path::Path>,
+        artifact_dir: &std::path::Path,
+        verify_general: bool,
+    ) -> Result<NativeQueryStats, NativeQueryError> {
+        self.backend
+            .as_mut()
+            .ok_or_else(|| NativeQueryError::new("compile the Graph backend before enabling the native demo"))?
+            .enable_native_power_demo(clang, linker, artifact_dir, verify_general)
+    }
+
+    #[cfg(feature = "native-demo")]
+    pub fn native_power_query_stats(&self) -> Option<NativeQueryStats> {
+        self.backend.as_ref()?.native_power_query_stats()
+    }
+
+    #[cfg(feature = "native-demo")]
+    pub fn enable_native_graph_demo(&mut self, clang: &std::path::Path, linker: Option<&std::path::Path>, artifacts: &std::path::Path) -> Result<NativeEngineStats, NativeQueryError> {
+        self.backend.as_mut().ok_or_else(|| NativeQueryError::new("compile a graph before enabling native inference"))?.enable_native_graph_demo(clang, linker, artifacts)
+    }
+
+    #[cfg(feature = "native-demo")]
+    pub fn native_graph_stats(&self) -> Option<NativeEngineStats> { self.backend.as_ref()?.native_graph_stats() }
+
+    /// Run the Rust executor alongside C and compare state, ordered work and effects after each input/tick.
+    #[cfg(feature = "native-demo")]
+    pub fn enable_native_graph_verification(&mut self) -> Result<(), NativeQueryError> {
+        self.backend.as_mut().ok_or_else(|| NativeQueryError::new("compile a graph first"))?.enable_native_graph_verification()
     }
 
     pub fn compile<W: World>(
@@ -449,6 +486,7 @@ mod tests {
     fn parse_options() {
         let input = "-iO0 -U";
         let expected_options = CompilerOptions {
+            classic_redstone: false,
             budget_multiplier: 0,
             io_only: true,
             optimization_level: Some(0),

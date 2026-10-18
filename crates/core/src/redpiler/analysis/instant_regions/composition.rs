@@ -20,6 +20,7 @@ struct Connections<'a> {
 
 impl Connections<'_> {
     fn internal_node(&self, node: NodeId) -> Option<usize> {
+        if self.graph.plans.classic_nets.iter().any(|net|net.wires.iter().any(|wire|wire.node==node)) { return None; }
         self.node_groups[node.index()]
             .or_else(|| matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(self.nodes_start + node.index()))
     }
@@ -185,6 +186,7 @@ fn assemble_regions(
         sites,
     };
     for wire in &graph.wires {
+        if graph.plans.classic_nets.iter().any(|net|net.wires.iter().any(|owned|owned.node==wire.node)) { continue; }
         let group = root(&mut connections.parents, connections.nodes_start + wire.node.index());
         if let Some(&owner) = groups.get(&group) {
             if regions[owner].stable_inputs {

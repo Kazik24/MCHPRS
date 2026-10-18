@@ -1,6 +1,7 @@
 //! Versioned inspection JSON for the richer graph drafts.
 mod machine;
 mod symbolic;
+mod classic;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
@@ -99,6 +100,8 @@ struct PositionDto {
 
 #[derive(Debug, Serialize)]
 struct GraphTablesDto {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    classic_nets: Vec<serde_json::Value>,
     nodes: Vec<NodeDto>,
     profiles: Vec<ProfileDto>,
     sites: Vec<SiteDto>,
@@ -540,6 +543,8 @@ struct RouteDto {
 
 #[derive(Debug, Serialize)]
 struct RouteDeliveryDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution: Option<&'static str>,
     ordinal: u32,
     sequence: u32,
     target: String,
@@ -552,6 +557,8 @@ struct RouteDeliveryDto {
 
 #[derive(Debug, Serialize)]
 struct CallbackLinkDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    execution: Option<&'static str>,
     id: String,
     from: String,
     to: String,
@@ -816,6 +823,7 @@ impl GraphExport {
             }
         }
         validate_dust_paths(&self.graph.dust_paths, &nodes, &sites, &node_records, &site_records)?;
+        classic::validate(&self.graph.classic_nets,&nodes,&routes,&self.graph)?;
         for relation in &self.graph.wire_relations {
             check_ref(&nodes, &relation.from, "wire relation source")?;
             check_ref(&sites, &relation.to, "wire relation target")?;
@@ -1061,8 +1069,9 @@ fn map_pass_error(error: passes::PassPipelineError) -> ExportError {
     ExportError::new(code, error.to_string())
 }
 
-pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Result<GraphExport, ExportError> {
+pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Result<GraphExport, ExportError> {
     let graph = GraphTablesDto {
+        classic_nets: classic::export(source),
         nodes: source
             .nodes
             .iter()
@@ -1322,7 +1331,11 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             .links
             .iter()
             .enumerate()
-            .map(|(index, link)| callback_link_dto(index, link))
+            .map(|(index, link)| {
+                let mut dto = callback_link_dto(index, link);
+                if classic::owned(source,link.from) || classic::owned(source,link.to) { dto.execution=Some("classic_provenance"); }
+                dto
+            })
             .collect(),
         routes: Some(
             source
@@ -1337,6 +1350,7 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                         .iter()
                         .enumerate()
                         .map(|(ordinal, delivery)| RouteDeliveryDto {
+                            execution: (classic::owned(source,route.source) || source.plans.classic_nets.iter().any(|net|net.entries.iter().any(|entry|entry.route.index()==index && entry.ordinal as usize==ordinal))).then_some("classic_provenance"),
                             ordinal: ordinal as u32,
                             sequence: delivery.sequence,
                             target: typed_id("site", delivery.target.index()),
@@ -1407,6 +1421,7 @@ pub(super) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.dust_paths.is_empty() {
         capabilities.push("dust_path_certificates");
     }
+    if !source.plans.classic_nets.is_empty() { capabilities.push("classic_signal_nets"); }
     if source.wires.iter().any(|wire| wire.execution.query_facts.is_some()) {
         capabilities.push("wire_query_facts");
     }
@@ -2183,6 +2198,7 @@ fn callback_link_dto(index: usize, link: &LinkSpec) -> CallbackLinkDto {
         LinkKind::Shape { direction, guard } => ("shape", Some(face(direction)), guard),
     };
     CallbackLinkDto {
+        execution: None,
         id: typed_id("callback_link", index),
         from: typed_id("node", link.from.index()),
         to: typed_id("node", link.to.index()),

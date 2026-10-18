@@ -51,7 +51,10 @@ impl Work {
         let active = compiler.logic.and(when, absent)?;
         if active != Formula::FALSE {
             self.requests.push_back(Guarded { value, when: active });
-            compiler.record_effect(super::execution::Effect::Request { when: active, request: value })?;
+            compiler.record_effect(super::execution::Effect::Request {
+                when: active,
+                request: value,
+            })?;
         }
         Ok(active)
     }

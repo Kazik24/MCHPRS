@@ -3,7 +3,12 @@ use super::*;
 
 impl CircuitDraft {
     pub(crate) fn validate(&self) -> Result<(), GraphBuildError> {
-        self.validate_inner()
+        self.validate_with_monitor(&crate::redpiler::TaskMonitor::default())
+    }
+
+    pub(crate) fn validate_with_monitor(&self,monitor:&crate::redpiler::TaskMonitor) -> Result<(),GraphBuildError> {
+        self.validate_inner()?;
+        validate_classic(self,monitor)
     }
 
     fn validate_inner(&self) -> Result<(), GraphBuildError> {

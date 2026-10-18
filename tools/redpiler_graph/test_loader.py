@@ -96,6 +96,27 @@ def compact_kernel(graph: dict) -> dict:
 
 
 class DustPathLoaderTests(unittest.TestCase):
+    def test_classic_nets_validate_ownership_occurrences_and_compact_masks(self):
+        fixture = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/simple_and_gate-classic.graph.json"
+        data = json.loads(fixture.read_text(encoding="utf-8"))
+        self.load_data(data)
+        self.assertTrue(data["graph"]["classic_nets"])
+        for mutation in ("mask", "attenuation", "occurrence", "overlap"):
+            damaged = json.loads(json.dumps(data))
+            net = damaged["graph"]["classic_nets"][0]
+            if mutation == "mask":
+                next(entry for entry in net["entries"] if entry["ops"])["ops"][0]["when"][0] = "invalid"
+            elif mutation == "attenuation":
+                net["wires"][0]["attenuation"] = 16
+            elif mutation == "occurrence":
+                net["entries"][0]["ordinal"] = 999999
+            else:
+                copied = json.loads(json.dumps(net))
+                copied["id"] = "classic_net:1"
+                damaged["graph"]["classic_nets"].append(copied)
+            with self.subTest(mutation=mutation), self.assertRaises(GraphFormatError):
+                self.load_data(damaged)
+
     def test_wire_hop_roots_bind_their_wire_and_allow_older_exports(self):
         data = document()
         site = {"id": "site:1", "position": {"x": 1, "y": 0, "z": 0},

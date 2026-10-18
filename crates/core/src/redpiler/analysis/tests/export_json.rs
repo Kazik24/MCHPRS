@@ -1,12 +1,12 @@
 use super::*;
+use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::export_json as adapter;
 use crate::redpiler::passes;
 use crate::redpiler::program_graph::CompileGraph;
-use crate::redpiler::CompilerOptions;
 use crate::world::{BlockAction, World};
+use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, Lever, LeverFace, RedstoneComparator};
-use mchprs_blocks::BlockPos;
 use mchprs_world::TickPriority;
 use serde_json::Value;
 use std::cell::Cell;
@@ -259,7 +259,7 @@ fn adder_1bit_fixture_matches_graph_json() {
 }
 
 #[test]
-fn stable_adder_export_names_the_contract_and_every_instruction_target() {
+fn stable_adder_export_keeps_proxies_without_running_disabled_synthesis() {
     let world = geometry_io_fixture("ADDER_1BIT.schem");
     let export = exported_with_options(
         &world,
@@ -290,24 +290,13 @@ fn stable_adder_export_names_the_contract_and_every_instruction_target() {
         }
     }
     assert_eq!(sampled.len(), 13);
-    assert!(
-        graph["instant_machine"].is_null(),
-        "regional execution excludes whole-selection finite machines"
-    );
-    assert!(
-        graph["instant_kernel"].is_null(),
-        "regional execution excludes whole-selection AOT kernels"
-    );
+    assert!(graph["instant_machine"].is_null(), "finite-state synthesis is disabled");
+    assert!(graph["instant_kernel"].is_null(), "whole-selection kernel synthesis is disabled");
     assert!(graph["symbolic_region_declines"].as_array().is_none_or(|declines| declines.is_empty()));
-    let programs = graph["symbolic_regions"].as_array().unwrap();
-    assert_eq!(programs.len(), 1);
-    assert_eq!(programs[0]["actors"].as_array().unwrap().len(), 13);
-    assert_eq!(
-        programs[0]["resets"].as_array().unwrap().len(),
-        region["resets"].as_array().unwrap().len()
+    assert!(
+        graph["symbolic_regions"].as_array().is_none_or(Vec::is_empty),
+        "O4 and stable inputs must not enable unfinished synthesis"
     );
-    assert!(!programs[0]["boundary"]["inputs"].as_array().unwrap().is_empty());
-    assert!(programs[0]["boundary"]["state"].as_array().unwrap().len() > 13);
 }
 
 #[test]
@@ -472,11 +461,13 @@ fn export_is_deterministic_and_exposes_a_lever_to_lamp_power_path() {
 
     let lever_site = site_at(&document, lever);
     let lamp_node = node_at(&document, lamp);
-    assert!(document["graph"]["power_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| link["from"]["site"] == lever_site && link["to"]["node"] == lamp_node));
+    assert!(
+        document["graph"]["power_links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|link| link["from"]["site"] == lever_site && link["to"]["node"] == lamp_node)
+    );
     assert_eq!((world.get_block(lever), world.get_block(lamp)), before);
     assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
 }
@@ -497,17 +488,21 @@ fn export_preserves_guarded_shared_resource_references() {
     assert_eq!(resources.len(), 1);
     assert_eq!(resources[0]["contacts"].as_array().unwrap().len(), 3);
     assert_eq!(document["snapshots"][0]["resources"].as_array().unwrap().len(), 1);
-    assert!(document["graph"]["guards"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|guard| { guard["kind"] == "state" && guard["test"]["kind"] == "resource_at" }));
+    assert!(
+        document["graph"]["guards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|guard| { guard["kind"] == "state" && guard["test"]["kind"] == "resource_at" })
+    );
     assert!(document["graph"]["routes"].is_array());
-    assert!(document["graph"]["guards"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|guard| guard["test"]["kind"] == "resource_at"));
+    assert!(
+        document["graph"]["guards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|guard| guard["test"]["kind"] == "resource_at")
+    );
 }
 
 #[test]
@@ -534,16 +529,20 @@ fn pinned_sticky_shared_graph_export_matches_the_pipeline_artifact() {
 
     let document: Value = serde_json::from_slice(&plain_bytes).unwrap();
     let graph = &document["graph"];
-    assert!(graph["pistons"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|piston| { piston["sticky"] == true && piston["lane"]["kind"] == "single_resource" }));
-    assert!(graph["guards"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|guard| { guard["kind"] == "state" && guard["test"]["kind"] == "resource_at" }));
+    assert!(
+        graph["pistons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|piston| { piston["sticky"] == true && piston["lane"]["kind"] == "single_resource" })
+    );
+    assert!(
+        graph["guards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|guard| { guard["kind"] == "state" && guard["test"]["kind"] == "resource_at" })
+    );
     assert!(!document["snapshots"][0]["resources"].as_array().unwrap().is_empty());
     for selection in document["snapshots"][0]["resources"].as_array().unwrap() {
         let resource = graph["resources"]
@@ -594,11 +593,13 @@ fn ordinary_comparator_and_dust_graph_is_complete_in_both_modes_and_exports_from
     assert!(!document["graph"]["wire_relations"].as_array().unwrap().is_empty());
     assert!(!document["graph"]["comparator_plans"].as_array().unwrap().is_empty());
     let comparator_node = node_at(&document, comparator_pos);
-    assert!(document["snapshots"][0]["components"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|component| { component["node"] == comparator_node && component["state"]["output_strength"] == 6 }));
+    assert!(
+        document["snapshots"][0]["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|component| { component["node"] == comparator_node && component["state"]["output_strength"] == 6 })
+    );
 }
 
 fn assert_graph_reduced(plain: &CompileGraph, optimized: &CompileGraph) {
@@ -651,16 +652,20 @@ fn export_keeps_quasi_and_dust_conductor_policies_separate() {
     let qc_node = node_at(&qc_json, BASE);
     let qc_site = site_at(&qc_json, qc_source);
     let normal_site = site_at(&qc_json, normal_source);
-    assert!(qc_json["graph"]["power_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| { link["from"]["site"] == qc_site && link["to"]["node"] == qc_node && link["to"]["port"] == "quasi" }));
-    assert!(qc_json["graph"]["power_links"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|link| { link["from"]["site"] == normal_site && link["to"]["node"] == qc_node && link["to"]["port"] == "main" }));
+    assert!(
+        qc_json["graph"]["power_links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|link| { link["from"]["site"] == qc_site && link["to"]["node"] == qc_node && link["to"]["port"] == "quasi" })
+    );
+    assert!(
+        qc_json["graph"]["power_links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|link| { link["from"]["site"] == normal_site && link["to"]["node"] == qc_node && link["to"]["port"] == "main" })
+    );
 
     let mut dust_world = empty();
     let wire = BASE;
@@ -698,11 +703,13 @@ fn export_keeps_fixed_and_live_comparator_overrides_distinct() {
     fixed_world.set_block(BASE.offset(BlockFace::South), Block::Cauldron { level: 3 });
     let fixed = exported(&fixed_world);
     let fixed_json: Value = serde_json::from_slice(&fixed.to_bytes().unwrap()).unwrap();
-    assert!(fixed_json["graph"]["comparator_plans"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|plan| plan["direct_override"]["kind"] == "literal" && plan["direct_override"]["value"] == 3));
+    assert!(
+        fixed_json["graph"]["comparator_plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|plan| plan["direct_override"]["kind"] == "literal" && plan["direct_override"]["value"] == 3)
+    );
 
     let mut live_world = empty();
     live_world.set_block(BASE, Block::RedstoneComparator { comparator });
@@ -710,11 +717,13 @@ fn export_keeps_fixed_and_live_comparator_overrides_distinct() {
     live_world.set_block(BASE + BlockPos::new(0, 0, 2), Block::from_name("copper_bulb").unwrap());
     let live = exported(&live_world);
     let live_json: Value = serde_json::from_slice(&live.to_bytes().unwrap()).unwrap();
-    assert!(live_json["graph"]["comparator_plans"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|plan| plan["far_override"]["value"]["kind"] == "live_component_output"));
+    assert!(
+        live_json["graph"]["comparator_plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|plan| plan["far_override"]["value"]["kind"] == "live_component_output")
+    );
 }
 
 #[test]

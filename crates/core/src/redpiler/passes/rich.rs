@@ -61,7 +61,7 @@ impl PreparedGraph {
         let logical_tick = self.entry.logical_tick;
         let pending_ticks = self.entry.pending_ticks;
         record_lowering_input_tables(monitor, &self.graph)?;
-        let (program, state) = self.graph.lower()?;
+        let (program, state) = self.graph.lower_with_monitor(monitor)?;
         monitor.record_preparation_tables(lowered_table_statistics(&program));
         let positions = program.position_index();
         let imported_ticks = pending_ticks
@@ -198,6 +198,8 @@ pub(crate) fn prepare(
         pending_ticks,
     };
     monitor.set_parser_complete(GraphCounts::of(&graph));
+    #[cfg(test)]
+    super::compile_classic_redstone::record_component_census(&graph);
     Ok(PreparedGraph {
         report,
         graph,

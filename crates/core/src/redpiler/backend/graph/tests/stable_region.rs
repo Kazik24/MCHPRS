@@ -6,6 +6,23 @@ pub(super) fn stable_graph(id: &'static str) -> (CompileGraph, EntryState) {
     stable_graph_at_level(id, 3)
 }
 
+/// Synthesis tests select their experimental builders explicitly; public compilation keeps them disabled.
+pub(super) fn experimental_pipeline(options: &CompilerOptions) -> passes::PassPipeline {
+    let mut pipeline = passes::default_graph_pipeline(options);
+    if options.optimization_level.is_none_or(|level| level >= 4) {
+        for entry in &mut pipeline.entries {
+            if matches!(
+                &entry.pass,
+                passes::Pass::Build(builder)
+                    if matches!(builder.name(), "compile-symbolic-regions" | "compile-instant-machine" | "compile-symbolic-kernels")
+            ) {
+                entry.enabled = true;
+            }
+        }
+    }
+    pipeline
+}
+
 pub(super) fn stable_graph_at_level(id: &'static str, level: usize) -> (CompileGraph, EntryState) {
     let circuit = load_adder(id, ORIGIN, None);
     let world = circuit.build();
@@ -16,14 +33,7 @@ pub(super) fn stable_graph_at_level(id: &'static str, level: usize) -> (CompileG
         stable_instant_inputs: true,
         ..Default::default()
     };
-    passes::run_graph_pipeline(
-        &mut prepared.graph,
-        &options,
-        &prepared.entry,
-        &passes::default_graph_pipeline(&options),
-        &monitor,
-    )
-    .unwrap();
+    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &experimental_pipeline(&options), &monitor).unwrap();
     (prepared.graph, prepared.entry)
 }
 
@@ -124,19 +134,18 @@ fn stable_backend(circuit: &Adder, world: &PlotWorld) -> GraphBackend {
     stable_backend_at(circuit, world, 3)
 }
 
-fn stable_backend_at(circuit: &Adder, world: &PlotWorld, level: usize) -> GraphBackend {
-    GraphBackend::compile_with_options(
-        world,
-        circuit.bounds(),
-        world.scheduler().iter_entries().collect(),
-        &CompilerOptions {
-            optimization_level: Some(level),
-            stable_instant_inputs: true,
-            ..Default::default()
-        },
-        Arc::default(),
-    )
-    .unwrap()
+pub(super) fn stable_backend_at(circuit: &Adder, world: &PlotWorld, level: usize) -> GraphBackend {
+    let options = CompilerOptions {
+        optimization_level: Some(level),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    let monitor = TaskMonitor::default();
+    let ticks = world.scheduler().iter_entries().collect();
+    let mut prepared = passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).unwrap();
+    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &experimental_pipeline(&options), &monitor).unwrap();
+    prepared.finish_pipeline_statistics(&monitor);
+    GraphBackend::from_lowered(prepared.lower(&monitor).unwrap(), &monitor).unwrap()
 }
 
 #[test]

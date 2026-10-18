@@ -1,10 +1,11 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod compile_builtin_resets;
+pub(crate) mod compile_classic_redstone;
 pub(crate) mod compile_instant_machine;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
-pub(crate) mod compile_symbolic_regions;
 pub(crate) mod compile_symbolic_kernels;
+pub(crate) mod compile_symbolic_regions;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_regions;
@@ -184,7 +185,7 @@ pub(crate) fn run_graph_pipeline(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    graph.validate().map_err(PassPipelineError::InvalidInput)?;
+    graph.validate_with_monitor(monitor).map_err(PassPipelineError::InvalidInput)?;
     monitor.set_max_progress(monitor.progress() + pipeline.entries.len() + 1);
     let context = PassContext { monitor, options, entry };
     for item in &pipeline.entries {
@@ -213,7 +214,7 @@ pub(crate) fn run_graph_pipeline(
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::Failed { pass: name, message });
         }
-        if let Err(source) = graph.validate() {
+        if let Err(source) = graph.validate_with_monitor(monitor) {
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::MalformedOutput { pass: name, source });
         }
@@ -244,7 +245,7 @@ pub(crate) fn run_graph_pipeline(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    graph.validate().map_err(PassPipelineError::InvalidInput)?;
+    graph.validate_with_monitor(monitor).map_err(PassPipelineError::InvalidInput)?;
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
@@ -264,7 +265,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::rewrite(specialize_instant_pistons::SpecializeInstantPistons)),
         (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
     ];
-    let plans: [(usize, Pass); 10] = [
+    let plans: [(usize, Pass); 7] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Pass::build(contract_dust_paths::ContractDustPaths)),
         (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
@@ -272,17 +273,23 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::build(compile_instant_resets::CompileInstantResets)),
         (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
         (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
-        (4, Pass::build(compile_symbolic_regions::CompileSymbolicRegions)),
-        (4, Pass::build(compile_instant_machine::CompileInstantMachine)),
-        (4, Pass::build(compile_symbolic_kernels::CompileSymbolicKernels)),
     ];
+    // Synthesis is unfinished; keep explicit experimental use available without running it publicly.
+    let disabled_synthesis = [
+        Pass::build(compile_symbolic_regions::CompileSymbolicRegions),
+        Pass::build(compile_instant_machine::CompileInstantMachine),
+        Pass::build(compile_symbolic_kernels::CompileSymbolicKernels),
+    ]
+    .map(|pass| PassEntry { pass, enabled: false });
     let entries = rewrites
         .into_iter()
-        .chain(plans)
         .map(|(minimum_level, pass)| PassEntry {
             pass,
             enabled: level >= minimum_level,
         })
+        .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
+        .chain(plans.into_iter().map(|(minimum_level,pass)|PassEntry { pass,enabled:level>=minimum_level }))
+        .chain(disabled_synthesis)
         .collect();
     let pipeline = PassPipeline::new(entries);
     #[cfg(feature = "unsafe-turbo-fixed-point")]
@@ -531,6 +538,44 @@ mod tests {
             assert_eq!(calls.get(), (0, 0));
             assert!(monitor.graph_statistics().passes.is_empty());
             assert_eq!(monitor.graph_statistics().final_graph(), None);
+        }
+    }
+
+    #[test]
+    fn instant_synthesis_stays_disabled_at_o4_and_default_with_stable_inputs() {
+        let synthesis = ["compile-symbolic-regions", "compile-instant-machine", "compile-symbolic-kernels"];
+        for optimization_level in [Some(0), Some(3), Some(4), None] {
+            for stable_instant_inputs in [false, true] {
+                let options = CompilerOptions {
+                    optimization_level,
+                    stable_instant_inputs,
+                    ..Default::default()
+                };
+                let mut graph = graph_for_passes();
+                graph.guards.push(crate::redpiler::program_graph::Guard::Always);
+                let monitor = TaskMonitor::default();
+                run_graph_pipeline(
+                    &mut graph,
+                    &options,
+                    &EntryState {
+                        logical_tick: 0,
+                        pending_ticks: vec![],
+                    },
+                    &default_graph_pipeline(&options),
+                    &monitor,
+                )
+                .unwrap();
+                let statistics = monitor.graph_statistics();
+                for name in synthesis {
+                    let record = statistics.passes.iter().find(|pass| pass.name == name).unwrap();
+                    assert!(!record.enabled, "{name} must not run for {options:?}");
+                    assert!(record.duration.is_zero());
+                }
+                assert!(graph.plans.instant.machine.is_none());
+                assert!(graph.plans.instant.symbolic_kernels.is_empty());
+                assert!(graph.plans.instant.symbolic_regions.is_empty());
+                assert!(graph.plans.instant.symbolic_region_declines.is_empty());
+            }
         }
     }
 

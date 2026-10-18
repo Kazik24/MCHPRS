@@ -1,5 +1,80 @@
 use super::*;
 
+/// Index contact selectors that only depend on graph state. Contact profile
+/// lookup ignores callback receiver properties, so site observations stay on
+/// the conservative full-projection path.
+pub(super) fn contact_projection_dependencies(
+    program: &CircuitProgram,
+) -> (Vec<Vec<ContactId>>, Vec<Vec<ContactId>>, Vec<ContactId>) {
+    let mut pistons = vec![Vec::new(); program.pistons().len()];
+    let mut resources = vec![Vec::new(); program.resources().len()];
+    let mut always_dirty = Vec::new();
+    let mut visited = vec![0u32; program.guards().len()];
+    let mut pending = Vec::new();
+    let mut piston_dependencies = FxHashSet::default();
+    let mut resource_dependencies = FxHashSet::default();
+
+    for (index, contact) in program.contacts().iter().enumerate() {
+        let contact_id = ContactId::new(index as u32);
+        let stamp = u32::try_from(index).expect("contact count was validated") + 1;
+        pending.clear();
+        pending.extend(contact.variants.iter().map(|variant| variant.when));
+        piston_dependencies.clear();
+        resource_dependencies.clear();
+        let mut unsupported = false;
+
+        while let Some(guard) = pending.pop() {
+            let Some(visited) = visited.get_mut(guard.index()) else {
+                unsupported = true;
+                break;
+            };
+            if *visited == stamp {
+                continue;
+            }
+            *visited = stamp;
+            match &program.guards()[guard.index()] {
+                Guard::Always => {}
+                Guard::State(StateTest::PistonExtended(piston) | StateTest::PistonHeadPresent(piston))
+                | Guard::State(StateTest::PistonAvailability { piston, .. }) => {
+                    if piston.index() < pistons.len() {
+                        piston_dependencies.insert(*piston);
+                    } else {
+                        unsupported = true;
+                        break;
+                    }
+                }
+                Guard::State(StateTest::ResourceAt { resource, .. } | StateTest::ResourceEnabled(resource)) => {
+                    if resource.index() < resources.len() {
+                        resource_dependencies.insert(*resource);
+                    } else {
+                        unsupported = true;
+                        break;
+                    }
+                }
+                Guard::Site { .. } => {
+                    unsupported = true;
+                    break;
+                }
+                Guard::Not(child) => pending.push(*child),
+                Guard::All(children) | Guard::Any(children) => pending.extend(children.iter().copied()),
+            }
+        }
+
+        if unsupported {
+            always_dirty.push(contact_id);
+            continue;
+        }
+        for &piston in &piston_dependencies {
+            pistons[piston.index()].push(contact_id);
+        }
+        for &resource in &resource_dependencies {
+            resources[resource.index()].push(contact_id);
+        }
+    }
+
+    (pistons, resources, always_dirty)
+}
+
 /// Boundary metadata for one interpreter motion. Derived only during reset
 /// from an event deadline; graph execution never stores progress.
 struct MotionProjection {
@@ -37,6 +112,8 @@ impl GraphBackend {
     /// Presentation only: writes current graph state and drains effects. It
     /// reads no World state, so suppressed display cannot alter execution.
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
+        #[cfg(feature = "native-demo")]
+        self.sync_native_graph(false);
         if self.has_active_kernel() {
             assert!(self.materialize_kernel_state(), "certified kernel projection must materialize");
         }
@@ -50,18 +127,21 @@ impl GraphBackend {
             self.dirty[index] = false;
         }
         if !io_only {
-            for contact in 0..self.program.contacts().len() {
-                let contact = ContactId::new(contact as u32);
-                let position = self.program.contacts()[contact.index()].position;
-                if self.cell_owned_by_node(position) {
-                    continue;
+            if self.full_contact_projection {
+                for index in 0..self.program.contacts().len() {
+                    self.write_contact(world, ContactId::new(index as u32));
                 }
-                // Clients see pending cells as empty; reset supplies interpreter motion.
-                let block = match self.contact_block(contact) {
-                    Block::MovingPiston { .. } => Block::Air,
-                    block => block,
-                };
-                world.set_block(position, block);
+                self.contact_dirty.fill(false);
+                self.dirty_contacts.clear();
+            } else {
+                self.refresh_contact_projection();
+                let mut contacts = std::mem::take(&mut self.dirty_contacts);
+                contacts.sort_unstable_by_key(|contact| contact.index());
+                for contact in contacts.drain(..) {
+                    self.write_contact(world, contact);
+                    self.contact_dirty[contact.index()] = false;
+                }
+                self.dirty_contacts = contacts;
             }
         }
         for effect in self.effects.drain(..) {
@@ -76,6 +156,11 @@ impl GraphBackend {
                     pitch,
                 } => world.play_sound(position, id, category, volume, pitch),
             }
+        }
+        #[cfg(feature = "native-demo")]
+        if let Some(oracle) = self.native_oracle.as_mut() {
+            oracle.effects.clear();
+            oracle.dirty.clone_from(&self.dirty);
         }
     }
 
@@ -93,6 +178,53 @@ impl GraphBackend {
 
     fn cell_owned_by_node(&self, position: BlockPos) -> bool {
         self.positions.get(&position).is_some_and(|&node| self.owns_cell(node))
+    }
+
+    fn write_contact<W: World>(&self, world: &mut W, contact: ContactId) {
+        let position = self.program.contacts()[contact.index()].position;
+        if self.cell_owned_by_node(position) {
+            return;
+        }
+        // Clients see pending cells as empty; reset supplies interpreter motion.
+        let block = match self.contact_block(contact) {
+            Block::MovingPiston { .. } => Block::Air,
+            block => block,
+        };
+        world.set_block(position, block);
+    }
+
+    fn refresh_contact_projection(&mut self) {
+        let mut changed = Vec::new();
+        for (index, (projected, current)) in self
+            .projected_pistons
+            .iter_mut()
+            .zip(&self.state.pistons)
+            .enumerate()
+        {
+            if projected != current {
+                changed.extend(self.contacts_by_piston[index].iter().copied());
+                *projected = *current;
+            }
+        }
+        for (index, (projected, current)) in self
+            .projected_resources
+            .iter_mut()
+            .zip(&self.state.resources)
+            .enumerate()
+        {
+            if projected != current {
+                changed.extend(self.contacts_by_resource[index].iter().copied());
+                *projected = *current;
+            }
+        }
+        changed.extend(self.always_dirty_contacts.iter().copied());
+        for contact in changed {
+            let index = contact.index();
+            if !self.contact_dirty[index] {
+                self.contact_dirty[index] = true;
+                self.dirty_contacts.push(contact);
+            }
+        }
     }
 
     fn write_node<W: World>(&self, world: &mut W, node: NodeId) {
@@ -123,11 +255,17 @@ impl GraphBackend {
     /// boundary and drop graph-owned pending work. Pending transitions are
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
+        #[cfg(feature = "native-demo")]
+        self.sync_native_graph(true);
         self.flush(world, false);
         self.future.kernel_cursor = None;
         self.future.symbolic_cursor = None;
         self.project_future(world);
         self.dirty.fill(false);
+        self.contact_dirty.fill(false);
+        self.dirty_contacts.clear();
+        self.projected_pistons.clone_from_slice(&self.state.pistons);
+        self.projected_resources.clone_from_slice(&self.state.resources);
         self.future.scheduler.clear();
         self.future.pending.clear();
         self.future.piston_requests.clear();

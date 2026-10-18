@@ -44,7 +44,8 @@ impl PlanBuilder for ContractDustPaths {
         let mut report = CandidateReport::default();
         let candidates = discover_wire_components(graph);
         report.candidates = candidates.len();
-        let already_assigned: FxHashSet<_> = graph.plans.dust_paths.iter().flat_map(|path| path.wires.iter().copied()).collect();
+        let already_assigned: FxHashSet<_> = graph.plans.dust_paths.iter().flat_map(|path| path.wires.iter().copied())
+            .chain(graph.plans.classic_nets.iter().flat_map(|net|net.wires.iter().map(|wire|wire.node))).collect();
         let mut accepted = Vec::new();
 
         for (index, component) in candidates.into_iter().enumerate() {

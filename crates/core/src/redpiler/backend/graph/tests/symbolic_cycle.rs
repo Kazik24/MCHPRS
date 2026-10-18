@@ -315,11 +315,8 @@ fn verify_production_kernel(id: &'static str) {
     // This test explicitly exercises the legacy whole-selection AOT compiler.
     graph.plans.instant.symbolic_regions.clear();
     graph.plans.instant.symbolic_region_declines.clear();
-    graph.plans.instant.symbolic_kernels = crate::redpiler::analysis::instant_regions::compiler::aot::compile(
-        &graph,
-        &TaskMonitor::default(),
-    )
-    .unwrap();
+    graph.plans.instant.symbolic_kernels =
+        crate::redpiler::analysis::instant_regions::compiler::aot::compile(&graph, &TaskMonitor::default()).unwrap();
     let trigger = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(circuit.trigger())).unwrap() as u32);
     let kernel = graph
         .plans

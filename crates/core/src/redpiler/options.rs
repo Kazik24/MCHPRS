@@ -8,8 +8,10 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Promise stable inputs through reset; enables O3 region composition and O4 compact kernels.
+    /// Promise stable inputs through reset; enables O3 region composition, while synthesis stays disabled.
     pub stable_instant_inputs: bool,
+    /// Experimental committed-signal nets; requires O2 and remains opt-in pending acceptance.
+    pub classic_redstone: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
@@ -24,6 +26,7 @@ impl Default for CompilerOptions {
             budget_multiplier: 0,
             optimization_level: Some(0),
             stable_instant_inputs: false,
+            classic_redstone: false,
             io_only: false,
             update: false,
         }
@@ -40,6 +43,7 @@ impl CompilerOptions {
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
                     "--stable-instant-inputs" => options.stable_instant_inputs = true,
+                    "--classic-redstone" => options.classic_redstone = true,
                     _ => return Err(format!("Unrecognized Redpiler option: {option}")),
                 }
             } else if let Some(short_flags) = option.strip_prefix('-') {
@@ -74,6 +78,9 @@ impl CompilerOptions {
         }
         if options.stable_instant_inputs && options.optimization_level.is_some_and(|level| level < 3) {
             return Err("--stable-instant-inputs requires -O3 or higher, or --optimize".into());
+        }
+        if options.classic_redstone && options.optimization_level.is_some_and(|level|level<2) {
+            return Err("--classic-redstone requires -O2 or higher, or --optimize".into());
         }
         Ok(options)
     }

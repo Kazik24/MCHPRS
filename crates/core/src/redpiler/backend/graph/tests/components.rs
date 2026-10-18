@@ -5,6 +5,8 @@ mod symbolic_walk;
 mod symbolic_work;
 #[path = "wire_hops.rs"]
 mod wire_hops;
+#[path = "classic_redstone.rs"]
+mod classic_redstone;
 
 use super::*;
 use crate::plot::worldedit::{WorldEditClipboard, load_schematic, paste_clipboard};
@@ -85,6 +87,101 @@ fn recording_graph(world: &PlotWorld, ticks: Vec<TickEntry>) -> GraphBackend {
     let mut backend = GraphBackend::compile(world, BOUNDS, ticks, Arc::default()).unwrap();
     backend.set_test_recording(true);
     backend
+}
+
+struct CountingContactWorld {
+    inner: PlotWorld,
+    contacts: FxHashSet<BlockPos>,
+    contact_writes: usize,
+}
+
+impl World for CountingContactWorld {
+    fn get_block_raw(&self, pos: BlockPos) -> u32 {
+        self.inner.get_block_raw(pos)
+    }
+
+    fn set_block_raw(&mut self, pos: BlockPos, block: u32) -> bool {
+        if self.contacts.contains(&pos) {
+            self.contact_writes += 1;
+        }
+        self.inner.set_block_raw(pos, block)
+    }
+
+    fn delete_block_entity(&mut self, pos: BlockPos) {
+        self.inner.delete_block_entity(pos);
+    }
+
+    fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
+        self.inner.get_block_entity(pos)
+    }
+
+    fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
+        self.inner.get_block_entity_mut(pos)
+    }
+
+    fn piston_state(&self) -> &mchprs_world::PistonState {
+        self.inner.piston_state()
+    }
+
+    fn piston_state_mut(&mut self) -> &mut mchprs_world::PistonState {
+        self.inner.piston_state_mut()
+    }
+
+    fn set_block_entity(&mut self, pos: BlockPos, entity: BlockEntity) {
+        self.inner.set_block_entity(pos, entity);
+    }
+
+    fn get_chunk(&self, x: i32, z: i32) -> Option<&Chunk> {
+        self.inner.get_chunk(x, z)
+    }
+
+    fn get_chunk_mut(&mut self, x: i32, z: i32) -> Option<&mut Chunk> {
+        self.inner.get_chunk_mut(x, z)
+    }
+
+    fn schedule_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
+        self.inner.schedule_tick(pos, delay, priority);
+    }
+
+    fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
+        self.inner.schedule_half_tick(pos, delay, priority);
+    }
+
+    fn pending_tick_at(&mut self, pos: BlockPos) -> bool {
+        self.inner.pending_tick_at(pos)
+    }
+
+    fn block_action(&mut self, pos: BlockPos, action: BlockAction) {
+        self.inner.block_action(pos, action);
+    }
+
+    fn play_sound(&mut self, pos: BlockPos, sound_id: i32, category: i32, volume: f32, pitch: f32) {
+        self.inner.play_sound(pos, sound_id, category, volume, pitch);
+    }
+}
+
+fn assert_contact_projection_matches_full(
+    backend: &GraphBackend,
+    optimized: &CountingContactWorld,
+    include_pending_motions: bool,
+    label: &str,
+) {
+    let mut full = empty_world();
+    backend.project_future(&mut full);
+    for contact in backend.program.contacts() {
+        let expected = full.get_block(contact.position);
+        let expected = if !include_pending_motions && matches!(expected, Block::MovingPiston { .. }) {
+            Block::Air
+        } else {
+            expected
+        };
+        assert_eq!(
+            optimized.get_block(contact.position),
+            expected,
+            "contact {:?} differs from full projection at {label}",
+            contact.position
+        );
+    }
 }
 
 fn dust_path_backend(world: &PlotWorld, optimization_level: Option<usize>) -> GraphBackend {
@@ -2729,6 +2826,73 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
         world.set_block(resource, Block::RedstoneBlock);
     }
     (native, graph_world, bases, near, resource)
+}
+
+#[test]
+fn dirty_contact_projection_matches_full_future_and_preserves_pending_work() {
+    let (_, graph_world, bases, _, _) = opposing_shared_pistons();
+    let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default()).unwrap();
+    let contact_positions = backend.program.contacts().iter().map(|contact| contact.position).collect();
+    let mut world = CountingContactWorld {
+        inner: graph_world,
+        contacts: contact_positions,
+        contact_writes: 0,
+    };
+
+    backend.flush(&mut world, false);
+    assert_contact_projection_matches_full(&backend, &world, false, "initial");
+    assert!(world.contact_writes > 0, "initial projection must write contact cells");
+
+    world.contact_writes = 0;
+    backend.flush(&mut world, false);
+    assert_eq!(world.contact_writes, 0, "a no-op full flush must not rewrite contacts");
+
+    let first = piston_id_at(&backend, bases[0]);
+    let second = piston_id_at(&backend, bases[1]);
+    backend.retract_connections(first, false).unwrap();
+    assert_eq!(backend.future.deferred_pistons.len(), 1);
+    assert!(!backend.state.resources[0].enabled, "retraction must create a pending resource transfer");
+
+    world.contact_writes = 0;
+    backend.flush(&mut world, true);
+    assert_eq!(world.contact_writes, 0, "io-only flush must leave contact projection pending");
+    world.contact_writes = 0;
+    backend.flush(&mut world, false);
+    assert_contact_projection_matches_full(&backend, &world, false, "pending resource retraction");
+    assert!(world.contact_writes > 0, "changed actor and resource must project their contacts");
+
+    world.contact_writes = 0;
+    backend.flush(&mut world, false);
+    assert_eq!(world.contact_writes, 0, "the pending projection should be clean after a full flush");
+
+    let publication = backend.future.deferred_pistons.pop_front().unwrap();
+    backend.apply_deferred_event(publication).unwrap();
+    backend.flush(&mut world, false);
+    assert_contact_projection_matches_full(&backend, &world, false, "deferred resource publication");
+
+    backend.state.pistons[first.index()].revision = publication.revision.wrapping_add(1);
+    backend.apply_deferred_event(publication).unwrap();
+    backend.flush(&mut world, false);
+    assert_contact_projection_matches_full(&backend, &world, false, "stale actor revision");
+
+    // The second actor has no resource transfer. Keep its live event through
+    // reset so the handoff preserves the live motion in the World future.
+    backend.retract_connections(second, false).unwrap();
+    assert_eq!(backend.future.deferred_pistons.len(), 1);
+    backend.flush(&mut world, false);
+    assert_contact_projection_matches_full(&backend, &world, false, "second actor pending");
+
+    let mut expected_handoff = empty_world();
+    backend.project_future(&mut expected_handoff);
+    backend.reset(&mut world);
+    for contact in backend.program.contacts() {
+        assert_eq!(
+            world.get_block(contact.position),
+            expected_handoff.get_block(contact.position),
+            "reset handoff differs from the pre-reset graph future at {:?}",
+            contact.position
+        );
+    }
 }
 
 #[test]

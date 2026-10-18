@@ -2,8 +2,12 @@
 use super::*;
 
 impl CircuitDraft {
-    pub(crate) fn lower(mut self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
-        self.validate()?;
+    pub(crate) fn lower(self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
+        self.lower_with_monitor(&crate::redpiler::TaskMonitor::default())
+    }
+
+    pub(crate) fn lower_with_monitor(mut self,monitor:&crate::redpiler::TaskMonitor) -> Result<(CircuitProgram,CircuitState),GraphBuildError> {
+        self.validate_with_monitor(monitor)?;
 
         let enabled = !self.plans.instant.symbolic_regions.is_empty();
         let mut symbolic_regions = Vec::with_capacity(self.plans.instant.symbolic_regions.len());
@@ -36,7 +40,10 @@ impl CircuitDraft {
             }
             if let Some(kernel) = &region.event_kernel {
                 for (routine_index, routine) in kernel.entries.iter().enumerate() {
-                    if symbolic_event_bindings.insert(routine.key, (region_index, routine_index as u32)).is_some() {
+                    if symbolic_event_bindings
+                        .insert(routine.key, (region_index, routine_index as u32))
+                        .is_some()
+                    {
                         return Err(GraphBuildError::InvalidInstantRegion {
                             table: "symbolic event bindings",
                             index: routine_index,
@@ -206,11 +213,13 @@ impl CircuitDraft {
             .map(|machine| KernelExecution::compile(&machine.kernel).map(std::sync::Arc::new))
             .transpose()?;
         let state = CircuitState {
+            classic_signals: self.plans.classic_nets.iter().map(|net| net.initial_signal).collect(),
             components: self.nodes.into_iter().map(|node| node.state).collect::<Vec<_>>().into_boxed_slice(),
             pistons: self.initial_pistons.into_boxed_slice(),
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
+            classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {
                 symbolic_regions: symbolic_regions.into_boxed_slice(),
                 symbolic_region_declines: self.plans.instant.symbolic_region_declines.into_boxed_slice(),

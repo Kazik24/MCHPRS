@@ -3,6 +3,10 @@ use crate::redpiler::power_rules::{emits_strong, emits_weak};
 
 impl GraphBackend {
     fn site_source_strength(&self, site: SiteId, resolved: &ResolvedSiteView) -> u8 {
+        if let Some(proof) = &self.classic_proof
+            && self.program.sites()[site.index()].source == SiteSource::Component(proof.source) {
+            return proof.signal;
+        }
         if let Some(CallbackReceiver::Component(node)) = resolved.receiver {
             if matches!(
                 self.program.nodes()[node.index()].kind,
@@ -51,31 +55,38 @@ impl GraphBackend {
     }
 
     pub(super) fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
+        if port == InputPort::Main
+            && let Some((net,attenuation,source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten() {
+            let source = self.program.classic().nets[net as usize].source;
+            return self.state.classic_signals[net as usize].saturating_sub(attenuation)
+                .max(self.node_state(source).output_strength.saturating_sub(source_attenuation));
+        }
         self.query_power(PowerTarget::Input { node, port })
     }
 
     fn query_power(&self, target: PowerTarget) -> u8 {
         #[cfg(feature = "native-demo")]
         if let Some(query_id) = self.native_power_queries.as_ref().and_then(|native| native.target_id(target)) {
-            // shortcut: fan-ins above 256 stay on Graph; raise the cap when a real target needs it.
-            let links = self.program.power_links_to(target);
-            let mut powers = [0u8; 256];
-            for (slot, link) in links.iter().enumerate() {
-                let SiteSource::Component(node) = self.program.sites()[link.from.index()].source else {
-                    unreachable!("native query plan only contains component sources");
-                };
-                powers[slot] = self.stored_component_strength(node);
-            }
-            return self
+            let native = self
                 .native_power_queries
                 .as_ref()
-                .expect("native query id came from the attached program")
-                .evaluate(query_id, &powers[..links.len()]);
+                .expect("native query id came from the attached program");
+            let result = native.evaluate(query_id, &self.state);
+            if native.verify_general() {
+                let expected = self.query_power_general(target);
+                native.verified();
+                assert_eq!(result, expected, "native power query differs from Graph for {target:?}");
+            }
+            return result;
         }
         #[cfg(feature = "native-demo")]
-        if let Some(native) = &mut self.native_power_queries {
+        if let Some(native) = &self.native_power_queries {
             native.fallback();
         }
+        self.query_power_general(target)
+    }
+
+    fn query_power_general(&self, target: PowerTarget) -> u8 {
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]
@@ -131,7 +142,7 @@ impl GraphBackend {
     fn stored_component_strength(&self, node: NodeId) -> u8 {
         match &self.state.components[node.index()] {
             ComponentState::Electrical(state) => state.output_strength,
-            ComponentState::Wire(wire) => wire.power,
+            ComponentState::Wire(_) => self.wire_state(node).power,
             ComponentState::Specialized => 0,
         }
     }

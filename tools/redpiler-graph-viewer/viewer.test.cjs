@@ -78,6 +78,28 @@ function instantCertificate(graph) {
   };
 }
 
+test('classic nets display committed edges and reject corrupt masks, occurrences and ownership', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const fixture = path.join(__dirname, '../../test_data/graph-fixtures/simple_and_gate-classic.graph.json');
+  const original = JSON.parse(fs.readFileSync(fixture, 'utf8'));
+  await load(viewer, original);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.evaluate(`connections.has('classic_net:0:ingress')`), true);
+  assert.equal(viewer.evaluate(`[...connections.values()].some((edge) => edge.record.execution === 'classic_provenance')`), false);
+  assert.equal(viewer.cy.getElementById('classic_net:0').length, 1);
+  for (const mutation of ['mask', 'attenuation', 'occurrence', 'overlap']) {
+    const damaged = JSON.parse(JSON.stringify(original));
+    const net = damaged.graph.classic_nets[0];
+    if (mutation === 'mask') net.entries.find((entry) => entry.ops.length).ops[0].when[0] = 'invalid';
+    else if (mutation === 'attenuation') net.wires[0].attenuation = 16;
+    else if (mutation === 'occurrence') net.entries[0].ordinal = 999999;
+    else damaged.graph.classic_nets.push({ ...net, id: 'classic_net:1' });
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false, mutation);
+  }
+});
+
 test('compiled hop roots bind their wire and preserve older exports', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());

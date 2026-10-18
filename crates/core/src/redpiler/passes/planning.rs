@@ -23,6 +23,7 @@ pub(crate) trait PlanBuilder {
 
 /// Each result names its owner instead of exposing the mutable graph to a builder.
 pub(crate) enum PlanOutput {
+    ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
     WireQueries(Vec<Option<WireQueryFacts>>),
@@ -49,6 +50,7 @@ impl PlanOutput {
             graph.plans.instant.symbolic_kernels.clear();
         }
         match self {
+            Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
             Self::WireQueries(facts) => {

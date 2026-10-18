@@ -270,6 +270,7 @@ mod tests {
     #[test]
     fn grouped_region_export_rejects_a_reset_facing_that_disagrees_with_its_owner() {
         let graph = GraphTablesDto {
+            classic_nets: vec![],
             nodes: vec![NodeDto {
                 id: "node:0".into(),
                 kind: NodeKindDto::Observer {

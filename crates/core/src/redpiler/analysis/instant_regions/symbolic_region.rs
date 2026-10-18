@@ -12,7 +12,9 @@ pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Sym
             continue;
         }
         if !region.stable_inputs {
-            compilation.declines.push(region_decline(region_index, region, "region inputs are not certified stable"));
+            compilation
+                .declines
+                .push(region_decline(region_index, region, "region inputs are not certified stable"));
             continue;
         }
         let event_kernel = match crate::redpiler::analysis::instant_regions::compiler::event::compile(graph, region_index, monitor) {
@@ -31,7 +33,11 @@ pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Sym
                     return Err(reason);
                 }
                 tracing::debug!(region_index, %reason, "regional event kernel declined");
-                eprintln!("REGIONAL_DECLINE region={region_index} actors={} resets={} reason={reason}", region.actors.len(), region.resets.len());
+                eprintln!(
+                    "REGIONAL_DECLINE region={region_index} actors={} resets={} reason={reason}",
+                    region.actors.len(),
+                    region.resets.len()
+                );
                 compilation.declines.push(region_decline(region_index, region, reason));
                 continue;
             }

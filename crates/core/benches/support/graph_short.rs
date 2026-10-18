@@ -21,6 +21,8 @@ use std::{
 
 const NAMES: [&str; 4] = ["cpu_bubblesort", "anpu_pong", "fpu_divider", "counter_basic"];
 const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
+    classic_net_invocations: 0,
+    classic_receiver_ops: 0,
     ticks: 100,
     instant_transitions: 0,
     symbolic_region_steps: 0,
@@ -292,6 +294,8 @@ fn counts(value: GraphExecutionCounts) -> Value {
 
 fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> Value {
     counts(GraphExecutionCounts {
+        classic_net_invocations: after.classic_net_invocations-before.classic_net_invocations,
+        classic_receiver_ops: after.classic_receiver_ops-before.classic_receiver_ops,
         ticks: after.ticks - before.ticks,
         instant_transitions: after.instant_transitions - before.instant_transitions,
         symbolic_region_steps: after.symbolic_region_steps - before.symbolic_region_steps,
@@ -536,15 +540,10 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
         verify_phase_response(episode, phase, &trace[phase_start..])?;
     }
     let work = compiler.as_ref().and_then(Compiler::graph_execution_counts);
-    if !reset_pending && episode.stable_inputs && episode.name == "io/instant_observer" && tier == Some(4) && compose_regions {
-        let (before, after) = before.zip(work).context("stable O4 observer needs Graph work counters")?;
+    if let Some(work) = work {
         ensure!(
-            after.symbolic_region_steps > before.symbolic_region_steps,
-            "timed stable O4 observer window did not execute its symbolic region routine"
-        );
-        ensure!(
-            after.instant_transitions == before.instant_transitions,
-            "timed stable O4 observer window used the finite instant machine"
+            work.symbolic_region_steps == 0 && work.instant_transitions == 0,
+            "the default pipeline unexpectedly executed disabled instant synthesis"
         );
     }
     if episode.name == "cpu_bubblesort" && tier == Some(0) && !reset_pending {

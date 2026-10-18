@@ -63,7 +63,7 @@ fn stable_graph_at(circuit: &Adder, level: usize) -> (crate::redpiler::program_g
         &mut prepared.graph,
         &options,
         &prepared.entry,
-        &passes::default_graph_pipeline(&options),
+        &super::stable_region_tests::experimental_pipeline(&options),
         &monitor,
     )
     .unwrap();
@@ -87,7 +87,7 @@ fn stable_graph_in_bounds(
         &mut prepared.graph,
         &options,
         &prepared.entry,
-        &passes::default_graph_pipeline(&options),
+        &super::stable_region_tests::experimental_pipeline(&options),
         &monitor,
     )
     .unwrap();

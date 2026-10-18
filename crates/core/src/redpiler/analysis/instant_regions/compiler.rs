@@ -4,11 +4,11 @@
 //! captures retain their earlier expressions. Executable kernels will keep only live roots.
 pub(crate) mod aot;
 pub(crate) mod cycle;
-pub(crate) mod event;
 pub(crate) mod entry;
+pub(crate) mod event;
 pub(crate) mod execution;
-mod region;
 mod power;
+mod region;
 mod routes;
 mod shape;
 mod state;
@@ -22,12 +22,12 @@ use mchprs_redpiler_opt::{
     Limits,
     symbolic::{Diagram, Formula, Signal, SymbolicError},
 };
-pub(crate) use routes::{Delivery, Receivers};
 pub(crate) use region::{RegionRead, RegionScope, RegionStateSlot};
+pub(crate) use routes::{Delivery, Receivers};
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 pub(crate) use state::*;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 type Result<T> = std::result::Result<T, CompileError>;
 
@@ -140,7 +140,11 @@ impl<'a> Compiler<'a> {
         }
         Ok(Self {
             graph,
-            logic: if structural { Diagram::new_structural(limits)? } else { Diagram::new(limits)? },
+            logic: if structural {
+                Diagram::new_structural(limits)?
+            } else {
+                Diagram::new(limits)?
+            },
             state,
             epoch: 0,
             guards: vec![None; graph.guards.len()],
@@ -209,9 +213,9 @@ impl<'a> Compiler<'a> {
             Guard::Always => Formula::TRUE,
             Guard::State(test) => {
                 match *test {
-                    StateTest::PistonExtended(actor)
-                    | StateTest::PistonHeadPresent(actor)
-                    | StateTest::PistonAvailability { piston: actor, .. } => self.symbolize_actor(actor)?,
+                    StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. } => {
+                        self.symbolize_actor(actor)?
+                    }
                     StateTest::ResourceAt { resource, .. } | StateTest::ResourceEnabled(resource) => self.symbolize_resource(resource)?,
                 }
                 match *test {

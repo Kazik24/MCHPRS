@@ -18,6 +18,7 @@ TABLES = {
     "power_link": "power_links",
     "wire": "wire_plans",
     "dust_path": "dust_paths",
+    "classic_net": "classic_nets",
     "instant_region": "instant_regions",
     "instant_proxy": "instant_proxies",
     "wire_relation": "wire_relations",
@@ -95,7 +96,7 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
     records: dict[str, dict[str, dict[str, Any]]] = {}
     for prefix, table in TABLES.items():
         values = graph.get(table)
-        if table in ("routes", "callback_links", "dust_paths", "instant_regions", "instant_proxies") and values is None:
+        if table in ("routes", "callback_links", "dust_paths", "instant_regions", "instant_proxies", "classic_nets") and values is None:
             values = []
         values = _array(values, f"graph.{table}")
         indexed: dict[str, dict[str, Any]] = {}
@@ -417,6 +418,48 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             resource = _object(resource, f"{identifier}.resource")
             ref("resource", resource.get("resource"), identifier)
             ref("contact", resource.get("selected_contact"), identifier)
+
+    classic_wires = set(assigned_dust_wires) | set(instant_wires)
+    classic_receivers = set()
+    classic_entries = set()
+    for identifier, net in records["classic_net"].items():
+        ref("node", net.get("source"), identifier)
+        if type(net.get("initial_signal")) is not int or not 0 <= net["initial_signal"] <= 15:
+            raise GraphFormatError(f"{identifier} has invalid initial signal")
+        wires = _array(net.get("wires"), f"{identifier}.wires")
+        if not wires:
+            raise GraphFormatError(f"{identifier} has no private wires")
+        for wire in wires:
+            node = wire.get("node")
+            ref("node", node, identifier)
+            if node in classic_wires or records["node"][node]["kind"]["kind"] != "wire":
+                raise GraphFormatError(f"{identifier} has overlapping or non-wire ownership")
+            classic_wires.add(node)
+            if type(wire.get("attenuation")) is not int or not 0 <= wire["attenuation"] <= 15:
+                raise GraphFormatError(f"{identifier} has invalid attenuation")
+        for value in _array(net.get("inputs"), f"{identifier}.inputs"):
+            ref("node", value.get("receiver"), identifier)
+            if value["receiver"] in classic_receivers:
+                raise GraphFormatError(f"{identifier} shares receiver ownership")
+            classic_receivers.add(value["receiver"])
+            for key in ("attenuation", "source_attenuation"):
+                if type(value.get(key)) is not int or not 0 <= value[key] <= 15:
+                    raise GraphFormatError(f"{identifier} has invalid direct input")
+        for entry in _array(net.get("entries"), f"{identifier}.entries"):
+            ref("route", entry.get("route"), identifier)
+            ref("node", entry.get("wire"), identifier)
+            ordinal = entry.get("ordinal")
+            if type(ordinal) is not int or not 0 <= ordinal < len(records["route"][entry["route"]]["deliveries"]) or type(entry.get("commit")) is not bool:
+                raise GraphFormatError(f"{identifier} has invalid route occurrence")
+            binding = (entry["route"], ordinal)
+            if binding in classic_entries:
+                raise GraphFormatError(f"{identifier} repeats a route occurrence")
+            classic_entries.add(binding)
+            for op in _array(entry.get("ops"), f"{identifier}.ops"):
+                ref("node", op.get("receiver"), identifier)
+                masks = _array(op.get("when"), f"{identifier}.when")
+                if type(op.get("nonzero")) is not bool or len(masks) != 4 or any(not isinstance(mask, str) or re.fullmatch(r"[0-9a-f]{16}", mask) is None for mask in masks):
+                    raise GraphFormatError(f"{identifier} has invalid operation mask")
 
     _validate_instant_machine(graph.get("instant_machine"), records)
     _validate_instant_kernel(graph.get("instant_kernel"), records)

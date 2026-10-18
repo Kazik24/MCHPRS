@@ -1,11 +1,13 @@
 //! Typed construction and immutable program storage for the general graph.
 
 mod execution_plans;
+mod classic_redstone;
+pub(crate) use classic_redstone::*;
 mod instant_entry;
 mod instant_execution;
 mod lowering;
-mod symbolic_region;
 mod symbolic_kernel;
+mod symbolic_region;
 mod validation;
 pub(crate) use execution_plans::*;
 mod instant_machine;
@@ -13,8 +15,8 @@ mod instant_regions;
 pub(crate) use instant_entry::*;
 pub(crate) use instant_execution::*;
 pub(crate) use instant_machine::*;
-pub(crate) use symbolic_region::*;
 pub(crate) use symbolic_kernel::*;
+pub(crate) use symbolic_region::*;
 mod wire_query_facts;
 pub(crate) use instant_regions::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
@@ -589,6 +591,7 @@ pub(crate) fn command_facing(block: Block) -> BlockFace {
 #[derive(Debug)]
 /// Structural validation failures encountered while building or lowering a graph.
 pub(crate) enum GraphBuildError {
+    InvalidClassicNet { net: usize, reason: &'static str },
     InvalidInstantRegion {
         /// This names the derived table whose witness no longer agrees with the graph.
         table: &'static str,
@@ -736,6 +739,7 @@ impl std::fmt::Display for GraphBuildError {
             }
             Self::InvalidWireHopRoot { wire } => write!(f, "wire {wire} has an invalid compiled hop root"),
             Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
+            Self::InvalidClassicNet { net,reason } => write!(f,"classic net {net} has an invalid certificate: {reason}"),
             Self::InvalidInstantRegion { table, index } => write!(f, "instant {table}[{index}] has a stale or invalid certificate"),
             Self::InvalidInstantMachine { state, action } => {
                 write!(f, "instant machine state {state}, action {action} has an invalid transition certificate")
@@ -831,6 +835,7 @@ struct InstantProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
+    classic: ClassicProgram,
     instant: InstantProgram,
     nodes: Box<[NodeSpec]>,
     power_links: Box<[PowerLink]>,
@@ -870,6 +875,7 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn classic(&self) -> &ClassicProgram { &self.classic }
     pub(crate) fn symbolic_region_programs(&self) -> impl Iterator<Item = &crate::redpiler::program_graph::SymbolicRegionProgram> {
         self.instant.symbolic_regions.iter().map(std::sync::Arc::as_ref)
     }
@@ -890,7 +896,13 @@ impl CircuitProgram {
 
     pub(crate) fn symbolic_event_routine(&self, key: SymbolicRegionEntry) -> Option<&std::sync::Arc<SymbolicRegionEventRoutine>> {
         let (region, routine) = self.instant.symbolic_event_bindings.get(&key).copied()?;
-        self.instant.symbolic_regions.get(region as usize)?.event_kernel.as_ref()?.entries.get(routine as usize)
+        self.instant
+            .symbolic_regions
+            .get(region as usize)?
+            .event_kernel
+            .as_ref()?
+            .entries
+            .get(routine as usize)
     }
     pub(crate) fn symbolic_actor_routine(&self, actor: PistonId) -> Option<&std::sync::Arc<crate::redpiler::program_graph::SymbolicActorRoutine>> {
         let (region, routine) = self.instant.symbolic_actor_bindings.get(actor.index()).copied().flatten()?;
@@ -1057,6 +1069,7 @@ impl CircuitProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Mutable component, piston, and resource state paired with a circuit program.
 pub(crate) struct CircuitState {
+    pub(crate) classic_signals: Box<[u8]>,
     pub(crate) components: Box<[ComponentState]>,
     pub(crate) pistons: Box<[PistonState]>,
     pub(crate) resources: Box<[ResourceState]>,

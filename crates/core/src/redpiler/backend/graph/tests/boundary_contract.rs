@@ -288,18 +288,7 @@ fn regional_bud_memory_changes_only_after_the_independent_update() {
     for powered in [false, true] {
         let mut native = circuit.build();
         let mut projected = circuit.build();
-        let mut backend = GraphBackend::compile_with_options(
-            &native,
-            circuit.bounds(),
-            vec![],
-            &CompilerOptions {
-                optimization_level: Some(4),
-                stable_instant_inputs: true,
-                ..Default::default()
-            },
-            Arc::default(),
-        )
-        .unwrap();
+        let mut backend = stable_region_tests::stable_backend_at(&circuit, &native, 4);
         assert!(backend.program.instant_kernel().is_none());
         assert!(backend.program.symbolic_kernels().is_empty());
         assert!(backend.program.symbolic_region_counts().1 > 0);

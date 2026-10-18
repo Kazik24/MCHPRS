@@ -4,6 +4,7 @@ const tables = {
   nodes: "node", sites: "site", contacts: "contact", resources: "resource", guards: "guard",
   pistons: "piston", power_links: "power_link", wire_plans: "wire", wire_relations: "wire_relation",
   instant_regions: "instant_region", instant_proxies: "instant_proxy",
+  classic_nets: "classic_net",
   dust_paths: "dust_path", comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
 };
 const $ = (id) => document.getElementById(id);
@@ -39,7 +40,7 @@ function validateGraph(data) {
     const rows = data.graph[table];
     if (table === "routes" && rows === null) continue;
     if (table === "callback_links" && rows === undefined) continue;
-    if (["dust_paths", "instant_regions", "instant_proxies"].includes(table) && rows == null) continue;
+    if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets"].includes(table) && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -137,6 +138,21 @@ function validateGraph(data) {
     }
   }
   const assignedWires = new Set();
+  for (const net of data.graph.classic_nets || []) {
+    if (!nodes.has(net.source) || !Number.isInteger(net.initial_signal) || net.initial_signal < 0 || net.initial_signal > 15 || !net.wires?.length) throw Error(`Invalid classic net: ${net.id}`);
+    for (const wire of net.wires) {
+      if (nodes.get(wire.node)?.kind?.kind !== 'wire' || assignedWires.has(wire.node) || !Number.isInteger(wire.attenuation) || wire.attenuation < 0 || wire.attenuation > 15) throw Error(`Invalid classic wire: ${wire.node}`);
+      assignedWires.add(wire.node);
+    }
+    for (const input of net.inputs) {
+      if (!nodes.has(input.receiver) || [input.attenuation, input.source_attenuation].some((value) => !Number.isInteger(value) || value < 0 || value > 15)) throw Error(`Invalid classic input: ${net.id}`);
+    }
+    for (const entry of net.entries) {
+      const route = data.graph.routes?.find((route) => route.id === entry.route);
+      if (!route?.deliveries[entry.ordinal] || typeof entry.commit !== 'boolean') throw Error(`Invalid classic entry: ${net.id}`);
+      for (const op of entry.ops) if (!nodes.has(op.receiver) || typeof op.nonzero !== 'boolean' || op.when?.length !== 4 || op.when.some((mask) => !/^[0-9a-f]{16}$/.test(mask))) throw Error(`Invalid classic operation: ${net.id}`);
+    }
+  }
   for (const path of data.graph.dust_paths || []) {
     const input = nodes.get(path.input_node);
     if (input?.kind?.kind !== "electrical") throw Error(`${path.id} input must be an electrical node.`);
@@ -196,14 +212,17 @@ function indexConnections(data, index) {
     }
   }
   for (const link of data.graph.power_links) {
+    if ((data.graph.classic_nets || []).some((net) => net.wires.some((wire) => wire.node === sourceNode(link.from.site, index)) || (link.to.kind === 'input' && net.wires.some((wire) => wire.node === link.to.node)))) continue;
     const target = link.to.kind === "input" ? link.to.node : sourceNode(link.to.site, index);
     add(link.id, sourceNode(link.from.site, index), target, "power_link", link);
   }
   for (const relation of data.graph.wire_relations) {
+    if ((data.graph.classic_nets || []).some((net) => net.wires.some((wire) => wire.node === relation.from))) continue;
     add(relation.id, relation.from, sourceNode(relation.to, index), "wire_relation", relation);
   }
   for (const route of data.graph.routes || []) {
     route.deliveries.forEach((delivery, ordinal) => {
+      if (delivery.execution === 'classic_provenance') return;
       const owners = [...(routeOwners.get(route.id) || [route.id])];
       if (delivery.receiver) return;
       owners.forEach((owner, ownerIndex) => {
@@ -213,7 +232,12 @@ function indexConnections(data, index) {
     });
   }
   for (const link of data.graph.callback_links || []) {
+    if (link.execution === 'classic_provenance') continue;
     add(link.id, link.from, link.to, "callback_link", link);
+  }
+  for (const net of data.graph.classic_nets || []) {
+    add(`${net.id}:ingress`, net.source, net.id, 'classic_signal', net);
+    net.inputs.forEach((input, ordinal) => add(`${net.id}:input:${ordinal}`, net.id, input.receiver, 'classic_input', input));
   }
   return { edges, adjacent };
 }
@@ -268,6 +292,8 @@ function selectView(center, overview, edgeTypes, depth) {
 
 function connectionLabel(connection) {
   const record = connection.record;
+  if (connection.type === 'classic_signal') return 'committed at original entry occurrence';
+  if (connection.type === 'classic_input') return `main · net −${record.attenuation} · live ingress −${record.source_attenuation}`;
   if (connection.type === 'power_link') {
     const port = record.to.port || `conductor (dust ${record.to.include_dust ? 'included' : 'excluded'})`;
     const source = record.from.port;
@@ -323,10 +349,10 @@ function option(value, label) {
 function controls(data) {
   const inputs = data.graph.nodes.filter((row) => ['lever', 'button', 'pressure_plate'].includes(category(row)));
   $('inputs').replaceChildren(...inputs.slice(0, 20).map((row) => referenceButton(row.id, `${category(row)} ${row.id}\n(${row.position?.x}, ${row.position?.y}, ${row.position?.z})`)));
-  const kinds = [...new Set(['site', 'route', ...data.graph.nodes.map(category)])].sort();
+  const kinds = [...new Set(['site', 'route', 'classic_net', ...data.graph.nodes.map(category)])].sort();
   $('node-filters').replaceChildren(...kinds.map((kind) => check(kind, kind.replaceAll('_', ' '), true, 'node-filter')));
-  const edgeTypes = ['power_link', 'wire_relation', 'route_delivery', 'callback_link'];
-  $('edge-filters').replaceChildren(...edgeTypes.map((kind) => check(kind, kind.replaceAll('_', ' '), kind === 'power_link', 'edge-filter')));
+  const edgeTypes = ['power_link', 'wire_relation', 'route_delivery', 'callback_link', 'classic_signal', 'classic_input'];
+  $('edge-filters').replaceChildren(...edgeTypes.map((kind) => check(kind, kind.replaceAll('_', ' '), kind === 'power_link' || kind.startsWith('classic_'), 'edge-filter')));
   document.querySelectorAll('.node-filter').forEach((input) => input.addEventListener('change', applyFilters));
   document.querySelectorAll('.edge-filter').forEach((input) => input.addEventListener('change', () => renderView()));
   $('snapshot').replaceChildren(option('', 'All potential connections'), ...data.snapshots.map((snapshot) => option(snapshot.id, snapshot.id)));

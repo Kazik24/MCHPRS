@@ -41,7 +41,13 @@ impl GraphBackend {
 
     pub(super) fn wire_state(&self, node: NodeId) -> RedstoneWire {
         match &self.state.components[node.index()] {
-            ComponentState::Wire(wire) => *wire,
+            ComponentState::Wire(wire) => {
+                let mut wire = *wire;
+                if let Some((net,attenuation)) = self.program.classic().wire_by_node.get(node.index()).copied().flatten() {
+                    wire.power = self.state.classic_signals[net as usize].saturating_sub(attenuation);
+                }
+                wire
+            },
             _ => unreachable!("wire node has non-wire state"),
         }
     }

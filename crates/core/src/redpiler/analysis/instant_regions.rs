@@ -3,9 +3,9 @@
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::passes::utils::instant_mechanisms::{InstantMechanism, discover_mechanisms};
 use crate::redpiler::program_graph::*;
-mod composition;
 pub(crate) mod boundary;
 pub(crate) mod compiler;
+mod composition;
 pub(crate) mod machine;
 #[cfg(test)]
 pub(crate) mod symbolic;

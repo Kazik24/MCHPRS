@@ -222,7 +222,13 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
             "symbolic region events",
             graph.plans.instant.symbolic_regions.len(),
             graph.plans.instant.symbolic_regions.capacity(),
-            graph.plans.instant.symbolic_regions.iter().map(|region| region.estimated_heap_bytes()).sum(),
+            graph
+                .plans
+                .instant
+                .symbolic_regions
+                .iter()
+                .map(|region| region.estimated_heap_bytes())
+                .sum(),
         ),
         table::<crate::redpiler::program_graph::InstantMachine>(
             "lowering input",
@@ -231,6 +237,11 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
             usize::from(graph.plans.instant.machine.is_some()),
             graph.plans.instant.machine.as_ref().map_or(0, |machine| machine.estimated_bytes()),
         ),
+        table::<crate::redpiler::program_graph::ClassicNetPlan>(
+            "lowering input","classic certificates",graph.plans.classic_nets.len(),graph.plans.classic_nets.capacity(),
+            graph.plans.classic_nets.iter().map(|net|std::mem::size_of_val(net.wires.as_ref())+std::mem::size_of_val(net.inputs.as_ref())+std::mem::size_of_val(net.entries.as_ref())+net.entries.iter().map(|entry|std::mem::size_of_val(entry.ops.as_ref())).sum::<usize>()).sum(),
+        ),
+        PreparationTableStatistics { stage:"lowering input",table:"classic direct tables projected".into(),entries:graph.plans.classic_nets.len(),capacity:graph.plans.classic_nets.len(),estimated_bytes:crate::redpiler::program_graph::ClassicProgram::estimate_plans(&graph.plans.classic_nets,graph.nodes.len(),graph.routes.len())+graph.plans.classic_nets.len() },
         table::<crate::redpiler::program_graph::InstantRegion>(
             "lowering input",
             "instant regions",
@@ -365,13 +376,18 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
+        PreparationTableStatistics { stage:"lowering",table:"classic signal tables".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().estimated_bytes() },
+        PreparationTableStatistics { stage:"lowering",table:"committed classic signals".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().nets.len() },
         symbolic_kernel_table("lowering", program.symbolic_kernels()),
         table::<crate::redpiler::program_graph::SymbolicRegion>(
             "lowering",
             "symbolic region events",
             program.symbolic_region_programs().count(),
             program.symbolic_region_programs().count(),
-            program.symbolic_region_programs().map(|region| region.estimated_heap_bytes()).sum::<usize>()
+            program
+                .symbolic_region_programs()
+                .map(|region| region.estimated_heap_bytes())
+                .sum::<usize>()
                 + program.symbolic_region_binding_bytes(),
         ),
         table::<crate::redpiler::program_graph::KernelExecution>(

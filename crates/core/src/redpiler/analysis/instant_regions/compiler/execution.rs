@@ -6,8 +6,8 @@ use super::*;
 use crate::redpiler::components::NodeType;
 use mchprs_world::{PistonAction, TickPriority};
 use std::collections::VecDeque;
-pub(crate) use work::{Guarded, Request};
 use work::Work;
+pub(crate) use work::{Guarded, Request};
 
 #[derive(Clone)]
 pub(crate) struct ResourcePublication {
@@ -116,10 +116,7 @@ impl Execution {
     }
 
     /// Build one callback cascade that stops at the region boundary and retains its outside effects.
-    pub(crate) fn for_region(
-        compiler: &mut Compiler<'_>,
-        region: &crate::redpiler::program_graph::InstantRegion,
-    ) -> Result<Self> {
+    pub(crate) fn for_region(compiler: &mut Compiler<'_>, region: &crate::redpiler::program_graph::InstantRegion) -> Result<Self> {
         let mut execution = Self::empty(compiler.graph);
         execution.scope = Some(RegionScope::new(compiler.graph, region));
         for &node in &region.resets {

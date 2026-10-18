@@ -4,6 +4,18 @@ Status: stopped at the user's request on 2026-10-16 for a different experiment. 
 incomplete compiler checkpoint, not a working whole-region replacement or a demonstrated
 acceleration. Preserve the observations below when deciding what to reuse.
 
+At the user's subsequent request, all three synthesis builders are disabled in the default
+pipeline: `compile-symbolic-regions`, `compile-instant-machine`, and `compile-symbolic-kernels`.
+They remain recorded as skipped even at O4/all tiers with stable inputs; custom developer
+pipelines can explicitly select them. Existing O3 piston/reset/proxy optimizations remain.
+
+Disablement validation passed: the default-pipeline regression across tiers/stable-input
+settings, pass-order selection, and real ADDER1BIT JSON export (three focused debug tests).
+`cargo check -p mchprs_core -p mroww --tests --benches --locked`, focused formatting checks,
+and `git diff --check` passed. Compiler-specific tests explicitly select experimental
+builders; the public benchmark instead checks that synthesis execution counters stay zero.
+No full test suite or performance benchmark was rerun for this disablement.
+
 All discovered edge cases and their evidence are maintained in the single register
 [INSTANT_COMPILER_EDGE_CASES.md](INSTANT_COMPILER_EDGE_CASES.md).
 

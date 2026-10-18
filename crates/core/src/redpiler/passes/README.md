@@ -33,22 +33,17 @@ builds boundaries, and `compile-instant-proxies` builds their execution proxies.
 Shared regions remain general execution. Every enabled rewrite clears derived
 plans before it changes the circuit, so plan builders need no preservation flags.
 
-At `-O4` and above, `compile_instant_machine` follows O3 proxy compilation and requires `--stable-instant-inputs`.
-The O4 pipeline also runs `compile_symbolic_kernels`, which derives and validates an immutable
-symbolic kernel and lowers it into `CircuitProgram`. A production-pipeline test confirms this for
-ADDER1BIT and ADDER11BIT. Both rising and falling lever edges are candidates, including controls
-that reach an instant through intermediate components. Runtime admission freezes typed inputs before the edge and checks
-the complete stationary entry relation and empty future. Compiled activation and later
-prefix/period phases apply prebound electrical writes and ordered effects. Private wires,
-actor/resource revisions and future queues
-are reconstructed at projection or input interruption. No symbolic compilation or mask enumeration
-runs at runtime. The old finite machine remains a migration fallback; its three-input limit does
-not constrain the symbolic path. Export migration, removal of the old
-enumerator and release performance validation are still pending. Read
-[COMPACT_INSTANT_KERNEL.md](../../../../../docs/notes/redpiler-pistons-v4/COMPACT_INSTANT_KERNEL.md)
-before extending admission, normalization, or the bounded derivation budget. The superseded
-snapshot prototype is recorded in
-[CLOSED_INSTANT_MACHINE.md](../../../../../docs/notes/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md).
+Instant synthesis is disabled in the default pipeline at every optimization level, including
+`-O4`, higher levels, and `--stable-instant-inputs`. The three builders
+`compile-symbolic-regions`, `compile-instant-machine`, and `compile-symbolic-kernels` remain
+registered as skipped passes. Their code is retained for explicit developer-supplied
+experimental pipelines. O3 piston/reset specialization, region discovery and proxies remain
+enabled normally. The unfinished event compiler must not be substituted with the older
+finite machine or whole-selection symbolic compiler automatically.
+
+See [BOUNDARY_DRIVEN_INSTANT_COMPILER.md](../../../../../docs/notes/redpiler-pistons-v4/BOUNDARY_DRIVEN_INSTANT_COMPILER.md)
+for the stop checkpoint and known compilation/runtime blockers. The synthesis descriptions
+below document the retained experiments, not active production behavior.
 
 Ready-entry reduction may substitute only memory constants proved by the original admission
 conditions; keep those conditions in the emitted kernel. Captured stored-wire shapes may form a
@@ -133,9 +128,9 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | Build | O3 | `compile-instant-resets` | General Turbo execution of the certified two-wire reset output. |
 | Build | O3 | `identify-instant-regions` | Instant region ownership boundaries. |
 | Build | O3 | `compile-instant-proxies` | Boundary execution proxies. |
-| Build | O4 | `compile-symbolic-regions` | Compile each supported region's actor sample/accept and unique reset event routines against one shared boundary. |
-| Build | O4 | `compile-instant-machine` | Compact execution for a bounded closed selection. |
-| Build | O4 | `compile-symbolic-kernels` | AOT prefix/period programs over typed inputs, without enumerating their values. |
+| Build | Disabled | `compile-symbolic-regions` | Experimental region event compiler; requires an explicitly supplied pipeline. |
+| Build | Disabled | `compile-instant-machine` | Experimental compact execution for a bounded closed selection. |
+| Build | Disabled | `compile-symbolic-kernels` | Experimental AOT prefix/period programs over typed inputs. |
 
 The unoptimized pipeline still runs the complete general graph. Keep both phases and their order explicit; do not silently reorder entries or turn a custom pipeline into the default. When adding an entry, place it in the correct phase and optimization tier; do not introduce a dedicated setting for it.
 
@@ -303,3 +298,20 @@ This is a first exact lowering of connecting dust calculations, not an atomic in
 ### O4 boundary-driven region event compiler
 
 `compile_symbolic_regions.rs` emits one grouped program for an entire supported ownership region. Every actor gets sample and accept routines, while each unique reset node gets update and tick routines; a region is published atomically or carries an explicit decline with its source index and actor/reset counts. The shared boundary remains graph-bound in the draft and export, then is dropped during lowering because route and power-link ordinals are rewritten there. Actor reads retain copied link operands, and runtime dispatch uses direct actor/reset bindings at the original callback and tick positions. Programs execute during the ordinary global schedule and can share that schedule with unrelated pending devices. These routines reuse ordinary Graph state, wire walks, callbacks, resources and scheduler primitives; this milestone does not contract internal wires or bypass their synchronous effects. JSON `symbolic_regions` and `symbolic_region_declines` expose the program and coverage. See `SYMBOLIC_VIRTUAL_CIRCUIT.md` for limits and remaining event/boundary contraction work.
+
+### Opt-in committed-signal classic redstone nets
+
+`compile_classic_redstone` runs at O2+ when `--classic-redstone` is selected.
+It certifies whole fixed wire regions with one variable ingress and delayed
+torch/unlocked-repeater boundary receivers. Dense lowering replaces original
+owned route occurrences with ordered receiver operations selected by compact
+old/new strength masks; private wire state is projected from one committed net
+signal. Independent validation checks ordered meaningful samples and final
+strengths against ordinary Graph execution before publication. Unsupported
+regions retain general execution. Captured boundaries, contacts, independent
+receiver inputs, reentrant ingress prefixes and overlapping owners decline.
+
+This first family is default-off: the current ANPU census accepts no net, while
+`simple_and_gate.schem` supplies a small real positive fixture. Bounds, proofs,
+coverage, continuation/FIFO tests, storage and paired measurements are recorded
+in [CLASSIC_REDSTONE_PROGRESS.md](../../../../../docs/notes/redpiler-pistons-v4/CLASSIC_REDSTONE_PROGRESS.md).
