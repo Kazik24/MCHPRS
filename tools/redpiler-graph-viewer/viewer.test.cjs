@@ -88,13 +88,44 @@ test('classic nets display committed edges and reject corrupt masks, occurrences
   assert.equal(viewer.evaluate(`connections.has('classic_net:0:ingress')`), true);
   assert.equal(viewer.evaluate(`[...connections.values()].some((edge) => edge.record.execution === 'classic_provenance')`), false);
   assert.equal(viewer.cy.getElementById('classic_net:0').length, 1);
-  for (const mutation of ['mask', 'attenuation', 'occurrence', 'overlap']) {
+  const sampled = JSON.parse(JSON.stringify(original));
+  const sampledOp = sampled.graph.classic_nets[0].entries.find((entry) => entry.ops.length).ops[0];
+  sampledOp.sample = { kind: 'boolean', nonzero: sampledOp.nonzero };
+  await load(viewer, sampled);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  for (const mutation of ['mask', 'sample', 'attenuation', 'occurrence', 'overlap']) {
     const damaged = JSON.parse(JSON.stringify(original));
     const net = damaged.graph.classic_nets[0];
     if (mutation === 'mask') net.entries.find((entry) => entry.ops.length).ops[0].when[0] = 'invalid';
+    else if (mutation === 'sample') net.entries.find((entry) => entry.ops.length).ops[0].sample = { kind: 'comparator', strength: 16, powered: true };
     else if (mutation === 'attenuation') net.wires[0].attenuation = 16;
     else if (mutation === 'occurrence') net.entries[0].ordinal = 999999;
     else damaged.graph.classic_nets.push({ ...net, id: 'classic_net:1' });
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false, mutation);
+  }
+});
+
+test('weighted queries distinguish live reads from settled provenance and validate operands', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const node = graph.graph.nodes[0].id;
+  graph.graph.fixed_signal_queries = ['live_state', 'settled_provenance'].map((semantics, ordinal) => ({
+    id: `fixed_signal:${ordinal}`, semantics, constant: 0,
+    to: { kind: 'input', node, port: 'main' }, inputs: [{ node, attenuation: 2, require_cross: false }],
+  }));
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.evaluate(`connections.get('fixed_signal:0:input:0').type`), 'fixed_live_read');
+  assert.equal(viewer.evaluate(`connections.get('fixed_signal:1:input:0').type`), 'settled_weighted_provenance');
+  for (const mutation of ['weight', 'node', 'semantics', 'port']) {
+    const damaged = structuredClone(graph);
+    const query = damaged.graph.fixed_signal_queries[0];
+    if (mutation === 'weight') query.inputs[0].attenuation = 15;
+    else if (mutation === 'node') query.inputs[0].node = 'node:999999';
+    else if (mutation === 'port') query.to.port = 'invalid';
+    else query.semantics = 'compiled';
     await load(viewer, damaged);
     assert.equal(viewer.elements.get('error').hidden, false, mutation);
   }
@@ -270,6 +301,29 @@ test("a high-degree fixture keeps the layout bounded and every edge endpoint pre
     assert.ok(nodes.has(edge.data.source));
     assert.ok(nodes.has(edge.data.target));
   }
+});
+
+test('fixed classic summary tolerates old exports and reports compile or decline inventory', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  assert.match(viewer.elements.get('availability').textContent, /fixed classic: not included/);
+
+  graph.graph.fixed_classic = { status: 'declined', decline: 'dynamic contact geometry' };
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  assert.match(viewer.elements.get('availability').textContent, /fixed classic: declined · dynamic contact geometry/);
+
+  graph.graph.fixed_classic = {
+    status: 'compiled',
+    inventory: { accounted_bytes: 4096, tables: [{ table: 'nodes', entries: 12 }, { table: 'wires', entries: 4 }, { table: 'route_ops', entries: 20 }] },
+    program: {},
+  };
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  assert.match(viewer.elements.get('availability').textContent, /fixed classic: compiled · 12 nodes · 4 wires · 20 route ops · 4096 accounted bytes/);
 });
 
 function adderFixture() {
@@ -636,4 +690,218 @@ test('compact instant kernels validate the bounded DAG, required roots, and type
   maxU64.graph.instant_kernel.expressions[0].value = '18446744073709551615';
   await load(viewer, maxU64);
   assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+});
+
+function instantBoundaryFixture() {
+  const graph = adderFixture();
+  const observer = graph.graph.nodes.find((node) => node.kind.kind === 'observer');
+  graph.graph.instant_cells = [{
+    id: 'instant_cell:0', actors: [graph.graph.pistons[0].id],
+    resources: [graph.graph.resources[0].id], resets: [observer.id],
+  }];
+  graph.graph.instant_corridors = [{ id: 'instant_corridor:0', wires: [], conductive_sites: [] }];
+  graph.graph.instant_declines = [];
+  const route = graph.graph.routes.find((row) => row.deliveries.length);
+  const siteGuard = graph.graph.guards.find((row) => row.kind === 'site');
+  const stateGuard = graph.graph.guards.find((row) => row.kind === 'state');
+  const contact = graph.graph.contacts.find((row) => row.variants.length);
+  const wireNode = graph.graph.nodes.find((node) => node.kind.kind === 'wire');
+  const wirePlan = graph.graph.wire_plans.find((plan) => plan.id === wireNode.kind.plan);
+  const capturedRoute = graph.graph.routes.find((candidate) => candidate.id === wirePlan.turbo_route);
+  const capturedOrdinal = capturedRoute.deliveries.findIndex((delivery) => delivery.view === 'captured'
+    && wirePlan.canonical_neighbors.includes(delivery.target));
+  assert.ok(capturedOrdinal >= 0);
+  const capturedNeighbor = capturedRoute.deliveries[capturedOrdinal].target;
+  const comparatorPlan = {
+    id: 'comparator_plan:0', node: graph.graph.nodes[0].id, rear: graph.graph.sites[0].id,
+    direct_override: { kind: 'literal', value: 1 },
+    far_override: { site: graph.graph.sites[0].id, guard: siteGuard.id, value: { kind: 'live_component_output', node: graph.graph.nodes[0].id } },
+  };
+  graph.graph.comparator_plans.push(comparatorPlan);
+  graph.graph.instant_boundary_ports = [
+    { id: 'instant_port:0', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'power', link: graph.graph.power_links[0].id } },
+    { id: 'instant_port:1', owner: 'instant_cell:0', direction: 'output', binding: { kind: 'callback', occurrence: { route: route.id, ordinal: 0 } } },
+    { id: 'instant_port:2', owner: 'instant_cell:0', direction: 'output', binding: { kind: 'callback', occurrence: { route: route.id, ordinal: 0 } } },
+    ...['rear', 'direct_override', 'far_override_site', 'far_override_guard', 'far_override_output'].map((role, index) => ({
+      id: `instant_port:${3 + index}`, owner: 'instant_cell:0', direction: 'input',
+      binding: { kind: 'comparator', plan: comparatorPlan.id, role },
+    })),
+    { id: 'instant_port:8', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'guard_site', guard: siteGuard.id, site: siteGuard.site, view: siteGuard.view, test: siteGuard.test } },
+    { id: 'instant_port:9', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'guard_state', guard: stateGuard.id, test: stateGuard.test } },
+    { id: 'instant_port:10', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'contact_alternative', contact: contact.id, ordinal: 0 } },
+    { id: 'instant_port:11', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'observer_watch', observer: observer.id, site: observer.kind.watched } },
+    { id: 'instant_port:12', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'captured_wire', wire: wireNode.id, occurrence: { route: capturedRoute.id, ordinal: capturedOrdinal }, neighbor: capturedNeighbor } },
+    { id: 'instant_port:13', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'wire_neighborhood', wire: wireNode.id, neighbor: wirePlan.canonical_neighbors[0] } },
+    { id: 'instant_port:14', owner: 'instant_cell:0', direction: 'input', binding: { kind: 'fixed_read', node: observer.id, site: graph.graph.sites[0].id, role: 'note_support' } },
+  ];
+  return graph;
+}
+
+function instantLayerFixture() {
+  const graph = instantBoundaryFixture();
+  const catalogCell = graph.graph.instant_cells[0];
+  catalogCell.actors.push(graph.graph.pistons[1].id);
+  const route = graph.graph.routes.find((row) => row.deliveries.length >= 2);
+  const occurrence = (ordinal) => ({ route: route.id, ordinal });
+  const observer = catalogCell.resets[0];
+  const actorRoutes = graph.graph.pistons[0].routes;
+  const lifecycleOccurrence = (routeId) => ({ route: routeId, ordinal: 0 });
+  const watchedSiteId = graph.graph.nodes.find((node) => node.id === observer).kind.watched;
+  const watchedContactId = graph.graph.sites.find((site) => site.id === watchedSiteId).source.contact;
+  const watchedActorId = graph.graph.contacts.find((contact) => contact.id === watchedContactId).variants
+    .find((variant) => variant.receiver?.kind === 'piston_base').receiver.piston;
+  const watchedRoutes = graph.graph.pistons.find((piston) => piston.id === watchedActorId).routes;
+  const observerSite = graph.graph.sites.find((site) => site.source.kind === 'component' && site.source.node === observer);
+  const resetLink = graph.graph.power_links.find((link) => link.from.site === observerSite.id
+    && (link.from.port.kind === 'output' || (link.from.port.kind === 'strong' && link.from.port.face === 'bottom'))
+    && link.guard === 'guard:0' && link.attenuation === 0);
+  graph.graph.instant_boundary_ports.push({
+    id: 'instant_port:15', owner: catalogCell.id, direction: 'input',
+    binding: { kind: 'callback', occurrence: occurrence(0) },
+  });
+  graph.graph.instant_layer_regions = [{
+    id: 'instant_layer_region:7', stationary_entry: 6, cells: [catalogCell.id], corridors: ['instant_corridor:0'],
+    inputs: [
+      { role: 'activation_event', source: { kind: 'boundary_event', port: 'instant_port:15', occurrence: occurrence(0) } },
+      { role: 'request_sample', source: { kind: 'power_contribution', port: 'instant_port:0', link: graph.graph.power_links[0].id } },
+      { role: 'acceptance_revalidation', source: { kind: 'state', test: { kind: 'piston_extended', piston: graph.graph.pistons[0].id } } },
+      { role: 'request_sample', source: { kind: 'local_reset_output', observer, link: resetLink.id } },
+      { role: 'acceptance_revalidation', source: { kind: 'state', test: { kind: 'resource_enabled', resource: catalogCell.resources[0] } } },
+    ],
+    outputs: [{ port: 'instant_port:1', emitted_when: 6 }],
+    cold_lifecycle_occurrences: [
+      { actor: graph.graph.pistons[0].id, phase: 'retraction_base_changed', occurrence: lifecycleOccurrence(actorRoutes.base_changed), reason: { kind: 'base_pending_self_update' } },
+      { actor: graph.graph.pistons[0].id, phase: 'retraction_far_changed', occurrence: lifecycleOccurrence(actorRoutes.far_changed), reason: { kind: 'base_pending_self_update' } },
+      { actor: graph.graph.pistons[0].id, phase: 'retraction_near_changed', occurrence: lifecycleOccurrence(actorRoutes.near_changed), reason: { kind: 'base_pending_self_update' } },
+      { actor: graph.graph.pistons[0].id, phase: 'deferred_base_restoration', occurrence: lifecycleOccurrence(actorRoutes.base_restored), reason: { kind: 'deferred_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'deferred_head_restoration', occurrence: lifecycleOccurrence(actorRoutes.head_restored), reason: { kind: 'deferred_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'deferred_resource_restoration', occurrence: lifecycleOccurrence(actorRoutes.resource_restored_near), reason: { kind: 'deferred_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'reset_observer_lifecycle', occurrence: lifecycleOccurrence(watchedRoutes.base_changed), reason: { kind: 'reset_observer_update', observer } },
+    ],
+    resource_outputs: [{ cell: catalogCell.id, resource: catalogCell.resources[0],
+      source: graph.graph.resources[0].contacts[0], destination: graph.graph.resources[0].contacts[1],
+      transfer_when: 7, source_absent_after: 8 }],
+    expressions: [
+      { kind: 'constant', value: true }, { kind: 'input', input: 0 }, { kind: 'input', input: 1 },
+      { kind: 'input', input: 2 }, { kind: 'not', value: 0 }, { kind: 'all', values: [1, 4] },
+      { kind: 'any', values: [2, 3] }, { kind: 'input', input: 3 }, { kind: 'input', input: 4 },
+    ],
+    pin_values: [{ cell: catalogCell.id, pin: 0, value: 5 }],
+    layers: [{ order: 'fifo', uses: [
+      { use_id: 0, actor: graph.graph.pistons[0].id, requested: 1, accepted: 2, consumed_before: 0, consumed_after: 5,
+        cause: { kind: 'boundary', occurrences: [occurrence(0), occurrence(1)] } },
+      { use_id: 1, actor: graph.graph.pistons[1].id, requested: 2, accepted: 3, consumed_before: 0, consumed_after: 6,
+        cause: { kind: 'boundary', occurrences: [occurrence(0), occurrence(1)] } },
+    ] }],
+  }];
+  graph.graph.instant_layer_declines = [];
+  return graph;
+}
+
+test('loads and selects additive instant boundary records while accepting older exports', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = instantBoundaryFixture();
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.evaluate("recordIndex.has('instant_cell:0')"), true);
+  assert.equal(viewer.evaluate("recordIndex.has('instant_corridor:0')"), true);
+  assert.equal(viewer.evaluate("recordIndex.has('instant_port:2')"), true);
+  viewer.evaluate('focusRecord("instant_port:2")');
+  assert.match(viewer.elements.get('details').textContent, /instant_port:2/);
+  const older = adderFixture();
+  for (const table of ['instant_cells', 'instant_corridors', 'instant_boundary_ports', 'instant_declines']) delete older.graph[table];
+  await load(viewer, older);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+});
+
+test('loads causal-layer records and keeps local expressions and callback causes distinct', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = instantLayerFixture();
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.evaluate("recordIndex.has('instant_layer_region:7')"), true);
+  viewer.evaluate('focusRecord("instant_layer_region:7")');
+  assert.match(viewer.elements.get('details').textContent, /instant_layer_region:7/);
+
+  const previous = viewer.cy;
+  for (const corrupt of [
+    (row) => { row.cells = ['instant_cell:999']; },
+    (row) => { row.expressions[4].value = 4; },
+    (row) => { row.stationary_entry = 99; },
+    (row) => { row.outputs[0].emitted_when = 99; },
+    (row) => { row.inputs[0].source.port = 'instant_port:999'; },
+    (row) => { row.inputs[1].source.link = 'power_link:999'; },
+    (row) => { row.inputs[2].source.test.piston = 'resource:0'; },
+    (row) => { row.inputs[3].source.observer = 'node:999'; },
+    (row) => { row.inputs[3].source.link = 'power_link:0'; },
+    (row) => { row.inputs[4].source.test.resource = 'resource:999'; },
+    (row) => { row.resource_outputs[0].source = 'contact:999'; },
+    (row) => { row.resource_outputs[0].destination = row.resource_outputs[0].source; },
+    (row) => { row.cold_lifecycle_occurrences[0].occurrence.ordinal = 99; },
+    (row) => { row.cold_lifecycle_occurrences[6].reason.observer = 'node:999'; },
+    (row) => { row.cold_lifecycle_occurrences[3].phase = 'deferred_resource_restoration'; },
+    (row) => { row.layers[0].uses[0].actor = 'piston:999'; },
+    (row) => { row.layers[0].uses.push(structuredClone(row.layers[0].uses[0])); },
+  ]) {
+    const damaged = structuredClone(graph);
+    corrupt(damaged.graph.instant_layer_regions[0]);
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+  const declined = structuredClone(graph);
+  declined.graph.instant_layer_regions = [];
+  declined.graph.instant_layer_declines = [{
+    id: 'instant_layer_decline:4', cells: ['instant_cell:0'], corridors: ['instant_corridor:0'],
+    witness: { kind: 'actor', piston: graph.graph.pistons[0].id }, reason: 'shared_owner_order_unknown',
+  }];
+  await load(viewer, declined);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.evaluate("recordIndex.has('instant_layer_decline:4')"), true);
+  viewer.evaluate('focusRecord("instant_layer_decline:4")');
+  assert.match(viewer.elements.get('details').textContent, /instant_layer_decline:4/);
+  const older = structuredClone(graph);
+  delete older.graph.instant_layer_regions;
+  delete older.graph.instant_layer_declines;
+  await load(viewer, older);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+});
+
+test('rejects malformed instant boundary tables, ownership, and dangling bindings', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  await load(viewer, instantBoundaryFixture());
+  const previous = viewer.cy;
+  const corruptions = [
+    (graph) => { graph.graph.instant_cells.push({ ...graph.graph.instant_cells[0], id: 'instant_cell:1' }); },
+    (graph) => { graph.graph.instant_cells[0].actors = ['node:0']; },
+    (graph) => { graph.graph.instant_cells[0].resets = ['node:0']; },
+    (graph) => { graph.graph.instant_corridors[0].wires = ['node:0']; },
+    (graph) => { graph.graph.instant_corridors[0].wires = ['node:999']; },
+    (graph) => { graph.graph.instant_corridors[0].conductive_sites = [graph.graph.sites[0].id]; graph.graph.instant_corridors.push({ id: 'instant_corridor:1', wires: [], conductive_sites: [graph.graph.sites[0].id] }); },
+    (graph) => { graph.graph.instant_boundary_ports[0].owner = 'instant_cell:999'; },
+    (graph) => { graph.graph.instant_boundary_ports[0].direction = 'sideways'; },
+    (graph) => { graph.graph.instant_boundary_ports[0].binding.link = 'power_link:999'; },
+    (graph) => { graph.graph.comparator_plans[0].far_override.value.kind = 'literal'; },
+    (graph) => { graph.graph.instant_declines.push({ id: 'instant_decline:0', actors: graph.graph.instant_cells[0].actors, reason: { code: 'unsupported_case' } }); },
+    (graph) => { graph.graph.instant_regions = [{ id: 'instant_region:0', wires: [], actors: [], resources: [], resets: [], contacts: [], readable_sites: [], power_inputs: [], power_readers: [], routes: [], wire_readers: [], observers: [], incoming: [], outgoing: [] }]; },
+  ];
+  for (const corrupt of corruptions) {
+    const damaged = structuredClone(instantBoundaryFixture());
+    corrupt(damaged);
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+
+  const classicOwned = instantBoundaryFixture();
+  const classicWire = classicOwned.graph.nodes.find((node) => node.kind.kind === 'wire').id;
+  classicOwned.graph.classic_nets = [{ id: 'classic_net:0', source: classicOwned.graph.nodes[0].id, initial_signal: 0,
+    wires: [{ node: classicWire, attenuation: 0 }], inputs: [], entries: [] }];
+  classicOwned.graph.instant_corridors[0].wires = [classicWire];
+  await load(viewer, classicOwned);
+  assert.equal(viewer.elements.get('error').hidden, false);
+  assert.equal(viewer.cy, previous);
 });

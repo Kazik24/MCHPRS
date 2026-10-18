@@ -77,7 +77,7 @@ fn build_turbo_callback_index(targets: &[crate::redpiler::program_graph::SiteId;
     (row == route.deliveries.len()).then_some(TurboCallbackIndex { offsets })
 }
 
-fn index_wire(wire: &WirePlan, routes: &[Route]) -> Option<TurboCallbackIndex> {
+pub(crate) fn index_wire(wire: &WirePlan, routes: &[Route]) -> Option<TurboCallbackIndex> {
     wire.turbo_route
         .and_then(|route| routes.get(route.index()))
         .and_then(|route| build_turbo_callback_index(&wire.canonical_neighbors, route))

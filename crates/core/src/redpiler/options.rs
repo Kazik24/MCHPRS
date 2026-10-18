@@ -10,7 +10,7 @@ pub struct CompilerOptions {
     pub optimization_level: Option<usize>,
     /// Promise stable inputs through reset; enables O3 region composition.
     pub stable_instant_inputs: bool,
-    /// Experimental committed-signal nets; requires O2 and remains opt-in pending acceptance.
+    /// Experimental whole fixed circuits, then certified local nets; requires O2.
     pub classic_redstone: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,

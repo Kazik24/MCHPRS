@@ -173,8 +173,13 @@ fn lowered_inventory(graph: &GraphBackend) -> serde_json::Value {
         "transfers_without_runtime_geometry":facts.iter().filter(|facts|facts.transfer.is_some_and(|transfer|transfer.seed.conditional==0&&transfer.turbo.conditional==0)).count(),
         "isolated":facts.iter().filter(|facts|facts.isolated).count(),"hop_roots":plans.iter().filter(|wire|wire.execution.hop_root.is_some()).count(),
         "contacts":graph.program.contacts().len(),"pistons":graph.program.pistons().len(),"resources":graph.program.resources().len(),
+        "compiled_callback_wires":plans.iter().filter(|wire|wire.execution.callback_selection.is_some_and(|plan|plan.known==WireCallbackSelection::ALL)).count(),
+        "compiled_callback_slots":plans.iter().filter_map(|wire|wire.execution.callback_selection).map(|plan|plan.known.count_ones() as usize).sum::<usize>(),
+        "callback_index_entries":graph.program.turbo_callback_indices().len(),
         "classic_nets":graph.program.classic().nets.len(),"classic_wires":graph.program.classic().wires.len(),
         "classic_guarded_wires":graph.program.classic().guarded_wires.len(),
+        "classic_outside_main_terms":graph.program.classic().outside.len(),
+        "classic_guarded_receiver_inputs":graph.program.classic().inputs.iter().filter(|input|input.guarded).count(),
         "classic_active_nets":graph.state.classic_active.iter().filter(|active|**active).count(),
         "classic_deoptimized_nets":graph.state.classic_active.iter().filter(|active|!**active).count()})
 }
@@ -213,6 +218,17 @@ fn chungus_bounded_interpreter_graph_differential() {
             GraphBackend::compile_with_options(&native, bounds, native.scheduler().iter_entries().collect(), &options, monitor.clone()).unwrap(),
         );
         compile_seconds.push(started.elapsed().as_secs_f64());
+        println!(
+            "CHUNGUS COMPILED classic={enable_classic} seconds={} inventory={} fixed_tables={:?}",
+            compile_seconds.last().unwrap(),
+            lowered_inventory(graphs.last().unwrap()),
+            monitor
+                .graph_statistics()
+                .preparation_tables
+                .iter()
+                .filter(|table| table.stage == "fixed signals")
+                .collect::<Vec<_>>()
+        );
         monitors.push(monitor);
     }
     let mut unchecked = None;
@@ -401,7 +417,7 @@ fn chungus_bounded_interpreter_graph_differential() {
     }
     let modes=graphs.iter().enumerate().map(|(index,graph)|{
         let statistics=monitors[index].graph_statistics();
-        let tables=statistics.preparation_tables.iter().filter(|table|table.stage=="classic redstone"||table.stage=="lowering input").map(|table|json!({"stage":table.stage,"table":table.table,"entries":table.entries,"estimated_bytes":table.estimated_bytes})).collect::<Vec<_>>();
+        let tables=statistics.preparation_tables.iter().filter(|table|table.stage=="classic redstone"||table.stage=="lowering input"||table.stage=="fixed signals"||table.stage=="compiled wire callbacks").map(|table|json!({"stage":table.stage,"table":table.table,"entries":table.entries,"estimated_bytes":table.estimated_bytes})).collect::<Vec<_>>();
         json!({"mode":names[index],"compile_seconds":compile_seconds[index],"plans":lowered_inventory(graph),"execution_seconds":execution[index+1].as_secs_f64(),
             "activation_seconds":activation[index+1].as_secs_f64(),"projection_seconds":projection[index].as_secs_f64(),"mismatch_observations":mismatches[index],
             "first_mismatch":first[index],"first_actor_mismatch":first_actor[index],"first_analog_mismatch":first_analog[index],
@@ -444,4 +460,135 @@ fn chungus_bounded_interpreter_graph_differential() {
         graphs[0].execution_counts().callbacks > 0 && graphs[0].execution_counts().wire_walks > 0,
         "CPU must do real work"
     );
+}
+
+#[test]
+#[ignore = "research: CHUNGUS electrical opportunity census, no reference replay or execution"]
+fn chungus_binary_classic_candidate_census() {
+    use crate::redpiler::passes::{GraphPass, PassContext};
+    use std::collections::BTreeSet;
+    let started = Instant::now();
+    let world = load_chungus_world();
+    let monitor = TaskMonitor::default();
+    let mut graph = passes::rich::prepare(
+        &world,
+        world.get_corners(),
+        world.scheduler().iter_entries().collect(),
+        &monitor,
+        AnalysisLimits::for_budget(8),
+    )
+    .unwrap()
+    .graph;
+    let options = crate::redpiler::CompilerOptions::default();
+    let entry = EntryState {
+        logical_tick: 0,
+        pending_ticks: vec![],
+    };
+    passes::simplify_guards::GuardAndUpdateReduction
+        .run(
+            &mut graph,
+            &PassContext {
+                monitor: &monitor,
+                options: &options,
+                entry: &entry,
+            },
+        )
+        .unwrap();
+    let analysis = ClassicAnalysis::new(&graph);
+    let regions = passes::compile_classic_redstone::census_regions(&graph);
+    let mut cardinalities = BTreeMap::<String, [usize; 2]>::new();
+    let mut source_kinds = BTreeMap::<String, usize>::new();
+    let mut declines = BTreeMap::<String, [usize; 2]>::new();
+    let mut existing_declines = BTreeMap::<String, [usize; 2]>::new();
+    let mut candidates = [0usize; 2];
+    let mut one_to_four = [0usize; 2];
+    for members in &regions {
+        let owned = members.iter().copied().collect::<BTreeSet<_>>();
+        let mut sources = BTreeSet::new();
+        let mut reasons = BTreeSet::<String>::new();
+        for &wire in members {
+            match analysis.census_expression(wire, InputPort::Main) {
+                Ok((constant, leaves)) => {
+                    if constant != 0 {
+                        reasons.insert("nonzero fixed electrical contribution".into());
+                    }
+                    sources.extend(leaves.into_iter().filter(|source| !owned.contains(source)));
+                }
+                Err(reason) => {
+                    reasons.insert(format!("electrical query: {reason}"));
+                }
+            }
+        }
+        let bucket = if sources.len() > 4 { ">4".into() } else { sources.len().to_string() };
+        let row = cardinalities.entry(bucket).or_default();
+        row[0] += 1;
+        row[1] += members.len();
+        for &source in &sources {
+            let node = &graph.nodes[source.index()];
+            *source_kinds.entry(format!("{:?}", node.kind)).or_default() += 1;
+            if !matches!(
+                node.kind,
+                CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::Torch | NodeType::Repeater { .. })
+            ) {
+                reasons.insert("unsupported source kind (including analog/comparator)".into());
+            }
+            match &node.state {
+                ComponentState::Electrical(state) => {
+                    if state.output_strength != u8::from(state.powered) * 15 {
+                        reasons.insert("source output is not consistent binary 0/15".into());
+                    }
+                    if matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. })) {
+                        if state.repeater_locked {
+                            reasons.insert("saved source repeater locked".into());
+                        }
+                        match analysis.census_expression(source, InputPort::Side) {
+                            Ok((0, leaves)) if leaves.is_empty() => {}
+                            Ok(_) => {
+                                reasons.insert("source repeater structural side input".into());
+                            }
+                            Err(reason) => {
+                                reasons.insert(format!("source side query: {reason}"));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    reasons.insert("source is not electrical state".into());
+                }
+            }
+        }
+        if members.len() > CLASSIC_MAX_WIRES {
+            reasons.insert("region wire bound".into());
+        }
+        if !(1..=4).contains(&sources.len()) {
+            reasons.insert("source cardinality outside 1..4".into());
+        }
+        if reasons.is_empty() {
+            one_to_four[0] += 1;
+            one_to_four[1] += members.len();
+            if sources.len() >= 2 {
+                candidates[0] += 1;
+                candidates[1] += members.len();
+            }
+        }
+        for reason in reasons {
+            let row = declines.entry(reason).or_default();
+            row[0] += 1;
+            row[1] += members.len();
+        }
+        if let Err(reason) = analysis.infer(members) {
+            let row = existing_declines.entry(reason.into()).or_default();
+            row[0] += 1;
+            row[1] += members.len();
+        }
+    }
+    let report = json!({"regions":regions.len(),"wires":graph.wires.len(),"seconds":started.elapsed().as_secs_f64(),
+        "histogram_value_order":["regions","wires"],"source_cardinalities":cardinalities,"source_region_occurrences_by_kind":source_kinds,
+        "binary_1_to_4_electrical_candidates":one_to_four,"binary_2_to_4_extension_opportunity":candidates,
+        "overlapping_electrical_declines":declines,"existing_first_family_first_decline":existing_declines,
+        "claim":"Opportunity only: external nonwire source union over exact fixed Main queries in each current electrical region after guard reduction. No boundary legality, row representability, runtime binary invariant, source route prefixes, receiver ownership or 256 transition proof is certified. Decline reasons overlap; source kind counts count each source once per region. No CPU state enumeration."});
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/chungus-binary-classic-candidate-census.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    println!("CHUNGUS BINARY CANDIDATES {report}");
+    assert_eq!(cardinalities.values().map(|row| row[1]).sum::<usize>(), graph.wires.len());
 }

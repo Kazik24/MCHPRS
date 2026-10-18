@@ -1,11 +1,17 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
+pub(crate) mod compile_fixed_classic;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
 pub(crate) mod compile_wire_hops;
+pub(crate) mod compile_wire_callbacks;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_regions;
+#[cfg(test)]
+pub(crate) mod identify_instant_boundaries;
+#[cfg(test)]
+pub(crate) mod compile_instant_layers;
 pub(crate) mod index_turbo_callbacks;
 pub(crate) mod planning;
 pub(crate) mod prune_inert_callbacks;
@@ -263,11 +269,12 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::rewrite(specialize_instant_pistons::SpecializeInstantPistons)),
         (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
     ];
-    let plans: [(usize, Pass); 8] = [
+    let plans: [(usize, Pass); 9] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Pass::build(contract_dust_paths::ContractDustPaths)),
         (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
         (2, Pass::build(compile_wire_hops::CompileWireHops)),
+        (2, Pass::build(compile_wire_callbacks::CompileWireCallbacks)),
         (3, Pass::build(compile_instant_resets::CompileInstantResets)),
         (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
         (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
@@ -279,8 +286,9 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             pass,
             enabled: level >= minimum_level,
         })
-        .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
         .chain(plans.into_iter().map(|(minimum_level,pass)|PassEntry { pass,enabled:level>=minimum_level }))
+        .chain(std::iter::once(PassEntry { pass: Pass::build(compile_fixed_classic::CompileFixedClassic), enabled: level >= 2 && options.classic_redstone }))
+        .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
         .collect();
     let pipeline = PassPipeline::new(entries);
     #[cfg(feature = "unsafe-turbo-fixed-point")]
@@ -292,6 +300,31 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         });
         pipeline
     };
+    pipeline
+}
+
+/// Inspection-only replacement for the old region/proxy builders; public tiers stay unchanged.
+#[cfg(test)]
+pub(crate) fn experimental_boundary_pipeline(options: &CompilerOptions) -> PassPipeline {
+    let mut pipeline = default_graph_pipeline(options);
+    pipeline.entries.retain(|entry| {
+        !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies")
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
+        enabled: options.optimization_level.unwrap_or(usize::MAX) >= 3,
+    });
+    pipeline
+}
+
+/// Build cold causal layers without enabling a kernel or changing public optimization tiers.
+#[cfg(test)]
+pub(crate) fn experimental_layer_pipeline(options: &CompilerOptions) -> PassPipeline {
+    let mut pipeline = experimental_boundary_pipeline(options);
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_instant_layers::CompileInstantLayers),
+        enabled: options.optimization_level.unwrap_or(usize::MAX) >= 3,
+    });
     pipeline
 }
 

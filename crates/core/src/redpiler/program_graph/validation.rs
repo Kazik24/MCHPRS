@@ -14,7 +14,36 @@ impl CircuitDraft {
                 .map_err(|_| GraphBuildError::InvalidFixedSignals)? != self.plans.fixed_signals {
             return Err(GraphBuildError::InvalidFixedSignals);
         }
-        validate_classic(self,monitor)
+        validate_classic(self,monitor)?;
+        self.plans.fixed_classic.validate(self, monitor).map_err(|_| GraphBuildError::InvalidFixedClassic)?;
+        self.validate_instant_boundaries(monitor)
+    }
+
+    fn validate_instant_boundaries(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        let Some(catalog) = &self.plans.instant.boundaries else {
+            #[cfg(test)]
+            if self.plans.instant.layers.is_some() {
+                return Err(GraphBuildError::InvalidInstantRegion { table: "layers without boundaries", index: 0 });
+            }
+            return Ok(());
+        };
+        let invalid = || GraphBuildError::InvalidInstantRegion { table: "boundaries", index: 0 };
+        if !self.plans.instant.regions.is_empty() || !self.plans.instant.proxies.is_empty() {
+            return Err(invalid());
+        }
+        let expected = crate::redpiler::analysis::instant::boundaries::infer_boundaries(self, monitor).map_err(|_| invalid())?;
+        if *catalog != expected {
+            return Err(invalid());
+        }
+        #[cfg(test)]
+        if let Some(layers) = &self.plans.instant.layers {
+            let expected = crate::redpiler::analysis::instant::layers::compile_layers(self, catalog, monitor)
+                .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 })?;
+            if *layers != expected {
+                return Err(GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 });
+            }
+        }
+        Ok(())
     }
 
     fn validate_inner(&self) -> Result<(), GraphBuildError> {
@@ -51,6 +80,11 @@ impl CircuitDraft {
         self.validate_power()?;
         // Certificate inference follows contact variants, so their references must be valid first.
         for (index, wire) in self.wires.iter().enumerate() {
+            if let Some(selection) = wire.execution.callback_selection
+                && (!selection.valid() || Some(selection) != WireCallbackSelection::infer(self,index)) {
+                return Err(GraphBuildError::InvalidWireCallbackSelection {wire:index});
+            }
+
             if let Some(facts) = wire.execution.query_facts
                 && facts != WireQueryFacts::infer(self, wire)
             {

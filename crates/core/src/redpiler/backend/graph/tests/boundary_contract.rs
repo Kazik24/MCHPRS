@@ -3,7 +3,7 @@ use super::*;
 use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::instant_regions::infer_stable_regions;
 
-fn independent_devices() -> (CompileGraph, NodeId) {
+pub(super) fn independent_devices() -> (CompileGraph, NodeId) {
     let first = load_adder("adder_1bit", ORIGIN, None);
     let second = load_adder("adder_1bit", ORIGIN + BlockPos::new(48, 0, 0), None);
     let mut world = first.build();

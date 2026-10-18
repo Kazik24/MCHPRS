@@ -18,19 +18,39 @@ struct InputDto {
 }
 
 pub(super) fn export(graph: &CompileGraph) -> Vec<QueryDto> {
-    graph.plans.fixed_signals.live.iter().map(|query| ("live_state", query))
+    graph
+        .plans
+        .fixed_signals
+        .live
+        .iter()
+        .map(|query| ("live_state", query))
         .chain(graph.plans.fixed_signals.traced.iter().map(|query| ("settled_provenance", query)))
-        .enumerate().map(|(index, (semantics, query))| QueryDto {
-            id: typed_id("fixed_signal", index), semantics,
+        .enumerate()
+        .map(|(index, (semantics, query))| QueryDto {
+            id: typed_id("fixed_signal", index),
+            semantics,
             to: match query.target {
-                PowerTarget::Input { node, port } => PowerTargetDto::Input { node: typed_id("node", node.index()), port: input_port(port) },
-                PowerTarget::Conductor { site, include_dust } => PowerTargetDto::Conductor { site: typed_id("site", site.index()), include_dust },
+                PowerTarget::Input { node, port } => PowerTargetDto::Input {
+                    node: typed_id("node", node.index()),
+                    port: input_port(port),
+                },
+                PowerTarget::Conductor { site, include_dust } => PowerTargetDto::Conductor {
+                    site: typed_id("site", site.index()),
+                    include_dust,
+                },
             },
             constant: query.constant,
-            inputs: query.inputs.iter().map(|input| InputDto {
-                node: typed_id("node", input.node.index()), attenuation: input.attenuation, require_cross: input.require_cross,
-            }).collect(),
-        }).collect()
+            inputs: query
+                .inputs
+                .iter()
+                .map(|input| InputDto {
+                    node: typed_id("node", input.node.index()),
+                    attenuation: input.attenuation,
+                    require_cross: input.require_cross,
+                })
+                .collect(),
+        })
+        .collect()
 }
 
 pub(super) fn validate(queries: &[QueryDto], nodes: &HashSet<String>, sites: &HashSet<String>) -> Result<(), ExportError> {

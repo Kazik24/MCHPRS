@@ -2,7 +2,7 @@
   "format": "mchprs.redpiler.graph",
   "version": {
     "major": 1,
-    "minor": 1
+    "minor": 2
   },
   "stage": "callback_draft",
   "capabilities": [
@@ -35,6 +35,987 @@
     }
   },
   "graph": {
+    "fixed_signal_queries": [
+      {
+        "id": "fixed_signal:0",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:3",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:72",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:1",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:4",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:77",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:2",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:5",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:80",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:3",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:6",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:89",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:4",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:11",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:97",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:5",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:12",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:101",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:6",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:49",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:50",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:7",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:54",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:55",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:8",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:58",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:57",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:70",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:9",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:64",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:76",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:10",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:70",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:58",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:11",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:76",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:64",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:75",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:12",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:81",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:82",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:100",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:13",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:82",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:81",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:83",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:14",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:83",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:82",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:84",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:15",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:84",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:83",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:85",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:16",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:85",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:84",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:86",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:17",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:86",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:85",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:18",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:89",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:91",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:19",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:91",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:89",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:97",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:20",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:92",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:68",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:75",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:102",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:21",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:93",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:102",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:22",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:94",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:70",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:79",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:103",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:23",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:95",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:103",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:24",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:97",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:91",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:99",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:25",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:99",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:97",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:104",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:26",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:100",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:81",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:104",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:27",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:102",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:92",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:93",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:28",
+        "semantics": "live_state",
+        "to": {
+          "kind": "input",
+          "node": "node:103",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:94",
+            "attenuation": 1,
+            "require_cross": false
+          },
+          {
+            "node": "node:95",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:29",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:157",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:68",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:30",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:284",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:89",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:31",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:312",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:93",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:32",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:315",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:63",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:33",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:318",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:95",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:34",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:327",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:97",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:35",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:381",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:87",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:36",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:424",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:69",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:37",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:430",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:71",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:38",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:435",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:72",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:39",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:467",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:77",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:40",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:473",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:80",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:41",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:494",
+          "include_dust": false
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:104",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:42",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:532",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:90",
+            "attenuation": 0,
+            "require_cross": false
+          },
+          {
+            "node": "node:105",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:43",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:563",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:98",
+            "attenuation": 0,
+            "require_cross": false
+          },
+          {
+            "node": "node:106",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:44",
+        "semantics": "live_state",
+        "to": {
+          "kind": "conductor",
+          "site": "site:593",
+          "include_dust": true
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:101",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:45",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:3",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:72",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:46",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:4",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:77",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:47",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:5",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:80",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:48",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:6",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:104",
+            "attenuation": 3,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:49",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:11",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:104",
+            "attenuation": 1,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:50",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:12",
+          "port": "quasi"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:101",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      },
+      {
+        "id": "fixed_signal:51",
+        "semantics": "settled_provenance",
+        "to": {
+          "kind": "input",
+          "node": "node:54",
+          "port": "main"
+        },
+        "constant": 0,
+        "inputs": [
+          {
+            "node": "node:55",
+            "attenuation": 0,
+            "require_cross": false
+          }
+        ]
+      }
+    ],
     "nodes": [
       {
         "id": "node:0",
@@ -17982,6 +18963,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 14670839,
+          "admitted": 557072
+        },
         "hop_root": "site:70"
       },
       {
@@ -18032,6 +19017,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 15720191,
+          "admitted": 2097154
         },
         "hop_root": "site:83"
       },
@@ -18084,6 +19073,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 14678007,
+          "admitted": 1
+        },
         "hop_root": "site:84"
       },
       {
@@ -18134,6 +19127,10 @@
               "conditional": 1048576
             }
           }
+        },
+        "callback_selection": {
+          "known": 16775871,
+          "admitted": 1081346
         },
         "hop_root": "site:161"
       },
@@ -18186,6 +19183,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16513023,
+          "admitted": 8225
+        },
         "hop_root": "site:162"
       },
       {
@@ -18236,6 +19237,10 @@
               "conditional": 2097152
             }
           }
+        },
+        "callback_selection": {
+          "known": 16773823,
+          "admitted": 2097152
         },
         "hop_root": "site:167"
       },
@@ -18288,6 +19293,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 12566013,
+          "admitted": 139520
+        },
         "hop_root": "site:201"
       },
       {
@@ -18338,6 +19347,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 11532271,
+          "admitted": 256
         },
         "hop_root": "site:206"
       },
@@ -18390,6 +19403,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16776191,
+          "admitted": 262144
+        },
         "hop_root": "site:271"
       },
       {
@@ -18440,6 +19457,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16738239,
+          "admitted": 10485762
         },
         "hop_root": "site:288"
       },
@@ -18492,6 +19513,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16738303,
+          "admitted": 10485890
+        },
         "hop_root": "site:294"
       },
       {
@@ -18542,6 +19567,10 @@
               "conditional": 131072
             }
           }
+        },
+        "callback_selection": {
+          "known": 16776575,
+          "admitted": 132096
         },
         "hop_root": "site:320"
       },
@@ -18594,6 +19623,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16760767,
+          "admitted": 13631490
+        },
         "hop_root": "site:331"
       },
       {
@@ -18644,6 +19677,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16646127,
+          "admitted": 12589057
         },
         "hop_root": "site:332"
       },
@@ -18696,6 +19733,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16759807,
+          "admitted": 5246976
+        },
         "hop_root": "site:337"
       },
       {
@@ -18747,6 +19788,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 12582911,
+          "admitted": 2306
+        },
         "hop_root": "site:362"
       },
       {
@@ -18797,6 +19842,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 2051
         },
         "hop_root": "site:363"
       },
@@ -18850,6 +19899,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 4196419
+        },
         "hop_root": "site:364"
       },
       {
@@ -18901,6 +19954,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 4196419
         },
         "hop_root": "site:365"
       },
@@ -18954,6 +20011,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 67
+        },
         "hop_root": "site:366"
       },
       {
@@ -19005,6 +20066,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16775167,
+          "admitted": 4194369
+        },
         "hop_root": "site:367"
       },
       {
@@ -19055,6 +20120,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16773119,
+          "admitted": 8388642
         },
         "hop_root": "site:419"
       },
@@ -19108,6 +20177,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 8437808
+        },
         "hop_root": "site:441"
       },
       {
@@ -19158,6 +20231,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16773119,
+          "admitted": 403456
         },
         "hop_root": "site:445"
       },
@@ -19210,6 +20287,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16646015,
+          "admitted": 320
+        },
         "hop_root": "site:447"
       },
       {
@@ -19260,6 +20341,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16773119,
+          "admitted": 403456
         },
         "hop_root": "site:451"
       },
@@ -19312,6 +20397,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16646015,
+          "admitted": 320
+        },
         "hop_root": "site:453"
       },
       {
@@ -19362,6 +20451,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16773119,
+          "admitted": 4194354
         },
         "hop_root": "site:460"
       },
@@ -19415,6 +20508,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 4243472
+        },
         "hop_root": "site:478"
       },
       {
@@ -19467,6 +20564,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16777215,
+          "admitted": 4198912
+        },
         "hop_root": "site:495"
       },
       {
@@ -19518,6 +20619,10 @@
             }
           }
         },
+        "callback_selection": {
+          "known": 16711679,
+          "admitted": 4224
+        },
         "hop_root": "site:551"
       },
       {
@@ -19568,6 +20673,10 @@
               "conditional": 0
             }
           }
+        },
+        "callback_selection": {
+          "known": 16711679,
+          "admitted": 4224
         },
         "hop_root": "site:556"
       }

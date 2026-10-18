@@ -60,6 +60,31 @@ struct CensusTotals {
     by_actor: BTreeMap<(i32, i32, i32), ActionCounts>, // Accepted action counts keyed by fixture actor position.
 }
 
+pub(super) const IO_FIXTURES: [&str; 22] = [
+    "adder_11bits",
+    "adder_1bit",
+    "and_1",
+    "and_2",
+    "and_3",
+    "bud_instantmemorycellobserverupdate",
+    "bud_instantpistonupdate",
+    "bud_noninstantinputs",
+    "bud_pistonupdate",
+    "counter_basic",
+    "instant_blocked",
+    "instant_chain",
+    "instant_down",
+    "instant_down_torch_reset",
+    "instant_observer",
+    "instant_reset_redstone",
+    "instant_reset_redstone_2",
+    "instant_torch",
+    "not_1",
+    "or_1",
+    "or_interpreter_illigal",
+    "xor_simple",
+];
+
 const DATA_ORDERS: [[usize; 3]; 6] = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
 
 fn read_lever(world: &PlotWorld, position: BlockPos) -> bool {
@@ -748,30 +773,6 @@ fn eleven_bit_fixture_censuses_all_pinned_arithmetic_histories() {
 
 #[test]
 fn every_pinned_io_fixture_case_has_a_native_typed_census_and_resolved_ports() {
-    const FIXTURES: [&str; 22] = [
-        "adder_11bits",
-        "adder_1bit",
-        "and_1",
-        "and_2",
-        "and_3",
-        "bud_instantmemorycellobserverupdate",
-        "bud_instantpistonupdate",
-        "bud_noninstantinputs",
-        "bud_pistonupdate",
-        "counter_basic",
-        "instant_blocked",
-        "instant_chain",
-        "instant_down",
-        "instant_down_torch_reset",
-        "instant_observer",
-        "instant_reset_redstone",
-        "instant_reset_redstone_2",
-        "instant_torch",
-        "not_1",
-        "or_1",
-        "or_interpreter_illigal",
-        "xor_simple",
-    ];
     let fixture_directory = root().join("test_data/instant-pistons-io/fixtures");
     let available = std::fs::read_dir(&fixture_directory)
         .unwrap()
@@ -780,13 +781,13 @@ fn every_pinned_io_fixture_case_has_a_native_typed_census_and_resolved_ports() {
         .count();
     assert_eq!(
         available,
-        FIXTURES.len(),
+        IO_FIXTURES.len(),
         "update this explicit fixture list when the pinned corpus changes"
     );
 
     assert_adder_fixture_ports();
 
-    for id in FIXTURES {
+    for id in IO_FIXTURES {
         let circuit = boundary_contract_tests::load_mechanism(id);
         let manifest_path = fixture_directory.join(format!("{id}.json"));
         let manifest: Value = serde_json::from_slice(&std::fs::read(manifest_path).unwrap()).unwrap();

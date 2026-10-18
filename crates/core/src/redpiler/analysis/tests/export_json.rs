@@ -469,6 +469,57 @@ fn export_is_deterministic_and_exposes_a_lever_to_lamp_power_path() {
 }
 
 #[test]
+fn fixed_classic_plan_exports_and_validates_real_executable_tables() {
+    let mut world = empty();
+    let source = BASE;
+    let first_wire = source.offset(BlockFace::East);
+    let second_wire = first_wire.offset(BlockFace::East);
+    let repeater_pos = second_wire.offset(BlockFace::East);
+    world.set_block(source, Block::RedstoneBlock {});
+    world.set_block(first_wire, Block::RedstoneWire { wire: Default::default() });
+    world.set_block(second_wire, Block::RedstoneWire { wire: Default::default() });
+    world.set_block(
+        repeater_pos,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: BlockDirection::East,
+                ..Default::default()
+            },
+        },
+    );
+    let options = CompilerOptions {
+        optimization_level: Some(2),
+        classic_redstone: true,
+        ..Default::default()
+    };
+    let export = exported_with_options(&world, &options);
+    let document: Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
+    let plan = &document["graph"]["fixed_classic"];
+    assert_eq!(plan["status"], "compiled");
+    assert_eq!(
+        plan["program"]["nodes"].as_array().unwrap().len(),
+        document["graph"]["nodes"].as_array().unwrap().len()
+    );
+    assert_eq!(
+        plan["program"]["wires"].as_array().unwrap().len(),
+        document["graph"]["wire_plans"].as_array().unwrap().len()
+    );
+    assert_eq!(
+        plan["program"]["route_ranges"].as_array().unwrap().len(),
+        document["graph"]["routes"].as_array().unwrap().len()
+    );
+    assert_eq!(
+        plan["inventory"]["table_payload_bytes"],
+        plan["inventory"]["tables"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|table| table["payload_bytes"].as_u64().unwrap())
+            .sum::<u64>()
+    );
+}
+
+#[test]
 fn export_preserves_guarded_shared_resource_references() {
     let mut world = empty();
     let first = BASE;

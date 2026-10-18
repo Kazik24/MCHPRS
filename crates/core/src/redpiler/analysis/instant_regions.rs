@@ -1,6 +1,7 @@
 //! Conservative ownership closure and private-cell certificates, independent of pass order.
 //! All owned sites and state remain observable; no reader is declared dead by this analysis.
 use crate::redpiler::TaskMonitor;
+use crate::redpiler::analysis::instant::boundaries;
 use crate::redpiler::analysis::instant::ownership::{self, join, root};
 use crate::redpiler::passes::utils::instant_mechanisms::{InstantMechanism, discover_mechanisms};
 use crate::redpiler::program_graph::*;
@@ -15,6 +16,8 @@ fn check_cancelled(monitor: &TaskMonitor) -> Result<(), String> {
     }
 }
 
+type Owners = Vec<Option<usize>>;
+
 /// Index ownership once, then collect query and ordered event boundaries in separate scans.
 pub(crate) fn infer_regions(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<InstantRegion>, String> {
     let mechanisms = discover_mechanisms(graph, monitor)?;
@@ -22,34 +25,20 @@ pub(crate) fn infer_regions(graph: &CompileGraph, monitor: &TaskMonitor) -> Resu
         return Ok(Vec::new());
     }
     let (mut regions, actor_regions, contact_regions) = close_ownership(graph, &mechanisms, monitor)?;
-    let (node_regions, site_regions) = bind_owned_sites(graph, &mechanisms, &actor_regions, &contact_regions, &mut regions);
-    let owners = Ownership {
-        actors: actor_regions,
-        contacts: contact_regions,
-        nodes: node_regions,
-        sites: site_regions,
-    };
-    collect_power_boundary(graph, &owners, &mut regions, monitor)?;
-    collect_callback_boundary(graph, &owners, &mut regions, monitor)?;
-    collect_geometry_readers(graph, &owners, &mut regions, monitor)?;
+    let resets = bind_legacy_sites(graph, &mechanisms, &actor_regions, &contact_regions, &mut regions);
+    let owners = boundaries::bind_owners(graph, actor_regions, vec![None; graph.resources.len()], contact_regions, &resets);
+    for (index, owner) in owners.sites.iter().enumerate() {
+        if let Some(owner) = owner {
+            regions[*owner].readable_sites.push(SiteId::new(index as u32));
+        }
+    }
+    let scan = boundaries::scan_legacy_boundaries(graph, &owners, monitor)?;
+    project_legacy_scan(scan, &mut regions);
     for region in &mut regions {
         region.resets.sort_unstable();
     }
     check_cancelled(monitor)?;
     Ok(regions)
-}
-
-type Owners = Vec<Option<usize>>;
-
-struct Ownership {
-    /// This assigns every actuator to its complete region, if recognized.
-    actors: Owners,
-    /// This assigns every potential occupied position to its region.
-    contacts: Owners,
-    /// This binds callback receivers and route sources to their owner.
-    nodes: Owners,
-    /// This binds live and captured geometry queries to their owner.
-    sites: Owners,
 }
 
 fn close_ownership(
@@ -70,124 +59,52 @@ fn close_ownership(
     Ok((regions, closure.actors, closure.contacts))
 }
 
-fn bind_owned_sites(
+fn bind_legacy_sites(
     graph: &CompileGraph,
     mechanisms: &[InstantMechanism],
     actor_regions: &[Option<usize>],
     contact_regions: &[Option<usize>],
     regions: &mut [InstantRegion],
-) -> (Owners, Owners) {
-    let mut node_regions = vec![None; graph.nodes.len()];
-    for (index, actor) in graph.pistons.iter().enumerate() {
-        if let Some(owner) = actor_regions[index] {
-            node_regions[actor.node.index()] = Some(owner);
-        }
-    }
+) -> Vec<(NodeId, usize)> {
+    let mut resets = Vec::new();
     for mechanism in mechanisms {
         let owner = actor_regions[mechanism.piston.index()].expect("recognized actor has a region");
-        node_regions[mechanism.observer.index()] = Some(owner);
+        resets.push((mechanism.observer, owner));
         if !regions[owner].resets.contains(&mechanism.observer) {
             regions[owner].resets.push(mechanism.observer);
         }
     }
-    for (index, contact) in graph.contacts.iter().enumerate() {
+    for (index, _) in graph.contacts.iter().enumerate() {
         if let Some(owner) = contact_regions[index] {
             regions[owner].contacts.push(ContactId::new(index as u32));
-            node_regions[contact.node.index()] = Some(owner);
         }
     }
-    let site_regions: Vec<_> = graph
-        .sites
-        .iter()
-        .map(|site| match site.source {
-            SiteSource::Component(node) => node_regions[node.index()],
-            SiteSource::Contact(contact) => contact_regions[contact.index()],
-            SiteSource::Constant(_) => None,
-        })
-        .collect();
-    for (index, &owner) in site_regions.iter().enumerate() {
-        if let Some(owner) = owner {
-            regions[owner].readable_sites.push(SiteId::new(index as u32));
-        }
-    }
-    (node_regions, site_regions)
+    resets
 }
 
-fn collect_power_boundary(graph: &CompileGraph, owners: &Ownership, regions: &mut [InstantRegion], monitor: &TaskMonitor) -> Result<(), String> {
-    for (index, link) in graph.power_links.iter().enumerate() {
-        check_cancelled(monitor)?;
-        let target = match link.to {
-            PowerTarget::Input { node, .. } => owners.nodes[node.index()],
-            PowerTarget::Conductor { site, .. } => owners.sites[site.index()],
-        };
-        let source = owners.sites[link.from.index()];
-        if let Some(owner) = target.filter(|&owner| source != Some(owner)) {
-            regions[owner].power_inputs.push(index as u32);
-        }
-        if let Some(owner) = source {
-            if target != Some(owner) {
-                regions[owner].power_readers.push(index as u32);
-            }
-        }
-    }
-    Ok(())
-}
+fn project_legacy_scan(scan: boundaries::BoundaryScan, regions: &mut [InstantRegion]) {
+    use crate::redpiler::program_graph::{BoundaryDirection, BoundaryPortKind};
+    use rustc_hash::FxHashSet;
 
-fn collect_callback_boundary(graph: &CompileGraph, owners: &Ownership, regions: &mut [InstantRegion], monitor: &TaskMonitor) -> Result<(), String> {
-    // Scan large route tables once; retain references, not copies of their deliveries.
-    for (index, route) in graph.routes.iter().enumerate() {
-        check_cancelled(monitor)?;
-        let source = owners.nodes[route.source.index()];
-        let id = RouteId::new(index as u32);
-        if let Some(owner) = source {
-            regions[owner].routes.push(id);
-        }
-        for (ordinal, delivery) in route.deliveries.iter().enumerate() {
-            let target = match delivery.receiver {
-                Some(CallbackReceiver::Component(node)) => owners.nodes[node.index()],
-                Some(CallbackReceiver::Contact(contact)) => owners.contacts[contact.index()],
-                Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => owners.actors[actor.index()],
-                None => owners.sites[delivery.target.index()],
-            };
-            let occurrence = RouteOccurrence {
-                route: id,
-                ordinal: ordinal as u32,
-            };
-            if target != source {
-                if let Some(owner) = source {
-                    regions[owner].outgoing.push(occurrence);
-                }
-                if let Some(owner) = target {
-                    regions[owner].incoming.push(occurrence);
+    for (owner, route) in scan.owned_routes {
+        regions[owner].routes.push(route);
+    }
+    let mut wire_readers = FxHashSet::default();
+    for port in scan.ports {
+        match (port.direction, port.kind) {
+            (BoundaryDirection::Input, BoundaryPortKind::Power { link }) => regions[port.owner].power_inputs.push(link),
+            (BoundaryDirection::Output, BoundaryPortKind::Power { link }) => regions[port.owner].power_readers.push(link),
+            (BoundaryDirection::Input, BoundaryPortKind::Callback { occurrence }) => regions[port.owner].incoming.push(occurrence),
+            (BoundaryDirection::Output, BoundaryPortKind::Callback { occurrence }) => regions[port.owner].outgoing.push(occurrence),
+            (BoundaryDirection::Output, BoundaryPortKind::WireNeighborhood { wire, .. }) => {
+                if wire_readers.insert((port.owner, wire)) {
+                    regions[port.owner].wire_readers.push(wire);
                 }
             }
+            (BoundaryDirection::Output, BoundaryPortKind::ObserverWatch { observer, .. }) => regions[port.owner].observers.push(observer),
+            _ => {}
         }
     }
-    Ok(())
-}
-
-fn collect_geometry_readers(graph: &CompileGraph, owners: &Ownership, regions: &mut [InstantRegion], monitor: &TaskMonitor) -> Result<(), String> {
-    for wire in &graph.wires {
-        check_cancelled(monitor)?;
-        let mut read_regions: Vec<_> = wire.canonical_neighbors.iter().filter_map(|site| owners.sites[site.index()]).collect();
-        read_regions.sort_unstable();
-        read_regions.dedup();
-        for owner in read_regions {
-            if owners.nodes[wire.node.index()] != Some(owner) {
-                regions[owner].wire_readers.push(wire.node);
-            }
-        }
-    }
-    for (index, node) in graph.nodes.iter().enumerate() {
-        if let CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } = node.kind {
-            if let Some(owner) = owners.sites[watched.index()] {
-                if owners.nodes[index] != Some(owner) {
-                    regions[owner].observers.push(NodeId::new(index as u32));
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Compile ordered instructions; shared cells require an explicit composed-region contract.
@@ -325,6 +242,7 @@ fn classify_internal_delivery(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::redpiler::analysis::instant::boundaries::OwnerMap;
     use mchprs_blocks::{BlockFace, BlockPos};
 
     #[test]
@@ -371,15 +289,17 @@ mod tests {
             initial_resources: vec![],
             plans: ExecutionPlans::default(),
         };
-        let owners = Ownership {
+        let owners = OwnerMap {
             actors: vec![],
+            resources: vec![],
             contacts: vec![],
             nodes: vec![Some(0)],
             sites: vec![Some(0), None, Some(1)],
         };
         let mut regions = vec![InstantRegion::default(), InstantRegion::default()];
 
-        collect_power_boundary(&graph, &owners, &mut regions, &TaskMonitor::default()).unwrap();
+        let scan = boundaries::scan_legacy_boundaries(&graph, &owners, &TaskMonitor::default()).unwrap();
+        project_legacy_scan(scan, &mut regions);
 
         assert_eq!(regions[0].power_inputs, [1, 2]);
         assert_eq!(regions[1].power_readers, [2]);

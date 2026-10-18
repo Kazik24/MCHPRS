@@ -14,6 +14,7 @@ pub(crate) struct ClassicWire {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ClassicInput {
+    pub(crate) guarded: bool,
     pub(crate) receiver: NodeId,
     pub(crate) attenuation: u8,
     /// The same ingress may also contribute directly before the net route commits.
@@ -21,9 +22,23 @@ pub(crate) struct ClassicInput {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ClassicOutside {
+    pub(crate) receiver: NodeId,
+    pub(crate) node: NodeId,
+    pub(crate) attenuation: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(crate) enum ClassicSample {
+    Boolean { nonzero: bool },
+    Comparator { strength: u8, powered: bool },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ClassicOp {
     pub(crate) receiver: NodeId,
-    pub(crate) nonzero: bool,
+    pub(crate) sample: ClassicSample,
     /// Pair index is `(old << 4) | new`; masks select operations, not whole transcripts.
     pub(crate) when: [u64; 4],
 }
@@ -40,6 +55,7 @@ pub(crate) struct ClassicEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClassicNetPlan {
+    pub(crate) outside: Box<[ClassicOutside]>,
     pub(crate) guarded_wires: Box<[NodeId]>,
     /// Strength is the existing component output, committed at each admitted occurrence.
     pub(crate) source: NodeId,
@@ -51,6 +67,7 @@ pub(crate) struct ClassicNetPlan {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClassicNet {
+    pub(crate) outside: Range<usize>,
     pub(crate) guarded_wires: Range<usize>,
     pub(crate) source: NodeId,
     pub(crate) wires: Range<usize>,
@@ -73,6 +90,7 @@ pub(crate) struct ClassicRouteEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ClassicProgram {
+    pub(crate) outside: Box<[ClassicOutside]>,
     pub(crate) guarded_wires: Box<[NodeId]>,
     pub(crate) nets: Box<[ClassicNet]>,
     pub(crate) wires: Box<[ClassicWire]>,
@@ -203,10 +221,14 @@ impl<'a> ClassicAnalysis<'a> {
     fn block(&self, site: SiteId) -> Result<Block, &'static str> {
         match self.graph.sites[site.index()].source {
             SiteSource::Constant(profile) => Ok(Block::from_id(self.graph.profiles[profile.index()].raw_state)),
-            SiteSource::Component(node) => self.graph.nodes[node.index()]
-                .raw_state
-                .map(Block::from_id)
-                .ok_or("component lacks fixed block"),
+            SiteSource::Component(node) => {
+                let node = &self.graph.nodes[node.index()];
+                if let ComponentState::Wire(wire) = node.state {
+                    Ok(Block::RedstoneWire { wire })
+                } else {
+                    node.raw_state.map(Block::from_id).ok_or("component lacks fixed block")
+                }
+            }
             SiteSource::Contact(_) => Err("contact-dependent geometry or power"),
         }
     }
@@ -223,9 +245,16 @@ impl<'a> ClassicAnalysis<'a> {
                     return Ok(false);
                 }
                 let block = self.block(*site)?;
+                let (solid, transparent) = match self.graph.sites[site.index()].source {
+                    SiteSource::Constant(profile) => {
+                        let profile = &self.graph.profiles[profile.index()];
+                        (profile.solid, profile.transparent)
+                    }
+                    _ => (block.is_solid(), block.is_transparent()),
+                };
                 match test {
-                    SiteTest::Solid => block.is_solid(),
-                    SiteTest::Transparent => block.is_transparent(),
+                    SiteTest::Solid => solid,
+                    SiteTest::Transparent => transparent,
                     SiteTest::IsWire => matches!(block, Block::RedstoneWire { .. }),
                     SiteTest::Profile(profile) => match self.graph.sites[site.index()].source {
                         SiteSource::Constant(actual) => actual == *profile,
@@ -296,6 +325,48 @@ impl<'a> ClassicAnalysis<'a> {
         })
     }
 
+    fn check_zero_side_structure(&self, node: NodeId) -> Result<(), &'static str> {
+        let mut dependencies = BTreeSet::new();
+        self.dependencies(PowerTarget::Input { node, port: InputPort::Side }, 0, &mut dependencies);
+        if dependencies
+            .iter()
+            .any(|node| matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)))
+        {
+            return Err("zero Side has structural wire dependency");
+        }
+        Ok(())
+    }
+
+    fn check_fixed_wire_shape(&self, node: NodeId) -> Result<(), &'static str> {
+        let graph = self.graph;
+        let CircuitNodeKind::Wire(index) = graph.nodes[node.index()].kind else {
+            return Ok(());
+        };
+        let ComponentState::Wire(wire) = graph.nodes[node.index()].state else {
+            return Err("outside wire state");
+        };
+        let plan = &graph.wires[index];
+        if WireQueryFacts::infer(graph, plan).known != (1 << 24) - 1 {
+            return Err("outside wire geometry is variable");
+        }
+        let mut blocks = [Block::Air; 24];
+        for (slot, site) in plan.canonical_neighbors.iter().enumerate() {
+            blocks[slot] = self.block(*site)?;
+        }
+        let raw = crate::redstone::wire::get_raw_sides_from_neighbors(wire, &blocks);
+        if crate::redstone::wire::is_dot(raw) {
+            return Err("outside directional wire may switch dot/cross");
+        }
+        if crate::redstone::wire::regulate_sides(wire, raw) != wire
+            || BlockFace::values()
+                .into_iter()
+                .any(|face| crate::redstone::wire::on_neighbor_changed_from(wire, raw, face) != wire)
+        {
+            return Err("outside wire shape is not inert");
+        }
+        Ok(())
+    }
+
     /// A guarded callback wire is geometrically fixed and electrically disjoint
     /// from both private writes and this episode's changing source. The runtime
     /// checks its live seed at entry; seed/Turbo equality makes all held visits inert.
@@ -343,6 +414,12 @@ impl<'a> ClassicAnalysis<'a> {
             .leaves
             .into_keys()
             .collect())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn census_expression(&self, node: NodeId, port: InputPort) -> Result<(u8, Vec<NodeId>), &'static str> {
+        let expression = self.query(PowerTarget::Input { node, port }, 0)?;
+        Ok((expression.constant, expression.leaves.into_keys().collect()))
     }
 
     /// Re-infer all static ownership and transfer facts for a whole proposed region.
@@ -409,10 +486,26 @@ impl<'a> ClassicAnalysis<'a> {
         for &other in &guarded_wires {
             self.check_guarded_wire(other, source, &owned)?;
         }
+        for &node in members {
+            let mut structural = BTreeSet::new();
+            self.dependencies(PowerTarget::Input { node, port: InputPort::Main }, 0, &mut structural);
+            for other in structural {
+                if !owned.contains(&other) && other != source {
+                    self.check_fixed_wire_shape(other)?;
+                }
+            }
+        }
 
         if !matches!(
             graph.nodes[source.index()].kind,
-            CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Torch | NodeType::Repeater { .. })
+            CircuitNodeKind::Electrical(
+                NodeType::Lever
+                    | NodeType::Button
+                    | NodeType::PressurePlate
+                    | NodeType::Torch
+                    | NodeType::Repeater { .. }
+                    | NodeType::Comparator { .. }
+            )
         ) {
             return Err("unsupported ingress component");
         }
@@ -523,7 +616,7 @@ impl<'a> ClassicAnalysis<'a> {
                         Some(CallbackReceiver::Component(node))
                             if matches!(
                                 graph.nodes[node.index()].kind,
-                                CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. })
+                                CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. } | NodeType::Comparator { .. })
                             ) =>
                         {
                             receivers.insert(node);
@@ -565,7 +658,12 @@ impl<'a> ClassicAnalysis<'a> {
                     if matches!(
                         graph.nodes[node.index()].kind,
                         CircuitNodeKind::Electrical(
-                            NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Torch | NodeType::Repeater { .. }
+                            NodeType::Lever
+                                | NodeType::Button
+                                | NodeType::PressurePlate
+                                | NodeType::Torch
+                                | NodeType::Repeater { .. }
+                                | NodeType::Comparator { .. }
                         )
                     ) => {}
                 Some(CallbackReceiver::Component(node)) if guarded_wires.contains(&node) => {}
@@ -584,7 +682,12 @@ impl<'a> ClassicAnalysis<'a> {
                     || !matches!(
                         graph.nodes[owner.index()].kind,
                         CircuitNodeKind::Electrical(
-                            NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Torch | NodeType::Repeater { .. }
+                            NodeType::Lever
+                                | NodeType::Button
+                                | NodeType::PressurePlate
+                                | NodeType::Torch
+                                | NodeType::Repeater { .. }
+                                | NodeType::Comparator { .. }
                         )
                     )
                 {
@@ -594,6 +697,7 @@ impl<'a> ClassicAnalysis<'a> {
             }
         }
         if matches!(graph.nodes[source.index()].kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. })) {
+            self.check_zero_side_structure(source)?;
             let side = self.query(
                 PowerTarget::Input {
                     node: source,
@@ -605,14 +709,32 @@ impl<'a> ClassicAnalysis<'a> {
                 return Err("ingress repeater may change output silently while locking");
             }
         }
-        if source_state.output_strength != u8::from(source_state.powered) * 15 {
+        if source_state.output_strength > 15
+            || if matches!(graph.nodes[source.index()].kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
+                source_state.powered != (source_state.output_strength > 0)
+            } else {
+                source_state.output_strength != u8::from(source_state.powered) * 15
+            }
+        {
             return Err("ingress saved output does not match powered state");
         }
         let mut inputs = Vec::new();
+        let mut outside = Vec::new();
         for receiver in receivers {
+            if matches!(
+                graph.nodes[receiver.index()].kind,
+                CircuitNodeKind::Electrical(NodeType::Comparator { .. })
+            ) && graph
+                .comparator_inputs
+                .iter()
+                .find(|input| input.node == receiver)
+                .is_some_and(|input| input.direct_override.is_some() || input.far_override.is_some())
+            {
+                return Err("classic comparator receiver override");
+            }
             if !matches!(
                 graph.nodes[receiver.index()].kind,
-                CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. })
+                CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. } | NodeType::Comparator { .. })
             ) {
                 return Err("receiver outside delayed first family");
             }
@@ -621,6 +743,7 @@ impl<'a> ClassicAnalysis<'a> {
             {
                 return Err("saved repeater is locked");
             }
+            self.check_zero_side_structure(receiver)?;
             let side = self.query(
                 PowerTarget::Input {
                     node: receiver,
@@ -638,9 +761,35 @@ impl<'a> ClassicAnalysis<'a> {
                 },
                 0,
             )?;
-            if expression.constant != 0 || expression.leaves.keys().any(|leaf| !owned.contains(leaf) && *leaf != source) {
-                return Err("receiver has independent main input");
+            let mut structural = BTreeSet::new();
+            self.dependencies(
+                PowerTarget::Input {
+                    node: receiver,
+                    port: InputPort::Main,
+                },
+                0,
+                &mut structural,
+            );
+            for node in structural {
+                if !owned.contains(&node) && node != source {
+                    self.check_fixed_wire_shape(node)?;
+                }
             }
+
+            if expression.constant != 0 {
+                return Err("receiver has fixed nonzero independent main input");
+            }
+            let before = outside.len();
+            for (&node, &attenuation) in &expression.leaves {
+                if !owned.contains(&node) && node != source {
+                    self.check_fixed_wire_shape(node)?;
+                    outside.push(ClassicOutside { receiver, node, attenuation });
+                }
+            }
+            if outside.len() > CLASSIC_MAX_WIRES * 24 {
+                return Err("independent main guard bound");
+            }
+            let guarded = outside.len() != before;
             let attenuation = expression
                 .leaves
                 .iter()
@@ -650,6 +799,7 @@ impl<'a> ClassicAnalysis<'a> {
                 .unwrap_or(15);
             let source_attenuation = expression.leaves.get(&source).copied().unwrap_or(15);
             inputs.push(ClassicInput {
+                guarded,
                 receiver,
                 attenuation,
                 source_attenuation,
@@ -665,6 +815,7 @@ impl<'a> ClassicAnalysis<'a> {
             return Err("instant region ownership overlap");
         }
         Ok(ClassicNetPlan {
+            outside: outside.into_boxed_slice(),
             guarded_wires: guarded_wires.into_iter().collect(),
             source,
             initial_signal,
@@ -690,6 +841,7 @@ impl ClassicProgram {
             .sum::<usize>();
         use std::mem::size_of;
         plans.len() * size_of::<ClassicNet>()
+            + plans.iter().map(|plan| plan.outside.len()).sum::<usize>() * size_of::<ClassicOutside>()
             + plans.iter().map(|plan| plan.guarded_wires.len()).sum::<usize>() * size_of::<NodeId>()
             + wires * size_of::<ClassicWire>()
             + inputs * size_of::<ClassicInput>()
@@ -700,7 +852,8 @@ impl ClassicProgram {
     }
 
     pub(crate) fn estimated_bytes(&self) -> usize {
-        std::mem::size_of_val(self.guarded_wires.as_ref())
+        std::mem::size_of_val(self.outside.as_ref())
+            + std::mem::size_of_val(self.guarded_wires.as_ref())
             + std::mem::size_of_val(self.nets.as_ref())
             + std::mem::size_of_val(self.wires.as_ref())
             + std::mem::size_of_val(self.inputs.as_ref())
@@ -716,6 +869,7 @@ impl ClassicProgram {
             return Self::default();
         }
         let mut nets = Vec::new();
+        let mut outside = Vec::new();
         let mut guarded_wires = Vec::new();
         let mut wires = Vec::new();
         let mut inputs = Vec::new();
@@ -725,6 +879,8 @@ impl ClassicProgram {
         let mut input_by_node = vec![None; nodes];
         let mut route_buckets = vec![Vec::new(); routes];
         for (net, plan) in plans.iter().enumerate() {
+            let outside_start = outside.len();
+            outside.extend_from_slice(&plan.outside);
             let guard_start = guarded_wires.len();
             guarded_wires.extend_from_slice(&plan.guarded_wires);
             let wire_start = wires.len();
@@ -735,7 +891,9 @@ impl ClassicProgram {
                 wires.push(*wire);
             }
             for input in &plan.inputs {
-                input_by_node[input.receiver.index()] = Some((net as u32, input.attenuation, input.source_attenuation));
+                if !input.guarded {
+                    input_by_node[input.receiver.index()] = Some((net as u32, input.attenuation, input.source_attenuation));
+                }
                 inputs.push(*input);
             }
             for entry in &plan.entries {
@@ -752,6 +910,7 @@ impl ClassicProgram {
                 });
             }
             nets.push(ClassicNet {
+                outside: outside_start..outside.len(),
                 guarded_wires: guard_start..guarded_wires.len(),
                 source: plan.source,
                 wires: wire_start..wires.len(),
@@ -768,6 +927,7 @@ impl ClassicProgram {
             route_ranges.push(start..route_entries.len());
         }
         Self {
+            outside: outside.into_boxed_slice(),
             guarded_wires: guarded_wires.into_boxed_slice(),
             nets: nets.into_boxed_slice(),
             wires: wires.into_boxed_slice(),

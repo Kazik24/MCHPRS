@@ -3,6 +3,78 @@
 use super::{BackendKind, program_graph};
 use std::time::Duration;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+/// Current execution ownership; counts describe circuit structure, not CPU time.
+pub struct GraphExecutionCoverage {
+    /// Electrical, wire, observer, reset and piston nodes; geometry-only contacts are excluded.
+    pub component_nodes: usize,
+    /// Original dust state owners, including wires executed by a compiled classic net.
+    pub wire_nodes: usize,
+    /// Original piston state owners, including actors with a private occupancy shortcut.
+    pub piston_nodes: usize,
+    /// Wire nodes currently owned by an active compiled classic net.
+    pub compiled_classic_wires: usize,
+    /// Wire nodes with a classic certificate, including nets that have deoptimized.
+    pub certified_classic_wires: usize,
+    /// Nodes executed by the whole fixed program, including its ordered propagation.
+    pub fixed_classic_nodes: usize,
+    /// Wire state owners executed by that program; disjoint from local classic nets.
+    pub fixed_classic_wires: usize,
+    /// Nodes whose internal execution is replaced by a whole instant kernel; currently zero.
+    pub instant_kernel_nodes: usize,
+    /// Nodes executed through a native fallback; zero in the Graph-only compiler.
+    pub native_nodes: usize,
+    /// Actors with a private resource-occupancy shortcut; their ordinary actions still execute.
+    pub private_proxy_pistons: usize,
+    /// Wire entry points with a certified reset-transfer shortcut; not whole-region ownership.
+    pub reset_transfer_entries: usize,
+    /// Routes with compiled instant instructions; these retain externally observable dispatch.
+    pub instant_instruction_routes: usize,
+    /// Observer state owners using the built-in reset pulse handler instead of ordinary observer dispatch.
+    pub builtin_reset_clocks: usize,
+}
+
+impl GraphExecutionCoverage {
+    pub fn general_graph_nodes(&self) -> usize {
+        self.component_nodes - self.compiled_classic_wires - self.fixed_classic_nodes - self.instant_kernel_nodes - self.native_nodes
+    }
+
+    pub fn summary_lines(&self) -> Vec<String> {
+        vec![
+            format!(
+                "Execution ownership (component nodes): instant kernels {}; compiled classic wires {}; whole fixed program {}; general Graph {}; native fallback {}.",
+                share(self.instant_kernel_nodes, self.component_nodes),
+                share(self.compiled_classic_wires, self.component_nodes),
+                share(self.fixed_classic_nodes, self.component_nodes),
+                share(self.general_graph_nodes(), self.component_nodes),
+                share(self.native_nodes, self.component_nodes),
+            ),
+            format!(
+                "Wire ownership: compiled classic {}; whole fixed program {}; general Graph {}; {} certified wires currently deoptimized.",
+                share(self.compiled_classic_wires, self.wire_nodes),
+                share(self.fixed_classic_wires, self.wire_nodes),
+                share(self.wire_nodes - self.compiled_classic_wires - self.fixed_classic_wires, self.wire_nodes),
+                self.certified_classic_wires - self.compiled_classic_wires,
+            ),
+            format!(
+                "Partial instant shortcuts (overlap Graph ownership): private piston checks {}; reset-transfer wire entries {}; {} instruction routes; {} built-in reset clocks. Coverage is not CPU-time share.",
+                share(self.private_proxy_pistons, self.piston_nodes),
+                share(self.reset_transfer_entries, self.wire_nodes),
+                self.instant_instruction_routes,
+                self.builtin_reset_clocks,
+            ),
+        ]
+    }
+}
+
+fn share(count: usize, total: usize) -> String {
+    if total == 0 {
+        format!("{count}/{total} (n/a)")
+    } else {
+        format!("{count}/{total} ({:.1}%)", 100.0 * count as f64 / total as f64)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// Node and link counts for one compiler graph snapshot.
 pub struct GraphCounts {
@@ -151,6 +223,8 @@ pub struct CompileStatistics {
     pub graph: GraphStatistics,
     pub backend: BackendKind,
     pub backend_nodes: usize,
+    /// Structural ownership at activation; later deoptimization is visible through Compiler's live snapshot.
+    pub execution_coverage: GraphExecutionCoverage,
     pub analysis_duration: Duration,
     pub backend_duration: Duration,
     pub total_duration: Duration,
@@ -168,6 +242,7 @@ impl CompileStatistics {
             self.backend_nodes,
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(3));
+        lines.extend(self.execution_coverage.summary_lines());
         lines
     }
 }

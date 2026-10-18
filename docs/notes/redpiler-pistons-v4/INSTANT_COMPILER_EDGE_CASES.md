@@ -82,6 +82,15 @@ internal propagation.
 [fixed_point_adder.rs](../../../crates/core/src/redpiler/backend/graph/tests/fixed_point_adder.rs).
 Inspected existing counterexample; not rerun during this entry.
 
+**Step 04 recheck (2026-10-18):** reran
+`fixed_point_reordered_adder_requests_change_the_sum_payload`; it passed and reproduced
+the difference. The exact initial request queue is actor 6 then actor 12; the fixed-point
+experiment swaps them. In the exact execution actor 3 is sampled unpowered, then powered
+before its queued action is checked, so that action does not accept. In the reordered
+experiment it accepts and changes the real Sum response. A layer must retain the
+callback-time request separately from live acceptance and prove the relevant arrival
+precedence. Final settled power alone cannot justify either observation point.
+
 **Input-edge clarification (2026-10-18):** the proposed gate compiler treats inputs applied
 on one logical edge as one sampled input frame. Its DFS/BFS traversal order must not select
 the answer. The counterexample demonstrates sensitivity to changing physical propagation
@@ -778,6 +787,92 @@ at a supported continuation cut or decline before taking ownership. No private r
 **Evidence/status:** source requirement from `backend/graph/pistons.rs::enqueue_piston`,
 `drain_piston_actions` and `accept_action`, which rechecks live power and occupancy. The
 layered runtime has not yet been implemented or tested against this obligation.
+
+### E44. Reset provenance may watch a different shared owner
+
+**Situation:** the observer providing reset power to an actor watches another base in the
+same shared ownership group. The actor receiving power is not necessarily the actor whose
+base-change route arms that observer.
+
+**Consequence:** requiring the receiving actor's own base route to notify the reset rejects
+valid adder cells. Conversely, attaching reset effects to the wrong base changes pulse timing.
+
+**Required rule:** retain the recognizer's `watched_actor`, close that ownership dependency,
+and bind the reset's exact directional callback occurrences to the watched base's change
+and restoration routes. Preserve the existing observer state and scheduler owner.
+
+**Evidence/status:** source-derived ADDER1BIT and ADDER11BIT cell tests compare those route
+occurrences to the prepared graph. This does not yet prove a contracted reset lifecycle.
+
+### E45. A valid instant can reset without an observer
+
+**Situation:** `INSTANT_RESET_REDSTONE` contains a sticky piston, redstone blocks and wires,
+with no observer reset source. Current local-cell discovery is seeded by observer provenance.
+
+**Consequence:** no local cell is emitted for this fixture even though native reference
+execution is available. Treating the fixture name as recognition, or inventing a reset-node
+binding, would hide a missing reset family.
+
+**Required rule:** retain ordinary Graph execution and report this admission limit until
+feedback-reset dependencies, activation and future work have their own derived contract.
+Do not claim full instant-fixture compilation from all-actor adder coverage.
+
+**Status:** explicit recognition limit; neither an output mismatch nor an activated kernel.
+
+### E46. A control can enter through a wire query without a PowerLink
+
+**Situation:** ADDER1BIT's trigger lever has no outgoing `PowerLink`, but its callbacks and
+canonical wire-neighborhood reads cross into the candidate instant circuitry. Wire power
+queries can read a neighboring component directly.
+
+**Consequence:** counting only electrical-link rows misses a real control. The three data
+controls plus trigger must not become a claimed three-input device by losing activation.
+
+**Required rule:** collect value/query and activation bindings independently. Retain the
+original wire/neighbor pair and route occurrence; do not synthesize a power edge merely to
+make a port-count test pass. Pin the four physical control positions in the adder test.
+
+**Evidence/status:** observed in fresh ADDER1BIT and ADDER11BIT boundary exports. This was
+an incomplete test assumption, not an executed Graph/native output mismatch.
+
+### E47. An ordinary BUD update path is not an instant-region output
+
+**Situation:** in `bud_instantmemorycellobserverupdate`, the admitted data cell supplies QC
+power, while the memory's sampling callbacks originate in ordinary update devices outside
+that cell and its connecting corridors.
+
+**Consequence:** requiring the instant catalog to emit the sampling update would invent an
+effect or incorrectly absorb ordinary state. The two paths remain independent.
+
+**Required rule:** retain the outgoing QC dependency, leave BUD memory and ordinary update
+devices outside, and preserve their original routes. Expose an update output only when its
+actual source belongs to the candidate instant circuitry.
+
+**Evidence/status:** all 18 original memory-targeting route rows in the inspected fixture
+originate outside the admitted owners. Existing native/Graph BUD tests check that changing
+QC data alone holds memory until a qualifying ordinary update.
+
+### E48. A synthetic empty-actor compiler family can be unreachable after real admission
+
+**Situation:** the first Step 04 draft compiled a single actor only when its resource list
+was empty and every power contribution had an outside boundary port. The actual mechanism
+recognizer requires a sticky actor with a resource at both Near and Far and power supplied
+by its recognized reset observer. That reset belongs to the cell; its power need not be
+an outside input. Synthetic cell equations alone did not exercise these admission facts.
+
+**Consequence:** a Boolean evaluator can pass a large exhaustive grid while its accepted
+family contains no real parsed mechanism. That is not circuit compiler coverage.
+
+**Required rule:** test through normal preparation and cell discovery, retain local reset
+clock reads under the scheduler's existing owner, and derive the private payload's
+source-absence predicate from accepted transfer. Do not fabricate outside ports or treat
+internal wire values as independent inputs. Shared or unproved families still decline.
+
+**Evidence/status:** source review of `discover_indexed_mechanisms` in
+`passes/utils/instant_mechanisms.rs` establishes the required nonempty sticky resource
+lane and reset provenance. The first 22-fixture Step 04 census compiled zero actors.
+A real parser-backed narrow-cell regression is being added; no successful execution
+or acceleration is claimed by this entry.
 
 ## Updating this register
 

@@ -22,6 +22,17 @@ impl CircuitDraft {
             }
         }
 
+        // Proxy-owned routes use their own instructions and were cleared above.
+        // Never bypass that ownership with a pre-lowering admission certificate.
+        for wire in &mut self.wires {
+            if wire.turbo_route.is_some_and(|route| instant_route_by_route[route.index()].is_some()) {
+                wire.execution.callback_selection = None;
+            }
+        }
+        if !self.wires.is_empty() && self.wires.iter().all(|wire|wire.execution.callback_selection.is_some_and(|plan|plan.known==WireCallbackSelection::ALL)) {
+            self.plans.turbo_callback_indices.clear();
+        }
+
         let nodes = self
             .nodes
             .iter()
@@ -163,6 +174,7 @@ impl CircuitDraft {
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
+            fixed_classic: self.plans.fixed_classic.program,
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {

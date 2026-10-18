@@ -4,6 +4,8 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// Optional execution shortcuts for one wire's unchanged canonical bindings.
 pub(crate) struct WireExecutionPlan {
+    /// Exact fixed admission; dynamic slots keep their original guard search.
+    pub(crate) callback_selection: Option<WireCallbackSelection>,
     /// Checked fixed geometry removes repeated property resolution without caching power.
     pub(crate) query_facts: Option<WireQueryFacts>,
     /// This replaces a certified private reset cell's output walk with its exact two-wire transfer.
@@ -47,6 +49,8 @@ pub(crate) struct TurboCallbackIndex {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// Derived execution data. A graph rewrite discards it; builders publish typed outputs.
 pub(crate) struct ExecutionPlans {
+    /// Whole fixed-circuit executable tables; excludes other execution owners atomically.
+    pub(crate) fixed_classic: FixedClassicPlans,
     /// Exact compiled electrical reads and the separate settled weighted topology witness.
     pub(crate) fixed_signals: FixedSignalPlans,
     /// Whole private wire regions with exact ordered delayed-receiver programs.
@@ -62,6 +66,11 @@ pub(crate) struct ExecutionPlans {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// Instant region ownership and private-cell proxy plans.
 pub(crate) struct InstantPlans {
+    /// These cold causal layers are inspection data and never own executing Graph state.
+    #[cfg(test)]
+    pub(crate) layers: Option<LayeredInstantPlan>,
+    /// This cold experimental catalog is the sole owner map when the boundary pipeline is selected.
+    pub(crate) boundaries: Option<BoundaryCatalog>,
     pub(crate) regions: Vec<InstantRegion>,
     pub(crate) proxies: Vec<InstantProxy>,
 }

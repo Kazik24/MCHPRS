@@ -7,14 +7,22 @@ mod lowering;
 mod validation;
 pub(crate) use execution_plans::*;
 mod instant_regions;
-#[cfg(test)]
 mod instant_cells;
+mod instant_boundaries;
+#[cfg(test)]
+mod instant_layers;
 mod wire_query_facts;
+mod wire_callback_selection;
+pub(crate) use wire_callback_selection::WireCallbackSelection;
 mod fixed_signals;
 pub(crate) use fixed_signals::*;
 pub(crate) use instant_regions::*;
-#[cfg(test)]
 pub(crate) use instant_cells::*;
+pub(crate) use instant_boundaries::*;
+mod fixed_classic;
+pub(crate) use fixed_classic::*;
+#[cfg(test)]
+pub(crate) use instant_layers::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
 use crate::redpiler::components::{NodeState, NodeType};
@@ -421,7 +429,7 @@ pub(crate) enum PowerTarget {
     Conductor { site: SiteId, include_dust: bool },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Directional power transfer between compiled sites or component inputs.
 pub(crate) struct PowerLink {
     pub(crate) from: SiteId,
@@ -588,7 +596,9 @@ pub(crate) fn command_facing(block: Block) -> BlockFace {
 /// Structural validation failures encountered while building or lowering a graph.
 pub(crate) enum GraphBuildError {
     InvalidFixedSignals,
+    InvalidFixedClassic,
     InvalidClassicNet { net: usize, reason: &'static str },
+    InvalidWireCallbackSelection { wire: usize },
     InvalidInstantRegion {
         /// This names the derived table whose witness no longer agrees with the graph.
         table: &'static str,
@@ -699,6 +709,7 @@ impl std::fmt::Display for GraphBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidFixedSignals => write!(f, "fixed signal queries have a stale or invalid certificate"),
+            Self::InvalidFixedClassic => write!(f, "whole fixed classic program has a stale or invalid certificate"),
             Self::PreparationMemoryLimit {
                 stage,
                 estimated_bytes,
@@ -727,6 +738,7 @@ impl std::fmt::Display for GraphBuildError {
             }
             Self::InvalidWireHopRoot { wire } => write!(f, "wire {wire} has an invalid compiled hop root"),
             Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
+            Self::InvalidWireCallbackSelection { wire } => write!(f,"wire {wire} has an invalid compiled callback selection"),
             Self::InvalidClassicNet { net,reason } => write!(f,"classic net {net} has an invalid certificate: {reason}"),
             Self::InvalidInstantRegion { table, index } => write!(f, "instant {table}[{index}] has a stale or invalid certificate"),
             Self::InvalidInstantReset { wire } => write!(f, "wire {wire} has a stale or invalid instant reset certificate"),
@@ -803,6 +815,7 @@ struct InstantProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
+    fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_signals: FixedSignalProgram,
     classic: ClassicProgram,
     instant: InstantProgram,
@@ -844,8 +857,31 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    #[cfg(test)]
+    pub(crate) fn without_fixed_wire_callbacks(&self) -> Self {
+        let mut general = self.clone();
+        // Rebuild the same pre-specialization index so controls do not pay a
+        // deliberately slower full-route scan after the optimized table is gone.
+        general.turbo_callback_indices = general
+            .wires
+            .iter()
+            .map(|wire| crate::redpiler::passes::index_turbo_callbacks::index_wire(wire, &general.routes))
+            .collect();
+        for wire in &mut general.wires {
+            wire.execution.callback_selection = None;
+        }
+        general
+    }
     pub(crate) fn fixed_signal_query(&self, target: PowerTarget) -> Option<(u8, &[WeightedSignal])> {
         self.fixed_signals.query(target)
+    }
+    pub(crate) fn fixed_classic(&self) -> Option<&std::sync::Arc<FixedClassicProgram>> {
+        self.fixed_classic.as_ref()
+    }
+    #[cfg(test)]
+    pub(crate) fn without_fixed_signal_queries(mut self) -> Self {
+        self.fixed_signals = FixedSignalProgram::default();
+        self
     }
     pub(crate) fn classic(&self) -> &ClassicProgram { &self.classic }
     pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {

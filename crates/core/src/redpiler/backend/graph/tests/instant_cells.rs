@@ -1,6 +1,8 @@
 //! Equation checks for graph-derived stationary pull cells.
 use super::*;
+use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::instant::cells::{CellDeclineReason, discover_cells, validate_cells};
+use crate::redpiler::backend::graph::GraphObservedOperation;
 use std::collections::BTreeSet;
 
 fn state_matches(backend: &GraphBackend, test: StateTest) -> bool {
@@ -158,6 +160,115 @@ fn check_admitted_inputs(graph: &CompileGraph, cells: &[CellContract]) -> usize 
     checks
 }
 
+fn expected_reset_rows(graph: &CompileGraph, route: RouteId, reset: NodeId, facing: BlockFace) -> Vec<RouteOccurrence> {
+    graph.routes[route.index()]
+        .deliveries
+        .iter()
+        .enumerate()
+        .filter_map(|(ordinal, delivery)| {
+            (delivery.receiver == Some(CallbackReceiver::Component(reset))
+                && delivery.kind == (DeliveryKind::Update { direction: Some(facing) })
+                && delivery.view == OperandView::Live
+                && matches!(graph.guards[delivery.guard.index()], Guard::Always))
+            .then_some(RouteOccurrence {
+                route,
+                ordinal: ordinal as u32,
+            })
+        })
+        .collect()
+}
+
+fn assert_retraction_effects_match_graph(graph: &CompileGraph, cells: &[CellContract]) -> usize {
+    let mut uses = 0;
+    for cell in cells {
+        for resource in &cell.resources {
+            let expected_owners: Vec<_> = cell
+                .uses
+                .iter()
+                .filter_map(|use_| {
+                    let spec = graph.pistons[use_.actor.index()];
+                    (matches!(spec.lane, PistonLane::SingleResource { far } if far == resource.source)
+                        && graph.resources[resource.resource.index()].contacts.contains(&spec.near))
+                    .then_some(use_.actor)
+                })
+                .collect();
+            assert_eq!(resource.owners.as_ref(), expected_owners.as_slice());
+            assert_eq!(resource.selection, CellTokenSelection::FirstAcceptedPullRequestInFifo);
+        }
+
+        for use_ in &cell.uses {
+            let spec = graph.pistons[use_.actor.index()];
+            let effect = &use_.retraction;
+            assert_eq!(effect.routes.base_changed, spec.routes.base_changed);
+            assert_eq!(effect.routes.near_changed, spec.routes.near_changed);
+            let expected_transfer = cell.resources.iter().find_map(|resource| {
+                resource.owners.contains(&use_.actor).then_some(CellResourceTransfer {
+                    resource: resource.resource,
+                    source: resource.source,
+                    destination: spec.near,
+                    resource_revision_increment: 1,
+                    when_at_source: resource.present,
+                })
+            });
+            assert_eq!(effect.transfer, expected_transfer);
+            assert_eq!(
+                effect.routes.far_changed,
+                expected_transfer.and(spec.routes.far_changed),
+                "Far callbacks follow an actual token transfer"
+            );
+            assert_eq!(effect.wake.ticks_after_acceptance, 2);
+            assert_eq!(effect.actor_revision_increment, 1);
+            assert_eq!(effect.wake.base_restored, spec.routes.base_restored);
+            assert_eq!(effect.wake.resource.is_some(), expected_transfer.is_some());
+            if let (Some(transfer), Some(wake)) = (expected_transfer, effect.wake.resource) {
+                assert_eq!(wake.resource, transfer.resource);
+                assert_eq!(wake.contact, transfer.destination);
+                assert_eq!(wake.route, spec.routes.resource_restored_near.unwrap());
+            }
+
+            let watched = graph.pistons[effect.reset.watched_actor.index()];
+            let facing = match graph.nodes[use_.reset.index()].kind {
+                CircuitNodeKind::Observer { facing, .. } | CircuitNodeKind::BuiltinReset { facing, .. } => facing,
+                _ => panic!("reset provenance points at an observer or built-in reset"),
+            };
+            assert_eq!(
+                effect.reset.on_base_changed.as_ref(),
+                expected_reset_rows(graph, watched.routes.base_changed, use_.reset, facing).as_slice()
+            );
+            assert_eq!(
+                effect.reset.on_base_restored.as_ref(),
+                expected_reset_rows(graph, watched.routes.base_restored, use_.reset, facing).as_slice()
+            );
+            assert!(!effect.reset.on_base_changed.is_empty());
+            assert!(!effect.reset.on_base_restored.is_empty());
+            uses += 1;
+        }
+    }
+    uses
+}
+
+fn prepared_fixture_cells(id: &'static str) -> (CompileGraph, crate::redpiler::analysis::instant::cells::CellDiscovery) {
+    let circuit = boundary_contract_tests::load_mechanism(id);
+    let world = circuit.build();
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(3),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let discovery = discover_cells(&prepared.graph, &monitor).unwrap();
+    (prepared.graph, discovery)
+}
+
 fn assert_all_fixture_actors_accounted(id: &'static str, expected: usize) -> (CompileGraph, Vec<CellContract>) {
     let (graph, _) = stable_region_tests::stable_graph(id);
     assert_eq!(graph.pistons.len(), expected);
@@ -261,10 +372,248 @@ fn both_adders_lower_typed_stationary_cells_and_match_graph_queries() {
     for (id, actors) in [("adder_1bit", 13), ("adder_11bits", 142)] {
         let (graph, cells) = assert_all_fixture_actors_accounted(id, actors);
         assert!(!cells.is_empty(), "{id} has stationary pull cells");
+        assert_eq!(assert_retraction_effects_match_graph(&graph, &cells), actors);
         let checks = check_admitted_inputs(&graph, &cells);
         assert!(checks > actors, "{id} exercises strength, guard and contact-state variants");
         println!("{id}: cells={}, actors={actors}, typed Graph comparisons={checks}", cells.len());
     }
+}
+
+#[test]
+fn accepted_retractions_keep_shared_payload_and_existing_reset_obligations() {
+    let (graph, cells) = assert_all_fixture_actors_accounted("adder_1bit", 13);
+    assert_eq!(assert_retraction_effects_match_graph(&graph, &cells), 13);
+    assert!(
+        cells.iter().flat_map(|cell| &cell.resources).any(|resource| resource.owners.len() == 1),
+        "the fixture contains a private redstone token"
+    );
+    let shared = cells
+        .iter()
+        .flat_map(|cell| &cell.resources)
+        .find(|resource| resource.owners.len() > 1)
+        .expect("the fixture contains a shared redstone token");
+    let cell = cells
+        .iter()
+        .find(|cell| cell.resources.iter().any(|resource| resource.resource == shared.resource))
+        .unwrap();
+    let use_ = cell.uses.iter().find(|use_| use_.actor == shared.owners[0]).unwrap();
+    let transfer = use_.retraction.transfer.expect("the selected owner has a conditional transfer");
+    let mut values = Vec::new();
+    cell.evaluate(&mut values, |read| match read {
+        CellRead::Contribution(_) => false,
+        CellRead::Activation(actor) => actor == use_.actor,
+        CellRead::State(StateTest::PistonAvailability { piston, is }) => {
+            if piston == use_.actor {
+                is == PistonAvailability::Ready
+            } else {
+                is == PistonAvailability::BasePending
+            }
+        }
+        CellRead::State(StateTest::PistonExtended(piston)) => piston == use_.actor,
+        CellRead::State(StateTest::PistonHeadPresent(_)) => false,
+        CellRead::State(StateTest::ResourceAt { .. } | StateTest::ResourceEnabled(_)) => false,
+    })
+    .expect("a shared token may be absent while a stationary actor still accepts a normal retract");
+    assert!(values[use_.requested.index()]);
+    assert!(values[use_.valid.index()]);
+    assert!(
+        !values[transfer.when_at_source.index()],
+        "the request remains valid without a token transfer"
+    );
+
+    for id in ["or_1", "and_1", "not_1", "instant_reset_redstone"] {
+        let (graph, discovery) = prepared_fixture_cells(id);
+        let uses = assert_retraction_effects_match_graph(&graph, &discovery.cells);
+        if id == "instant_reset_redstone" {
+            let has_reset_observer = graph
+                .nodes
+                .iter()
+                .any(|node| matches!(&node.kind, CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }));
+            assert!(!has_reset_observer, "this baseline has no observer-backed reset source");
+            assert!(discovery.cells.is_empty() && discovery.declined.is_empty());
+        }
+        println!("{id}: stationary pull uses={uses}, structured declines={:?}", discovery.declined);
+    }
+}
+
+fn graph_after_shared_pull_requests(graph: &CompileGraph, resource: &CellResourcePin, owners: &[PistonId], fifo: &[PistonId]) -> GraphBackend {
+    let (program, state) = graph.clone().lower().unwrap();
+    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    backend.set_test_recording(true);
+    for component in &mut backend.state.components {
+        match component {
+            ComponentState::Electrical(state) => {
+                state.powered = false;
+                state.output_strength = 0;
+            }
+            ComponentState::Wire(wire) => wire.power = 0,
+            ComponentState::Specialized => {}
+        }
+    }
+    for state in &mut backend.state.pistons {
+        *state = PistonState {
+            extended: false,
+            head_present: false,
+            availability: PistonAvailability::BasePending,
+            revision: 0,
+        };
+    }
+    for &actor in owners {
+        backend.state.pistons[actor.index()] = PistonState {
+            extended: true,
+            head_present: true,
+            availability: PistonAvailability::Ready,
+            revision: 0,
+        };
+    }
+
+    let owner_near: BTreeSet<_> = owners.iter().map(|actor| graph.pistons[actor.index()].near).collect();
+    let mut unavailable = owner_near.clone();
+    unavailable.insert(resource.source);
+    for (index, spec) in graph.resources.iter().enumerate() {
+        let resource_id = ResourceId::new(index as u32);
+        if resource_id == resource.resource {
+            continue;
+        }
+        let contact = spec
+            .contacts
+            .iter()
+            .copied()
+            .find(|contact| !unavailable.contains(contact))
+            .expect("each fixture resource has an unoccupied contact for the isolated action test");
+        unavailable.insert(contact);
+        backend.state.resources[resource_id.index()] = ResourceState {
+            at: contact,
+            enabled: false,
+            revision: 0,
+        };
+    }
+    backend.state.resources[resource.resource.index()] = ResourceState {
+        at: resource.source,
+        enabled: true,
+        revision: 0,
+    };
+
+    for &actor in fifo {
+        let spec = backend.program.pistons()[actor.index()];
+        assert_eq!(backend.input_strength(spec.node, InputPort::Main), 0, "test input starts low");
+        assert_eq!(backend.input_strength(spec.node, InputPort::Quasi), 0, "test quasi input starts low");
+        backend.enqueue_piston(PistonRequest {
+            piston: actor,
+            action: mchprs_world::PistonAction::Retract,
+        });
+    }
+    backend.drain_piston_actions().unwrap();
+    backend
+}
+
+#[test]
+fn graph_fifo_transfers_one_shared_token_and_keeps_independent_deferred_witnesses() {
+    let (graph, cells) = assert_all_fixture_actors_accounted("adder_1bit", 13);
+    let shared = cells
+        .iter()
+        .flat_map(|cell| &cell.resources)
+        .find(|resource| resource.owners.len() > 1)
+        .expect("the fixture contains a shared payload");
+    let source = shared.source;
+    let owners = [shared.owners[0], shared.owners[1]];
+    let owner_near: [ContactId; 2] = owners.map(|actor| graph.pistons[actor.index()].near);
+    assert_ne!(owner_near[0], owner_near[1]);
+    assert!(owners.iter().all(|actor| {
+        let spec = graph.pistons[actor.index()];
+        matches!(spec.lane, PistonLane::SingleResource { far } if far == source)
+    }));
+
+    let shared_id = shared.resource;
+    // Reverse the stable owner order so this proves queue order chooses the token recipient.
+    let fifo = [owners[1], owners[0]];
+    let backend = graph_after_shared_pull_requests(&graph, shared, &owners, &fifo);
+    let queued: Vec<_> = backend.future.piston_requests.iter().map(|request| request.piston).collect();
+    assert!(queued.is_empty(), "normal action draining consumes the FIFO");
+    let requested: Vec<_> = backend
+        .observed_operations
+        .iter()
+        .filter_map(|operation| match operation {
+            GraphObservedOperation::Request { actor, .. } => Some(*actor),
+            _ => None,
+        })
+        .take(2)
+        .collect();
+    let expected_positions = fifo.map(|actor| graph.nodes[graph.pistons[actor.index()].node.index()].position.unwrap());
+    assert_eq!(requested.as_slice(), expected_positions.as_slice(), "requests retain Graph FIFO order");
+    let accepted: Vec<_> = backend
+        .observed_operations
+        .iter()
+        .filter_map(|operation| match operation {
+            GraphObservedOperation::Accepted { actor, .. } => Some(*actor),
+            _ => None,
+        })
+        .take(2)
+        .collect();
+    assert_eq!(
+        accepted.as_slice(),
+        expected_positions.as_slice(),
+        "both stationary pull requests are accepted in FIFO order"
+    );
+
+    let events: Vec<_> = backend.future.deferred_pistons.iter().take(2).copied().collect();
+    assert_eq!(events.len(), 2, "both FIFO requests produce independent deferred actor events");
+    assert_eq!(events[0].piston, fifo[0]);
+    assert_eq!(events[1].piston, fifo[1]);
+    assert_eq!(events[0].due_tick, 2);
+    assert_eq!(events[1].due_tick, 2);
+    assert!(!events[0].extending);
+    assert!(!events[1].extending);
+    assert_eq!(events[0].revision, 1);
+    assert_eq!(events[1].revision, 1);
+    assert_eq!(
+        events[0].resource.map(|event| (event.resource, event.revision, event.contact)),
+        Some((shared_id, 1, owner_near[1]))
+    );
+    assert!(
+        events[1].resource.is_none(),
+        "the later accepted owner cannot transfer the already-moved token"
+    );
+    let resource = backend.state.resources[shared_id.index()];
+    assert_eq!(
+        resource,
+        ResourceState {
+            at: owner_near[1],
+            enabled: false,
+            revision: 1
+        }
+    );
+
+    let mut valid = graph_after_shared_pull_requests(&graph, shared, &owners, &[fifo[0]]);
+    let event = valid.future.deferred_pistons.front().copied().unwrap();
+    valid.apply_deferred_event(event).unwrap();
+    assert_eq!(valid.state.pistons[fifo[0].index()].availability, PistonAvailability::Ready);
+    assert!(!valid.state.pistons[fifo[0].index()].extended);
+    assert_eq!(valid.state.resources[shared_id.index()].at, owner_near[1]);
+    assert!(valid.state.resources[shared_id.index()].enabled);
+    assert_eq!(valid.state.resources[shared_id.index()].revision, 2);
+
+    let mut stale_actor = graph_after_shared_pull_requests(&graph, shared, &owners, &[fifo[0]]);
+    let event = stale_actor.future.deferred_pistons.front().copied().unwrap();
+    stale_actor.state.pistons[fifo[0].index()].revision = event.revision + 1;
+    stale_actor.apply_deferred_event(event).unwrap();
+    assert_eq!(stale_actor.state.pistons[fifo[0].index()].availability, PistonAvailability::BasePending);
+    assert!(stale_actor.state.pistons[fifo[0].index()].extended);
+    assert_eq!(stale_actor.state.resources[shared_id.index()].at, owner_near[1]);
+    assert!(stale_actor.state.resources[shared_id.index()].enabled);
+    assert_eq!(stale_actor.state.resources[shared_id.index()].revision, 2);
+
+    let mut stale_resource = graph_after_shared_pull_requests(&graph, shared, &owners, &[fifo[0]]);
+    let event = stale_resource.future.deferred_pistons.front().copied().unwrap();
+    stale_resource
+        .set_resource_contact(shared_id, source, false)
+        .expect("a later resource move invalidates the captured resource revision");
+    stale_resource.apply_deferred_event(event).unwrap();
+    assert_eq!(stale_resource.state.pistons[fifo[0].index()].availability, PistonAvailability::Ready);
+    assert!(!stale_resource.state.pistons[fifo[0].index()].extended);
+    assert_eq!(stale_resource.state.resources[shared_id.index()].at, source);
+    assert!(!stale_resource.state.resources[shared_id.index()].enabled);
+    assert_eq!(stale_resource.state.resources[shared_id.index()].revision, 2);
 }
 
 #[test]

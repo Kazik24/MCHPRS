@@ -1,8 +1,7 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, InstantProxy, InstantRegion, InstantResetPlan, SiteId, TurboCallbackIndex,
-    WireQueryFacts,
+    CompileGraph, DustPathPlan, InstantProxy, InstantRegion, InstantResetPlan, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -22,11 +21,17 @@ pub(crate) trait PlanBuilder {
 
 /// Each result names its owner instead of exposing the mutable graph to a builder.
 pub(crate) enum PlanOutput {
+    FixedClassic(crate::redpiler::program_graph::FixedClassicPlans),
+    #[cfg(test)]
+    Boundaries(crate::redpiler::program_graph::BoundaryCatalog),
+    #[cfg(test)]
+    Layers(crate::redpiler::program_graph::LayeredInstantPlan),
     FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
     WireQueries(Vec<Option<WireQueryFacts>>),
+    WireCallbacks(Vec<Option<WireCallbackSelection>>),
     WireHops(Vec<Option<SiteId>>),
     InstantResets(Vec<(usize, InstantResetPlan)>),
     Regions(Vec<InstantRegion>),
@@ -36,6 +41,16 @@ pub(crate) enum PlanOutput {
 impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
         match self {
+            Self::FixedClassic(plans) => graph.plans.fixed_classic = plans,
+            #[cfg(test)]
+            Self::Boundaries(catalog) => {
+                graph.plans.instant.layers = None;
+                graph.plans.instant.boundaries = Some(catalog);
+                graph.plans.instant.regions.clear();
+                graph.plans.instant.proxies.clear();
+            }
+            #[cfg(test)]
+            Self::Layers(layers) => graph.plans.instant.layers = Some(layers),
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
@@ -43,6 +58,11 @@ impl PlanOutput {
             Self::WireQueries(facts) => {
                 for (wire, facts) in graph.wires.iter_mut().zip(facts) {
                     wire.execution.query_facts = facts;
+                }
+            }
+            Self::WireCallbacks(plans) => {
+                for (wire, plan) in graph.wires.iter_mut().zip(plans) {
+                    wire.execution.callback_selection = plan;
                 }
             }
             Self::WireHops(roots) => {
@@ -59,6 +79,11 @@ impl PlanOutput {
                 }
             }
             Self::Regions(regions) => {
+                #[cfg(test)]
+                {
+                    graph.plans.instant.layers = None;
+                }
+                graph.plans.instant.boundaries = None;
                 graph.plans.instant.regions = regions;
                 graph.plans.instant.proxies.clear();
             }

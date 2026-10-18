@@ -7,7 +7,7 @@ use mchprs_blocks::{
 };
 use mchprs_core::{
     plot::{PlotWorld, worldedit::load_schematic},
-    redpiler::{BackendKind, Compiler, CompilerOptions, GraphExecutionCounts},
+    redpiler::{BackendKind, Compiler, CompilerOptions, GraphExecutionCounts, GraphExecutionCoverage},
     redstone,
     world::World,
 };
@@ -285,15 +285,16 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"ticks":value.ticks,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
+    json!({"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
+        "ticks":value.ticks,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
         "wire_walks":value.wire_walks,"dust_path_power_samples_elided":value.dust_path_power_samples_elided,
         "piston_samples":value.piston_samples,"piston_actions":value.piston_actions,"deferred_publications":value.deferred_publications})
 }
 
 fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> Value {
     counts(GraphExecutionCounts {
-        classic_net_invocations: after.classic_net_invocations-before.classic_net_invocations,
-        classic_receiver_ops: after.classic_receiver_ops-before.classic_receiver_ops,
+        classic_net_invocations: after.classic_net_invocations - before.classic_net_invocations,
+        classic_receiver_ops: after.classic_receiver_ops - before.classic_receiver_ops,
         ticks: after.ticks - before.ticks,
         scheduled_ticks: after.scheduled_ticks - before.scheduled_ticks,
         callbacks: after.callbacks - before.callbacks,
@@ -481,6 +482,7 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
     let compile_started = Instant::now();
     let mut compiler = tier.map(|tier| episode.compile(&world, tier, compose_regions)).transpose()?;
     let compile_seconds = tier.map(|_| compile_started.elapsed().as_secs_f64());
+    let coverage_at_compile = compiler.as_ref().and_then(Compiler::graph_execution_coverage);
     let tables = compiler.as_ref().map(|compiler| {
         let stats = compiler.stats().unwrap();
         json!({"backend_nodes":stats.backend_nodes,
@@ -499,6 +501,8 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
     let active_ticks = phases.iter().sum::<u32>();
     let mut elapsed = Duration::ZERO;
     let mut phase_stimulus_elapsed = Duration::ZERO;
+    let mut graph_tick_calls = 0u32;
+    let mut native_tick_calls = 0u32;
     let mut trace = vec![episode.observe(&world)?];
     let mut chat = Vec::new();
     collect_chat(&world, 0, &mut chat);
@@ -516,6 +520,12 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
             let started = Instant::now();
             tick(&mut compiler, &mut world)?;
             elapsed += started.elapsed();
+            // Count outside the timer; reset-pending episodes deliberately change executor.
+            if compiler.is_some() {
+                graph_tick_calls += 1;
+            } else {
+                native_tick_calls += 1;
+            }
             publish(&mut compiler, &mut world);
             trace.push(episode.observe(&world)?);
             collect_chat(&world, trace.len() as u32 - 1, &mut chat);
@@ -536,6 +546,8 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
         verify_phase_response(episode, phase, &trace[phase_start..])?;
     }
     let work = compiler.as_ref().and_then(Compiler::graph_execution_counts);
+    let coverage_after_window = compiler.as_ref().and_then(Compiler::graph_execution_coverage);
+    let execution_context_summary = execution_context_summary(coverage_after_window, graph_tick_calls, native_tick_calls);
     if episode.name == "cpu_bubblesort" && tier == Some(0) && !reset_pending {
         ensure!(work == Some(CPU_COUNTS), "O0 CPU frozen work changed: {work:?}");
     }
@@ -570,8 +582,30 @@ fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regi
         "pending_scheduler_entries_after_reset":pending_after_reset,"pending_reset":reset_work,
         "work_in_preparation":preparation_work_before.zip(before).map(|(before, after)|window_counts(before, after)),
         "work_before_window":before.map(counts),"work_after_window":work.map(counts),
+        "coverage_at_compile":coverage_at_compile,"coverage_after_window":coverage_after_window,
+        "execution_context_summary":execution_context_summary,
+        "timed_tick_contexts":{"graph":graph_tick_calls,"native":native_tick_calls},
         "work_in_window":before.zip(work).map(|(before,after)|window_counts(before,after)),"tables":tables}),
     )
+}
+
+/// Structural ownership and tick-call counts have different denominators from CPU time.
+fn execution_context_summary(coverage: Option<GraphExecutionCoverage>, graph_ticks: u32, native_ticks: u32) -> Vec<String> {
+    let total = graph_ticks + native_ticks;
+    let percentage = |count| if total == 0 { 0.0 } else { 100.0 * f64::from(count) / f64::from(total) };
+    let mut lines = vec![format!(
+        "Timed tick calls: Graph {graph_ticks}/{total} ({:.1}%); native {native_ticks}/{total} ({:.1}%). This is not CPU-time share.",
+        percentage(graph_ticks),
+        percentage(native_ticks),
+    )];
+    if let Some(coverage) = coverage {
+        lines.extend(coverage.summary_lines());
+    } else if graph_ticks == 0 {
+        lines.push("Interpreter reference execution; not a compiled fallback.".into());
+    } else {
+        lines.push("Explicit reset handed execution back to the interpreter during this window; no compiled graph remains at its end.".into());
+    }
+    lines
 }
 
 fn hash(bytes: &[u8]) -> String {

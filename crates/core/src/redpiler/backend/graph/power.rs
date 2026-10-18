@@ -57,6 +57,9 @@ impl GraphBackend {
     }
 
     pub(super) fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
+        if self.fixed_classic.is_some() {
+            return self.fixed_classic_input_strength(node, port);
+        }
         if port == InputPort::Main
             && let Some((net,attenuation,source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten()
             && self.state.classic_active[net as usize] {
@@ -73,11 +76,7 @@ impl GraphBackend {
                 if input.require_cross && crate::redstone::wire::is_dot(self.wire_state(input.node)) {
                     return maximum;
                 }
-                let strength = match &self.classic_proof {
-                    Some(proof) if proof.source == input.node => proof.signal,
-                    _ => self.stored_component_strength(input.node),
-                };
-                maximum.max(strength.saturating_sub(input.attenuation))
+                maximum.max(self.stored_component_strength(input.node).saturating_sub(input.attenuation))
             });
         }
         let mut maximum = 0;

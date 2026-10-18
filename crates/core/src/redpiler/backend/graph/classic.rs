@@ -5,16 +5,56 @@ pub(super) struct ProofRecorder {
     pub(super) source: NodeId,
     pub(super) signal: u8,
     receivers: Vec<NodeId>,
-    samples: Vec<(NodeId, bool)>,
+    samples: Vec<(NodeId, ClassicSample)>,
 }
 
 pub(crate) struct ClassicReference {
     backend: GraphBackend,
     saved: Vec<(NodeId, ComponentState)>,
+    baseline: CircuitState,
+    baseline_clock: Clock,
+    #[cfg(test)]
+    restored_unowned_writes: usize,
     work: usize,
 }
 
+/// A delayed receiver cannot change its stored output during this episode.
+/// If its first pair equals current, its first distinct pair must schedule;
+/// otherwise the first pair schedules and pending dedup suppresses the rest.
+pub(super) fn compact_classic_samples(samples: &mut Vec<(NodeId, ClassicSample)>) {
+    let mut seen = FxHashSet::default();
+    let mut counts = FxHashMap::<NodeId, usize>::default();
+    samples.retain(|sample| {
+        if !seen.insert(*sample) {
+            return false;
+        }
+        if matches!(sample.1, ClassicSample::Comparator { .. }) {
+            let count = counts.entry(sample.0).or_default();
+            *count += 1;
+            return *count <= 2;
+        }
+        true
+    });
+}
+
 impl ClassicReference {
+    #[cfg(test)]
+    pub(crate) fn has_initial_state(&self) -> bool {
+        self.backend.state == self.baseline
+            && self.backend.future.scheduler.iter().next().is_none()
+            && self.backend.future.pending.is_empty()
+            && self.backend.future.piston_requests.is_empty()
+            && self.backend.future.deferred_pistons.is_empty()
+            && self.backend.future.clock.logical_tick == self.baseline_clock.logical_tick
+            && self.backend.future.clock.phase == self.baseline_clock.phase
+            && self.backend.future.clock.scheduled_advanced == self.baseline_clock.scheduled_advanced
+    }
+
+    #[cfg(test)]
+    pub(crate) fn restored_unowned_writes(&self) -> usize {
+        self.restored_unowned_writes
+    }
+
     pub(crate) fn work(&self) -> usize {
         self.work
     }
@@ -26,7 +66,13 @@ impl ClassicReference {
         }
         let (program, state) = graph.lower().map_err(|error| error.to_string())?;
         let backend = GraphBackend::new(program, state, 0).map_err(|error| error.to_string())?;
+        let baseline = backend.state.clone();
+        let baseline_clock = backend.future.clock;
         Ok(Self {
+            baseline,
+            baseline_clock,
+            #[cfg(test)]
+            restored_unowned_writes: 0,
             backend,
             saved: Vec::new(),
             work: 0,
@@ -63,21 +109,71 @@ impl ClassicReference {
         let before = self.work;
         let result = self.prove_inner(plan, monitor, checking);
         self.backend.classic_proof = None;
+        // A rejected candidate may have unexpectedly reached unowned actors.
+        // Restore every actual write, not merely the proposed ownership slice.
+        #[cfg(test)]
+        {
+            self.restored_unowned_writes = 0;
+        }
+        for (index, dirty) in self.backend.dirty.iter_mut().enumerate() {
+            if *dirty {
+                #[cfg(test)]
+                if !self.saved.iter().any(|(node, _)| node.index() == index) {
+                    self.restored_unowned_writes += 1;
+                }
+                self.backend.state.components[index] = self.baseline.components[index].clone();
+            }
+            *dirty = false;
+        }
         for (node, state) in self.saved.drain(..) {
             self.backend.state.components[node.index()] = state;
         }
-        self.backend.dirty.fill(false);
+        self.backend.state.pistons.clone_from(&self.baseline.pistons);
+        self.backend.state.resources.clone_from(&self.baseline.resources);
+        self.backend.state.classic_signals.clone_from(&self.baseline.classic_signals);
+        self.backend.state.classic_active.clone_from(&self.baseline.classic_active);
+        self.backend.contact_dirty.fill(false);
+        self.backend.dirty_contacts.clear();
+        self.backend.effects.clear();
+        self.backend.failure = None;
         self.backend.wire_walks.clear();
         self.backend.future.scheduler = Default::default();
         self.backend.future.pending.clear();
+        self.backend.future.pending_nodes.fill(0);
+        self.backend.future.piston_requests.clear();
+        self.backend.future.deferred_pistons.clear();
+        self.backend.future.clock = self.baseline_clock;
         result.map(|()| self.work - before)
     }
 
     fn prove_inner(&mut self, plan: &mut ClassicNetPlan, monitor: &TaskMonitor, checking: bool) -> Result<(), String> {
+        // Geometry and external query dependencies are invariant under all
+        // hypothetical private/source writes. Validate the full live premise once;
+        // each replay below still visits every boundary wire and checks no write.
+        let mut proof_work = plan.guarded_wires.len() * 24 + plan.outside.len();
+        self.work = self.work.saturating_add(proof_work);
         if !self.backend.classic_guard_wires(&plan.guarded_wires) {
             return Err("guarded callback wire saved state is not stable".into());
         }
-        let mut proof_work = 0usize;
+        if !self.backend.classic_outside_zero(&plan.outside) {
+            return Err("independent main guard is initially nonzero".into());
+        }
+        // Boolean receivers need two polarities; analog pairs need up to two
+        // retained positions for each of the sixteen computed strengths.
+        let operation_limit = 8 + plan
+            .inputs
+            .iter()
+            .map(|input| {
+                if matches!(
+                    self.backend.program.nodes()[input.receiver.index()].kind,
+                    CircuitNodeKind::Electrical(NodeType::Comparator { .. })
+                ) {
+                    32
+                } else {
+                    4
+                }
+            })
+            .sum::<usize>();
         for entry in &mut plan.entries {
             let shape = matches!(
                 self.backend.program.routes()[entry.route.index()].deliveries[entry.ordinal as usize].kind,
@@ -91,7 +187,7 @@ impl ClassicReference {
             }
             let mut ops = if checking { entry.ops.to_vec() } else { Vec::<ClassicOp>::new() };
             if checking
-                && (ops.len() > plan.inputs.len() * 4 + 8
+                && (ops.len() > operation_limit
                     || ops
                         .iter()
                         .any(|op| op.when == [0; 4] || !plan.inputs.iter().any(|input| input.receiver == op.receiver)))
@@ -122,8 +218,11 @@ impl ClassicReference {
                     recorder.samples.clear();
                     backend.counts = Default::default();
                     backend.evaluate_seed(entry.wire, None).map_err(|error| error.to_string())?;
-                    let work =
-                        backend.counts.callbacks as usize + backend.counts.wire_walks as usize + plan.wires.len() + plan.guarded_wires.len() * 24;
+                    let work = backend.counts.callbacks as usize
+                        + backend.counts.wire_walks as usize
+                        + plan.wires.len()
+                        + plan.guarded_wires.len()
+                        + plan.outside.len();
                     proof_work = proof_work.saturating_add(work);
                     self.work = self.work.saturating_add(work);
                     if proof_work > CLASSIC_PROOF_WORK || self.work > CLASSIC_PROOF_WORK * 16 {
@@ -134,12 +233,9 @@ impl ClassicReference {
                             return Err("seed/Turbo transfer fails entry induction".into());
                         }
                     }
-                    if !backend.classic_guard_wires(&plan.guarded_wires)
+                    if !backend.classic_outside_zero(&plan.outside)
                         || plan.guarded_wires.iter().any(|node| {
-                            self.saved
-                                .iter()
-                                .find(|(saved, _)| saved == node)
-                                .is_none_or(|(_, state)| backend.state.components[node.index()] != *state)
+                            backend.dirty[node.index()] || backend.state.components[node.index()] != self.baseline.components[node.index()]
                         })
                     {
                         return Err("guarded callback wire changed during reference episode".into());
@@ -151,14 +247,13 @@ impl ClassicReference {
                         }
                         continue;
                     }
-                    let mut seen = FxHashSet::default();
-                    samples.retain(|sample| seen.insert(*sample));
+                    compact_classic_samples(&mut samples);
                     let pair = ((old as usize) << 4) | new as usize;
                     if checking {
                         let selected = ops
                             .iter()
                             .filter(|op| op.when[pair / 64] & (1u64 << (pair % 64)) != 0)
-                            .map(|op| (op.receiver, op.nonzero))
+                            .map(|op| (op.receiver, op.sample))
                             .collect::<Vec<_>>();
                         if selected != samples {
                             return Err("compact operations differ from ordered reference samples".into());
@@ -166,15 +261,15 @@ impl ClassicReference {
                         continue;
                     }
                     let mut cursor = 0;
-                    for (receiver, nonzero) in samples {
+                    for (receiver, sample) in samples {
                         let found = ops[cursor..]
                             .iter()
-                            .position(|op| op.receiver == receiver && op.nonzero == nonzero)
+                            .position(|op| op.receiver == receiver && op.sample == sample)
                             .map(|offset| cursor + offset);
                         let position = found.unwrap_or_else(|| {
                             ops.push(ClassicOp {
                                 receiver,
-                                nonzero,
+                                sample,
                                 when: [0; 4],
                             });
                             ops.len() - 1
@@ -182,7 +277,7 @@ impl ClassicReference {
                         ops[position].when[pair / 64] |= 1u64 << (pair % 64);
                         cursor = position + 1;
                     }
-                    if ops.len() > plan.inputs.len() * 4 + 8 {
+                    if ops.len() > operation_limit {
                         return Err("boundary program does not compact within operation bound".into());
                     }
                 }
@@ -198,7 +293,7 @@ impl GraphBackend {
     pub(super) fn record_classic_sample(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         let delayed = matches!(
             self.program.nodes()[node.index()].kind,
-            CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. })
+            CircuitNodeKind::Electrical(NodeType::Torch | NodeType::Repeater { .. } | NodeType::Comparator { .. })
         );
         if !delayed {
             if matches!(
@@ -212,18 +307,43 @@ impl GraphBackend {
         if !self.classic_proof.as_ref().unwrap().receivers.contains(&node) {
             return Err(self.unsupported(node, "unrepresented classic proof receiver"));
         }
-        if let Some(ObservedSite {
-            properties: ObservedProperties::Electrical { powered, locked },
-            ..
-        }) = captured
+        let comparator = matches!(
+            self.program.nodes()[node.index()].kind,
+            CircuitNodeKind::Electrical(NodeType::Comparator { .. })
+        );
+        if !comparator
+            && let Some(ObservedSite {
+                properties: ObservedProperties::Electrical { powered, locked },
+                ..
+            }) = captured
         {
             if *powered != self.node_state(node).powered || *locked != self.node_state(node).repeater_locked {
                 return Err(self.unsupported(node, "classic captured receiver state differs from entry state"));
             }
         }
-        let nonzero = self.input_strength(node, InputPort::Main) > 0;
-        self.classic_proof.as_mut().unwrap().samples.push((node, nonzero));
+        let sample = if comparator {
+            ClassicSample::Comparator {
+                strength: self.comparator_output(node),
+                powered: self.comparator_powered(node),
+            }
+        } else {
+            ClassicSample::Boolean {
+                nonzero: self.input_strength(node, InputPort::Main) > 0,
+            }
+        };
+        self.classic_proof.as_mut().unwrap().samples.push((node, sample));
         Ok(())
+    }
+
+    fn classic_outside_zero(&self, inputs: &[ClassicOutside]) -> bool {
+        inputs.iter().all(|input| {
+            let strength = match &self.state.components[input.node.index()] {
+                ComponentState::Electrical(state) => state.output_strength,
+                ComponentState::Wire(_) => self.wire_state(input.node).power,
+                ComponentState::Specialized => 0,
+            };
+            strength.saturating_sub(input.attenuation) == 0
+        })
     }
 
     /// Check before any kernel effect. The certificate proves both transfer modes
@@ -273,6 +393,11 @@ impl GraphBackend {
             return true;
         }
         let ops = entry.ops.clone();
+        let outside = self.program.classic().nets[net].outside.clone();
+        if !self.classic_outside_zero(&self.program.classic().outside[outside]) {
+            self.deopt_classic_net(net);
+            return false;
+        }
         let guards = self.program.classic().nets[net].guarded_wires.clone();
         for index in guards {
             let node = self.program.classic().guarded_wires[index];
@@ -293,7 +418,7 @@ impl GraphBackend {
                 continue;
             }
             self.counts.classic_receiver_ops += 1;
-            self.classic_schedule(op.receiver, op.nonzero);
+            self.classic_schedule(op.receiver, op.sample);
         }
         if old != new {
             let wires = self.program.classic().nets[net].wires.clone();
@@ -304,11 +429,23 @@ impl GraphBackend {
         true
     }
 
-    fn classic_schedule(&mut self, node: NodeId, nonzero: bool) {
+    fn classic_schedule(&mut self, node: NodeId, sample: ClassicSample) {
         if self.is_pending(node) {
             return;
         }
-        let powered = self.node_state(node).powered;
+        let current = self.node_state(node);
+        if let ClassicSample::Comparator { strength, powered } = sample {
+            if strength != current.output_strength || powered != current.powered {
+                let facing_diode = matches!(
+                    self.program.nodes()[node.index()].kind,
+                    CircuitNodeKind::Electrical(NodeType::Comparator { facing_diode: true, .. })
+                );
+                self.schedule(node, 1, if facing_diode { TickPriority::High } else { TickPriority::Normal });
+            }
+            return;
+        }
+        let ClassicSample::Boolean { nonzero } = sample else { unreachable!() };
+        let powered = current.powered;
         match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Electrical(NodeType::Torch) if powered == nonzero => {
                 self.schedule(node, 1, TickPriority::Normal);

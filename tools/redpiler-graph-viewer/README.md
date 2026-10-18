@@ -23,4 +23,11 @@ Example export: `../../test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json
 
 Run the standalone regression checks with `node --test tools/redpiler-graph-viewer/viewer.test.cjs` and `py -3 -m unittest tools.redpiler_graph.test_loader` from the repository root.
 
+Experimental instant-boundary exports add searchable `instant_cell:*`, `instant_corridor:*`,
+`instant_port:*` and `instant_decline:*` records. Ports distinguish input/output bindings
+and link back to original power, callback, guard and geometry witnesses. Their count includes
+connections between candidate owners, not just outside data bits. A catalog describes
+potential compilation coverage; it does not mean the circuit executes as an instant kernel.
+Fixture review exports are written to `target/layered-instant-boundaries/` by the Rust tests.
+
 To inspect the adder: load the example export, click a lever under **Inputs**, and follow an outgoing link in the right panel. Search `node:49` to inspect a repeater fed by `node:50`; follow `power_link:0`, then its guard reference. Select `snapshot:initial` to see guard status. Search `resource:1` to highlight its three contacts, then follow a contact reference to inspect its alternatives. Try **World X/Z by Y layer** with **Y = 33**, then **Fit view**. Routes and trace remain explicitly unavailable for this electrical draft.

@@ -1,7 +1,9 @@
 //! Graph-native execution for rich piston circuits. The World is read only at
 //! compilation; flush and reset project graph state back to it.
 
+mod coverage;
 mod fixed_point;
+mod fixed_classic;
 #[cfg(test)]
 #[path = "graph/tests/unchecked_classic_anpu.rs"]
 mod unchecked_classic_anpu;
@@ -201,10 +203,13 @@ enum GraphObservedOperation {
 #[cfg(test)]
 #[derive(Default)]
 pub(crate) struct TestRecorder {
+    /// Benchmark control; production reads the dense canonical pending index.
+    general_pending_queries: bool,
     test_recording: bool,
     trace: Vec<String>,
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     comparator_updates: Vec<BlockPos>,
+    comparator_tick_focus: Option<(NodeId, u64)>,
     power_links_examined: Cell<usize>,
     observed_operations: Vec<GraphObservedOperation>,
 }
@@ -289,6 +294,10 @@ pub(crate) struct GraphBackend {
     unchecked_classic: Option<std::sync::Arc<unchecked_classic_anpu::UncheckedProgram>>,
     #[cfg(test)]
     wire_tapes: Option<std::sync::Arc<unchecked_classic_anpu::TapeProgram>>,
+    fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
+    fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
+    #[cfg(test)]
+    fixed_classic_counts: fixed_classic::FixedClassicCounts,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -312,6 +321,8 @@ pub(crate) struct GraphBackend {
 struct GraphFuture {
     scheduler: TickScheduler<ScheduledNodeTick>,
     pending: FxHashMap<PendingNodeTick, usize>,
+    /// Exact multiplicity of canonical typed ticks, indexed by immutable component ID.
+    pending_nodes: Box<[usize]>,
     piston_requests: VecDeque<PistonRequest>,
     deferred_pistons: VecDeque<DeferredPistonEvent>,
     clock: Clock,
@@ -357,10 +368,22 @@ impl GraphBackend {
         options: &crate::redpiler::CompilerOptions,
         monitor: Arc<TaskMonitor>,
     ) -> Result<Self, GraphBackendError> {
+        let pipeline = passes::default_graph_pipeline(options);
+        Self::compile_with_pipeline(world, bounds, ticks, options, &pipeline, monitor)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compile_with_pipeline<W: World>(
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        ticks: Vec<TickEntry>,
+        options: &crate::redpiler::CompilerOptions,
+        pipeline: &passes::PassPipeline,
+        monitor: Arc<TaskMonitor>,
+    ) -> Result<Self, GraphBackendError> {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
         let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits).map_err(map_preparation_error)?;
-        let pipeline = passes::default_graph_pipeline(options);
-        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, &monitor).map_err(GraphBackendError::PassPipeline)?;
+        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, pipeline, &monitor).map_err(GraphBackendError::PassPipeline)?;
         prepared.finish_pipeline_statistics(&monitor);
         let lowered = prepared.lower(&monitor).map_err(GraphBackendError::Graph)?;
         Self::from_lowered(lowered, &monitor)
@@ -584,6 +607,7 @@ impl GraphBackend {
         let dirty_contacts = (0..contact_count).map(|index| ContactId::new(index as u32)).collect();
         let projected_pistons = state.pistons.to_vec();
         let projected_resources = state.resources.to_vec();
+        let fixed_classic = program.fixed_classic().cloned();
         Ok(Self {
             program,
             state,
@@ -595,9 +619,14 @@ impl GraphBackend {
             unchecked_classic: None,
             #[cfg(test)]
             wire_tapes: None,
+            fixed_classic,
+            fixed_classic_scratch: Vec::new(),
+            #[cfg(test)]
+            fixed_classic_counts: Default::default(),
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
+                pending_nodes: vec![0; node_count].into_boxed_slice(),
                 piston_requests: VecDeque::new(),
                 deferred_pistons: VecDeque::new(),
                 clock: Clock {
@@ -668,6 +697,9 @@ impl GraphBackend {
             };
             self.future.scheduler.schedule_half_tick(scheduled, tick.delay as usize, tick.priority);
             *self.future.pending.entry(scheduled.into()).or_default() += 1;
+            if let Some(node) = self.canonical_pending_node(scheduled) {
+                self.future.pending_nodes[node.index()] += 1;
+            }
         }
         Ok(())
     }
@@ -688,19 +720,21 @@ impl GraphBackend {
         if delay >= SCHEDULER_BUCKETS || (delay == 0 && priority != TickPriority::NanoTick) {
             return;
         }
+        if self.is_pending(node) {
+            return;
+        }
+        let registry_type = self.registry_type(node);
         let tick = ScheduledNodeTick {
             node: Some(node),
             position: self.position(node),
-            block_type: Some(self.registry_type(node)),
-            registry_type: self.registry_type(node),
-            current_registry_type: self.registry_type(node),
+            block_type: Some(registry_type),
+            registry_type,
+            current_registry_type: registry_type,
         };
         let key = tick.into();
-        if self.future.pending.contains_key(&key) {
-            return;
-        }
         self.future.scheduler.schedule_half_tick(tick, delay, priority);
         self.future.pending.insert(key, 1);
+        self.future.pending_nodes[node.index()] = 1;
         #[cfg(test)]
         graph_test_trace!(
             self,
@@ -714,6 +748,24 @@ impl GraphBackend {
     }
 
     fn is_pending(&self, node: NodeId) -> bool {
+        #[cfg(test)]
+        if self.test_recorder.general_pending_queries {
+            return self.pending_from_general_map(node);
+        }
+        self.future.pending_nodes[node.index()] != 0
+    }
+
+    /// Untyped, stale and unbound imported events are distinct pending identities.
+    fn canonical_pending_node(&self, tick: ScheduledNodeTick) -> Option<NodeId> {
+        let node = tick.node?;
+        let spec = self.program.nodes().get(node.index())?;
+        let registry_type = spec.block?.registry_id();
+        (spec.position == Some(tick.position) && tick.block_type == Some(registry_type)
+            && tick.registry_type == registry_type && tick.current_registry_type == registry_type).then_some(node)
+    }
+
+    #[cfg(test)]
+    fn pending_from_general_map(&self, node: NodeId) -> bool {
         self.future.pending.contains_key(&PendingNodeTick {
             node: Some(node),
             position: self.position(node),
@@ -725,8 +777,13 @@ impl GraphBackend {
 
     fn popped(&mut self, tick: ScheduledNodeTick) {
         let key = tick.into();
+        let canonical = self.canonical_pending_node(tick);
         if let Some(count) = self.future.pending.get_mut(&key) {
             *count -= 1;
+            if let Some(node) = canonical {
+                debug_assert!(self.future.pending_nodes[node.index()] > 0);
+                self.future.pending_nodes[node.index()] -= 1;
+            }
             if *count == 0 {
                 self.future.pending.remove(&key);
             }
@@ -926,6 +983,9 @@ impl GraphBackend {
     }
 
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
+        if self.fixed_classic.is_some() {
+            return self.fixed_classic_tick(node);
+        }
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Wire(_) => Ok(()),
             CircuitNodeKind::Observer { .. } => self.tick_observer(node),
@@ -1353,6 +1413,48 @@ impl GraphBackend {
 
     fn tick_comparator(&mut self, node: NodeId, mode: ComparatorMode, _facing_diode: bool) -> Result<(), GraphExecutionError> {
         let strength = self.comparator_output(node);
+        #[cfg(test)]
+        if self.test_recorder.comparator_tick_focus == Some((node, self.future.clock.logical_tick)) {
+            let fixed_operands = |port| {
+                self.program.fixed_signal_query(PowerTarget::Input { node, port }).map(|(constant, inputs)| {
+                    let inputs = inputs
+                        .iter()
+                        .map(|input| {
+                            let strength = match &self.state.components[input.node.index()] {
+                                ComponentState::Electrical(state) => state.output_strength,
+                                ComponentState::Wire(_) => self.wire_state(input.node).power,
+                                ComponentState::Specialized => 0,
+                            };
+                            let shape_ok = !input.require_cross || !crate::redstone::wire::is_dot(self.wire_state(input.node));
+                            serde_json::json!({
+                                "node":input.node.index(),
+                                "position":self.program.nodes()[input.node.index()].position,
+                                "kind":format!("{:?}", self.program.nodes()[input.node.index()].kind),
+                                "strength":strength,
+                                "attenuation":input.attenuation,
+                                "require_cross":input.require_cross,
+                                "shape_ok":shape_ok,
+                                "contribution":if shape_ok { strength.saturating_sub(input.attenuation) } else { 0 },
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    serde_json::json!({"constant":constant,"inputs":inputs})
+                })
+            };
+            println!(
+                "CHUNGUS TICK512 COMPARATOR HANDLER {:?} tick={} phase={:?} main={} side={} calculated={} stored={} powered={} main_operands={:?} side_operands={:?}",
+                self.position(node),
+                self.future.clock.logical_tick,
+                self.future.clock.phase,
+                self.comparator_input(node),
+                self.comparator_side(node),
+                strength,
+                self.node_state(node).output_strength,
+                self.comparator_powered(node),
+                fixed_operands(InputPort::Main),
+                fixed_operands(InputPort::Side),
+            );
+        }
         let current = self.node_state(node);
         if strength != current.output_strength || mode == ComparatorMode::Compare {
             let powered = self.comparator_powered(node);
@@ -1507,6 +1609,10 @@ impl GraphBackend {
     }
 
     fn fire_route(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        if let Some(program) = &self.fixed_classic {
+            let route = program.nodes[node.index()].output_route;
+            return route.map_or(Ok(()), |route| self.fixed_classic_route(route, None));
+        }
         let route = self.program.nodes()[node.index()].output_route;
         if let Some(route) = route {
             self.deliver_route(route, None)
@@ -1541,6 +1647,9 @@ impl GraphBackend {
 
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
+        if self.fixed_classic.is_some() {
+            return self.fixed_classic_route(route, captured);
+        }
         let result = self.deliver_route_inner(route, captured);
         result
     }
@@ -1600,8 +1709,23 @@ impl GraphBackend {
         let _ = route;
         match receiver {
             CallbackReceiver::Component(node) => self.update_component(node, delivery.kind, observed)?,
-            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => self.sample_piston(piston)?,
-            CallbackReceiver::Contact(_) => {}
+            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
+                if self.classic_proof.is_some() {
+                    return Err(GraphExecutionError::UnsupportedComponent {
+                        position: Some(self.program.sites()[delivery.target.index()].position),
+                        kind: "classic proof piston callback",
+                    });
+                }
+                self.sample_piston(piston)?;
+            }
+            CallbackReceiver::Contact(_) => {
+                if self.classic_proof.is_some() {
+                    return Err(GraphExecutionError::UnsupportedComponent {
+                        position: Some(self.program.sites()[delivery.target.index()].position),
+                        kind: "classic proof contact callback",
+                    });
+                }
+            }
         }
         Ok(())
     }
@@ -1765,9 +1889,24 @@ mod wire_query_tests;
 mod fixed_signal_tests;
 
 #[cfg(test)]
+#[path = "graph/tests/classic_pending.rs"]
+mod classic_pending_tests;
+
+#[cfg(test)]
 #[path = "graph/tests/isolated_wire.rs"]
 mod isolated_wire_tests;
 
 #[cfg(test)]
 #[path = "graph/tests/instant_reset.rs"]
 mod instant_reset_tests;
+
+#[cfg(test)]
+#[path = "graph/tests/wire_callbacks.rs"]
+mod wire_callback_tests;
+
+#[cfg(test)]
+#[path = "graph/tests/fixed_classic.rs"]
+mod fixed_classic_tests;
+#[cfg(test)]
+#[path = "graph/tests/fixed_classic_edges.rs"]
+mod fixed_classic_edges;

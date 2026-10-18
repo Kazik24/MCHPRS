@@ -254,6 +254,7 @@ impl GraphBackend {
         self.projected_resources.clone_from_slice(&self.state.resources);
         self.future.scheduler.clear();
         self.future.pending.clear();
+        self.future.pending_nodes.fill(0);
         self.future.piston_requests.clear();
         self.future.deferred_pistons.clear();
     }

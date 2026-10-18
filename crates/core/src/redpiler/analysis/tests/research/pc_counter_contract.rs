@@ -66,6 +66,109 @@ fn compile_pc(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> GraphBackend {
     .unwrap_or_else(|error| panic!("PC general Graph admission: {error}"))
 }
 
+#[test]
+fn pc_counter_boundary_catalog_keeps_multiple_inputs_outputs_and_ordinary_memory_outside() {
+    use crate::redpiler::program_graph::*;
+    let (world, bounds) = load(&descriptor());
+    let physical_controls = controls(&world, bounds);
+    let monitor = crate::redpiler::TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(3),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::experimental_boundary_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let mut admitted: Vec<_> = catalog
+        .cells
+        .iter()
+        .flat_map(|cell| cell.uses.iter().map(|use_| use_.actor.index()))
+        .collect();
+    assert!(!admitted.is_empty());
+    let admitted_count = admitted.len();
+    assert!(!catalog.declines.is_empty(), "ordinary/BUD or unsupported shared groups stay outside");
+    admitted.extend(
+        catalog
+            .declines
+            .iter()
+            .flat_map(|decline| decline.actors.iter().map(|actor| actor.index())),
+    );
+    admitted.sort_unstable();
+    assert_eq!(admitted, (0..graph.pistons.len()).collect::<Vec<_>>());
+    let mut direct_inputs = BTreeSet::new();
+    let mut direct_outputs = BTreeSet::new();
+    for port in &catalog.ports {
+        if port.direction == BoundaryDirection::Input {
+            let source = match port.kind {
+                BoundaryPortKind::Callback { occurrence } => Some(graph.routes[occurrence.route.index()].source),
+                BoundaryPortKind::WireNeighborhood { neighbor, .. } | BoundaryPortKind::CapturedWire { neighbor, .. } => {
+                    match graph.sites[neighbor.index()].source {
+                        SiteSource::Component(node) => Some(node),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            if let Some(node) = source {
+                if graph.nodes[node.index()]
+                    .position
+                    .is_some_and(|position| physical_controls.contains(&position))
+                {
+                    direct_inputs.insert(node);
+                }
+            }
+        }
+        if let BoundaryPortKind::Power { link } = port.kind {
+            let link = graph.power_links[link as usize];
+            match port.direction {
+                BoundaryDirection::Input => {
+                    if let SiteSource::Component(node) = graph.sites[link.from.index()].source {
+                        if graph.nodes[node.index()]
+                            .position
+                            .is_some_and(|position| physical_controls.contains(&position))
+                        {
+                            direct_inputs.insert(node);
+                        }
+                    }
+                }
+                BoundaryDirection::Output => {
+                    if let PowerTarget::Input { node, .. } = link.to {
+                        direct_outputs.insert(node);
+                    }
+                }
+            }
+        }
+    }
+    assert!(direct_inputs.len() > 1, "the counter cannot be reduced to one triggering input");
+    assert!(direct_outputs.len() > 1, "read/output devices have separate boundary targets");
+    let directory = root().join("target/layered-instant-boundaries");
+    std::fs::create_dir_all(&directory).unwrap();
+    let export = crate::redpiler::analysis::export_json::from_graph(&prepared.report, graph).unwrap();
+    // Compact serialization keeps this large inspection artifact within the existing viewer limit.
+    // from_graph has already validated both the draft certificate and the exported records.
+    let bytes = serde_json::to_vec(&export).unwrap();
+    assert!(bytes.len() <= 64 * 1024 * 1024, "PC boundary export must fit the existing viewer limit");
+    std::fs::write(directory.join("pc_counter.graph.json"), bytes).unwrap();
+    println!(
+        "PC boundaries: {} cells / {admitted_count} actors; {} outside groups; {} corridors; {} direct controls; {} direct output targets; {} total typed ports",
+        catalog.cells.len(),
+        catalog.declines.len(),
+        catalog.corridors.len(),
+        direct_inputs.len(),
+        direct_outputs.len(),
+        catalog.ports.len()
+    );
+}
+
 fn compare_checkpoint(native: &PlotWorld, projected: &PlotWorld, bounds: (BlockPos, BlockPos), context: &str) {
     for y in bounds.0.y..=bounds.1.y {
         for z in bounds.0.z..=bounds.1.z {
@@ -204,6 +307,10 @@ fn pc_counter_preserves_separate_controls_and_matches_native_output_windows() {
         cells.cells.iter().map(|cell| cell.uses.len()).sum::<usize>(),
         cells.declined
     );
+    let coverage = graph.execution_coverage();
+    for line in coverage.summary_lines() {
+        println!("PC after128 ticks: {line}");
+    }
 }
 
 #[test]

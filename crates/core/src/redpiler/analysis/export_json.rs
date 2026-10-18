@@ -1,13 +1,17 @@
 //! Versioned inspection JSON for the richer graph drafts.
 mod classic;
 mod fixed_signals;
+mod fixed_classic;
+mod instant_boundaries;
+#[cfg(test)]
+mod instant_layers;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes;
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind, LinkSpec, OperandView, PistonAvailability,
-    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest, WireQueryFacts,
+    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest, WireQueryFacts, WireCallbackSelection,
 };
 use crate::redpiler::{CompilerOptions, TaskMonitor};
 use crate::world::World;
@@ -99,11 +103,29 @@ struct PositionDto {
 
 #[derive(Debug, Serialize)]
 struct GraphTablesDto {
+    /// These experimental regions retain causal-layer proofs without enabling execution.
+    #[cfg(test)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_layer_regions: Vec<serde_json::Value>,
+    /// These whole components remain outside layer compilation with explicit witnesses.
+    #[cfg(test)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_layer_declines: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_cells: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_corridors: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_boundary_ports: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_declines: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     classic_nets: Vec<serde_json::Value>,
     /// Live reads execute directly; settled traces expose electrical provenance only.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     fixed_signal_queries: Vec<fixed_signals::QueryDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixed_classic: Option<fixed_classic::PlanDto>,
     nodes: Vec<NodeDto>,
     profiles: Vec<ProfileDto>,
     sites: Vec<SiteDto>,
@@ -453,6 +475,8 @@ struct WirePlanDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     query_facts: Option<WireQueryFacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    callback_selection: Option<WireCallbackSelection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     instant_reset: Option<InstantResetDto>,
     /// This selects compiled hop execution using the existing canonical neighbors.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -652,6 +676,9 @@ impl GraphExport {
         if self.stage != "callback_draft" {
             return Err(ExportError::new("stage", "draft export has an invalid stage"));
         }
+        instant_boundaries::validate(&self.graph)?;
+        #[cfg(test)]
+        instant_layers::validate(&self.graph)?;
         let nodes = unique_ids("node", self.graph.nodes.iter().map(|item| item.id.as_str()))?;
         let profiles = unique_ids("profile", self.graph.profiles.iter().map(|item| item.id.as_str()))?;
         let sites = unique_ids("site", self.graph.sites.iter().map(|item| item.id.as_str()))?;
@@ -777,6 +804,9 @@ impl GraphExport {
         }
         let mut instant_wires = HashSet::new();
         for wire in &self.graph.wire_plans {
+            if wire.callback_selection.is_some_and(|selection| !selection.valid()) {
+                return Err(ExportError::new("validation", "invalid compiled wire callback masks"));
+            }
             check_ref(&nodes, &wire.node, "wire node")?;
             if let Some(root) = &wire.hop_root {
                 check_ref(&sites, root, "wire hop root")?;
@@ -815,6 +845,7 @@ impl GraphExport {
         validate_dust_paths(&self.graph.dust_paths, &nodes, &sites, &node_records, &site_records)?;
         classic::validate(&self.graph.classic_nets,&nodes,&routes,&self.graph)?;
         fixed_signals::validate(&self.graph.fixed_signal_queries, &nodes, &sites)?;
+        fixed_classic::validate(&self.graph.fixed_classic, &self.graph, &nodes, &sites, &routes)?;
         for relation in &self.graph.wire_relations {
             check_ref(&nodes, &relation.from, "wire relation source")?;
             check_ref(&sites, &relation.to, "wire relation target")?;
@@ -1033,9 +1064,24 @@ fn map_pass_error(error: passes::PassPipelineError) -> ExportError {
 }
 
 pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Result<GraphExport, ExportError> {
+    if source.plans.instant.boundaries.is_some() {
+        source.validate_with_monitor(&TaskMonitor::default()).map_err(|error| ExportError::new("instant_boundaries", error.to_string()))?;
+    }
+    let boundaries = instant_boundaries::export(source);
+    #[cfg(test)]
+    let layers = instant_layers::export(source);
     let graph = GraphTablesDto {
+        #[cfg(test)]
+        instant_layer_regions: layers.regions,
+        #[cfg(test)]
+        instant_layer_declines: layers.declines,
+        instant_cells: boundaries.cells,
+        instant_corridors: boundaries.corridors,
+        instant_boundary_ports: boundaries.ports,
+        instant_declines: boundaries.declines,
         classic_nets: classic::export(source),
         fixed_signal_queries: fixed_signals::export(source),
+        fixed_classic: fixed_classic::export(&source.plans.fixed_classic),
         nodes: source
             .nodes
             .iter()
@@ -1147,6 +1193,7 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 shape_route: item.shape_route.map(|route| typed_id("route", route.index())),
                 turbo_route: item.turbo_route.map(|route| typed_id("route", route.index())),
                 query_facts: item.execution.query_facts,
+                callback_selection: item.execution.callback_selection,
                 hop_root: item.execution.hop_root.map(|site| typed_id("site", site.index())),
                 instant_reset: item.execution.instant_reset.map(|plan| InstantResetDto {
                     piston: typed_id("piston", plan.piston.index()),
@@ -1371,15 +1418,27 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.instant.regions.is_empty() {
         capabilities.push("instant_regions");
     }
+    if source.plans.instant.boundaries.is_some() {
+        capabilities.push("instant_boundaries");
+    }
+    #[cfg(test)]
+    if source.plans.instant.layers.is_some() {
+        capabilities.push("instant_layers");
+    }
     if !source.plans.instant.proxies.is_empty() {
         capabilities.push("instant_proxies");
     }
     if source.wires.iter().any(|wire| wire.execution.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
     }
+    if source.plans.fixed_classic.program.is_some() {
+        capabilities.push("fixed_classic_program");
+    } else if source.plans.fixed_classic.decline.is_some() {
+        capabilities.push("fixed_classic_declined");
+    }
     let export = GraphExport {
         format: "mchprs.redpiler.graph",
-        version: VersionDto { major: 1, minor: 1 },
+        version: VersionDto { major: 1, minor: 2 },
         stage: "callback_draft",
         capabilities,
         source: SourceDto {
@@ -1885,6 +1944,7 @@ mod wire_query_fact_validation_tests {
             shape_route: None,
             turbo_route: None,
             query_facts: None,
+            callback_selection: None,
             instant_reset: None,
             hop_root: None,
         };

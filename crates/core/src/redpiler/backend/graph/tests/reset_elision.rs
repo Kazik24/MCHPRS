@@ -51,6 +51,9 @@ fn reset_erasure_backend(circuit: &Adder, world: &PlotWorld, erase: bool) -> (Gr
     }
     // Both controls use linear selection so route-offset invalidation cannot explain a difference.
     prepared.graph.plans.turbo_callback_indices.clear();
+    for wire in &mut prepared.graph.wires {
+        wire.execution.callback_selection = None;
+    }
     // Structural validity cannot establish semantic equivalence of a rewrite.
     prepared.graph.validate().unwrap();
     let lowered = prepared.lower(&monitor).unwrap();

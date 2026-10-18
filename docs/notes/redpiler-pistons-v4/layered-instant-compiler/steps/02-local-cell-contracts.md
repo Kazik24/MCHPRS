@@ -1,7 +1,8 @@
 # Step 02: derive local gate and resource contracts
 
-Status: stationary first-response contracts implemented; broader primitive/lifecycle
-coverage remains in progress. No compiler pass or hot runtime activation yet.
+Status: stationary first-response equations and accepted-retraction effect contracts
+implemented and reviewed for the observer-backed family; focused tests passed. Broader
+reset-family/lifecycle coverage remains open. No compiler pass or hot runtime activation yet.
 
 ## Goal
 
@@ -74,7 +75,7 @@ gates when connecting the pass, rather than shipping unused code or blanket lint
 The admitted entry requires extended, ready bases and enabled payloads at a common Far
 contact. Activation, sampled power, requested retraction and live acceptance are separate
 predicates. Base/head/resource obstructions remain guarded dependencies. Reset observers
-provide source provenance; this is **not** yet an accepted-effect or reset-lifecycle proof.
+provide source provenance; this does **not** establish a whole reset-lifecycle proof.
 Early drops, ordinary co-owners and unsupported common-source rules cannot be silently
 compiled with these stationary predicates.
 
@@ -99,6 +100,49 @@ testing only the imported saved pose would not establish it.
 
 Power-link leaves still reference prepared physical sites with exact port, attenuation
 and guard provenance. Later corridor extraction must replace internal reads; no internal
-wire or callback is removed by this slice. Accepted transition effects, reset/wake plans,
-construction budgets, full primitive family coverage and native lifecycle differential
-execution remain required before this step's complete gate or public activation.
+wire or callback is removed by this slice. Full primitive/reset family coverage and native
+lifecycle differential execution remain required before this step's complete gate or
+public activation.
+
+### Accepted-retraction effects
+
+Each use now carries one `CellRetractionEffect`, rather than a second scheduler or mutable
+state owner. It records these existing Graph obligations:
+
+1. Snapshot the selected enabled Far token before any base callbacks. Revalidate the
+   request in the ordinary FIFO acceptance phase; a sampled request is not an acceptance.
+2. Increment the actor revision and expose `BasePendingHeadPresent` during the original
+   base-change route, then remove the head and expose `BasePending`.
+3. If the snapshotted token was present, transfer it to Near disabled, increment its
+   independent resource revision, and deliver Far changes. Always deliver Near changes.
+4. Queue the existing tick+2 deferred witness after the synchronous routes. Actor and
+   resource revisions are independent. Actor restoration precedes resource publication;
+   either part can be stale without invalidating the other part.
+
+A shared token lists its possible owners. The first eligible **accepted FIFO request**
+takes it; sorted actor IDs are not an arbitration rule. A later owner can still accept
+an empty retraction. The token is never copied to make the local equation simpler.
+
+Reset witnesses retain the observer's actual `watched_actor`, which can differ from the
+actor receiving reset power. Both base-change and base-restoration route occurrences
+retain their original direction, live view and guard. These are obligations for the later
+layer/reset compiler, not permission to delete observer ticks today.
+
+The derivation checks cancellation during route/contact expansion. Estimated retained
+pin/operand payloads are capped across cells, with a separate global activation-row cap.
+These estimates exclude allocator overhead and other tables. One bounded candidate can
+temporarily exist before retention is checked. Budget exhaustion returns an explicit
+error or group decline rather than truncating a cell or imposing an input-width limit.
+
+One discovered admission limit is explicit: `INSTANT_RESET_REDSTONE` has no observer.
+Observer-provenance recognition therefore produces no cells for it. It must remain
+ordinary Graph until a separate graph-derived feedback-reset contract is implemented;
+the fixture's name is not a proof and a fake observer ID is not a valid workaround.
+
+Validation on 2026-10-18: all nine local-cell tests passed, including accepted empty
+retractions, shared-token FIFO arbitration, reset-route provenance and independent stale
+actor/resource publication witnesses. The deferred cases call the real Graph publication
+handler directly; they assert the captured tick+2 deadline but do not independently test
+the scheduler waiting until that deadline. The broader adder suite passed **44 tests,
+1 ignored**, including existing Graph/native ordering, arithmetic and handoff checks.
+These tests establish this contract slice; they do not activate kernel execution.

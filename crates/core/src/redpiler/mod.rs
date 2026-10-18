@@ -24,7 +24,9 @@ pub use backend::{Queues, TickScheduler};
 pub use options::CompilerOptions;
 #[cfg(test)]
 pub(crate) use options::MAX_OPTIMIZATION_LEVEL;
-pub use statistics::{CompileStatistics, GraphCounts, GraphStatistics, PassStatistics, PreparationTableStatistics};
+pub use statistics::{
+    CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, PassStatistics, PreparationTableStatistics,
+};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
@@ -150,6 +152,11 @@ impl Compiler {
         Some(self.backend.as_ref()?.execution_counts())
     }
 
+    /// Current structural ownership, including classic nets that deoptimized after compilation.
+    pub fn graph_execution_coverage(&self) -> Option<GraphExecutionCoverage> {
+        Some(self.backend.as_ref()?.execution_coverage())
+    }
+
     pub fn compile<W: World>(
         &mut self,
         world: &W,
@@ -193,6 +200,7 @@ impl Compiler {
             graph: monitor.graph_statistics(),
             backend: BackendKind::Graph,
             backend_nodes: backend.node_count(),
+            execution_coverage: backend.execution_coverage(),
             analysis_duration,
             backend_duration,
             total_duration: start.elapsed(),

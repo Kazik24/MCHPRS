@@ -3,8 +3,12 @@ use super::*;
 use crate::redpiler::power_rules::{emits_strong, emits_weak};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+
+#[cfg(test)]
+#[path = "unchecked_chungus_tick512.rs"]
+mod chungus_tick512_diagnostic;
 
 #[path = "../../../../../benches/support/cpus.rs"]
 #[allow(dead_code)]
@@ -359,6 +363,10 @@ pub(super) struct UncheckedProgram {
     diagnostic: bool,
     diagnostic_from: u64,
     diagnostic_events: AtomicU64,
+    diagnostic_focus_node: AtomicU64,
+    diagnostic_focus_comparator: AtomicU64,
+    diagnostic_focus_tick: AtomicU64,
+    diagnostic_focus_reported: AtomicBool,
     preserved: Vec<bool>,
     preservation: serde_json::Value,
 }
@@ -528,6 +536,10 @@ impl UncheckedProgram {
                 .and_then(|value| value.parse().ok())
                 .unwrap_or(0),
             diagnostic_events: AtomicU64::new(0),
+            diagnostic_focus_node: AtomicU64::new(u64::MAX),
+            diagnostic_focus_comparator: AtomicU64::new(u64::MAX),
+            diagnostic_focus_tick: AtomicU64::new(u64::MAX),
+            diagnostic_focus_reported: AtomicBool::new(false),
             preserved,
             preservation,
         }
@@ -544,7 +556,8 @@ impl UncheckedProgram {
         captured: Option<&ObservedSite>,
         sampled_old: u8,
     ) -> Result<(), GraphExecutionError> {
-        let net = &self.nets[self.by_node[root.index()]];
+        let net_index = self.by_node[root.index()];
+        let net = &self.nets[net_index];
         let root_index = net.wires.iter().position(|&node| node == root).unwrap();
         let mut order = vec![root_index];
         let mut reached = vec![false; net.wires.len()];
@@ -572,6 +585,7 @@ impl UncheckedProgram {
                 }
             })
             .collect::<Vec<_>>();
+        self.trace_focus_if_mismatched(backend, root, captured, sampled_old, net_index, net, &order, &sources);
         let mut changed = vec![false; net.wires.len()];
         if self.diagnostic && backend.future.clock.logical_tick >= self.diagnostic_from && self.diagnostic_events.load(Ordering::Relaxed) < 16 {
             self.diagnose(backend, root, captured, sampled_old, net, &order, &sources);
@@ -625,6 +639,96 @@ impl UncheckedProgram {
             backend.dispatch_turbo_nonwire(site, &observed, 1)?;
         }
         Ok(())
+    }
+
+    /// Test-only diagnostic for a bounded external witness. It records the live source values
+    /// at the exact weighted write that first changes the focused wire.
+    fn trace_focus_if_mismatched(
+        &self,
+        backend: &GraphBackend,
+        root: NodeId,
+        captured: Option<&ObservedSite>,
+        sampled_old: u8,
+        net_index: usize,
+        net: &Net,
+        order: &[usize],
+        sources: &[u8],
+    ) {
+        let tick = self.diagnostic_focus_tick.load(Ordering::Relaxed);
+        if tick != backend.future.clock.logical_tick {
+            return;
+        }
+        let focus = self.diagnostic_focus_node.load(Ordering::Relaxed);
+        let comparator = self.diagnostic_focus_comparator.load(Ordering::Relaxed);
+        if focus == u64::MAX || focus as usize >= self.by_node.len() || self.by_node[focus as usize] != net_index {
+            return;
+        }
+        let focus = NodeId::new(focus as u32);
+        let Some(local) = net.wires.iter().position(|&node| node == focus) else {
+            return;
+        };
+        if !order.contains(&local) {
+            return;
+        }
+        let target_terms = &net.terms[local];
+        let weighted = target_terms
+            .iter()
+            .map(|&(source, attenuation)| sources[source].saturating_sub(attenuation))
+            .max()
+            .unwrap_or(0)
+            .max(net.constants[local]);
+        let old = backend.wire_state(focus).power;
+        if old == weighted || self.diagnostic_focus_reported.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let source_rows = target_terms
+            .iter()
+            .map(|&(source, attenuation)| {
+                let source_id = net.sources[source];
+                let node = match source_id {
+                    Source::Node(node) | Source::LiveBlockPower(node) => node,
+                };
+                json!({
+                    "source":format!("{source_id:?}"),
+                    "source_position":backend.program.nodes()[node.index()].position,
+                    "source_kind":format!("{:?}", backend.program.nodes()[node.index()].kind),
+                    "live_strength":sources[source],
+                    "attenuation":attenuation,
+                    "contribution":sources[source].saturating_sub(attenuation),
+                })
+            })
+            .collect::<Vec<_>>();
+        let comparator_state = (comparator != u64::MAX && (comparator as usize) < backend.state.components.len())
+            .then(|| format!("{:?}", backend.state.components[comparator as usize]));
+        let comparator_pending = (comparator != u64::MAX && (comparator as usize) < backend.program.nodes().len())
+            .then(|| backend.is_pending(NodeId::new(comparator as u32)));
+        println!(
+            "UNCHECKED FOCUS WRITE {}",
+            json!({
+                "tick":tick,
+                "root":root.index(),
+                "root_position":backend.program.nodes()[root.index()].position,
+                "sampled_old":sampled_old,
+                "root_power_after_seed":backend.wire_state(root).power,
+                "captured":format!("{captured:?}"),
+                "target":focus.index(),
+                "target_position":backend.program.nodes()[focus.index()].position,
+                "target_old":old,
+                "target_weighted":weighted,
+                "source_terms":source_rows,
+                "comparator":comparator,
+                "comparator_state":comparator_state,
+                "comparator_pending":comparator_pending,
+                "scheduled_ticks":backend.scheduled_ticks(),
+            })
+        );
+    }
+
+    pub(super) fn set_diagnostic_focus(&self, node: NodeId, comparator: NodeId, tick: u64) {
+        self.diagnostic_focus_node.store(node.index() as u64, Ordering::Relaxed);
+        self.diagnostic_focus_comparator.store(comparator.index() as u64, Ordering::Relaxed);
+        self.diagnostic_focus_tick.store(tick, Ordering::Relaxed);
+        self.diagnostic_focus_reported.store(false, Ordering::Relaxed);
     }
 
     #[cold]

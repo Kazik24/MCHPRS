@@ -44,9 +44,9 @@ optimization pass for every layer. Do not symbolically interpret the generic Tur
 | Step | Reviewable result | Status |
 | --- | --- | --- |
 | [01 Contract and oracle](steps/01-contract-and-oracle.md) | Atomic-edge protocol, projected observations and a measured single-use census. | Expanded corpus tests passed; awaiting human review |
-| [02 Local cells](steps/02-local-cell-contracts.md) | Graph-derived buffer/inverter/AND/OR equations and resource/reset witnesses. | In progress |
-| [03 Boundaries](steps/03-boundary-pass.md) | Complete, typed instant/classic interfaces from one discovery implementation. | Planned |
-| [04 Guarded layers](steps/04-regions-and-layers.md) | Input-to-output tracing over cells, with cycles and causal ordering explicit. | Planned |
+| [02 Local cells](steps/02-local-cell-contracts.md) | Graph-derived buffer/inverter/AND/OR equations and resource/reset witnesses. | Observer-backed stationary equations/effects reviewed and tested; broader reset families remain open |
+| [03 Boundaries](steps/03-boundary-pass.md) | Complete, typed instant/classic interfaces from one discovery implementation. | Implemented and validated; awaiting human review |
+| [04 Guarded layers](steps/04-regions-and-layers.md) | Input-to-output tracing over cells, with cycles and causal ordering explicit. | Partial: regions and isolated-cell layers; adder arrival proof remains open |
 | [05 Reduction and lowering](steps/05-reduction-and-lowering.md) | Compact immutable programs with dead internal work absent. | Planned |
 | [06 Runtime replacement](steps/06-runtime-and-boundary-effects.md) | Real kernel execution, exclusive ownership and boundary effect adapters. | Planned |
 | [07 Reset and handoff](steps/07-reset-and-handoff.md) | Small reset continuations, recurring waves and safe interpreter continuation. | Planned |

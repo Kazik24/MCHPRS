@@ -20,7 +20,15 @@ struct Connections<'a> {
 
 impl Connections<'_> {
     fn internal_node(&self, node: NodeId) -> Option<usize> {
-        if self.graph.plans.classic_nets.iter().any(|net|net.wires.iter().any(|wire|wire.node==node)) { return None; }
+        if self
+            .graph
+            .plans
+            .classic_nets
+            .iter()
+            .any(|net| net.wires.iter().any(|wire| wire.node == node))
+        {
+            return None;
+        }
         self.node_groups[node.index()]
             .or_else(|| matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(self.nodes_start + node.index()))
     }
@@ -178,15 +186,17 @@ fn assemble_regions(
         region.actors.sort_unstable();
         region.resources.sort_unstable();
     }
-    let (nodes, sites) = bind_owned_sites(graph, mechanisms, &actors, &contacts, &mut regions);
-    let mut owners = Ownership {
-        actors,
-        contacts,
-        nodes,
-        sites,
-    };
+    let resets = bind_legacy_sites(graph, mechanisms, &actors, &contacts, &mut regions);
+    let mut owners = boundaries::bind_owners(graph, actors, vec![None; graph.resources.len()], contacts, &resets);
     for wire in &graph.wires {
-        if graph.plans.classic_nets.iter().any(|net|net.wires.iter().any(|owned|owned.node==wire.node)) { continue; }
+        if graph
+            .plans
+            .classic_nets
+            .iter()
+            .any(|net| net.wires.iter().any(|owned| owned.node == wire.node))
+        {
+            continue;
+        }
         let group = root(&mut connections.parents, connections.nodes_start + wire.node.index());
         if let Some(&owner) = groups.get(&group) {
             if regions[owner].stable_inputs {
@@ -218,9 +228,8 @@ fn assemble_regions(
             regions[owner].readable_sites.push(SiteId::new(index as u32));
         }
     }
-    collect_power_boundary(graph, &owners, &mut regions, monitor)?;
-    collect_callback_boundary(graph, &owners, &mut regions, monitor)?;
-    collect_geometry_readers(graph, &owners, &mut regions, monitor)?;
+    let scan = boundaries::scan_legacy_boundaries(graph, &owners, monitor)?;
+    project_legacy_scan(scan, &mut regions);
     for region in &mut regions {
         region.resets.sort_unstable();
     }

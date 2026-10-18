@@ -66,10 +66,68 @@ forcing separate read/update regions when ownership and effects require that.
 The historical six-piston minimal PC schematic is absent; its preserved report is a design
 regression requirement, not fresh execution evidence. See the Step 01 notes for its path.
 
+## Execution-context percentages
+
+Compilation now reports structural execution ownership through
+`CompileStatistics.execution_coverage` and its existing `summary_lines()` output. Thus
+the ordinary compile/diagnostics UI gets the same summary without a separate renderer.
+`Compiler::graph_execution_coverage()` provides a cold, current snapshot after execution.
+No extra timers, event counters or scans are added to ticking.
+
+The categories are disjoint **component-node ownership**, excluding geometry-only contact
+nodes: whole instant kernels, active compiled classic wire regions, remaining general
+Graph nodes and native fallback. They sum to 100% for a nonempty circuit. A separate
+wire-only percentage is useful because classic compilation owns wires while ordinary
+receivers continue in Graph. Deoptimized classic wires return to general Graph ownership.
+
+The new layered compiler still owns **zero executing kernel nodes**. Recognized actors,
+private piston occupancy checks, reset-transfer entries and instruction routes are reported
+separately as candidates or partial shortcuts; they must not be counted as eliminated
+instant circuitry. Both payload and repeater observation windows still apply.
+
+Compiled execution is Graph-only, so its native fallback share is **0%**. A standalone
+interpreter oracle run is **100% native reference execution**, not evidence of a fallback
+inside Graph. Post-reset interpreter continuation is outside the benchmark's compiled
+execution window.
+
+The short benchmark JSON includes `coverage_at_compile`, `coverage_after_window` and
+`execution_context_summary`, plus the existing classic invocation/receiver work counters.
+Coverage is a structural snapshot, **not CPU time or the fraction of callbacks saved**.
+Nested work counts cannot be added to obtain a CPU-time percentage. The snapshot after
+the timed window can differ from compilation when a classic net has deoptimized.
+`timed_tick_contexts` separately counts Graph/native tick calls outside the timers. An
+explicit reset-pending episode can contain both contexts; it is labelled as a handoff,
+not as native fallback or a wholly interpreted reference run. Setup ticks and the final
+32-tick interpreter continuation are excluded from this window breakdown.
+
+The fresh O3 census covers all 22 IO fixtures. This census uses the default
+`classic_redstone: false`; it does not imply that the optional classic compiler cannot
+cover these circuits. Every fixture currently reports 0% whole instant kernels,
+100% general Graph component ownership and 0% native fallback. Partial shortcuts overlap
+that Graph ownership:
+
+| Circuit | Component nodes | Wires | Stationary candidate actors | Private occupancy checks |
+| --- | ---: | ---: | ---: | ---: |
+| ADDER1BIT | 71 | 32 | 13 / 13 (100%) | 4 / 13 (30.8%) |
+| ADDER11BIT | 690 | 295 | 142 / 142 (100%) | 43 / 142 (30.3%) |
+| Revised PC counter, after 128 ticks | 3,388 | 1,890 | 307 / 500 (61.4%) | 163 / 500 (32.6%) |
+
+The counter's excluded actors include ordinary/BUD or unsupported shared groups;
+candidate recognition is not execution replacement. The real classic deoptimization
+regression separately compiles a four-wire line: classic ownership is initially 4 / 4
+wires (100%), then 0 / 4 after deoptimization, with all six components back in Graph.
+The native reference remains a separate run throughout.
+
 ## Run record
 
 Completed so far:
 
+- Latest integrated adder/contract/report run: **44 passed, 1 ignored**. Includes all
+  nine stationary cell/effect tests, all three coverage tests, the 22-fixture coverage
+  census, and existing ordering, arithmetic, continuation and shared-ownership checks.
+- The PC 128-tick Graph/native/frozen comparison passed again with the ownership report.
+- `cargo check -p mchprs_core --tests --benches --locked`: **passed**, including the
+  additive benchmark JSON fields and explicit Graph/native tick-context breakdown.
 - `cargo test -p mchprs_core --lib pc_counter_contract:: --locked -- --include-ignored --nocapture --test-threads=1`: **4 passed**. Includes the full native 4096-tick frozen sequence, the 128-tick Graph/native/frozen comparison, 736 independent-control ticks and 672 stable-bus/control ticks.
 - `available_schematic_sources_have_bounded_native_entry_smoke`: **passed**, all 96 sources.
 - Core-pack native census: **passed**, all 306 declared case/rotation histories.
@@ -100,6 +158,21 @@ kernel speed measurements belong to this step.
 The full workspace, release suite, broad fuzz campaigns and three full CPU-sort protocols
 were not rerun. The current new boundary compiler/runtime is not active, so this gate
 establishes reference expectations and local first-response reachability, not acceleration.
+
+### Step 03 boundary gate, 2026-10-18
+
+The subsequent integrated debug Redpiler suite passed **411 tests, with 18 ignored**;
+the core tests/benches compilation check passed. All 22 IO catalogs plus the revised PC
+catalog were exported and accepted by both external validators under their default limits.
+Python loader tests passed 20/20; viewer tests passed 26/26.
+
+Both adders retain complete actor admission (13/13 and 142/142). The PC admits 307/500
+actors and explicitly keeps remaining ordinary/BUD or unsupported groups outside.
+The boundary-only pipeline matches native full state and pending work across all eight
+one-bit and forty eleven-bit prepared histories, including interpreter handoff. Catalog
+interfaces are not executed kernels or external bit counts. See the
+[Step 03 report](steps/03-boundary-pass.md) for exact ownership, port counts and artifact sizes.
+No new runtime speed claim or full CPU execution follows from this gate.
 
 Reproduce the main filters (add `--nocapture` when a detailed census report is wanted):
 

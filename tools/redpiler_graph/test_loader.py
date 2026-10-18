@@ -96,16 +96,361 @@ def compact_kernel(graph: dict) -> dict:
 
 
 class DustPathLoaderTests(unittest.TestCase):
+    def instant_boundary_document(self):
+        fixture = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json"
+        data = json.loads(fixture.read_text(encoding="utf-8"))
+        graph = data["graph"]
+        observer = next(node for node in graph["nodes"] if node["kind"]["kind"] == "observer")
+        graph["instant_regions"] = []
+        graph["instant_proxies"] = []
+        graph["instant_cells"] = [{
+            "id": "instant_cell:0", "actors": [graph["pistons"][0]["id"]],
+            "resources": [graph["resources"][0]["id"]], "resets": [observer["id"]],
+        }]
+        graph["instant_corridors"] = [{"id": "instant_corridor:0", "wires": [], "conductive_sites": []}]
+        graph["instant_boundary_ports"] = []
+        graph["instant_declines"] = []
+        return data
+
+    def test_instant_boundary_tables_validate_all_bindings_and_keep_occurrences_separate(self):
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        route = next(row for row in graph["routes"] if row["deliveries"])
+        captured = next(
+            (row, ordinal, delivery)
+            for row in graph["routes"]
+            if row.get("source") in {node["id"] for node in graph["nodes"] if node["kind"]["kind"] == "wire"}
+            and row["id"] == next(plan for plan in graph["wire_plans"]
+                                  if plan["node"] == row["source"]).get("turbo_route")
+            for ordinal, delivery in enumerate(row["deliveries"])
+            if delivery.get("view") == "captured"
+            and delivery["target"] in next(plan for plan in graph["wire_plans"]
+                                            if plan["node"] == row["source"])["canonical_neighbors"]
+        )
+        site_guard = next(guard for guard in graph["guards"] if guard["kind"] == "site")
+        state_guard = next(guard for guard in graph["guards"] if guard["kind"] == "state")
+        contact = next(contact for contact in graph["contacts"] if contact["variants"])
+        observer = next(node for node in graph["nodes"] if node["kind"]["kind"] == "observer")
+        wire_node = captured[0]["source"]
+        wire_plan = next(plan for plan in graph["wire_plans"] if plan["node"] == wire_node)
+        comparator_id = f"comparator_plan:{len(graph['comparator_plans'])}"
+        graph["comparator_plans"].append({
+            "id": comparator_id, "node": graph["nodes"][0]["id"], "rear": graph["sites"][0]["id"],
+            "direct_override": {"kind": "literal", "value": 1},
+            "far_override": {"site": graph["sites"][0]["id"], "guard": site_guard["id"],
+                             "value": {"kind": "live_component_output", "node": graph["nodes"][0]["id"]}},
+        })
+        bindings = [
+            {"kind": "power", "link": graph["power_links"][0]["id"]},
+            {"kind": "callback", "occurrence": {"route": route["id"], "ordinal": 0}},
+            {"kind": "wire_relation", "relation": graph["wire_relations"][0]["id"]},
+            *({"kind": "comparator", "plan": comparator_id, "role": role}
+              for role in ("rear", "direct_override", "far_override_site", "far_override_guard", "far_override_output")),
+            {"kind": "guard_site", "guard": site_guard["id"], "site": site_guard["site"],
+             "view": site_guard["view"], "test": site_guard["test"]},
+            {"kind": "guard_state", "guard": state_guard["id"], "test": state_guard["test"]},
+            {"kind": "contact_alternative", "contact": contact["id"], "ordinal": 0},
+            {"kind": "observer_watch", "observer": observer["id"], "site": observer["kind"]["watched"]},
+            {"kind": "captured_wire", "wire": wire_node,
+             "occurrence": {"route": captured[0]["id"], "ordinal": captured[1]}, "neighbor": captured[2]["target"]},
+            {"kind": "wire_neighborhood", "wire": wire_node, "neighbor": wire_plan["canonical_neighbors"][0]},
+            {"kind": "fixed_read", "node": observer["id"], "site": graph["sites"][0]["id"], "role": "note_support"},
+            {"kind": "fixed_read", "node": observer["id"], "site": graph["sites"][0]["id"], "role": "note_obstruction"},
+        ]
+        for binding in bindings:
+            graph["instant_boundary_ports"].append({
+                "id": f"instant_port:{len(graph['instant_boundary_ports'])}", "owner": "instant_cell:0",
+                "direction": "input", "binding": binding,
+            })
+        duplicate = json.loads(json.dumps(graph["instant_boundary_ports"][1]))
+        duplicate["id"] = f"instant_port:{len(graph['instant_boundary_ports'])}"
+        graph["instant_boundary_ports"].append(duplicate)
+
+        loaded = self.load_data(data)
+        self.assertEqual(len(loaded.records["instant_port"]), len(bindings) + 1)
+        self.assertIn("instant_cell:0", loaded.records["instant_cell"])
+        self.assertEqual(loaded.record(duplicate["id"])["binding"], duplicate["binding"])
+
+    def test_instant_boundary_tables_reject_bad_ownership_dangling_refs_and_atoms(self):
+        mutations = (
+            lambda graph: graph["instant_cells"].append({**graph["instant_cells"][0], "id": "instant_cell:1"}),
+            lambda graph: graph["instant_cells"][0].update(actors=["node:0"]),
+            lambda graph: graph["instant_cells"][0].update(resets=["node:0"]),
+            lambda graph: graph["instant_corridors"][0].update(wires=["node:0"]),
+            lambda graph: graph["instant_corridors"][0].update(wires=["node:999"]),
+            lambda graph: graph["instant_boundary_ports"].append({
+                "id": "instant_port:0", "owner": "instant_cell:999", "direction": "input",
+                "binding": {"kind": "power", "link": "power_link:0"},
+            }),
+            lambda graph: graph["instant_boundary_ports"].append({
+                "id": "instant_port:0", "owner": "instant_cell:0", "direction": "sideways",
+                "binding": {"kind": "power", "link": "power_link:0"},
+            }),
+            lambda graph: graph["instant_boundary_ports"].append({
+                "id": "instant_port:0", "owner": "instant_cell:0", "direction": "input",
+                "binding": {"kind": "power", "link": "node:0"},
+            }),
+            lambda graph: graph["instant_declines"].append({
+                "id": "instant_decline:0", "actors": graph["instant_cells"][0]["actors"],
+                "reason": {"code": "unsupported_case"},
+            }),
+        )
+        for mutation in mutations:
+            data = self.instant_boundary_document()
+            mutation(data["graph"])
+            with self.subTest(mutation=mutation), self.assertRaises(GraphFormatError):
+                self.load_data(data)
+
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        guard = next(row for row in graph["guards"] if row["kind"] == "site")
+        other_site = next(site["id"] for site in graph["sites"] if site["id"] != guard["site"])
+        graph["instant_boundary_ports"].append({
+            "id": "instant_port:0", "owner": "instant_cell:0", "direction": "input",
+            "binding": {"kind": "guard_site", "guard": guard["id"], "site": other_site,
+                        "view": guard["view"], "test": guard["test"]},
+        })
+        with self.assertRaisesRegex(GraphFormatError, "guard site atom"):
+            self.load_data(data)
+
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        site_guard = next(row for row in graph["guards"] if row["kind"] == "site")
+        plan_id = "comparator_plan:0"
+        graph["comparator_plans"].append({
+            "id": plan_id, "node": graph["nodes"][0]["id"], "rear": graph["sites"][0]["id"],
+            "direct_override": None,
+            "far_override": {"site": graph["sites"][0]["id"], "guard": site_guard["id"],
+                             "value": {"kind": "literal", "value": 1}},
+        })
+        graph["instant_boundary_ports"].append({
+            "id": "instant_port:0", "owner": "instant_cell:0", "direction": "input",
+            "binding": {"kind": "comparator", "plan": plan_id, "role": "far_override_output"},
+        })
+        with self.assertRaisesRegex(GraphFormatError, "far override output"):
+            self.load_data(data)
+
+    def test_instant_boundary_corridors_reject_shared_and_classic_owned_wires(self):
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        wire_nodes = [node["id"] for node in graph["nodes"] if node["kind"]["kind"] == "wire"]
+        corridor = graph["instant_corridors"][0]
+        corridor["wires"] = [wire_nodes[0]]
+        corridor["conductive_sites"] = [graph["sites"][0]["id"]]
+        graph["instant_corridors"].append({
+            "id": "instant_corridor:1", "wires": [wire_nodes[0]], "conductive_sites": [],
+        })
+        with self.assertRaisesRegex(GraphFormatError, "shares wires ownership"):
+            self.load_data(data)
+
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        site = graph["sites"][0]["id"]
+        graph["instant_corridors"][0]["conductive_sites"] = [site]
+        graph["instant_corridors"].append({
+            "id": "instant_corridor:1", "wires": [], "conductive_sites": [site],
+        })
+        with self.assertRaisesRegex(GraphFormatError, "shares conductive_sites ownership"):
+            self.load_data(data)
+
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        wire_nodes = [node["id"] for node in graph["nodes"] if node["kind"]["kind"] == "wire"]
+        graph["classic_nets"] = [{"id": "classic_net:0", "source": graph["nodes"][0]["id"], "initial_signal": 0,
+                                  "wires": [{"node": wire_nodes[0], "attenuation": 0}], "inputs": [], "entries": []}]
+        graph["instant_corridors"][0]["wires"] = [wire_nodes[0]]
+        with self.assertRaisesRegex(GraphFormatError, "classic-owned wires"):
+            self.load_data(data)
+
+    def test_instant_boundary_tables_are_optional_for_older_exports(self):
+        data = self.instant_boundary_document()
+        for table in ("instant_cells", "instant_corridors", "instant_boundary_ports", "instant_declines"):
+            del data["graph"][table]
+        loaded = self.load_data(data)
+        for prefix in ("instant_cell", "instant_corridor", "instant_port", "instant_decline"):
+            self.assertEqual(loaded.records[prefix], {})
+
+    def instant_layer_document(self):
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        cell = graph["instant_cells"][0]
+        cell["actors"].append(graph["pistons"][1]["id"])
+        route = next(route for route in graph["routes"] if len(route["deliveries"]) >= 3)
+        occurrences = [{"route": route["id"], "ordinal": index} for index in range(3)]
+        observer = cell["resets"][0]
+        actor_routes = graph["pistons"][0]["routes"]
+        lifecycle_occurrence = lambda route_id: {"route": route_id, "ordinal": 0}
+        watched_site = next(site for site in graph["sites"] if site["id"] == next(
+            node["kind"]["watched"] for node in graph["nodes"] if node["id"] == observer))
+        watched_contact = next(contact for contact in graph["contacts"] if contact["id"] == watched_site["source"]["contact"])
+        watched_piston_id = next(variant["receiver"]["piston"] for variant in watched_contact["variants"]
+                                 if variant.get("receiver", {}).get("kind") == "piston_base")
+        watched_routes = next(piston["routes"] for piston in graph["pistons"] if piston["id"] == watched_piston_id)
+        observer_site = next(site["id"] for site in graph["sites"]
+                             if site["source"] == {"kind": "component", "node": observer})
+        reset_link = next(link for link in graph["power_links"]
+                          if link["from"]["site"] == observer_site
+                          and (link["from"]["port"]["kind"] == "output"
+                               or link["from"]["port"] == {"kind": "strong", "face": "bottom"})
+                          and link["guard"] == "guard:0" and link["attenuation"] == 0)
+        graph["instant_boundary_ports"] = [
+            {"id": "instant_port:0", "owner": cell["id"], "direction": "input",
+             "binding": {"kind": "power", "link": graph["power_links"][0]["id"]}},
+            {"id": "instant_port:1", "owner": cell["id"], "direction": "input",
+             "binding": {"kind": "callback", "occurrence": occurrences[0]}},
+            {"id": "instant_port:2", "owner": cell["id"], "direction": "output",
+             "binding": {"kind": "callback", "occurrence": occurrences[1]}},
+        ]
+        graph["instant_layer_regions"] = [{
+            "id": "instant_layer_region:7", "stationary_entry": 6,
+            "cells": [cell["id"]], "corridors": ["instant_corridor:0"],
+            "inputs": [
+                {"role": "activation_event", "source": {"kind": "boundary_event", "port": "instant_port:1", "occurrence": occurrences[0]}},
+                {"role": "request_sample", "source": {"kind": "power_contribution", "port": "instant_port:0", "link": graph["power_links"][0]["id"]}},
+                {"role": "acceptance_revalidation", "source": {"kind": "state", "test": {"kind": "piston_extended", "piston": graph["pistons"][0]["id"]}}},
+                {"role": "request_sample", "source": {"kind": "local_reset_output", "observer": observer, "link": reset_link["id"]}},
+                {"role": "acceptance_revalidation", "source": {"kind": "state", "test": {"kind": "resource_enabled", "resource": cell["resources"][0]}}},
+            ],
+            "outputs": [{"port": "instant_port:2", "emitted_when": 6}],
+            "cold_lifecycle_occurrences": [
+                {"actor": graph["pistons"][0]["id"], "phase": "retraction_base_changed",
+                 "occurrence": lifecycle_occurrence(actor_routes["base_changed"]), "reason": {"kind": "base_pending_self_update"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "retraction_far_changed",
+                 "occurrence": lifecycle_occurrence(actor_routes["far_changed"]),
+                 "reason": {"kind": "base_pending_self_update"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "retraction_near_changed",
+                 "occurrence": lifecycle_occurrence(actor_routes["near_changed"]),
+                 "reason": {"kind": "base_pending_self_update"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "deferred_base_restoration",
+                 "occurrence": lifecycle_occurrence(actor_routes["base_restored"]), "reason": {"kind": "deferred_graph_lifecycle"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "deferred_head_restoration",
+                 "occurrence": lifecycle_occurrence(actor_routes["head_restored"]), "reason": {"kind": "deferred_graph_lifecycle"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "deferred_resource_restoration",
+                 "occurrence": lifecycle_occurrence(actor_routes["resource_restored_near"]), "reason": {"kind": "deferred_graph_lifecycle"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "reset_observer_lifecycle",
+                 "occurrence": lifecycle_occurrence(watched_routes["base_changed"]),
+                 "reason": {"kind": "reset_observer_update", "observer": observer}},
+            ],
+            "resource_outputs": [{"cell": cell["id"], "resource": cell["resources"][0],
+                                  "source": graph["resources"][0]["contacts"][0],
+                                  "destination": graph["resources"][0]["contacts"][1],
+                                  "transfer_when": 7, "source_absent_after": 8}],
+            "expressions": [
+                {"kind": "constant", "value": True}, {"kind": "input", "input": 0},
+                {"kind": "input", "input": 1}, {"kind": "input", "input": 2},
+                {"kind": "not", "value": 0}, {"kind": "all", "values": [1, 4]},
+                {"kind": "any", "values": [2, 3]}, {"kind": "input", "input": 3},
+                {"kind": "input", "input": 4},
+            ],
+            "pin_values": [{"cell": cell["id"], "pin": 0, "value": 5}],
+            "layers": [{"order": "fifo", "uses": [
+                {"use_id": 0, "actor": graph["pistons"][0]["id"], "requested": 1, "accepted": 2,
+                 "consumed_before": 0, "consumed_after": 5,
+                 "cause": {"kind": "boundary", "occurrences": [occurrences[0], occurrences[1]]}},
+                {"use_id": 1, "actor": graph["pistons"][1]["id"], "requested": 2, "accepted": 3,
+                 "consumed_before": 0, "consumed_after": 6,
+                 "cause": {"kind": "boundary", "occurrences": [occurrences[0], occurrences[1]]}},
+            ]}],
+        }]
+        graph["instant_layer_declines"] = []
+        return data
+
+    def test_instant_layer_tables_validate_local_dag_and_preserve_occurrences(self):
+        data = self.instant_layer_document()
+        loaded = self.load_data(data)
+        self.assertIn("instant_layer_region:7", loaded.records["instant_layer_region"])
+        self.assertEqual(len(loaded.record("instant_layer_region:7")["inputs"]), 5)
+        self.assertEqual(len(loaded.record("instant_layer_region:7")["layers"][0]["uses"]), 2)
+
+        for mutation in (
+            lambda region: region.update(cells=["instant_cell:999"]),
+            lambda region: region["expressions"][4].update(value=4),
+            lambda region: region.update(stationary_entry=99),
+            lambda region: region["outputs"][0].update(emitted_when=99),
+            lambda region: region["inputs"][0]["source"].update(port="instant_port:999"),
+            lambda region: region["inputs"][1]["source"].update(link="power_link:999"),
+            lambda region: region["inputs"][2]["source"]["test"].update(piston="resource:0"),
+            lambda region: region["inputs"][3]["source"].update(observer="node:999"),
+            lambda region: region["inputs"][3]["source"].update(link="power_link:0"),
+            lambda region: region["inputs"][4]["source"]["test"].update(resource="resource:999"),
+            lambda region: region["resource_outputs"][0].update(source="contact:999"),
+            lambda region: region["resource_outputs"][0].update(destination=region["resource_outputs"][0]["source"]),
+            lambda region: region["cold_lifecycle_occurrences"][0]["occurrence"].update(ordinal=99),
+            lambda region: region["cold_lifecycle_occurrences"][6]["reason"].update(observer="node:999"),
+            lambda region: region["cold_lifecycle_occurrences"][3].update(phase="deferred_resource_restoration"),
+            lambda region: region["layers"][0]["uses"][0].update(actor="piston:999"),
+            lambda region: region["layers"][0]["uses"][0]["cause"]["occurrences"][0].update(ordinal=99),
+            lambda region: region["layers"][0]["uses"].append(dict(region["layers"][0]["uses"][0])),
+        ):
+            damaged = self.instant_layer_document()
+            mutation(damaged["graph"]["instant_layer_regions"][0])
+            with self.subTest(mutation=mutation), self.assertRaises(GraphFormatError):
+                self.load_data(damaged)
+
+        data = self.instant_layer_document()
+        graph = data["graph"]
+        graph["instant_layer_regions"].append({**graph["instant_layer_regions"][0], "id": "instant_layer_region:9"})
+        with self.assertRaisesRegex(GraphFormatError, "shares cells ownership"):
+            self.load_data(data)
+
+    def test_instant_layer_declines_and_absent_tables(self):
+        data = self.instant_layer_document()
+        graph = data["graph"]
+        graph["instant_layer_regions"] = []
+        graph["instant_layer_declines"] = [{
+            "id": "instant_layer_decline:4", "cells": ["instant_cell:0"], "corridors": ["instant_corridor:0"],
+            "witness": {"kind": "actor", "piston": graph["pistons"][0]["id"]},
+            "reason": "shared_owner_order_unknown",
+        }]
+        self.assertIn("instant_layer_decline:4", self.load_data(data).records["instant_layer_decline"])
+        graph["instant_layer_declines"][0]["witness"]["piston"] = "piston:999"
+        with self.assertRaises(GraphFormatError):
+            self.load_data(data)
+
+        older = self.instant_boundary_document()
+        older["graph"].pop("instant_layer_regions", None)
+        older["graph"].pop("instant_layer_declines", None)
+        loaded = self.load_data(older)
+        self.assertEqual(loaded.records["instant_layer_region"], {})
+        self.assertEqual(loaded.records["instant_layer_decline"], {})
+
+    def test_instant_boundary_cells_reject_each_shared_owner_and_legacy_coexistence(self):
+        for field in ("actors", "resources", "resets"):
+            data = self.instant_boundary_document()
+            graph = data["graph"]
+            duplicate = {"id": "instant_cell:1", "actors": [], "resources": [], "resets": []}
+            duplicate[field] = list(graph["instant_cells"][0][field])
+            graph["instant_cells"].append(duplicate)
+            with self.subTest(field=field), self.assertRaisesRegex(GraphFormatError, f"shares {field} ownership"):
+                self.load_data(data)
+
+        data = self.instant_boundary_document()
+        graph = data["graph"]
+        graph["instant_regions"] = [{
+            "id": "instant_region:0", "wires": [], "actors": [], "resources": [], "resets": [],
+            "contacts": [], "readable_sites": [], "power_inputs": [], "power_readers": [], "routes": [],
+            "wire_readers": [], "observers": [], "incoming": [], "outgoing": [],
+        }]
+        with self.assertRaisesRegex(GraphFormatError, "cannot coexist with legacy"):
+            self.load_data(data)
+
     def test_classic_nets_validate_ownership_occurrences_and_compact_masks(self):
         fixture = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/simple_and_gate-classic.graph.json"
         data = json.loads(fixture.read_text(encoding="utf-8"))
         self.load_data(data)
         self.assertTrue(data["graph"]["classic_nets"])
-        for mutation in ("mask", "attenuation", "occurrence", "overlap"):
+        sampled = json.loads(json.dumps(data))
+        operation = next(entry for entry in sampled["graph"]["classic_nets"][0]["entries"] if entry["ops"])["ops"][0]
+        operation["sample"] = {"kind": "comparator", "strength": 7, "powered": True}
+        operation["nonzero"] = None
+        self.load_data(sampled)
+        for mutation in ("mask", "sample", "attenuation", "occurrence", "overlap"):
             damaged = json.loads(json.dumps(data))
             net = damaged["graph"]["classic_nets"][0]
             if mutation == "mask":
                 next(entry for entry in net["entries"] if entry["ops"])["ops"][0]["when"][0] = "invalid"
+            elif mutation == "sample":
+                next(entry for entry in net["entries"] if entry["ops"])["ops"][0]["sample"] = {"kind": "comparator", "strength": 16, "powered": True}
             elif mutation == "attenuation":
                 net["wires"][0]["attenuation"] = 16
             elif mutation == "occurrence":

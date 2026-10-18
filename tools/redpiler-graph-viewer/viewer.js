@@ -4,6 +4,9 @@ const tables = {
   nodes: "node", sites: "site", contacts: "contact", resources: "resource", guards: "guard",
   pistons: "piston", power_links: "power_link", wire_plans: "wire", wire_relations: "wire_relation",
   instant_regions: "instant_region", instant_proxies: "instant_proxy",
+  instant_cells: "instant_cell", instant_corridors: "instant_corridor",
+  instant_boundary_ports: "instant_port", instant_declines: "instant_decline",
+  instant_layer_regions: "instant_layer_region", instant_layer_declines: "instant_layer_decline",
   classic_nets: "classic_net",
   fixed_signal_queries: "fixed_signal",
   dust_paths: "dust_path", comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
@@ -41,7 +44,9 @@ function validateGraph(data) {
     const rows = data.graph[table];
     if (table === "routes" && rows === null) continue;
     if (table === "callback_links" && rows === undefined) continue;
-    if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets", "fixed_signal_queries"].includes(table) && rows == null) continue;
+    if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets", "fixed_signal_queries",
+      "instant_cells", "instant_corridors", "instant_boundary_ports", "instant_declines",
+      "instant_layer_regions", "instant_layer_declines"].includes(table) && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -117,6 +122,8 @@ function validateGraph(data) {
       instantWires.add(wire.node);
       instantWires.add(instant.partner);
     }
+    const callbacks = wire.callback_selection;
+    if (callbacks != null && (!Number.isInteger(callbacks.known) || callbacks.known < 0 || callbacks.known > 0xffffff || !Number.isInteger(callbacks.admitted) || callbacks.admitted < 0 || callbacks.admitted > 0xffffff || (callbacks.admitted & ~callbacks.known) !== 0)) throw Error(`Invalid compiled wire callback masks: ${wire.id}`);
     const facts = wire.query_facts;
     if (facts == null) continue;
     if (typeof facts !== "object" || Array.isArray(facts)) throw Error(`${wire.id} has invalid wire query fact masks.`);
@@ -159,13 +166,18 @@ function validateGraph(data) {
       if (nodes.get(wire.node)?.kind?.kind !== 'wire' || assignedWires.has(wire.node) || !Number.isInteger(wire.attenuation) || wire.attenuation < 0 || wire.attenuation > 15) throw Error(`Invalid classic wire: ${wire.node}`);
       assignedWires.add(wire.node);
     }
+    for (const term of net.outside_main || []) {
+      if (!nodes.has(term.node) || !net.inputs.some((input) => input.receiver === term.receiver) || net.wires.some((wire) => wire.node === term.node) || !Number.isInteger(term.attenuation) || term.attenuation < 0 || term.attenuation >= 15) throw Error(`Invalid classic outside input: ${net.id}`);
+    }
+    const guardedMain = new Set((net.outside_main || []).map((term) => term.receiver));
     for (const input of net.inputs) {
+      if ((input.guarded != null && typeof input.guarded !== 'boolean') || Boolean(input.guarded) !== guardedMain.has(input.receiver)) throw Error(`Invalid classic guarded input: ${net.id}`);
       if (!nodes.has(input.receiver) || [input.attenuation, input.source_attenuation].some((value) => !Number.isInteger(value) || value < 0 || value > 15)) throw Error(`Invalid classic input: ${net.id}`);
     }
     for (const entry of net.entries) {
       const route = data.graph.routes?.find((route) => route.id === entry.route);
       if (!route?.deliveries[entry.ordinal] || typeof entry.commit !== 'boolean') throw Error(`Invalid classic entry: ${net.id}`);
-      for (const op of entry.ops) if (!nodes.has(op.receiver) || typeof op.nonzero !== 'boolean' || op.when?.length !== 4 || op.when.some((mask) => !/^[0-9a-f]{16}$/.test(mask))) throw Error(`Invalid classic operation: ${net.id}`);
+      for (const op of entry.ops) if (!nodes.has(op.receiver) || !(op.sample?.kind === 'comparator' ? Number.isInteger(op.sample.strength) && op.sample.strength >= 0 && op.sample.strength <= 15 && typeof op.sample.powered === 'boolean' : typeof op.nonzero === 'boolean' && (!op.sample || op.sample.kind === 'boolean' && op.sample.nonzero === op.nonzero)) || op.when?.length !== 4 || op.when.some((mask) => !/^[0-9a-f]{16}$/.test(mask))) throw Error(`Invalid classic operation: ${net.id}`);
     }
   }
   for (const path of data.graph.dust_paths || []) {
@@ -184,7 +196,426 @@ function validateGraph(data) {
       assignedWires.add(wireId);
     }
   }
+  validateInstantBoundaries(data, ids, nodes);
+  validateInstantLayers(data, ids, nodes);
   return data;
+}
+
+function validateInstantBoundaries(data, ids, nodes) {
+  const graph = data.graph;
+  const cells = graph.instant_cells || [];
+  const corridors = graph.instant_corridors || [];
+  const ports = graph.instant_boundary_ports || [];
+  const declines = graph.instant_declines || [];
+  if ((cells.length || corridors.length || ports.length || declines.length)
+    && ((graph.instant_regions || []).length || (graph.instant_proxies || []).length)) {
+    throw Error("Instant boundary tables cannot coexist with legacy instant regions or proxies.");
+  }
+  const ref = (id, prefix, owner) => {
+    if (typeof id !== "string" || !id.startsWith(`${prefix}:`) || !ids.has(id)) throw Error(`${owner} has an invalid ${prefix} reference.`);
+  };
+  const actors = new Set(), resources = new Set(), resets = new Set();
+  const declinedActors = new Set();
+  for (const cell of cells) {
+    for (const [field, prefix, owned] of [["actors", "piston", actors], ["resources", "resource", resources], ["resets", "node", resets]]) {
+      if (!Array.isArray(cell[field])) throw Error(`${cell.id} has invalid ${field}.`);
+      const local = new Set();
+      for (const id of cell[field]) {
+        ref(id, prefix, cell.id);
+        if (field === "resets" && nodes.get(id)?.kind?.kind !== "observer") throw Error(`${cell.id} reset must be an observer node.`);
+        if (local.has(id) || owned.has(id)) throw Error(`${cell.id} repeats or shares ${field} ownership.`);
+        local.add(id);
+        owned.add(id);
+      }
+    }
+  }
+  for (const decline of declines) {
+    if (!Array.isArray(decline.actors)) throw Error(`${decline.id} has invalid actors.`);
+    for (const actor of decline.actors) {
+      ref(actor, "piston", decline.id);
+      if (declinedActors.has(actor)) throw Error(`${decline.id} repeats declined actor ownership.`);
+      declinedActors.add(actor);
+    }
+    if (!decline.reason || typeof decline.reason !== "object" || Array.isArray(decline.reason)
+      || typeof decline.reason.code !== "string" || !/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(decline.reason.code)) {
+      throw Error(`${decline.id} has an invalid decline reason.`);
+    }
+    for (const prefix of ["piston", "resource", "contact"]) {
+      if (decline.reason[prefix] != null) ref(decline.reason[prefix], prefix, decline.id);
+    }
+  }
+  for (const actor of actors) if (declinedActors.has(actor)) throw Error("An instant actor cannot be both admitted and declined.");
+
+  const corridorWires = new Set(), corridorSites = new Set();
+  for (const corridor of corridors) {
+    for (const [field, prefix, owned] of [["wires", "node", corridorWires], ["conductive_sites", "site", corridorSites]]) {
+      if (!Array.isArray(corridor[field])) throw Error(`${corridor.id} has invalid ${field}.`);
+      const local = new Set();
+      for (const id of corridor[field]) {
+        ref(id, prefix, corridor.id);
+        if (field === "wires" && nodes.get(id)?.kind?.kind !== "wire") throw Error(`${corridor.id} references a non-wire corridor node.`);
+        if (local.has(id) || owned.has(id)) throw Error(`${corridor.id} repeats or shares ${field} ownership.`);
+        local.add(id);
+        owned.add(id);
+      }
+    }
+  }
+  const classicOwnedWires = new Set((graph.classic_nets || []).flatMap((net) => net.wires.map((wire) => wire.node)));
+  for (const wire of corridorWires) if (classicOwnedWires.has(wire)) throw Error("Instant corridors cannot own classic-owned wires.");
+
+  const cellIds = new Set(cells.map((cell) => cell.id));
+  const corridorIds = new Set(corridors.map((corridor) => corridor.id));
+  const context = {
+    nodes,
+    routes: new Map((graph.routes || []).map((route) => [route.id, route])),
+    guards: new Map(graph.guards.map((guard) => [guard.id, guard])),
+    contacts: new Map(graph.contacts.map((contact) => [contact.id, contact])),
+    plans: new Map(graph.comparator_plans.map((plan) => [plan.id, plan])),
+    wirePlans: new Map(graph.wire_plans.map((plan) => [plan.id, plan])),
+  };
+  for (const port of ports) {
+    if (cellIds.has(port.owner)) ref(port.owner, "instant_cell", port.id);
+    else if (corridorIds.has(port.owner)) ref(port.owner, "instant_corridor", port.id);
+    else throw Error(`${port.id} has an invalid instant boundary owner.`);
+    if (!['input', 'output'].includes(port.direction)) throw Error(`${port.id} has an invalid boundary direction.`);
+    if (!port.binding || typeof port.binding !== "object" || Array.isArray(port.binding)) throw Error(`${port.id} has an invalid binding.`);
+    validateBoundaryBinding(port, ids, context);
+  }
+}
+
+function validateInstantLayers(data, ids, nodes) {
+  const graph = data.graph;
+  const regions = graph.instant_layer_regions || [];
+  const declines = graph.instant_layer_declines || [];
+  if (!regions.length && !declines.length) return;
+  if ((graph.instant_regions || []).length || (graph.instant_proxies || []).length) throw Error("Instant layer tables cannot coexist with legacy instant regions or proxies.");
+  const cells = new Map((graph.instant_cells || []).map((row) => [row.id, row]));
+  const corridors = new Map((graph.instant_corridors || []).map((row) => [row.id, row]));
+  const ports = new Map((graph.instant_boundary_ports || []).map((row) => [row.id, row]));
+  const pistons = new Map(graph.pistons.map((row) => [row.id, row]));
+  const resources = new Map(graph.resources.map((row) => [row.id, row]));
+  const contacts = new Map(graph.contacts.map((row) => [row.id, row]));
+  const powerLinks = new Map(graph.power_links.map((row) => [row.id, row]));
+  const sites = new Map(graph.sites.map((row) => [row.id, row]));
+  const guards = new Map(graph.guards.map((row) => [row.id, row]));
+  const routes = new Map((graph.routes || []).map((row) => [row.id, row]));
+  if (!cells.size && !corridors.size) throw Error("Instant layer tables require the boundary catalog.");
+  const ref = (id, prefix, owner) => {
+    if (typeof id !== "string" || !id.startsWith(`${prefix}:`) || !ids.has(id)) throw Error(`${owner} has an invalid ${prefix} reference.`);
+    return id;
+  };
+  const index = (value, length, owner) => {
+    if (!Number.isInteger(value) || value < 0 || value >= length || value > 0xffffffff) throw Error(`${owner} has an invalid local index.`);
+    return value;
+  };
+  const root = (value, length, owner) => index(value, length, owner);
+  const occurrence = (value, owner) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw Error(`${owner} has an invalid route occurrence.`);
+    ref(value.route, "route", owner);
+    const deliveries = routes.get(value.route)?.deliveries;
+    if (!Number.isInteger(value.ordinal) || value.ordinal < 0 || value.ordinal >= (deliveries?.length ?? 0)) throw Error(`${owner} has an invalid route occurrence.`);
+    return [value.route, value.ordinal];
+  };
+  const stateTest = (test, owner) => {
+    if (!test || typeof test !== "object" || Array.isArray(test)) throw Error(`${owner} has an invalid state test.`);
+    if (["piston_extended", "piston_head_present"].includes(test.kind)) ref(test.piston, "piston", owner);
+    else if (test.kind === "piston_availability") {
+      ref(test.piston, "piston", owner);
+      if (!["ready", "head_pending", "publishing_head_removal", "base_pending_head_present", "base_pending"].includes(test.availability)) throw Error(`${owner} has an invalid piston availability.`);
+    } else if (test.kind === "resource_at") {
+      ref(test.resource, "resource", owner); ref(test.contact, "contact", owner);
+    } else if (test.kind === "resource_enabled") ref(test.resource, "resource", owner);
+    else throw Error(`${owner} has an unknown state test.`);
+    return test;
+  };
+
+  const ownedCells = new Set(), ownedCorridors = new Set();
+  for (const region of regions) {
+    for (const field of ["inputs", "outputs", "resource_outputs", "cold_lifecycle_occurrences", "expressions", "pin_values", "layers"]) {
+      if (!Array.isArray(region[field])) throw Error(`${region.id} has invalid ${field}.`);
+    }
+    const memberCells = new Set(), memberCorridors = new Set();
+    for (const [field, prefix, available, all, local] of [
+      ["cells", "instant_cell", cells, ownedCells, memberCells],
+      ["corridors", "instant_corridor", corridors, ownedCorridors, memberCorridors],
+    ]) {
+      if (!Array.isArray(region[field])) throw Error(`${region.id} has invalid ${field}.`);
+      for (const id of region[field]) {
+        ref(id, prefix, region.id);
+        if (!available.has(id) || local.has(id) || all.has(id)) throw Error(`${region.id} repeats or shares ${field} ownership.`);
+        local.add(id); all.add(id);
+      }
+    }
+    const actors = new Set([...memberCells].flatMap((cell) => cells.get(cell).actors));
+    const resourcesOwned = new Set([...memberCells].flatMap((cell) => cells.get(cell).resources));
+    const resetObservers = new Set([...memberCells].flatMap((cell) => cells.get(cell).resets));
+    const actorNodes = new Set([...actors].map((actor) => pistons.get(actor)?.node));
+    for (const input of region.inputs) {
+      if (!input || typeof input !== "object" || Array.isArray(input)
+        || !["request_sample", "activation_event", "acceptance_revalidation"].includes(input.role)) throw Error(`${region.id} has an invalid input.`);
+      const source = input.source;
+      if (!source || typeof source !== "object" || Array.isArray(source)) throw Error(`${region.id} has an invalid input source.`);
+      if (["boundary_event", "power_contribution"].includes(source.kind)) {
+        ref(source.port, "instant_port", region.id);
+        const port = ports.get(source.port);
+        if (!port || port.direction !== "input" || !(memberCells.has(port.owner) || memberCorridors.has(port.owner))) throw Error(`${region.id} input port is outside its boundary.`);
+        if (source.kind === "boundary_event") {
+          occurrence(source.occurrence, region.id);
+          if (port.binding?.kind !== "callback" || port.binding.occurrence.route !== source.occurrence.route
+            || port.binding.occurrence.ordinal !== source.occurrence.ordinal) throw Error(`${region.id} event source does not match its callback port.`);
+        } else {
+          ref(source.link, "power_link", region.id);
+          if (port.binding?.kind !== "power" || port.binding.link !== source.link) throw Error(`${region.id} power source does not match its power port.`);
+        }
+      } else if (source.kind === "state") {
+        const test = stateTest(source.test, region.id);
+        if (test.kind.startsWith("piston_")) {
+          if (!actors.has(test.piston)) throw Error(`${region.id} reads state for an actor outside its cells.`);
+        } else {
+          if (!resourcesOwned.has(test.resource)) throw Error(`${region.id} reads state for a resource outside its cells.`);
+          if (test.kind === "resource_at" && !resources.get(test.resource).contacts.includes(test.contact)) throw Error(`${region.id} reads a resource at a contact it does not own.`);
+        }
+      } else if (source.kind === "local_reset_output") {
+        ref(source.observer, "node", region.id);
+        const observer = nodes.get(source.observer);
+        if (!resetObservers.has(source.observer) || observer?.kind?.kind !== "observer") throw Error(`${region.id} reset source is not an owned observer.`);
+        ref(source.link, "power_link", region.id);
+        const link = powerLinks.get(source.link), site = sites.get(link.from.site), guard = guards.get(link.guard);
+        const port = link.from.port, target = link.to, siteSource = site?.source;
+        const validPort = port?.kind === "output" || (port?.kind === "strong" && port.face === "bottom");
+        const targetIsQuasi = target?.kind === "input" && target.port === "quasi" && actorNodes.has(target.node);
+        let targetIsStaticConductor = false;
+        if (target?.kind === "conductor") {
+          ref(target.site, "site", region.id);
+          targetIsStaticConductor = port?.kind === "strong" && port.face === "bottom"
+            && link.face === "bottom" && sites.get(target.site)?.source?.kind === "constant";
+        }
+        if (siteSource?.kind !== "component" || siteSource.node !== source.observer || !validPort
+          || link.attenuation !== 0 || guard?.kind !== "always" || !(targetIsQuasi || targetIsStaticConductor)) throw Error(`${region.id} reset source does not match its original quasi link.`);
+      } else throw Error(`${region.id} has an unknown input source.`);
+    }
+    const expressions = region.expressions;
+    if (!Array.isArray(expressions)) throw Error(`${region.id} has invalid expressions.`);
+    for (let i = 0; i < expressions.length; i++) {
+      const expression = expressions[i];
+      if (!expression || typeof expression !== "object" || Array.isArray(expression)) throw Error(`${region.id} has a malformed expression.`);
+      if (expression.kind === "constant") {
+        if (typeof expression.value !== "boolean") throw Error(`${region.id} has an invalid Boolean constant.`);
+      } else if (expression.kind === "input") index(expression.input, region.inputs?.length ?? 0, region.id);
+      else if (expression.kind === "not") index(expression.value, i, region.id);
+      else if (["all", "any"].includes(expression.kind)) {
+        if (!Array.isArray(expression.values)) throw Error(`${region.id} has invalid ${expression.kind} operands.`);
+        for (const operand of expression.values) index(operand, i, region.id);
+      } else throw Error(`${region.id} has an unknown expression kind.`);
+    }
+    root(region.stationary_entry, expressions.length, region.id);
+    if (region.resource_outputs.length !== 1) throw Error(`${region.id} must expose one resource output.`);
+    for (const output of region.resource_outputs) {
+      ref(output.cell, "instant_cell", region.id); ref(output.resource, "resource", region.id);
+      if (!memberCells.has(output.cell) || !cells.get(output.cell).resources.includes(output.resource)) throw Error(`${region.id} resource output is outside its cell.`);
+      const contacts = resources.get(output.resource).contacts;
+      for (const field of ["source", "destination"]) {
+        ref(output[field], "contact", region.id);
+        if (!contacts.includes(output[field])) throw Error(`${region.id} resource output contact is outside its resource.`);
+      }
+      if (output.source === output.destination) throw Error(`${region.id} resource output must move between distinct contacts.`);
+      root(output.transfer_when, expressions.length, region.id);
+      root(output.source_absent_after, expressions.length, region.id);
+    }
+    for (const output of region.outputs) {
+      ref(output.port, "instant_port", region.id);
+      const port = ports.get(output.port);
+      if (!port || port.direction !== "output" || !(memberCells.has(port.owner) || memberCorridors.has(port.owner))) throw Error(`${region.id} output port is outside its boundary.`);
+      root(output.emitted_when, expressions.length, region.id);
+    }
+    for (const pin of region.pin_values) {
+      ref(pin.cell, "instant_cell", region.id);
+      if (!memberCells.has(pin.cell) || !Number.isInteger(pin.pin) || pin.pin < 0 || pin.pin > 0xffffffff) throw Error(`${region.id} has a pin value outside its cell.`);
+      root(pin.value, expressions.length, region.id);
+    }
+    const useActors = new Map(), useOccurrences = new Set();
+    for (const layer of region.layers) {
+      if (!layer || layer.order !== "fifo" || !Array.isArray(layer.uses)) throw Error(`${region.id} has an invalid causal layer.`);
+      for (const use of layer.uses) {
+        index(use.use_id, 0x100000000, region.id);
+        ref(use.actor, "piston", region.id);
+        if (!actors.has(use.actor)) throw Error(`${region.id} use actor is outside its region.`);
+        if (useActors.has(use.use_id) && useActors.get(use.use_id) !== use.actor) throw Error(`${region.id} changes the actor for a use ID.`);
+        useActors.set(use.use_id, use.actor);
+        for (const field of ["requested", "accepted", "consumed_before", "consumed_after"]) root(use[field], expressions.length, region.id);
+        let causeKey;
+        if (use.cause?.kind === "boundary") {
+          if (!Array.isArray(use.cause.occurrences)) throw Error(`${region.id} has invalid boundary cause occurrences.`);
+          if (!use.cause.occurrences.length) throw Error(`${region.id} has a boundary cause without occurrences.`);
+          causeKey = ["boundary", use.cause.occurrences.map((item) => occurrence(item, region.id))];
+        } else throw Error(`${region.id} has an invalid use cause.`);
+        const signature = JSON.stringify([use.use_id, use.actor, causeKey]);
+        if (useOccurrences.has(signature)) throw Error(`${region.id} repeats an exact use occurrence.`);
+        useOccurrences.add(signature);
+      }
+    }
+    for (const item of region.cold_lifecycle_occurrences) {
+      ref(item.actor, "piston", region.id);
+      if (!actors.has(item.actor)) throw Error(`${region.id} lifecycle actor is outside its cells.`);
+      const [routeId] = occurrence(item.occurrence, region.id);
+      const phase = item.phase, reason = item.reason?.kind;
+      const retraction = ["retraction_base_changed", "retraction_far_changed", "retraction_near_changed"].includes(phase);
+      const deferred = ["deferred_base_restoration", "deferred_head_restoration", "deferred_resource_restoration"].includes(phase);
+      const validReason = (retraction && reason === "base_pending_self_update")
+        || (phase === "reset_observer_lifecycle" && reason === "reset_observer_update")
+        || (deferred && reason === "deferred_graph_lifecycle");
+      if (!validReason) throw Error(`${region.id} has an invalid lifecycle phase and reason.`);
+      if (reason === "reset_observer_update") {
+        ref(item.reason.observer, "node", region.id);
+        if (!resetObservers.has(item.reason.observer) || nodes.get(item.reason.observer)?.kind?.kind !== "observer") throw Error(`${region.id} lifecycle observer is outside its resets.`);
+      }
+      const routeBindings = pistons.get(item.actor)?.routes || {};
+      const resetRoutes = [];
+      if (reason === "reset_observer_update") {
+        const watched = nodes.get(item.reason.observer)?.kind?.watched;
+        const watchedContact = contacts.get(sites.get(watched)?.source?.contact);
+        for (const variant of watchedContact?.variants || []) {
+          const receiver = variant.receiver;
+          if (receiver?.kind !== "piston_base") continue;
+          const watchedRoutes = pistons.get(receiver.piston)?.routes || {};
+          resetRoutes.push(watchedRoutes.base_changed, watchedRoutes.base_restored);
+        }
+      }
+      const expectedRoutes = {
+        retraction_base_changed: [routeBindings.base_changed],
+        retraction_far_changed: [routeBindings.far_changed],
+        retraction_near_changed: [routeBindings.near_changed],
+        deferred_base_restoration: [routeBindings.base_restored],
+        deferred_head_restoration: [routeBindings.head_restored],
+        deferred_resource_restoration: [routeBindings.resource_restored_near, routeBindings.resource_restored_far],
+        reset_observer_lifecycle: resetRoutes,
+      };
+      if (!expectedRoutes[phase]?.includes(routeId)) throw Error(`${region.id} lifecycle occurrence does not match its declared route phase.`);
+    }
+  }
+  const reasons = new Set(["signal_arrival_unproven", "callback_semantics_unsupported",
+    "shared_owner_order_unknown", "boundary_effect_unsupported"]);
+  for (const decline of declines) {
+    const memberCells = new Set(), memberCorridors = new Set();
+    for (const [field, prefix, available, all, local] of [
+      ["cells", "instant_cell", cells, ownedCells, memberCells],
+      ["corridors", "instant_corridor", corridors, ownedCorridors, memberCorridors],
+    ]) {
+      if (!Array.isArray(decline[field])) throw Error(`${decline.id} has invalid ${field}.`);
+      for (const id of decline[field]) {
+        ref(id, prefix, decline.id);
+        if (!available.has(id) || local.has(id) || all.has(id)) throw Error(`${decline.id} repeats or shares ${field} ownership.`);
+        local.add(id); all.add(id);
+      }
+    }
+    if (!reasons.has(decline.reason)) throw Error(`${decline.id} has an invalid decline reason.`);
+    const actors = new Set([...memberCells].flatMap((cell) => cells.get(cell).actors));
+    const wires = new Set([...memberCorridors].flatMap((corridor) => corridors.get(corridor).wires));
+    if (decline.witness?.kind === "actor") {
+      ref(decline.witness.piston, "piston", decline.id);
+      if (!actors.has(decline.witness.piston)) throw Error(`${decline.id} actor witness is outside its cells.`);
+    } else if (decline.witness?.kind === "callback") occurrence(decline.witness.occurrence, decline.id);
+    else if (decline.witness?.kind === "power") ref(decline.witness.link, "power_link", decline.id);
+    else if (decline.witness?.kind === "power_at_cut") {
+      ref(decline.witness.actor, "piston", decline.id); ref(decline.witness.link, "power_link", decline.id);
+      if (!actors.has(decline.witness.actor) || !["request_sample", "activation_event", "acceptance_revalidation"].includes(decline.witness.phase)) throw Error(`${decline.id} has an invalid power-at-cut witness.`);
+    }
+    else if (decline.witness?.kind === "wire") {
+      ref(decline.witness.node, "node", decline.id);
+      if (!wires.has(decline.witness.node) || nodes.get(decline.witness.node)?.kind?.kind !== "wire") throw Error(`${decline.id} wire witness is outside its corridors.`);
+    } else throw Error(`${decline.id} has an invalid witness.`);
+  }
+}
+
+function validateBoundaryBinding(port, ids, context) {
+  const { nodes, routes, guards, contacts, plans, wirePlans } = context;
+  const binding = port.binding;
+  const ref = (id, prefix) => {
+    if (typeof id !== "string" || !id.startsWith(`${prefix}:`) || !ids.has(id)) throw Error(`${port.id} has an invalid ${prefix} reference.`);
+  };
+  const routeOccurrence = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw Error(`${port.id} has an invalid route occurrence.`);
+    ref(value.route, "route");
+    const deliveries = routes.get(value.route).deliveries;
+    if (!Number.isInteger(value.ordinal) || value.ordinal < 0 || value.ordinal >= deliveries.length) throw Error(`${port.id} has an invalid route occurrence.`);
+    return { route: routes.get(value.route), delivery: deliveries[value.ordinal] };
+  };
+  const sameFields = (left, right) => left && right && typeof left === "object" && typeof right === "object"
+    && !Array.isArray(left) && !Array.isArray(right)
+    && Object.keys(left).length === Object.keys(right).length
+    && Object.keys(left).every((key) => key in right && left[key] === right[key]);
+  const siteTest = (test) => {
+    if (!test || typeof test !== "object" || Array.isArray(test)) throw Error(`${port.id} has an invalid site test.`);
+    if (!['solid', 'transparent', 'is_wire', 'profile'].includes(test.kind)) throw Error(`${port.id} has an invalid site test.`);
+    if (test.kind === "profile") ref(test.profile, "profile");
+  };
+  const stateTest = (test) => {
+    if (!test || typeof test !== "object" || Array.isArray(test)) throw Error(`${port.id} has an invalid state test.`);
+    if (["piston_extended", "piston_head_present"].includes(test.kind)) ref(test.piston, "piston");
+    else if (test.kind === "piston_availability") {
+      ref(test.piston, "piston");
+      if (!["ready", "head_pending", "publishing_head_removal", "base_pending_head_present", "base_pending"].includes(test.availability)) throw Error(`${port.id} has an invalid piston availability.`);
+    } else if (test.kind === "resource_at") {
+      ref(test.resource, "resource"); ref(test.contact, "contact");
+    } else if (test.kind === "resource_enabled") ref(test.resource, "resource");
+    else throw Error(`${port.id} has an invalid state test.`);
+  };
+
+  if (binding.kind === "power") ref(binding.link, "power_link");
+  else if (binding.kind === "callback") routeOccurrence(binding.occurrence);
+  else if (binding.kind === "wire_relation") ref(binding.relation, "wire_relation");
+  else if (binding.kind === "comparator") {
+    ref(binding.plan, "comparator_plan");
+    if (!["rear", "direct_override", "far_override_site", "far_override_guard", "far_override_output"].includes(binding.role)) throw Error(`${port.id} has an invalid comparator role.`);
+    const plan = plans.get(binding.plan);
+    if (binding.role === "direct_override" && plan.direct_override == null) throw Error(`${port.id} references an absent direct override.`);
+    if (binding.role.startsWith("far_override_")) {
+      if (binding.role === "far_override_output") {
+        if (plan.far_override?.value?.kind !== "live_component_output") throw Error(`${port.id} references an absent far override output.`);
+        ref(plan.far_override.value.node, "node");
+      } else {
+        const field = binding.role === "far_override_site" ? "site" : "guard";
+        ref(plan.far_override?.[field], field);
+      }
+    }
+  } else if (binding.kind === "guard_site") {
+    ref(binding.guard, "guard"); ref(binding.site, "site");
+    siteTest(binding.test);
+    const guard = guards.get(binding.guard);
+    if (guard.kind !== "site" || guard.site !== binding.site || guard.view !== binding.view
+      || !["live", "captured"].includes(binding.view) || !sameFields(guard.test, binding.test)) {
+      throw Error(`${port.id} does not match its guard site atom.`);
+    }
+  } else if (binding.kind === "guard_state") {
+    ref(binding.guard, "guard");
+    stateTest(binding.test);
+    const guard = guards.get(binding.guard);
+    if (guard.kind !== "state" || !sameFields(guard.test, binding.test)) throw Error(`${port.id} does not match its guard state atom.`);
+  } else if (binding.kind === "contact_alternative") {
+    ref(binding.contact, "contact");
+    const variants = contacts.get(binding.contact).variants;
+    if (!Number.isInteger(binding.ordinal) || binding.ordinal < 0 || binding.ordinal >= variants.length) throw Error(`${port.id} has an invalid contact alternative.`);
+  } else if (binding.kind === "observer_watch") {
+    ref(binding.observer, "node"); ref(binding.site, "site");
+    const observer = nodes.get(binding.observer);
+    if (observer?.kind?.kind !== "observer" || observer.kind.watched !== binding.site) throw Error(`${port.id} does not match its observer watch.`);
+  } else if (["captured_wire", "wire_neighborhood"].includes(binding.kind)) {
+    ref(binding.wire, "node"); ref(binding.neighbor, "site");
+    const wire = nodes.get(binding.wire);
+    const plan = wire?.kind?.kind === "wire" ? wirePlans.get(wire.kind.plan) : null;
+    if (!plan || !plan.canonical_neighbors.includes(binding.neighbor)) throw Error(`${port.id} has a noncanonical wire neighbor.`);
+    if (binding.kind === "captured_wire") {
+      const occurrence = routeOccurrence(binding.occurrence);
+      if (plan.turbo_route !== binding.occurrence.route || occurrence.delivery.view !== "captured"
+        || occurrence.delivery.target !== binding.neighbor) throw Error(`${port.id} does not match its captured wire occurrence.`);
+    }
+  } else if (binding.kind === "fixed_read") {
+    ref(binding.node, "node");
+    ref(binding.site, "site");
+    if (!["note_support", "note_obstruction"].includes(binding.role)) throw Error(`${port.id} has an invalid fixed-read role.`);
+    const node = nodes.get(binding.node), component = node?.kind?.component?.type;
+    if (component != null && component !== "note_block") throw Error(`${port.id} fixed-read role does not match its node kind.`);
+  } else throw Error(`${port.id} has an unknown boundary binding kind.`);
 }
 
 function indexRecords(data) {
@@ -380,7 +811,18 @@ function controls(data) {
   const layers = [...new Set(data.graph.nodes.concat(data.graph.sites).map((row) => row.position?.y).filter(Number.isFinite))].sort((a, b) => a - b);
   $('layer').replaceChildren(option('', 'All layers'), ...layers.map((y) => option(String(y), `Y = ${y}`)));
   $('layer').value = '';
-  $('availability').textContent = `Routes: ${data.graph.routes === null ? 'unavailable' : data.graph.routes.length} · trace: ${data.trace === null ? 'unavailable' : (data.trace || []).length} · ${data.snapshots.length} snapshots`;
+  const fixedPlan = data.graph.fixed_classic;
+  let fixedSummary = 'fixed classic: not included';
+  if (fixedPlan?.status === 'declined') {
+    fixedSummary = `fixed classic: declined · ${fixedPlan.decline || 'reason unavailable'}`;
+  } else if (fixedPlan?.status === 'compiled') {
+    const inventory = fixedPlan.inventory || {};
+    const tables = Array.isArray(inventory.tables) ? inventory.tables : [];
+    const counts = Object.fromEntries(tables.filter((table) => typeof table?.table === 'string' && Number.isInteger(table.entries)).map((table) => [table.table, table.entries]));
+    const bytes = Number.isInteger(inventory.accounted_bytes) ? ` · ${inventory.accounted_bytes} accounted bytes` : '';
+    fixedSummary = `fixed classic: compiled · ${counts.nodes ?? '?'} nodes · ${counts.wires ?? '?'} wires · ${counts.route_ops ?? '?'} route ops${bytes}`;
+  }
+  $('availability').textContent = `Routes: ${data.graph.routes === null ? 'unavailable' : data.graph.routes.length} · trace: ${data.trace === null ? 'unavailable' : (data.trace || []).length} · ${data.snapshots.length} snapshots · ${fixedSummary}`;
   for (const diagnostic of data.diagnostics || []) {
     const message = document.createElement('p');
     message.textContent = `${diagnostic.code}: ${diagnostic.message}`;

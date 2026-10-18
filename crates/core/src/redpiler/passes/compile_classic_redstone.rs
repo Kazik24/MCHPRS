@@ -2,7 +2,7 @@
 //! One-ingress, delayed-receiver regions are checked against ordered Graph samples for
 //! every old/new strength pair; compact masks select receiver scheduling at original
 //! route occurrences. Unsupported boundaries and exhausted proof budgets stay general.
-//! Runs after rewrites and before instant plans, only with the O2+ classic option.
+//! Runs after whole fixed compilation declines, only with the O2+ classic option.
 //! See docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md for the algorithm.
 use super::{
     PassContext,
@@ -21,6 +21,9 @@ impl PlanBuilder for CompileClassicRedstone {
     }
 
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
+        if graph.plans.fixed_classic.program.is_some() {
+            return Ok(PlanOutput::ClassicNets(Vec::new()));
+        }
         let analysis = ClassicAnalysis::new(graph);
         #[cfg(test)]
         record_boundary_closure_census(graph, &analysis);
@@ -106,6 +109,7 @@ impl PlanBuilder for CompileClassicRedstone {
                 estimated_bytes: plans.len() * 2,
             },
             table("accepted nets", plans.len()),
+            table("outside main guard terms", plans.iter().map(|plan| plan.outside.len()).sum()),
             table("guarded boundary wires", plans.iter().map(|plan| plan.guarded_wires.len()).sum()),
             table("private wires", plans.iter().map(|plan| plan.wires.len()).sum()),
             table("direct receiver inputs", plans.iter().map(|plan| plan.inputs.len()).sum()),
@@ -229,6 +233,11 @@ struct Census {
 }
 
 /// Undirected potential electrical connectivity; guards do not freeze saved contacts.
+#[cfg(test)]
+pub(crate) fn census_regions(graph: &CompileGraph) -> Vec<Vec<NodeId>> {
+    regions(graph)
+}
+
 fn regions(graph: &CompileGraph) -> Vec<Vec<NodeId>> {
     let mut adjacency = vec![Vec::new(); graph.nodes.len()];
     for relation in &graph.wire_relations {

@@ -562,15 +562,17 @@ mod tests {
             (3, "simplify-instant-resets"),
             (3, "specialize-instant-pistons"),
             (3, "compile-builtin-resets"),
-            (2, "compile-classic-redstone"),
             (1, "index-turbo-callbacks"),
             (1, "contract-static-dust-paths"),
             (2, "specialize-wire-queries"),
             (2, "compile-wire-hops"),
+            (2, "compile-wire-callbacks"),
             (3, "compile-instant-resets"),
             (3, "identify-instant-regions"),
             (3, "compile-instant-proxies"),
             (2, "compile-fixed-signals"),
+            (2, "compile-fixed-classic"),
+            (2, "compile-classic-redstone"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {
@@ -581,7 +583,7 @@ mod tests {
             assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);
-                let enabled = name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);
+                let enabled = !matches!(name, "compile-classic-redstone" | "compile-fixed-classic") && level.is_none_or(|level| level >= minimum);
                 assert_eq!(entry.enabled, enabled, "{name} at {level:?}");
                 assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 7);
             }

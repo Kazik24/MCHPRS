@@ -86,6 +86,9 @@ impl GraphBackend {
         direction: BlockFace,
         captured: Option<&ObservedSite>,
     ) -> Result<(), GraphExecutionError> {
+        if self.fixed_classic.is_some() {
+            return self.fixed_classic_shape(node, direction, captured);
+        }
         let wire = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Wire(wire) => Some(wire),
@@ -105,6 +108,9 @@ impl GraphBackend {
     }
 
     pub(super) fn evaluate_seed(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
+        if self.fixed_classic.is_some() {
+            return self.fixed_classic_seed(node, captured);
+        }
         let mut wire = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Wire(wire) => Some(wire),
@@ -370,6 +376,15 @@ impl GraphBackend {
         WireWalkNeighbors { heading, slots }
     }
 
+    #[inline]
+    pub(super) fn wire_route_admitted(&self, wire_index:usize, route:RouteId, slot:usize, target:SiteId, observed:&ObservedSite)->bool {
+        if let Some(plan) = self.program.wires()[wire_index].execution.callback_selection
+            && plan.known & (1 << slot) != 0 {
+            return plan.admitted & (1 << slot) != 0;
+        }
+        self.wire_route_delivery(wire_index,route,slot,target,observed).is_some()
+    }
+
     pub(super) fn wire_route_delivery(
         &self,
         wire_index: usize,
@@ -413,8 +428,7 @@ impl GraphBackend {
             };
             if changed
                 && self
-                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
-                    .is_some()
+                    .wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
             {
                 walk.queues[1].push_back(walk_slot);
             }
@@ -434,8 +448,7 @@ impl GraphBackend {
             };
             if changed
                 && self
-                    .wire_route_delivery(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
-                    .is_some()
+                    .wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
             {
                 walk.queues[2].push_back(walk_slot);
             }
@@ -490,8 +503,7 @@ impl GraphBackend {
         }
         // Both original enqueue loops finish before any callback can change a guard.
         let selected: [bool; 24] = std::array::from_fn(|slot| {
-            self.wire_route_delivery(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot])
-                .is_some()
+            self.wire_route_admitted(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot])
         });
         // A fresh walk has no visited neighbors or bias: compute_heading(0, 0) == 3.
         let order = &crate::redstone::wire::TURBO_ORDER[3];
@@ -596,8 +608,24 @@ impl GraphBackend {
         self.record_turbo_delivery(site, receiver, layer);
         match receiver {
             CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(observed)),
-            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => self.sample_piston(piston),
-            CallbackReceiver::Contact(_) => Ok(()),
+            CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) => {
+                if self.classic_proof.is_some() {
+                    return Err(GraphExecutionError::UnsupportedComponent {
+                        position: Some(self.program.sites()[site.index()].position),
+                        kind: "classic proof piston callback",
+                    });
+                }
+                self.sample_piston(piston)
+            }
+            CallbackReceiver::Contact(_) => {
+                if self.classic_proof.is_some() {
+                    return Err(GraphExecutionError::UnsupportedComponent {
+                        position: Some(self.program.sites()[site.index()].position),
+                        kind: "classic proof contact callback",
+                    });
+                }
+                Ok(())
+            }
         }
     }
 

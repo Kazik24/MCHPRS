@@ -10,6 +10,7 @@ pub(crate) struct CellPinId(
 );
 
 impl CellPinId {
+    #[cfg(test)]
     pub(crate) fn index(self) -> usize {
         self.0 as usize
     }
@@ -63,16 +64,99 @@ pub(crate) struct CellUse {
     pub(crate) valid: CellPinId,
     /// These original callback occurrences can qualify a sample; guards and views stay in the graph.
     pub(crate) activations: Box<[RouteOccurrence]>,
+    /// This preserves the accepted retraction, token transfer and existing reset/publication work.
+    pub(crate) retraction: CellRetractionEffect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CellTokenSelection {
+    /// The first accepted owner request that still selects the token in Graph FIFO order transfers it.
+    FirstAcceptedPullRequestInFifo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CellResourcePin {
     /// This is the one conserved payload; shared actors do not receive separate tokens.
     pub(crate) resource: ResourceId,
     /// This is the common stationary source contact from which admitted actors pull it.
     pub(crate) source: ContactId,
+    /// This is true only while the resource is enabled at its source contact.
+    pub(crate) present: CellPinId,
     /// This derives disappearance from selected contact and electrical availability.
     pub(crate) absent: CellPinId,
+    /// These actors can pull this token; list order does not choose the winner.
+    pub(crate) owners: Box<[PistonId]>,
+    /// This preserves the ordinary request queue's first-eligible-owner arbitration.
+    pub(crate) selection: CellTokenSelection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CellResourceTransfer {
+    /// This is the conserved token selected for a possible accepted pull.
+    pub(crate) resource: ResourceId,
+    /// This is the token's shared Far source before the first owner takes it.
+    pub(crate) source: ContactId,
+    /// This is the accepting actor's Near destination.
+    pub(crate) destination: ContactId,
+    /// The token revision increments once when it is disabled at Near before Far/Near routes run.
+    pub(crate) resource_revision_increment: u8,
+    /// This snapshots the enabled token before the base-change callbacks run.
+    pub(crate) when_at_source: CellPinId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CellRetractionRoutes {
+    /// This route runs first while the actor is BasePendingHeadPresent and the token is unmoved.
+    pub(crate) base_changed: RouteId,
+    /// This route runs after a selected token has moved to Near and become disabled.
+    pub(crate) far_changed: Option<RouteId>,
+    /// This route runs last in the synchronous accepted-retraction sequence.
+    pub(crate) near_changed: RouteId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CellResourceWake {
+    /// This is restored independently of the accepting actor's revision.
+    pub(crate) resource: ResourceId,
+    /// This payload must still be disabled at this Near contact when publication arrives.
+    pub(crate) contact: ContactId,
+    /// This original route runs only after the resource revision/contact witness is valid.
+    pub(crate) route: RouteId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CellDeferredWake {
+    /// Graph queues this accepted stationary retraction for logical_tick + 2.
+    pub(crate) ticks_after_acceptance: u8,
+    /// This original base route runs if the deferred event's captured actor revision still matches.
+    pub(crate) base_restored: RouteId,
+    /// This token publication has its own captured resource revision and may be stale independently.
+    pub(crate) resource: Option<CellResourceWake>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CellResetWake {
+    /// This is the actor whose original base transitions the recognized observer watches.
+    pub(crate) watched_actor: PistonId,
+    /// These exact base-change rows may arm the existing reset node during acceptance.
+    pub(crate) on_base_changed: Box<[RouteOccurrence]>,
+    /// These exact base-restoration rows may arm it when the deferred event publishes.
+    pub(crate) on_base_restored: Box<[RouteOccurrence]>,
+}
+
+/// This describes one pull-capable stationary retraction without replacing Graph's action scheduler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CellRetractionEffect {
+    /// Graph increments and captures this actor revision before the first base-change callback.
+    pub(crate) actor_revision_increment: u8,
+    /// This transfer is conditional; an accepted owner with no token at Far still retracts.
+    pub(crate) transfer: Option<CellResourceTransfer>,
+    /// These retain base, conditional Far and final Near route order from Graph.
+    pub(crate) routes: CellRetractionRoutes,
+    /// This preserves the exact ordinary scheduler publication and its revision checks.
+    pub(crate) wake: CellDeferredWake,
+    /// These are route occurrences only; observer/reset state remains under the existing scheduler.
+    pub(crate) reset: CellResetWake,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +173,7 @@ pub(crate) struct CellContract {
 
 impl CellContract {
     /// Evaluate local equations in tests/proofs; production lowering substitutes their typed reads.
+    #[cfg(test)]
     pub(crate) fn evaluate(&self, values: &mut Vec<bool>, mut read: impl FnMut(CellRead) -> bool) -> Result<(), &'static str> {
         values.clear();
         for pin in &self.pins {
@@ -111,4 +196,32 @@ impl CellContract {
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CellDecline {
+    /// These actors belong to the indivisible group which was not certified.
+    pub(crate) actors: Vec<PistonId>,
+    /// This identifies the unsupported owner, material or source-contact rule.
+    pub(crate) reason: CellDeclineReason,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CellDeclineReason {
+    /// This actor has no recognized reset provenance and may be ordinary memory.
+    UnrecognizedActor(PistonId),
+    /// This resource has different Far contacts among its owners, requiring another local contract.
+    DifferentPullSources(ResourceId),
+    /// This resource intersects the group but has no actor with a complete Near/Far pull lane.
+    NoPullSource(ResourceId),
+    /// This actor's accepted retract has no original base or payload restoration route.
+    MissingDeferredWake(PistonId),
+    /// This actor's reset observer is absent from one of its source-derived base routes.
+    MissingResetWake(PistonId),
+    /// Retaining this additional cell would exceed the graph-preparation allocation share.
+    PinTableBudgetExceeded,
+    /// This contact would need to contain two different stationary payloads at entry.
+    ConflictingSourceContact(ContactId),
+    /// This resource is not an admitted entity-free cube/redstone source.
+    UnsupportedMaterial(ResourceId),
 }

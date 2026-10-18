@@ -216,6 +216,7 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
         .sum();
     let tables = vec![
+        PreparationTableStatistics { stage: "lowering input", table: "whole fixed executable".into(), entries: usize::from(graph.plans.fixed_classic.program.is_some()), capacity: usize::from(graph.plans.fixed_classic.program.is_some()), estimated_bytes: graph.plans.fixed_classic.program.as_ref().map_or(0, |program| program.inventory().estimated_bytes) },
         table::<crate::redpiler::program_graph::ClassicNetPlan>(
             "lowering input","classic certificates",graph.plans.classic_nets.len(),graph.plans.classic_nets.capacity(),
             graph.plans.classic_nets.iter().map(|net|std::mem::size_of_val(net.wires.as_ref())+std::mem::size_of_val(net.inputs.as_ref())+std::mem::size_of_val(net.entries.as_ref())+net.entries.iter().map(|entry|std::mem::size_of_val(entry.ops.as_ref())).sum::<usize>()).sum(),
@@ -355,6 +356,7 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
+        PreparationTableStatistics { stage: "lowering", table: "whole fixed executable".into(), entries: usize::from(program.fixed_classic().is_some()), capacity: usize::from(program.fixed_classic().is_some()), estimated_bytes: program.fixed_classic().map_or(0, |fixed| fixed.inventory().estimated_bytes) },
         PreparationTableStatistics { stage:"lowering",table:"classic signal tables".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().estimated_bytes() },
         PreparationTableStatistics { stage:"lowering",table:"committed classic signals".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().nets.len() },
         table::<crate::redpiler::program_graph::InstantProxy>(
