@@ -373,6 +373,20 @@ impl GraphBackend {
     }
 
     #[cfg(test)]
+    pub(crate) fn compile_without_fixed_classic<W: World>(
+        world: &W,
+        bounds: (BlockPos, BlockPos),
+        ticks: Vec<TickEntry>,
+        options: &crate::redpiler::CompilerOptions,
+        monitor: Arc<TaskMonitor>,
+    ) -> Result<Self, GraphBackendError> {
+        // Keep research controls on the general executor when O2 enables the whole program.
+        let mut pipeline = passes::default_graph_pipeline(options);
+        pipeline.entries.retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+        Self::compile_with_pipeline(world, bounds, ticks, options, &pipeline, monitor)
+    }
+
+    #[cfg(test)]
     pub(crate) fn compile_with_pipeline<W: World>(
         world: &W,
         bounds: (BlockPos, BlockPos),
@@ -1235,7 +1249,7 @@ impl GraphBackend {
         self.dirty[node.index()] = true;
         host.as_mut()
             .expect("host was checked before command execution")
-            .publish_command_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
+            .publish_command_entity(position, BlockEntity::CommandBlock(entity));
         self.fire_route(node)?;
         Ok(true)
     }

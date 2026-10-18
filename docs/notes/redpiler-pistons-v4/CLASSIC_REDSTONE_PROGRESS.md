@@ -1063,3 +1063,148 @@ Final optimized paired core time over 4,096 ticks: ordinary O2 Graph 5.7010647 s
 Payload correction: the final executable tables still contain 100,100,492 bytes and 2,517,665 route operations. Turbo rows were already captured-only and filtered by the original lowering; making unreachable-route roots explicit therefore did not reduce this payload. The retained operations are live output/shape route instructions. The earlier note attributing the lack of reduction to wire NodeSpec.output_route was incorrect: current callback preparation gives wires separate shape and Turbo routes. The Rust comment now states the actual electrical-output/wire-shape roots. General graph tables remain for projection/inspection, so compact storage and complete propagation elimination are still separate optimization opportunities, not delivered claims.
 
 Export compatibility: the additive fixed_classic tables bump JSON schema minor 1.1 to 1.2. Every existing ADDER fixture differed only in this version field after semantic comparison; only that metadata was updated in all five original fixture files, preserving their graph data and existing unrelated changes. No C/LLVM engine was restored. The existing option remains default-off. Full historical 12,411,975-tick Mandelbrot completion was not run.
+
+## 2026-10-18 — Whole fixed execution promoted to default O2
+
+compile-fixed-classic now runs automatically at O2 and higher, including --optimize; O0/O1 and CompilerOptions' overall default O0 are unchanged. --classic-redstone is no longer required for whole fixed execution. That option still enables the older local committed-signal compiler when whole compilation declines. Unsupported whole circuits retain general Graph execution.
+
+Updated tier/fuzz expectations, default runtime/export checks, O2-O4 ADDER decline metadata, and documentation. The benchmark/control helpers explicitly omit only compile-fixed-classic so historical general/query/callback/local-net experiments continue comparing the intended executors instead of silently benchmarking two whole fixed programs. Dust-path-specific trace and sample-elision tests also retain their intended executor through an explicit custom pipeline. No runtime propagation algorithm changed in this promotion.
+
+Verification in the original shared workspace: production cargo check passed; final focused checks passed 10 whole-fixed tests plus tier selection, ADDER export equality, callback-order/intermediate-write dust-path regression, and specialized dust-query/reset regression. A broad run initially passed 440 tests and failed six (19 ignored): two dust-path test controls were corrected and subsequently passed, while four experimental instant-layer failures remain in the parallel work (three deferred lifecycle route references outside synthetic graphs and the private-reset parser entry case's unproved callback). Their details are in target/fixed-classic-default-o2-suite.log. No claim of a clean full suite is made. A missing Vec<bool> type annotation in the in-progress layer test helper was supplied to allow the build. Later layer source edits remain intact.
+
+Evidence: target/fixed-classic-default-o2-production-check.log; target/fixed-classic-default-o2-build-final.log; target/default-o2-*.log. The full CHUNGUS performance benchmark was not repeated for this selection-only change; the previously measured executor is unchanged. User's next requested stage is broad instant/non-instant example validation followed by CPU-friendly next-state execution research.
+
+## 2026-10-18 — Instant/non-instant validation and CPU-friendly execution design
+
+Fresh current-source Redpiler suite: 450 passed, zero failed, 19 research tests ignored. The concurrent instant-layer changes resolved the four failures in the preceding default-O2 promotion run. Evidence: target/cpu-friendly-validation-current-build.log and target/cpu-friendly-validation-current-suite.log. Frozen current test executable target/cpu-friendly-validation-current-tests.exe has SHA256 aae6357ce7c3ba3fe62dbbf2429c859eb5c26ae2a7ee60744aca03c55e3f7e67. This supersedes the earlier failure count without changing that historical record.
+
+The bounded all-device harness inventoried 82 entries at each of O2 and O3. Each tier matched 56 entries against the independent interpreter, with zero output/future/reset/continuation mismatches among those executed. All 22 IO fixtures participated. The 26 unmeasured entries split into 21 missing saved-lever protocols and five admission declines; they are not passing results. The declines are two raw adders whose signs may lose support, raw PM1 requiring unloaded chunk 16,2, saved PM1 with a moving piston missing motion metadata at (206,42,40), and raw TEST_XOR whose dust may lose support. Detailed names and reasons: target/cpu-friendly-validation-summary.json and the raw target/cpu-friendly-validation-{o2,o3}.json/log files. The harness exits nonzero because validation was incomplete for those entries, not because an executed output differed.
+
+Existing normalized TEST-family checks passed four test functions: independent controls over all 18 fixtures, active histories/rotations for the 13-family set, and support-loss rejection. Those loaders supply previously recorded controls/floor supports and use the general/default configuration; this supplements the O2/O3 sweep without pretending to test every normalized fixture at O3. The focused adder/mechanism module passed 55 tests with one research test ignored (concurrent layer module excluded in that focused run; the later current-source full suite includes it). Logs: target/cpu-friendly-validation-test-family.log and target/cpu-friendly-validation-adders.log.
+
+Full BubbleSort passed all 10,036 ticks at O2 and O3, including frozen native RAM trace, final sorted bank, preservation of the remaining RAM, reset and interpreter continuation. Both produced the same active RAM digest 92a5a7fb51b64681e36b72e481593e9b49b1f9df168590b9a27a58b0b6f333d4 and 415 RAM changes. Existing approved removal of unsupported wall sign world (188,10,186) is retained in the loader; the schematic is unchanged. Reports: target/cpu-friendly-validation-bubblesort-{o2,o3}.json/log. The frozen BubbleSort executable SHA256 is d98f32199b03adf7c126cfebb207bbe8c67557bb74ecc4106597bbf3156fdf76. New default-O2 CHUNGUS validation passed 1,025 boundaries against general execution and the independent interpreter, including the old tick-512 case and exact future: target/cpu-friendly-validation-chungus-1024.json/log. Full 12,411,975-tick CHUNGUS application completion remains untested.
+
+These new runs are correctness evidence from dev/debug builds with concurrent work, not speed measurements. The frozen all-device harness mistakenly labels its profile bench/release; raw reports were preserved and the summary explicitly corrects this. Its SHA256 is ab2e206f051df6ad9e2c5459158f62100565122768524990ace72804c4200d54. Harness fixes now include comparator analog strengths in electrical traces (missing entity normalized to zero), use the electrical digest for PM1 instead of a nonexistent counter port bank, report the actual debug/release distinction, and stop describing every missing protocol as an admission failure. cargo check --bench cpus passed. No new inference algorithm was enabled during validation.
+
+Compiler layout measurement found ComponentState/NodeState 104 bytes, inline CommandBlockEntity 96 bytes, RedstoneWire 5 bytes, FixedClassicWire 200 bytes, FixedClassicNode 72 bytes, FixedClassicQuery 12 bytes, FixedClassicOperand 16 bytes, FixedClassicSite 12 bytes, FixedClassicRouteOp 12 bytes, and scheduled/pending tick identities 36 bytes. For CHUNGUS the authoritative component array alone is about 26.2 MB; fixed executable tables add 100.1 MB plus the original graph. Diagnostic-only RUSTC_BOOTSTRAP=1 cargo rustc --lib -- -Zprint-type-sizes output is retained at target/cpu-friendly-type-layout.log; no production compiler setting changed. These sizes and earlier dynamic counters identify concrete targets, but no sampling profiler has established cycle percentages.
+
+Detailed proposed next pass, input/output/state ownership, algorithm, proof boundaries, SIMD choices and milestone/benchmark gates: CPU_FRIENDLY_CLASSIC_EXECUTION.md in this directory. Recommendation: first pack the exact executor and split cold entity storage from hot signal state, then contract certified multi-ingress passive nets into weighted transfers and receiver programs. Use CSR operands/fanout and dirty chunks rather than whole-graph scans. Keep the original causal order for sensitive receiver groups and last-delivered ingress values. A settled truth table cannot replace the CHUNGUS tick-512 live sample/FIFO behavior. Boolean bitplanes and analog SIMD are later optimizations over independently proven work; a feedback CPU's successive ticks are not independent SIMD lanes. The proposed executor is not implemented, and no new speedup or million-ticks-per-second claim is made.
+
+
+## 2026-10-18 — Production baseline before the packed classic engine
+
+Added a dedicated classic_baseline benchmark using the normal production Compiler/Graph backend and existing frozen CPU loading/checkpoint helpers. One bulk tick_with_world loop measures inference without intermediate display flushes. Each of five samples reloads/recompiles from the saved machine; setup/activation/projection/reset/verification are outside the core timer. The independent native oracle checks all blocks/entities, ordered chat, exact exported future, and 32 native continuation ticks at the window endpoint. No new engine, pass, unsafe boundary rule, or production runtime change was enabled.
+
+CHUNGUS O2: 16,384 active ticks/sample; median 13.109408 s, 1,249.8 game TPS, 800.1 us/tick; TPS range 1,219.0–1,257.3. Median compile 28.359 s; one final flush 7.150 ms; reset 58.961 ms. All five native state/future/continuation checks passed.
+
+ANPU O2: 5,000 active ticks/sample; median 2.887614 s, 1,731.5 game TPS, 577.5 us/tick; TPS range 1,684.5–1,760.2. Median compile 7.667 s; one final flush 4.115 ms; reset 17.394 ms. All five native state/future/continuation checks passed.
+
+ANPU O3: 5,000 active ticks/sample; median 2.986678 s, 1,674.1 game TPS, 597.3 us/tick; TPS range 1,615.7–1,792.9. Median compile 10.239 s; one final flush 4.080 ms; reset 17.862 ms. All five native state/future/continuation checks passed.
+
+Primary baselines are O2 for both CPUs. ANPU O3 showed wider variation, overlapping O2, and no established speedup. Both ANPU tiers have identical runtime ownership and dynamic work counts: 59,998 actors / 34,781 wires / 2,898 pistons; no whole-fixed/local-net/proxy/built-in-clock/instant-route replacement; 267,998 scheduled component ticks, 16,389,643 callbacks, 183,751 wire walks, 327,585 piston samples and 10,682 actions per 5,000 game ticks. The interpreter is an independent checker, not a runtime fallback. CHUNGUS has 100% whole fixed execution but still retains ordered typed propagation: 1,379,485 scheduled ticks and 76,786,878 counted callbacks per 16,384 game ticks.
+
+Release/fat-LTO production executable, no test-only fixed counters; rustc 1.98.1 / LLVM 22.1.8, Windows x64, Ryzen 9 5950X, inherited affinity 0x10 (logical CPU 4, verified), sequential measurements with no Cargo/rustc running concurrently. Frozen binary SHA256 4fbd1cf367023c7fabe84a7f727ce0be70a04402ad3c3b80a932bfb8b4c484d3, retained at target/classic-baseline-before-packed-20261018.exe. Complete protocol/results/commands: CLASSIC_ENGINE_BASELINE.md. Raw target/classic-baseline-{chungus-o2,anpu-o2,anpu-o3}.{json,log}, summary target/classic-baseline-summary.json, environment target/classic-baseline-environment.json.
+
+All 15 long-window samples passed. ANPU native references additionally checked 14 frozen screen frames each. Full per-tick output equality is separate evidence from the prior differential suites, not claimed by this bulk timer. No schematic normalization was needed here. Full 12,411,975-tick CHUNGUS completion, server/network performance and per-frame display costs were not measured. Compilation, a single final accumulated flush, and reset are reported separately and must not be confused with per-tick inference. cargo check/build for the bench and formatting/whitespace checks passed. Initial harness serialization was corrected to explicit GraphExecutionCounts field deltas; production types were unchanged.
+
+## 2026-10-19 - First packed execution version: implementation and results
+
+Implemented the first storage/execution stage inside the existing Graph backend, using the existing compile-fixed-classic program. No new option, state owner, semantic graph rewrite, C/LLVM execution or alternate backend was introduced. The immutable execution plan and exported graph schema remain unchanged.
+
+### Representation and equivalence argument
+
+NodeState.command_entity now owns an optional boxed CommandBlockEntity instead of embedding its 96-byte payload in every signal row. Ordinary nodes allocate no entity box. Both NodeState and ComponentState measure 16 bytes on this Windows x64 build, down from 104. CircuitState.components remains authoritative for ordinary/specialized execution, inspection, flush and reset. Command execution/projection transfer the existing boxed BlockEntity representation without double boxing. Existing command-block, host, imported-work and reset checks pass.
+
+CHUNGUS's component payload shrinks from 26,154,440 to 4,023,760 bytes: 22,130,680 bytes saved, about 84.6%. ANPU's payload shrinks from 6,239,792 to 959,968 bytes. These are component-array payloads, not process-memory measurements. Whole fixed immutable tables remain about 100.1 MB; the original graph remains for projection and inspection.
+
+Fixed propagation now captures each root's complete 24-neighbor set once per episode and stores its local u32 capture indices contiguously. Frontiers carry those local indices instead of requiring global SiteId-to-slot lookups. Each capture also retains its already resolved node, avoiding global descriptor lookup at dispatch. Distinct SiteIds remain distinct captures even when their state owner is the same node.
+
+Correctness is a storage refinement: first capture stays eager at the same operation; subsequent old capture calls would return the existing records without refreshing them, so reusing their indices and heading has the same result. Queue insertion/pop order and each site's layer/visited/bias state remain identical under the local-index-to-SiteId mapping. All mutable neighbors retain layer bookkeeping even when one root does not admit them, because another root may later admit that same site. Inert sites retain the existing omission rule. Power reads still distinguish captured properties and live outputs. Nested episodes have independent scratch, and clearing invalidates captures, neighborhoods and queues together. No settled-value or commutativity assumption was added.
+
+The neighborhood cache trades extra temporary storage (96 bytes per identified root plus per-capture node/cache indices) for fewer lookups. Its vectors retain capacity across reuse. No passive wiring or scheduled work is removed in this version.
+
+### Correctness checks
+
+Fresh Redpiler suite: 452 passed, zero failed, 22 research tests ignored. New checks guard the compact signal-row budget and verify held samples across cached neighborhood reuse, independent nested captures, and fresh values after clearing. Existing analog/locking, command, piston, adder FIFO, reset, pending-import and continuation checks pass. Evidence: target/packed-classic-suite.log, target/packed-classic-layout.log and target/packed-classic-final-check.log. Focused formatting and diff whitespace checks passed. Unrelated projection formatting introduced by rustfmt was restored; only boxed-entity handoff changed there.
+
+Independent CHUNGUS validation passed all 1,025 boundaries against general execution and the native interpreter, including the tick-512 comparator/FIFO counterexample: target/packed-classic-v1-chungus-native-1024.{json,log}. All 18 measured production samples also passed complete exported endpoint state/future and 32 native continuation ticks. Old/new work counts, coverage, fixture hashes, native endpoint state and continuation state agree.
+
+### Release performance
+
+Same production release/fat-LTO driver, logical CPU 4 (affinity 0x10), sequential measurements with no concurrent Cargo/rustc. Each sample starts from a freshly loaded/compiled saved machine. One contiguous tick_with_world loop is timed; setup, activation, final projection, reset, oracle and continuation are outside it. CHUNGUS used three samples/version over 16,384 active game ticks. ANPU used three initial samples/version over 5,000 ticks plus three alternating old/new pairs to investigate variation; all six samples/version are retained.
+
+| Machine | Fresh frozen control | Packed version | Interpretation |
+| --- | ---: | ---: | --- |
+| CHUNGUS O2 | 1,187.0 game TPS; median 13.802733 s | 1,755.6 game TPS; median 9.332353 s | 1.479x throughput; 32.39% less inference time |
+| ANPU O2, all six samples/version | 1,541.2 game TPS; median about 3.244 s | 1,541.7 game TPS; median about 3.243 s | No demonstrated gain |
+
+CHUNGUS sample ranges do not overlap: 13.647035-14.450369 s control versus 9.197229-10.423496 s packed. The earlier saved 1,249.8 TPS baseline remains preserved; this table uses a freshly rerun frozen control rather than silently mixing runs from different times.
+
+ANPU's initial three-sample medians were 3.064416 s control versus 3.192970 s packed, with almost identical overlapping ranges. Alternating confirmation showed substantial variation in both compilation and inference. During confirmation, a Windows process-performance snapshot found an external javaw process using about 140% of one logical CPU, while the benchmark used about 102%; desktop activity was also present. These noisy results remain in the record. Combined medians are effectively equal, but the spread cannot establish a small gain or regression. No ANPU speedup is claimed.
+
+This matches the optimization boundary: CHUNGUS uses the new local-index propagation path. ANPU receives compact state but still executes general Graph propagation, including 183,751 wire walks per 5,000 ticks. Accelerating it requires mixed classic-network compilation with protected piston/BUD/observer boundaries; layout alone has not demonstrated a runtime benefit there.
+
+Control executable SHA256: 4fbd1cf367023c7fabe84a7f727ce0be70a04402ad3c3b80a932bfb8b4c484d3. Candidate SHA256: 7c1f7de059e66c63c44668583adad11955d900b75e4d433b4693179abea4fdfb. Frozen candidate: target/packed-classic-v1-20261019.exe. Structured comparison: target/packed-classic-v1-summary.json. Main reports/logs: target/packed-classic-{control,v1}-{chungus,anpu}-o2.{json,log}. Alternating ANPU evidence: target/packed-classic-anpu-pair-{1,2,3}-{control,v1}.{json,log}. Build log: target/packed-classic-release-build.log.
+
+### Remaining scope
+
+The first packed execution stage is delivered. Passive-net contraction, independent SIMD/bitplanes and mixed classic-region execution remain future stages. FIFO propagation and the shared future scheduler remain necessary for the currently supported semantics. Full 12,411,975-tick Mandelbrot completion and server/display throughput were not measured. No million-game-ticks-per-second claim is made.
+
+## 2026-10-19 - ANPU regional compilation: correcting the zero-coverage interpretation
+
+The preceding ANPU baseline's zero is a configuration result, not evidence that ANPU has no compilable fixed wiring. Default O2 enables the new whole-fixed executor, whose current compiler atomically declines a program containing contacts, pistons, resources or existing private owners. It does not yet lower fixed regions of a mixed circuit. The older local committed-signal compiler remains opt-in, and the baseline explicitly used classic_redstone=false. Unrelated pistons do not disqualify a region in that local compiler; an existing focused regression checks this.
+
+Extended classic_baseline.rs with --classic-redstone, preparation-table reporting, and coverage snapshots after activation and at the end of the timed window. The latter are outside the inference timer. This distinguishes certified admission from surviving runtime specialization. No production compiler eligibility, runtime semantics, defaults or schematic changed in this investigation.
+
+### Safe production admission census
+
+On the original ANPU fixture, O2 with --classic-redstone accepts **266 nets / 2,441 of 34,781 wires (7.02%)**. The plans contain 1,000 direct receiver inputs, 506 entry occurrences, 2,511 retained receiver operations, 462 independent Main guard terms and 2,993 guarded boundary-wire references. Guarded wires are not additional compiled private wires and must not be added to the coverage numerator. Reference proof work is 5,546,763; the total proof-work budget did not cause any decline.
+
+First-decline counts follow. These count candidate attempts over electrical regions and additional callback closures, not wires, and do not inventory every possible refusal for each candidate.
+
+| First decline | Candidate attempts |
+| --- | ---: |
+| Not exactly one variable ingress | 755 |
+| Contact-dependent geometry or power | 632 |
+| Callback boundary depends on private ingress | 538 |
+| Ingress repeater may change output silently while locking | 517 |
+| Independent Main guard is initially nonzero | 418 |
+| Saved repeater is locked | 320 |
+| Ingress route prefix may synchronously emit or reenter | 279 |
+| Outside directional wire may switch dot/cross | 274 |
+| Receiver already owned by another net | 257 |
+| Effectful synchronous boundary callback | 215 |
+| Guarded wire shape is not inert | 182 |
+| Private wire read through Side or Quasi port | 151 |
+| Comparator receiver override | 77 |
+| Region exceeds 32-wire bound | 65 |
+| Stale saved wire geometry | 38 |
+| Outside wire geometry is variable | 22 |
+| Boundary program exceeds compact operation bound | 9 |
+| Zero Side has structural wire dependency | 8 |
+
+The preliminary 400-tick development run passed full endpoint state/future and 32-tick interpreter continuation checks. Evidence: target/anpu-regional-census.{json,log}. Its development timing is not used for performance conclusions.
+
+### Runtime survival and release performance
+
+Three fresh 5,000-tick samples per configuration used the same frozen release/fat-LTO binary, logical CPU 4 (affinity 0x10), normal priority and alternating pair order general/regional, regional/general, general/regional. No Cargo/rustc ran concurrently with timing. Both modes use the packed component state delivered previously; the local-pass flag is the only configuration difference. This is a short desktop benchmark, without a statistical significance claim.
+
+| Measurement | Default O2 general ANPU | O2 with local classic nets |
+| --- | ---: | ---: |
+| Inference seconds, samples 1/2/3 | 3.0410808 / 2.7817305 / 2.9506471 | 3.1180790 / 2.9461423 / 3.0249738 |
+| Median game ticks/second | 1,694.5 | 1,652.9 |
+| Median preparation seconds | 7.870 | 16.404 |
+| Compiled wires after activation | 0 | 2,441 |
+| Compiled wires at tick 5,000 | 0 | 670 |
+| Scheduled component ticks | 267,998 | 267,998 |
+| Wire walks | 183,751 | 183,743 |
+| Counted callbacks | 16,389,643 | 16,389,092 |
+| Compiled entry invocations / receiver operations | 0 / 0 | 8 / 18 |
+
+All six runs passed native endpoint checks for all blocks/entities, ordered command messages and exact exported future, followed by 32 native continuation ticks. Each independent native reference also checked all 14 pinned ANPU screen frames. This bulk timer does not compare every intermediate Graph boundary with the interpreter.
+
+Runtime guards return 1,771 admitted wires to ordinary Graph execution before the end of the window. This materializes their last committed strengths before the original callback proceeds. The surviving 670 wires are 1.93% of all wires; survival does not establish that they were exercised. Only eight compiled entry invocations occur across the entire 5,000-tick window, removing eight general walks and 551 counted callbacks. The observed median throughput is about 2.46% lower, with overlapping timing ranges; there is no demonstrated speedup, while preparation roughly doubles. Enabling this pass by default would not solve ANPU's active-workload performance problem.
+
+The concrete next attack is mixed-circuit lowering for the typed executor: compile supported fixed operations/regions, including multi-input signals and locking diodes, while retaining exact dynamic contact/piston/BUD handling at boundaries. Its present whole-program admission gate is an implementation limitation, not an impossibility result for those regions. Simply increasing the old single-ingress proof budget or relaxing callback boundaries would not address this measured bottleneck.
+
+Frozen executable: target/anpu-regional-release.exe, SHA256 b7ce0f8e6cd0363eed54ed2b978bcee845659b62e48a3f4e87d39df3ecf48248. Structured comparison: target/anpu-regional-summary.json. Raw reports/stdout/stderr: target/anpu-regional-pair-{1,2,3}-{general,regional}.{json,log,err.log}. Final build log: target/anpu-regional-release-final-build.log. Reproduce each mode with --cpu anpu --graph-tier 2 --ticks 5000 --iterations 1, adding --classic-redstone for local compilation. Full ANPU completion and a production mixed typed executor were not implemented or measured here.

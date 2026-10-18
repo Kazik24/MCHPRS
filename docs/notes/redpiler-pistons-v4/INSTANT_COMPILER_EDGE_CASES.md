@@ -871,8 +871,51 @@ internal wire values as independent inputs. Shared or unproved families still de
 **Evidence/status:** source review of `discover_indexed_mechanisms` in
 `passes/utils/instant_mechanisms.rs` establishes the required nonempty sticky resource
 lane and reset provenance. The first 22-fixture Step 04 census compiled zero actors.
-A real parser-backed narrow-cell regression is being added; no successful execution
-or acceleration is claimed by this entry.
+A real parser-backed narrow-cell regression now passes: its Boolean roots predict
+the first accepted pull and token vacancy, and ordinary Graph matches native state
+and pending work through 16 ticks. This exercises real admission; it does not execute
+the new layer artifact as a kernel or establish adder compilation or acceleration.
+
+### E49. A reset cell has lifecycle callbacks beyond its pull routes
+
+**Situation:** normal parser output for a single private reset cell includes guarded
+own-head callbacks, Shape deliveries to the reset observer, resource restoration at
+both Near and Far, the observer's output route and the extension-only Far Shape route.
+Those rows do not all belong to the finite pull computation.
+
+**Consequence:** requiring every internal callback to be an unconditional pull Update
+rejects the real cell. Silently dropping the unmatched rows loses reset or observation
+work and cannot justify replacing execution.
+
+**Required rule:** preserve exact original route occurrences and distinguish inert local
+callbacks from scheduler-owned lifecycle work. An own piston Update is inert while the
+accepted base is pending; Graph's live non-wire Shape path is inert, with the narrow
+compiler admitting only its recognized reset node or own contact. Foreign/nested/wire
+receivers remain outside this proof. Both resource-restoration contacts must be retained.
+The Far callback during computation requires an actual transfer, not merely acceptance.
+
+**Evidence/status:** real parser-backed regressions exposed each missing classification;
+focused layer tests now cover the exact route families and reject foreign receivers.
+The final integrated result is recorded in the Step 04 notes.
+
+### E50. Boundary values are not accepted-action pulses
+
+**Situation:** a cell's reset observer supplies power through an unowned static conductor,
+and outside route guards read piston availability. The boundary catalog exposes those
+as Power and GuardState output rows as well as callback rows.
+
+**Consequence:** deleting the reset Power row or using `accepted` for every output
+changes levels and state observations. Keeping callback recipients alone does not
+account for the complete boundary.
+
+**Required rule:** retain reset power as its existing clock's live output; derive owned
+GuardState values at the declared post-pull cut. Keep those roots separate from event
+emission guards. ObserverWatch and contact-profile outputs require their own geometry
+proof; they must cause a decline while unsupported, never disappear from the interface.
+
+**Evidence/status:** the narrow parsed-cell test checks that every original output has
+a value/effect root or an explicit lifecycle occurrence. A payload-observer variant
+checks that an unproved geometry boundary does not produce a compiled region.
 
 ## Updating this register
 

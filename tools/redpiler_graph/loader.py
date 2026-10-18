@@ -764,6 +764,19 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
                     binding = port.get("binding", {})
                     if binding.get("kind") != "power" or binding.get("link") != source.get("link"):
                         raise GraphFormatError(f"{identifier} power source does not match its power port")
+            elif source_kind == "source_above":
+                site = ref("site", source.get("site"), identifier)
+                threshold = source.get("threshold")
+                port = _object(source.get("port"), f"{identifier}.source.port")
+                valid_port = port.get("kind") in ("output", "stored") or (
+                    port.get("kind") in ("weak", "strong") and port.get("face") in
+                    ("top", "bottom", "north", "south", "east", "west")
+                )
+                if type(threshold) is not int or not 0 <= threshold < 15 or not valid_port:
+                    raise GraphFormatError(f"{identifier} has an invalid threshold source")
+                owned_wires = {wire for corridor in region_corridors for wire in records["instant_corridor"][corridor]["wires"]}
+                if site.get("source", {}).get("node") in owned_wires:
+                    raise GraphFormatError(f"{identifier} exposes an owned internal wire as input")
             elif source_kind == "state":
                 test = _validate_state_test(source.get("test"), identifier, ref)
                 if test["kind"].startswith("piston_"):
@@ -861,11 +874,13 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
             reason = _object(item.get("reason"), f"{identifier}.lifecycle_reason")
             reason_kind = reason.get("kind")
             if phase in ("retraction_base_changed", "retraction_far_changed", "retraction_near_changed"):
-                valid_reason = reason_kind == "base_pending_self_update"
+                valid_reason = reason_kind == "inert_cell_callback"
             elif phase == "reset_observer_lifecycle":
                 valid_reason = reason_kind == "reset_observer_update"
+            elif phase in ("reset_output", "reset_far_shape_change"):
+                valid_reason = reason_kind == "ordinary_graph_lifecycle"
             elif phase in ("deferred_base_restoration", "deferred_head_restoration", "deferred_resource_restoration"):
-                valid_reason = reason_kind == "deferred_graph_lifecycle"
+                valid_reason = reason_kind == "ordinary_graph_lifecycle"
             else:
                 valid_reason = False
             if not valid_reason:
@@ -877,7 +892,7 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
                     raise GraphFormatError(f"{identifier} lifecycle observer is outside its resets")
             actor_routes = records["piston"][actor].get("routes") or {}
             reset_routes: list[str | None] = []
-            if reason_kind == "reset_observer_update":
+            if phase == "reset_observer_lifecycle" and reason_kind == "reset_observer_update":
                 observer_row = records["node"][reason["observer"]]
                 watched_site = records["site"].get(observer_row["kind"].get("watched"), {})
                 watched_contact = watched_site.get("source", {}).get("contact")
@@ -894,12 +909,26 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
                 "retraction_base_changed": [actor_routes.get("base_changed")],
                 "retraction_far_changed": [actor_routes.get("far_changed")],
                 "retraction_near_changed": [actor_routes.get("near_changed")],
+                "reset_far_shape_change": [actor_routes.get("far_shape_changed")],
                 "deferred_base_restoration": [actor_routes.get("base_restored")],
                 "deferred_head_restoration": [actor_routes.get("head_restored")],
                 "deferred_resource_restoration": [actor_routes.get("resource_restored_near"), actor_routes.get("resource_restored_far")],
                 "reset_observer_lifecycle": reset_routes,
+                "reset_output": [
+                    observer_id for observer_id in region_resets
+                    if records["node"][observer_id].get("output_route") == route_id
+                    and records["route"][route_id].get("source") == observer_id
+                    and records["node"][observer_id]["kind"].get("kind") == "observer"
+                ],
             }
-            if route_id not in [route for route in expected_routes[phase] if route is not None]:
+            if phase == "reset_output":
+                if not expected_routes[phase]:
+                    raise GraphFormatError(f"{identifier} reset output route is not owned by a recognized observer")
+            elif phase == "reset_far_shape_change":
+                if (route_id not in expected_routes[phase]
+                        or records["route"][route_id].get("source") != records["piston"][actor].get("node")):
+                    raise GraphFormatError(f"{identifier} far-shape route is not owned by its actor")
+            elif route_id not in [route for route in expected_routes[phase] if route is not None]:
                 raise GraphFormatError(f"{identifier} lifecycle occurrence does not match its declared route phase")
 
         for raw_pin in _array(region.get("pin_values"), f"{identifier}.pin_values"):

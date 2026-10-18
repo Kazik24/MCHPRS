@@ -5,7 +5,7 @@ use crate::redpiler::{CompilerOptions, passes};
 use mchprs_world::PistonAction;
 use std::sync::Arc;
 
-fn descriptor() -> Value {
+pub(super) fn descriptor() -> Value {
     json!({
         "fixture": "test_data/piston-research/test-potados-counter-revised-20261008/TEST_POTADOS_PC_COUNTER.schem",
         "sha256": "641c50d1903ccf3715759007d5b82e0f04786020d8cce80fbdbb4a3c8a3596f7",
@@ -14,7 +14,7 @@ fn descriptor() -> Value {
     })
 }
 
-fn controls(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<BlockPos> {
+pub(super) fn controls(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<BlockPos> {
     let mut found = Vec::new();
     for y in bounds.0.y..=bounds.1.y {
         for z in bounds.0.z..=bounds.1.z {
@@ -31,7 +31,7 @@ fn controls(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Vec<BlockPos> {
     found
 }
 
-fn output_word(world: &PlotWorld) -> u16 {
+pub(super) fn output_word(world: &PlotWorld) -> u16 {
     // The pinned reference defines OUT1/OUT2's active-low, MSB-first observation row.
     (0..16).fold(0, |word, bit| {
         let position = BASE + BlockPos::new(13, 2, 3 + 4 * bit);
@@ -42,7 +42,7 @@ fn output_word(world: &PlotWorld) -> u16 {
     })
 }
 
-fn reference_words() -> Vec<u16> {
+pub(super) fn reference_words() -> Vec<u16> {
     let path = root().join("test_data/cpu-references/interpreter-20261009-pc-counter-reference.json");
     let report: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(report["backend"], "interpreted");
@@ -169,7 +169,7 @@ fn pc_counter_boundary_catalog_keeps_multiple_inputs_outputs_and_ordinary_memory
     );
 }
 
-fn compare_checkpoint(native: &PlotWorld, projected: &PlotWorld, bounds: (BlockPos, BlockPos), context: &str) {
+pub(super) fn compare_checkpoint(native: &PlotWorld, projected: &PlotWorld, bounds: (BlockPos, BlockPos), context: &str) {
     for y in bounds.0.y..=bounds.1.y {
         for z in bounds.0.z..=bounds.1.z {
             for x in bounds.0.x..=bounds.1.x {

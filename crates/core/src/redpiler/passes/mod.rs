@@ -287,7 +287,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             enabled: level >= minimum_level,
         })
         .chain(plans.into_iter().map(|(minimum_level,pass)|PassEntry { pass,enabled:level>=minimum_level }))
-        .chain(std::iter::once(PassEntry { pass: Pass::build(compile_fixed_classic::CompileFixedClassic), enabled: level >= 2 && options.classic_redstone }))
+        .chain(std::iter::once(PassEntry { pass: Pass::build(compile_fixed_classic::CompileFixedClassic), enabled: level >= 2 }))
         .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
         .collect();
     let pipeline = PassPipeline::new(entries);

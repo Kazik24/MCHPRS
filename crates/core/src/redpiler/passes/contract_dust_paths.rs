@@ -741,16 +741,17 @@ mod tests {
 
     fn compile_path(world: &PlotWorld, optimization_level: Option<usize>) -> Compiler {
         let mut compiler = Compiler::default();
+        let options = CompilerOptions { optimization_level, ..Default::default() };
+        let mut pipeline = super::super::default_graph_pipeline(&options);
+        pipeline.entries.retain(|entry| !matches!(&entry.pass, super::super::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
         compiler
-            .compile(
+            .compile_with_graph_pipeline(
                 world,
                 BOUNDS,
-                CompilerOptions {
-                    optimization_level,
-                    ..Default::default()
-                },
+                options,
                 world.scheduler().iter_entries().collect(),
                 Default::default(),
+                Some(pipeline),
             )
             .expect("the private dust path should compile");
         assert_eq!(compiler.backend_kind(), Some(BackendKind::Graph));

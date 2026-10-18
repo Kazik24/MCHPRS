@@ -215,7 +215,7 @@ fn chungus_bounded_interpreter_graph_differential() {
         };
         let started = Instant::now();
         graphs.push(
-            GraphBackend::compile_with_options(&native, bounds, native.scheduler().iter_entries().collect(), &options, monitor.clone()).unwrap(),
+            GraphBackend::compile_without_fixed_classic(&native, bounds, native.scheduler().iter_entries().collect(), &options, monitor.clone()).unwrap(),
         );
         compile_seconds.push(started.elapsed().as_secs_f64());
         println!(

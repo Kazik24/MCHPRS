@@ -3,6 +3,7 @@ use crate::cpu_support::*;
 use anyhow::{Context, Result, bail, ensure};
 use mchprs_blocks::{
     BlockFace, BlockPos,
+    block_entities::BlockEntity,
     blocks::{Block, LeverFace},
 };
 use mchprs_core::{
@@ -83,7 +84,7 @@ impl Episode {
             controls: Vec::new(),
             electrical: Vec::new(),
         };
-        if episode.generic() {
+        if episode.generic() || episode.name == "pm1_sort" {
             let world = episode.load()?;
             for y in bounds.0.y..=bounds.1.y {
                 for z in bounds.0.z..=bounds.1.z {
@@ -147,10 +148,18 @@ impl Episode {
     }
 
     fn observe(&self, world: &PlotWorld) -> Result<Value> {
-        if self.generic() {
+        if self.generic() || self.name == "pm1_sort" {
             let mut digest = Sha256::new();
             for &position in &self.electrical {
-                digest.update(world.get_block(position).get_id().to_le_bytes());
+                let block = world.get_block(position);
+                digest.update(block.get_id().to_le_bytes());
+                if matches!(block, Block::RedstoneComparator { .. }) {
+                    let strength = match world.get_block_entity(position) {
+                        Some(BlockEntity::Comparator { output_strength }) => *output_strength,
+                        _ => 0,
+                    };
+                    digest.update([strength]);
+                }
             }
             return Ok(json!(format!("{:x}", digest.finalize())));
         }
@@ -827,7 +836,7 @@ pub fn main() -> Result<()> {
         ensure!(output.status.success(), "git metadata failed");
         Ok(String::from_utf8(output.stdout)?)
     };
-    let mut report = json!({"schema":7,"label":label,"profile":"bench/release","admission_smoke":smoke,
+    let mut report = json!({"schema":7,"label":label,"profile":if cfg!(debug_assertions) { "dev/debug" } else { "bench/release" },"admission_smoke":smoke,
         "binary_sha256":hash(&std::fs::read(std::env::current_exe()?)?),"git_head":git(&["rev-parse","HEAD"])?.trim(),
         "working_tree_diff":git(&["diff","HEAD","--"] )?,"working_tree_status":git(&["status","--short"] )?,
         "harness_source_sha256":hash(include_bytes!("graph_short.rs")),"cpu_loader_source_sha256":hash(include_bytes!("cpus.rs")),
@@ -859,6 +868,6 @@ pub fn main() -> Result<()> {
     std::fs::create_dir_all(output.parent().context("output needs parent")?)?;
     std::fs::write(&output, serde_json::to_vec_pretty(&report)?)?;
     println!("report: {}", output.display());
-    ensure!(blockers == 0, "{blockers} Graph admissions failed; see structured report");
+    ensure!(blockers == 0, "{blockers} workloads could not complete validation; see structured report");
     Ok(())
 }

@@ -177,7 +177,7 @@ fn chungus_fixed_queries_paired_execution() {
         ..Default::default()
     };
     let start = Instant::now();
-    let compiled = GraphBackend::compile_with_options(
+    let compiled = GraphBackend::compile_without_fixed_classic(
         &world,
         world.get_corners(),
         world.scheduler().iter_entries().collect(),

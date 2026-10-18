@@ -17,7 +17,8 @@
     "piston_routes",
     "wire_query_facts",
     "instant_regions",
-    "instant_proxies"
+    "instant_proxies",
+    "fixed_classic_declined"
   ],
   "source": {
     "revision": null,
@@ -1016,6 +1017,10 @@
         ]
       }
     ],
+    "fixed_classic": {
+      "status": "declined",
+      "decline": "fixed classic requires unowned contactless fixed circuitry"
+    },
     "nodes": [
       {
         "id": "node:0",

@@ -237,7 +237,7 @@ impl GraphBackend {
         if matches!(spec.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }))
             && let Some(entity) = self.node_state(node).command_entity.clone()
         {
-            world.set_block_entity(position, BlockEntity::CommandBlock(Box::new(entity)));
+            world.set_block_entity(position, BlockEntity::CommandBlock(entity));
         }
     }
 

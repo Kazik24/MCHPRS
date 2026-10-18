@@ -963,7 +963,7 @@ fn unchecked_classic_anpu_benchmark() {
         budget_multiplier: 8,
         ..Default::default()
     };
-    let template = GraphBackend::compile_with_options(
+    let template = GraphBackend::compile_without_fixed_classic(
         &world,
         bounds,
         world.scheduler().iter_entries().collect(),

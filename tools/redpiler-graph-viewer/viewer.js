@@ -367,6 +367,14 @@ function validateInstantLayers(data, ids, nodes) {
           ref(source.link, "power_link", region.id);
           if (port.binding?.kind !== "power" || port.binding.link !== source.link) throw Error(`${region.id} power source does not match its power port.`);
         }
+      } else if (source.kind === "source_above") {
+        ref(source.site, "site", region.id);
+        const port = source.port;
+        const validPort = ["output", "stored"].includes(port?.kind) ||
+          (["weak", "strong"].includes(port?.kind) && ["top", "bottom", "north", "south", "east", "west"].includes(port?.face));
+        if (!Number.isInteger(source.threshold) || source.threshold < 0 || source.threshold >= 15 || !validPort) throw Error(`${region.id} has an invalid threshold source.`);
+        const ownedWires = new Set([...memberCorridors].flatMap(id => corridors.get(id).wires));
+        if (ownedWires.has(sites.get(source.site)?.source?.node)) throw Error(`${region.id} exposes an owned internal wire as input.`);
       } else if (source.kind === "state") {
         const test = stateTest(source.test, region.id);
         if (test.kind.startsWith("piston_")) {
@@ -461,11 +469,12 @@ function validateInstantLayers(data, ids, nodes) {
       const phase = item.phase, reason = item.reason?.kind;
       const retraction = ["retraction_base_changed", "retraction_far_changed", "retraction_near_changed"].includes(phase);
       const deferred = ["deferred_base_restoration", "deferred_head_restoration", "deferred_resource_restoration"].includes(phase);
-      const validReason = (retraction && reason === "base_pending_self_update")
+      const validReason = (retraction && reason === "inert_cell_callback")
         || (phase === "reset_observer_lifecycle" && reason === "reset_observer_update")
-        || (deferred && reason === "deferred_graph_lifecycle");
+        || (["reset_output", "reset_far_shape_change"].includes(phase) && reason === "ordinary_graph_lifecycle")
+        || (deferred && reason === "ordinary_graph_lifecycle");
       if (!validReason) throw Error(`${region.id} has an invalid lifecycle phase and reason.`);
-      if (reason === "reset_observer_update") {
+      if (phase === "reset_observer_lifecycle" && reason === "reset_observer_update") {
         ref(item.reason.observer, "node", region.id);
         if (!resetObservers.has(item.reason.observer) || nodes.get(item.reason.observer)?.kind?.kind !== "observer") throw Error(`${region.id} lifecycle observer is outside its resets.`);
       }
@@ -485,12 +494,23 @@ function validateInstantLayers(data, ids, nodes) {
         retraction_base_changed: [routeBindings.base_changed],
         retraction_far_changed: [routeBindings.far_changed],
         retraction_near_changed: [routeBindings.near_changed],
+        reset_far_shape_change: [routeBindings.far_shape_changed],
         deferred_base_restoration: [routeBindings.base_restored],
         deferred_head_restoration: [routeBindings.head_restored],
         deferred_resource_restoration: [routeBindings.resource_restored_near, routeBindings.resource_restored_far],
         reset_observer_lifecycle: resetRoutes,
       };
-      if (!expectedRoutes[phase]?.includes(routeId)) throw Error(`${region.id} lifecycle occurrence does not match its declared route phase.`);
+      if (phase === "reset_output") {
+        const recognizedObserver = [...resetObservers].some((observerId) => {
+          const observer = nodes.get(observerId);
+          return observer?.kind?.kind === "observer" && observer.output_route === routeId && routes.get(routeId)?.source === observerId;
+        });
+        if (!recognizedObserver) throw Error(`${region.id} reset output route is not owned by a recognized observer.`);
+      } else if (phase === "reset_far_shape_change") {
+        if (!expectedRoutes[phase]?.includes(routeId) || routes.get(routeId)?.source !== pistons.get(item.actor)?.node) {
+          throw Error(`${region.id} far-shape route is not owned by its actor.`);
+        }
+      } else if (!expectedRoutes[phase]?.includes(routeId)) throw Error(`${region.id} lifecycle occurrence does not match its declared route phase.`);
     }
   }
   const reasons = new Set(["signal_arrival_unproven", "callback_semantics_unsupported",

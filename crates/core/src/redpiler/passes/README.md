@@ -35,9 +35,9 @@ plans before it changes the circuit, so plan builders need no preservation flags
 
 C/LLVM execution and the finite/symbolic synthesis experiments have been removed,
 including their pass registrations, runtime integration and synthesis-only optimizer crate.
-O3 piston/reset specialization, stable region composition, proxies and opt-in classic
-redstone remain. Higher levels add no synthesis passes. The algorithms and exact recovery
-commits are preserved in
+O2 whole fixed classic execution, O3 piston/reset specialization, stable region
+composition, proxies and opt-in local classic nets remain. Higher levels add no
+synthesis passes. The algorithms and exact recovery commits are preserved in
 [ALGORITHMS_AND_RECOVERY.md](../../../../../docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
 
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.
@@ -116,7 +116,7 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | Build | O3 | `identify-instant-regions` | Instant region ownership boundaries. |
 | Build | O3 | `compile-instant-proxies` | Boundary execution proxies. |
 | Build | O2 | `compile-fixed-signals` | Fixed live electrical expressions and separate settled topology witnesses. |
-| Build | O2, classic option | `compile-fixed-classic` | Whole fixed circuits lowered to typed ordered execution. |
+| Build | O2 | `compile-fixed-classic` | Whole fixed circuits lowered to typed ordered execution. |
 | Build | O2, classic option | `compile-classic-redstone` | Certified local committed-signal nets when whole compilation declines. |
 
 The unoptimized pipeline still runs the complete general graph. Keep both phases and their order explicit; do not silently reorder entries or turn a custom pipeline into the default. When adding an entry, place it in the correct phase and optimization tier; do not introduce a dedicated setting for it.
@@ -277,11 +277,11 @@ Runtime reads the selected live wire strengths for a seed and the selected walk 
 This is a first exact lowering of connecting dust calculations, not an atomic instant-region contraction or an electrical fixed-point solver. General Turbo still orders propagation. Evidence is in `program_graph/wire_query_facts.rs` (6,656 local geometry cases), `backend/graph/tests/wire_query.rs` (live/captured dynamic contact and strength checks), and `backend/graph/tests/instant_recognition.rs` (all 32 ADDER1BIT wires, all headings, changed snapshots). Preserving every intermediate write and outside callback deliberately leaves semantic work counts unchanged; benchmark the runtime cost rather than claiming event elimination.
 
 
-### Opt-in whole fixed classic execution
+### Default O2 whole fixed classic execution
 
-At O2+, the existing `--classic-redstone` option first attempts
-`compile-fixed-classic`, after fixed electrical queries, wire facts and callback
-admission are available. Its read-only builder emits dense node/query, wire,
+O2 and higher levels attempt `compile-fixed-classic` by default, after fixed
+electrical queries, wire facts and callback admission are available. Its read-only
+builder emits dense node/query, wire,
 capture-alias and ordered receiver-operation tables. Lowering moves the same
 immutable plan into `CircuitProgram`; `GraphBackend` continues to own the original
 component state, scheduler, pending membership and clock. No native fallback,
@@ -290,7 +290,8 @@ second simulator or C/LLVM engine is introduced.
 Supported whole circuits contain fixed wires, torches, repeaters (including
 locks), comparators, lamps, hoppers, controls and constants. Contacts, pistons,
 resources, unsupported actors, dynamic geometry/guards and overlapping private
-execution owners decline atomically. The local classic builder then runs on the
+execution owners decline atomically and retain general execution. The existing
+`--classic-redstone` option additionally enables the local classic builder on the
 unchanged graph. An accepted whole program prevents local net ownership.
 
 This is complete typed execution, not queue-free weighted collapse. Electrical
@@ -306,7 +307,16 @@ evaluator. Differential tests compare full state and future work to both Graph
 and the independent interpreter. JSON exports the exact executable tables and
 decline diagnostics. Coverage reports whole fixed execution separately from
 queue-free local nets. See the append-only progress log for CHUNGUS measurements
-and explicit limits; the option remains off by default.
+and explicit limits. O0 and O1 retain general execution.
+
+The runtime keeps cold command entities behind optional boxes, so ordinary
+electrical and wire rows do not carry the entity payload. Each fixed wire episode
+captures its 24-neighbor set once and stores local u32 capture indices in a
+contiguous cache and FIFO frontiers. Captured properties, per-alias layer state,
+and receiver order are retained; nested episodes use independent scratch. Clearing
+an episode invalidates both its captured values and neighborhood indices. This is
+an execution-storage change; immutable plan tables and the exported graph are
+unchanged, and the component array remains the single mutable state owner.
 
 ### Opt-in committed-signal classic redstone nets
 
@@ -348,4 +358,13 @@ compile data and is discarded at lowering; it removes no executed work yet.
 Admitted local cells and connecting non-classic wire corridors have separate owners.
 Ports retain original power, callback, guard and geometry witnesses. Port counts include
 connections between candidate owners; they are not a count of outside data bits or a
-runtime speedup. The next pass must connect those interfaces into regions before reduction.
+runtime speedup.
+
+`compile-instant-layers` follows that catalog in `experimental_layer_pipeline`, under
+the declared stable-input contract. It groups exact producer/reader witnesses into
+connected regions and records request, acceptance and consumed-use Boolean roots.
+The current isolated-cell family retains the original reset clock and lifecycle work;
+unproved wire-arrival and shared-owner order produce whole-region decline witnesses.
+It is test-only cold analysis, not runtime replacement. See the
+[Step 04 gate](../../../../../docs/notes/redpiler-pistons-v4/layered-instant-compiler/steps/04-regions-and-layers.md)
+before extending it; parsing connectivity does not establish causal order.

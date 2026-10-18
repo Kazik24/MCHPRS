@@ -4,6 +4,7 @@ use crate::redstone::piston::trace;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+mod layered_devices;
 mod notification_routes;
 mod pc_counter_contract;
 

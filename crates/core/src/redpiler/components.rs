@@ -52,8 +52,9 @@ pub struct NodeState {
     pub output_strength: u8,
     /// Whether this component has work queued in the graph scheduler.
     pub pending_tick: bool,
-    /// This retains the command block's live entity fields in graph-owned state.
-    pub command_entity: Option<CommandBlockEntity>,
+    /// Cold command data is allocated only for command blocks, keeping every
+    /// ordinary electrical and wire state compact in the shared state array.
+    pub command_entity: Option<Box<CommandBlockEntity>>,
     /// This retains the instrument sampled at the most recent noteblock edge.
     pub note_instrument: Option<Instrument>,
 }
@@ -169,7 +170,7 @@ pub(crate) fn identify_block<W: World>(block: Block, pos: BlockPos, world: &W) -
                 NodeState {
                     powered: entity.is_some_and(|entity| entity.powered),
                     output_strength: comparator::get_override(block, world, pos),
-                    command_entity: entity.cloned(),
+                    command_entity: entity.cloned().map(Box::new),
                     ..Default::default()
                 },
             )
@@ -178,4 +179,16 @@ pub(crate) fn identify_block<W: World>(block: Block, pos: BlockPos, world: &W) -
         _ => return None,
     };
     Some((ty, state))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn cold_command_data_does_not_inflate_every_signal_row() {
+        let electrical = std::mem::size_of::<super::NodeState>();
+        let component = std::mem::size_of::<crate::redpiler::program_graph::ComponentState>();
+        eprintln!("packed signal bytes: electrical={electrical}, component={component}");
+        assert!(electrical <= 24, "cold entity data returned to the signal row");
+        assert!(component <= 24, "wire/electrical array stride is no longer compact");
+    }
 }

@@ -56,6 +56,16 @@ fn region(value: &LayeredRegion, graph: &CompileGraph) -> Value {
 
 fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
     match value {
+        LayerInputSource::SourceAbove { site, port, threshold } => {
+            let port = match port {
+                crate::redpiler::program_graph::PowerPort::Output => json!({"kind":"output"}),
+                crate::redpiler::program_graph::PowerPort::Stored => json!({"kind":"stored"}),
+                crate::redpiler::program_graph::PowerPort::Weak(direction) => json!({"kind":"weak","face":face(direction)}),
+                crate::redpiler::program_graph::PowerPort::Strong(direction) => json!({"kind":"strong","face":face(direction)}),
+                crate::redpiler::program_graph::PowerPort::Conducted { include_dust } => json!({"kind":"conducted","include_dust":include_dust}),
+            };
+            json!({"kind":"source_above","site":typed_id("site",site.index()),"port":port,"threshold":threshold})
+        }
         LayerInputSource::BoundaryEvent { port, occurrence } => json!({
             "kind":"boundary_event",
             "port":typed_id("instant_port",port as usize),
@@ -140,9 +150,9 @@ fn resource_output(value: &LayerResourceOutput) -> Value {
 
 fn lifecycle_occurrence(value: &LayerLifecycleOccurrence) -> Value {
     let (reason, extra) = match value.reason {
-        LayerLifecycleReason::BasePendingSelfUpdate => ("base_pending_self_update", Value::Null),
+        LayerLifecycleReason::InertCellCallback => ("inert_cell_callback", Value::Null),
         LayerLifecycleReason::ResetObserverUpdate { observer } => ("reset_observer_update", json!({"observer":typed_id("node", observer.index())})),
-        LayerLifecycleReason::DeferredGraphLifecycle => ("deferred_graph_lifecycle", Value::Null),
+        LayerLifecycleReason::OrdinaryGraphLifecycle => ("ordinary_graph_lifecycle", Value::Null),
     };
     let mut row = json!({
         "actor":typed_id("piston", value.actor.index()),
@@ -167,6 +177,8 @@ fn lifecycle_phase(value: LayerLifecyclePhase) -> &'static str {
         LayerLifecyclePhase::DeferredHeadRestoration => "deferred_head_restoration",
         LayerLifecyclePhase::DeferredResourceRestoration => "deferred_resource_restoration",
         LayerLifecyclePhase::ResetObserverLifecycle => "reset_observer_lifecycle",
+        LayerLifecyclePhase::ResetOutput => "reset_output",
+        LayerLifecyclePhase::ResetFarShapeChange => "reset_far_shape_change",
     }
 }
 
@@ -368,6 +380,32 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
             }
             let source = &input["source"];
             match source["kind"].as_str() {
+                Some("source_above") => {
+                    let site = graph
+                        .sites
+                        .iter()
+                        .find(|site| source["site"] == site.id)
+                        .ok_or_else(|| invalid("threshold input references a missing site"))?;
+                    if !source["threshold"].as_u64().is_some_and(|value| value < 15) {
+                        return Err(invalid("threshold input is outside four-bit strength"));
+                    }
+                    let port = &source["port"];
+                    let valid = match port["kind"].as_str() {
+                        Some("output" | "stored") => true,
+                        Some("weak" | "strong") => matches!(port["face"].as_str(), Some("top" | "bottom" | "north" | "south" | "east" | "west")),
+                        _ => false,
+                    };
+                    if !valid {
+                        return Err(invalid("threshold input has an invalid directional port"));
+                    }
+                    if let SiteSourceDto::Component { node } = &site.source {
+                        for corridor in &region_corridors {
+                            if array(corridor_rows[*corridor], "wires")?.iter().any(|wire| wire == node) {
+                                return Err(invalid("threshold input exposes an owned internal wire"));
+                            }
+                        }
+                    }
+                }
                 Some("boundary_event" | "power_contribution") => {
                     let port = source["port"].as_str().ok_or_else(|| invalid("layer input has no port"))?;
                     let row_port = ports.get(port).ok_or_else(|| invalid("layer input references a missing port"))?;
@@ -558,9 +596,10 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                 .ok_or_else(|| invalid("lifecycle row has no reason"))?;
             let reset_reason = reason == "reset_observer_update";
             let valid_reason = match phase {
-                "retraction_base_changed" | "retraction_far_changed" | "retraction_near_changed" => reason == "base_pending_self_update",
+                "retraction_base_changed" | "retraction_far_changed" | "retraction_near_changed" => reason == "inert_cell_callback",
                 "reset_observer_lifecycle" => reset_reason,
-                "deferred_base_restoration" | "deferred_head_restoration" | "deferred_resource_restoration" => reason == "deferred_graph_lifecycle",
+                "reset_output" | "reset_far_shape_change" => reason == "ordinary_graph_lifecycle",
+                "deferred_base_restoration" | "deferred_head_restoration" | "deferred_resource_restoration" => reason == "ordinary_graph_lifecycle",
                 _ => false,
             };
             if !valid_reason {
@@ -585,6 +624,23 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                 "deferred_resource_restoration" => actor_routes.is_some_and(|routes| {
                     routes.resource_restored_near.as_deref() == Some(route.as_str())
                         || routes.resource_restored_far.as_deref() == Some(route.as_str())
+                }),
+                "reset_far_shape_change" => {
+                    actor_routes.is_some_and(|routes| routes.far_shape_changed.as_deref() == Some(route.as_str()))
+                        && piston_rows.get(actor).is_some_and(|piston| {
+                            routes
+                                .get(route.as_str())
+                                .is_some_and(|route_row| route_row.source.as_str() == piston.node.as_str())
+                        })
+                }
+                "reset_output" => region_resets.iter().any(|observer_id| {
+                    nodes.get(observer_id).is_some_and(|observer| {
+                        matches!(&observer.kind, NodeKindDto::Observer { .. })
+                            && observer.output_route.as_deref() == Some(route.as_str())
+                            && routes
+                                .get(route.as_str())
+                                .is_some_and(|route_row| route_row.source.as_str() == *observer_id)
+                    })
                 }),
                 "reset_observer_lifecycle" => lifecycle["reason"]["observer"].as_str().is_some_and(|observer_id| {
                     nodes.get(observer_id).is_some_and(|observer| {

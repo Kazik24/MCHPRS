@@ -24,6 +24,10 @@ name = "chungus"
 harness = false
 
 [[bench]]
+name = "classic_baseline"
+harness = false
+
+[[bench]]
 name = "piston"
 harness = false
 

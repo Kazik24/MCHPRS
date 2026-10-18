@@ -174,6 +174,27 @@ interfaces are not executed kernels or external bit counts. See the
 [Step 03 report](steps/03-boundary-pass.md) for exact ownership, port counts and artifact sizes.
 No new runtime speed claim or full CPU execution follows from this gate.
 
+### Step 04 partial layer gate, 2026-10-18
+
+Connected-region accounting now covers all 22 IO catalogs without omitted or duplicated
+cells/corridors. Both adders form one connected component, but neither has a compiled
+layer actor: the request/acceptance signal-arrival proof is still missing. All 22
+schematic inputs currently produce layer declines. The source witnesses and exact
+counts are in the [Step 04 report](steps/04-regions-and-layers.md).
+
+A separate normally parsed, constructed private-cell regression produces one actor in
+one layer, predicts the native pull/token vacancy and post-pull state, and checks
+ordinary Graph/native state and pending work through 16 ticks. An external payload
+observer variant declines while its geometry boundary is unproved. This is real parser
+coverage but not an executing kernel. Execution ownership remains 0% new kernels,
+100% Graph and 0% native fallback; no speed measurement follows from cold analysis.
+
+All 23 layer exports (22 schematic declines plus the positive private cell) were loaded
+by both external validators under default limits. Python tests passed 22/22 and viewer
+tests 28/28. The final debug Redpiler suite passed **450 tests, with 19 ignored**;
+core tests/benches and server checks passed. See the Step 04 report for commands,
+the corrected synthetic test fixture and verification limits.
+
 Reproduce the main filters (add `--nocapture` when a detailed census report is wanted):
 
 ```text

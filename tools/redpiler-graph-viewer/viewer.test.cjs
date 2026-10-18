@@ -770,13 +770,15 @@ function instantLayerFixture() {
     ],
     outputs: [{ port: 'instant_port:1', emitted_when: 6 }],
     cold_lifecycle_occurrences: [
-      { actor: graph.graph.pistons[0].id, phase: 'retraction_base_changed', occurrence: lifecycleOccurrence(actorRoutes.base_changed), reason: { kind: 'base_pending_self_update' } },
-      { actor: graph.graph.pistons[0].id, phase: 'retraction_far_changed', occurrence: lifecycleOccurrence(actorRoutes.far_changed), reason: { kind: 'base_pending_self_update' } },
-      { actor: graph.graph.pistons[0].id, phase: 'retraction_near_changed', occurrence: lifecycleOccurrence(actorRoutes.near_changed), reason: { kind: 'base_pending_self_update' } },
-      { actor: graph.graph.pistons[0].id, phase: 'deferred_base_restoration', occurrence: lifecycleOccurrence(actorRoutes.base_restored), reason: { kind: 'deferred_graph_lifecycle' } },
-      { actor: graph.graph.pistons[0].id, phase: 'deferred_head_restoration', occurrence: lifecycleOccurrence(actorRoutes.head_restored), reason: { kind: 'deferred_graph_lifecycle' } },
-      { actor: graph.graph.pistons[0].id, phase: 'deferred_resource_restoration', occurrence: lifecycleOccurrence(actorRoutes.resource_restored_near), reason: { kind: 'deferred_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'retraction_base_changed', occurrence: lifecycleOccurrence(actorRoutes.base_changed), reason: { kind: 'inert_cell_callback' } },
+      { actor: graph.graph.pistons[0].id, phase: 'retraction_far_changed', occurrence: lifecycleOccurrence(actorRoutes.far_changed), reason: { kind: 'inert_cell_callback' } },
+      { actor: graph.graph.pistons[0].id, phase: 'retraction_near_changed', occurrence: lifecycleOccurrence(actorRoutes.near_changed), reason: { kind: 'inert_cell_callback' } },
+      { actor: graph.graph.pistons[0].id, phase: 'deferred_base_restoration', occurrence: lifecycleOccurrence(actorRoutes.base_restored), reason: { kind: 'ordinary_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'deferred_head_restoration', occurrence: lifecycleOccurrence(actorRoutes.head_restored), reason: { kind: 'ordinary_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'deferred_resource_restoration', occurrence: lifecycleOccurrence(actorRoutes.resource_restored_near), reason: { kind: 'ordinary_graph_lifecycle' } },
       { actor: graph.graph.pistons[0].id, phase: 'reset_observer_lifecycle', occurrence: lifecycleOccurrence(watchedRoutes.base_changed), reason: { kind: 'reset_observer_update', observer } },
+      { actor: graph.graph.pistons[0].id, phase: 'reset_output', occurrence: lifecycleOccurrence(graph.graph.nodes.find((node) => node.id === observer).output_route), reason: { kind: 'ordinary_graph_lifecycle' } },
+      { actor: graph.graph.pistons[0].id, phase: 'reset_far_shape_change', occurrence: lifecycleOccurrence(actorRoutes.far_shape_changed), reason: { kind: 'ordinary_graph_lifecycle' } },
     ],
     resource_outputs: [{ cell: catalogCell.id, resource: catalogCell.resources[0],
       source: graph.graph.resources[0].contacts[0], destination: graph.graph.resources[0].contacts[1],
@@ -815,10 +817,39 @@ test('loads and selects additive instant boundary records while accepting older 
   assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
 });
 
+test('layer threshold inputs validate direction, strength and internal wire ownership', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const data = instantLayerFixture();
+  const observer = data.graph.instant_cells[0].resets[0];
+  const site = data.graph.sites.find(site => site.source.kind === 'component' && site.source.node === observer).id;
+  const source = { kind: 'source_above', site, port: { kind: 'strong', face: 'bottom' }, threshold: 3 };
+  data.graph.instant_layer_regions[0].inputs.push({ source, role: 'request_sample' });
+  await load(viewer, data);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  const previous = viewer.cy;
+  for (const replacement of [{ threshold: -1 }, { threshold: 15 }, { threshold: true }, { site: 'site:999999' },
+    { port: { kind: 'weak', face: 'diagonal' } }, { port: { kind: 'unknown' } }]) {
+    const damaged = structuredClone(data);
+    Object.assign(damaged.graph.instant_layer_regions[0].inputs.at(-1).source, replacement);
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+  const wire = data.graph.nodes.find(node => node.kind.kind === 'wire').id;
+  const wireSite = data.graph.sites.find(site => site.source.kind === 'component' && site.source.node === wire).id;
+  data.graph.instant_corridors[0].wires = [wire];
+  source.site = wireSite;
+  await load(viewer, data);
+  assert.equal(viewer.elements.get('error').hidden, false);
+  assert.match(viewer.elements.get('error').textContent, /owned internal wire/);
+});
+
 test('loads causal-layer records and keeps local expressions and callback causes distinct', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
   const graph = instantLayerFixture();
+  const actorRoutes = graph.graph.pistons[0].routes;
   await load(viewer, graph);
   assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
   assert.equal(viewer.evaluate("recordIndex.has('instant_layer_region:7')"), true);
@@ -840,13 +871,27 @@ test('loads causal-layer records and keeps local expressions and callback causes
     (row) => { row.resource_outputs[0].source = 'contact:999'; },
     (row) => { row.resource_outputs[0].destination = row.resource_outputs[0].source; },
     (row) => { row.cold_lifecycle_occurrences[0].occurrence.ordinal = 99; },
+    (row) => { row.cold_lifecycle_occurrences[0].reason.kind = 'base_pending_self_update'; },
     (row) => { row.cold_lifecycle_occurrences[6].reason.observer = 'node:999'; },
     (row) => { row.cold_lifecycle_occurrences[3].phase = 'deferred_resource_restoration'; },
+    (row) => { row.cold_lifecycle_occurrences[7].occurrence.route = actorRoutes.base_changed; },
+    (row) => { row.cold_lifecycle_occurrences[8].occurrence.route = actorRoutes.far_changed; },
     (row) => { row.layers[0].uses[0].actor = 'piston:999'; },
     (row) => { row.layers[0].uses.push(structuredClone(row.layers[0].uses[0])); },
   ]) {
     const damaged = structuredClone(graph);
     corrupt(damaged.graph.instant_layer_regions[0]);
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+  for (const [lifecycleIndex, wrongSource] of [
+    [7, graph.graph.pistons[0].node],
+    [8, graph.graph.instant_cells[0].resets[0]],
+  ]) {
+    const damaged = structuredClone(graph);
+    const occurrence = damaged.graph.instant_layer_regions[0].cold_lifecycle_occurrences[lifecycleIndex].occurrence;
+    damaged.graph.routes.find((route) => route.id === occurrence.route).source = wrongSource;
     await load(viewer, damaged);
     assert.equal(viewer.elements.get('error').hidden, false);
     assert.equal(viewer.cy, previous);

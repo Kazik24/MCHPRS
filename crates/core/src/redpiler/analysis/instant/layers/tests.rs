@@ -15,7 +15,7 @@ fn power_link(attenuation: u8) -> PowerLink {
     }
 }
 
-fn empty_graph(link: PowerLink) -> CompileGraph {
+pub(super) fn empty_graph(link: PowerLink) -> CompileGraph {
     CompileGraph {
         nodes: vec![],
         links: vec![],
@@ -36,7 +36,7 @@ fn empty_graph(link: PowerLink) -> CompileGraph {
     }
 }
 
-fn use_with_activations(activations: Box<[RouteOccurrence]>, base: RouteId, near: RouteId, far: Option<RouteId>) -> CellUse {
+pub(super) fn use_with_activations(activations: Box<[RouteOccurrence]>, base: RouteId, near: RouteId, far: Option<RouteId>) -> CellUse {
     CellUse {
         actor: PistonId::new(0),
         reset: NodeId::new(0),
@@ -54,7 +54,7 @@ fn use_with_activations(activations: Box<[RouteOccurrence]>, base: RouteId, near
             },
             wake: CellDeferredWake {
                 ticks_after_acceptance: 2,
-                base_restored: RouteId::new(9),
+                base_restored: RouteId::new(3),
                 resource: None,
             },
             reset: CellResetWake {
@@ -66,6 +66,27 @@ fn use_with_activations(activations: Box<[RouteOccurrence]>, base: RouteId, near
     }
 }
 
+fn test_resource_pin() -> CellResourcePin {
+    CellResourcePin {
+        resource: ResourceId::new(0),
+        source: ContactId::new(0),
+        present: CellPinId(0),
+        absent: CellPinId(1),
+        owners: vec![PistonId::new(0)].into_boxed_slice(),
+        selection: CellTokenSelection::FirstAcceptedPullRequestInFifo,
+    }
+}
+
+fn test_resource_transfer() -> CellResourceTransfer {
+    CellResourceTransfer {
+        resource: ResourceId::new(0),
+        source: ContactId::new(0),
+        destination: ContactId::new(1),
+        resource_revision_increment: 1,
+        when_at_source: CellPinId(0),
+    }
+}
+
 fn occurrence(route: u32, ordinal: u32) -> RouteOccurrence {
     RouteOccurrence {
         route: RouteId::new(route),
@@ -73,7 +94,7 @@ fn occurrence(route: u32, ordinal: u32) -> RouteOccurrence {
     }
 }
 
-fn compile_synthetic_layer(attenuation: u8) -> LayeredRegion {
+pub(super) fn compile_synthetic_layer(attenuation: u8) -> LayeredRegion {
     let link = power_link(attenuation);
     let monitor = TaskMonitor::default();
     let actor = PistonId::new(0);
@@ -305,7 +326,6 @@ fn contact_activation_graph(receivers: &[Option<CallbackReceiver>]) -> CompileGr
     let actor_node = NodeId::new(0);
     let contact = ContactId::new(0);
     let contact_node = NodeId::new(1);
-    let observer = NodeId::new(2);
     let position = BlockPos::new(0, 0, 0);
     graph.guards = vec![Guard::Always, Guard::State(StateTest::PistonExtended(actor))];
     graph.nodes = vec![
@@ -375,6 +395,7 @@ fn contact_activation_graph(receivers: &[Option<CallbackReceiver>]) -> CompileGr
         }]
         .into_boxed_slice(),
     }];
+    graph.routes.extend((1..=6).map(callback_route));
     graph.pistons = vec![PistonSpec {
         node: actor_node,
         position,
@@ -387,15 +408,59 @@ fn contact_activation_graph(receivers: &[Option<CallbackReceiver>]) -> CompileGr
         routes: PistonRoutes {
             base_changed: RouteId::new(0),
             near_changed: RouteId::new(1),
-            far_changed: None,
+            far_changed: Some(RouteId::new(2)),
             far_shape_changed: None,
-            base_restored: RouteId::new(2),
-            head_restored: RouteId::new(3),
-            resource_restored_near: None,
-            resource_restored_far: None,
+            base_restored: RouteId::new(3),
+            head_restored: RouteId::new(4),
+            resource_restored_near: Some(RouteId::new(5)),
+            resource_restored_far: Some(RouteId::new(6)),
         },
     }];
     graph
+}
+
+fn callback_route_with_receiver(kind: DeliveryKind, receiver: Option<CallbackReceiver>) -> Route {
+    Route {
+        source: NodeId::new(0),
+        deliveries: vec![RouteDelivery {
+            target: SiteId::new(0),
+            kind,
+            guard: GuardId::new(1),
+            view: OperandView::Live,
+            sequence: 0,
+            receiver,
+        }]
+        .into_boxed_slice(),
+    }
+}
+
+fn append_inert_contact(graph: &mut CompileGraph, position: BlockPos) -> (ContactId, SiteId) {
+    let contact = ContactId::new(graph.contacts.len() as u32);
+    let node = NodeId::new(graph.nodes.len() as u32);
+    let site = SiteId::new(graph.sites.len() as u32);
+    graph.nodes.push(CircuitNodeDraft {
+        position: Some(position),
+        raw_state: None,
+        kind: CircuitNodeKind::Contact(contact),
+        state: ComponentState::Specialized,
+        output_route: None,
+    });
+    graph.contacts.push(ContactSpec {
+        node,
+        position,
+        variants: vec![ContactVariant {
+            when: GuardId::new(0),
+            profile: ProfileId::new(0),
+            receiver: None,
+        }]
+        .into_boxed_slice(),
+    });
+    graph.sites.push(SiteSpec {
+        position,
+        source: SiteSource::Contact(contact),
+        source_strength: 0,
+    });
+    (contact, site)
 }
 
 #[test]
@@ -414,7 +479,7 @@ fn guarded_own_contact_updates_are_retained_as_base_pending_lifecycle() {
     assert_eq!(bindings.lifecycle.len(), 1);
     assert_eq!(bindings.lifecycle[0].occurrence, occurrence(0, 0));
     assert_eq!(bindings.lifecycle[0].phase, LayerLifecyclePhase::RetractionBaseChanged);
-    assert_eq!(bindings.lifecycle[0].reason, LayerLifecycleReason::BasePendingSelfUpdate);
+    assert_eq!(bindings.lifecycle[0].reason, LayerLifecycleReason::InertCellCallback);
     assert_eq!(
         graph.routes[0].deliveries[0].guard,
         GuardId::new(1),
@@ -435,7 +500,6 @@ fn foreign_observer_and_nested_contact_variants_are_not_self_lifecycle() {
             Some(CallbackReceiver::PistonHead(actor)),
             Some(CallbackReceiver::Contact(ContactId::new(1))),
         ],
-        vec![None],
     ];
     for receivers in cases {
         let graph = contact_activation_graph(&receivers);
@@ -444,6 +508,520 @@ fn foreign_observer_and_nested_contact_variants_are_not_self_lifecycle() {
             activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap(),
             Err((LayerWitness::Callback(found), LayerDeclineReason::CallbackSemanticsUnsupported)) if found == occurrence(0, 0)
         ));
+    }
+
+    let mut graph = contact_activation_graph(&[None]);
+    graph.nodes.push(CircuitNodeDraft {
+        position: Some(BlockPos::new(1, 0, 0)),
+        raw_state: None,
+        kind: CircuitNodeKind::Wire(0),
+        state: ComponentState::Specialized,
+        output_route: None,
+    });
+    graph.contacts[0].variants = vec![ContactVariant {
+        when: GuardId::new(0),
+        profile: ProfileId::new(0),
+        receiver: Some(CallbackReceiver::Component(NodeId::new(3))),
+    }]
+    .into_boxed_slice();
+    graph.routes[0].deliveries[0].kind = DeliveryKind::Shape { direction: BlockFace::East };
+    graph.routes[0].deliveries[0].receiver = Some(CallbackReceiver::Contact(ContactId::new(0)));
+    let use_ = use_with_activations(vec![occurrence(0, 0)].into_boxed_slice(), RouteId::new(0), RouteId::new(1), None);
+    assert!(matches!(
+        activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap(),
+        Err((LayerWitness::Callback(found), LayerDeclineReason::CallbackSemanticsUnsupported)) if found == occurrence(0, 0)
+    ));
+}
+
+#[test]
+fn own_contact_shape_is_inert_but_foreign_shape_is_not_self_lifecycle() {
+    let actor = PistonId::new(0);
+    let occurrence = occurrence(0, 0);
+    let mut graph = contact_activation_graph(&[None, Some(CallbackReceiver::PistonHead(actor))]);
+    graph.routes[0].deliveries[0].kind = DeliveryKind::Shape { direction: BlockFace::East };
+    graph.routes[0].deliveries[0].receiver = Some(CallbackReceiver::Contact(ContactId::new(0)));
+    let use_ = use_with_activations(vec![occurrence].into_boxed_slice(), RouteId::new(0), RouteId::new(1), None);
+    let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
+    assert!(bindings.boundary.is_empty());
+    assert_eq!(bindings.lifecycle.len(), 1);
+    assert_eq!(bindings.lifecycle[0].occurrence, occurrence);
+    assert_eq!(bindings.lifecycle[0].reason, LayerLifecycleReason::InertCellCallback);
+
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let lifecycle = lifecycle_occurrences(&graph, &BoundaryCatalog::default(), 0, &use_, &[], &mut builder)
+        .unwrap()
+        .unwrap();
+    assert!(lifecycle.iter().any(|row| row.occurrence == occurrence));
+
+    let mut foreign = contact_activation_graph(&[None, Some(CallbackReceiver::PistonHead(PistonId::new(1)))]);
+    foreign.routes[0].deliveries[0].kind = DeliveryKind::Shape { direction: BlockFace::East };
+    foreign.routes[0].deliveries[0].receiver = Some(CallbackReceiver::Contact(ContactId::new(0)));
+    assert!(matches!(
+        activation_bindings(&foreign, &BoundaryCatalog::default(), 0, &use_).unwrap(),
+        Err((LayerWitness::Callback(found), LayerDeclineReason::CallbackSemanticsUnsupported)) if found == occurrence
+    ));
+}
+
+#[test]
+fn recognized_reset_observer_shape_is_inert_and_foreign_or_wire_shapes_decline() {
+    let reset = NodeId::new(2);
+    let occurrence = occurrence(0, 0);
+    let mut graph = contact_activation_graph(&[None]);
+    graph.routes[0].deliveries[0].kind = DeliveryKind::Shape { direction: BlockFace::Top };
+    graph.routes[0].deliveries[0].guard = GuardId::new(0);
+    graph.routes[0].deliveries[0].receiver = Some(CallbackReceiver::Component(reset));
+    let mut use_ = use_with_activations(vec![occurrence].into_boxed_slice(), RouteId::new(0), RouteId::new(1), None);
+    use_.reset = reset;
+
+    let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
+    assert!(bindings.boundary.is_empty());
+    assert_eq!(bindings.lifecycle.len(), 1);
+    assert_eq!(bindings.lifecycle[0].occurrence, occurrence);
+    assert_eq!(bindings.lifecycle[0].phase, LayerLifecyclePhase::RetractionBaseChanged);
+    assert_eq!(bindings.lifecycle[0].reason, LayerLifecycleReason::InertCellCallback);
+
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let lifecycle = lifecycle_occurrences(&graph, &BoundaryCatalog::default(), 0, &use_, &[], &mut builder)
+        .unwrap()
+        .unwrap();
+    assert!(
+        lifecycle
+            .iter()
+            .any(|row| row.occurrence == occurrence && row.phase == LayerLifecyclePhase::RetractionBaseChanged)
+    );
+
+    for receiver_kind in [
+        CircuitNodeKind::Observer {
+            watched: SiteId::new(0),
+            facing: BlockFace::East,
+        },
+        CircuitNodeKind::Wire(0),
+    ] {
+        let mut unsupported = graph.clone();
+        let foreign = NodeId::new(3);
+        unsupported.nodes.push(CircuitNodeDraft {
+            position: Some(BlockPos::new(1, 0, 0)),
+            raw_state: None,
+            kind: receiver_kind,
+            state: ComponentState::Specialized,
+            output_route: None,
+        });
+        unsupported.routes[0].deliveries[0].receiver = Some(CallbackReceiver::Component(foreign));
+        assert!(matches!(
+            activation_bindings(&unsupported, &BoundaryCatalog::default(), 0, &use_).unwrap(),
+            Err((LayerWitness::Callback(found), LayerDeclineReason::CallbackSemanticsUnsupported)) if found == occurrence
+        ));
+    }
+}
+
+#[test]
+fn private_far_contact_shape_with_only_inert_variants_is_cold_but_foreign_contact_declines() {
+    let mut graph = contact_activation_graph(&[None]);
+    let (far, far_site) = append_inert_contact(&mut graph, BlockPos::new(2, 0, 0));
+    graph.pistons[0].far = far;
+    graph.pistons[0].lane = PistonLane::SingleResource { far };
+    graph.routes[1].source = graph.pistons[0].node;
+    graph.routes[1].deliveries[0].target = far_site;
+    graph.routes[1].deliveries[0].kind = DeliveryKind::Shape { direction: BlockFace::East };
+    graph.routes[1].deliveries[0].receiver = Some(CallbackReceiver::Contact(far));
+    let occurrence = occurrence(1, 0);
+    let use_ = use_with_activations(
+        vec![occurrence].into_boxed_slice(),
+        RouteId::new(0),
+        RouteId::new(1),
+        Some(RouteId::new(2)),
+    );
+    let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
+    assert!(bindings.boundary.is_empty());
+    assert_eq!(bindings.lifecycle.len(), 1);
+    assert_eq!(bindings.lifecycle[0].phase, LayerLifecyclePhase::RetractionNearChanged);
+    assert_eq!(bindings.lifecycle[0].reason, LayerLifecycleReason::InertCellCallback);
+
+    let mut foreign = graph.clone();
+    let (foreign_contact, foreign_site) = append_inert_contact(&mut foreign, BlockPos::new(3, 0, 0));
+    foreign.routes[1].deliveries[0].target = foreign_site;
+    foreign.routes[1].deliveries[0].receiver = Some(CallbackReceiver::Contact(foreign_contact));
+    assert!(matches!(
+        activation_bindings(&foreign, &BoundaryCatalog::default(), 0, &use_).unwrap(),
+        Err((LayerWitness::Callback(found), LayerDeclineReason::CallbackSemanticsUnsupported)) if found == occurrence
+    ));
+}
+
+#[test]
+fn private_far_contact_update_with_only_inert_variants_is_cold_but_foreign_contact_declines() {
+    let mut graph = contact_activation_graph(&[None]);
+    let (far, far_site) = append_inert_contact(&mut graph, BlockPos::new(2, 0, 0));
+    graph.pistons[0].far = far;
+    graph.pistons[0].lane = PistonLane::SingleResource { far };
+    graph.routes[1].source = graph.pistons[0].node;
+    graph.routes[1].deliveries[0].target = far_site;
+    graph.routes[1].deliveries[0].kind = DeliveryKind::Update {
+        direction: Some(BlockFace::West),
+    };
+    graph.routes[1].deliveries[0].receiver = None;
+    let occurrence = occurrence(1, 0);
+    let use_ = use_with_activations(
+        vec![occurrence].into_boxed_slice(),
+        RouteId::new(0),
+        RouteId::new(1),
+        Some(RouteId::new(2)),
+    );
+    let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
+    assert!(bindings.boundary.is_empty());
+    assert_eq!(bindings.lifecycle.len(), 1);
+    assert_eq!(bindings.lifecycle[0].occurrence, occurrence);
+    assert_eq!(bindings.lifecycle[0].phase, LayerLifecyclePhase::RetractionNearChanged);
+    assert_eq!(bindings.lifecycle[0].reason, LayerLifecycleReason::InertCellCallback);
+
+    let mut foreign = graph.clone();
+    let (_, foreign_site) = append_inert_contact(&mut foreign, BlockPos::new(3, 0, 0));
+    foreign.routes[1].deliveries[0].target = foreign_site;
+    assert!(matches!(
+        activation_bindings(&foreign, &BoundaryCatalog::default(), 0, &use_).unwrap(),
+        Err((LayerWitness::Callback(found), LayerDeclineReason::CallbackSemanticsUnsupported)) if found == occurrence
+    ));
+}
+
+#[test]
+fn resource_restoration_near_and_far_callbacks_stay_in_cold_lifecycle() {
+    let actor = PistonId::new(0);
+    let graph = contact_activation_graph(&[None, Some(CallbackReceiver::PistonHead(actor))]);
+    let occurrences = [occurrence(5, 0), occurrence(6, 0)];
+    let mut use_ = use_with_activations(occurrences.into(), RouteId::new(0), RouteId::new(1), Some(RouteId::new(2)));
+    use_.retraction.wake.resource = Some(CellResourceWake {
+        resource: ResourceId::new(0),
+        contact: ContactId::new(0),
+        route: RouteId::new(5),
+    });
+
+    for route in [RouteId::new(5), RouteId::new(6)] {
+        assert_eq!(
+            deferred_route_phase(&graph, graph.pistons[0].routes, &use_, route),
+            Some(LayerLifecyclePhase::DeferredResourceRestoration)
+        );
+    }
+    let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
+    assert!(bindings.boundary.is_empty());
+    assert_eq!(bindings.lifecycle.len(), 2);
+    assert!(
+        bindings.lifecycle.iter().all(|row| {
+            row.phase == LayerLifecyclePhase::DeferredResourceRestoration && row.reason == LayerLifecycleReason::OrdinaryGraphLifecycle
+        })
+    );
+
+    let catalog = BoundaryCatalog {
+        ports: occurrences
+            .iter()
+            .map(|&occurrence| BoundaryPort {
+                owner: BoundaryOwner::Cell(0),
+                direction: BoundaryDirection::Output,
+                kind: BoundaryPortKind::Callback { occurrence },
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        ..BoundaryCatalog::default()
+    };
+    let component = RegionComponent {
+        cells: vec![0].into_boxed_slice(),
+        corridors: Box::new([]),
+        ports: vec![0, 1].into_boxed_slice(),
+    };
+    let monitor = TaskMonitor::default();
+    let mut lifecycle_builder = LayerBuilder::new(&monitor).unwrap();
+    let lifecycle = lifecycle_occurrences(&graph, &catalog, 0, &use_, &bindings.lifecycle, &mut lifecycle_builder)
+        .unwrap()
+        .unwrap();
+    assert!(
+        occurrences
+            .iter()
+            .all(|occurrence| lifecycle.iter().any(|row| row.occurrence == *occurrence))
+    );
+
+    let cell = CellContract {
+        uses: Box::new([]),
+        pins: Box::new([]),
+        stationary_entry: CellPinId(0),
+        resources: Box::new([]),
+    };
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let outputs = compile_outputs(
+        &graph,
+        &catalog,
+        &component,
+        &cell,
+        &use_,
+        &test_resource_pin(),
+        test_resource_transfer(),
+        &index_power(&graph),
+        LayerExprId(0),
+        LayerExprId(1),
+        &lifecycle,
+        &mut builder,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(outputs.is_empty(), "each skipped restoration output has a cold lifecycle row");
+}
+
+#[test]
+fn reset_output_and_far_shape_routes_are_retained_as_exact_later_lifecycle_rows() {
+    let actor = PistonId::new(0);
+    let reset = NodeId::new(2);
+    let mut graph = contact_activation_graph(&[None, Some(CallbackReceiver::PistonHead(actor))]);
+    graph.nodes[reset.index()].output_route = Some(RouteId::new(7));
+    let mut reset_route = callback_route_with_receiver(DeliveryKind::Update { direction: None }, None);
+    reset_route.source = reset;
+    let mut shape_route = callback_route_with_receiver(
+        DeliveryKind::Shape { direction: BlockFace::East },
+        Some(CallbackReceiver::Contact(ContactId::new(0))),
+    );
+    shape_route.source = graph.pistons[0].node;
+    graph.routes.push(reset_route);
+    graph.routes.push(shape_route);
+    graph.pistons[0].routes.far_shape_changed = Some(RouteId::new(8));
+    let activations = [occurrence(7, 0), occurrence(8, 0)];
+    let mut use_ = use_with_activations(activations.into(), RouteId::new(0), RouteId::new(1), Some(RouteId::new(2)));
+    use_.reset = reset;
+
+    let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
+    assert!(bindings.boundary.is_empty());
+    assert_eq!(bindings.lifecycle.len(), 2);
+    assert_eq!(bindings.lifecycle[0].phase, LayerLifecyclePhase::ResetOutput);
+    assert_eq!(bindings.lifecycle[1].phase, LayerLifecyclePhase::ResetFarShapeChange);
+    assert!(
+        bindings
+            .lifecycle
+            .iter()
+            .all(|row| row.reason == LayerLifecycleReason::OrdinaryGraphLifecycle)
+    );
+
+    let catalog = BoundaryCatalog {
+        ports: activations
+            .iter()
+            .map(|&occurrence| BoundaryPort {
+                owner: BoundaryOwner::Cell(0),
+                direction: BoundaryDirection::Output,
+                kind: BoundaryPortKind::Callback { occurrence },
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        ..BoundaryCatalog::default()
+    };
+    let component = RegionComponent {
+        cells: vec![0].into_boxed_slice(),
+        corridors: Box::new([]),
+        ports: vec![0, 1].into_boxed_slice(),
+    };
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let lifecycle = lifecycle_occurrences(&graph, &catalog, 0, &use_, &bindings.lifecycle, &mut builder)
+        .unwrap()
+        .unwrap();
+    assert!(
+        activations
+            .iter()
+            .all(|occurrence| lifecycle.iter().any(|row| row.occurrence == *occurrence))
+    );
+
+    let cell = CellContract {
+        uses: Box::new([]),
+        pins: Box::new([]),
+        stationary_entry: CellPinId(0),
+        resources: Box::new([]),
+    };
+    let outputs = compile_outputs(
+        &graph,
+        &catalog,
+        &component,
+        &cell,
+        &use_,
+        &test_resource_pin(),
+        test_resource_transfer(),
+        &index_power(&graph),
+        LayerExprId(0),
+        LayerExprId(1),
+        &lifecycle,
+        &mut builder,
+    )
+    .unwrap()
+    .unwrap();
+    assert!(outputs.is_empty(), "later Graph lifecycle rows are not finite-pull outputs");
+}
+
+fn evaluate_layer_root(expressions: &[LayerExpr], inputs: &[bool], root: LayerExprId) -> bool {
+    let mut values: Vec<bool> = Vec::with_capacity(expressions.len());
+    for expression in expressions {
+        values.push(match expression {
+            LayerExpr::Constant(value) => *value,
+            LayerExpr::Input(input) => inputs[input.0 as usize],
+            LayerExpr::Not(inner) => !values[inner.0 as usize],
+            LayerExpr::All(operands) => operands.iter().all(|operand| values[operand.0 as usize]),
+            LayerExpr::Any(operands) => operands.iter().any(|operand| values[operand.0 as usize]),
+        });
+    }
+    values[root.0 as usize]
+}
+
+#[test]
+fn guard_state_outputs_match_typed_post_pull_actor_and_resource_state() {
+    let mut graph = empty_graph(power_link(0));
+    graph.resources = vec![ResourceSpec {
+        material: ProfileId::new(0),
+        contacts: vec![ContactId::new(0), ContactId::new(1), ContactId::new(2)].into_boxed_slice(),
+    }];
+    let actor = PistonId::new(0);
+    let resource = ResourceId::new(0);
+    let source = ContactId::new(0);
+    let destination = ContactId::new(1);
+    let other = ContactId::new(2);
+    let availability = [
+        PistonAvailability::Ready,
+        PistonAvailability::HeadPending,
+        PistonAvailability::PublishingHeadRemoval,
+        PistonAvailability::BasePendingHeadPresent,
+        PistonAvailability::BasePending,
+    ];
+    let mut tests = vec![StateTest::PistonExtended(actor), StateTest::PistonHeadPresent(actor)];
+    tests.extend(availability.map(|is| StateTest::PistonAvailability { piston: actor, is }));
+    tests.push(StateTest::ResourceEnabled(resource));
+    tests.extend([source, destination, other].map(|contact| StateTest::ResourceAt { resource, contact }));
+
+    let catalog = BoundaryCatalog {
+        ports: tests
+            .iter()
+            .copied()
+            .map(|test| BoundaryPort {
+                owner: BoundaryOwner::Cell(0),
+                direction: BoundaryDirection::Output,
+                kind: BoundaryPortKind::GuardState {
+                    guard: GuardId::new(0),
+                    test,
+                },
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        ..BoundaryCatalog::default()
+    };
+    let component = RegionComponent {
+        cells: vec![0].into_boxed_slice(),
+        corridors: Box::new([]),
+        ports: (0..tests.len() as u32).collect::<Vec<_>>().into_boxed_slice(),
+    };
+    let use_ = use_with_activations(Box::new([]), RouteId::new(1), RouteId::new(0), Some(RouteId::new(2)));
+    let cell = CellContract {
+        uses: Box::new([]),
+        pins: Box::new([]),
+        stationary_entry: CellPinId(0),
+        resources: Box::new([]),
+    };
+    let pin = test_resource_pin();
+    let transfer = test_resource_transfer();
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let accepted_input = builder
+        .input(
+            LayerInputSource::BoundaryEvent {
+                port: 99,
+                occurrence: occurrence(90, 0),
+            },
+            LayerInputRole::ActivationEvent,
+        )
+        .unwrap();
+    let accepted = builder.input_expr(accepted_input).unwrap();
+    let transfer_input = builder
+        .input(
+            LayerInputSource::BoundaryEvent {
+                port: 100,
+                occurrence: occurrence(91, 0),
+            },
+            LayerInputRole::ActivationEvent,
+        )
+        .unwrap();
+    let transfer_when = builder.input_expr(transfer_input).unwrap();
+    let outputs = compile_outputs(
+        &graph,
+        &catalog,
+        &component,
+        &cell,
+        &use_,
+        &pin,
+        transfer,
+        &index_power(&graph),
+        accepted,
+        transfer_when,
+        &[],
+        &mut builder,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(outputs.len(), tests.len());
+    assert!(
+        builder
+            .inputs
+            .iter()
+            .all(|input| { !matches!(input.source, LayerInputSource::State(_)) || input.role == LayerInputRole::AcceptanceRevalidation })
+    );
+
+    for extended in [false, true] {
+        for head_present in [false, true] {
+            for current_availability in availability {
+                for enabled in [false, true] {
+                    for at in [source, destination, other] {
+                        for request_accepted in [false, true] {
+                            let accepted = request_accepted && extended && current_availability == PistonAvailability::Ready;
+                            let transferred = accepted && enabled && at == source;
+                            let inputs = builder
+                                .inputs
+                                .iter()
+                                .map(|input| match input.source {
+                                    LayerInputSource::BoundaryEvent { port: 99, .. } => accepted,
+                                    LayerInputSource::BoundaryEvent { port: 100, .. } => transferred,
+                                    LayerInputSource::State(test) => match test {
+                                        StateTest::PistonExtended(_) => extended,
+                                        StateTest::PistonHeadPresent(_) => head_present,
+                                        StateTest::PistonAvailability { is, .. } => current_availability == is,
+                                        StateTest::ResourceEnabled(_) => enabled,
+                                        StateTest::ResourceAt { contact, .. } => at == contact,
+                                    },
+                                    other => panic!("unexpected state output input {other:?}"),
+                                })
+                                .collect::<Vec<_>>();
+                            for output in &outputs {
+                                let BoundaryPortKind::GuardState { test, .. } = catalog.ports[output.port as usize].kind else {
+                                    panic!("state output keeps its original GuardState port")
+                                };
+                                let before = match test {
+                                    StateTest::PistonExtended(_) => extended,
+                                    StateTest::PistonHeadPresent(_) => head_present,
+                                    StateTest::PistonAvailability { is, .. } => current_availability == is,
+                                    StateTest::ResourceEnabled(_) => enabled,
+                                    StateTest::ResourceAt { contact, .. } => at == contact,
+                                };
+                                let expected = match test {
+                                    StateTest::PistonExtended(_) => before,
+                                    StateTest::PistonHeadPresent(_) => before && !accepted,
+                                    StateTest::PistonAvailability {
+                                        is: PistonAvailability::BasePending,
+                                        ..
+                                    } => before || accepted,
+                                    StateTest::PistonAvailability { .. } => before && !accepted,
+                                    StateTest::ResourceEnabled(_) => before && !transferred,
+                                    StateTest::ResourceAt { contact, .. } if contact == destination => before || transferred,
+                                    StateTest::ResourceAt { .. } => before && !transferred,
+                                };
+                                assert_eq!(
+                                    evaluate_layer_root(&builder.expressions, &inputs, output.emitted_when),
+                                    expected,
+                                    "post-pull state mismatch for {test:?} with actor {current_availability:?}, token {at:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -497,9 +1075,22 @@ fn output_rows_follow_retraction_phase_and_retain_same_route_multiplicity() {
     let monitor = TaskMonitor::default();
     let mut builder = LayerBuilder::new(&monitor).unwrap();
 
-    let ordered = compile_outputs(&graph, &catalog, &component, &cell, &use_, &power_index, accepted, transfer, &mut builder)
-        .unwrap()
-        .unwrap();
+    let ordered = compile_outputs(
+        &graph,
+        &catalog,
+        &component,
+        &cell,
+        &use_,
+        &test_resource_pin(),
+        test_resource_transfer(),
+        &power_index,
+        accepted,
+        transfer,
+        &[],
+        &mut builder,
+    )
+    .unwrap()
+    .unwrap();
     assert_eq!(ordered.iter().map(|output| output.port).collect::<Vec<_>>(), [2, 1, 0]);
     assert_eq!(
         ordered.iter().map(|output| output.emitted_when).collect::<Vec<_>>(),
@@ -519,9 +1110,12 @@ fn output_rows_follow_retraction_phase_and_retain_same_route_multiplicity() {
         &same_route_component,
         &cell,
         &same_route_use,
+        &test_resource_pin(),
+        test_resource_transfer(),
         &power_index,
         accepted,
         transfer,
+        &[],
         &mut builder,
     )
     .unwrap()

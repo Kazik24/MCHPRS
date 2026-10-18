@@ -314,22 +314,28 @@ class DustPathLoaderTests(unittest.TestCase):
             "outputs": [{"port": "instant_port:2", "emitted_when": 6}],
             "cold_lifecycle_occurrences": [
                 {"actor": graph["pistons"][0]["id"], "phase": "retraction_base_changed",
-                 "occurrence": lifecycle_occurrence(actor_routes["base_changed"]), "reason": {"kind": "base_pending_self_update"}},
+                 "occurrence": lifecycle_occurrence(actor_routes["base_changed"]), "reason": {"kind": "inert_cell_callback"}},
                 {"actor": graph["pistons"][0]["id"], "phase": "retraction_far_changed",
                  "occurrence": lifecycle_occurrence(actor_routes["far_changed"]),
-                 "reason": {"kind": "base_pending_self_update"}},
+                 "reason": {"kind": "inert_cell_callback"}},
                 {"actor": graph["pistons"][0]["id"], "phase": "retraction_near_changed",
                  "occurrence": lifecycle_occurrence(actor_routes["near_changed"]),
-                 "reason": {"kind": "base_pending_self_update"}},
+                 "reason": {"kind": "inert_cell_callback"}},
                 {"actor": graph["pistons"][0]["id"], "phase": "deferred_base_restoration",
-                 "occurrence": lifecycle_occurrence(actor_routes["base_restored"]), "reason": {"kind": "deferred_graph_lifecycle"}},
+                 "occurrence": lifecycle_occurrence(actor_routes["base_restored"]), "reason": {"kind": "ordinary_graph_lifecycle"}},
                 {"actor": graph["pistons"][0]["id"], "phase": "deferred_head_restoration",
-                 "occurrence": lifecycle_occurrence(actor_routes["head_restored"]), "reason": {"kind": "deferred_graph_lifecycle"}},
+                 "occurrence": lifecycle_occurrence(actor_routes["head_restored"]), "reason": {"kind": "ordinary_graph_lifecycle"}},
                 {"actor": graph["pistons"][0]["id"], "phase": "deferred_resource_restoration",
-                 "occurrence": lifecycle_occurrence(actor_routes["resource_restored_near"]), "reason": {"kind": "deferred_graph_lifecycle"}},
+                 "occurrence": lifecycle_occurrence(actor_routes["resource_restored_near"]), "reason": {"kind": "ordinary_graph_lifecycle"}},
                 {"actor": graph["pistons"][0]["id"], "phase": "reset_observer_lifecycle",
                  "occurrence": lifecycle_occurrence(watched_routes["base_changed"]),
                  "reason": {"kind": "reset_observer_update", "observer": observer}},
+                {"actor": graph["pistons"][0]["id"], "phase": "reset_output",
+                 "occurrence": lifecycle_occurrence(next(node["output_route"] for node in graph["nodes"] if node["id"] == observer)),
+                 "reason": {"kind": "ordinary_graph_lifecycle"}},
+                {"actor": graph["pistons"][0]["id"], "phase": "reset_far_shape_change",
+                 "occurrence": lifecycle_occurrence(actor_routes["far_shape_changed"]),
+                 "reason": {"kind": "ordinary_graph_lifecycle"}},
             ],
             "resource_outputs": [{"cell": cell["id"], "resource": cell["resources"][0],
                                   "source": graph["resources"][0]["contacts"][0],
@@ -357,6 +363,7 @@ class DustPathLoaderTests(unittest.TestCase):
 
     def test_instant_layer_tables_validate_local_dag_and_preserve_occurrences(self):
         data = self.instant_layer_document()
+        actor_routes = data["graph"]["pistons"][0]["routes"]
         loaded = self.load_data(data)
         self.assertIn("instant_layer_region:7", loaded.records["instant_layer_region"])
         self.assertEqual(len(loaded.record("instant_layer_region:7")["inputs"]), 5)
@@ -376,8 +383,11 @@ class DustPathLoaderTests(unittest.TestCase):
             lambda region: region["resource_outputs"][0].update(source="contact:999"),
             lambda region: region["resource_outputs"][0].update(destination=region["resource_outputs"][0]["source"]),
             lambda region: region["cold_lifecycle_occurrences"][0]["occurrence"].update(ordinal=99),
+            lambda region: region["cold_lifecycle_occurrences"][0]["reason"].update(kind="base_pending_self_update"),
             lambda region: region["cold_lifecycle_occurrences"][6]["reason"].update(observer="node:999"),
             lambda region: region["cold_lifecycle_occurrences"][3].update(phase="deferred_resource_restoration"),
+            lambda region: region["cold_lifecycle_occurrences"][7]["occurrence"].update(route=actor_routes["base_changed"]),
+            lambda region: region["cold_lifecycle_occurrences"][8]["occurrence"].update(route=actor_routes["far_changed"]),
             lambda region: region["layers"][0]["uses"][0].update(actor="piston:999"),
             lambda region: region["layers"][0]["uses"][0]["cause"]["occurrences"][0].update(ordinal=99),
             lambda region: region["layers"][0]["uses"].append(dict(region["layers"][0]["uses"][0])),
@@ -387,10 +397,44 @@ class DustPathLoaderTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(GraphFormatError):
                 self.load_data(damaged)
 
+        for lifecycle_index, source_owner in (
+            (7, data["graph"]["pistons"][0]["node"]),
+            (8, data["graph"]["instant_cells"][0]["resets"][0]),
+        ):
+            damaged = self.instant_layer_document()
+            occurrence = damaged["graph"]["instant_layer_regions"][0]["cold_lifecycle_occurrences"][lifecycle_index]["occurrence"]
+            route = next(route for route in damaged["graph"]["routes"] if route["id"] == occurrence["route"])
+            route["source"] = source_owner
+            with self.subTest(lifecycle_index=lifecycle_index), self.assertRaises(GraphFormatError):
+                self.load_data(damaged)
+
         data = self.instant_layer_document()
         graph = data["graph"]
         graph["instant_layer_regions"].append({**graph["instant_layer_regions"][0], "id": "instant_layer_region:9"})
         with self.assertRaisesRegex(GraphFormatError, "shares cells ownership"):
+            self.load_data(data)
+
+    def test_layer_threshold_inputs_validate_direction_strength_and_wire_ownership(self):
+        data = self.instant_layer_document()
+        graph = data["graph"]
+        observer = graph["instant_cells"][0]["resets"][0]
+        site = next(site["id"] for site in graph["sites"] if site["source"] == {"kind": "component", "node": observer})
+        source = {"kind": "source_above", "site": site, "port": {"kind": "strong", "face": "bottom"}, "threshold": 3}
+        graph["instant_layer_regions"][0]["inputs"].append({"source": source, "role": "request_sample"})
+        self.load_data(data)
+        for replacement in (
+            {"threshold": -1}, {"threshold": 15}, {"threshold": True}, {"site": "site:999999"},
+            {"port": {"kind": "weak", "face": "diagonal"}}, {"port": {"kind": "unknown"}},
+        ):
+            damaged = json.loads(json.dumps(data))
+            damaged["graph"]["instant_layer_regions"][0]["inputs"][-1]["source"].update(replacement)
+            with self.subTest(replacement=replacement), self.assertRaises(GraphFormatError):
+                self.load_data(damaged)
+        wire = next(node["id"] for node in graph["nodes"] if node["kind"]["kind"] == "wire")
+        wire_site = next(site["id"] for site in graph["sites"] if site["source"] == {"kind": "component", "node": wire})
+        graph["instant_corridors"][0]["wires"] = [wire]
+        source["site"] = wire_site
+        with self.assertRaisesRegex(GraphFormatError, "owned internal wire"):
             self.load_data(data)
 
     def test_instant_layer_declines_and_absent_tables(self):

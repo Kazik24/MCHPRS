@@ -489,7 +489,6 @@ fn fixed_classic_plan_exports_and_validates_real_executable_tables() {
     );
     let options = CompilerOptions {
         optimization_level: Some(2),
-        classic_redstone: true,
         ..Default::default()
     };
     let export = exported_with_options(&world, &options);

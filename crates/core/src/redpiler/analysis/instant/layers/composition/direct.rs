@@ -1,0 +1,368 @@
+//! Extract causal order from actual callback rows for dust-free connected cells.
+//! Internal Turbo paths still require a separate arrival certificate; no discovery
+//! order is substituted for one. A single outside route may come from any device.
+use super::*;
+
+enum Failure {
+    /// This whole region lacks a representable source or observation witness.
+    Unsupported(LayerWitness, LayerDeclineReason),
+    /// This graph, allocation budget or cancellation prevents publication.
+    Invalid(String),
+}
+impl From<String> for Failure {
+    fn from(value: String) -> Self {
+        Self::Invalid(value)
+    }
+}
+
+pub(crate) fn compile_direct(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    component: &RegionComponent,
+    region_index: usize,
+    power: &PowerIndex,
+    monitor: &TaskMonitor,
+) -> Result<Result<LayeredRegion, LayerDecline>, String> {
+    match compile(graph, catalog, component, region_index, power, monitor) {
+        Ok(region) => Ok(Ok(region)),
+        Err(Failure::Unsupported(witness, reason)) => Ok(Err(decline(component, witness, reason))),
+        Err(Failure::Invalid(message)) => Err(message),
+    }
+}
+
+struct Routes<'a> {
+    /// These original route rows provide callback order and receivers.
+    graph: &'a CompileGraph,
+    /// This maps owned actors to their local equation contracts.
+    actors: FxHashMap<PistonId, u32>,
+    /// These scheduler-owned reset observers are lifecycle effects rather than computation uses.
+    resets: FxHashSet<NodeId>,
+    /// These externally exposed callback roots preserve actual phase order and duplicate occurrences.
+    outputs: Vec<LayerOutput>,
+    /// These catalog ports identify the original outside recipients of each effect.
+    ports: &'a [BoundaryPort],
+    /// These are the published port ordinals for this connected component.
+    region_ports: &'a [u32],
+    /// These monotone cable certificates replace complete internal Turbo responses.
+    arrivals: Vec<super::corridors::Arrival>,
+}
+
+fn compile(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    component: &RegionComponent,
+    region_index: usize,
+    power: &PowerIndex,
+    monitor: &TaskMonitor,
+) -> Result<LayeredRegion, Failure> {
+    let mut routes = Routes {
+        graph,
+        actors: FxHashMap::default(),
+        resets: FxHashSet::default(),
+        outputs: Vec::new(),
+        ports: &catalog.ports,
+        region_ports: &component.ports,
+        arrivals: Vec::new(),
+    };
+    let Some(arrivals) = super::corridors::certify(graph, catalog, component, power, monitor)? else {
+        let partition = regions::partition(graph, catalog, monitor)?;
+        let witness = first_unproven_power(
+            graph,
+            catalog,
+            component,
+            region_index,
+            &partition.owners,
+            &partition.owner_region,
+            monitor,
+        )?
+        .unwrap_or_else(|| first_witness(graph, catalog, component));
+        return Err(Failure::Unsupported(witness, LayerDeclineReason::SignalArrivalUnproven));
+    };
+    routes.arrivals = arrivals;
+    for &cell in &component.cells {
+        for use_ in &catalog.cells[cell as usize].uses {
+            routes.actors.insert(use_.actor, cell);
+            routes.resets.insert(use_.reset);
+        }
+    }
+    let mut entries = FxHashSet::default();
+    for &cell in &component.cells {
+        for use_ in &catalog.cells[cell as usize].uses {
+            for occurrence in &use_.activations {
+                let source = graph.routes[occurrence.route.index()].source;
+                if !routes.owns_node(source) {
+                    entries.insert(occurrence.route);
+                }
+            }
+        }
+    }
+    if entries.len() != 1 {
+        return Err(Failure::Unsupported(
+            first_witness(graph, catalog, component),
+            LayerDeclineReason::CallbackSemanticsUnsupported,
+        ));
+    }
+    let entry = *entries.iter().next().expect("one entry was checked");
+    let mut composition = Composition::new(graph, catalog, power, component, monitor)?;
+    let no = composition.builder.constant(false)?;
+    let mut entry_roots = Vec::new();
+    for &cell in &component.cells {
+        let actor = catalog.cells[cell as usize].uses[0].actor;
+        let pins = composition.pins(cell, actor, no)?;
+        entry_roots.push(pins[catalog.cells[cell as usize].stationary_entry.index()]);
+    }
+    let stationary_entry = composition.builder.all(entry_roots)?;
+    routes.entry(entry, &mut composition)?;
+    while let Some(acceptance) = composition.begin_next()? {
+        let actor = acceptance.actor;
+        let accepted = acceptance.accepted;
+        let ancestors = acceptance.ancestors.clone();
+        let use_ = catalog.cells[routes.actors[&actor] as usize]
+            .uses
+            .iter()
+            .find(|use_| use_.actor == actor)
+            .expect("owned use");
+        routes.emit(use_.retraction.routes.base_changed, accepted, &ancestors, &mut composition)?;
+        let transfer = composition.finish_base(acceptance)?;
+        if let Some(route) = use_.retraction.routes.far_changed {
+            routes.emit(route, transfer, &ancestors, &mut composition)?;
+        }
+        routes.emit(use_.retraction.routes.near_changed, accepted, &ancestors, &mut composition)?;
+    }
+    let mut lifecycle = Vec::new();
+    for &cell in &component.cells {
+        for use_ in &catalog.cells[cell as usize].uses {
+            let spec = graph
+                .pistons
+                .get(use_.actor.index())
+                .ok_or_else(|| Failure::Invalid("cell actor has no piston specification".into()))?;
+            for (route, phase) in [
+                (Some(use_.retraction.wake.base_restored), LayerLifecyclePhase::DeferredBaseRestoration),
+                (Some(spec.routes.head_restored), LayerLifecyclePhase::DeferredHeadRestoration),
+                (
+                    use_.retraction.wake.resource.map(|wake| wake.route),
+                    LayerLifecyclePhase::DeferredResourceRestoration,
+                ),
+                (graph.nodes[use_.reset.index()].output_route, LayerLifecyclePhase::ResetOutput),
+                (spec.routes.far_shape_changed, LayerLifecyclePhase::ResetFarShapeChange),
+                (spec.routes.resource_restored_far, LayerLifecyclePhase::DeferredResourceRestoration),
+            ] {
+                if let Some(route) = route {
+                    for ordinal in 0..graph.routes[route.index()].deliveries.len() {
+                        lifecycle.push(LayerLifecycleOccurrence {
+                            actor: use_.actor,
+                            occurrence: RouteOccurrence {
+                                route,
+                                ordinal: ordinal as u32,
+                            },
+                            phase,
+                            reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
+                        });
+                    }
+                }
+            }
+            for &occurrence in &use_.retraction.reset.on_base_changed {
+                lifecycle.push(LayerLifecycleOccurrence {
+                    actor: use_.actor,
+                    occurrence,
+                    phase: LayerLifecyclePhase::RetractionBaseChanged,
+                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+                });
+            }
+            for &occurrence in &use_.retraction.reset.on_base_restored {
+                lifecycle.push(LayerLifecycleOccurrence {
+                    actor: use_.retraction.reset.watched_actor,
+                    occurrence,
+                    phase: LayerLifecyclePhase::DeferredBaseRestoration,
+                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+                });
+            }
+        }
+    }
+    let mut tracer = signals::SignalTracer::new(graph, power, &composition.wires, &composition.state, LayerInputRole::RequestSample);
+    for &port in &component.ports {
+        if catalog.ports[port as usize].direction != BoundaryDirection::Output {
+            continue;
+        }
+        let kind = catalog.ports[port as usize].kind;
+        let value = match kind {
+            BoundaryPortKind::Callback { .. } => continue,
+            BoundaryPortKind::Power { link } => tracer.contribution(graph.power_links[link as usize], 0, &mut composition.builder)?,
+            BoundaryPortKind::GuardState { test, .. } => {
+                if let Some(&value) = composition.state.get(&test) {
+                    value
+                } else {
+                    let input = composition.builder.input(LayerInputSource::State(test), LayerInputRole::RequestSample)?;
+                    composition.builder.input_expr(input)?
+                }
+            }
+            BoundaryPortKind::GuardSite {
+                site,
+                test,
+                view: OperandView::Live,
+                ..
+            } => tracer.site_test(site, test, &mut composition.builder)?,
+            BoundaryPortKind::ContactAlternative { contact, ordinal } => {
+                tracer.guard(graph.contacts[contact.index()].variants[ordinal as usize].when, &mut composition.builder)?
+            }
+            _ => {
+                return Err(Failure::Unsupported(
+                    first_witness(graph, catalog, component),
+                    LayerDeclineReason::BoundaryEffectUnsupported,
+                ));
+            }
+        };
+        routes.outputs.push(LayerOutput { port, emitted_when: value });
+    }
+    let region = LayeredRegion {
+        id: LayerRegionId(region_index as u32),
+        cells: component.cells.clone(),
+        corridors: component.corridors.clone(),
+        stationary_entry,
+        inputs: composition.builder.inputs.into(),
+        expressions: composition.builder.expressions.into(),
+        layers: composition.layers.into(),
+        resource_outputs: composition.resources.into(),
+        outputs: routes.outputs.into(),
+        cold_lifecycle_occurrences: lifecycle.into(),
+        pin_values: Box::new([]),
+    };
+    // Validate the executable slice now, before publishing any cold region certificate.
+    reduction::reduce(&region, monitor)?;
+    Ok(region)
+}
+
+impl Routes<'_> {
+    fn owns_node(&self, node: NodeId) -> bool {
+        self.resets.contains(&node)
+            || self.arrivals.iter().any(|arrival| arrival.wires.contains(&node))
+            || matches!(self.graph.nodes[node.index()].kind,CircuitNodeKind::Piston(actor) if self.actors.contains_key(&actor))
+    }
+
+    fn entry(&mut self, route: RouteId, composition: &mut Composition<'_>) -> Result<(), Failure> {
+        for ordinal in 0..self.graph.routes[route.index()].deliveries.len() {
+            let occurrence = RouteOccurrence {
+                route,
+                ordinal: ordinal as u32,
+            };
+            let Some(port) = self.region_ports.iter().find(|&&port| {
+                self.ports[port as usize].direction == BoundaryDirection::Input
+                    && self.ports[port as usize].kind == BoundaryPortKind::Callback { occurrence }
+            }) else {
+                continue;
+            };
+            let input = composition.builder.input(
+                LayerInputSource::BoundaryEvent { port: *port, occurrence },
+                LayerInputRole::ActivationEvent,
+            )?;
+            let event = composition.builder.input_expr(input)?;
+            self.delivery(occurrence, event, &FxHashSet::default(), composition)?;
+        }
+        Ok(())
+    }
+
+    fn emit(&mut self, route: RouteId, when: LayerExprId, ancestors: &FxHashSet<PistonId>, composition: &mut Composition<'_>) -> Result<(), Failure> {
+        if matches!(composition.builder.expression(when)?, LayerExpr::Constant(false)) {
+            return Ok(());
+        }
+        for ordinal in 0..self.graph.routes[route.index()].deliveries.len() {
+            self.delivery(
+                RouteOccurrence {
+                    route,
+                    ordinal: ordinal as u32,
+                },
+                when,
+                ancestors,
+                composition,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn delivery(
+        &mut self,
+        occurrence: RouteOccurrence,
+        when: LayerExprId,
+        ancestors: &FxHashSet<PistonId>,
+        composition: &mut Composition<'_>,
+    ) -> Result<(), Failure> {
+        let delivery = self.graph.routes[occurrence.route.index()].deliveries[occurrence.ordinal as usize];
+        if delivery.view != OperandView::Live {
+            return Err(Failure::Unsupported(
+                LayerWitness::Callback(occurrence),
+                LayerDeclineReason::CallbackSemanticsUnsupported,
+            ));
+        }
+        let mut tracer = signals::SignalTracer::new(
+            self.graph,
+            composition.power,
+            &composition.wires,
+            &composition.state,
+            LayerInputRole::RequestSample,
+        );
+        let guard = tracer.guard(delivery.guard, &mut composition.builder)?;
+        let when = composition.builder.all([when, guard])?;
+        if matches!(composition.builder.expression(when)?, LayerExpr::Constant(false)) {
+            return Ok(());
+        }
+        let receiver = delivery
+            .receiver
+            .or_else(|| match (self.graph.sites[delivery.target.index()].source, delivery.kind) {
+                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+                _ => None,
+            });
+        let actor = match receiver {
+            Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => Some(actor),
+            Some(CallbackReceiver::Component(node)) => match self.graph.nodes[node.index()].kind {
+                CircuitNodeKind::Piston(actor) => Some(actor),
+                CircuitNodeKind::Wire(_) => {
+                    let Some(arrival) = self.arrivals.iter().find(|arrival| arrival.wires.contains(&node)) else {
+                        return Err(Failure::Unsupported(LayerWitness::Wire(node), LayerDeclineReason::SignalArrivalUnproven));
+                    };
+                    if occurrence == arrival.start {
+                        if !ancestors.contains(&arrival.producer) {
+                            return Err(Failure::Invalid("corridor arrival has no accepted source provenance".into()));
+                        }
+                        composition.sample_after(
+                            self.actors[&arrival.consumer],
+                            arrival.consumer,
+                            when,
+                            vec![arrival.finish].into(),
+                            ancestors,
+                        )?;
+                    }
+                    return Ok(());
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if matches!(delivery.kind, DeliveryKind::Update { .. }) {
+            if let Some(actor) = actor {
+                if let Some(&cell) = self.actors.get(&actor) {
+                    let consumed = composition.consumed.get(&actor).copied().unwrap_or(composition.builder.constant(false)?);
+                    let unused = composition.builder.not(consumed)?;
+                    let when = composition.builder.all([when, unused])?;
+                    if !matches!(composition.builder.expression(when)?, LayerExpr::Constant(false)) {
+                        composition.sample_after(cell, actor, when, vec![occurrence].into(), ancestors)?;
+                    }
+                    return Ok(());
+                }
+            }
+        } else if actor.is_some_and(|actor| self.actors.contains_key(&actor)) {
+            return Err(Failure::Unsupported(
+                LayerWitness::Callback(occurrence),
+                LayerDeclineReason::CallbackSemanticsUnsupported,
+            ));
+        }
+        if self.owns_node(self.graph.routes[occurrence.route.index()].source) {
+            for &port in self.region_ports {
+                let row = self.ports[port as usize];
+                if row.direction == BoundaryDirection::Output && row.kind == (BoundaryPortKind::Callback { occurrence }) {
+                    self.outputs.push(LayerOutput { port, emitted_when: when });
+                }
+            }
+        }
+        Ok(())
+    }
+}

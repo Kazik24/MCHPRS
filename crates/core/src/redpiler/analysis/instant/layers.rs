@@ -10,6 +10,11 @@ use rustc_hash::FxHashMap;
 const MAX_LAYER_BYTES: usize = MAX_GRAPH_PREPARATION_BYTES / 8;
 const MAX_LAYER_WORK: usize = 8 * 1024 * 1024;
 
+mod signals;
+mod reduction;
+mod composition;
+pub(crate) use reduction::reduce as lower_region;
+
 /// Build deterministic cell regions and compile only the narrow cases with proven request cuts.
 pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<LayeredInstantPlan, String> {
     check_cancelled(monitor)?;
@@ -53,7 +58,10 @@ fn compile_component(
     monitor: &TaskMonitor,
 ) -> Result<Result<LayeredRegion, LayerDecline>, String> {
     if component.cells.len() != 1 || !component.corridors.is_empty() {
-        let witness = first_unproven_power(graph, catalog, component, region_index, owners, owner_region).unwrap_or_else(|| {
+        if !component.cells.is_empty() {
+            return composition::compile_direct(graph, catalog, component, region_index, power_index, monitor);
+        }
+        let witness = first_unproven_power(graph, catalog, component, region_index, owners, owner_region, monitor)?.unwrap_or_else(|| {
             if !component.corridors.is_empty() {
                 component
                     .corridors
@@ -198,12 +206,25 @@ fn compile_component(
             value,
         });
     }
-    let outputs = match compile_outputs(graph, catalog, component, cell, use_, power_index, accepted, transfer_when, &mut builder)? {
-        Ok(outputs) => outputs,
-        Err((witness, reason)) => return Ok(Err(decline(component, witness, reason))),
-    };
     let lifecycle = match lifecycle_occurrences(graph, catalog, cell_id, use_, &activations.lifecycle, &mut builder)? {
         Ok(lifecycle) => lifecycle,
+        Err((witness, reason)) => return Ok(Err(decline(component, witness, reason))),
+    };
+    let outputs = match compile_outputs(
+        graph,
+        catalog,
+        component,
+        cell,
+        use_,
+        private_resource,
+        transfer,
+        power_index,
+        accepted,
+        transfer_when,
+        &lifecycle,
+        &mut builder,
+    )? {
+        Ok(outputs) => outputs,
         Err((witness, reason)) => return Ok(Err(decline(component, witness, reason))),
     };
     let actor = use_.actor;
@@ -244,21 +265,37 @@ fn first_unproven_power(
     region_index: usize,
     owners: &super::boundaries::OwnerMap,
     owner_region: &[u32],
-) -> Option<LayerWitness> {
+    monitor: &TaskMonitor,
+) -> Result<Option<LayerWitness>, String> {
+    let mut work = 0usize;
     for &cell_id in &component.cells {
-        let cell = catalog.cells.get(cell_id as usize)?;
+        let cell = catalog
+            .cells
+            .get(cell_id as usize)
+            .ok_or("instant region references a missing cell contract")?;
         for use_ in &cell.uses {
             let mut pending = vec![use_.powered];
+            let mut visited = rustc_hash::FxHashSet::default();
             while let Some(pin) = pending.pop() {
-                match cell.pins.get(pin.index())? {
+                work = work.checked_add(1).ok_or("layer support walk work overflow")?;
+                if work > MAX_LAYER_WORK {
+                    return Err("layer support walk exceeded its preparation work budget".into());
+                }
+                if work & 0x3ff == 0 {
+                    check_cancelled(monitor)?;
+                }
+                if !visited.insert(pin) {
+                    continue;
+                }
+                match cell.pins.get(pin.index()).ok_or("cell powered pin references a missing equation")? {
                     CellPin::Read(CellRead::Contribution(link))
                         if source_is_internal_wire(graph, catalog, owners, owner_region, region_index, *link) =>
                     {
-                        return Some(LayerWitness::PowerAtCut {
+                        return Ok(Some(LayerWitness::PowerAtCut {
                             actor: use_.actor,
                             link: *link,
                             phase: LayerInputRole::RequestSample,
-                        });
+                        }));
                     }
                     CellPin::Gate { inputs, .. } => pending.extend(inputs.iter().rev().copied()),
                     _ => {}
@@ -266,7 +303,8 @@ fn first_unproven_power(
             }
         }
     }
-    None
+    check_cancelled(monitor)?;
+    Ok(None)
 }
 
 fn source_is_internal_wire(
@@ -322,21 +360,21 @@ fn activation_bindings(
         let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
             return Err("cell activation ordinal is outside its source route".into());
         };
-        if let Some(phase) = deferred_route_phase(graph, actor_spec.routes, use_, occurrence.route) {
+        if let Some(phase) = later_graph_route_phase(graph, actor_spec.routes, use_, occurrence.route)? {
             bindings.lifecycle.push(LayerLifecycleOccurrence {
                 actor,
                 occurrence,
                 phase,
-                reason: LayerLifecycleReason::DeferredGraphLifecycle,
+                reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
             });
             continue;
         }
-        if retraction_route_phase(use_, occurrence.route).is_some() && is_live_update(delivery) && callback_targets_actor(graph, delivery, actor) {
+        if retraction_route_phase(use_, occurrence.route).is_some() && is_inert_cell_callback(graph, delivery, use_) {
             bindings.lifecycle.push(LayerLifecycleOccurrence {
                 actor,
                 occurrence,
                 phase: retraction_route_phase(use_, occurrence.route).expect("route phase was checked"),
-                reason: LayerLifecycleReason::BasePendingSelfUpdate,
+                reason: LayerLifecycleReason::InertCellCallback,
             });
             continue;
         }
@@ -387,6 +425,7 @@ fn deferred_route_phase(graph: &CompileGraph, routes: PistonRoutes, use_: &CellU
         Some(LayerLifecyclePhase::DeferredHeadRestoration)
     } else if use_.retraction.wake.resource.is_some_and(|wake| wake.route == route)
         || graph.pistons[use_.actor.index()].routes.resource_restored_near == Some(route)
+        || graph.pistons[use_.actor.index()].routes.resource_restored_far == Some(route)
     {
         Some(LayerLifecyclePhase::DeferredResourceRestoration)
     } else {
@@ -394,43 +433,84 @@ fn deferred_route_phase(graph: &CompileGraph, routes: PistonRoutes, use_: &CellU
     }
 }
 
-/// The source route retains its guard; this only checks whether the row can dispatch an Update.
-fn is_live_update(delivery: &RouteDelivery) -> bool {
-    matches!(delivery.kind, DeliveryKind::Update { .. }) && delivery.view == OperandView::Live
+fn later_graph_route_phase(
+    graph: &CompileGraph,
+    routes: PistonRoutes,
+    use_: &CellUse,
+    route: RouteId,
+) -> Result<Option<LayerLifecyclePhase>, String> {
+    let reset = graph
+        .nodes
+        .get(use_.reset.index())
+        .ok_or("cell reset observer is outside the source graph")?;
+    if let Some(output_route) = reset.output_route {
+        if graph.routes.get(output_route.index()).is_none_or(|row| row.source != use_.reset) {
+            return Err("reset observer output route has a mismatched source".into());
+        }
+        if route == output_route {
+            return Ok(Some(LayerLifecyclePhase::ResetOutput));
+        }
+    }
+    if let Some(shape_route) = routes.far_shape_changed {
+        let actor = graph.pistons.get(use_.actor.index()).ok_or("cell actor is outside the source graph")?;
+        if graph.routes.get(shape_route.index()).is_none_or(|row| row.source != actor.node) {
+            return Err("piston far-shape route has a mismatched source".into());
+        }
+        if route == shape_route {
+            return Ok(Some(LayerLifecyclePhase::ResetFarShapeChange));
+        }
+    }
+    Ok(deferred_route_phase(graph, routes, use_, route))
 }
 
-fn callback_targets_actor(graph: &CompileGraph, delivery: &RouteDelivery, actor: PistonId) -> bool {
-    match resolved_receiver(graph, delivery) {
-        Some(CallbackReceiver::PistonBase(target) | CallbackReceiver::PistonHead(target)) => target == actor,
-        Some(CallbackReceiver::Component(node)) => graph
+/// Recognize only callbacks proven inert for this cell at its exact accepted-route phase.
+fn is_inert_cell_callback(graph: &CompileGraph, delivery: &RouteDelivery, use_: &CellUse) -> bool {
+    if delivery.view != OperandView::Live {
+        return false;
+    }
+    match delivery.kind {
+        DeliveryKind::Update { .. } => match resolved_receiver(graph, delivery) {
+            Some(CallbackReceiver::Contact(contact)) => contact_is_local_to_actor(graph, contact, use_.actor),
+            Some(receiver) => receiver_is_actor(graph, receiver, use_.actor),
+            None => false,
+        },
+        DeliveryKind::Shape { .. } => match resolved_receiver(graph, delivery) {
+            Some(CallbackReceiver::Contact(contact)) => contact_is_local_to_actor(graph, contact, use_.actor),
+            Some(CallbackReceiver::Component(node)) if node == use_.reset => graph
+                .nodes
+                .get(node.index())
+                .is_some_and(|node| matches!(&node.kind, CircuitNodeKind::Observer { .. })),
+            _ => false,
+        },
+    }
+}
+
+fn contact_is_local_to_actor(graph: &CompileGraph, contact: ContactId, actor: PistonId) -> bool {
+    let Some(spec) = graph.pistons.get(actor.index()) else {
+        return false;
+    };
+    [spec.base, spec.near, spec.far].contains(&contact) && contact_receivers_are_local(graph, contact, actor)
+}
+
+fn contact_receivers_are_local(graph: &CompileGraph, contact: ContactId, actor: PistonId) -> bool {
+    let Some(contact) = graph.contacts.get(contact.index()) else {
+        return false;
+    };
+    !contact.variants.is_empty()
+        && contact
+            .variants
+            .iter()
+            .all(|variant| variant.receiver.is_none_or(|receiver| receiver_is_actor(graph, receiver, actor)))
+}
+
+fn receiver_is_actor(graph: &CompileGraph, receiver: CallbackReceiver, actor: PistonId) -> bool {
+    match receiver {
+        CallbackReceiver::PistonBase(target) | CallbackReceiver::PistonHead(target) => target == actor,
+        CallbackReceiver::Component(node) => graph
             .nodes
             .get(node.index())
-            .is_some_and(|node| node.kind == CircuitNodeKind::Piston(actor)),
-        Some(CallbackReceiver::Contact(contact)) => {
-            let Some(contact) = graph.contacts.get(contact.index()) else {
-                return false;
-            };
-            let mut targets_actor = false;
-            for variant in &contact.variants {
-                match variant.receiver {
-                    None => {}
-                    Some(CallbackReceiver::PistonBase(target) | CallbackReceiver::PistonHead(target)) if target == actor => {
-                        targets_actor = true;
-                    }
-                    Some(CallbackReceiver::Component(node))
-                        if graph
-                            .nodes
-                            .get(node.index())
-                            .is_some_and(|node| matches!(&node.kind, CircuitNodeKind::Piston(target) if *target == actor)) =>
-                    {
-                        targets_actor = true;
-                    }
-                    _ => return false,
-                }
-            }
-            targets_actor
-        }
-        _ => false,
+            .is_some_and(|node| matches!(&node.kind, CircuitNodeKind::Piston(target) if *target == actor)),
+        CallbackReceiver::Contact(_) => false,
     }
 }
 
@@ -479,8 +559,8 @@ fn lifecycle_occurrences(
                 route,
                 ordinal: u32::try_from(ordinal).map_err(|_| "too many callback occurrences in one route")?,
             };
-            let (reason, lifecycle_phase) = if is_live_update(delivery) && callback_targets_actor(graph, delivery, use_.actor) {
-                (LayerLifecycleReason::BasePendingSelfUpdate, phase)
+            let (reason, lifecycle_phase) = if is_inert_cell_callback(graph, delivery, use_) {
+                (LayerLifecycleReason::InertCellCallback, phase)
             } else if reset_occurrence(use_, occurrence) && callback_targets_reset(graph, delivery, use_.reset) {
                 (
                     LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
@@ -510,6 +590,10 @@ fn lifecycle_occurrences(
             .wake
             .resource
             .map(|wake| (wake.route, LayerLifecyclePhase::DeferredResourceRestoration)),
+        actor_spec
+            .routes
+            .resource_restored_far
+            .map(|route| (route, LayerLifecyclePhase::DeferredResourceRestoration)),
     ];
     for (route, phase) in deferred.into_iter().flatten() {
         let source = graph.routes.get(route.index()).ok_or("deferred lifecycle route is outside the graph")?;
@@ -523,7 +607,7 @@ fn lifecycle_occurrences(
                 actor: use_.actor,
                 occurrence,
                 phase,
-                reason: LayerLifecycleReason::DeferredGraphLifecycle,
+                reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
             };
             if !lifecycle.contains(&row) {
                 lifecycle.push(row);
@@ -546,6 +630,44 @@ fn lifecycle_occurrences(
         };
         if !lifecycle.contains(&row) {
             lifecycle.push(row);
+        }
+    }
+    let reset = graph
+        .nodes
+        .get(use_.reset.index())
+        .ok_or("cell reset observer is outside the source graph")?;
+    let later_routes = [
+        reset.output_route.map(|route| (route, LayerLifecyclePhase::ResetOutput)),
+        actor_spec
+            .routes
+            .far_shape_changed
+            .map(|route| (route, LayerLifecyclePhase::ResetFarShapeChange)),
+    ];
+    for (route, phase) in later_routes.into_iter().flatten() {
+        let source = graph.routes.get(route.index()).ok_or("later lifecycle route is outside the graph")?;
+        let expected_source = if phase == LayerLifecyclePhase::ResetOutput {
+            use_.reset
+        } else {
+            actor_spec.node
+        };
+        if source.source != expected_source {
+            return Err("later lifecycle route has a mismatched source".into());
+        }
+        for (ordinal, _) in source.deliveries.iter().enumerate() {
+            builder.visit()?;
+            let occurrence = RouteOccurrence {
+                route,
+                ordinal: u32::try_from(ordinal).map_err(|_| "too many callback occurrences in one route")?,
+            };
+            let row = LayerLifecycleOccurrence {
+                actor: use_.actor,
+                occurrence,
+                phase,
+                reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
+            };
+            if !lifecycle.contains(&row) {
+                lifecycle.push(row);
+            }
         }
     }
     Ok(Ok(lifecycle))
@@ -623,10 +745,7 @@ fn local_reset_output_link(graph: &CompileGraph, power: &PowerIndex, use_: &Cell
         || !matches!(source.from_port, PowerPort::Strong(BlockFace::Bottom) | PowerPort::Output)
         || !matches!(source.to, PowerTarget::Conductor { .. } | PowerTarget::Input { .. })
         || !matches!(graph.sites.get(source.from.index())?.source, SiteSource::Component(node) if node == use_.reset)
-        || !matches!(
-            graph.nodes.get(use_.reset.index())?.kind,
-            CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }
-        )
+        || !matches!(graph.nodes.get(use_.reset.index())?.kind, CircuitNodeKind::Observer { .. })
     {
         return None;
     }
@@ -756,9 +875,12 @@ fn compile_outputs(
     component: &RegionComponent,
     cell: &CellContract,
     use_: &CellUse,
+    private_resource: &CellResourcePin,
+    transfer: CellResourceTransfer,
     power_index: &PowerIndex,
     accepted: LayerExprId,
     transfer_when: LayerExprId,
+    lifecycle: &[LayerLifecycleOccurrence],
     builder: &mut LayerBuilder<'_>,
 ) -> Result<Result<Box<[LayerOutput]>, (LayerWitness, LayerDeclineReason)>, String> {
     let mut outputs = Vec::new();
@@ -769,6 +891,7 @@ fn compile_outputs(
         (Some(use_.retraction.routes.near_changed), accepted),
     ];
     for &port_index in &component.ports {
+        builder.visit()?;
         let port = catalog.ports[port_index as usize];
         if port.direction != BoundaryDirection::Output {
             continue;
@@ -797,6 +920,17 @@ fn compile_outputs(
                 continue;
             }
         }
+        if let BoundaryPortKind::GuardState { test, .. } = port.kind {
+            let Some(emitted_when) = compile_state_output(graph, use_.actor, private_resource, transfer, test, accepted, transfer_when, builder)?
+            else {
+                return Ok(Err((LayerWitness::Actor(use_.actor), LayerDeclineReason::BoundaryEffectUnsupported)));
+            };
+            value_outputs.push(LayerOutput {
+                port: port_index,
+                emitted_when,
+            });
+            continue;
+        }
         let BoundaryPortKind::Callback { occurrence } = port.kind else {
             return Ok(Err((LayerWitness::Actor(use_.actor), LayerDeclineReason::BoundaryEffectUnsupported)));
         };
@@ -807,11 +941,8 @@ fn compile_outputs(
         let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
             return Err("callback port ordinal is outside the graph route".into());
         };
-        let is_lifecycle = (retraction_route_phase(use_, occurrence.route).is_some()
-            && is_live_update(delivery)
-            && callback_targets_actor(graph, delivery, use_.actor))
-            || (reset_occurrence(use_, occurrence) && callback_targets_reset(graph, delivery, use_.reset));
-        if is_lifecycle {
+        // A cold row is omitted here only when its original occurrence was retained above.
+        if lifecycle.iter().any(|row| row.occurrence == occurrence) {
             continue;
         }
         let is_immediate = phases.iter().any(|(route, _)| *route == Some(occurrence.route));
@@ -839,6 +970,56 @@ fn compile_outputs(
     let mut outputs: Vec<_> = outputs.into_iter().map(|(_, _, output)| output).collect();
     outputs.extend(value_outputs);
     Ok(Ok(outputs.into_boxed_slice()))
+}
+
+/// Lower an owned actor or private-token predicate at the post-pull cut without exposing intermediate state.
+fn compile_state_output(
+    graph: &CompileGraph,
+    actor: PistonId,
+    resource: &CellResourcePin,
+    transfer: CellResourceTransfer,
+    test: StateTest,
+    accepted: LayerExprId,
+    transfer_when: LayerExprId,
+    builder: &mut LayerBuilder<'_>,
+) -> Result<Option<LayerExprId>, String> {
+    let state_is_owned = match test {
+        StateTest::PistonExtended(piston) | StateTest::PistonHeadPresent(piston) | StateTest::PistonAvailability { piston, .. } => piston == actor,
+        StateTest::ResourceEnabled(id) => id == resource.resource && id == transfer.resource && graph.resources.get(id.index()).is_some(),
+        StateTest::ResourceAt { resource: id, contact } => {
+            id == resource.resource && id == transfer.resource && graph.resources.get(id.index()).is_some_and(|spec| spec.contacts.contains(&contact))
+        }
+    };
+    if !state_is_owned {
+        return Ok(None);
+    }
+    let input = builder.input(LayerInputSource::State(test), LayerInputRole::AcceptanceRevalidation)?;
+    let old_value = builder.input_expr(input)?;
+    let value = match test {
+        StateTest::PistonExtended(_) => old_value,
+        StateTest::PistonHeadPresent(_) => {
+            let not_accepted = builder.not(accepted)?;
+            builder.all([old_value, not_accepted])?
+        }
+        StateTest::PistonAvailability {
+            is: PistonAvailability::BasePending,
+            ..
+        } => builder.any([old_value, accepted])?,
+        StateTest::PistonAvailability { .. } => {
+            let not_accepted = builder.not(accepted)?;
+            builder.all([old_value, not_accepted])?
+        }
+        StateTest::ResourceEnabled(_) => {
+            let no_transfer = builder.not(transfer_when)?;
+            builder.all([old_value, no_transfer])?
+        }
+        StateTest::ResourceAt { contact, .. } if contact == transfer.destination => builder.any([old_value, transfer_when])?,
+        StateTest::ResourceAt { .. } => {
+            let no_transfer = builder.not(transfer_when)?;
+            builder.all([old_value, no_transfer])?
+        }
+    };
+    Ok(Some(value))
 }
 
 fn find_port(catalog: &BoundaryCatalog, owner: BoundaryOwner, direction: BoundaryDirection, kind: BoundaryPortKind) -> Option<usize> {
@@ -969,13 +1150,19 @@ impl<'a> LayerBuilder<'a> {
         let identity = if all { true } else { false };
         let absorbing = !identity;
         let mut operands = Vec::new();
-        for value in values {
+        let mut pending: Vec<_> = values.into_iter().collect();
+        let mut seen = rustc_hash::FxHashSet::default();
+        while let Some(value) = pending.pop() {
             self.visit()?;
+            if !seen.insert(value) { continue; }
+            if self.interned.get(&LayerExpr::Not(value)).is_some_and(|opposite| seen.contains(opposite)) {
+                return self.constant(absorbing);
+            }
             match self.expression(value)?.clone() {
                 LayerExpr::Constant(value) if value == absorbing => return self.constant(absorbing),
                 LayerExpr::Constant(value) if value == identity => {}
-                _ if !operands.contains(&value) => operands.push(value),
-                _ => {}
+                LayerExpr::Not(child) if seen.contains(&child) => return self.constant(absorbing),
+                _ => operands.push(value),
             }
         }
         operands.sort_unstable();

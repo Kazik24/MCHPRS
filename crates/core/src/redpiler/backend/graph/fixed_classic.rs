@@ -3,6 +3,8 @@
 //! This deliberately keeps `CircuitState` and `GraphFuture` as the owners of
 //! component state and scheduled ticks. The executor replaces only graph
 //! lookup, route selection, and wire-walk dispatch with dense typed tables.
+//! Each episode captures a neighborhood once, then uses local u32 indices for
+//! its inputs and ordered frontiers. Nested episodes retain separate scratch.
 use super::*;
 use std::collections::VecDeque;
 
@@ -28,12 +30,16 @@ enum FixedCapture {
 #[derive(Debug, Clone, Copy)]
 struct WalkSite {
     site: SiteId,
+    /// The state owner is resolved once when this alias is first captured.
+    node: NodeId,
     capture: FixedCapture,
     visited_wire: bool,
     x_bias: i8,
     z_bias: i8,
     layer: u32,
     heading: u8,
+    /// Index of this root's captured neighborhood, or NO_SLOT before discovery.
+    neighbors: u32,
 }
 
 /// Scratch is sparse in discovered sites. `slots` is the only dense per-program
@@ -41,7 +47,10 @@ struct WalkSite {
 pub(super) struct FixedClassicScratch {
     slots: Vec<u32>,
     sites: Vec<WalkSite>,
-    queues: [VecDeque<SiteId>; 3],
+    /// Local capture indices; NO_SLOT denotes an immutable/inert neighbor.
+    neighbors: Vec<[u32; 24]>,
+    /// FIFO frontiers contain capture indices, avoiding global SiteId lookups.
+    queues: [VecDeque<u32>; 3],
     layer: u32,
 }
 
@@ -50,6 +59,7 @@ impl FixedClassicScratch {
         Self {
             slots: vec![NO_SLOT; site_count],
             sites: Vec::with_capacity(64),
+            neighbors: Vec::with_capacity(16),
             queues: std::array::from_fn(|_| VecDeque::new()),
             layer: 0,
         }
@@ -60,6 +70,7 @@ impl FixedClassicScratch {
             self.slots[site.site.index()] = NO_SLOT;
         }
         self.sites.clear();
+        self.neighbors.clear();
         for queue in &mut self.queues {
             queue.clear();
         }
@@ -80,27 +91,32 @@ impl FixedClassicScratch {
         if let Some(slot) = self.slot(site) {
             return Some(slot);
         }
-        let capture = match program.sites[site.index()] {
+        let (node, capture) = match program.sites[site.index()] {
             FixedClassicSite::Inert => unreachable!(),
-            FixedClassicSite::Wire { node, .. } => FixedCapture::Wire(backend.wire_state(node)),
+            FixedClassicSite::Wire { node, .. } => (node, FixedCapture::Wire(backend.wire_state(node))),
             FixedClassicSite::Gate(node) => {
                 let state = backend.node_state(node);
-                FixedCapture::Gate {
-                    powered: state.powered,
-                    locked: state.repeater_locked,
-                }
+                (
+                    node,
+                    FixedCapture::Gate {
+                        powered: state.powered,
+                        locked: state.repeater_locked,
+                    },
+                )
             }
         };
         let slot = self.sites.len();
         self.slots[site.index()] = slot as u32;
         self.sites.push(WalkSite {
             site,
+            node,
             capture,
             visited_wire: false,
             x_bias: 0,
             z_bias: 0,
             layer: 0,
             heading: NO_HEADING,
+            neighbors: NO_SLOT,
         });
         Some(slot)
     }
@@ -309,8 +325,8 @@ impl GraphBackend {
         while !scratch.queues[0].is_empty() || !scratch.queues[1].is_empty() {
             let count = scratch.queues[0].len();
             for _ in 0..count {
-                let site = scratch.queues[0].pop_front().unwrap();
-                self.fixed_classic_dispatch_site(program, site, scratch)?;
+                let slot = scratch.queues[0].pop_front().unwrap();
+                self.fixed_classic_dispatch_site(program, slot, scratch)?;
             }
             Self::fixed_classic_shift_queues(scratch);
             scratch.layer += 1;
@@ -321,13 +337,13 @@ impl GraphBackend {
     fn fixed_classic_dispatch_site(
         &mut self,
         program: &FixedClassicProgram,
-        site: SiteId,
+        slot: u32,
         scratch: &mut FixedClassicScratch,
     ) -> Result<(), GraphExecutionError> {
-        let slot = scratch.slot(site).expect("fixed callback site was captured");
-        match (program.sites[site.index()], scratch.sites[slot].capture) {
-            (FixedClassicSite::Inert, _) => Ok(()),
-            (FixedClassicSite::Wire { node, .. }, FixedCapture::Wire(_)) => {
+        let captured = scratch.sites[slot as usize];
+        let node = captured.node;
+        match captured.capture {
+            FixedCapture::Wire(_) => {
                 self.counts.callbacks += 1;
                 #[cfg(test)]
                 {
@@ -335,7 +351,7 @@ impl GraphBackend {
                 }
                 self.fixed_classic_evaluate_wire_node(program, node, scratch)
             }
-            (FixedClassicSite::Gate(node), FixedCapture::Gate { powered, locked }) => {
+            FixedCapture::Gate { powered, locked } => {
                 self.counts.callbacks += 1;
                 let observed = ObservedSite {
                     profile: None,
@@ -344,22 +360,24 @@ impl GraphBackend {
                 };
                 self.fixed_classic_update(node, Some(&observed))
             }
-            _ => unreachable!("fixed site capture disagrees with its typed descriptor"),
         }
     }
 
     fn fixed_classic_propagate(&mut self, program: &FixedClassicProgram, wire_index: usize, scratch: &mut FixedClassicScratch, layer: u32) {
         let wire = program.wires[wire_index];
-        let heading = self.fixed_classic_identify_neighbors(program, wire_index, scratch);
-        let neighbor_slots = wire.neighbors.map(|site| scratch.slot(site));
+        let neighbors = self.fixed_classic_identify_neighbors(program, wire_index, scratch);
+        let root_slot = scratch.slot(wire.root).unwrap();
+        let heading = scratch.sites[root_slot].heading as usize;
+        let neighbor_slots = &scratch.neighbors[neighbors];
         for &canonical_slot in &crate::redstone::wire::TURBO_ORDER[heading] {
-            let site = wire.neighbors[canonical_slot];
             // Preserve layer state even for currently unadmitted sites: another
             // wire may admit the same SiteId later in this walk. Inert sites are
             // the only descriptors omitted from scratch and have no effect.
-            let Some(walk_slot) = neighbor_slots[canonical_slot] else {
+            let walk_slot = neighbor_slots[canonical_slot];
+            if walk_slot == NO_SLOT {
                 continue;
-            };
+            }
+            let walk_slot = walk_slot as usize;
             let next_layer = layer + 1;
             let changed = if next_layer > scratch.sites[walk_slot].layer {
                 scratch.sites[walk_slot].layer = next_layer;
@@ -368,14 +386,15 @@ impl GraphBackend {
                 false
             };
             if changed && wire.admitted & (1 << canonical_slot) != 0 {
-                scratch.queues[1].push_back(site);
+                scratch.queues[1].push_back(walk_slot as u32);
             }
         }
         for &canonical_slot in &crate::redstone::wire::TURBO_ORDER[heading][..4] {
-            let site = wire.neighbors[canonical_slot];
-            let Some(walk_slot) = neighbor_slots[canonical_slot] else {
+            let walk_slot = neighbor_slots[canonical_slot];
+            if walk_slot == NO_SLOT {
                 continue;
-            };
+            }
+            let walk_slot = walk_slot as usize;
             let next_layer = layer + 2;
             let changed = if next_layer > scratch.sites[walk_slot].layer {
                 scratch.sites[walk_slot].layer = next_layer;
@@ -384,19 +403,25 @@ impl GraphBackend {
                 false
             };
             if changed && wire.admitted & (1 << canonical_slot) != 0 {
-                scratch.queues[2].push_back(site);
+                scratch.queues[2].push_back(walk_slot as u32);
             }
         }
     }
 
+    /// Return the local neighborhood index, preserving its first capture and heading.
     fn fixed_classic_identify_neighbors(&self, program: &FixedClassicProgram, wire_index: usize, scratch: &mut FixedClassicScratch) -> usize {
         let wire = program.wires[wire_index];
         let root_slot = scratch.capture(self, program, wire.root).expect("wire root is a captured wire site");
-        let slots = wire.neighbors.map(|site| scratch.capture(self, program, site));
-        if scratch.sites[root_slot].heading != NO_HEADING {
-            return scratch.sites[root_slot].heading as usize;
+        let cached = scratch.sites[root_slot].neighbors;
+        if cached != NO_SLOT {
+            return cached as usize;
         }
-        let visited = slots.map(|slot| slot.is_some_and(|slot| scratch.sites[slot].visited_wire));
+        // Capture all neighbors eagerly before computing direction, exactly as
+        // before. Once present, their local indices remain valid until clear().
+        let slots = wire
+            .neighbors
+            .map(|site| scratch.capture(self, program, site).map_or(NO_SLOT, |slot| slot as u32));
+        let visited = slots.map(|slot| slot != NO_SLOT && scratch.sites[slot as usize].visited_wire);
         let from_west = visited[0] || visited[7] || visited[8];
         let from_east = visited[1] || visited[12] || visited[13];
         let from_north = visited[4] || visited[17] || visited[20];
@@ -422,12 +447,15 @@ impl GraphBackend {
             }
             crate::redstone::wire::compute_heading(x_bias, z_bias)
         };
-        for slot in slots.into_iter().flatten() {
-            scratch.sites[slot].x_bias = x_bias as i8;
-            scratch.sites[slot].z_bias = z_bias as i8;
+        for slot in slots.into_iter().filter(|slot| *slot != NO_SLOT) {
+            scratch.sites[slot as usize].x_bias = x_bias as i8;
+            scratch.sites[slot as usize].z_bias = z_bias as i8;
         }
         scratch.sites[root_slot].heading = heading as u8;
-        heading
+        let index = scratch.neighbors.len();
+        scratch.neighbors.push(slots);
+        scratch.sites[root_slot].neighbors = index as u32;
+        index
     }
 
     fn fixed_classic_shift_queues(scratch: &mut FixedClassicScratch) {
@@ -435,7 +463,13 @@ impl GraphBackend {
         scratch.queues[2].clear();
     }
 
-    fn fixed_classic_turbo_power(&self, program: &FixedClassicProgram, wire: FixedClassicWire, scratch: &FixedClassicScratch) -> u8 {
+    fn fixed_classic_turbo_power(
+        &self,
+        program: &FixedClassicProgram,
+        wire: FixedClassicWire,
+        scratch: &FixedClassicScratch,
+        neighbors: usize,
+    ) -> u8 {
         let mut block_power = 0;
         for query in wire.no_dust {
             block_power = block_power.max(self.fixed_classic_query(program, query, Some(scratch)));
@@ -449,11 +483,9 @@ impl GraphBackend {
             while inputs != 0 {
                 let canonical_slot = inputs.trailing_zeros() as usize;
                 inputs &= inputs - 1;
-                let site = wire.neighbors[canonical_slot];
-                let Some(walk_slot) = scratch.slot(site) else {
-                    unreachable!("compiled Turbo mask references an undiscovered site");
-                };
-                let FixedCapture::Wire(input) = scratch.sites[walk_slot].capture else {
+                let walk_slot = scratch.neighbors[neighbors][canonical_slot];
+                debug_assert_ne!(walk_slot, NO_SLOT, "compiled Turbo mask references an undiscovered site");
+                let FixedCapture::Wire(input) = scratch.sites[walk_slot as usize].capture else {
                     unreachable!("compiled Turbo mask references a non-wire site");
                 };
                 wire_power = wire_power.max(input.power);
@@ -477,11 +509,11 @@ impl GraphBackend {
         let wire_plan = program.wires[wire_index];
         let root_slot = scratch.capture(self, program, wire_plan.root).expect("wire root is a captured wire site");
         scratch.sites[root_slot].visited_wire = true;
-        self.fixed_classic_identify_neighbors(program, wire_index, scratch);
+        let neighbors = self.fixed_classic_identify_neighbors(program, wire_index, scratch);
         let FixedCapture::Wire(mut wire) = scratch.sites[root_slot].capture else {
             unreachable!("fixed wire root has a gate capture");
         };
-        let power = self.fixed_classic_turbo_power(program, wire_plan, scratch);
+        let power = self.fixed_classic_turbo_power(program, wire_plan, scratch, neighbors);
         if wire.power == power {
             return Ok(());
         }
@@ -676,5 +708,68 @@ impl GraphBackend {
     fn fixed_classic_raw_sides(bits: u8, power: u8) -> RedstoneWire {
         let side = |shift: u32| RedstoneWireSide::from_id(u32::from((bits >> shift) & 3u8));
         RedstoneWire::new(side(0), side(2), side(4), side(6), power)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plot::PlotWorld;
+    use crate::world::storage::Chunk;
+    use mchprs_blocks::BlockDirection;
+    use mchprs_blocks::blocks::{Lever, LeverFace};
+
+    #[test]
+    fn cached_neighbors_keep_held_samples_and_nested_capture_lifetimes() {
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        let source = BlockPos::new(5, 20, 5);
+        let dust = source.offset(BlockFace::East);
+        for position in [source, dust] {
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+        }
+        world.set_block(
+            source,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
+        world.set_block(dust, Block::RedstoneWire { wire: Default::default() });
+        let wire = crate::redstone::wire::get_state_for_placement(&world, dust);
+        world.set_block(dust, Block::RedstoneWire { wire });
+        let mut backend = GraphBackend::compile_with_options(
+            &world,
+            (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+            vec![],
+            &crate::redpiler::CompilerOptions {
+                optimization_level: Some(2),
+                ..Default::default()
+            },
+            Arc::default(),
+        )
+        .unwrap();
+        let program = backend.fixed_classic.clone().unwrap();
+        let mut outer = FixedClassicScratch::new(program.sites.len());
+        let neighbors = backend.fixed_classic_identify_neighbors(&program, 0, &mut outer);
+        let node = backend.positions[&source];
+        let source_slot = outer.sites.iter().position(|site| site.node == node).expect("eager source capture");
+        let source_site = outer.sites[source_slot].site;
+        assert!(matches!(outer.sites[source_slot].capture, FixedCapture::Gate { powered: false, .. }));
+
+        // A later live write must not refresh an existing episode's sample.
+        let ComponentState::Electrical(state) = &mut backend.state.components[node.index()] else {
+            panic!("source state")
+        };
+        state.powered = true;
+        assert_eq!(backend.fixed_classic_identify_neighbors(&program, 0, &mut outer), neighbors);
+        assert!(matches!(outer.sites[source_slot].capture, FixedCapture::Gate { powered: false, .. }));
+
+        let mut nested = FixedClassicScratch::new(program.sites.len());
+        let nested_slot = nested.capture(&backend, &program, source_site).unwrap();
+        assert!(matches!(nested.sites[nested_slot].capture, FixedCapture::Gate { powered: true, .. }));
+        assert!(matches!(outer.sites[source_slot].capture, FixedCapture::Gate { powered: false, .. }));
+        outer.clear();
+        let next = outer.capture(&backend, &program, source_site).unwrap();
+        assert!(matches!(outer.sites[next].capture, FixedCapture::Gate { powered: true, .. }));
+        assert!(outer.neighbors.is_empty());
     }
 }

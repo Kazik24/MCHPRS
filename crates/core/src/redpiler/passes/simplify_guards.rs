@@ -583,7 +583,7 @@ mod tests {
             assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);
-                let enabled = !matches!(name, "compile-classic-redstone" | "compile-fixed-classic") && level.is_none_or(|level| level >= minimum);
+                let enabled = name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);
                 assert_eq!(entry.enabled, enabled, "{name} at {level:?}");
                 assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 7);
             }

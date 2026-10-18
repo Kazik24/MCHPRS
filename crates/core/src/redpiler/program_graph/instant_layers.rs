@@ -65,12 +65,36 @@ pub(crate) struct LayerInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Source predicate attached to one region-local Boolean input.
 pub(crate) enum LayerInputSource {
+    /// This samples an outside directional source above a four-bit threshold, without reading owned wires.
+    SourceAbove {
+        /// This is the original outside source site.
+        site: SiteId,
+        /// This preserves the original electrical channel and direction.
+        port: PowerPort,
+        /// This is the exclusive threshold after accumulating path attenuation.
+        threshold: u8,
+    },
     /// This is an original callback occurrence delivered through the referenced input port.
-    BoundaryEvent { port: u32, occurrence: RouteOccurrence },
+    BoundaryEvent {
+        /// This indexes the original catalog input port that admits the callback.
+        port: u32,
+        /// This identifies the original route and delivery ordinal of the event.
+        occurrence: RouteOccurrence,
+    },
     /// This is positive strength after the original link guard and attenuation are applied.
-    PowerContribution { port: u32, link: PowerLink },
+    PowerContribution {
+        /// This indexes the original catalog input port that supplies the contribution.
+        port: u32,
+        /// This retains the source, direction, guard and attenuation of the original link.
+        link: PowerLink,
+    },
     /// This reads the exact recognized reset observer's positive output on an original power link.
-    LocalResetOutput { observer: NodeId, link: PowerLink },
+    LocalResetOutput {
+        /// This is the recognized observer whose output remains owned by the existing scheduler.
+        observer: NodeId,
+        /// This is its exact direct or static-conductor input link from the source graph.
+        link: PowerLink,
+    },
     /// This reads the exact live or captured graph state predicate at the declared phase.
     State(StateTest),
 }
@@ -91,7 +115,7 @@ pub(crate) enum LayerInputRole {
 pub(crate) struct LayerOutput {
     /// This indexes the original boundary catalog row without collapsing duplicate occurrences.
     pub(crate) port: u32,
-    /// This is the expression under which the effect or value represented by the row is active.
+    /// This enables callback dispatch or gives the Boolean value of a Power/GuardState output.
     pub(crate) emitted_when: LayerExprId,
 }
 
@@ -142,17 +166,24 @@ pub(crate) enum LayerLifecyclePhase {
     DeferredResourceRestoration,
     /// This is an observer's later watched-base reset lifecycle route.
     ResetObserverLifecycle,
+    /// This is the reset observer's original output route after its accepted pull.
+    ResetOutput,
+    /// This is the piston actor's later far-contact shape route.
+    ResetFarShapeChange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Why this original callback remains outside the finite pull-computation wave.
 pub(crate) enum LayerLifecycleReason {
-    /// This piston update is inert because acceptance already changed its availability to BasePending.
-    BasePendingSelfUpdate,
-    /// This observer update is a preserved reset-output wake handled by the ordinary scheduler.
-    ResetObserverUpdate { observer: NodeId },
+    /// This cell's own Update or recognized non-wire Shape cannot start another finite use.
+    InertCellCallback,
+    /// This observer notification is a preserved reset wake handled by the ordinary scheduler.
+    ResetObserverUpdate {
+        /// This is the existing reset observer that receives the original callback.
+        observer: NodeId,
+    },
     /// This callback is retained for ordinary Graph execution after the finite layer cut.
-    DeferredGraphLifecycle,
+    OrdinaryGraphLifecycle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +195,56 @@ pub(crate) struct LayerPinValue {
     pub(crate) pin: CellPinId,
     /// This is the shared Boolean expression for the pin at FIFO acceptance revalidation.
     pub(crate) value: LayerExprId,
+}
+
+/// Compact executable expression program; it owns no wire, walk, capture or cell-pin table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReducedLayerProgram {
+    /// These are the remaining boundary and small state operands, in dense input order.
+    pub(crate) inputs: Box<[LayerInput]>,
+    /// These shared operations are evaluated once in their topological order.
+    pub(crate) expressions: Box<[LayerExpr]>,
+    /// These ordered roots retain outputs, memory writes and accepted-use reset obligations.
+    pub(crate) roots: Box<[(LayerRoot, LayerExprId)]>,
+}
+
+/// Meaning of an observable expression; duplicate boundary outputs keep separate entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LayerRoot {
+    /// This guards admission at the declared stationary wave entry.
+    StationaryEntry,
+    /// This indexes the original region output, preserving callback multiplicity and order.
+    Output(usize),
+    /// This indexes a selected resource transfer, including its unique owner destination.
+    Transfer(usize),
+    /// This indexes a resource's resulting source-vacancy predicate.
+    SourceAbsent(usize),
+    /// This accepted computation occurrence retains its original reset/publication obligation.
+    Accepted { layer: usize, occurrence: usize },
+}
+
+impl ReducedLayerProgram {
+    /// Evaluate without allocation after the caller reserves one Boolean slot per operation.
+    pub(crate) fn evaluate(&self, scratch: &mut [bool], mut input: impl FnMut(LayerInput) -> bool) -> Result<(), &'static str> {
+        if scratch.len() < self.expressions.len() {
+            return Err("layer evaluation scratch is too short");
+        }
+        for (index, expression) in self.expressions.iter().enumerate() {
+            scratch[index] = match expression {
+                LayerExpr::Constant(value) => *value,
+                LayerExpr::Input(id) => input(*self.inputs.get(id.0 as usize).ok_or("layer input is missing")?),
+                LayerExpr::Not(value) if (value.0 as usize) < index => !scratch[value.0 as usize],
+                LayerExpr::All(values) if values.iter().all(|value| (value.0 as usize) < index) => {
+                    values.iter().all(|value| scratch[value.0 as usize])
+                }
+                LayerExpr::Any(values) if values.iter().all(|value| (value.0 as usize) < index) => {
+                    values.iter().any(|value| scratch[value.0 as usize])
+                }
+                _ => return Err("layer operation has a missing or forward operand"),
+            };
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

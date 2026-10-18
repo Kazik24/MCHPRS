@@ -181,24 +181,18 @@ fn assert_contact_projection_matches_full(
 }
 
 fn dust_path_backend(world: &PlotWorld, optimization_level: Option<usize>) -> GraphBackend {
-    let monitor = TaskMonitor::default();
     let options = crate::redpiler::CompilerOptions {
         optimization_level,
         ..Default::default()
     };
-    let mut prepared = passes::rich::prepare(
+    GraphBackend::compile_without_fixed_classic(
         world,
         BOUNDS,
         world.scheduler().iter_entries().collect(),
-        &monitor,
-        crate::redpiler::analysis::AnalysisLimits::default(),
+        &options,
+        Arc::new(TaskMonitor::default()),
     )
-    .unwrap();
-    let pipeline = passes::default_graph_pipeline(&options);
-    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &pipeline, &monitor).unwrap();
-    prepared.finish_pipeline_statistics(&monitor);
-    let lowered = prepared.lower(&monitor).unwrap();
-    GraphBackend::from_lowered(lowered, &monitor).unwrap()
+    .unwrap()
 }
 
 fn captured_wire_walk(backend: &GraphBackend, plan: &WirePlan) -> WireWalk {

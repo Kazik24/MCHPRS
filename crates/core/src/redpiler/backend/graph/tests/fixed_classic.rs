@@ -44,14 +44,14 @@ pub(super) fn compile(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> GraphB
 fn compile_mode(world: &PlotWorld, bounds: (BlockPos, BlockPos), fixed_classic: bool) -> GraphBackend {
     let monitor = Arc::new(TaskMonitor::default());
     monitor.set_budget_multiplier(8);
-    GraphBackend::compile_with_options(
+    let compile = if fixed_classic { GraphBackend::compile_with_options } else { GraphBackend::compile_without_fixed_classic };
+    compile(
         world,
         bounds,
         world.scheduler().iter_entries().collect(),
         &crate::redpiler::CompilerOptions {
             optimization_level: Some(2),
             budget_multiplier: 8,
-            classic_redstone: fixed_classic,
             ..Default::default()
         },
         monitor,
@@ -60,7 +60,7 @@ fn compile_mode(world: &PlotWorld, bounds: (BlockPos, BlockPos), fixed_classic: 
 }
 
 #[test]
-fn fixed_classic_pipeline_publishes_and_executes_whole_program() {
+fn fixed_classic_default_o2_pipeline_publishes_and_executes_whole_program() {
     let world = analog_world();
     let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
     let mut reference = compile(&world, bounds);
@@ -299,7 +299,7 @@ fn fixed_classic_whole_chungus_compilation_and_execution() {
         "activation_seconds":[activation[0].as_secs_f64(),activation[1].as_secs_f64()],
         "general_counts":format!("{:?}",reference.execution_counts()),"fixed_counts":format!("{:?}",candidate.fixed_classic_counts),
         "fixed_general_counts":format!("{:?}",candidate.execution_counts()),
-        "limits":"normal opt-in O2 pipeline; shared scheduler and component state; original Graph retained for oracle/projection; unit-test instrumentation enabled; ordered dust frontiers retained"});
+        "limits":"default O2 pipeline; shared scheduler and component state; original Graph retained for oracle/projection; unit-test instrumentation enabled; ordered dust frontiers retained"});
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/chungus-whole-fixed-classic-{ticks}.json"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
