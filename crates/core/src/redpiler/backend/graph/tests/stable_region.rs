@@ -16,7 +16,14 @@ pub(super) fn stable_graph_at_level(id: &'static str, level: usize) -> (CompileG
         stable_instant_inputs: true,
         ..Default::default()
     };
-    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &passes::default_graph_pipeline(&options), &monitor).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
     (prepared.graph, prepared.entry)
 }
 
@@ -87,7 +94,14 @@ pub(super) fn stable_backend_at(circuit: &Adder, world: &PlotWorld, level: usize
     let monitor = TaskMonitor::default();
     let ticks = world.scheduler().iter_entries().collect();
     let mut prepared = passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).unwrap();
-    passes::run_graph_pipeline(&mut prepared.graph, &options, &prepared.entry, &passes::default_graph_pipeline(&options), &monitor).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
     prepared.finish_pipeline_statistics(&monitor);
     GraphBackend::from_lowered(prepared.lower(&monitor).unwrap(), &monitor).unwrap()
 }

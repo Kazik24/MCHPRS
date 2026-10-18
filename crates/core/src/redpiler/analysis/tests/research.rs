@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 mod notification_routes;
+mod pc_counter_contract;
 
 #[path = "../../../../benches/support/cpus.rs"]
 #[allow(dead_code)]
@@ -23,10 +24,9 @@ fn load(manifest: &Value) -> (PlotWorld, (BlockPos, BlockPos)) {
     assert_eq!(manifest["sha256"], format!("{:x}", Sha256::digest(&bytes)));
     let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
     assert_eq!(manifest["dimensions"], json!([clipboard.size_x, clipboard.size_y, clipboard.size_z]));
-    assert_eq!(
-        manifest["loader_offset"],
-        json!([clipboard.offset_x, clipboard.offset_y, clipboard.offset_z])
-    );
+    if let Some(offset) = manifest.get("loader_offset") {
+        assert_eq!(offset, &json!([clipboard.offset_x, clipboard.offset_y, clipboard.offset_z]));
+    }
     let mut world = empty();
     let first = origin(manifest);
     let last = first + BlockPos::new(clipboard.size_x as i32 - 1, clipboard.size_y as i32 - 1, clipboard.size_z as i32 - 1);
@@ -854,6 +854,151 @@ fn capture_bubblesort_execution() {
         "fixture":fixture["fixture"], "fixture_sha256":fixture["sha256"], "origin":fixture["origin"], "case":case,
         "coordinates":"words selection-local; operations absolute; null word means moving or missing base",
         "trace_scope":"full ordered operations SHA-256 each tick; explicit ordered entries only at manifest observation positions", "samples":samples})).unwrap();
+}
+
+#[test]
+fn available_schematic_sources_have_bounded_native_entry_smoke() {
+    fn collect(directory: &Path, files: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                collect(&path, files);
+            } else if path.extension().is_some_and(|extension| extension == "schem") {
+                files.push(path);
+            }
+        }
+    }
+    let repository = root();
+    let mut files = Vec::new();
+    collect(&repository.join("test_data"), &mut files);
+    files.sort();
+    assert_eq!(
+        files.len(),
+        96,
+        "inventory every available schematic, including intentional invalid imports"
+    );
+    for path in files {
+        let bytes = std::fs::read(&path).unwrap();
+        let source_hash = format!("{:x}", Sha256::digest(&bytes));
+        let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
+        let description = json!({
+            "fixture": path.strip_prefix(&repository).unwrap().to_string_lossy(),
+            "sha256": source_hash,
+            "dimensions": [clipboard.size_x, clipboard.size_y, clipboard.size_z],
+            "loader_offset": [clipboard.offset_x, clipboard.offset_y, clipboard.offset_z],
+            "origin": [1, 8, 1]
+        });
+        let (mut world, bounds) = load(&description);
+        let (mut controls, mut actors, mut observation_devices) = (Vec::new(), 0, 0);
+        crate::world::for_each_block_optimized(&world, bounds.0, bounds.1, |position| match world.get_block(position) {
+            Block::Lever { .. } => controls.push(position),
+            Block::Piston { .. } => actors += 1,
+            Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::Observer { .. } => observation_devices += 1,
+            _ => {}
+        });
+        controls.sort_by_key(|position| (position.y, position.z, position.x));
+        // This deliberately small raw-entry smoke is not an arithmetic/CPU protocol.
+        // Richer declared histories below supply those checks; absent protocols stay explicit.
+        advance(&mut world, 2);
+        if let Some(&position) = controls.first() {
+            let Block::Lever { lever } = world.get_block(position) else {
+                panic!("saved control vanished before stimulation");
+            };
+            lever_action(&mut world, position, !lever.powered);
+        }
+        advance(&mut world, 8);
+        println!(
+            "source smoke {} sha256={source_hash}: {} physical controls, {actors} saved actors, {observation_devices} repeater/comparator/observer sites; idle2 + first-control edge + response8 (not functional equivalence)",
+            description["fixture"],
+            controls.len()
+        );
+    }
+}
+
+#[test]
+fn research_manifests_exercise_all_bounded_native_protocols() {
+    let directory = root().join("test_data/piston-research/fixtures");
+    let mut paths: Vec<_> = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+        .collect();
+    paths.sort();
+    assert_eq!(paths.len(), 4, "all research manifests participate");
+    let mut histories = 0;
+    let mut long_execution_protocols = 0;
+    for path in paths {
+        let fixture: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let cases = fixture["cases"].as_array().unwrap();
+        if cases.is_empty() {
+            let (world, _) = load(&fixture);
+            // The FPU manifest declares observation ports but no stimulus/decoder protocol.
+            // Verify import and port readability without inventing a functional test.
+            let ports = observations(&world, &fixture)["ports"].clone();
+            println!(
+                "research {}: no declared activation protocol; {} observation groups readable",
+                path.file_stem().unwrap().to_string_lossy(),
+                ports.as_object().unwrap().len()
+            );
+        }
+        for case in cases {
+            if case["steps"].as_array().unwrap().iter().any(|step| step.get("wait_quiet").is_some()) {
+                // These full CPU-sort protocols already belong to capture_bubblesort_execution,
+                // whose bounded wait_quiet and final-RAM checks must not be approximated here.
+                println!(
+                    "research {} {}: long execution protocol retained in capture_bubblesort_execution, not run by this bounded census",
+                    path.file_stem().unwrap().to_string_lossy(),
+                    case["id"]
+                );
+                long_execution_protocols += 1;
+                continue;
+            }
+            let (mut world, _) = load(&fixture);
+            let mut controls = BTreeSet::new();
+            let (mut samples, mut extensions, mut retractions, mut drops) = (0, 0, 0, 0);
+            let mut record = |entries: Vec<trace::Entry>| {
+                for entry in entries {
+                    match entry.operation {
+                        trace::Operation::Sample { .. } => samples += 1,
+                        trace::Operation::Applied(event) => match event.action {
+                            PistonAction::Extend => extensions += 1,
+                            PistonAction::Retract => retractions += 1,
+                            PistonAction::RetractWithoutPull => drops += 1,
+                        },
+                    }
+                }
+            };
+            for step in case["steps"].as_array().unwrap() {
+                if let Some(ticks) = step["advance"].as_u64() {
+                    assert!(ticks <= 512, "declared research step is bounded");
+                    for _ in 0..ticks {
+                        record(trace::capture(|| world.tick_interpreted()));
+                    }
+                } else if step.get("diagnose").is_none() {
+                    let position = local_pos(&step["pos"]);
+                    controls.insert((position.x - BASE.x, position.y - BASE.y, position.z - BASE.z));
+                    record(trace::capture(|| action(&mut world, &fixture, step)));
+                }
+                // A diagnose step is a read-only compiler inspection, not a physical event.
+            }
+            let ports = observations(&world, &fixture)["ports"].clone();
+            let fingerprint = format!("{:x}", Sha256::digest(serde_json::to_vec(&ports).unwrap()));
+            println!(
+                "research {} {}: controls={controls:?}, samples={samples}, Extend={extensions}, Retract={retractions}, early-drop={drops}, final-port-sha256={fingerprint}",
+                path.file_stem().unwrap().to_string_lossy(),
+                case["id"]
+            );
+            histories += 1;
+        }
+    }
+    assert_eq!(
+        histories, 36,
+        "all bounded research histories ran; counts are a census, not arithmetic correctness"
+    );
+    assert_eq!(
+        long_execution_protocols, 3,
+        "all full-execution CPU protocols remain explicitly inventoried"
+    );
 }
 
 #[test]

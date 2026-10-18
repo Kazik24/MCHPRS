@@ -14,6 +14,7 @@ pub(crate) mod rich;
 #[cfg(any(test, feature = "unsafe-turbo-fixed-point"))]
 mod settle_dust_networks;
 pub(crate) mod simplify_guards;
+mod compile_fixed_signals;
 pub(crate) mod simplify_instant_resets;
 pub(crate) mod simplify_state_guards;
 pub(crate) mod specialize_instant_pistons;
@@ -262,7 +263,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::rewrite(specialize_instant_pistons::SpecializeInstantPistons)),
         (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
     ];
-    let plans: [(usize, Pass); 7] = [
+    let plans: [(usize, Pass); 8] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Pass::build(contract_dust_paths::ContractDustPaths)),
         (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
@@ -270,6 +271,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::build(compile_instant_resets::CompileInstantResets)),
         (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
         (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
+        (2, Pass::build(compile_fixed_signals::CompileFixedSignals)),
     ];
     let entries = rewrites
         .into_iter()

@@ -24,6 +24,10 @@ rather than running a kernel and then replaying the same wires/callbacks anyway.
    memory. Do not allocate/copy the whole program's component/resource arrays.
 3. Evaluate topological Boolean expressions into reusable scratch. Keep the input frame only
    while reset continuations need it; normal kernels do not retain per-piston consumed masks.
+   Sampling/request construction and accepted computation remain separate. Queue an entry
+   in the existing piston-action FIFO when its accepted work belongs to that phase. Batch
+   consecutive internal uses only after proving that intervening ordinary work is irrelevant;
+   otherwise use a continuation cut in the same queue, or decline before taking ownership.
 4. Replay the compact boundary-effect stream. `WriteOutput` updates boundary shadows;
    `Notify` calls the ordinary typed handler with its original direction/capture meaning;
    reset schedules use existing NodeIds, half-tick offsets, priorities and deduplication.

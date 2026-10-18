@@ -1,6 +1,6 @@
 //! Checked static facts used to partially evaluate wire queries.
 use super::{CallbackReceiver, CircuitDraft, CircuitNodeKind, ComponentState, NodeId, SiteId, SiteSource, WirePlan};
-use mchprs_blocks::blocks::Block;
+use mchprs_blocks::blocks::{Block, RedstoneWire, RedstoneWireSide};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
 /// Property bitplanes for a wire's 24 canonical neighbors; power is never cached.
@@ -15,6 +15,9 @@ pub(crate) struct WireQueryFacts {
     pub(crate) wire: u32,
     /// A set bit proves the no-dust query is zero for a nonsolid wire or air.
     pub(crate) zero_no_dust: u32,
+    /// Fixed raw N/S/E/W sides, two bits each; power and dot/cross regulation remain runtime operands.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) raw_sides: Option<u8>,
     /// Distinct neighbors can never dispatch another wire, so callbacks need no walk.
     pub(crate) isolated: bool,
     /// Pure wire-strength expressions retain live seed reads and captured Turbo reads separately.
@@ -80,6 +83,7 @@ impl WireInputs {
 impl WireQueryFacts {
     pub(crate) fn infer(graph: &CircuitDraft, wire: &WirePlan) -> Self {
         let mut facts = Self::default();
+        let mut fixed_blocks = [Block::Air; 24];
         for (slot, site) in wire.canonical_neighbors.iter().enumerate() {
             let source = graph.sites[site.index()].source;
             let properties = match source {
@@ -106,6 +110,7 @@ impl WireQueryFacts {
                 SiteSource::Contact(_) => None,
             };
             if let Some((block, solid, transparent)) = properties {
+                fixed_blocks[slot] = block;
                 let bit = 1 << slot;
                 let is_wire = matches!(block, Block::RedstoneWire { .. });
                 facts.known |= bit;
@@ -123,6 +128,17 @@ impl WireQueryFacts {
                     facts.zero_no_dust |= bit;
                 }
             }
+        }
+        // Only fixed sources reach this branch. Matching geometry alone would not
+        // prove connection class or diode facing for a selectable contact.
+        if facts.known == (1 << 24) - 1 {
+            let raw = crate::redstone::wire::get_raw_sides_from_neighbors(RedstoneWire::default(), &fixed_blocks);
+            facts.raw_sides = Some(
+                [raw.north, raw.south, raw.east, raw.west]
+                    .into_iter()
+                    .enumerate()
+                    .fold(0, |bits, (index, side)| bits | ((side.get_id() as u8) << (2 * index))),
+            );
         }
         facts.isolated = isolated_neighborhood(graph, wire);
         // A contact may change its geometry without ever containing a wire. Prove
@@ -142,6 +158,17 @@ impl WireQueryFacts {
     pub(crate) fn geometry_at(self, slot: usize) -> Option<(bool, bool)> {
         let bit = 1 << slot;
         (self.known & bit != 0).then_some((self.solid & bit != 0, self.transparent & bit != 0))
+    }
+
+    pub(crate) fn raw_wire(self, power: u8) -> Option<RedstoneWire> {
+        let bits = self.raw_sides?;
+        let side = |shift: u32| RedstoneWireSide::from_id(u32::from((bits >> shift) & 3u8));
+        Some(RedstoneWire::new(side(0), side(2), side(4), side(6), power))
+    }
+
+    pub(crate) fn raw_sides_valid(self) -> bool {
+        self.raw_sides
+            .is_none_or(|bits| self.known == (1 << 24) - 1 && (0..4).all(|index| (bits >> (2 * index)) & 3 != 3))
     }
 }
 

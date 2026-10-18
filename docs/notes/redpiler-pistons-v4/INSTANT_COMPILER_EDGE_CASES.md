@@ -229,6 +229,12 @@ in source review before the new path executed.
 **Evidence:** `stale_resource_publication_does_not_cancel_a_valid_actor_publication` and
 the drop/recapture regression in [components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
+**Fresh corpus evidence:** the revised PC counter's Step 01 128-tick native/Graph/frozen
+episode passes output and full-state checkpoints while accepting 19 `RetractWithoutPull`
+actions, separately from 2,957 ordinary retractions. Thus rejecting or reinterpreting every
+early drop as an ordinary pull would exclude a real target history. These observations do
+not certify the new stationary-cell contracts for early-drop entries.
+
 ### E13. A publication due this tick can still count as an early extension
 
 **Situation:** retraction is sampled during scheduled work or piston actions, before a due
@@ -716,8 +722,14 @@ one computation wave. Reset clock wakeups can start another wave through the exi
 scheduler; no new external lever edge is universally required.
 
 **Evidence/status:** PISTON_MODEL section 5 distinguishes held zero, internal observer/
-restoration callbacks and subsequent response cycles. Existing reset fixtures provide
-test inputs; the new compiler's wave classification has not been implemented or verified.
+restoration callbacks and subsequent response cycles. The executed Step 01 ADDER1BIT
+census records the prepared-0-1-1 history retracting the same seven actors at tick 33,
+extending them at 36, retracting at 39, and repeating in later drains. Across 48 prepared
+histories it observes 1,008 ordinary retractions and 1,008 extensions. The 40 ADDER11BIT
+histories likewise reuse actors across separate drains. No actor had a second ordinary
+retraction within one drain in these histories. This supports a drain-local bound, not a
+permanent consumed bit or a universal reset period. The layered runtime's computation/
+reset classification and safe continuation still require implementation and verification.
 
 ### E41. A finite-use bound does not prove a small symbolic compiler artifact
 
@@ -749,6 +761,23 @@ once. If no supported bound/recipe exists, decline kernel admission before it ow
 
 **Status:** lifecycle review obligation, not an executed failing handoff test. The new reset
 and handoff step must cover staggered clocks and repeated requests explicitly.
+
+### E43. A known Boolean result cannot commit before its acceptance phase
+
+**Situation:** a boundary callback samples power before `PistonActions`. Another queued
+ordinary action can change an inhibit or shared-resource condition before acceptance.
+
+**Consequence:** immediately publishing the kernel's eventual output from that callback
+moves the computation across the scheduler/FIFO boundary and can expose a result that the
+physical action would cancel. Stable external data does not remove ordinary queued work.
+
+**Required rule:** separate sampled requests from accepted effects. Use the existing action
+queue and phase; batch internal acceptances only when intervening work cannot matter. Yield
+at a supported continuation cut or decline before taking ownership. No private region clock.
+
+**Evidence/status:** source requirement from `backend/graph/pistons.rs::enqueue_piston`,
+`drain_piston_actions` and `accept_action`, which rechecks live power and occupancy. The
+layered runtime has not yet been implemented or tested against this obligation.
 
 ## Updating this register
 

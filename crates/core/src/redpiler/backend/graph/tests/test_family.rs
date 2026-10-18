@@ -709,6 +709,47 @@ fn assert_meaningful(row: &FamilyRow) {
 }
 
 #[test]
+fn all_test_fixtures_preserve_independent_control_histories() {
+    const WEIRD: [&str; 5] = [
+        "TEST_WEIRD",
+        "TEST_WEIRD_3",
+        "TEST_WEIRD_INSTANT",
+        "TEST_WEIRD_INSTANT_2",
+        "TEST_WEIRD_INSTANT_3",
+    ];
+    let names: Vec<_> = FAMILY.into_iter().chain(WEIRD).collect();
+    let available = std::fs::read_dir(source())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "schem"))
+        .count();
+    assert_eq!(available, names.len(), "all18 TEST_ fixtures must participate in the contract inventory");
+    for name in names {
+        let circuit = load_circuit(name);
+        assert!(!circuit.controls.is_empty(), "{name}: expected saved or declared added controls");
+        let mut checked = 0;
+        for selected in 0..circuit.controls.len() {
+            let steps = [Step::Toggle(selected)]
+                .into_iter()
+                .chain(ticks(16))
+                .chain([Step::Toggle(selected)])
+                .chain(ticks(16))
+                .collect();
+            let episode = Episode {
+                id: format!("independent_control_{selected}"),
+                steps,
+            };
+            replay(&circuit, &episode).unwrap_or_else(|error| panic!("{name} {}: {error}", episode.id));
+            checked += 1;
+        }
+        eprintln!(
+            "TEST contract {name}: controls={:?}, output-sites={:?}, histories={checked}, added-controls={}, added-floor-supports={}, Graph/native=matched",
+            circuit.controls, circuit.outputs, circuit.added_controls, circuit.floor
+        );
+    }
+}
+
+#[test]
 fn test_family_matches_native_under_active_controls() {
     let mut failures = Vec::new();
     for name in FAMILY {

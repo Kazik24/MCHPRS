@@ -8,6 +8,9 @@
 //! intermediate writes, captures, duplicate callbacks and scheduling. No electrical
 //! fixed point replaces event ordering. Inference is O(24 + contact variants) per
 //! wire, and validation independently re-derives the complete plan.
+//! Fully fixed neighbor classes also compile raw wire sides once, avoiding 24
+//! block-view reconstructions per shape/output query. The supplied wire power
+//! (including held captures) and current dot/cross regulation are never cached.
 //!
 //! Each wire receives masks inferred by the shared graph rule over its 24
 //! canonical sites. Constant profiles and fixed component properties may be
@@ -54,17 +57,22 @@ impl PlanBuilder for SpecializeWireQueries {
         }
         let isolated = plans.iter().flatten().filter(|facts| facts.isolated).count();
         let transfers = plans.iter().flatten().filter(|facts| facts.transfer.is_some()).count();
+        let raw_sides = plans.iter().flatten().filter(|facts| facts.raw_sides.is_some()).count();
         context.monitor.record_preparation_tables(
-            [("certified isolated wires", isolated), ("compiled wire transfers", transfers)]
-                .into_iter()
-                .map(|(table, entries)| PreparationTableStatistics {
-                    stage: "wire query specialization",
-                    table: table.into(),
-                    entries,
-                    capacity: entries,
-                    estimated_bytes: 0,
-                })
-                .collect(),
+            [
+                ("certified isolated wires", isolated),
+                ("compiled wire transfers", transfers),
+                ("compiled raw wire sides", raw_sides),
+            ]
+            .into_iter()
+            .map(|(table, entries)| PreparationTableStatistics {
+                stage: "wire query specialization",
+                table: table.into(),
+                entries,
+                capacity: entries,
+                estimated_bytes: 0,
+            })
+            .collect(),
         );
         Ok(PlanOutput::WireQueries(plans))
     }
@@ -250,6 +258,7 @@ mod tests {
         run(&mut graph, true, &TaskMonitor::default()).unwrap();
         assert_eq!(graph, expected);
         assert_eq!(graph.wires[0].execution.query_facts.unwrap().known, 0);
+        assert_eq!(graph.wires[0].execution.query_facts.unwrap().raw_sides, None);
     }
 
     #[test]

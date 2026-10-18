@@ -248,7 +248,6 @@ fn classic_bent_branch_keeps_native_receiver_fifo_and_exported_ownership() {
     assert_eq!(classic.counts.wire_walks, 0);
 }
 
-
 fn real_fixture() -> (PlotWorld, (BlockPos, BlockPos)) {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/graph-fixtures/simple_and_gate.schem");
     let mut clipboard = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
@@ -732,4 +731,239 @@ fn classic_imported_receiver_ticks_cover_powered_pending_states_and_continuation
             }
         }
     }
+}
+
+#[test]
+fn classic_indexed_readers_reject_indirect_side_input_even_without_callback_edge() {
+    let world = line(4);
+    let prepared = prepare(&world);
+    let members = prepared.graph.wires.iter().map(|wire| wire.node).collect::<Vec<_>>();
+    let baseline = ClassicAnalysis::new(&prepared.graph).infer(&members).unwrap();
+    let receiver = baseline.inputs[0].receiver;
+    let wire_site = prepared
+        .graph
+        .sites
+        .iter()
+        .position(|site| site.source == SiteSource::Component(members[0]))
+        .unwrap();
+    let conductor_site = prepared
+        .graph
+        .sites
+        .iter()
+        .position(|site| match site.source {
+            SiteSource::Constant(profile) => prepared.graph.profiles[profile.index()].solid,
+            _ => false,
+        })
+        .unwrap();
+    let always = prepared.graph.guards.iter().position(|guard| matches!(guard, Guard::Always)).unwrap();
+    let mut near = prepared.graph.clone();
+    near.power_links.push(PowerLink {
+        from: SiteId::new(wire_site as u32),
+        from_port: PowerPort::Stored,
+        to: PowerTarget::Conductor {
+            site: SiteId::new(conductor_site as u32),
+            include_dust: true,
+        },
+        face: BlockFace::Top,
+        attenuation: 0,
+        guard: GuardId::new(always as u32),
+    });
+    near.power_links.push(PowerLink {
+        from: SiteId::new(conductor_site as u32),
+        from_port: PowerPort::Conducted { include_dust: true },
+        to: PowerTarget::Input {
+            node: receiver,
+            port: InputPort::Side,
+        },
+        face: BlockFace::Top,
+        attenuation: 0,
+        guard: GuardId::new(always as u32),
+    });
+    assert_eq!(
+        ClassicAnalysis::new(&near).infer(&members).unwrap_err(),
+        "private wire read through side or quasi port"
+    );
+}
+
+#[test]
+fn classic_merges_callback_neighbor_branches_with_shared_ingress() {
+    let mut native = line(4);
+    for z in 6..10 {
+        let position = BlockPos::new(5, 20, z);
+        native.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+        native.set_block(position, Block::RedstoneWire { wire: Default::default() });
+    }
+    let receiver = BlockPos::new(5, 20, 10);
+    native.set_block(receiver.offset(BlockFace::Bottom), Block::Stone {});
+    native.set_block(
+        receiver,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: BlockDirection::North,
+                delay: 2,
+                powered: false,
+                locked: false,
+            },
+        },
+    );
+    for z in 6..10 {
+        let position = BlockPos::new(5, 20, z);
+        let wire = redstone::wire::get_state_for_placement(&native, position);
+        native.set_block(position, Block::RedstoneWire { wire });
+    }
+    let mut prepared = prepare(&native);
+    let first_branch = prepared
+        .graph
+        .wires
+        .iter()
+        .filter(|wire| prepared.graph.nodes[wire.node.index()].position.unwrap().z == 5)
+        .map(|wire| wire.node)
+        .collect::<Vec<_>>();
+    assert!(ClassicAnalysis::new(&prepared.graph).infer(&first_branch).is_err());
+    let mut general = backend(prepared.graph.clone());
+    optimize(&mut prepared.graph, &prepared.entry);
+    assert_eq!(prepared.graph.plans.classic_nets.len(), 1);
+    assert_eq!(prepared.graph.plans.classic_nets[0].wires.len(), 8);
+    prepared.graph.validate().unwrap();
+    let mut classic = backend(prepared.graph);
+    for enabled in [true, false, true, false] {
+        general.use_block(LEVER_POS).unwrap();
+        classic.use_block(LEVER_POS).unwrap();
+        set_native_lever(&mut native, LEVER_POS, enabled);
+        for _ in 0..4 {
+            assert_same(&general, &classic);
+            assert_eq!(classic.scheduled_ticks(), native.scheduler().iter_entries().collect::<Vec<_>>());
+            for (&position, &node) in &classic.positions {
+                assert_eq!(classic.node_block(node), native.get_block(position));
+            }
+            general.tick().unwrap();
+            classic.tick().unwrap();
+            native.tick_interpreted();
+        }
+    }
+    assert!(classic.counts.classic_net_invocations > 0);
+    assert_eq!(classic.counts.wire_walks, 0);
+}
+
+fn independent_callback_lines() -> PlotWorld {
+    let mut world = line(4);
+    let source = BlockPos::new(5, 20, 7);
+    world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(source, lever(false));
+    for x in 6..10 {
+        let pos = BlockPos::new(x, 20, 7);
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(pos, Block::RedstoneWire { wire: Default::default() });
+    }
+    let receiver = BlockPos::new(10, 20, 7);
+    world.set_block(receiver.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        receiver,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: BlockDirection::West,
+                delay: 2,
+                powered: false,
+                locked: false,
+            },
+        },
+    );
+    for x in 6..10 {
+        let pos = BlockPos::new(x, 20, 7);
+        world.set_block(
+            pos,
+            Block::RedstoneWire {
+                wire: redstone::wire::get_state_for_placement(&world, pos),
+            },
+        );
+    }
+    world
+}
+
+#[test]
+fn classic_guarded_callback_lines_preserve_live_future_and_deopt_before_fresh_input() {
+    let world = independent_callback_lines();
+    let mut prepared = prepare(&world);
+    let mut general = backend(prepared.graph.clone());
+    optimize(&mut prepared.graph, &prepared.entry);
+    assert_eq!(prepared.graph.plans.classic_nets.len(), 2);
+    assert!(prepared.graph.plans.classic_nets.iter().all(|net| !net.guarded_wires.is_empty()));
+    let mut forged = prepared.graph.clone();
+    forged.plans.classic_nets[0].guarded_wires = Box::new([]);
+    assert!(forged.validate().is_err());
+    let mut classic = backend(prepared.graph);
+    for graph in [&mut general, &mut classic] {
+        graph.use_block(LEVER_POS).unwrap();
+    }
+    for _ in 0..3 {
+        assert_same(&general, &classic);
+        general.tick().unwrap();
+        classic.tick().unwrap();
+    }
+    assert!(classic.state.classic_active.iter().all(|active| *active));
+    let source_b = BlockPos::new(5, 20, 7);
+    // A fresh source output exists without its delivery. A's entry must reject the
+    // compact episode BEFORE committing A's new zero and restore A's old 15.
+    for graph in [&mut general, &mut classic] {
+        let node = graph.positions[&source_b];
+        let ComponentState::Electrical(state) = &mut graph.state.components[node.index()] else {
+            unreachable!()
+        };
+        state.powered = true;
+        state.output_strength = 15;
+        graph.use_block(LEVER_POS).unwrap();
+    }
+    assert_same(&general, &classic);
+    assert!(classic.state.classic_active.iter().any(|active| !*active));
+    for _ in 0..8 {
+        general.tick().unwrap();
+        classic.tick().unwrap();
+        assert_same(&general, &classic);
+    }
+    // Deoptimized state survives clone/inspection and projects the scalar future.
+    assert_eq!(classic.state, classic.state.clone());
+    let mut resumed = independent_callback_lines();
+    let mut expected = independent_callback_lines();
+    classic.reset(&mut resumed);
+    general.reset(&mut expected);
+    for _ in 0..8 {
+        resumed.tick_interpreted();
+        expected.tick_interpreted();
+        for position in [
+            LEVER_POS,
+            source_b,
+            BlockPos::new(6, 20, 5),
+            BlockPos::new(10, 20, 5),
+            BlockPos::new(10, 20, 7),
+        ] {
+            assert_eq!(resumed.get_block(position), expected.get_block(position));
+        }
+        assert_eq!(
+            resumed.scheduler().iter_entries().collect::<Vec<_>>(),
+            expected.scheduler().iter_entries().collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn classic_general_wire_write_deopts_in_the_original_walk() {
+    let world = line(4);
+    let mut prepared = prepare(&world);
+    let mut general = backend(prepared.graph.clone());
+    optimize(&mut prepared.graph, &prepared.entry);
+    let mut classic = backend(prepared.graph);
+    let root = BlockPos::new(6, 20, 5);
+    for graph in [&mut general, &mut classic] {
+        let source = graph.positions[&LEVER_POS];
+        let ComponentState::Electrical(state) = &mut graph.state.components[source.index()] else {
+            unreachable!()
+        };
+        state.powered = true;
+        state.output_strength = 15;
+        graph.evaluate_seed(graph.positions[&root], None).unwrap();
+    }
+    assert_same(&general, &classic);
+    assert_eq!(classic.state.classic_active.as_ref(), &[false]);
+    assert_eq!(classic.state.classic_signals.as_ref(), &[0], "deopt must not commit newest source");
+    assert_eq!(classic.wire_state(classic.positions[&root]).power, 15);
 }

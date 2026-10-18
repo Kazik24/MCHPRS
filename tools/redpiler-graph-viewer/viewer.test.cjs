@@ -347,12 +347,12 @@ test('snapshot guards preserve unknown site operands and hide only disabled link
   await load(viewer, adderFixture());
   viewer.elements.get('snapshot').value = 'snapshot:initial';
   viewer.elements.get('snapshot').dispatch('change');
-  assert.equal(viewer.cy.edges('.enabled').length, 168);
-  assert.equal(viewer.cy.edges('.disabled').length, 7);
-  assert.equal(viewer.cy.edges('.unknown').length, 30);
+  assert.equal(viewer.cy.edges('.enabled').length, 188);
+  assert.equal(viewer.cy.edges('.disabled').length, 13);
+  assert.equal(viewer.cy.edges('.unknown').length, 4);
   viewer.elements.get('hide-inactive').checked = true;
   viewer.elements.get('hide-inactive').dispatch('change');
-  assert.equal(viewer.cy.edges('.disabled.filtered').length, 7);
+  assert.equal(viewer.cy.edges('.disabled.filtered').length, 13);
   assert.equal(viewer.cy.edges('.unknown.filtered').length, 0);
   const states = viewer.evaluate(`evaluateGuards({graph:{guards:[
     {id:'guard:0',kind:'always'}, {id:'guard:1',kind:'site'},
@@ -444,6 +444,11 @@ test('accepts wire query fact masks and older exports without the optional field
     await load(viewer, graph);
     assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
   }
+  for (const raw_sides of [0, 0x55, 0xaa, null]) {
+    graph.graph.wire_plans[0].query_facts.raw_sides = raw_sides;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  }
 });
 
 test('rejects malformed wire query fact masks while preserving the loaded graph', async (t) => {
@@ -453,6 +458,8 @@ test('rejects malformed wire query fact masks while preserving the loaded graph'
   const previous = viewer.cy;
   const valid = { known: 0xffffff, solid: 1, transparent: 2, wire: 4, zero_no_dust: 0xfffffe };
   const invalid = [[], false, 'masks', {}, { ...valid, known: 0 }, { ...valid, zero_no_dust: 1 }];
+  for (const raw_sides of [-1, 256, 0.5, true, '1', 3, 12, 48, 192]) invalid.push({ ...valid, raw_sides });
+  invalid.push({ ...valid, known: 0xfffffe, solid: 0, raw_sides: 0 });
   for (const isolated of [null, 0, 1, 'true', [], {}]) invalid.push({ ...valid, isolated });
   for (const key of Object.keys(valid)) {
     for (const value of [-1, 1 << 24, 0.5, true, null, '1']) invalid.push({ ...valid, [key]: value });

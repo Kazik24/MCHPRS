@@ -9,6 +9,11 @@ impl CircuitDraft {
 
     pub(crate) fn validate_with_monitor(&self,monitor:&crate::redpiler::TaskMonitor) -> Result<(),GraphBuildError> {
         self.validate_inner()?;
+        if self.plans.fixed_signals != FixedSignalPlans::default()
+            && infer_fixed_signals(self, monitor)
+                .map_err(|_| GraphBuildError::InvalidFixedSignals)? != self.plans.fixed_signals {
+            return Err(GraphBuildError::InvalidFixedSignals);
+        }
         validate_classic(self,monitor)
     }
 

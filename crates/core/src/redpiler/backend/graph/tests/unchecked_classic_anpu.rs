@@ -364,6 +364,20 @@ pub(super) struct UncheckedProgram {
 }
 
 impl UncheckedProgram {
+    pub(super) fn attach_all(backend: &mut GraphBackend) -> Arc<Self> {
+        assert!(backend.program.contacts().is_empty() && backend.program.pistons().is_empty() && backend.program.resources().is_empty());
+        assert!(
+            backend
+                .program
+                .wires()
+                .iter()
+                .all(|wire| wire.execution.query_facts.is_some_and(|facts| facts.known == (1 << 24) - 1))
+        );
+        let program = Arc::new(Self::compile_mode(backend, false));
+        backend.unchecked_classic = Some(program.clone());
+        program
+    }
+
     fn compile(backend: &GraphBackend) -> Self {
         Self::compile_mode(backend, std::env::var_os("MCHPRS_UNCHECKED_ANPU_HYBRID").is_some())
     }
@@ -706,11 +720,11 @@ impl UncheckedProgram {
         );
     }
 
-    fn counts(&self) -> serde_json::Value {
+    pub(super) fn counts(&self) -> serde_json::Value {
         json!({"net_invocations":self.calls.load(Ordering::Relaxed),"source_samples":self.source_samples.load(Ordering::Relaxed),"weighted_terms":self.weighted_terms.load(Ordering::Relaxed),"final_wire_writes":self.final_writes.load(Ordering::Relaxed),"boundary_callbacks":self.boundary_calls.load(Ordering::Relaxed),"changed_wires_outside_directed_root_closure":self.unreachable_changed.load(Ordering::Relaxed)})
     }
 
-    fn coverage(&self) -> serde_json::Value {
+    pub(super) fn coverage(&self) -> serde_json::Value {
         json!({"compiled_nets":self.nets.iter().filter(|net|self.handles(net.wires[0])).count(),"compiled_wires":self.nets.iter().filter(|net|self.handles(net.wires[0])).map(|net|net.wires.len()).sum::<usize>(),"preservation":self.preservation,"nets":self.nets.len(),"wires":self.nets.iter().map(|net|net.wires.len()).sum::<usize>(),"zero_source_nets":self.nets.iter().filter(|net|net.sources.is_empty()).count(),"single_source_nets":self.nets.iter().filter(|net|net.sources.len()==1).count(),"multi_source_nets":self.nets.iter().filter(|net|net.sources.len()>1).count(),"largest_net":self.nets.iter().map(|net|net.wires.len()).max(),"source_terms":self.nets.iter().flat_map(|net|&net.terms).map(Vec::len).sum::<usize>(),"live_contact_block_samples":self.nets.iter().flat_map(|net|&net.sources).filter(|source| matches!(source,Source::LiveBlockPower(_))).count(),"declines":{},"topology":"initial resolved dust geometry frozen; external node strengths, contact block-power queries and boundary selection live","boundary":"v4 ordinary seed entry, root-closure writes only; root-first directed BFS, live callback selection, deduplicated snapshots before dispatch; no transient/order proof"})
     }
 }
@@ -1368,6 +1382,7 @@ impl TapeProgram {
             }
             if recording.ops.len() > 65536 {
                 recording.abort = Some("episode_op_limit");
+                self.recording_active.store(false, Ordering::Relaxed);
             }
         }
     }
@@ -1445,8 +1460,14 @@ impl TapeProgram {
                 cache.replaying = true;
             } else {
                 cache.misses += 1;
-                if self.core[node.index()] || cache.learning_sealed {
-                    let reason = if self.core[node.index()] { "root_core" } else { "sealed_byte_budget" };
+                if self.core[node.index()] || cache.learning_sealed || cache.variants.get(&node).is_some_and(|variants| variants.len() >= 8) {
+                    let reason = if self.core[node.index()] {
+                        "root_core"
+                    } else if cache.learning_sealed {
+                        "sealed_byte_budget"
+                    } else {
+                        "root_variant_limit"
+                    };
                     *cache.fallbacks.entry(reason).or_default() += 1;
                     cache.fallback_wires.insert(node);
                     drop(cache);
@@ -1497,6 +1518,11 @@ impl TapeProgram {
             if matches!(guard, TapeGuard::Source { .. }) && TapeGuard::current(backend, *node).as_ref() != Some(guard) {
                 recording.abort.get_or_insert("source_mutation");
             }
+        }
+        if let Some(reason) = recording.abort {
+            *cache.fallbacks.entry(reason).or_default() += 1;
+            cache.fallback_wires.extend(recording.wires);
+            return result;
         }
         // Only boundary callbacks consume captured snapshots. Keep their original discovery points.
         let used = recording

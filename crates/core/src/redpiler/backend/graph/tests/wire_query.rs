@@ -238,6 +238,7 @@ fn dynamic_contact_geometry_uses_live_seed_and_captured_turbo_selection() {
     let mut backend = backend(graph);
     let plan = root_plan(&backend);
     assert_eq!(plan.execution.query_facts.unwrap().known & (1 << 4), 0);
+    assert_eq!(plan.execution.query_facts.unwrap().raw_sides, None);
     let mut walk = capture_neighbors(&backend, &plan);
     assert_eq!(assert_seed_matches(&mut backend, &plan), 14);
     backend.state.resources[0].enabled = false;
@@ -274,6 +275,95 @@ fn changing_a_compiled_input_mask_invalidates_its_certificate() {
     facts.transfer.as_mut().unwrap().seed.direct = 0;
     graph.wires[wire].execution.query_facts = Some(facts);
     assert!(matches!(graph.validate(), Err(GraphBuildError::InvalidWireQueryFacts { .. })));
+}
+
+#[test]
+fn compiled_raw_sides_preserve_every_supplied_shape_and_held_power() {
+    let mut backend = backend(query_graph());
+    let plan = root_plan(&backend);
+    assert!(plan.execution.query_facts.unwrap().raw_sides.is_some());
+    let mut general = plan.clone();
+    general.execution.query_facts = None;
+    // The argument may be captured and differ from the root's newest live state.
+    set_strength(&mut backend, ROOT, 15);
+    for source_strength in [0, 1, 15] {
+        for position in [DIRECT, NEIGHBOR, STRONG] {
+            set_strength(&mut backend, position, source_strength);
+        }
+        for shape in 0..81 {
+            let mut code = shape;
+            let mut side = || {
+                let value = RedstoneWireSide::from_id(code % 3);
+                code /= 3;
+                value
+            };
+            let supplied = RedstoneWire::new(side(), side(), side(), side(), 0);
+            for power in 0..16 {
+                let supplied = RedstoneWire { power, ..supplied };
+                let compiled = backend.raw_wire_sides(&plan, supplied);
+                let expected = backend.raw_wire_sides(&general, supplied);
+                assert_eq!(compiled, expected);
+                assert_eq!(compiled.power, power);
+                for face in BlockFace::values() {
+                    assert_eq!(
+                        crate::redstone::wire::on_neighbor_changed_from(supplied, compiled, face),
+                        crate::redstone::wire::on_neighbor_changed_from(supplied, expected, face)
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn changing_compiled_raw_sides_invalidates_the_certificate() {
+    let mut graph = query_graph();
+    let mut facts = WireQueryFacts::infer(&graph, &graph.wires[0]);
+    let bits = facts.raw_sides.unwrap();
+    facts.raw_sides = Some((bits & !3) | (((bits & 3) + 1) % 3));
+    assert!(facts.raw_sides_valid());
+    graph.wires[0].execution.query_facts = Some(facts);
+    assert!(matches!(graph.validate(), Err(GraphBuildError::InvalidWireQueryFacts { .. })));
+}
+
+#[test]
+fn compiled_raw_sides_leave_dot_cross_regulation_to_the_supplied_wire() {
+    let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+    world.set_block(ROOT, Block::RedstoneWire { wire: Default::default() });
+    world.set_block(ROOT.offset(BlockFace::Bottom), Block::Stone {});
+    let graph = passes::rich::prepare(
+        &world,
+        (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+        vec![],
+        &TaskMonitor::default(),
+        AnalysisLimits::default(),
+    )
+    .unwrap()
+    .graph;
+    let backend = backend(graph);
+    let plan = root_plan(&backend);
+    let dot = RedstoneWire {
+        power: 7,
+        ..Default::default()
+    };
+    let cross = RedstoneWire::new(
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        3,
+    );
+    for wire in [dot, cross] {
+        let raw = backend.raw_wire_sides(&plan, wire);
+        assert_eq!(
+            raw,
+            RedstoneWire {
+                power: wire.power,
+                ..Default::default()
+            }
+        );
+        assert_eq!(crate::redstone::wire::regulate_sides(wire, raw), wire);
+    }
 }
 
 #[test]

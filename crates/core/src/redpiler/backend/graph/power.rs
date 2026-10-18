@@ -58,7 +58,8 @@ impl GraphBackend {
 
     pub(super) fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
         if port == InputPort::Main
-            && let Some((net,attenuation,source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten() {
+            && let Some((net,attenuation,source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten()
+            && self.state.classic_active[net as usize] {
             let source = self.program.classic().nets[net as usize].source;
             return self.state.classic_signals[net as usize].saturating_sub(attenuation)
                 .max(self.node_state(source).output_strength.saturating_sub(source_attenuation));
@@ -67,6 +68,18 @@ impl GraphBackend {
     }
 
     fn query_power(&self, target: PowerTarget) -> u8 {
+        if let Some((constant, inputs)) = self.program.fixed_signal_query(target) {
+            return inputs.iter().fold(constant, |maximum, input| {
+                if input.require_cross && crate::redstone::wire::is_dot(self.wire_state(input.node)) {
+                    return maximum;
+                }
+                let strength = match &self.classic_proof {
+                    Some(proof) if proof.source == input.node => proof.signal,
+                    _ => self.stored_component_strength(input.node),
+                };
+                maximum.max(strength.saturating_sub(input.attenuation))
+            });
+        }
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]

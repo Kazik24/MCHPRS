@@ -47,6 +47,8 @@ pub(crate) struct TurboCallbackIndex {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// Derived execution data. A graph rewrite discards it; builders publish typed outputs.
 pub(crate) struct ExecutionPlans {
+    /// Exact compiled electrical reads and the separate settled weighted topology witness.
+    pub(crate) fixed_signals: FixedSignalPlans,
     /// Whole private wire regions with exact ordered delayed-receiver programs.
     pub(crate) classic_nets: Vec<ClassicNetPlan>,
     /// Empty disables indexing; otherwise entries align with the wire table.

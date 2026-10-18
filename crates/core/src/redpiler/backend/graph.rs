@@ -5,6 +5,9 @@ mod fixed_point;
 #[cfg(test)]
 #[path = "graph/tests/unchecked_classic_anpu.rs"]
 mod unchecked_classic_anpu;
+#[cfg(test)]
+#[path = "graph/tests/chungus_census.rs"]
+mod chungus_census;
 pub(crate) mod classic;
 #[cfg(test)]
 #[path = "graph/tests/fixed_point_cpu.rs"]
@@ -1554,8 +1557,7 @@ impl GraphBackend {
                 let binding = self.program.classic().route_entries[classic_cursor];
                 if binding.ordinal as usize == index {
                     classic_cursor += 1;
-                    self.run_classic_entry(binding.entry as usize);
-                    continue;
+                    if self.run_classic_entry(binding.entry as usize) { continue; }
                 }
             }
             let delivery = self.program.routes()[route.index()].deliveries[index];
@@ -1757,6 +1759,10 @@ mod hopper_tests;
 #[cfg(test)]
 #[path = "graph/tests/wire_query.rs"]
 mod wire_query_tests;
+
+#[cfg(test)]
+#[path = "graph/tests/fixed_signals.rs"]
+mod fixed_signal_tests;
 
 #[cfg(test)]
 #[path = "graph/tests/isolated_wire.rs"]

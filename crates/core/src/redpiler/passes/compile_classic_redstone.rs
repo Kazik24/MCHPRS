@@ -22,12 +22,25 @@ impl PlanBuilder for CompileClassicRedstone {
 
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         let analysis = ClassicAnalysis::new(graph);
+        #[cfg(test)]
+        record_boundary_closure_census(graph, &analysis);
         let mut reference = None;
         let mut plans = Vec::new();
         let mut declines = BTreeMap::<String, usize>::new();
         let mut proof_work = 0usize;
         let mut receiver_owners = BTreeSet::new();
-        for members in regions(graph) {
+        let mut wire_owners = BTreeSet::new();
+        let mut candidates = regions(graph);
+        let original = candidates.iter().cloned().collect::<BTreeSet<_>>();
+        candidates.extend(
+            callback_closures(graph)
+                .into_iter()
+                .filter(|group| group.len() <= CLASSIC_MAX_WIRES && !original.contains(group)),
+        );
+        for members in candidates {
+            if members.iter().any(|node| wire_owners.contains(node)) {
+                continue;
+            }
             if context.monitor.cancelled() {
                 return Err("cancelled during classic region discovery".into());
             }
@@ -73,6 +86,7 @@ impl PlanBuilder for CompileClassicRedstone {
                     continue;
                 }
             }
+            wire_owners.extend(plan.wires.iter().map(|wire| wire.node));
             receiver_owners.extend(plan.inputs.iter().map(|input| input.receiver));
             plans.push(plan);
         }
@@ -89,9 +103,10 @@ impl PlanBuilder for CompileClassicRedstone {
                 table: "committed signal state".into(),
                 entries: plans.len(),
                 capacity: plans.len(),
-                estimated_bytes: plans.len(),
+                estimated_bytes: plans.len() * 2,
             },
             table("accepted nets", plans.len()),
+            table("guarded boundary wires", plans.iter().map(|plan| plan.guarded_wires.len()).sum()),
             table("private wires", plans.iter().map(|plan| plan.wires.len()).sum()),
             table("direct receiver inputs", plans.iter().map(|plan| plan.inputs.len()).sum()),
             table("entry occurrences", plans.iter().map(|plan| plan.entries.len()).sum()),
@@ -117,6 +132,86 @@ fn table(name: impl Into<String>, entries: usize) -> crate::redpiler::Preparatio
         capacity: entries,
         estimated_bytes: 0,
     }
+}
+
+/// Whole callback-neighbor ownership, including electrical edges. Larger or
+/// multi-ingress closures remain subject to the unchanged first-family proof.
+fn callback_closures(graph: &CompileGraph) -> Vec<Vec<NodeId>> {
+    fn root(parents: &mut [usize], mut node: usize) -> usize {
+        while parents[node] != node {
+            parents[node] = parents[parents[node]];
+            node = parents[node];
+        }
+        node
+    }
+    let mut parents = (0..graph.nodes.len()).collect::<Vec<_>>();
+    for wire in &graph.wires {
+        for site in wire.canonical_neighbors {
+            if let SiteSource::Component(other) = graph.sites[site.index()].source
+                && matches!(graph.nodes[other.index()].kind, CircuitNodeKind::Wire(_))
+            {
+                let left = root(&mut parents, wire.node.index());
+                let right = root(&mut parents, other.index());
+                parents[left] = right;
+            }
+        }
+    }
+    for region in regions(graph) {
+        for pair in region.windows(2) {
+            let left = root(&mut parents, pair[0].index());
+            let right = root(&mut parents, pair[1].index());
+            parents[left] = right;
+        }
+    }
+    let mut groups = BTreeMap::<usize, Vec<NodeId>>::new();
+    for wire in &graph.wires {
+        groups.entry(root(&mut parents, wire.node.index())).or_default().push(wire.node);
+    }
+    let mut groups = groups.into_values().collect::<Vec<_>>();
+    for group in &mut groups {
+        group.sort();
+    }
+    groups.sort_by_key(|group| group[0]);
+    groups
+}
+
+/// Research only: measure the complete callback-neighbor ownership closure before
+/// considering any boundary relaxation. No entry invariant or admission is changed.
+#[cfg(test)]
+fn record_boundary_closure_census(graph: &CompileGraph, analysis: &ClassicAnalysis<'_>) {
+    let Some(path) = std::env::var_os("MCHPRS_CLASSIC_BOUNDARY_CLOSURE_CENSUS") else {
+        return;
+    };
+    let mut groups = callback_closures(graph);
+    let mut sizes = BTreeMap::<usize, usize>::new();
+    let mut sources = BTreeMap::<usize, usize>::new();
+    let mut declines = BTreeMap::<String, usize>::new();
+    let mut candidates = Vec::new();
+    let mut failed_queries = 0;
+    for group in &mut groups {
+        group.sort();
+        *sizes.entry(group.len()).or_default() += 1;
+        let mut ingress = BTreeSet::new();
+        for &node in group.iter() {
+            match analysis.direct_wire_sources(node) {
+                Ok(leaves) => ingress.extend(leaves),
+                Err(_) => failed_queries += 1,
+            }
+        }
+        for node in group.iter() {
+            ingress.remove(node);
+        }
+        *sources.entry(ingress.len()).or_default() += 1;
+        match analysis.infer(group) {
+            Ok(plan) => candidates.push(serde_json::json!({"wires":group.len(),"source":plan.source.index()})),
+            Err(reason) => *declines.entry(reason.into()).or_default() += 1,
+        }
+    }
+    let report = serde_json::json!({"wires":graph.wires.len(),"electrical_regions":regions(graph).len(),
+        "canonical_neighbor_closures":groups.len(),"closure_sizes":sizes,"ingress_counts":sources,
+        "query_failures":failed_queries,"unchanged_infer_declines":declines,"structural_candidates":candidates,
+        "claim":"discovery only; all canonical wire neighbors merged, no callback dropped and no admission changed"});
+    std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
 }
 
 #[cfg(test)]
@@ -170,6 +265,7 @@ fn regions(graph: &CompileGraph) -> Vec<Vec<NodeId>> {
 
 #[cfg(test)]
 fn census(graph: &CompileGraph) -> Census {
+    let classic_analysis = ClassicAnalysis::new(graph);
     let groups = regions(graph);
     let mut report = Census {
         wires: graph.wires.len(),
@@ -352,7 +448,7 @@ fn census(graph: &CompileGraph) -> Census {
                 }
                 serde_json::json!({"node":node.index(),"position":graph.nodes[node.index()].position,"is_ingress":ingress.contains(&node),"main_sources":main.iter().map(|source|serde_json::json!({"node":source.index(),"position":graph.nodes[source.index()].position,"is_private":members.contains(source),"is_ingress":ingress.contains(source)})).collect::<Vec<_>>()})
             }).collect::<Vec<_>>();
-            report.candidate_details.push(serde_json::json!({"wires":group.len(),"first_wire":graph.nodes[group[0].index()].position,"ingress":ingress.iter().map(|node|serde_json::json!({"node":node.index(),"position":graph.nodes[node.index()].position})).collect::<Vec<_>>(),"boundary":boundary,"static_decline":ClassicAnalysis::new(graph).infer(&group).err()}));
+            report.candidate_details.push(serde_json::json!({"wires":group.len(),"first_wire":graph.nodes[group[0].index()].position,"ingress":ingress.iter().map(|node|serde_json::json!({"node":node.index(),"position":graph.nodes[node.index()].position})).collect::<Vec<_>>(),"boundary":boundary,"static_decline":classic_analysis.infer(&group).err()}));
         } else {
             for reason in reasons {
                 *report.declines.entry(reason.into()).or_default() += 1;

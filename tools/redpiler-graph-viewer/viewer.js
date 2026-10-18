@@ -5,6 +5,7 @@ const tables = {
   pistons: "piston", power_links: "power_link", wire_plans: "wire", wire_relations: "wire_relation",
   instant_regions: "instant_region", instant_proxies: "instant_proxy",
   classic_nets: "classic_net",
+  fixed_signal_queries: "fixed_signal",
   dust_paths: "dust_path", comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
 };
 const $ = (id) => document.getElementById(id);
@@ -40,7 +41,7 @@ function validateGraph(data) {
     const rows = data.graph[table];
     if (table === "routes" && rows === null) continue;
     if (table === "callback_links" && rows === undefined) continue;
-    if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets"].includes(table) && rows == null) continue;
+    if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets", "fixed_signal_queries"].includes(table) && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -124,6 +125,10 @@ function validateGraph(data) {
     if (masks.some((mask) => !Number.isInteger(mask) || mask < 0 || mask > 0xffffff)
       || ((facts.solid | facts.transparent | facts.wire | facts.zero_no_dust) & ~facts.known)
       || (facts.zero_no_dust & facts.solid)) throw Error(`${wire.id} has invalid wire query fact masks.`);
+    if (facts.raw_sides != null && (!Number.isInteger(facts.raw_sides) || facts.raw_sides < 0 || facts.raw_sides > 255
+      || facts.known !== 0xffffff || [0, 2, 4, 6].some((shift) => ((facts.raw_sides >> shift) & 3) === 3))) {
+      throw Error(`${wire.id} has invalid compiled raw wire sides.`);
+    }
     if (facts.transfer != null) {
       const diagonals = [7, 8, 12, 13, 17, 18, 20, 21].reduce((mask, slot) => mask | (1 << slot), 0);
       for (const phase of ["seed", "turbo"]) {
@@ -138,8 +143,18 @@ function validateGraph(data) {
     }
   }
   const assignedWires = new Set();
+  for (const query of data.graph.fixed_signal_queries || []) {
+    if (!["live_state", "settled_provenance"].includes(query.semantics) || !Number.isInteger(query.constant) || query.constant < 0 || query.constant > 15 || !Array.isArray(query.inputs)) throw Error(`Invalid fixed signal query: ${query.id}`);
+    if (query.to?.kind === "input") {
+      if (!nodes.has(query.to.node) || !["main", "side", "quasi"].includes(query.to.port)) throw Error(`Invalid fixed signal target: ${query.id}`);
+    } else if (query.to?.kind !== "conductor" || !sites.has(query.to.site) || typeof query.to.include_dust !== "boolean") throw Error(`Invalid fixed signal conductor: ${query.id}`);
+    for (const input of query.inputs) if (!nodes.has(input.node) || !Number.isInteger(input.attenuation) || input.attenuation < 0 || input.attenuation >= 15 || typeof input.require_cross !== "boolean") throw Error(`Invalid fixed signal input: ${query.id}`);
+  }
   for (const net of data.graph.classic_nets || []) {
     if (!nodes.has(net.source) || !Number.isInteger(net.initial_signal) || net.initial_signal < 0 || net.initial_signal > 15 || !net.wires?.length) throw Error(`Invalid classic net: ${net.id}`);
+    for (const guard of net.guarded_wires || []) {
+      if (nodes.get(guard)?.kind?.kind !== 'wire' || net.wires.some((wire) => wire.node === guard)) throw Error(`Invalid classic guarded wire: ${guard}`);
+    }
     for (const wire of net.wires) {
       if (nodes.get(wire.node)?.kind?.kind !== 'wire' || assignedWires.has(wire.node) || !Number.isInteger(wire.attenuation) || wire.attenuation < 0 || wire.attenuation > 15) throw Error(`Invalid classic wire: ${wire.node}`);
       assignedWires.add(wire.node);
@@ -238,6 +253,11 @@ function indexConnections(data, index) {
   for (const net of data.graph.classic_nets || []) {
     add(`${net.id}:ingress`, net.source, net.id, 'classic_signal', net);
     net.inputs.forEach((input, ordinal) => add(`${net.id}:input:${ordinal}`, net.id, input.receiver, 'classic_input', input));
+  }
+  for (const query of data.graph.fixed_signal_queries || []) {
+    const target = query.to.kind === "input" ? query.to.node : sourceNode(query.to.site, index);
+    query.inputs.forEach((input, ordinal) => add(`${query.id}:input:${ordinal}`, input.node, target,
+      query.semantics === "live_state" ? "fixed_live_read" : "settled_weighted_provenance", { ...query, input }));
   }
   return { edges, adjacent };
 }

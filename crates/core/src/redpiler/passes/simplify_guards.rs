@@ -1,5 +1,5 @@
 //! Simplifies pure guard expressions, removes zero or exactly dominated power
-//! reads, and drops only callback deliveries whose Graph handler is proven inert.
+//! reads and impossible wire relations, and drops only callback deliveries whose Graph handler is proven inert.
 //!
 //! Live reads of immutable constant profiles may fold; captured reads, contacts,
 //! component state, and all stateful handlers remain general. Power dominance
@@ -436,9 +436,11 @@ fn apply_rewrite(
             *guard = rewrite.old_to_new[guard.index()];
         }
     }
-    for relation in &mut graph.wire_relations {
+    graph.wire_relations.retain_mut(|relation| {
         relation.guard = rewrite.old_to_new[relation.guard.index()];
-    }
+        rewrite.facts[relation.guard.index()] != PredicateFact::Never
+    });
+    graph.wire_relations.shrink_to_fit();
     graph.power_links = power_links;
     graph.guards = rewrite.guards;
 
@@ -501,6 +503,55 @@ mod tests {
     use mchprs_blocks::BlockPos;
 
     #[test]
+    fn impossible_wire_relations_are_removed_but_captured_relations_remain() {
+        use crate::redpiler::program_graph::{NodeId, WirePlan, WireRelation, WireRelationKind};
+        let mut graph = inert_graph(NodeType::Wire);
+        let wire = Default::default();
+        graph.nodes[0].raw_state = Some(Block::RedstoneWire { wire }.get_id());
+        graph.nodes[0].kind = CircuitNodeKind::Wire(0);
+        graph.nodes[0].state = ComponentState::Wire(wire);
+        graph.wires.push(WirePlan {
+            node: NodeId::new(0),
+            canonical_neighbors: [SiteId::new(0); 24],
+            shape_route: None,
+            turbo_route: Some(RouteId::new(0)),
+            execution: Default::default(),
+        });
+        graph.guards.extend([
+            Guard::Not(GuardId::new(0)),
+            Guard::Site {
+                site: SiteId::new(0),
+                view: OperandView::Captured,
+                test: SiteTest::IsWire,
+            },
+            Guard::All(vec![GuardId::new(1), GuardId::new(2)].into_boxed_slice()),
+        ]);
+        graph.wire_relations = (0..4)
+            .map(|guard| WireRelation {
+                from: NodeId::new(0),
+                to: SiteId::new(0),
+                kind: WireRelationKind::Step,
+                direction: BlockFace::North,
+                guard: GuardId::new(guard),
+            })
+            .collect();
+        graph.validate().unwrap();
+        run_pass(&mut graph);
+        assert_eq!(graph.wire_relations.len(), 2);
+        assert_eq!(graph.wire_relations[0].guard, GuardId::new(0));
+        assert!(matches!(
+            graph.guards[graph.wire_relations[1].guard.index()],
+            Guard::Site {
+                view: OperandView::Captured,
+                ..
+            }
+        ));
+        let once = graph.clone();
+        run_pass(&mut graph);
+        assert_eq!(graph, once);
+    }
+
+    #[test]
     fn optimization_levels_select_rewrites_before_dependent_plan_builders() {
         use crate::redpiler::passes::{Pass, default_graph_pipeline};
         let expected = [
@@ -519,6 +570,7 @@ mod tests {
             (3, "compile-instant-resets"),
             (3, "identify-instant-regions"),
             (3, "compile-instant-proxies"),
+            (2, "compile-fixed-signals"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {

@@ -40,6 +40,7 @@ pub(crate) struct ClassicEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClassicNetPlan {
+    pub(crate) guarded_wires: Box<[NodeId]>,
     /// Strength is the existing component output, committed at each admitted occurrence.
     pub(crate) source: NodeId,
     pub(crate) initial_signal: u8,
@@ -50,6 +51,7 @@ pub(crate) struct ClassicNetPlan {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClassicNet {
+    pub(crate) guarded_wires: Range<usize>,
     pub(crate) source: NodeId,
     pub(crate) wires: Range<usize>,
     pub(crate) inputs: Range<usize>,
@@ -71,6 +73,7 @@ pub(crate) struct ClassicRouteEntry {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct ClassicProgram {
+    pub(crate) guarded_wires: Box<[NodeId]>,
     pub(crate) nets: Box<[ClassicNet]>,
     pub(crate) wires: Box<[ClassicWire]>,
     pub(crate) inputs: Box<[ClassicInput]>,
@@ -105,9 +108,19 @@ impl Expression {
 }
 
 /// Resolves the complete fixed electrical query rather than the saved active contacts.
+/// Guard-blind reverse indexes only narrow candidates; inference retains the original checks
+/// and sorted target/route order. This avoids scanning the whole CPU for each local net.
 pub(crate) struct ClassicAnalysis<'a> {
     graph: &'a CompileGraph,
     inputs: BTreeMap<PowerTarget, Vec<&'a PowerLink>>,
+    /// All input ports structurally consulting each component, including guarded conducted paths.
+    readers: Vec<Vec<PowerTarget>>,
+    /// Route IDs touching each node as source, explicit receiver, or fallback target, in route order.
+    touching_routes: Vec<Vec<usize>>,
+    /// Watched and already-owned wires cannot become private classic cells.
+    watched: BTreeSet<NodeId>,
+    dust_owned: BTreeSet<NodeId>,
+    instant_owned: BTreeSet<NodeId>,
 }
 
 impl<'a> ClassicAnalysis<'a> {
@@ -116,7 +129,75 @@ impl<'a> ClassicAnalysis<'a> {
         for link in &graph.power_links {
             inputs.entry(link.to).or_default().push(link);
         }
-        Self { graph, inputs }
+        let mut analysis = Self {
+            graph,
+            inputs,
+            readers: vec![Vec::new(); graph.nodes.len()],
+            touching_routes: vec![Vec::new(); graph.nodes.len()],
+            watched: BTreeSet::new(),
+            dust_owned: graph.plans.dust_paths.iter().flat_map(|path| path.wires.iter().copied()).collect(),
+            instant_owned: graph
+                .plans
+                .instant
+                .regions
+                .iter()
+                .flat_map(|region| region.wires.iter().copied())
+                .collect(),
+        };
+        for &target in analysis.inputs.keys().filter(|target| matches!(target, PowerTarget::Input { .. })) {
+            let mut dependencies = BTreeSet::new();
+            analysis.dependencies(target, 0, &mut dependencies);
+            for node in dependencies {
+                analysis.readers[node.index()].push(target);
+            }
+        }
+        for (index, route) in graph.routes.iter().enumerate() {
+            let mut nodes = Vec::with_capacity(route.deliveries.len() * 2 + 1);
+            nodes.push(route.source);
+            for delivery in &route.deliveries {
+                if let Some(CallbackReceiver::Component(node)) = delivery.receiver {
+                    nodes.push(node);
+                }
+                if let SiteSource::Component(node) = graph.sites[delivery.target.index()].source {
+                    nodes.push(node);
+                }
+            }
+            nodes.sort_unstable();
+            nodes.dedup();
+            for node in nodes {
+                analysis.touching_routes[node.index()].push(index);
+            }
+        }
+        for node in &graph.nodes {
+            if let CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } = node.kind
+                && let SiteSource::Component(node) = graph.sites[watched.index()].source
+            {
+                analysis.watched.insert(node);
+            }
+        }
+        analysis
+    }
+
+    // Match depends exactly: guards, emission and attenuation do not prune structural readers.
+    fn dependencies(&self, target: PowerTarget, depth: usize, nodes: &mut BTreeSet<NodeId>) {
+        if depth > 8 {
+            return;
+        }
+        for link in self.inputs.get(&target).into_iter().flatten() {
+            if let SiteSource::Component(node) = self.graph.sites[link.from.index()].source {
+                nodes.insert(node);
+            }
+            if let PowerPort::Conducted { include_dust } = link.from_port {
+                self.dependencies(
+                    PowerTarget::Conductor {
+                        site: link.from,
+                        include_dust,
+                    },
+                    depth + 1,
+                    nodes,
+                );
+            }
+        }
     }
 
     fn block(&self, site: SiteId) -> Result<Block, &'static str> {
@@ -215,6 +296,55 @@ impl<'a> ClassicAnalysis<'a> {
         })
     }
 
+    /// A guarded callback wire is geometrically fixed and electrically disjoint
+    /// from both private writes and this episode's changing source. The runtime
+    /// checks its live seed at entry; seed/Turbo equality makes all held visits inert.
+    fn check_guarded_wire(&self, node: NodeId, source: NodeId, owned: &BTreeSet<NodeId>) -> Result<(), &'static str> {
+        let graph = self.graph;
+        let CircuitNodeKind::Wire(index) = graph.nodes[node.index()].kind else {
+            return Err("guarded boundary is not wire");
+        };
+        let plan = &graph.wires[index];
+        let ComponentState::Wire(wire) = graph.nodes[node.index()].state else {
+            return Err("guarded wire state");
+        };
+        let mut blocks = [Block::Air; 24];
+        for (slot, site) in plan.canonical_neighbors.iter().enumerate() {
+            blocks[slot] = self.block(*site)?;
+        }
+        let raw = crate::redstone::wire::get_raw_sides_from_neighbors(wire, &blocks);
+        if crate::redstone::wire::regulate_sides(wire, raw) != wire
+            || BlockFace::values()
+                .into_iter()
+                .any(|face| crate::redstone::wire::on_neighbor_changed_from(wire, raw, face) != wire)
+        {
+            return Err("guarded wire shape is not inert");
+        }
+        let facts = WireQueryFacts::infer(graph, plan);
+        let transfer = facts.transfer.ok_or("guarded wire transfer missing")?;
+        if facts.known != (1 << 24) - 1 || transfer.seed != transfer.turbo || transfer.seed.conditional != 0 {
+            return Err("guarded wire seed/Turbo geometry differs");
+        }
+        let expression = self.query(PowerTarget::Input { node, port: InputPort::Main }, 0)?;
+        if expression.leaves.keys().any(|leaf| *leaf == source || owned.contains(leaf)) {
+            return Err("callback boundary depends on private ingress");
+        }
+        if self.dust_owned.contains(&node) || self.instant_owned.contains(&node) {
+            return Err("guarded boundary has another owner");
+        }
+        Ok(())
+    }
+
+    /// Re-infer all static ownership and transfer facts for a whole proposed region.
+    #[cfg(test)]
+    pub(crate) fn direct_wire_sources(&self, node: NodeId) -> Result<Vec<NodeId>, &'static str> {
+        Ok(self
+            .query(PowerTarget::Input { node, port: InputPort::Main }, 0)?
+            .leaves
+            .into_keys()
+            .collect())
+    }
+
     /// Re-infer all static ownership and transfer facts for a whole proposed region.
     pub(crate) fn infer(&self, members: &[NodeId]) -> Result<ClassicNetPlan, &'static str> {
         if members.is_empty() || members.len() > CLASSIC_MAX_WIRES {
@@ -226,6 +356,7 @@ impl<'a> ClassicAnalysis<'a> {
             return Err("duplicate private wire");
         }
         let mut expressions = Vec::new();
+        let mut guarded_wires = BTreeSet::new();
         let mut sources = BTreeSet::new();
         for &node in members {
             let Some(CircuitNodeDraft {
@@ -246,6 +377,9 @@ impl<'a> ClassicAnalysis<'a> {
                 if let Block::RedstoneWire { .. } = block {
                     match graph.sites[graph.wires[*index].canonical_neighbors[slot].index()].source {
                         SiteSource::Component(other) if owned.contains(&other) => {}
+                        SiteSource::Component(other) if matches!(graph.nodes[other.index()].kind, CircuitNodeKind::Wire(_)) => {
+                            guarded_wires.insert(other);
+                        }
                         _ => return Err("callback-only or external private wire"),
                     }
                 }
@@ -272,6 +406,10 @@ impl<'a> ClassicAnalysis<'a> {
             return Err("not exactly one variable ingress");
         }
         let source = *sources.first().unwrap();
+        for &other in &guarded_wires {
+            self.check_guarded_wire(other, source, &owned)?;
+        }
+
         if !matches!(
             graph.nodes[source.index()].kind,
             CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Torch | NodeType::Repeater { .. })
@@ -306,7 +444,11 @@ impl<'a> ClassicAnalysis<'a> {
         }
         let mut receivers = BTreeSet::new();
         // Every electrical reader is inventoried, including conducted reads and all ports.
-        for target in self.inputs.keys() {
+        let reader_targets = members
+            .iter()
+            .flat_map(|node| self.readers[node.index()].iter().copied())
+            .collect::<BTreeSet<_>>();
+        for target in &reader_targets {
             let PowerTarget::Input { node, port } = *target else { continue };
             if owned.contains(&node) {
                 continue;
@@ -323,7 +465,12 @@ impl<'a> ClassicAnalysis<'a> {
             }
         }
         let mut entries = Vec::new();
-        for (route_index, route) in graph.routes.iter().enumerate() {
+        let route_ids = members
+            .iter()
+            .flat_map(|node| self.touching_routes[node.index()].iter().copied())
+            .collect::<BTreeSet<_>>();
+        for route_index in route_ids {
+            let route = &graph.routes[route_index];
             let private_route = owned.contains(&route.source);
             let turbo_route = match graph.nodes[route.source.index()].kind {
                 CircuitNodeKind::Wire(index) => graph.wires[index].turbo_route == Some(RouteId::new(route_index as u32)),
@@ -350,6 +497,9 @@ impl<'a> ClassicAnalysis<'a> {
                     && owned.contains(&node)
                     && !private_route
                 {
+                    if guarded_wires.contains(&route.source) {
+                        continue;
+                    }
                     if delivery.view != OperandView::Live {
                         return Err("captured external wire entry");
                     }
@@ -364,7 +514,7 @@ impl<'a> ClassicAnalysis<'a> {
                 if private_route {
                     match receiver {
                         None => {}
-                        Some(CallbackReceiver::Component(node)) if owned.contains(&node) => {}
+                        Some(CallbackReceiver::Component(node)) if owned.contains(&node) || guarded_wires.contains(&node) => {}
                         Some(CallbackReceiver::Component(node))
                             if matches!(
                                 graph.nodes[node.index()].kind,
@@ -418,6 +568,7 @@ impl<'a> ClassicAnalysis<'a> {
                             NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Torch | NodeType::Repeater { .. }
                         )
                     ) => {}
+                Some(CallbackReceiver::Component(node)) if guarded_wires.contains(&node) => {}
                 _ => return Err("ingress route prefix may synchronously emit or reenter"),
             }
         }
@@ -504,33 +655,17 @@ impl<'a> ClassicAnalysis<'a> {
                 source_attenuation,
             });
         }
-        for node in &graph.nodes {
-            if let CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } = node.kind
-                && let SiteSource::Component(watched) = graph.sites[watched.index()].source
-                && owned.contains(&watched)
-            {
-                return Err("observer watches private wire");
-            }
+        if owned.iter().any(|node| self.watched.contains(node)) {
+            return Err("observer watches private wire");
         }
-        if graph
-            .plans
-            .dust_paths
-            .iter()
-            .any(|path| path.wires.iter().any(|node| owned.contains(node)))
-        {
+        if owned.iter().any(|node| self.dust_owned.contains(node)) {
             return Err("dust-path ownership overlap");
         }
-        // Existing instant certificates cannot share any privately reconstructed cell.
-        if graph
-            .plans
-            .instant
-            .regions
-            .iter()
-            .any(|region| region.wires.iter().any(|node| owned.contains(node)))
-        {
+        if owned.iter().any(|node| self.instant_owned.contains(node)) {
             return Err("instant region ownership overlap");
         }
         Ok(ClassicNetPlan {
+            guarded_wires: guarded_wires.into_iter().collect(),
             source,
             initial_signal,
             wires: wires.into_boxed_slice(),
@@ -555,6 +690,7 @@ impl ClassicProgram {
             .sum::<usize>();
         use std::mem::size_of;
         plans.len() * size_of::<ClassicNet>()
+            + plans.iter().map(|plan| plan.guarded_wires.len()).sum::<usize>() * size_of::<NodeId>()
             + wires * size_of::<ClassicWire>()
             + inputs * size_of::<ClassicInput>()
             + entries * (size_of::<ClassicEntryOp>() + size_of::<ClassicRouteEntry>())
@@ -564,7 +700,8 @@ impl ClassicProgram {
     }
 
     pub(crate) fn estimated_bytes(&self) -> usize {
-        std::mem::size_of_val(self.nets.as_ref())
+        std::mem::size_of_val(self.guarded_wires.as_ref())
+            + std::mem::size_of_val(self.nets.as_ref())
             + std::mem::size_of_val(self.wires.as_ref())
             + std::mem::size_of_val(self.inputs.as_ref())
             + std::mem::size_of_val(self.entries.as_ref())
@@ -579,6 +716,7 @@ impl ClassicProgram {
             return Self::default();
         }
         let mut nets = Vec::new();
+        let mut guarded_wires = Vec::new();
         let mut wires = Vec::new();
         let mut inputs = Vec::new();
         let mut entries = Vec::new();
@@ -587,6 +725,8 @@ impl ClassicProgram {
         let mut input_by_node = vec![None; nodes];
         let mut route_buckets = vec![Vec::new(); routes];
         for (net, plan) in plans.iter().enumerate() {
+            let guard_start = guarded_wires.len();
+            guarded_wires.extend_from_slice(&plan.guarded_wires);
             let wire_start = wires.len();
             let input_start = inputs.len();
             let entry_start = entries.len();
@@ -612,6 +752,7 @@ impl ClassicProgram {
                 });
             }
             nets.push(ClassicNet {
+                guarded_wires: guard_start..guarded_wires.len(),
                 source: plan.source,
                 wires: wire_start..wires.len(),
                 inputs: input_start..inputs.len(),
@@ -627,6 +768,7 @@ impl ClassicProgram {
             route_ranges.push(start..route_entries.len());
         }
         Self {
+            guarded_wires: guarded_wires.into_boxed_slice(),
             nets: nets.into_boxed_slice(),
             wires: wires.into_boxed_slice(),
             inputs: inputs.into_boxed_slice(),

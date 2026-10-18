@@ -1,8 +1,13 @@
 # Layered instant compiler: implementation plan
 
-Status: proposed, not implemented. Written 2026-10-18 against checkout `d917e56`.
+Status: implementation in progress; no new compiler enabled yet. Started 2026-10-18
+from checkout `ba9bfb6`, following the plan written against `d917e56`.
 Concurrent source/report changes belong to other work; inspect the worktree before editing.
 This plan does not enable a compiler, modify a fixture, or report a speedup.
+
+The Step 01 corpus inventory and executed-versus-pending coverage are maintained in
+[FIXTURE_COVERAGE.md](FIXTURE_COVERAGE.md). Oracle port counts are kept separate from
+the later boundary pass's discoveries; physical observation sites may share one signal.
 
 ## Objective
 
@@ -38,8 +43,8 @@ optimization pass for every layer. Do not symbolically interpret the generic Tur
 
 | Step | Reviewable result | Status |
 | --- | --- | --- |
-| [01 Contract and oracle](steps/01-contract-and-oracle.md) | Atomic-edge protocol, projected observations and a measured single-use census. | Planned |
-| [02 Local cells](steps/02-local-cell-contracts.md) | Graph-derived buffer/inverter/AND/OR equations and resource/reset witnesses. | Planned |
+| [01 Contract and oracle](steps/01-contract-and-oracle.md) | Atomic-edge protocol, projected observations and a measured single-use census. | Expanded corpus tests passed; awaiting human review |
+| [02 Local cells](steps/02-local-cell-contracts.md) | Graph-derived buffer/inverter/AND/OR equations and resource/reset witnesses. | In progress |
 | [03 Boundaries](steps/03-boundary-pass.md) | Complete, typed instant/classic interfaces from one discovery implementation. | Planned |
 | [04 Guarded layers](steps/04-regions-and-layers.md) | Input-to-output tracing over cells, with cycles and causal ordering explicit. | Planned |
 | [05 Reduction and lowering](steps/05-reduction-and-lowering.md) | Compact immutable programs with dead internal work absent. | Planned |
@@ -48,6 +53,8 @@ optimization pass for every layer. Do not symbolically interpret the generic Tur
 | [08 Scale and retirement](steps/08-validation-performance-and-retirement.md) | Larger-fixture correctness, paired performance and removal of superseded paths. | Planned |
 
 Do not batch implementation of steps 01-04 before their contracts have been reviewed.
+The user's end-to-end implementation instruction authorizes continuing after each internal
+review and its tests; the checkpoints do not require asking for permission again.
 The old project failed partly because runtime scaffolding grew before a useful region
 could compile. Each step must produce a concrete artifact and stop at its review gate.
 

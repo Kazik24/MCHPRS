@@ -50,6 +50,9 @@ impl ClassicReference {
         for wire in &plan.wires {
             self.saved.push((wire.node, self.backend.state.components[wire.node.index()].clone()));
         }
+        for &node in &plan.guarded_wires {
+            self.saved.push((node, self.backend.state.components[node.index()].clone()));
+        }
         let receivers = plan.inputs.iter().map(|input| input.receiver).collect::<Vec<_>>();
         self.backend.classic_proof = Some(ProofRecorder {
             source: plan.source,
@@ -71,6 +74,9 @@ impl ClassicReference {
     }
 
     fn prove_inner(&mut self, plan: &mut ClassicNetPlan, monitor: &TaskMonitor, checking: bool) -> Result<(), String> {
+        if !self.backend.classic_guard_wires(&plan.guarded_wires) {
+            return Err("guarded callback wire saved state is not stable".into());
+        }
         let mut proof_work = 0usize;
         for entry in &mut plan.entries {
             let shape = matches!(
@@ -116,7 +122,8 @@ impl ClassicReference {
                     recorder.samples.clear();
                     backend.counts = Default::default();
                     backend.evaluate_seed(entry.wire, None).map_err(|error| error.to_string())?;
-                    let work = backend.counts.callbacks as usize + backend.counts.wire_walks as usize + plan.wires.len();
+                    let work =
+                        backend.counts.callbacks as usize + backend.counts.wire_walks as usize + plan.wires.len() + plan.guarded_wires.len() * 24;
                     proof_work = proof_work.saturating_add(work);
                     self.work = self.work.saturating_add(work);
                     if proof_work > CLASSIC_PROOF_WORK || self.work > CLASSIC_PROOF_WORK * 16 {
@@ -126,6 +133,16 @@ impl ClassicReference {
                         if backend.wire_state(wire.node).power != new.saturating_sub(wire.attenuation) {
                             return Err("seed/Turbo transfer fails entry induction".into());
                         }
+                    }
+                    if !backend.classic_guard_wires(&plan.guarded_wires)
+                        || plan.guarded_wires.iter().any(|node| {
+                            self.saved
+                                .iter()
+                                .find(|(saved, _)| saved == node)
+                                .is_none_or(|(_, state)| backend.state.components[node.index()] != *state)
+                        })
+                    {
+                        return Err("guarded callback wire changed during reference episode".into());
                     }
                     let mut samples = backend.classic_proof.as_ref().unwrap().samples.clone();
                     if !entry.commit {
@@ -209,13 +226,61 @@ impl GraphBackend {
         Ok(())
     }
 
-    pub(super) fn run_classic_entry(&mut self, index: usize) {
-        let entry = &self.program.classic().entries[index];
-        if !entry.commit {
+    /// Check before any kernel effect. The certificate proves both transfer modes
+    /// identical and the consulted electrical state independent of private writes.
+    fn classic_guard_wires(&mut self, nodes: &[NodeId]) -> bool {
+        for &node in nodes {
+            let plan = self.wire_plan(node).clone();
+            let wire = self.wire_state(node);
+            let raw = self.raw_wire_sides(&plan, wire);
+            if crate::redstone::wire::regulate_sides(wire, raw) != wire
+                || BlockFace::values()
+                    .into_iter()
+                    .any(|face| crate::redstone::wire::on_neighbor_changed_from(wire, raw, face) != wire)
+                || self.seed_power(&plan).0 != wire.power
+            {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Materialization is a one-way barrier before the original callback writes.
+    /// It preserves the old committed values, never the source's newest output.
+    pub(super) fn deopt_classic_net(&mut self, net: usize) {
+        if !self.state.classic_active[net] {
             return;
         }
+        let signal = self.state.classic_signals[net];
+        for index in self.program.classic().nets[net].wires.clone() {
+            let wire = self.program.classic().wires[index];
+            let ComponentState::Wire(state) = &mut self.state.components[wire.node.index()] else {
+                unreachable!()
+            };
+            state.power = signal.saturating_sub(wire.attenuation);
+        }
+        self.state.classic_active[net] = false;
+    }
+
+    /// False asks the caller to execute the original occurrence in the same frame.
+    pub(super) fn run_classic_entry(&mut self, index: usize) -> bool {
+        let entry = &self.program.classic().entries[index];
         let net = entry.net as usize;
+        if !self.state.classic_active[net] {
+            return false;
+        }
+        if !entry.commit {
+            return true;
+        }
         let ops = entry.ops.clone();
+        let guards = self.program.classic().nets[net].guarded_wires.clone();
+        for index in guards {
+            let node = self.program.classic().guarded_wires[index];
+            if !self.classic_guard_wires(&[node]) {
+                self.deopt_classic_net(net);
+                return false;
+            }
+        }
         let source = self.program.classic().nets[net].source;
         let old = self.state.classic_signals[net];
         let new = self.node_state(source).output_strength;
@@ -236,6 +301,7 @@ impl GraphBackend {
                 self.dirty[self.program.classic().wires[index].node.index()] = true;
             }
         }
+        true
     }
 
     fn classic_schedule(&mut self, node: NodeId, nonzero: bool) {

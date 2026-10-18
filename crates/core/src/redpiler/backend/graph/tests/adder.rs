@@ -6,6 +6,10 @@ mod boundary_contract_tests;
 mod builtin_reset_tests;
 #[path = "fixed_point_adder.rs"]
 mod fixed_point_tests;
+#[path = "instant_cells.rs"]
+mod instant_cell_tests;
+#[path = "instant_contract.rs"]
+mod instant_contract_tests;
 #[path = "instant_proxy.rs"]
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]

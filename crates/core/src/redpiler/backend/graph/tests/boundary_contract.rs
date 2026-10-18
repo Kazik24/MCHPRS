@@ -151,8 +151,7 @@ fn regional_bud_memory_changes_only_after_the_independent_update() {
     );
 }
 
-
-fn load_mechanism(id: &'static str) -> Adder {
+pub(super) fn load_mechanism(id: &'static str) -> Adder {
     let directory = root().join("test_data/instant-pistons-io");
     let manifest: Value = serde_json::from_slice(&std::fs::read(directory.join("fixtures").join(format!("{id}.json"))).unwrap()).unwrap();
     let bytes = std::fs::read(root().join(manifest["fixture"].as_str().unwrap())).unwrap();

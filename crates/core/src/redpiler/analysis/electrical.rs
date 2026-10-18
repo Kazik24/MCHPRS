@@ -1,6 +1,7 @@
 //! Read-only power-channel discovery over the stationary geometry draft.
 #![allow(dead_code)] // Step 05 assembles this power plan with callback routes before graph activation.
 use super::geometry::{GeometryDraft, GeometryView};
+use super::guard_table::PreparationGuards;
 use super::{AnalysisError, PreparationBudget};
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::redpiler::TaskMonitor;
@@ -267,7 +268,6 @@ pub(crate) fn prepare_electrical(
         })
     };
 
-    let mut guard_table = vec![Guard::Always];
     let always = GuardId::new(0);
     let mut sites = Vec::with_capacity(positions.len());
     let mut site_at = FxHashMap::default();
@@ -290,6 +290,7 @@ pub(crate) fn prepare_electrical(
         });
     }
     let site = |position: BlockPos| site_at[&position];
+    let mut guard_table = PreparationGuards::new(&sites, &profiles, &nodes);
 
     let mut wire_plans = Vec::new();
     for wire in &wires {
@@ -482,7 +483,7 @@ pub(crate) fn prepare_electrical(
         remaining_cells: budget.remaining,
         nodes,
         profiles,
-        guards: guard_table,
+        guards: guard_table.into_vec(),
         contacts,
         sites,
         wires: wire_plans,
@@ -690,7 +691,7 @@ fn compile_root(
     site_for: &impl Fn(BlockPos) -> SiteId,
     contact_at: &FxHashMap<BlockPos, (ContactId, &super::geometry::GeometryContact)>,
     contact_guards: &FxHashMap<(ContactId, usize), GuardId>,
-    guards: &mut Vec<Guard>,
+    guards: &mut PreparationGuards,
     links: &mut Vec<ElectricalLink>,
     budget: &mut PreparationBudget<'_>,
 ) -> Result<(), AnalysisError> {
@@ -851,7 +852,7 @@ fn is_comparator_side_source(block: Block) -> bool {
 fn compile_wire_relations(
     wires: &[WireComponent],
     site_for: &impl Fn(BlockPos) -> SiteId,
-    guards: &mut Vec<Guard>,
+    guards: &mut PreparationGuards,
     relations: &mut Vec<WireRelation>,
     budget: &mut PreparationBudget<'_>,
     fixed_table_bytes: usize,
@@ -977,14 +978,12 @@ fn electrical_fixed_table_bytes(
 
 fn check_electrical_growth(
     budget: &PreparationBudget<'_>,
-    guards: &Vec<Guard>,
+    guards: &PreparationGuards,
     link_capacity: usize,
     relations: &Vec<WireRelation>,
     fixed_table_bytes: usize,
 ) -> Result<(), AnalysisError> {
-    let guard_bytes = guards
-        .capacity()
-        .saturating_mul(std::mem::size_of::<Guard>() + std::mem::size_of::<GuardId>() * 4);
+    let guard_bytes = guards.retained_bytes();
     let link_bytes = link_capacity.saturating_mul(std::mem::size_of::<ElectricalLink>());
     let relation_bytes = relations.capacity().saturating_mul(std::mem::size_of::<WireRelation>());
     budget.check_estimated_bytes(
@@ -1001,7 +1000,7 @@ fn variant_guard(
     contact: &super::geometry::GeometryContact,
     contact_id: ContactId,
     _geometry: &GeometryDraft,
-    guards: &mut Vec<Guard>,
+    guards: &mut PreparationGuards,
 ) -> GuardId {
     match view {
         GeometryView::Fixed => push_guard(guards, Guard::Always),
@@ -1079,7 +1078,7 @@ fn variant_guard(
     }
 }
 
-fn stationary_base_guard(guards: &mut Vec<Guard>, piston: crate::redpiler::program_graph::PistonId, extended: bool) -> GuardId {
+fn stationary_base_guard(guards: &mut PreparationGuards, piston: crate::redpiler::program_graph::PistonId, extended: bool) -> GuardId {
     use crate::redpiler::program_graph::PistonAvailability::*;
     let pose = push_guard(guards, Guard::State(StateTest::PistonExtended(piston)));
     let pose = if extended { pose } else { not_guard(guards, pose) };
@@ -1089,7 +1088,7 @@ fn stationary_base_guard(guards: &mut Vec<Guard>, piston: crate::redpiler::progr
     join_guards(guards, &[pose, available])
 }
 
-fn moving_base_guard(guards: &mut Vec<Guard>, piston: crate::redpiler::program_graph::PistonId) -> GuardId {
+fn moving_base_guard(guards: &mut PreparationGuards, piston: crate::redpiler::program_graph::PistonId) -> GuardId {
     let availability = [
         crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
         crate::redpiler::program_graph::PistonAvailability::BasePending,
@@ -1098,17 +1097,15 @@ fn moving_base_guard(guards: &mut Vec<Guard>, piston: crate::redpiler::program_g
     any_guards(guards, &availability)
 }
 
-fn push_guard(guards: &mut Vec<Guard>, guard: Guard) -> GuardId {
-    let id = GuardId::new(guards.len() as u32);
-    guards.push(guard);
-    id
+fn push_guard(guards: &mut PreparationGuards, guard: Guard) -> GuardId {
+    guards.push(guard)
 }
 
-fn not_guard(guards: &mut Vec<Guard>, guard: GuardId) -> GuardId {
+fn not_guard(guards: &mut PreparationGuards, guard: GuardId) -> GuardId {
     push_guard(guards, Guard::Not(guard))
 }
 
-fn join_guards(guards: &mut Vec<Guard>, children: &[GuardId]) -> GuardId {
+fn join_guards(guards: &mut PreparationGuards, children: &[GuardId]) -> GuardId {
     match children {
         [] => push_guard(guards, Guard::Always),
         [only] => *only,
@@ -1116,7 +1113,7 @@ fn join_guards(guards: &mut Vec<Guard>, children: &[GuardId]) -> GuardId {
     }
 }
 
-fn any_guards(guards: &mut Vec<Guard>, children: &[GuardId]) -> GuardId {
+fn any_guards(guards: &mut PreparationGuards, children: &[GuardId]) -> GuardId {
     match children {
         [] => {
             let always = push_guard(guards, Guard::Always);
@@ -1127,7 +1124,7 @@ fn any_guards(guards: &mut Vec<Guard>, children: &[GuardId]) -> GuardId {
     }
 }
 
-fn all_guard(guards: &mut Vec<Guard>, left: GuardId, right: GuardId) -> GuardId {
+fn all_guard(guards: &mut PreparationGuards, left: GuardId, right: GuardId) -> GuardId {
     if left == right {
         return left;
     }
@@ -1176,21 +1173,22 @@ pub(crate) fn attenuate_power(strength: u8, attenuation: u8) -> u8 {
 
 #[cfg(test)]
 mod memory_tests {
-    use super::all_guard;
+    use super::{PreparationGuards, all_guard};
     use crate::redpiler::program_graph::{Guard, GuardId, OperandView, SiteId, SiteTest};
 
     #[test]
     fn all_guard_reuses_identity_terms() {
         let always = GuardId::new(0);
         let site_guard = GuardId::new(1);
-        let mut guards = vec![
-            Guard::Always,
-            Guard::Site {
+        let mut guards = PreparationGuards::new(&[], &[], &[]);
+        assert_eq!(
+            guards.push(Guard::Site {
                 site: SiteId::new(4),
                 view: OperandView::Live,
                 test: SiteTest::Solid,
-            },
-        ];
+            }),
+            site_guard
+        );
 
         assert_eq!(all_guard(&mut guards, always, always), always);
         assert_eq!(all_guard(&mut guards, site_guard, always), site_guard);

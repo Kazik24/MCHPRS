@@ -1,5 +1,6 @@
 //! Versioned inspection JSON for the richer graph drafts.
 mod classic;
+mod fixed_signals;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
@@ -100,6 +101,9 @@ struct PositionDto {
 struct GraphTablesDto {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     classic_nets: Vec<serde_json::Value>,
+    /// Live reads execute directly; settled traces expose electrical provenance only.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    fixed_signal_queries: Vec<fixed_signals::QueryDto>,
     nodes: Vec<NodeDto>,
     profiles: Vec<ProfileDto>,
     sites: Vec<SiteDto>,
@@ -810,6 +814,7 @@ impl GraphExport {
         }
         validate_dust_paths(&self.graph.dust_paths, &nodes, &sites, &node_records, &site_records)?;
         classic::validate(&self.graph.classic_nets,&nodes,&routes,&self.graph)?;
+        fixed_signals::validate(&self.graph.fixed_signal_queries, &nodes, &sites)?;
         for relation in &self.graph.wire_relations {
             check_ref(&nodes, &relation.from, "wire relation source")?;
             check_ref(&sites, &relation.to, "wire relation target")?;
@@ -1030,6 +1035,7 @@ fn map_pass_error(error: passes::PassPipelineError) -> ExportError {
 pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Result<GraphExport, ExportError> {
     let graph = GraphTablesDto {
         classic_nets: classic::export(source),
+        fixed_signal_queries: fixed_signals::export(source),
         nodes: source
             .nodes
             .iter()
@@ -1727,6 +1733,7 @@ fn validate_wire_query_facts(facts: Option<&WireQueryFacts>) -> Result<(), Expor
     if facts.known >> 24 != 0
         || properties & !facts.known != 0
         || facts.zero_no_dust & facts.solid != 0
+        || !facts.raw_sides_valid()
         || facts
             .transfer
             .is_some_and(|transfer| !transfer.seed.valid() || !transfer.turbo.valid() || transfer.turbo.direct & 0xc != 0)
@@ -1808,6 +1815,7 @@ mod wire_query_fact_validation_tests {
             transparent: 2,
             wire: 4,
             zero_no_dust: 0xfffffe,
+            raw_sides: None,
             isolated: false,
             transfer: None,
         }
@@ -1848,6 +1856,22 @@ mod wire_query_fact_validation_tests {
         }
         facts.transfer = None;
         export.validate().unwrap();
+    }
+
+    #[test]
+    fn validates_raw_side_encoding_without_requiring_it_in_older_exports() {
+        let mut facts = facts();
+        for bits in 0..=255u8 {
+            facts.raw_sides = Some(bits);
+            let valid = (0..4).all(|index| (bits >> (2 * index)) & 3 != 3);
+            assert_eq!(validate_wire_query_facts(Some(&facts)).is_ok(), valid);
+        }
+        facts.raw_sides = Some(0);
+        facts.known &= !1;
+        assert!(validate_wire_query_facts(Some(&facts)).is_err());
+        facts.raw_sides = None;
+        facts.solid = 0;
+        validate_wire_query_facts(Some(&facts)).unwrap();
     }
 
     #[test]

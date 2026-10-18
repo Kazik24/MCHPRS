@@ -22,6 +22,7 @@ pub(crate) trait PlanBuilder {
 
 /// Each result names its owner instead of exposing the mutable graph to a builder.
 pub(crate) enum PlanOutput {
+    FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
@@ -35,6 +36,7 @@ pub(crate) enum PlanOutput {
 impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
         match self {
+            Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,

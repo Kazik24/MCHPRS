@@ -7,8 +7,14 @@ mod lowering;
 mod validation;
 pub(crate) use execution_plans::*;
 mod instant_regions;
+#[cfg(test)]
+mod instant_cells;
 mod wire_query_facts;
+mod fixed_signals;
+pub(crate) use fixed_signals::*;
 pub(crate) use instant_regions::*;
+#[cfg(test)]
+pub(crate) use instant_cells::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
 use crate::redpiler::components::{NodeState, NodeType};
@@ -581,6 +587,7 @@ pub(crate) fn command_facing(block: Block) -> BlockFace {
 #[derive(Debug)]
 /// Structural validation failures encountered while building or lowering a graph.
 pub(crate) enum GraphBuildError {
+    InvalidFixedSignals,
     InvalidClassicNet { net: usize, reason: &'static str },
     InvalidInstantRegion {
         /// This names the derived table whose witness no longer agrees with the graph.
@@ -691,6 +698,7 @@ pub(crate) enum GraphBuildError {
 impl std::fmt::Display for GraphBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidFixedSignals => write!(f, "fixed signal queries have a stale or invalid certificate"),
             Self::PreparationMemoryLimit {
                 stage,
                 estimated_bytes,
@@ -795,6 +803,7 @@ struct InstantProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
+    fixed_signals: FixedSignalProgram,
     classic: ClassicProgram,
     instant: InstantProgram,
     nodes: Box<[NodeSpec]>,
@@ -835,6 +844,9 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn fixed_signal_query(&self, target: PowerTarget) -> Option<(u8, &[WeightedSignal])> {
+        self.fixed_signals.query(target)
+    }
     pub(crate) fn classic(&self) -> &ClassicProgram { &self.classic }
     pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {
         self.instant.private_resource_owners[resource.index()]
@@ -984,6 +996,7 @@ impl CircuitProgram {
 /// Mutable component, piston, and resource state paired with a circuit program.
 pub(crate) struct CircuitState {
     pub(crate) classic_signals: Box<[u8]>,
+    pub(crate) classic_active: Box<[bool]>,
     pub(crate) components: Box<[ComponentState]>,
     pub(crate) pistons: Box<[PistonState]>,
     pub(crate) resources: Box<[ResourceState]>,

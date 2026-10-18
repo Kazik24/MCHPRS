@@ -952,8 +952,20 @@ fn add_variant(variants: &mut FxHashMap<BlockPos, Vec<GeometryVariant>>, positio
 }
 
 fn classify_material<W: World>(actor: BlockPos, position: BlockPos, block: Block, world: &W) -> Result<(), GeometryError> {
+    if is_supported_payload_material(block) && world.get_block_entity(position).is_none() {
+        Ok(())
+    } else {
+        Err(GeometryError::Rejected(GeometryIssue::UnsupportedMaterial {
+            actor,
+            position,
+            block: block.get_id(),
+        }))
+    }
+}
+
+/// Material eligibility is shared by geometry admission and graph-only local cell proofs.
+pub(crate) fn is_supported_payload_material(block: Block) -> bool {
     let name = block.get_name();
-    let entity_free = !block.has_block_entity() && world.get_block_entity(position).is_none();
     // Registry wool/concrete/quartz states are opaque cubes without handlers;
     // modeled blocks qualify by the same facts. Anything with a callback,
     // comparator override, transparency, or entity keeps its own rejection.
@@ -964,15 +976,7 @@ fn classify_material<W: World>(actor: BlockPos, position: BlockPos, block: Block
         && !crate::redstone::comparator::has_override(block)
         && !matches!(block, Block::RedstoneBlock {});
     let inert_cube = block.is_cube() && (modeled_inert || name.ends_with("_wool") || name.ends_with("_concrete") || name.contains("quartz"));
-    if entity_free && (matches!(block, Block::RedstoneBlock {}) || inert_cube) {
-        Ok(())
-    } else {
-        Err(GeometryError::Rejected(GeometryIssue::UnsupportedMaterial {
-            actor,
-            position,
-            block: block.get_id(),
-        }))
-    }
+    !block.has_block_entity() && (matches!(block, Block::RedstoneBlock {}) || inert_cube)
 }
 
 fn is_container(block: Block) -> bool {

@@ -145,20 +145,25 @@ fn pack() -> PathBuf {
 fn read(path: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
 }
-fn manifests() -> Vec<Value> {
+pub(crate) fn manifests() -> Vec<Value> {
     manifests_at(&pack())
 }
+pub(crate) fn all_manifests() -> Vec<Value> {
+    all_manifests_at(&pack())
+}
 fn manifests_at(directory: &Path) -> Vec<Value> {
+    all_manifests_at(directory)
+        .into_iter()
+        .filter(|manifest| !manifest["cases"].as_array().unwrap().is_empty())
+        .collect()
+}
+fn all_manifests_at(directory: &Path) -> Vec<Value> {
     let mut paths: Vec<_> = std::fs::read_dir(directory.join("fixtures"))
         .unwrap()
         .map(|p| p.unwrap().path())
         .collect();
     paths.sort();
-    paths
-        .iter()
-        .map(|p| read(p))
-        .filter(|m| !m["cases"].as_array().unwrap().is_empty())
-        .collect()
+    paths.iter().map(|p| read(p)).collect()
 }
 fn triple(v: &Value) -> BlockPos {
     BlockPos::new(
@@ -190,7 +195,7 @@ fn empty() -> PlotWorld {
         Default::default(),
     )
 }
-fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32)) {
+pub(crate) fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32)) {
     let bytes = std::fs::read(root().join(m["fixture"].as_str().unwrap())).unwrap();
     assert_eq!(m["sha256"], format!("{:x}", Sha256::digest(&bytes)));
     let mut cb = load_schematic(std::io::Cursor::new(bytes)).unwrap();
@@ -266,7 +271,7 @@ fn load(m: &Value, rotation: u32) -> (PlotWorld, Vec<BlockPos>, (u32, u32, u32))
         d,
     )
 }
-fn quiet(w: &PlotWorld) -> bool {
+pub(crate) fn quiet(w: &PlotWorld) -> bool {
     w.scheduler().iter_entries().next().is_none() && w.piston_state().events.is_empty() && w.piston_state().motions.is_empty()
 }
 fn cell(w: &PlotWorld, p: BlockPos) -> Value {
@@ -274,7 +279,7 @@ fn cell(w: &PlotWorld, p: BlockPos) -> Value {
     json!({"name":b.get_name(),"properties":b.properties(),"raw":b.get_id(),"entity":w.get_block_entity(p),
         "piston_power":match b {Block::Piston{piston}=>Some(super::piston::should_piston_extend(w,piston.facing,p)),_=>None}})
 }
-fn observe(w: &PlotWorld, m: &Value, d: (u32, u32, u32), r: u32) -> Value {
+pub(crate) fn observe(w: &PlotWorld, m: &Value, d: (u32, u32, u32), r: u32) -> Value {
     fn walk(w: &PlotWorld, v: &Value, d: (u32, u32, u32), r: u32) -> Value {
         if v[0].is_number() {
             cell(w, transform(triple(v), d, r))
@@ -291,11 +296,11 @@ fn observe(w: &PlotWorld, m: &Value, d: (u32, u32, u32), r: u32) -> Value {
             .collect(),
     )
 }
-fn physical(w: &PlotWorld, watch: &[BlockPos]) -> Value {
+pub(crate) fn physical(w: &PlotWorld, watch: &[BlockPos]) -> Value {
     // All watched physical cells and global work at completed boundaries.
     json!({"cells":watch.iter().map(|&p|cell(w,p)).collect::<Vec<_>>(),"scheduled":w.scheduler().iter_entries().collect::<Vec<_>>(),"piston_state":w.piston_state()})
 }
-fn step(w: &mut PlotWorld, mode: &str, action: usize, operation: &mut usize, mut snap: impl FnMut(&PlotWorld, usize)) {
+pub(crate) fn step(w: &mut PlotWorld, mode: &str, action: usize, operation: &mut usize, mut snap: impl FnMut(&PlotWorld, usize)) {
     let target = w.piston_state().logical_tick + 1;
     for _ in 0..200_000 {
         *operation += 1;
@@ -313,7 +318,7 @@ fn step(w: &mut PlotWorld, mode: &str, action: usize, operation: &mut usize, mut
     }
     panic!("bounded stepping failed at {target} with {mode}");
 }
-fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) {
+pub(crate) fn mutate(w: &mut PlotWorld, op: &Value, d: (u32, u32, u32), r: u32) {
     if op["op"] == "construct_retracted" {
         let bases: Vec<_> = op["bases"].as_array().unwrap().iter().map(|v| transform(triple(v), d, r)).collect();
         for &p in &bases {

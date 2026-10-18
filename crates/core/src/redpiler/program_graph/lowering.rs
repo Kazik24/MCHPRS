@@ -157,11 +157,13 @@ impl CircuitDraft {
 
         let state = CircuitState {
             classic_signals: self.plans.classic_nets.iter().map(|net| net.initial_signal).collect(),
+            classic_active: vec![true; self.plans.classic_nets.len()].into_boxed_slice(),
             components: self.nodes.into_iter().map(|node| node.state).collect::<Vec<_>>().into_boxed_slice(),
             pistons: self.initial_pistons.into_boxed_slice(),
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
+            fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {
                 proxies: self.plans.instant.proxies.into_boxed_slice(),

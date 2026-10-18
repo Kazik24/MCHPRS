@@ -14,6 +14,8 @@ pub(crate) mod electrical;
 pub(crate) mod export_json;
 pub(crate) mod geometry;
 pub mod graph;
+mod guard_table;
+pub(crate) mod instant;
 pub(crate) mod instant_regions;
 pub(crate) mod instant_resets;
 

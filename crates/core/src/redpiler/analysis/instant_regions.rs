@@ -1,6 +1,7 @@
 //! Conservative ownership closure and private-cell certificates, independent of pass order.
 //! All owned sites and state remain observable; no reader is declared dead by this analysis.
 use crate::redpiler::TaskMonitor;
+use crate::redpiler::analysis::instant::ownership::{self, join, root};
 use crate::redpiler::passes::utils::instant_mechanisms::{InstantMechanism, discover_mechanisms};
 use crate::redpiler::program_graph::*;
 mod composition;
@@ -12,20 +13,6 @@ fn check_cancelled(monitor: &TaskMonitor) -> Result<(), String> {
     } else {
         Ok(())
     }
-}
-
-fn root(parents: &mut [usize], mut index: usize) -> usize {
-    while parents[index] != index {
-        parents[index] = parents[parents[index]];
-        index = parents[index];
-    }
-    index
-}
-
-fn join(parents: &mut [usize], a: usize, b: usize) {
-    let a = root(parents, a);
-    let b = root(parents, b);
-    parents[a.max(b)] = a.min(b);
 }
 
 /// Index ownership once, then collect query and ordered event boundaries in separate scans.
@@ -70,69 +57,17 @@ fn close_ownership(
     mechanisms: &[InstantMechanism],
     monitor: &TaskMonitor,
 ) -> Result<(Vec<InstantRegion>, Owners, Owners), String> {
-    let mut parents: Vec<_> = (0..graph.pistons.len() + graph.resources.len()).collect();
-    let mut contact_actors = vec![None; graph.contacts.len()];
-    for (index, actor) in graph.pistons.iter().enumerate() {
-        check_cancelled(monitor)?;
-        let far = match actor.lane {
-            PistonLane::SingleResource { far } => far,
-            PistonLane::Empty => actor.near,
-        };
-        for contact in [actor.base, actor.near, far] {
-            if let Some(other) = contact_actors[contact.index()] {
-                join(&mut parents, index, other);
-            } else {
-                contact_actors[contact.index()] = Some(index);
-            }
-        }
-    }
-    for (index, resource) in graph.resources.iter().enumerate() {
-        check_cancelled(monitor)?;
-        let token = graph.pistons.len() + index;
-        for &contact in &resource.contacts {
-            if let Some(other) = contact_actors[contact.index()] {
-                join(&mut parents, token, other);
-            } else {
-                contact_actors[contact.index()] = Some(token);
-            }
-        }
-    }
-    for mechanism in mechanisms {
-        join(&mut parents, mechanism.piston.index(), mechanism.watched_actor.index());
-    }
-    let mut active = vec![false; parents.len()];
-    for mechanism in mechanisms {
-        active[root(&mut parents, mechanism.piston.index())] = true;
-    }
-    let mut root_regions = vec![None; parents.len()];
-    let mut regions = Vec::new();
-    for index in 0..parents.len() {
-        let owner = root(&mut parents, index);
-        if active[owner] && root_regions[owner].is_none() {
-            root_regions[owner] = Some(regions.len());
-            regions.push(InstantRegion::default());
-        }
-    }
-    let actor_regions: Vec<_> = (0..graph.pistons.len()).map(|i| root_regions[root(&mut parents, i)]).collect();
-    for (index, &owner) in actor_regions.iter().enumerate() {
-        if let Some(owner) = owner {
-            regions[owner].actors.push(PistonId::new(index as u32));
-        }
-    }
-    let mut contact_regions: Vec<_> = contact_actors
-        .iter()
-        .map(|actor| actor.and_then(|a| root_regions[root(&mut parents, a)]))
+    let closure = ownership::close_ownership(graph, mechanisms, monitor)?;
+    let regions = closure
+        .groups
+        .into_iter()
+        .map(|group| InstantRegion {
+            actors: group.actors,
+            resources: group.resources,
+            ..Default::default()
+        })
         .collect();
-    for (index, resource) in graph.resources.iter().enumerate() {
-        let owner = resource.contacts.iter().find_map(|c| contact_regions[c.index()]);
-        if let Some(owner) = owner {
-            regions[owner].resources.push(ResourceId::new(index as u32));
-            for &contact in &resource.contacts {
-                contact_regions[contact.index()] = Some(owner);
-            }
-        }
-    }
-    Ok((regions, actor_regions, contact_regions))
+    Ok((regions, closure.actors, closure.contacts))
 }
 
 fn bind_owned_sites(

@@ -365,6 +365,15 @@ or memory. A successful fallback is not a proof of the compiler.
 
 ## 7. Runtime ownership, effects and reset
 
+Sampling a boundary input does not authorize committing accepted computation immediately.
+An input callback can run before `PistonActions`; its requests must keep their position in
+the existing action FIFO. Kernel entries and continuations use that same queue and clock.
+Batching internal uses is legal only when intervening outside work cannot affect their
+acceptance or observations. Otherwise yield at an explicit continuation cut, or decline.
+Never move an accepted result into the callback phase merely because its Boolean value
+can already be computed. This rule applies independently of the outside-callback-order
+relaxation; that relaxation does not erase scheduled phase boundaries.
+
 At lowering, create direct entry/source bindings. Each original node/resource/reset and
 callback occurrence has one execution owner. Covered callbacks/wire ticks/actions must
 not also reach general handlers. Generic runtime paths remain intact for unowned devices.

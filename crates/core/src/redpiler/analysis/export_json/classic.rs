@@ -10,6 +10,8 @@ pub(super) fn export(graph: &CompileGraph) -> Vec<Value> {
     graph.plans.classic_nets.iter().enumerate().map(|(index,net)|json!({
         "id":typed_id("classic_net",index),"source":typed_id("node",net.source.index()),
         "initial_signal":net.initial_signal,"pair_index":"old * 16 + new",
+        "guarded_wires":net.guarded_wires.iter().map(|node|typed_id("node",node.index())).collect::<Vec<_>>(),
+        "guard_failure":"materialize_committed_signal_then_permanent_general_execution",
         "wires":net.wires.iter().map(|wire|json!({"node":typed_id("node",wire.node.index()),"attenuation":wire.attenuation})).collect::<Vec<_>>(),
         "inputs":net.inputs.iter().map(|input|json!({"receiver":typed_id("node",input.receiver.index()),"attenuation":input.attenuation,"source_attenuation":input.source_attenuation})).collect::<Vec<_>>(),
         "entries":net.entries.iter().map(|entry|json!({"route":typed_id("route",entry.route.index()),"ordinal":entry.ordinal,"wire":typed_id("node",entry.wire.index()),"commit":entry.commit,
@@ -53,6 +55,22 @@ pub(super) fn validate(nets: &[Value], nodes: &HashSet<String>, routes: &HashSet
                 return Err(invalid());
             }
             local.insert(node);
+        }
+        if let Some(guards) = net.get("guarded_wires") {
+            let mut seen = HashSet::new();
+            for guard in guards.as_array().ok_or_else(invalid)? {
+                let node = guard.as_str().ok_or_else(invalid)?;
+                check_ref(nodes, node, "classic guarded wire")?;
+                if local.contains(node)
+                    || !seen.insert(node)
+                    || !graph
+                        .nodes
+                        .iter()
+                        .any(|record| record.id == node && matches!(record.kind, NodeKindDto::Wire { .. }))
+                {
+                    return Err(invalid());
+                }
+            }
         }
         for input in net["inputs"].as_array().ok_or_else(invalid)? {
             let receiver = input["receiver"].as_str().ok_or_else(invalid)?;
