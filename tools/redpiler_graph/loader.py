@@ -822,8 +822,8 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
             local_index(item.get("emitted_when"), len(_array(region.get("expressions"), f"{identifier}.expressions")), identifier)
 
         resource_outputs = _array(region.get("resource_outputs"), f"{identifier}.resource_outputs")
-        if len(resource_outputs) != 1:
-            raise GraphFormatError(f"{identifier} must expose one resource output")
+        if not resource_outputs:
+            raise GraphFormatError(f"{identifier} must expose resource transfer obligations")
         for item in resource_outputs:
             item = _object(item, f"{identifier}.resource_output")
             cell_id = item.get("cell")
@@ -964,7 +964,8 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
                     cause_key = ("boundary", tuple(occurrence(item, identifier) for item in cause_occurrences))
                 else:
                     raise GraphFormatError(f"{identifier} has an invalid use cause")
-                occurrence_key = (use_id, actor, cause_key)
+                prefix = tuple(use.get(field) for field in ("requested", "accepted", "consumed_before", "consumed_after"))
+                occurrence_key = (use_id, actor, cause_key, prefix)
                 if occurrence_key in seen_occurrences:
                     raise GraphFormatError(f"{identifier} repeats an exact use occurrence")
                 seen_occurrences.add(occurrence_key)

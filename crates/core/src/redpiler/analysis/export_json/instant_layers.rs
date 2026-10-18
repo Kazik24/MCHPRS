@@ -502,8 +502,8 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
             root(output["emitted_when"].as_u64(), array(row, "expressions")?.len(), "layer output")?;
         }
         let resource_outputs = array(row, "resource_outputs")?;
-        if resource_outputs.len() != 1 {
-            return Err(invalid("compiled layer region must expose one resource output"));
+        if resource_outputs.is_empty() {
+            return Err(invalid("compiled layer region must expose resource transfer obligations"));
         }
         for output in resource_outputs {
             let cell = output["cell"].as_str().ok_or_else(|| invalid("resource output has no cell"))?;
@@ -579,7 +579,9 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                     root(use_row[field].as_u64(), expressions.len(), "layer use")?;
                 }
                 let occurrence_key = validate_cause(&use_row["cause"], &routes)?;
-                if !use_occurrences.insert((use_id, actor, occurrence_key)) {
+                // A source row can run again at another FIFO prefix with a different request or live state.
+                let prefix = ["requested", "accepted", "consumed_before", "consumed_after"].map(|field| use_row[field].as_u64());
+                if !use_occurrences.insert((use_id, actor, occurrence_key, prefix)) {
                     return Err(invalid("layer repeats an exact use occurrence"));
                 }
             }

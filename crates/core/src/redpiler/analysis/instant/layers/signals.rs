@@ -132,8 +132,12 @@ impl<'a> SignalTracer<'a> {
                         let condition = self.guard(variant.when, builder)?;
                         let selected = builder.all([unmatched, condition])?;
                         let block = Block::from_id(self.graph.profiles[variant.profile.index()].raw_state);
+                        let electrical = self.graph.profiles[variant.profile.index()].electrical;
+                        if electrical == ProfileElectrical::Component {
+                            return Err("corridor source is an electrically active contact component".into());
+                        }
                         // Movable electrical components are rejected by geometry; inert cubes emit no power.
-                        if block == Block::RedstoneBlock && emits(block, port) {
+                        if electrical == ProfileElectrical::RedstoneSource && emits(block, port) {
                             alternatives.push(selected);
                         }
                         let not_condition = builder.not(condition)?;

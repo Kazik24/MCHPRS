@@ -107,6 +107,7 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | Rewrite | O3 | `simplify-instant-resets` | Remove the two conductor traversals in a recognized private reset mechanism. |
 | Rewrite | O3 | `specialize-instant-pistons` | Expand exact fixed-conductor power reads in observer-reset mechanisms. |
 | Rewrite | O3 | `compile-builtin-resets` | Replace ordinary reset-observer execution with built-in reset clocks. |
+| Rewrite | O5 | `experimental-coalesce-delayed-updates` | Keep the first equivalent delayed receiver sample in each uninterrupted scheduling-only callback run. |
 | Build | O1 | `index-turbo-callbacks` | Repeated searches through unrelated callback rows. |
 | Build | O1 | `contract-static-dust-paths` | General power queries on certified private dust paths. |
 | Build | O2 | `specialize-wire-queries` | Repeated property/strength queries through compiled wire input expressions. |
@@ -309,14 +310,23 @@ decline diagnostics. Coverage reports whole fixed execution separately from
 queue-free local nets. See the append-only progress log for CHUNGUS measurements
 and explicit limits. O0 and O1 retain general execution.
 
-The runtime keeps cold command entities behind optional boxes, so ordinary
-electrical and wire rows do not carry the entity payload. Each fixed wire episode
-captures its 24-neighbor set once and stores local u32 capture indices in a
-contiguous cache and FIFO frontiers. Captured properties, per-alias layer state,
-and receiver order are retained; nested episodes use independent scratch. Clearing
-an episode invalidates both its captured values and neighborhood indices. This is
-an execution-storage change; immutable plan tables and the exported graph are
-unchanged, and the component array remains the single mutable state owner.
+The runtime keeps cold command entities behind optional boxes. Each fixed wire
+episode captures its mutable neighbors once, in canonical order, using a compiled
+24-bit mask and local u32 indices. Unadmitted mutable neighbors remain captured;
+only inert aliases are omitted. Contiguous FIFO buffers preserve duplicates and
+layers, and nested episodes retain independent scratch. Wire rows are borrowed,
+and unchanged seeds avoid retaining the program Arc. The component array remains
+the single mutable state owner.
+
+The compiler joins the six pure no-dust queries into one maximum with unchanged
+live/captured operand modes; the original face queries remain inspectable. It
+also certifies wire entry sides that every shape direction leaves unchanged under
+fixed geometry. Power writes preserve those sides, so their shape callbacks are
+identities and their shape-route bodies are unreachable. Attachment rechecks
+the actual provided sides. Stale/non-invariant shapes retain their operations.
+Schema 1.3 exports the aggregate query, mutable mask and entry-side certificate;
+validation reconstructs their conditions. Natural contactless actor routes have
+no live Shape rows, so CHUNGUS's shape optimization removes dead route storage.
 
 ### Opt-in committed-signal classic redstone nets
 
@@ -331,8 +341,10 @@ strengths against ordinary Graph execution before publication. Unsupported
 regions retain general execution. Captured boundaries, contacts, independent
 receiver inputs, reentrant ingress prefixes and overlapping owners decline.
 
-This first family is default-off: the current ANPU census accepts no net, while
-`simple_and_gate.schem` supplies a small real positive fixture. Bounds, proofs,
+This family remains default-off. The latest ANPU census admits 266 nets / 2,441
+wires, but runtime guards leave only 670 wires specialized after 5,000 ticks and
+the workload executes just eight compiled entries. No speedup was demonstrated.
+`simple_and_gate.schem` supplies a small positive fixture. Bounds, proofs,
 coverage, continuation/FIFO tests, storage and paired measurements are recorded
 in [CLASSIC_REDSTONE_PROGRESS.md](../../../../../docs/notes/redpiler-pistons-v4/CLASSIC_REDSTONE_PROGRESS.md).
 
@@ -368,3 +380,22 @@ unproved wire-arrival and shared-owner order produce whole-region decline witnes
 It is test-only cold analysis, not runtime replacement. See the
 [Step 04 gate](../../../../../docs/notes/redpiler-pistons-v4/layered-instant-compiler/steps/04-regions-and-layers.md)
 before extending it; parsing connectivity does not establish causal order.
+
+### O5 equivalent delayed updates
+
+`coalesce_delayed_updates.rs` runs automatically at `-O5`, `-O` and `--optimize`,
+before all plan builders. O0 through O4 retain their existing behavior. The pass
+keeps its original diagnostic name, `experimental-coalesce-delayed-updates`. It keeps the first
+equivalent receiver sample in an uninterrupted run of unconditional live
+read/schedule-only callbacks. Torch/comparator direction is immaterial; observer
+direction remains part of the sample. Repeaters require an actually unlocked
+entry and no structural Side inputs, making their lock invariantly false.
+
+Captured/guarded rows, Turbo routes, dynamic contacts, immediate state changes and
+piston/BUD work split runs. The first retained occurrence preserves pending work,
+deadline, priority and FIFO insertion. This rule does not contract whole wire
+walks or coalesce piston events. Tests in `graph/tests/coalesce_delayed_updates.rs`
+include the counterexample torch -> immediate bulb change -> same torch, imported
+pending work, direction, lock/Side declines, cancellation and CPU diagnostics.
+The rewrite edits existing delivery/link tables; normal validation, lowering,
+export and reset retain the resulting graph.

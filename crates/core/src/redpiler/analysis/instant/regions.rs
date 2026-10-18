@@ -3,6 +3,35 @@ use crate::redpiler::TaskMonitor;
 use crate::redpiler::analysis::instant::boundaries::{OwnerMap, bind_owners};
 use crate::redpiler::program_graph::*;
 use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
+
+/// Rescan with merged region owners so internal cell/corridor witnesses are not kernel outputs.
+pub(crate) fn perimeters(
+    graph: &CompileGraph,
+    partition: &RegionPartition,
+    monitor: &TaskMonitor,
+) -> Result<Vec<FxHashSet<(BoundaryDirection, BoundaryPortKind)>>, String> {
+    let mut owners = partition.owners.clone();
+    for table in [
+        &mut owners.actors,
+        &mut owners.resources,
+        &mut owners.contacts,
+        &mut owners.nodes,
+        &mut owners.sites,
+    ] {
+        for owner in table {
+            if let Some(local) = owner {
+                *local = partition.owner_region[*local] as usize;
+            }
+        }
+    }
+    let scan = super::boundaries::scan_boundaries(graph, &owners, monitor)?;
+    let mut perimeters = vec![FxHashSet::default(); partition.regions.len()];
+    for port in scan.ports {
+        perimeters[port.owner].insert((port.direction, port.kind));
+    }
+    Ok(perimeters)
+}
 
 const MAX_REGION_WORK: usize = 32 * 1024 * 1024;
 

@@ -38,7 +38,7 @@ fn main() -> Result<()> {
             "--stable-instant-inputs" => stable_instant_inputs = true,
             "--help" => {
                 println!(
-                    "cpu_bubblesort [--graph-tier 0..4] [--classic-redstone] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
+                    "cpu_bubblesort [--graph-tier 0..5] [--classic-redstone] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
                 );
                 return Ok(());
             }
@@ -56,9 +56,9 @@ fn main() -> Result<()> {
         }
     }
     ensure!(iterations > 0, "--iterations must be positive");
-    ensure!(graph_tier <= 4, "--graph-tier must be in 0..=4");
-    ensure!(!classic_redstone || graph_tier >= 2, "--classic-redstone requires O2 or O3");
-    ensure!(!stable_instant_inputs || graph_tier >= 3, "--stable-instant-inputs requires O3 or O4");
+    ensure!(graph_tier <= 5, "--graph-tier must be in 0..=5");
+    ensure!(!classic_redstone || graph_tier >= 2, "--classic-redstone requires O2 or higher");
+    ensure!(!stable_instant_inputs || graph_tier >= 3, "--stable-instant-inputs requires O3 or higher");
     let cpu = support::CPUS.iter().copied().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
     let ticks = ticks.unwrap_or(cpu.active_ticks + 1);
     ensure!(ticks > 0 && ticks <= 50_000, "--ticks must be in 1..=50000");

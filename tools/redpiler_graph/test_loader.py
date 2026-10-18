@@ -369,6 +369,15 @@ class DustPathLoaderTests(unittest.TestCase):
         self.assertEqual(len(loaded.record("instant_layer_region:7")["inputs"]), 5)
         self.assertEqual(len(loaded.record("instant_layer_region:7")["layers"][0]["uses"]), 2)
 
+        # Connected/shared cells may have several conditional transfer occurrences.
+        transfers = data["graph"]["instant_layer_regions"][0]["resource_outputs"]
+        transfers.append({**transfers[0], "transfer_when": 4})
+        self.assertEqual(len(self.load_data(data).record("instant_layer_region:7")["resource_outputs"]), 2)
+
+        uses = data["graph"]["instant_layer_regions"][0]["layers"][0]["uses"]
+        uses.append({**uses[0], "accepted": 3})
+        self.assertEqual(len(self.load_data(data).record("instant_layer_region:7")["layers"][0]["uses"]), 3)
+
         for mutation in (
             lambda region: region.update(cells=["instant_cell:999"]),
             lambda region: region["expressions"][4].update(value=4),
@@ -381,6 +390,7 @@ class DustPathLoaderTests(unittest.TestCase):
             lambda region: region["inputs"][3]["source"].update(link="power_link:0"),
             lambda region: region["inputs"][4]["source"]["test"].update(resource="resource:999"),
             lambda region: region["resource_outputs"][0].update(source="contact:999"),
+            lambda region: region.update(resource_outputs=[]),
             lambda region: region["resource_outputs"][0].update(destination=region["resource_outputs"][0]["source"]),
             lambda region: region["cold_lifecycle_occurrences"][0]["occurrence"].update(ordinal=99),
             lambda region: region["cold_lifecycle_occurrences"][0]["reason"].update(kind="base_pending_self_update"),

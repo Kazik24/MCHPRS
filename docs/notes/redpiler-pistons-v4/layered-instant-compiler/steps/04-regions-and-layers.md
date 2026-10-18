@@ -1,7 +1,8 @@
 # Step 04: regions, gate connections and guarded causal layers
 
-Status: partial implementation; connected-region discovery and isolated-cell layers are
-implemented. The ADDER1BIT causal-layer gate is not met. Runtime replacement remains disabled.
+Status: partial implementation; connected-region discovery, isolated-cell layers, direct
+private-cell composition and a private straight-cable certificate are implemented. The
+ADDER1BIT causal-layer gate is not met. Runtime replacement remains disabled.
 
 ## Goal
 
@@ -299,3 +300,93 @@ Not run in this check: release/full-workspace suites, the 4,096-tick PC referenc
 new fuzz campaigns or runtime benchmarks. Passing general Graph replay does not prove
 layer-kernel correctness or acceleration. Next compiler work remains source-derived
 electrical arrival across corridors and ordered multi-cell/shared-resource acceptance.
+
+## Connected tracing and compact-program checkpoint (2026-10-19)
+
+The blanket multi-cell rejection has been replaced by graph-derived FIFO composition
+for supported connected components. Settled electrical tracing and callback arrival
+certification are separate responsibilities. The former expands incoming power links
+into shared threshold expressions: max is OR, and attenuation increases the required
+source threshold. Positive-loss dust cycles terminate at strength 15. Conditional
+contact selection and post-acceptance owner writes remain symbolic.
+
+The current arrival certificate is deliberately narrower than the electrical tracer:
+two private cells connected by one flat, straight, singly sourced cable. The receiver
+is the only computation consumer during that walk, its quasi input is limited to the
+recognized reset output, and the cable has no external observing receiver or nearby
+independent wire. Its saved entry strengths must already match the admitted source.
+Directly connected cells use actual callback row order. A supported component currently
+has one outside source route; that route need not belong to a lever or a dedicated clock.
+These are current compiler limitations, not new global-clock or order-independence assumptions.
+
+Two examples built with the normal parser now compile, without hand-written cell equations:
+
+| Example | Cells | Internal wire operands removed | Expressions before/after slicing | Inputs before/after | Retained roots |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Direct private chain | 2 | 0 | 442 / 143 | 27 / 19 | 175 |
+| Private two-wire chain | 2 | 2 | 316 / 99 | 27 / 17 | 121 |
+
+The retained roots include boundary values, ordered callback occurrences, token results
+and accepted-action obligations. They are not a count of independent Boolean outputs.
+Construction layers and lifecycle records remain cold. `LayeredInstantPlan.programs`
+publishes the reduced programs alongside their evidence, and validation rederives both.
+
+Correctness checks distinguish three different claims:
+
+- The parsed examples' predicted accepted-action order and token destinations match the
+  native interpreter. General Graph and native execution agree on full projected state
+  and pending work through 16 ticks, including reset. The reduced program does not yet
+  apply those effects to Graph; the reset replay therefore checks the original executor.
+- Reduced roots match the construction arena. Generated reduction tests cover 32 arenas
+  crossed with all 64 assignments of six inputs, including duplicate output roots and
+  reset/resource obligations. They are algebraic tests, not native circuit histories.
+- Contact priority and profile classification are tested separately. Symbolic wire emission
+  matches native regulation for 2,592 local neighborhood configurations, all six directions
+  and both weak/strong channels. Existing threshold tests cover all source levels and losses,
+  conditional prefix writes, positive-loss cycles, zero-source loops and cancellation.
+
+Observed wires and unsettled entry cables decline. The original circuit is preserved.
+Merged region ownership is rescanned through the existing boundary scanner, so internal
+construction cuts disappear without dropping an external guard or observer dependency.
+Accepted-ancestor provenance prunes already-consumed feedback; failed samples remain retryable.
+The work budget was not increased to mask conditional expansion.
+
+The export validators had two isolated-cell restrictions which are now corrected:
+connected regions can contain multiple conditional token transfers, and one source callback
+can resample an actor at distinct request/acceptance prefixes. Truly duplicated records,
+dangling references and malformed roots still reject. Rust-generated examples also load
+through the Python CLI. Sources are in `layers/composition/connected.rs`, `corridors.rs`,
+`signals.rs`, `reduction.rs`, and `program_graph/instant_program.rs`.
+
+Verification on this checkpoint:
+
+```text
+cargo test -p mchprs_core --lib redpiler:: --locked -- --test-threads=1
+# target/instant-corridor-redpiler-check.log: 477 passed, 2 failed, 23 ignored.
+# All 25 layer-analysis tests and all 11 instant_layer tests passed in this run.
+# Failures: fixed_classic_invariant_shapes_are_elided_and_preserve_native_updates
+# and fixed_classic_stale_entry_sides_retain_shape_deliveries_and_native_changes.
+# Those tests use the concurrently modified fixed-classic path; that work was left untouched.
+cargo test -p mchprs_core --lib redpiler::analysis::instant::layers:: --locked -- --test-threads=1
+# Final focused rerun: 25 passed; target/instant-layer-algebra-tests.log.
+cargo test -p mchprs_core --lib instant_layer --locked -- --nocapture --test-threads=1
+# Final focused rerun: 11 passed; target/instant-connected-layer-tests.log.
+cargo check -p mchprs_core --tests --benches --locked
+# Passed, with warnings in concurrent fixed-classic/coalescing work.
+py -3 -m unittest tools.redpiler_graph.test_loader
+# 23 passed.
+node --test tools/redpiler-graph-viewer/viewer.test.cjs
+# 29 passed.
+```
+
+Focused formatting and diff checks passed. The exported examples are
+`target/layered-instant-layers/private-direct-chain.graph.json` and
+`private-wire-chain.graph.json`; both passed Python CLI loading.
+
+Execution remains **0% new layer kernels, 100% existing Graph, 0% native fallback**.
+The 22-fixture layer census still declines the larger connected components, including
+ADDER1BIT and ADDER11BIT. This checkpoint does not establish new Divider/COUNTER coverage,
+public runtime replacement or a speedup. Release/full-workspace validation, the large
+ignored device histories and benchmarks were not rerun. Remaining work is broader arrival
+and shared-owner proofs, direct runtime effect/reset bindings, and exclusive replacement
+of covered Graph work. See E51-E55 in the central edge-case register.

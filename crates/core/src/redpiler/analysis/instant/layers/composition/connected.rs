@@ -1,4 +1,4 @@
-//! Extract causal order from actual callback rows for dust-free connected cells.
+//! Extract causal order from actual callback rows for connected cells.
 //! Internal Turbo paths still require a separate arrival certificate; no discovery
 //! order is substituted for one. A single outside route may come from any device.
 use super::*;
@@ -15,15 +15,16 @@ impl From<String> for Failure {
     }
 }
 
-pub(crate) fn compile_direct(
+pub(crate) fn compile_connected(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,
     component: &RegionComponent,
     region_index: usize,
     power: &PowerIndex,
+    perimeter: &FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
 ) -> Result<Result<LayeredRegion, LayerDecline>, String> {
-    match compile(graph, catalog, component, region_index, power, monitor) {
+    match compile(graph, catalog, component, region_index, power, perimeter, monitor) {
         Ok(region) => Ok(Ok(region)),
         Err(Failure::Unsupported(witness, reason)) => Ok(Err(decline(component, witness, reason))),
         Err(Failure::Invalid(message)) => Err(message),
@@ -43,6 +44,8 @@ struct Routes<'a> {
     ports: &'a [BoundaryPort],
     /// These are the published port ordinals for this connected component.
     region_ports: &'a [u32],
+    /// Only these reads/effects cross the merged region boundary.
+    perimeter: &'a FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     /// These monotone cable certificates replace complete internal Turbo responses.
     arrivals: Vec<super::corridors::Arrival>,
 }
@@ -53,6 +56,7 @@ fn compile(
     component: &RegionComponent,
     region_index: usize,
     power: &PowerIndex,
+    perimeter: &FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
 ) -> Result<LayeredRegion, Failure> {
     let mut routes = Routes {
@@ -62,6 +66,7 @@ fn compile(
         outputs: Vec::new(),
         ports: &catalog.ports,
         region_ports: &component.ports,
+        perimeter,
         arrivals: Vec::new(),
     };
     let Some(arrivals) = super::corridors::certify(graph, catalog, component, power, monitor)? else {
@@ -113,22 +118,30 @@ fn compile(
     }
     let stationary_entry = composition.builder.all(entry_roots)?;
     routes.entry(entry, &mut composition)?;
-    while let Some(acceptance) = composition.begin_next()? {
-        let actor = acceptance.actor;
-        let accepted = acceptance.accepted;
-        let ancestors = acceptance.ancestors.clone();
-        let use_ = catalog.cells[routes.actors[&actor] as usize]
-            .uses
-            .iter()
-            .find(|use_| use_.actor == actor)
-            .expect("owned use");
-        routes.emit(use_.retraction.routes.base_changed, accepted, &ancestors, &mut composition)?;
-        let transfer = composition.finish_base(acceptance)?;
-        if let Some(route) = use_.retraction.routes.far_changed {
-            routes.emit(route, transfer, &ancestors, &mut composition)?;
-        }
-        routes.emit(use_.retraction.routes.near_changed, accepted, &ancestors, &mut composition)?;
-    }
+    routes.compose_wave(catalog, &mut composition)?;
+    let lifecycle = lifecycle_occurrences(graph, catalog, component)?;
+    routes.record_final_values(catalog, component, &mut composition)?;
+    let region = LayeredRegion {
+        id: LayerRegionId(region_index as u32),
+        cells: component.cells.clone(),
+        corridors: component.corridors.clone(),
+        stationary_entry,
+        inputs: composition.builder.inputs.into(),
+        expressions: composition.builder.expressions.into(),
+        layers: composition.layers.into(),
+        resource_outputs: composition.resources.into(),
+        outputs: routes.outputs.into(),
+        cold_lifecycle_occurrences: lifecycle.into(),
+        pin_values: Box::new([]),
+    };
+    Ok(region)
+}
+
+fn lifecycle_occurrences(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    component: &RegionComponent,
+) -> Result<Vec<LayerLifecycleOccurrence>, Failure> {
     let mut lifecycle = Vec::new();
     for &cell in &component.cells {
         for use_ in &catalog.cells[cell as usize].uses {
@@ -165,7 +178,7 @@ fn compile(
                 lifecycle.push(LayerLifecycleOccurrence {
                     actor: use_.actor,
                     occurrence,
-                    phase: LayerLifecyclePhase::RetractionBaseChanged,
+                    phase: LayerLifecyclePhase::ResetObserverLifecycle,
                     reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
                 });
             }
@@ -173,66 +186,86 @@ fn compile(
                 lifecycle.push(LayerLifecycleOccurrence {
                     actor: use_.retraction.reset.watched_actor,
                     occurrence,
-                    phase: LayerLifecyclePhase::DeferredBaseRestoration,
+                    phase: LayerLifecyclePhase::ResetObserverLifecycle,
                     reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
                 });
             }
         }
     }
-    let mut tracer = signals::SignalTracer::new(graph, power, &composition.wires, &composition.state, LayerInputRole::RequestSample);
-    for &port in &component.ports {
-        if catalog.ports[port as usize].direction != BoundaryDirection::Output {
-            continue;
-        }
-        let kind = catalog.ports[port as usize].kind;
-        let value = match kind {
-            BoundaryPortKind::Callback { .. } => continue,
-            BoundaryPortKind::Power { link } => tracer.contribution(graph.power_links[link as usize], 0, &mut composition.builder)?,
-            BoundaryPortKind::GuardState { test, .. } => {
-                if let Some(&value) = composition.state.get(&test) {
-                    value
-                } else {
-                    let input = composition.builder.input(LayerInputSource::State(test), LayerInputRole::RequestSample)?;
-                    composition.builder.input_expr(input)?
-                }
-            }
-            BoundaryPortKind::GuardSite {
-                site,
-                test,
-                view: OperandView::Live,
-                ..
-            } => tracer.site_test(site, test, &mut composition.builder)?,
-            BoundaryPortKind::ContactAlternative { contact, ordinal } => {
-                tracer.guard(graph.contacts[contact.index()].variants[ordinal as usize].when, &mut composition.builder)?
-            }
-            _ => {
-                return Err(Failure::Unsupported(
-                    first_witness(graph, catalog, component),
-                    LayerDeclineReason::BoundaryEffectUnsupported,
-                ));
-            }
-        };
-        routes.outputs.push(LayerOutput { port, emitted_when: value });
-    }
-    let region = LayeredRegion {
-        id: LayerRegionId(region_index as u32),
-        cells: component.cells.clone(),
-        corridors: component.corridors.clone(),
-        stationary_entry,
-        inputs: composition.builder.inputs.into(),
-        expressions: composition.builder.expressions.into(),
-        layers: composition.layers.into(),
-        resource_outputs: composition.resources.into(),
-        outputs: routes.outputs.into(),
-        cold_lifecycle_occurrences: lifecycle.into(),
-        pin_values: Box::new([]),
-    };
-    // Validate the executable slice now, before publishing any cold region certificate.
-    reduction::reduce(&region, monitor)?;
-    Ok(region)
+    Ok(lifecycle)
 }
 
 impl Routes<'_> {
+    fn compose_wave(&mut self, catalog: &BoundaryCatalog, composition: &mut Composition<'_>) -> Result<(), Failure> {
+        while let Some(acceptance) = composition.begin_next()? {
+            let actor = acceptance.actor;
+            let accepted = acceptance.accepted;
+            let ancestors = acceptance.ancestors.clone();
+            let use_ = catalog.cells[self.actors[&actor] as usize]
+                .uses
+                .iter()
+                .find(|use_| use_.actor == actor)
+                .expect("owned use");
+            self.emit(use_.retraction.routes.base_changed, accepted, &ancestors, composition)?;
+            let transfer = composition.finish_base(acceptance)?;
+            if let Some(route) = use_.retraction.routes.far_changed {
+                self.emit(route, transfer, &ancestors, composition)?;
+            }
+            self.emit(use_.retraction.routes.near_changed, accepted, &ancestors, composition)?;
+        }
+        Ok(())
+    }
+
+    fn record_final_values(
+        &mut self,
+        catalog: &BoundaryCatalog,
+        component: &RegionComponent,
+        composition: &mut Composition<'_>,
+    ) -> Result<(), Failure> {
+        let graph = self.graph;
+        let power = composition.power;
+        let perimeter = self.perimeter;
+        let mut tracer = signals::SignalTracer::new(graph, power, &composition.wires, &composition.state, LayerInputRole::RequestSample);
+        for &port in &component.ports {
+            if catalog.ports[port as usize].direction != BoundaryDirection::Output {
+                continue;
+            }
+            let kind = catalog.ports[port as usize].kind;
+            if !perimeter.contains(&(BoundaryDirection::Output, kind)) {
+                continue;
+            }
+            let value = match kind {
+                BoundaryPortKind::Callback { .. } => continue,
+                BoundaryPortKind::Power { link } => tracer.contribution(graph.power_links[link as usize], 0, &mut composition.builder)?,
+                BoundaryPortKind::GuardState { test, .. } => {
+                    if let Some(&value) = composition.state.get(&test) {
+                        value
+                    } else {
+                        let input = composition.builder.input(LayerInputSource::State(test), LayerInputRole::RequestSample)?;
+                        composition.builder.input_expr(input)?
+                    }
+                }
+                BoundaryPortKind::GuardSite {
+                    site,
+                    test,
+                    view: OperandView::Live,
+                    ..
+                } => tracer.site_test(site, test, &mut composition.builder)?,
+                BoundaryPortKind::ContactAlternative { contact, ordinal } => {
+                    tracer.guard(graph.contacts[contact.index()].variants[ordinal as usize].when, &mut composition.builder)?
+                }
+                _ => {
+                    return Err(Failure::Unsupported(
+                        first_witness(graph, catalog, component),
+                        LayerDeclineReason::BoundaryEffectUnsupported,
+                    ));
+                }
+            };
+            self.outputs.push(LayerOutput { port, emitted_when: value });
+        }
+        Ok(())
+    }
+
     fn owns_node(&self, node: NodeId) -> bool {
         self.resets.contains(&node)
             || self.arrivals.iter().any(|arrival| arrival.wires.contains(&node))
@@ -358,7 +391,10 @@ impl Routes<'_> {
         if self.owns_node(self.graph.routes[occurrence.route.index()].source) {
             for &port in self.region_ports {
                 let row = self.ports[port as usize];
-                if row.direction == BoundaryDirection::Output && row.kind == (BoundaryPortKind::Callback { occurrence }) {
+                if row.direction == BoundaryDirection::Output
+                    && row.kind == (BoundaryPortKind::Callback { occurrence })
+                    && self.perimeter.contains(&(row.direction, row.kind))
+                {
                     self.outputs.push(LayerOutput { port, emitted_when: when });
                 }
             }

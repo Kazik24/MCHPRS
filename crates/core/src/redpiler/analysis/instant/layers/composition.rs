@@ -5,9 +5,9 @@ use super::*;
 use rustc_hash::FxHashSet;
 use std::collections::VecDeque;
 
-mod direct;
+mod connected;
 mod corridors;
-pub(super) use direct::compile_direct;
+pub(super) use connected::compile_connected;
 
 struct Request {
     /// This catalog cell owns the requested computation.
@@ -156,13 +156,13 @@ impl<'a> Composition<'a> {
         causes: Box<[RouteOccurrence]>,
         ancestors: &FxHashSet<PistonId>,
     ) -> Result<(), String> {
-        // This event implies prior acceptance; a failed sample never adds an ancestor.
-        if ancestors.contains(&actor) {
-            return Ok(());
-        }
         let use_ = self.use_(cell, actor)?;
         if causes.is_empty() || causes.iter().any(|cause| !use_.activations.contains(cause)) {
             return Err("sample has no original actor callback witness".into());
+        }
+        // This event implies prior acceptance; a failed sample never adds an ancestor.
+        if ancestors.contains(&actor) {
+            return Ok(());
         }
         let requested_pin = use_.requested;
         let values = self.pins(cell, actor, event)?;

@@ -3,6 +3,7 @@ use super::*;
 use crate::redpiler::program_graph::{
     FixedClassicKind, FixedClassicOpKind, FixedClassicPlans, FixedClassicProgram, FixedClassicSite, FixedClassicSource,
 };
+use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
 use std::mem::size_of;
 
 #[derive(Debug, Serialize)]
@@ -96,9 +97,13 @@ struct WireDto {
     aliases: [NeighborAliasDto; 24],
     seed_mask: u32,
     turbo_mask: u32,
+    mutable_mask: u32,
     admitted_mask: u32,
     raw_sides: RawSidesDto,
     no_dust: Vec<FaceQueryDto>,
+    block_input: QueryDto,
+    /// Certified entry sides; all six shape handlers are identities for these bits.
+    inert_sides: Option<u8>,
     shape_route: Option<String>,
 }
 
@@ -306,9 +311,12 @@ fn program_dto(program: &FixedClassicProgram) -> ProgramDto {
             site: typed_id("site", index),
             source: match site {
                 FixedClassicSite::Inert => SiteKindDto::Inert,
-                FixedClassicSite::Wire { node, index } => SiteKindDto::Wire {
+                FixedClassicSite::Wire { node } => SiteKindDto::Wire {
                     node: typed_id("node", node.index()),
-                    wire_index: *index,
+                    wire_index: match program.nodes[node.index()].kind {
+                        FixedClassicKind::Wire(index) => index,
+                        _ => unreachable!("fixed wire alias must name a wire node"),
+                    },
                 },
                 FixedClassicSite::Gate(node) => SiteKindDto::Gate {
                     node: typed_id("node", node.index()),
@@ -329,6 +337,7 @@ fn program_dto(program: &FixedClassicProgram) -> ProgramDto {
             }),
             seed_mask: wire.seed_mask,
             turbo_mask: wire.turbo_mask,
+            mutable_mask: wire.mutable_neighbors,
             admitted_mask: wire.admitted,
             raw_sides: RawSidesDto {
                 packed: wire.raw_sides,
@@ -343,6 +352,8 @@ fn program_dto(program: &FixedClassicProgram) -> ProgramDto {
                     query: query(query_value),
                 })
                 .collect(),
+            block_input: query(wire.block_input),
+            inert_sides: wire.inert_sides,
             shape_route: wire.shape_route.map(|route| typed_id("route", route.index())),
         })
         .collect();
@@ -543,11 +554,24 @@ pub(super) fn validate(
                 || alias.offset != NEIGHBOR_OFFSETS[slot]
                 || alias.site != source.canonical_neighbors[slot]
                 || !sites.contains(&alias.site)
-        }) || [wire.seed_mask, wire.turbo_mask, wire.admitted_mask]
+        }) || [wire.seed_mask, wire.turbo_mask, wire.admitted_mask, wire.mutable_mask]
             .iter()
             .any(|mask| mask & !0x00ff_ffff != 0)
             || wire.no_dust.len() != 6
         {
+            return Err(invalid());
+        }
+        let mutable_mask = wire.aliases.iter().enumerate().fold(0, |mask, (slot, alias)| {
+            mask | if matches!(
+                site_rows.get(alias.site.as_str()).map(|site| &site.source),
+                Some(SiteSourceDto::Component { .. })
+            ) {
+                1 << slot
+            } else {
+                0
+            }
+        });
+        if wire.mutable_mask != mutable_mask {
             return Err(invalid());
         }
         if let Some(route) = &wire.shape_route {
@@ -555,6 +579,48 @@ pub(super) fn validate(
         }
         for query in &wire.no_dust {
             check_query(&query.query)?;
+        }
+        check_query(&wire.block_input)?;
+        let mut merged = QueryDto {
+            constant: 0,
+            start: 0,
+            end: 0,
+        };
+        for face in &wire.no_dust {
+            let query = face.query;
+            merged.constant = merged.constant.max(query.constant);
+            if query.start == query.end {
+                continue;
+            }
+            if merged.start == merged.end {
+                merged.start = query.start;
+            } else if merged.end != query.start {
+                return Err(invalid());
+            }
+            merged.end = query.end;
+        }
+        if (merged.constant, merged.start, merged.end) != (wire.block_input.constant, wire.block_input.start, wire.block_input.end) {
+            return Err(invalid());
+        }
+        if let Some(sides) = wire.inert_sides {
+            if [sides, wire.raw_sides.packed]
+                .into_iter()
+                .any(|bits| (0..4).any(|side| (bits >> (side * 2)) & 3 > 2))
+            {
+                return Err(invalid());
+            }
+            let decode = |bits: u8| {
+                let side = |shift| RedstoneWireSide::from_id(u32::from((bits >> shift) & 3u8));
+                RedstoneWire::new(side(0), side(2), side(4), side(6), 0)
+            };
+            let stored = decode(sides);
+            let raw = decode(wire.raw_sides.packed);
+            if BlockFace::values()
+                .into_iter()
+                .any(|direction| crate::redstone::wire::on_neighbor_changed_from(stored, raw, direction) != stored)
+            {
+                return Err(invalid());
+            }
         }
     }
     for operand in &program.operands {

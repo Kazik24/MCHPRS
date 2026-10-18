@@ -4,6 +4,8 @@ use crate::redpiler::backend::graph::GraphBackend;
 use crate::redpiler::program_graph::*;
 use crate::redpiler::{CompilerOptions, passes};
 
+mod large_builds;
+
 #[test]
 #[ignore = "explicit Divider layer census and all 11 native differential histories"]
 fn divider_layers_and_manifest_histories_match_native() {
@@ -59,10 +61,21 @@ fn pc_counter_layers_preserve_separate_controls_and_frozen_count_windows() {
 }
 
 fn prepare_layers(world: &PlotWorld, bounds: (BlockPos, BlockPos), budget: usize) -> CompileGraph {
+    let prepared = prepare_artifact(world, bounds, budget).unwrap();
+    assert!(
+        prepared.entry.pending_ticks.is_empty(),
+        "these saved-entry fixtures carry no imported ticks"
+    );
+    assert_eq!(prepared.entry.logical_tick, 0);
+    prepared.graph
+}
+
+fn prepare_artifact(world: &PlotWorld, bounds: (BlockPos, BlockPos), budget: usize) -> Result<passes::rich::PreparedGraph, String> {
     let monitor = TaskMonitor::default();
     monitor.set_budget_multiplier(budget);
     let ticks = world.scheduler().iter_entries().collect();
-    let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, AnalysisLimits::for_budget(budget)).unwrap();
+    let mut prepared =
+        passes::rich::prepare(world, bounds, ticks, &monitor, AnalysisLimits::for_budget(budget)).map_err(|error| error.to_string())?;
     let options = CompilerOptions {
         optimization_level: Some(3),
         stable_instant_inputs: true,
@@ -75,13 +88,8 @@ fn prepare_layers(world: &PlotWorld, bounds: (BlockPos, BlockPos), budget: usize
         &passes::experimental_layer_pipeline(&options),
         &monitor,
     )
-    .unwrap();
-    assert!(
-        prepared.entry.pending_ticks.is_empty(),
-        "these saved-entry fixtures carry no imported ticks"
-    );
-    assert_eq!(prepared.entry.logical_tick, 0);
-    prepared.graph
+    .map_err(|error| error.to_string())?;
+    Ok(prepared)
 }
 
 fn backend(graph: &CompileGraph) -> GraphBackend {
@@ -130,7 +138,29 @@ fn layer_report(name: &str, graph: &CompileGraph) -> Value {
         (0..graph.pistons.len()).collect::<Vec<_>>(),
         "every physical actor has one admission decision"
     );
-    let compiled_actors = layers.regions.iter().flat_map(|r| r.layers.iter()).map(|l| l.uses.len()).sum::<usize>();
+    // Candidate occurrences include retries; count unique source actors separately.
+    let compiled_actors = layers
+        .regions
+        .iter()
+        .flat_map(|r| r.cells.iter())
+        .flat_map(|&cell| catalog.cells[cell as usize].uses.iter().map(|use_| use_.actor))
+        .collect::<BTreeSet<_>>()
+        .len();
+    let candidate_occurrences = layers.regions.iter().flat_map(|r| r.layers.iter()).map(|l| l.uses.len()).sum::<usize>();
+    let mut admission_reasons = BTreeMap::<String, usize>::new();
+    for decline in &catalog.declines {
+        let reason = match decline.reason {
+            CellDeclineReason::UnrecognizedActor(_) => "UnrecognizedActor",
+            CellDeclineReason::DifferentPullSources(_) => "DifferentPullSources",
+            CellDeclineReason::NoPullSource(_) => "NoPullSource",
+            CellDeclineReason::MissingDeferredWake(_) => "MissingDeferredWake",
+            CellDeclineReason::MissingResetWake(_) => "MissingResetWake",
+            CellDeclineReason::PinTableBudgetExceeded => "PinTableBudgetExceeded",
+            CellDeclineReason::ConflictingSourceContact(_) => "ConflictingSourceContact",
+            CellDeclineReason::UnsupportedMaterial(_) => "UnsupportedMaterial",
+        };
+        *admission_reasons.entry(reason.to_owned()).or_default() += decline.actors.len();
+    }
     let mut decline_reasons = BTreeMap::<String, usize>::new();
     let declines: Vec<_> = layers
         .declines
@@ -154,6 +184,8 @@ fn layer_report(name: &str, graph: &CompileGraph) -> Value {
         "outside_actors":graph.pistons.len()-admitted_actors, "cells":catalog.cells.len(), "corridors":catalog.corridors.len(),
         "boundary_ports":catalog.ports.len(), "compiled_regions":layers.regions.len(), "compiled_actors":compiled_actors,
         "declined_regions":layers.declines.len(), "decline_reasons":decline_reasons, "declines":declines,
+        "candidate_occurrences":candidate_occurrences, "admission_declined_actors":admission_reasons,
+        "programs":layers.programs.iter().map(|program| json!({"inputs":program.inputs.len(),"expressions":program.expressions.len(),"roots":program.roots.len()})).collect::<Vec<_>>(),
         "runtime_replacement":false, "native_fallback":false});
     println!(
         "{name}: {admitted_actors}/{} admitted actors, {} cells, {} corridors, {compiled_actors} compiled actors, {} declined regions; {decline_reasons:?}",
@@ -174,11 +206,22 @@ fn save_report(name: &str, report: &Value) {
 
 fn check_manifest_device(name: &str, fixture: &Value, budget: usize) {
     let (world, bounds) = load(fixture);
-    let graph = prepare_layers(&world, bounds, budget);
+    let graph = match prepare_artifact(&world, bounds, budget) {
+        Ok(prepared) => prepared.graph,
+        Err(error) => {
+            save_report(
+                name,
+                &json!({"fixture":name,"status":"preparation_rejected","error":error,"runtime_replacement":false}),
+            );
+            panic!("{name}: preparation rejected: {error}");
+        }
+    };
     let mut report = layer_report(name, &graph);
     drop(world);
     let mut ticks = 0;
-    for case in fixture["cases"].as_array().unwrap() {
+    let cases = fixture["cases"].as_array().unwrap();
+    assert!(!cases.is_empty(), "a manifest with no cases cannot establish execution correctness");
+    for case in cases {
         let (mut native, _) = load(fixture);
         let mut projected = load(fixture).0;
         let mut backend = backend(&graph);

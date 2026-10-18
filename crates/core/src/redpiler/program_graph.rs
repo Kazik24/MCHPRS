@@ -11,6 +11,8 @@ mod instant_cells;
 mod instant_boundaries;
 #[cfg(test)]
 mod instant_layers;
+#[cfg(test)]
+mod instant_program;
 mod wire_query_facts;
 mod wire_callback_selection;
 pub(crate) use wire_callback_selection::WireCallbackSelection;
@@ -23,6 +25,8 @@ mod fixed_classic;
 pub(crate) use fixed_classic::*;
 #[cfg(test)]
 pub(crate) use instant_layers::*;
+#[cfg(test)]
+pub(crate) use instant_program::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
 use crate::redpiler::components::{NodeState, NodeType};

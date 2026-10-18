@@ -184,21 +184,11 @@ fn parser_admits_a_private_reset_cell_without_synthetic_contracts() {
 }
 
 fn evaluate_entry(region: &LayeredRegion, backend: &GraphBackend) -> Vec<bool> {
-    let power = |link: PowerLink| {
-        backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
-    };
     let mut values: Vec<bool> = Vec::with_capacity(region.expressions.len());
     for expression in &region.expressions {
         let value = match expression {
             LayerExpr::Constant(value) => *value,
-            LayerExpr::Input(id) => match region.inputs[id.0 as usize].source {
-                LayerInputSource::SourceAbove { site, port, threshold } => backend.site_power(site, port) > threshold,
-                LayerInputSource::BoundaryEvent { occurrence, .. } => {
-                    backend.program.nodes()[backend.program.routes()[occurrence.route.index()].source.index()].position == Some(CONTROL)
-                }
-                LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => power(link),
-                LayerInputSource::State(test) => state_predicate(backend, test),
-            },
+            LayerExpr::Input(id) => entry_input(region.inputs[id.0 as usize], backend),
             LayerExpr::Not(operand) => !values[operand.0 as usize],
             LayerExpr::All(operands) => operands.iter().all(|operand| values[operand.0 as usize]),
             LayerExpr::Any(operands) => operands.iter().any(|operand| values[operand.0 as usize]),
@@ -206,6 +196,19 @@ fn evaluate_entry(region: &LayeredRegion, backend: &GraphBackend) -> Vec<bool> {
         values.push(value);
     }
     values
+}
+
+fn entry_input(input: LayerInput, backend: &GraphBackend) -> bool {
+    match input.source {
+        LayerInputSource::SourceAbove { site, port, threshold } => backend.site_power(site, port) > threshold,
+        LayerInputSource::BoundaryEvent { occurrence, .. } => {
+            backend.program.nodes()[backend.program.routes()[occurrence.route.index()].source.index()].position == Some(CONTROL)
+        }
+        LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => {
+            backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
+        }
+        LayerInputSource::State(test) => state_predicate(backend, test),
+    }
 }
 
 fn state_predicate(backend: &GraphBackend, test: StateTest) -> bool {
@@ -323,6 +326,40 @@ fn parser_contracts_a_private_two_wire_chain_into_an_expression_program() {
     check_composed_chain(true);
 }
 
+#[test]
+fn cable_arrival_declines_an_observed_or_unsettled_wire_instead_of_dropping_it() {
+    for observer in [false, true] {
+        let mut world = chain_world(true);
+        if observer {
+            world.set_block(
+                BlockPos::new(11, 21, 8),
+                Block::Observer {
+                    observer: RedstoneObserver {
+                        facing: BlockFacing::Down,
+                        powered: false,
+                    },
+                },
+            );
+        } else {
+            let position = BlockPos::new(11, 20, 8);
+            let Block::RedstoneWire { mut wire } = world.get_block(position) else {
+                unreachable!()
+            };
+            wire.power = 0;
+            world.set_block(position, Block::RedstoneWire { wire });
+        }
+        let monitor = TaskMonitor::default();
+        let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+        let catalog = infer_boundaries(&prepared.graph, &monitor).unwrap();
+        let plan = compile_layers(&prepared.graph, &catalog, &monitor).unwrap();
+        assert!(
+            plan.regions.is_empty(),
+            "unsupported wire state/observer cannot become a settled value assumption"
+        );
+        assert_eq!(plan.declines.len(), 1);
+    }
+}
+
 fn check_composed_chain(dust: bool) {
     let second = BlockPos::new(if dust { 13 } else { 11 }, 20, 8);
     let world = if dust { chain_world(true) } else { direct_chain_world() };
@@ -339,6 +376,9 @@ fn check_composed_chain(dust: bool) {
     prepared.graph.plans.instant.boundaries = Some(catalog);
     prepared.graph.plans.instant.layers = Some(plan.clone());
     prepared.graph.validate().unwrap();
+    let mut stale = prepared.graph.clone();
+    stale.plans.instant.layers.as_mut().unwrap().programs = Box::new([]);
+    assert!(stale.validate().is_err(), "compact programs cannot be detached from their layer evidence");
     let (program, state) = prepared.graph.clone().lower().unwrap();
     let mut backend = GraphBackend::new(program, state, 0).unwrap();
     native_step(
@@ -350,6 +390,49 @@ fn check_composed_chain(dust: bool) {
     );
     backend.use_block(CONTROL).unwrap();
     let values = evaluate_entry(region, &backend);
+    let kernel = &plan.programs[0];
+    assert_eq!(
+        *kernel,
+        crate::redpiler::analysis::instant::layers::lower_region(region, &monitor).unwrap()
+    );
+    let mut scratch = vec![false; kernel.expressions.len()];
+    kernel.evaluate(&mut scratch, |input| entry_input(input, &backend)).unwrap();
+    for &(kind, root) in &kernel.roots {
+        let original = match kind {
+            LayerRoot::StationaryEntry => region.stationary_entry,
+            LayerRoot::Output(index) => region.outputs[index].emitted_when,
+            LayerRoot::Transfer(index) => region.resource_outputs[index].transfer_when,
+            LayerRoot::SourceAbsent(index) => region.resource_outputs[index].source_absent_after,
+            LayerRoot::Accepted { layer, occurrence } => region.layers[layer].uses[occurrence].accepted,
+        };
+        assert_eq!(scratch[root.0 as usize], values[original.0 as usize]);
+    }
+    let owned_wires: std::collections::BTreeSet<_> = region
+        .corridors
+        .iter()
+        .flat_map(|&id| {
+            prepared.graph.plans.instant.boundaries.as_ref().unwrap().corridors[id as usize]
+                .wires
+                .iter()
+                .copied()
+        })
+        .collect();
+    for input in &kernel.inputs {
+        if let LayerInputSource::SourceAbove { site, .. } = input.source {
+            if let SiteSource::Component(node) = prepared.graph.sites[site.index()].source {
+                assert!(!owned_wires.contains(&node), "the executable must not read eliminated wire state");
+            }
+        }
+    }
+    println!(
+        "chain dust={dust}: actors=2, eliminated wire operands={}, expressions={} -> {}, inputs={} -> {}, roots={}",
+        owned_wires.len(),
+        region.expressions.len(),
+        kernel.expressions.len(),
+        region.inputs.len(),
+        kernel.inputs.len(),
+        kernel.roots.len()
+    );
     let predicted: Vec<_> = region
         .layers
         .iter()
@@ -374,4 +457,24 @@ fn check_composed_chain(dust: bool) {
             assert!(!backend.state.resources[token.resource.index()].enabled);
         }
     }
+    let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
+    let mut projected = chain_world(dust);
+    check_boundary(&backend, &native, &mut projected, &positions, "composed first pull").unwrap();
+    for tick in 2..=16 {
+        native.tick_interpreted();
+        backend.tick().unwrap();
+        check_boundary(&backend, &native, &mut projected, &positions, &format!("composed reset tick {tick}")).unwrap();
+    }
+    let export = crate::redpiler::analysis::export_json::from_graph(&prepared.report, &prepared.graph).unwrap();
+    let directory = root().join("target/layered-instant-layers");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(
+        directory.join(if dust {
+            "private-wire-chain.graph.json"
+        } else {
+            "private-direct-chain.graph.json"
+        }),
+        export.to_bytes().unwrap(),
+    )
+    .unwrap();
 }

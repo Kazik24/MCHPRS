@@ -917,6 +917,76 @@ proof; they must cause a decline while unsupported, never disappear from the int
 a value/effect root or an explicit lifecycle occurrence. A payload-observer variant
 checks that an unproved geometry boundary does not produce a compiled region.
 
+### E51. Settled cable values do not establish callback arrival
+
+**Situation:** a source changes and a dust walk visits intermediate strengths before
+reaching the settled values. Another cell can receive an early qualifying update.
+
+**Required rule:** trace electrical values and prove sample permission separately. The
+first cable certificate only admits a private two-cell, one-straight-cable component
+with a sole source and no competing computation or external wire observation. Unknown
+arrival order declines the entire component. Stable external inputs alone are insufficient.
+
+**Evidence/status:** parsed direct and two-wire chains have native accepted-action and
+resource-destination comparisons. An outside wire observer and an unsettled saved wire
+state are rejection cases. This is not a certificate for arbitrary cable networks.
+
+### E52. Original cell cuts can become internal after region composition
+
+**Situation:** a wire/cell power or captured-neighborhood relation appears as an output
+of a local cell, but both ends belong to the same composed region.
+
+**Required rule:** rescan with merged ownership using the existing boundary scanner.
+Do not erase a relation merely because an opposite local port exists: a guard or observer
+may still read it from outside. Preserve the original port IDs for retained roots.
+
+**Evidence/status:** the parsed cable chain initially declined on its own internal
+captured-wire metadata. The merged-owner scan removes that internal cut, while the
+external wire-observer case still declines.
+
+### E53. Single-use provenance is stronger than expanding Boolean feedback
+
+**Situation:** an accepted actor emits callbacks which eventually return to it. Expanding
+all conditionally inactive callbacks caused the direct-chain compiler to exhaust its
+construction budget despite having only two actors.
+
+**Required rule:** carry accepted ancestors with each conditional event. An event implies
+those ancestors have already been consumed, so it cannot resample them. A failed sample
+does not enter the ancestor set and may retry. Keep the construction budget; do not raise
+it or distribute Boolean expressions to hide the path explosion.
+
+**Evidence/status:** composition tests distinguish failed retries, conditional duplicates
+and shared-resource FIFO winners. The parsed direct pair compiles with ancestor pruning.
+
+### E54. Selectable contacts use the first matching variant
+
+**Situation:** an earlier Air alternative and a later redstone alternative both have
+true guards. OR-ing eligible powered alternatives invents power through the Air contact.
+
+**Required rule:** encode first-match priority for power and geometry. Read the profile's
+electrical classification; raw material alone is insufficient. Unsupported active contact
+components decline instead of being frozen. Non-dot wire emission must use native
+regulated neighborhood sides, including climb/drop and headroom conditions.
+
+**Evidence/status:** dedicated contact-priority/classification tests and exhaustive native
+wire-regulation comparisons are registered with the corridor tests. The verification report
+distinguishes executed results from these assertions' scope.
+
+### E55. Compact expressions are not exclusive runtime ownership
+
+**Situation:** a reduced expression arena contains no wire reads, yet Graph still owns and
+executes the original circuit. Original reset delivery records are also present as cold evidence.
+
+**Required rule:** report compiler contraction separately from runtime replacement. Keep
+accepted-action and token-transfer roots until reset/publication adapters can consume them.
+Do not delete original execution before assigning one complete owner to every covered
+read, event and state write. Saved settled-cable entry must become an explicit runtime
+admission obligation before this certificate can be reused after reset.
+
+**Evidence/status:** the current parsed examples compare reduced roots to the construction
+arena; ordinary Graph/native reset replay is a separate check. Public execution remains
+unchanged, with zero new layer-kernel coverage. No speedup is inferred from expression counts.
+
 ## Updating this register
 
 For each newly found case, add the smallest scenario and distinguish:

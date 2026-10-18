@@ -77,6 +77,11 @@ fn fixture_causal_layer_census_accounts_for_every_admitted_cell_once() {
         let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
         let plan = graph.plans.instant.layers.as_ref().unwrap();
         assert_eq!(
+            plan.programs.len(),
+            plan.regions.len(),
+            "every admitted region publishes one reduced program"
+        );
+        assert_eq!(
             *plan,
             compile_layers(graph, catalog, &TaskMonitor::default()).unwrap(),
             "{id}: deterministic compilation"

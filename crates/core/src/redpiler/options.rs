@@ -18,7 +18,7 @@ pub struct CompilerOptions {
     pub update: bool,
 }
 
-pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 4;
+pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 5;
 
 impl Default for CompilerOptions {
     fn default() -> Self {

@@ -44,7 +44,11 @@ pub(super) fn compile(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> GraphB
 fn compile_mode(world: &PlotWorld, bounds: (BlockPos, BlockPos), fixed_classic: bool) -> GraphBackend {
     let monitor = Arc::new(TaskMonitor::default());
     monitor.set_budget_multiplier(8);
-    let compile = if fixed_classic { GraphBackend::compile_with_options } else { GraphBackend::compile_without_fixed_classic };
+    let compile = if fixed_classic {
+        GraphBackend::compile_with_options
+    } else {
+        GraphBackend::compile_without_fixed_classic
+    };
     compile(
         world,
         bounds,
@@ -67,7 +71,7 @@ fn fixed_classic_default_o2_pipeline_publishes_and_executes_whole_program() {
     let mut candidate = compile_mode(&world, bounds, true);
     let fixed = candidate.program.fixed_classic().expect("pass must publish its executable program");
     assert!(Arc::ptr_eq(fixed, candidate.fixed_classic.as_ref().unwrap()));
-    assert_eq!(&**fixed, &FixedClassicProgram::compile(&reference.program).unwrap());
+    assert_eq!(&**fixed, &FixedClassicProgram::compile(&reference.program, &reference.state).unwrap());
     let coverage = candidate.execution_coverage();
     assert_eq!(coverage.fixed_classic_wires, coverage.wire_nodes);
     assert_eq!(coverage.fixed_classic_nodes, coverage.component_nodes);
@@ -88,7 +92,7 @@ fn fixed_classic_default_o2_pipeline_publishes_and_executes_whole_program() {
 
 pub(super) fn attach(reference: &GraphBackend) -> (GraphBackend, Duration) {
     let started = Instant::now();
-    let program = Arc::new(FixedClassicProgram::compile(&reference.program).unwrap());
+    let program = Arc::new(FixedClassicProgram::compile(&reference.program, &reference.state).unwrap());
     let elapsed = started.elapsed();
     assert_eq!(program.wires.len(), reference.program.wires().len());
     assert_eq!(program.nodes.len(), reference.program.nodes().len());
@@ -253,9 +257,12 @@ fn fixed_classic_whole_chungus_compilation_and_execution() {
     let program = candidate.fixed_classic.as_ref().unwrap();
     assert_eq!(program.nodes.len(), reference.program.nodes().len());
     assert_eq!(program.wires.len(), reference.program.wires().len());
-    let table_bytes = std::mem::size_of_val(&*program.nodes) + std::mem::size_of_val(&*program.wires)
-        + std::mem::size_of_val(&*program.sites) + std::mem::size_of_val(&*program.routes)
-        + std::mem::size_of_val(&*program.ops) + std::mem::size_of_val(&*program.operands);
+    let table_bytes = std::mem::size_of_val(&*program.nodes)
+        + std::mem::size_of_val(&*program.wires)
+        + std::mem::size_of_val(&*program.sites)
+        + std::mem::size_of_val(&*program.routes)
+        + std::mem::size_of_val(&*program.ops)
+        + std::mem::size_of_val(&*program.operands);
     let inventory = json!({"nodes":program.nodes.len(),"wires":program.wires.len(),"routes":program.routes.len(),"route_ops":program.ops.len(),"signal_operands":program.operands.len(),"capture_aliases":program.sites.len(),"executable_table_bytes":table_bytes,"wire_coverage":1.0,"general_dust_fallback":false});
     println!("FIXED CLASSIC LOWERED {inventory}, total compile seconds={fixed_compile_seconds}");
     let mut execution = [Duration::ZERO; 2];

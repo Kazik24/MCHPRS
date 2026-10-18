@@ -856,6 +856,13 @@ test('loads causal-layer records and keeps local expressions and callback causes
   viewer.evaluate('focusRecord("instant_layer_region:7")');
   assert.match(viewer.elements.get('details').textContent, /instant_layer_region:7/);
 
+  const transfers = graph.graph.instant_layer_regions[0].resource_outputs;
+  transfers.push({ ...transfers[0], transfer_when: 4 });
+  const uses = graph.graph.instant_layer_regions[0].layers[0].uses;
+  uses.push({ ...uses[0], accepted: 3 });
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+
   const previous = viewer.cy;
   for (const corrupt of [
     (row) => { row.cells = ['instant_cell:999']; },
@@ -869,6 +876,7 @@ test('loads causal-layer records and keeps local expressions and callback causes
     (row) => { row.inputs[3].source.link = 'power_link:0'; },
     (row) => { row.inputs[4].source.test.resource = 'resource:999'; },
     (row) => { row.resource_outputs[0].source = 'contact:999'; },
+    (row) => { row.resource_outputs = []; },
     (row) => { row.resource_outputs[0].destination = row.resource_outputs[0].source; },
     (row) => { row.cold_lifecycle_occurrences[0].occurrence.ordinal = 99; },
     (row) => { row.cold_lifecycle_occurrences[0].reason.kind = 'base_pending_self_update'; },

@@ -562,6 +562,7 @@ mod tests {
             (3, "simplify-instant-resets"),
             (3, "specialize-instant-pistons"),
             (3, "compile-builtin-resets"),
+            (5, "experimental-coalesce-delayed-updates"),
             (1, "index-turbo-callbacks"),
             (1, "contract-static-dust-paths"),
             (2, "specialize-wire-queries"),
@@ -574,7 +575,7 @@ mod tests {
             (2, "compile-fixed-classic"),
             (2, "compile-classic-redstone"),
         ];
-        for level in [Some(0), Some(1), Some(2), Some(3), Some(4), None] {
+        for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {
                 optimization_level: level,
                 ..Default::default()
@@ -585,7 +586,7 @@ mod tests {
                 assert_eq!(entry.pass.name(), name);
                 let enabled = name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);
                 assert_eq!(entry.enabled, enabled, "{name} at {level:?}");
-                assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 7);
+                assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 8);
             }
         }
     }

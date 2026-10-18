@@ -10,15 +10,16 @@ use rustc_hash::FxHashMap;
 const MAX_LAYER_BYTES: usize = MAX_GRAPH_PREPARATION_BYTES / 8;
 const MAX_LAYER_WORK: usize = 8 * 1024 * 1024;
 
-mod signals;
-mod reduction;
 mod composition;
+mod reduction;
+mod signals;
 pub(crate) use reduction::reduce as lower_region;
 
 /// Build deterministic cell regions and compile only the narrow cases with proven request cuts.
 pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<LayeredInstantPlan, String> {
     check_cancelled(monitor)?;
     let partition = regions::partition(graph, catalog, monitor)?;
+    let perimeters = regions::perimeters(graph, &partition, monitor)?;
     let power_index = index_power(graph);
     let mut compiled = Vec::new();
     let mut declined = Vec::new();
@@ -32,6 +33,7 @@ pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, mo
             &partition.owners,
             &partition.owner_region,
             &power_index,
+            &perimeters[region_index],
             monitor,
         )? {
             Ok(region) => compiled.push(region),
@@ -40,9 +42,14 @@ pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, mo
     }
     compiled.sort_unstable_by_key(|region| region.id);
     declined.sort_unstable_by_key(|decline| decline.cells.first().copied().unwrap_or(u32::MAX));
+    let programs = compiled
+        .iter()
+        .map(|region| lower_region(region, monitor))
+        .collect::<Result<Box<[_]>, _>>()?;
     check_cancelled(monitor)?;
     Ok(LayeredInstantPlan {
         regions: compiled.into_boxed_slice(),
+        programs,
         declines: declined.into_boxed_slice(),
     })
 }
@@ -55,11 +62,12 @@ fn compile_component(
     owners: &super::boundaries::OwnerMap,
     owner_region: &[u32],
     power_index: &PowerIndex,
+    perimeter: &rustc_hash::FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
 ) -> Result<Result<LayeredRegion, LayerDecline>, String> {
     if component.cells.len() != 1 || !component.corridors.is_empty() {
         if !component.cells.is_empty() {
-            return composition::compile_direct(graph, catalog, component, region_index, power_index, monitor);
+            return composition::compile_connected(graph, catalog, component, region_index, power_index, perimeter, monitor);
         }
         let witness = first_unproven_power(graph, catalog, component, region_index, owners, owner_region, monitor)?.unwrap_or_else(|| {
             if !component.corridors.is_empty() {
@@ -1154,7 +1162,9 @@ impl<'a> LayerBuilder<'a> {
         let mut seen = rustc_hash::FxHashSet::default();
         while let Some(value) = pending.pop() {
             self.visit()?;
-            if !seen.insert(value) { continue; }
+            if !seen.insert(value) {
+                continue;
+            }
             if self.interned.get(&LayerExpr::Not(value)).is_some_and(|opposite| seen.contains(opposite)) {
                 return self.constant(absorbing);
             }

@@ -417,7 +417,7 @@ function validateInstantLayers(data, ids, nodes) {
       } else throw Error(`${region.id} has an unknown expression kind.`);
     }
     root(region.stationary_entry, expressions.length, region.id);
-    if (region.resource_outputs.length !== 1) throw Error(`${region.id} must expose one resource output.`);
+    if (region.resource_outputs.length === 0) throw Error(`${region.id} must expose resource transfer obligations.`);
     for (const output of region.resource_outputs) {
       ref(output.cell, "instant_cell", region.id); ref(output.resource, "resource", region.id);
       if (!memberCells.has(output.cell) || !cells.get(output.cell).resources.includes(output.resource)) throw Error(`${region.id} resource output is outside its cell.`);
@@ -457,7 +457,8 @@ function validateInstantLayers(data, ids, nodes) {
           if (!use.cause.occurrences.length) throw Error(`${region.id} has a boundary cause without occurrences.`);
           causeKey = ["boundary", use.cause.occurrences.map((item) => occurrence(item, region.id))];
         } else throw Error(`${region.id} has an invalid use cause.`);
-        const signature = JSON.stringify([use.use_id, use.actor, causeKey]);
+        const prefix = [use.requested, use.accepted, use.consumed_before, use.consumed_after];
+        const signature = JSON.stringify([use.use_id, use.actor, causeKey, prefix]);
         if (useOccurrences.has(signature)) throw Error(`${region.id} repeats an exact use occurrence.`);
         useOccurrences.add(signature);
       }

@@ -103,7 +103,11 @@ fn fixture(shared: bool) -> (CompileGraph, BoundaryCatalog, RegionComponent) {
             solid: block.is_solid(),
             transparent: block.is_transparent(),
             cube: block.is_cube(),
-            electrical: ProfileElectrical::None,
+            electrical: if block == Block::RedstoneBlock {
+                ProfileElectrical::RedstoneSource
+            } else {
+                ProfileElectrical::None
+            },
         })
         .collect();
     graph.contacts.push(ContactSpec {

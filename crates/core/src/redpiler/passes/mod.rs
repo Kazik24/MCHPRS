@@ -1,6 +1,7 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
+pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_fixed_classic;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
@@ -260,7 +261,7 @@ pub(crate) fn run_graph_pipeline(
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let rewrites: [(usize, Pass); 7] = [
+    let rewrites: [(usize, Pass); 8] = [
         (1, Pass::rewrite(simplify_guards::GuardAndUpdateReduction)),
         (1, Pass::rewrite(prune_inert_callbacks::PruneInertCallbacks)),
         (1, Pass::rewrite(prune_unhandled_updates::PruneUnhandledUpdates)),
@@ -268,6 +269,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::rewrite(simplify_instant_resets::SimplifyInstantResets)),
         (3, Pass::rewrite(specialize_instant_pistons::SpecializeInstantPistons)),
         (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
+        (5, Pass::rewrite(coalesce_delayed_updates::CoalesceDelayedUpdates)),
     ];
     let plans: [(usize, Pass); 9] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
@@ -568,7 +570,7 @@ mod tests {
     #[test]
     fn removed_synthesis_is_absent_at_every_level_with_stable_inputs() {
         let synthesis = ["compile-symbolic-regions", "compile-instant-machine", "compile-symbolic-kernels"];
-        for optimization_level in [Some(0), Some(3), Some(4), None] {
+        for optimization_level in [Some(0), Some(3), Some(4), Some(5), None] {
             for stable_instant_inputs in [false, true] {
                 let options = CompilerOptions {
                     optimization_level,

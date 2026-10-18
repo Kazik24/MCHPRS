@@ -4,6 +4,17 @@ use crate::redpiler::components::{NodeState, NodeType};
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::RedstoneWire;
 
+fn profile(block: Block, electrical: ProfileElectrical) -> Profile {
+    Profile {
+        raw_state: block.get_id(),
+        registry_type: 0,
+        solid: block.is_solid(),
+        transparent: block.is_transparent(),
+        cube: block.is_cube(),
+        electrical,
+    }
+}
+
 fn target(node: u32) -> PowerTarget {
     PowerTarget::Input {
         node: NodeId::new(node),
@@ -192,4 +203,145 @@ fn corridor_tracing_checks_cancellation() {
             .unwrap_err()
             .contains("cancel")
     );
+}
+
+#[test]
+fn contact_power_and_geometry_use_the_first_selected_profile() {
+    let monitor = TaskMonitor::default();
+    let (mut graph, internal) = line(1, false);
+    let selected = StateTest::ResourceEnabled(ResourceId::new(0));
+    graph.guards.push(Guard::State(selected));
+    graph.profiles = vec![
+        profile(Block::Air, ProfileElectrical::None),
+        profile(Block::RedstoneBlock, ProfileElectrical::RedstoneSource),
+    ];
+    graph.sites[0].source = SiteSource::Contact(ContactId::new(0));
+    graph.contacts.push(ContactSpec {
+        node: NodeId::new(0),
+        position: BlockPos::new(0, 20, 0),
+        variants: vec![
+            ContactVariant {
+                when: GuardId::new(1),
+                profile: ProfileId::new(0),
+                receiver: None,
+            },
+            ContactVariant {
+                when: GuardId::new(0),
+                profile: ProfileId::new(1),
+                receiver: None,
+            },
+        ]
+        .into(),
+    });
+    let power = index_power(&graph);
+    let state = FxHashMap::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample);
+    let powered = tracer.query(target(1), 0, &mut builder).unwrap();
+    let redstone_profile = tracer
+        .site_test(SiteId::new(0), SiteTest::Profile(ProfileId::new(1)), &mut builder)
+        .unwrap();
+    for first in [false, true] {
+        for root in [powered, redstone_profile] {
+            assert_eq!(
+                evaluate(&builder, root, |input| {
+                    assert_eq!(input.source, LayerInputSource::State(selected));
+                    first
+                }),
+                !first,
+                "a later true variant must not override an earlier selected Air profile"
+            );
+        }
+    }
+    // Graph uses the profile's electrical classification, not the raw material alone.
+    graph.profiles[1].electrical = ProfileElectrical::None;
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let root = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample)
+        .query(target(1), 0, &mut builder)
+        .unwrap();
+    assert!(!evaluate(&builder, root, |_| false));
+    graph.profiles[1].electrical = ProfileElectrical::Component;
+    assert!(
+        SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample)
+            .query(target(1), 0, &mut builder)
+            .unwrap_err()
+            .contains("active contact")
+    );
+}
+
+#[test]
+fn symbolic_wire_directions_match_native_regulation_in_all_local_shape_combinations() {
+    use crate::redstone::wire::{get_current_side, get_raw_sides_from_neighbors, regulate_sides};
+    use mchprs_blocks::blocks::RedstoneWireSide;
+    let monitor = TaskMonitor::default();
+    let saved = RedstoneWire::new(
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        15,
+    );
+    // Each side can be disconnected, connected, blocked, ascending or descending.
+    for ceiling in [Block::Air, Block::Stone {}] {
+        for mut shape in 0..6usize.pow(4) {
+            let mut neighbors = [Block::Air; 24];
+            neighbors[3] = ceiling;
+            for (near, above, below) in [(4, 20, 17), (5, 21, 18), (1, 13, 12), (0, 8, 7)] {
+                let configuration = shape % 6;
+                shape /= 6;
+                match configuration {
+                    0 => {}
+                    1 => neighbors[near] = Block::RedstoneWire { wire: saved },
+                    2 => neighbors[near] = Block::Stone {},
+                    3 => neighbors[above] = Block::RedstoneWire { wire: saved },
+                    4 => neighbors[below] = Block::RedstoneWire { wire: saved },
+                    5 => {
+                        neighbors[near] = Block::Stone {};
+                        neighbors[above] = Block::RedstoneWire { wire: saved };
+                        neighbors[below] = Block::RedstoneWire { wire: saved };
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            let (mut graph, _) = line(0, false);
+            graph.nodes[0].kind = CircuitNodeKind::Wire(0);
+            graph.nodes[0].state = ComponentState::Wire(saved);
+            graph.profiles = neighbors.iter().map(|&block| profile(block, ProfileElectrical::None)).collect();
+            graph.sites = (0..24)
+                .map(|i| SiteSpec {
+                    position: BlockPos::new(i, 20, 0),
+                    source: SiteSource::Constant(ProfileId::new(i as u32)),
+                    source_strength: 0,
+                })
+                .collect();
+            graph.wires.push(WirePlan {
+                node: NodeId::new(0),
+                canonical_neighbors: std::array::from_fn(|i| SiteId::new(i as u32)),
+                shape_route: None,
+                turbo_route: None,
+                execution: Default::default(),
+            });
+            let native = regulate_sides(saved, get_raw_sides_from_neighbors(saved, &neighbors));
+            let power = index_power(&graph);
+            let internal = FxHashSet::default();
+            let state = FxHashMap::default();
+            let mut builder = LayerBuilder::new(&monitor).unwrap();
+            let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample);
+            for face in BlockFace::values() {
+                let expected = match face {
+                    BlockFace::Top => true,
+                    BlockFace::Bottom => false,
+                    _ => !get_current_side(native, face.unwrap_direction().opposite()).is_none(),
+                };
+                for port in [PowerPort::Weak(face), PowerPort::Strong(face)] {
+                    let root = tracer.wire_emits(NodeId::new(0), port, &mut builder).unwrap();
+                    assert_eq!(
+                        evaluate(&builder, root, |_| panic!("fixed geometry has no symbolic inputs")),
+                        expected,
+                        "{face:?}, {neighbors:?}"
+                    );
+                }
+            }
+        }
+    }
 }

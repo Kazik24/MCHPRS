@@ -58,39 +58,11 @@ pub(super) fn certify(
     for &corridor in &component.corridors {
         check_cancelled(monitor)?;
         let wires: FxHashSet<_> = catalog.corridors[corridor as usize].wires.iter().copied().collect();
-        if wires.is_empty() || wires.len() > 15 {
+        if !closed_straight_cable(graph, &wires) {
             return Ok(None);
         }
-        let mut positions: Vec<_> = wires
-            .iter()
-            .map(|wire| graph.nodes[wire.index()].position.expect("wire position was validated"))
-            .collect();
-        positions.sort_by_key(|p| (p.x, p.z));
-        let first = positions[0];
-        let straight_x = positions
-            .iter()
-            .enumerate()
-            .all(|(i, p)| p.y == first.y && p.z == first.z && p.x == first.x + i as i32);
-        let straight_z = positions
-            .iter()
-            .enumerate()
-            .all(|(i, p)| p.y == first.y && p.x == first.x && p.z == first.z + i as i32);
-        if !straight_x && !straight_z {
-            return Ok(None);
-        }
-        // A diagonal or nearby independent wire can introduce captured callbacks or another walk.
-        for &wire in &wires {
-            let CircuitNodeKind::Wire(index) = graph.nodes[wire.index()].kind else {
-                return Ok(None);
-            };
-            for &site in &graph.wires[index].canonical_neighbors {
-                if let SiteSource::Component(other) = graph.sites[site.index()].source {
-                    if matches!(graph.nodes[other.index()].kind, CircuitNodeKind::Wire(_)) && !wires.contains(&other) {
-                        return Ok(None);
-                    }
-                }
-            }
-        }
+        let mut ordered_wires: Vec<_> = wires.iter().copied().collect();
+        ordered_wires.sort_unstable();
         let mut builder = LayerBuilder::new(monitor)?;
         let state = FxHashMap::default();
         let mut tracer = signals::SignalTracer::new(graph, power, &all_wires, &state, LayerInputRole::RequestSample);
@@ -111,7 +83,7 @@ pub(super) fn certify(
             let at = builder.input_expr(at)?;
             let present = builder.all([enabled, at])?;
             let mut matches = true;
-            for &wire in &wires {
+            for &wire in &ordered_wires {
                 let root = tracer.query(
                     PowerTarget::Input {
                         node: wire,
@@ -163,7 +135,7 @@ pub(super) fn certify(
             return Ok(None);
         };
         let mut finish = None;
-        for &wire in &wires {
+        for &wire in &ordered_wires {
             let CircuitNodeKind::Wire(index) = graph.nodes[wire.index()].kind else {
                 return Ok(None);
             };
@@ -230,7 +202,7 @@ pub(super) fn certify(
         };
         // The source is adjacent to the cable; every wire starts at its uniquely derived 15-distance level.
         let source_pos = graph.contacts[source.source.index()].position;
-        for &wire in &wires {
+        for &wire in &ordered_wires {
             let pos = graph.nodes[wire.index()].position.expect("wire position");
             let distance = (pos.x - source_pos.x).abs() + (pos.z - source_pos.z).abs();
             let ComponentState::Wire(saved) = graph.nodes[wire.index()].state else {
@@ -249,6 +221,43 @@ pub(super) fn certify(
         });
     }
     Ok(Some(arrivals))
+}
+
+fn closed_straight_cable(graph: &CompileGraph, wires: &FxHashSet<NodeId>) -> bool {
+    if wires.is_empty() || wires.len() > 15 {
+        return false;
+    }
+    let mut positions: Vec<_> = wires
+        .iter()
+        .map(|wire| graph.nodes[wire.index()].position.expect("wire position was validated"))
+        .collect();
+    positions.sort_by_key(|p| (p.x, p.z));
+    let first = positions[0];
+    let straight_x = positions
+        .iter()
+        .enumerate()
+        .all(|(i, p)| p.y == first.y && p.z == first.z && p.x == first.x + i as i32);
+    let straight_z = positions
+        .iter()
+        .enumerate()
+        .all(|(i, p)| p.y == first.y && p.x == first.x && p.z == first.z + i as i32);
+    if !straight_x && !straight_z {
+        return false;
+    }
+    // A diagonal or nearby independent wire can introduce captured callbacks or another walk.
+    for &wire in wires {
+        let CircuitNodeKind::Wire(index) = graph.nodes[wire.index()].kind else {
+            return false;
+        };
+        for &site in &graph.wires[index].canonical_neighbors {
+            if let SiteSource::Component(other) = graph.sites[site.index()].source {
+                if matches!(graph.nodes[other.index()].kind, CircuitNodeKind::Wire(_)) && !wires.contains(&other) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 /// During the certified walk only wire strengths change; captured block properties equal live properties.

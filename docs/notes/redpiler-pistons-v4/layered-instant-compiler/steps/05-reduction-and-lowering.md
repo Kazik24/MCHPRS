@@ -1,6 +1,23 @@
 # Step 05: reduce layers into a compact immutable program
 
-Status: planned; requires the reviewed ADDER1BIT layer artifact. Stop before runtime activation.
+Status: partial. A backward slice and allocation-free Boolean evaluator exist for admitted
+layer artifacts; full ADDER1BIT coverage and runtime lowering remain open. Stop before
+runtime activation.
+
+The first parsed connected examples are two private cells, either directly connected or
+joined by a two-wire cable. The reducer retains boundary values/effects, conditional token
+transfers and accepted-use reset obligations. It removes dead expression/input declarations
+and does not put internal wires, snapshots or a walk queue in `ReducedLayerProgram`.
+These examples are compiler evidence, not public runtime replacement or a speedup.
+
+`LayeredInstantPlan.programs` now stores the dense programs in the same order as its
+regions. `compile_layers` constructs both before publication, and graph validation
+rebuilds and compares both. Compact program types live in `program_graph/instant_program.rs`;
+cold contracts, causes and lifecycle records remain in `instant_layers.rs`.
+
+The cold graph-schema export still presents construction evidence. Runtime lowering,
+direct effect/reset bindings and the corresponding executable export are not implemented.
+The programs remain test-only and do not own live Graph execution.
 
 ## Goal
 

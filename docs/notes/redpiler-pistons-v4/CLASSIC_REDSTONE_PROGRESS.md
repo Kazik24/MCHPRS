@@ -1208,3 +1208,82 @@ Runtime guards return 1,771 admitted wires to ordinary Graph execution before th
 The concrete next attack is mixed-circuit lowering for the typed executor: compile supported fixed operations/regions, including multi-input signals and locking diodes, while retaining exact dynamic contact/piston/BUD handling at boundaries. Its present whole-program admission gate is an implementation limitation, not an impossibility result for those regions. Simply increasing the old single-ingress proof budget or relaxing callback boundaries would not address this measured bottleneck.
 
 Frozen executable: target/anpu-regional-release.exe, SHA256 b7ce0f8e6cd0363eed54ed2b978bcee845659b62e48a3f4e87d39df3ecf48248. Structured comparison: target/anpu-regional-summary.json. Raw reports/stdout/stderr: target/anpu-regional-pair-{1,2,3}-{general,regional}.{json,log,err.log}. Final build log: target/anpu-regional-release-final-build.log. Reproduce each mode with --cpu anpu --graph-tier 2 --ticks 5000 --iterations 1, adding --classic-redstone for local compilation. Full ANPU completion and a production mixed typed executor were not implemented or measured here.
+
+## 2026-10-19 - CHUNGUS execution stage 2 and experimental update coalescing: implementation checkpoint
+
+Two explicitly requested agents split runtime optimization and the separate experimental rewrite. The parent owns compiler/export integration, measurement and this append-only record. Concurrent instant-layer work is preserved. This checkpoint precedes the production timing result below.
+
+### Exact execution changes
+
+The three ordered frontiers now use contiguous Vec<u32> buffers. Dispatch consumes the fixed-length current frontier; every producer appends only to the next or next-after-next buffer. Rotation recycles the consumed allocation. Duplicates, FIFO insertion, layer comparisons, eager captured values and nested independent scratch lifetimes remain unchanged. Wire descriptors are borrowed rather than copied, and an unchanged seed returns before cloning the program Arc.
+
+The compiler joins a wire's six pure no-dust face queries into one block_input maximum. It reuses their contiguous operand interval without duplicating operands and preserves every LiveOutput/CapturedPowered mode, attenuation and cross requirement. The constant is the maximum of the six constants. Original per-face queries remain available for inspection. Empty queries and a saturated fifteen return immediately. A regression uses held-off lever power alongside live analog comparator changes, including nested captures; the aggregate matches all six original queries.
+
+Each wire also stores a mask of ALL mutable canonical neighbors. First discovery visits set bits in increasing canonical order. Unadmitted mutable aliases remain captured because their powered values, heading or later admission can matter; only immutable inert aliases are skipped. A regression specifically checks a held source that is not admitted as a callback. Wire alias descriptors no longer repeat a wire index obtainable from the node kind: their payload shrinks from twelve to eight bytes.
+
+### Invariant shape proof and dead route bodies
+
+For each actual initial ComponentState::Wire, the compiler tests all six on_neighbor_changed_from transforms under the already proven immutable raw geometry. If every result keeps the stored sides, an induction is available: power writes preserve sides, every shape transform is an identity, and captures inherit the same side vector. Certified entry-side bits are retained, and backend attachment rejects a different provided side vector while accepting changed power. This checks authoritative state, not potentially stale raw_state. The lowered test adapter consequently receives CircuitState explicitly.
+
+Shape instructions targeting such wires disappear, and their never-entered shape-route bodies cease to be executable roots. Non-invariant saved shapes retain both handling and route bodies. Original operation ordinals survive. Natural fixed-world actor routes contain no Shape instructions: parser-generated Shape deliveries originate in piston geometry notifications, which whole-fixed admission excludes. Therefore CHUNGUS's observed table reduction must not be described as eliminating active Shape dispatch. The important reduction here is unreachable route storage; frontier, query and capture changes accelerate active execution.
+
+Two initial new fixture assertions incorrectly expected natural live Shape rows in a lever/single-wire example. They were corrected using explicit shape inputs compared with native interaction::change on a two-wire/repeater fixture. A separate valid synthetic actor Shape row exercises the compiler's conditional removal and original ordinal. Final focused checks passed 17 tests, with the long CPU test separately run. Actual-state/raw-state disagreement, stale shapes, incompatible entry rejection, power independence, captured/live operands and locking repeater/lamp/hopper histories are covered.
+
+The current CHUNGUS program retains all 251,485 actors and 133,623 wires. Executable table payload is **73,588,960 bytes**, versus 100,100,492 before this stage; route operations fall from **2,517,665 to 474,520**. Original Graph inspection/projection tables remain, so this is not a process-RSS claim. Shared CircuitState and GraphFuture are still authoritative; propagation order, intermediate power writes and scheduled work remain.
+
+The native/general differential run passed every boundary 0..1024, including the known tick-512 comparator example: all component state, comparator values, pending identities, deadlines, priorities and FIFO match. Both engines delivered 128,365 scheduled component ticks and counted 6,045,241 callbacks. The new fixed executor used 69,763 ordered episodes and 4,422,713 wire steps, with zero general wire walks. Development core times in that interleaved verification are not a production performance claim. Evidence: target/chungus-stage2-native-1024.{json,log}.
+
+JSON schema minor version becomes 1.3 for the aggregate query, mutable-neighbor mask and entry-side certificate. The fixed executable export includes and validates them; byte inventories use the actual new element sizes. Only version metadata changed in the five pinned ADDER exports. Viewer checks passed 29/29 and Python loader checks 23/23. The initial broad pre-shape source run passed 470 tests and failed two concurrent instant-layer tests with 'layer repeats an exact use occurrence'; their full names are recorded in target/chungus-stage2-pre-shape-suite.log. No instant-layer implementation was changed to hide these failures.
+
+### Separate experimental rewrite
+
+experimental-coalesce-delayed-updates rewrites ordinary RouteDelivery/LinkSpec occurrences and is absent from every default optimization tier. Within a run of unconditional live scheduling-only handlers, it keeps the first equivalent sample per receiver. Torches, comparators and proven always-unlocked repeaters ignore callback direction; observers retain their direction distinction. A repeater qualifies only with an actually false initial lock and no structural Side input. Those conditions make its callback read/schedule-only for the admitted history.
+
+The first occurrence preserves deadline, priority and insertion order. A later equal sample either repeats a no-op or sees the already-pending request. Captured or conditional deliveries, contacts, Turbo routes, mutable lock handlers, immediate output changes and piston/BUD work are barriers. The explicit counterexample torch -> copper bulb output change -> same torch demonstrates why global duplicate removal loses a meaningful scheduled transition. This pass does not contract a whole wire walk or replace piston notifications with one final-strength sample.
+
+The initial exact-direction torch/comparator/observer rule removed zero of 3,482,700 CHUNGUS deliveries and zero of 937,201 ANPU deliveries. That negative result is preserved at target/experimental-delayed-update-initial-census.json. Extending to invariant-unlocked repeaters and normalizing direction for handlers that ignore it finds:
+
+| CPU | Ordinary eligible occurrences | Removed occurrences | Repetitions protected by intervening barriers | Protected Turbo occurrences |
+| --- | ---: | ---: | ---: | ---: |
+| CHUNGUS | 681,701 | 37,017 | 108,680 | 965,035 |
+| ANPU | 104,301 | 6,223 | 19,645 | 250,981 |
+
+These are static occurrence counts, not executed work or a speedup. Seven focused tests passed, including 64 strength/powered/pending combinations followed through eight ticks, FIFO, repeated link multiplicity, barriers, observer direction, Side/lock declines, cancellation and default-pipeline exclusion. Full real-CPU differential execution and its compiled-operation comparison are reported separately after timing. Evidence: target/experimental-delayed-update-census.json, target/experimental-delayed-update-final-census.log and target/chungus-stage2-experimental-tests.log.
+
+### CHUNGUS stage 2: five paired production samples
+
+Five alternating control/candidate pairs each execute 16,384 active game ticks from a fresh load and compilation. Both frozen production release/fat-LTO executables use logical CPU 4 (affinity 0x10), normal priority, O2, budget 8 and default local-classic=false. The original fixture is unchanged, SHA256 31624f7aa8e050f065f6858ba54007fe75c6f33e333138ee77d8dd6cc5291d78. Harness hashes match. A separate process monitor observed no competing Cargo/rustc or unit-test process during any sample. Desktop-wide load is not controlled; no statistical significance calculation is claimed.
+
+| Measurement | Prior packed executor | Stage 2 executor |
+| --- | ---: | ---: |
+| Core seconds, five samples | 8.355075 / 7.659017 / 7.692872 / 7.514862 / 7.621099 | 4.989565 / 5.082752 / 4.912045 / 4.913566 / 5.066515 |
+| Median core seconds | 7.659017 | 4.989565 |
+| Median game ticks/second | 2,139.18 | 3,283.65 |
+| Median preparation seconds | 25.391 | 25.336 |
+| Executable accounted bytes, including 96-byte program object | 100,100,588 | 73,589,056 |
+
+The median improvement is **1.5350068x throughput / 34.8537% less inference wall time**. Sample ranges do not overlap. All ten endpoint checks matched independent native block/entity state, ordered command output and exact exported future, and all ten 32-tick native continuations matched. Every sample retains 100% whole-fixed coverage, 1,379,485 scheduled component ticks, 76,786,878 callbacks and zero general wire walks. Thus the result is not achieved by shortening the episode or accepting less execution. Compilation, stimulus, projection/reset and correctness checking are outside the timed loop. No per-tick client/display/server throughput or million-tick-rate claim follows.
+
+Control binary: target/chungus-stage2-control.exe, SHA256 b7ce0f8e6cd0363eed54ed2b978bcee845659b62e48a3f4e87d39df3ecf48248. Candidate: target/chungus-stage2-candidate.exe, SHA256 f30ce5f4e914f2717b0d5c49b0e631648dff27d1c9855bccfeb555a350fdb66b. Structured comparison: target/chungus-stage2-summary.json. Raw reports/logs: target/chungus-stage2-pair-{1..5}-{control,candidate}.{json,log,err.log}. Scheduling/competition evidence: target/chungus-stage2-process-observations.json and target/chungus-stage2-pairs.ps1. The new internal execution refinements apply automatically wherever default O2 whole-fixed compilation succeeds; no new production option was added.
+
+### Experimental pass: real CPU execution result
+
+Both CHUNGUS and ANPU match default O2 execution at all 1,025 boundaries through 1,024 ticks with the experimental rewrite inserted before builders. Comparison includes complete CircuitState, exact typed scheduler FIFO, pending membership/counts, clock, piston/deferred work and ordered commands. Reset snapshots match, followed by 32 interpreter continuation ticks. This is a paired Graph differential with native handoff, not an independent interpreter run from the beginning for the experimental configuration.
+
+CHUNGUS's compiled instructions decrease further from 474,520 to 448,681. Executed callbacks decrease from 6,045,241 to 6,027,572 over the checked window. ANPU retains general mixed execution; its callbacks decrease from 4,981,318 to 4,962,692. These are bounded correctness/work-count results, not a production timing result for this pass. It remains absent from default pipelines and does not replace an entire net/piston boundary. Evidence: target/experimental-delayed-update-differential.{json,log}; ignored test delayed_update_coalescing_cpu_execution_differential, MCHPRS_DELAYED_UPDATE_TICKS=1024.
+
+### Final stage 2 verification
+
+The final source snapshot passes the complete Redpiler suite in both development and release: **480 passed, zero failed, 24 research tests ignored** in each profile. This supersedes the two earlier concurrent instant-layer failures without rewriting their historical record. The explicitly executed ignored checks are the 1,025-boundary main native/general CHUNGUS comparison, both-CPU experimental candidate census and both-CPU experimental state/future/reset/continuation differential. No full CHUNGUS/ANPU completion run was attempted.
+
+Production cargo check passes with only the two pre-existing test-adapter dead-code warnings. Owned standalone Rust files pass rustfmt checks; whitespace checks pass with the repository's CRLF handling. Viewer tests pass 29/29 and loader tests 23/23. Evidence: target/chungus-stage2-final-suite.log, target/chungus-stage2-release-suite.log, target/chungus-stage2-final-focused.log, target/chungus-stage2-production-check.log, target/chungus-stage2-viewer-tests.log and target/chungus-stage2-loader-tests.log. Frozen final verification executables are target/chungus-stage2-final-tests.exe and target/chungus-stage2-release-tests.exe.
+
+Remaining scope is explicit: exact ordered wire propagation and delayed scheduling remain; this is not full passive-net synthesis, SIMD execution or mixed ANPU typed lowering. The separate experimental pass has no production speed measurement and is still opt-in through a custom pipeline. A whole-wire-walk-to-one-piston-update rule still needs its complete boundary, intermediate-sample, request-order and continuation proof.
+
+### O5 promotion: equivalent delayed updates (2026-10-19)
+
+The production parser now accepts O5. Default O5, bare -O and --optimize select the existing equivalent-delayed-update rewrite after the O3 rewrites and before every plan builder. O0 through O4 retain their previous enabled passes. The existing diagnostic name experimental-coalesce-delayed-updates is retained for report compatibility. The main packed whole-fixed executor remains enabled from O2.
+
+This promotes the bounded scheduling-only rule, without expanding eligibility: captured/guarded callbacks, Turbo walks, immediate state changes, possible repeater locking and piston/BUD boundaries remain barriers. Original delivery/link tables are rewritten and all execution plans are then built from that graph. Pending work, receiver direction when meaningful, deadlines, priorities and FIFO order retain their existing semantics. Whole-net/piston contraction is not implied.
+
+The CPU differential now compares actual default O4 and O5 pipelines, rather than inserting a pass into a custom O2 pipeline. Its bounded state/future/reset/native-continuation result and tier/fixture checks will be recorded below. Previous experimental performance and correctness entries above describe their historical O2 snapshots and are not O5 timing claims.

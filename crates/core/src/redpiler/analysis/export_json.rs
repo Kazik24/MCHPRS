@@ -1438,7 +1438,7 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     }
     let export = GraphExport {
         format: "mchprs.redpiler.graph",
-        version: VersionDto { major: 1, minor: 2 },
+        version: VersionDto { major: 1, minor: 3 },
         stage: "callback_draft",
         capabilities,
         source: SourceDto {

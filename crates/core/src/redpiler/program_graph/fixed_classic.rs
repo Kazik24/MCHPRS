@@ -5,9 +5,12 @@
 //! or local private ownership is required. Unsupported whole circuits decline.
 //! Mutable state remains in CircuitState/GraphFuture. Re-derivation checks stale
 //! plans; it is not an independent semantic proof of this partial evaluator.
+//! Shape deliveries disappear only when the actual entry sides are fixed points
+//! for every direction under immutable geometry. Power writes preserve those
+//! sides, and backend attachment checks the entry assumption again.
 use super::*;
 use crate::redpiler::TaskMonitor;
-use mchprs_blocks::blocks::ComparatorMode;
+use mchprs_blocks::blocks::{ComparatorMode, RedstoneWire, RedstoneWireSide};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +29,7 @@ pub(crate) enum FixedClassicKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FixedClassicSite {
     Inert,
-    Wire { node: NodeId, index: u32 },
+    Wire { node: NodeId },
     Gate(NodeId),
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,13 +67,25 @@ pub(crate) struct FixedClassicWire {
     pub(crate) node: NodeId,
     pub(crate) root: SiteId,
     pub(crate) neighbors: [SiteId; 24],
+    /// Every mutable canonical neighbor, including sites with no admitted callback.
+    pub(crate) mutable_neighbors: u32,
     pub(crate) seed_mask: u32,
     pub(crate) turbo_mask: u32,
     pub(crate) raw_sides: u8,
+    /// Entry sides proven invariant under all shape deliveries; checked at attachment.
+    pub(crate) inert_sides: Option<u8>,
     pub(crate) admitted: u32,
     /// BlockFace::values() order: Top, Bottom, North, South, East, West.
     pub(crate) no_dust: [FixedClassicQuery; 6],
+    /// The same six pure queries joined once, sharing their contiguous operands.
+    pub(crate) block_input: FixedClassicQuery,
     pub(crate) shape_route: Option<RouteId>,
+}
+impl FixedClassicWire {
+    /// Four stored sides, independent of the live analog power.
+    pub(crate) fn packed_sides(wire: RedstoneWire) -> u8 {
+        (wire.north.get_id() | wire.south.get_id() << 2 | wire.east.get_id() << 4 | wire.west.get_id() << 6) as u8
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FixedClassicOpKind {
@@ -122,8 +137,8 @@ impl FixedClassicPlans {
 
 impl FixedClassicProgram {
     /// Keep the lowered-program entry point for differential tests of both views.
-    pub(crate) fn compile(program: &CircuitProgram) -> Result<Self, String> {
-        Self::compile_view(FixedClassicView::Lowered(program), &TaskMonitor::default())
+    pub(crate) fn compile(program: &CircuitProgram, state: &CircuitState) -> Result<Self, String> {
+        Self::compile_view(FixedClassicView::Lowered(program, state), &TaskMonitor::default())
     }
     pub(crate) fn compile_graph(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Self, String> {
         Self::compile_view(FixedClassicView::draft(graph, monitor)?, monitor)
@@ -216,7 +231,7 @@ impl FixedClassicProgram {
                         roots[node.index()] = Some(SiteId::new(index as u32));
                     }
                     match nodes[node.index()].kind {
-                        FixedClassicKind::Wire(index) => FixedClassicSite::Wire { node, index },
+                        FixedClassicKind::Wire(_) => FixedClassicSite::Wire { node },
                         _ => FixedClassicSite::Gate(node),
                     }
                 }
@@ -235,23 +250,44 @@ impl FixedClassicProgram {
                 return Err("conditional wire geometry".into());
             }
             let raw_sides = facts.raw_sides.ok_or("missing fixed raw wire sides")?;
+            let mut entry_wire = program.initial_wire(wire.node)?;
+            entry_wire.power = 0;
+            let side = |shift: u32| RedstoneWireSide::from_id(u32::from((raw_sides >> shift) & 3));
+            let raw_wire = RedstoneWire::new(side(0), side(2), side(4), side(6), 0);
+            let inert_sides = BlockFace::values()
+                .into_iter()
+                .all(|face| crate::redstone::wire::on_neighbor_changed_from(entry_wire, raw_wire, face) == entry_wire)
+                .then(|| FixedClassicWire::packed_sides(entry_wire));
             let selection = wire.execution.callback_selection.ok_or("missing fixed callback selection")?;
             if selection.known != WireCallbackSelection::ALL {
                 return Err("dynamic wire callback selection".into());
             }
             let mut no_dust = [FixedClassicQuery::default(); 6];
+            let block_start = compiler.operands.len() as u32;
             for (index, (face, slot)) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]).enumerate() {
                 no_dust[index] = compiler.no_dust(wire.canonical_neighbors[slot], face)?;
             }
+            let block_end = compiler.operands.len() as u32;
+            let block_input = FixedClassicQuery {
+                constant: no_dust.iter().map(|query| query.constant).max().unwrap_or(0),
+                start: if block_start == block_end { 0 } else { block_start },
+                end: if block_start == block_end { 0 } else { block_end },
+            };
+            let mutable_neighbors = wire.canonical_neighbors.iter().enumerate().fold(0, |mask, (slot, site)| {
+                mask | (u32::from(!matches!(sites[site.index()], FixedClassicSite::Inert)) << slot)
+            });
             wires.push(FixedClassicWire {
                 node: wire.node,
                 root: roots[wire.node.index()].ok_or("wire root missing")?,
                 neighbors: wire.canonical_neighbors,
+                mutable_neighbors,
                 seed_mask: transfer.seed.direct,
                 turbo_mask: transfer.turbo.direct,
                 raw_sides,
+                inert_sides,
                 admitted: selection.admitted,
                 no_dust,
+                block_input,
                 shape_route: wire.shape_route,
             });
         }
@@ -261,12 +297,16 @@ impl FixedClassicProgram {
         for node in program.nodes() {
             // Electrical actors enter output routes. Wire propagation calls
             // typed site handlers, and wires separately enter shape routes.
-            if !matches!(node.kind, CircuitNodeKind::Wire(_)) && let Some(route) = node.output_route {
+            if !matches!(node.kind, CircuitNodeKind::Wire(_))
+                && let Some(route) = node.output_route
+            {
                 executable_routes[route.index()] = true;
             }
         }
-        for wire in program.wires() {
-            if let Some(route) = wire.shape_route {
+        for wire in &wires {
+            if wire.inert_sides.is_none()
+                && let Some(route) = wire.shape_route
+            {
                 executable_routes[route.index()] = true;
             }
         }
@@ -296,7 +336,12 @@ impl FixedClassicProgram {
                 let Some(target) = target else { continue };
                 let kind = match (nodes[target.index()].kind, row.kind) {
                     (FixedClassicKind::Wire(_), DeliveryKind::Update { .. }) => FixedClassicOpKind::Seed,
-                    (FixedClassicKind::Wire(_), DeliveryKind::Shape { direction }) => FixedClassicOpKind::Shape(direction),
+                    (FixedClassicKind::Wire(index), DeliveryKind::Shape { direction }) => {
+                        if wires[index as usize].inert_sides.is_some() {
+                            continue;
+                        }
+                        FixedClassicOpKind::Shape(direction)
+                    }
                     (_, DeliveryKind::Shape { .. }) => continue,
                     (_, DeliveryKind::Update { direction }) => FixedClassicOpKind::Update { direction },
                 };
@@ -474,7 +519,7 @@ enum FixedClassicView<'a> {
         readers: rustc_hash::FxHashSet<PowerTarget>,
         comparators: Vec<Option<usize>>,
     },
-    Lowered(&'a CircuitProgram),
+    Lowered(&'a CircuitProgram, &'a CircuitState),
 }
 struct FixedClassicNodeView<'a> {
     kind: &'a CircuitNodeKind,
@@ -483,6 +528,17 @@ struct FixedClassicNodeView<'a> {
     output_route: Option<RouteId>,
 }
 impl<'a> FixedClassicView<'a> {
+    fn initial_wire(&self, node: NodeId) -> Result<RedstoneWire, String> {
+        let state = match self {
+            Self::Draft { graph, .. } => graph.nodes.get(node.index()).map(|node| &node.state),
+            Self::Lowered(_, state) => state.components.get(node.index()),
+        };
+        match state {
+            Some(ComponentState::Wire(wire)) => Ok(*wire),
+            _ => Err("fixed wire entry state missing or incompatible".into()),
+        }
+    }
+
     fn draft(graph: &'a CompileGraph, monitor: &TaskMonitor) -> Result<Self, String> {
         let mut queries = FxHashMap::default();
         for (index, query) in graph.plans.fixed_signals.live.iter().enumerate() {
@@ -515,7 +571,7 @@ impl<'a> FixedClassicView<'a> {
     fn node_count(&self) -> usize {
         match self {
             Self::Draft { graph, .. } => graph.nodes.len(),
-            Self::Lowered(program) => program.nodes().len(),
+            Self::Lowered(program, _) => program.nodes().len(),
         }
     }
     fn node(&self, index: usize) -> FixedClassicNodeView<'_> {
@@ -529,7 +585,7 @@ impl<'a> FixedClassicView<'a> {
                     output_route: node.output_route,
                 }
             }
-            Self::Lowered(program) => {
+            Self::Lowered(program, _) => {
                 let node = &program.nodes()[index];
                 FixedClassicNodeView {
                     kind: &node.kind,
@@ -546,61 +602,61 @@ impl<'a> FixedClassicView<'a> {
     fn sites(&self) -> &[SiteSpec] {
         match self {
             Self::Draft { graph, .. } => &graph.sites,
-            Self::Lowered(program) => program.sites(),
+            Self::Lowered(program, _) => program.sites(),
         }
     }
     fn profiles(&self) -> &[Profile] {
         match self {
             Self::Draft { graph, .. } => &graph.profiles,
-            Self::Lowered(program) => program.profiles(),
+            Self::Lowered(program, _) => program.profiles(),
         }
     }
     fn guards(&self) -> &[Guard] {
         match self {
             Self::Draft { graph, .. } => &graph.guards,
-            Self::Lowered(program) => program.guards(),
+            Self::Lowered(program, _) => program.guards(),
         }
     }
     fn wires(&self) -> &[WirePlan] {
         match self {
             Self::Draft { graph, .. } => &graph.wires,
-            Self::Lowered(program) => program.wires(),
+            Self::Lowered(program, _) => program.wires(),
         }
     }
     fn routes(&self) -> &[Route] {
         match self {
             Self::Draft { graph, .. } => &graph.routes,
-            Self::Lowered(program) => program.routes(),
+            Self::Lowered(program, _) => program.routes(),
         }
     }
     fn contacts(&self) -> &[ContactSpec] {
         match self {
             Self::Draft { graph, .. } => &graph.contacts,
-            Self::Lowered(program) => program.contacts(),
+            Self::Lowered(program, _) => program.contacts(),
         }
     }
     fn pistons(&self) -> &[PistonSpec] {
         match self {
             Self::Draft { graph, .. } => &graph.pistons,
-            Self::Lowered(program) => program.pistons(),
+            Self::Lowered(program, _) => program.pistons(),
         }
     }
     fn resources(&self) -> &[ResourceSpec] {
         match self {
             Self::Draft { graph, .. } => &graph.resources,
-            Self::Lowered(program) => program.resources(),
+            Self::Lowered(program, _) => program.resources(),
         }
     }
     fn profile_block(&self, profile: ProfileId) -> Option<Block> {
         match self {
             Self::Draft { graph, .. } => graph.profiles.get(profile.index()).map(|record| Block::from_id(record.raw_state)),
-            Self::Lowered(program) => program.profile_block(profile),
+            Self::Lowered(program, _) => program.profile_block(profile),
         }
     }
     fn has_private_owners(&self) -> bool {
         match self {
             Self::Draft { graph, .. } => !graph.plans.classic_nets.is_empty() || !graph.plans.instant.proxies.is_empty(),
-            Self::Lowered(program) => !program.classic().nets.is_empty() || !program.instant_proxies().is_empty(),
+            Self::Lowered(program, _) => !program.classic().nets.is_empty() || !program.instant_proxies().is_empty(),
         }
     }
     fn comparator_input(&self, node: NodeId) -> Option<&ComparatorInputPlan> {
@@ -610,7 +666,7 @@ impl<'a> FixedClassicView<'a> {
                 .copied()
                 .flatten()
                 .map(|index| &graph.comparator_inputs[index]),
-            Self::Lowered(program) => program.comparator_input(node),
+            Self::Lowered(program, _) => program.comparator_input(node),
         }
     }
     fn fixed_signal_query(&self, target: PowerTarget) -> Option<(u8, &[WeightedSignal])> {
@@ -619,13 +675,13 @@ impl<'a> FixedClassicView<'a> {
                 let query = &graph.plans.fixed_signals.live[index];
                 (query.constant, query.inputs.as_ref())
             }),
-            Self::Lowered(program) => program.fixed_signal_query(target),
+            Self::Lowered(program, _) => program.fixed_signal_query(target),
         }
     }
     fn has_power_links(&self, target: PowerTarget) -> bool {
         match self {
             Self::Draft { readers, .. } => readers.contains(&target),
-            Self::Lowered(program) => !program.power_links_to(target).is_empty(),
+            Self::Lowered(program, _) => !program.power_links_to(target).is_empty(),
         }
     }
 }
@@ -699,14 +755,14 @@ mod tests {
     fn fixed_classic_draft_and_lowered_views_match_and_reject_stale_plan() {
         let graph = graph();
         let compiled = FixedClassicProgram::compile_graph(&graph, &TaskMonitor::default()).unwrap();
-        let (program, _) = graph.clone().lower().unwrap();
-        assert_eq!(compiled, FixedClassicProgram::compile(&program).unwrap());
+        let (program, state) = graph.clone().lower().unwrap();
+        assert_eq!(compiled, FixedClassicProgram::compile(&program, &state).unwrap());
         let saved = FixedClassicPlans {
             program: Some(Arc::new(compiled.clone())),
             decline: None,
         };
         saved.validate(&graph, &TaskMonitor::default()).unwrap();
-        let mut forged = compiled;
+        let mut forged = compiled.clone();
         forged.wires[0].seed_mask ^= 1;
         assert!(
             FixedClassicPlans {
@@ -716,9 +772,22 @@ mod tests {
             .validate(&graph, &TaskMonitor::default())
             .is_err()
         );
+        let mut forged = compiled;
+        forged.wires[0].block_input.constant ^= 1;
+        assert!(
+            FixedClassicPlans {
+                program: Some(Arc::new(forged)),
+                decline: None,
+            }
+            .validate(&graph, &TaskMonitor::default())
+            .is_err()
+        );
         for wire in program.wires() {
             if let Some(route) = wire.turbo_route {
-                if !program.nodes().iter().any(|node| !matches!(node.kind, CircuitNodeKind::Wire(_)) && node.output_route == Some(route))
+                if !program
+                    .nodes()
+                    .iter()
+                    .any(|node| !matches!(node.kind, CircuitNodeKind::Wire(_)) && node.output_route == Some(route))
                     && !program.wires().iter().any(|wire| wire.shape_route == Some(route))
                 {
                     assert!(saved.program.as_ref().unwrap().routes[route.index()].is_empty());
@@ -732,5 +801,47 @@ mod tests {
         let monitor = TaskMonitor::default();
         monitor.cancel();
         assert!(FixedClassicProgram::compile_graph(&graph, &monitor).unwrap_err().contains("cancelled"));
+    }
+
+    #[test]
+    fn fixed_classic_shape_certificate_uses_component_entry_sides_instead_of_raw_block() {
+        let mut graph = graph();
+        let original = FixedClassicProgram::compile_graph(&graph, &TaskMonitor::default()).unwrap();
+        assert_eq!(original.wires[0].inert_sides, None, "fixture has stale dot sides");
+        let node = original.wires[0].node;
+        let saved_raw = graph.nodes[node.index()].raw_state;
+        let entry = RedstoneWire::new(
+            RedstoneWireSide::None,
+            RedstoneWireSide::None,
+            RedstoneWireSide::Side,
+            RedstoneWireSide::Side,
+            7,
+        );
+        graph.nodes[node.index()].state = ComponentState::Wire(entry);
+        let compiled = FixedClassicProgram::compile_graph(&graph, &TaskMonitor::default()).unwrap();
+        assert_eq!(graph.nodes[node.index()].raw_state, saved_raw);
+        assert_eq!(compiled.wires[0].inert_sides, Some(FixedClassicWire::packed_sides(entry)));
+        assert!(
+            FixedClassicPlans {
+                program: Some(Arc::new(original)),
+                decline: None
+            }
+            .validate(&graph, &TaskMonitor::default())
+            .is_err(),
+            "changing entry sides must invalidate the old shape assumption"
+        );
+        graph.plans.fixed_classic.program = Some(Arc::new(compiled.clone()));
+        let (program, state) = graph.lower().unwrap();
+        assert_eq!(compiled, FixedClassicProgram::compile(&program, &state).unwrap());
+        // The certificate ignores power because shape transforms preserve it.
+        for power in 0..16 {
+            let current = RedstoneWire { power, ..entry };
+            let bits = compiled.wires[0].raw_sides;
+            let side = |shift: u32| RedstoneWireSide::from_id(u32::from((bits >> shift) & 3));
+            let raw = RedstoneWire::new(side(0), side(2), side(4), side(6), power);
+            for face in BlockFace::values() {
+                assert_eq!(crate::redstone::wire::on_neighbor_changed_from(current, raw, face), current);
+            }
+        }
     }
 }

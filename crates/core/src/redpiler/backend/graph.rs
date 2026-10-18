@@ -566,6 +566,19 @@ impl GraphBackend {
         logical_tick: u64,
         positions: FxHashMap<BlockPos, NodeId>,
     ) -> Result<Self, GraphBackendError> {
+        if let Some(fixed) = program.fixed_classic() {
+            for wire in &fixed.wires {
+                if let Some(expected) = wire.inert_sides
+                    && !matches!(state.components.get(wire.node.index()), Some(ComponentState::Wire(value))
+                        if FixedClassicWire::packed_sides(*value) == expected)
+                {
+                    return Err(GraphBackendError::UnsupportedComponent {
+                        position: program.nodes()[wire.node.index()].position,
+                        kind: "fixed classic wire sides differ from certified entry",
+                    });
+                }
+            }
+        }
         let mut component_sites = vec![None; program.nodes().len()];
         for (index, node) in program.nodes().iter().enumerate() {
             let id = NodeId::try_from_index(index).expect("graph node count was validated");
@@ -1877,6 +1890,10 @@ impl GraphBackend {
 #[cfg(test)]
 #[path = "graph/tests/components.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "graph/tests/coalesce_delayed_updates.rs"]
+mod coalesce_delayed_update_tests;
 
 #[cfg(test)]
 #[path = "graph/tests/fuzz.rs"]
