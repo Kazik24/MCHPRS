@@ -1,4 +1,159 @@
-//! The graph backend executes the lowered general redstone program.
+//! Redpiler runs redstone circuits from a compiled graph. It finds components,
+//! power connections, and update routes once, then uses them to run the circuit.
+//!
+//! Power levels, update order, and pending ticks all affect the result. The graph
+//! keeps power reads separate from notifications so it can preserve that order.
+//! [`Compiler`] owns the circuit. [`Compiler::compile`] builds it without changing
+//! the world and makes it active once compilation succeeds.
+//!
+//! # Building the graph
+//!
+//! ```text
+//! World selection + pending ticks
+//!                |
+//!    geometry and support checks
+//!                |
+//!      electrical dependencies
+//!                |
+//!      ordered callback routes
+//!                |
+//!           CircuitDraft
+//!                |
+//!    rewrites and execution plans
+//!                |
+//!             lowering
+//!                |
+//!    CircuitProgram + CircuitState
+//!                |
+//!           GraphBackend
+//! ```
+//!
+//! [Preparation][preparation] has three stages:
+//!
+//! - [Geometry][geometry] checks that the selection is supported and records
+//!   pistons, movable materials, and the positions they can occupy.
+//! - [Electrical discovery][electrical] finds components and the power sources
+//!   each input can read.
+//! - [Callback construction][callbacks] records update and shape notifications
+//!   in the order they should run.
+//!
+//! These produce a `CircuitDraft`, along with the starting clock and pending ticks.
+//!
+//! # Nodes and connections
+//!
+//! The [graph][storage] is stored in tables linked by IDs. A **node** represents
+//! a component, wire, piston, or contact. A **site** is a world position the
+//! circuit needs to read. Its block properties come from a component, a fixed
+//! block profile, or whatever currently occupies a contact. Air and solid blocks
+//! can be sites too.
+//!
+//! There are three main kinds of connection:
+//!
+//! ```text
+//! PowerLink:
+//!   source site --[port, face, attenuation, guard]--> input / conductor
+//!
+//! Route (ordered notifications):
+//!   source node --> route
+//!                    |
+//!                    +-- delivery 0 --> target site
+//!                    +-- delivery 1 --> target site
+//!                    +-- ...
+//!
+//! WireRelation (neighbor geometry):
+//!   wire node --[step / ascend / descend, guard]--> neighboring site
+//! ```
+//!
+//! A **power link** connects a source site to an input or conductor. The source
+//! port says which kind of power to read: stored output, weak power, strong power,
+//! or conduction. Component inputs have main, side, and quasi ports. To read an
+//! input, the executor takes the strongest allowed contribution after attenuation.
+//! Reading power does not send notifications.
+//!
+//! A **route** is an ordered list of notifications. Each delivery records a
+//! target site, receiver, direction, and condition. `LinkSpec` describes the
+//! corresponding connection between nodes; the route stores the delivery order,
+//! including repeated notifications. Feedback loops are allowed: the executor
+//! runs events as they occur, rather than visiting every node in graph order.
+//!
+//! A **wire relation** records a neighboring site a wire may need to read. Each
+//! wire's `WirePlan` also stores neighbor sites and notification routes. The
+//! [wire executor][wire] processes changes in ordered layers, keeping intermediate
+//! power changes and the state captured during the walk.
+//!
+//! # Pistons and captured state
+//!
+//! For supported piston movements, a **contact** is a position whose block can
+//! change, and a **resource** is the material being moved. A **guard** is a Boolean
+//! condition that selects an occupant or enables a connection. For example:
+//!
+//! ```text
+//! contact at position P
+//!   +--[resource is at P]----> material profile
+//!   +--[head is present]----> piston-head profile
+//!   +--[otherwise]----------> background profile
+//! ```
+//!
+//! The actual alternatives depend on the contact. They are recorded during
+//! compilation, so a piston movement selects an existing alternative.
+//!
+//! A **live** read uses current graph state. A **captured** read uses the receiver
+//! and properties saved earlier in a wire walk. If a callback moves a block,
+//! later deliveries using that capture still see the saved observation. Other
+//! reads, such as conducted power, can remain live during the same operation.
+//! [Site resolution][sites] implements these rules.
+//!
+//! # Running a circuit
+//!
+//! Consider a simple line, with the repeater facing the lamp:
+//!
+//! ```text
+//! lever ---> dust ---> repeater ---> lamp
+//! use        wire walk    delayed      output
+//!                         transition
+//! ```
+//!
+//! [`Compiler::on_use_block`] toggles the lever and sends its notifications. The
+//! dust reads its inputs and starts a wire walk if its power changes. The repeater
+//! then reads its input and may schedule a tick. When that tick runs, it changes
+//! the repeater's output and notifies the lamp. The diagram leaves out the extra
+//! neighbor notifications along the way.
+//!
+//! The [backend][execution] holds the program, circuit state, clock, and queues.
+//! Each tick runs due component ticks, advances the scheduler and checks again,
+//! processes piston actions, then applies deferred piston connections.
+//! [`Compiler::tick_with_world`] gives command blocks access to the world;
+//! ordinary redstone reads the compiled state.
+//!
+//! # Optimization and reset
+//!
+//! The [passes][passes] first rewrite the graph, then build faster execution plans
+//! for supported cases. Rewriting the graph discards old plans. The runner checks
+//! each enabled pass's result; circuits that don't fit an optimization keep the
+//! general execution path. These checks cover graph structure and plan certificates,
+//! rather than proving every rewrite equivalent to the original circuit.
+//!
+//! Lowering splits the graph into `CircuitProgram` (immutable instructions) and
+//! `CircuitState` (mutable values), and maps pending ticks to compiled receivers.
+//!
+//! [`Compiler::flush`] writes display changes and effects to the world. The
+//! circuit keeps running, and [`CompilerOptions::io_only`] can hide internal
+//! changes. [`Compiler::reset`] writes the full state back and returns the clock
+//! and pending work to the interpreter. Reset preserves unfinished transitions;
+//! it doesn't run them to completion.
+//!
+//! [`analysis::graph::prepare_candidate_graph`] uses the same preparation and
+//! passes to inspect a circuit without starting it.
+//!
+//! [preparation]: ../../src/mchprs_core/redpiler/passes/rich.rs.html
+//! [geometry]: ../../src/mchprs_core/redpiler/analysis/geometry.rs.html
+//! [electrical]: ../../src/mchprs_core/redpiler/analysis/electrical.rs.html
+//! [callbacks]: ../../src/mchprs_core/redpiler/analysis/callbacks.rs.html
+//! [storage]: ../../src/mchprs_core/redpiler/program_graph.rs.html
+//! [wire]: ../../src/mchprs_core/redpiler/backend/graph/wire.rs.html
+//! [sites]: ../../src/mchprs_core/redpiler/backend/graph/sites.rs.html
+//! [execution]: ../../src/mchprs_core/redpiler/backend/graph.rs.html
+//! [passes]: ../../src/mchprs_core/redpiler/passes/mod.rs.html
 
 pub mod analysis;
 pub(crate) mod backend;
@@ -118,6 +273,10 @@ pub struct GraphExecutionCounts {
 
 #[derive(Default)]
 /// Owns the active compiled backend and its options and statistics.
+///
+/// Compile before ticking, changing controls, or flushing; these methods panic
+/// when inactive. Reset returns the circuit to the interpreter. See the
+/// [module overview](self) for how the graph works.
 pub struct Compiler {
     backend: Option<Box<GraphBackend>>,
     options: CompilerOptions,
@@ -157,6 +316,10 @@ impl Compiler {
         Some(self.backend.as_ref()?.execution_coverage())
     }
 
+    /// Compile the selected region and start it with the supplied pending ticks.
+    ///
+    /// Reads the world without changing it. On failure or cancellation, no new
+    /// backend or statistics are installed. Reset an active compiler before compiling again.
     pub fn compile<W: World>(
         &mut self,
         world: &W,
@@ -213,6 +376,7 @@ impl Compiler {
         Ok(())
     }
 
+    /// Build a backend ready to run, leaving activation to the caller.
     fn prepare_graph_backend<W: World>(
         world: &W,
         bounds: (BlockPos, BlockPos),
@@ -235,6 +399,10 @@ impl Compiler {
         Ok((Box::new(backend), analysis_duration))
     }
 
+    /// Write the circuit back to the world and return pending work to the interpreter.
+    ///
+    /// Stops compiled execution. Call between ticks. With `update` enabled, also
+    /// send block updates throughout `bounds`. Does nothing when already inactive.
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
         if let Some(mut backend) = self.backend.take() {
             backend.reset(world);
@@ -254,27 +422,44 @@ impl Compiler {
         self.backend.as_mut().expect("tried to get redpiler backend when inactive")
     }
 
+    /// Run one logical tick without giving command blocks access to the world.
+    ///
+    /// Returns an error if a command host is needed; use [`Self::tick_with_world`]
+    /// for those circuits. Call [`Self::flush`] to display changes.
     pub fn tick(&mut self) -> Result<(), GraphExecutionError> {
         self.backend().tick()
     }
 
+    /// Use a lever or button and send its notifications immediately.
+    ///
+    /// Ignores other positions. Logs execution errors, which also stop later backend work.
     pub fn on_use_block(&mut self, pos: BlockPos) {
         if let Err(error) = self.backend().use_block(pos) {
             tracing::error!(%error, "graph backend control failed");
         }
     }
 
+    /// Change a pressure plate's powered state and send its notifications immediately.
+    ///
+    /// Ignores other positions. Logs execution errors, which also stop later backend work.
     pub fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
         if let Err(error) = self.backend().set_pressure_plate(pos, powered) {
             tracing::error!(%error, "graph backend control failed");
         }
     }
 
+    /// Write display changes and effects to the world, keeping the circuit running.
+    ///
+    /// Applies [`CompilerOptions::io_only`]. Pending work stays in the backend.
     pub fn flush<W: World>(&mut self, world: &mut W) {
         let io_only = self.options.io_only;
         self.backend().flush(world, io_only);
     }
 
+    /// Run one logical tick with world access for command blocks.
+    ///
+    /// Commands can read and change the world. Call [`Self::flush`] to display
+    /// circuit changes. Returns any execution error.
     pub fn tick_with_world<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
         self.backend().tick_with_world(world)
     }

@@ -55,6 +55,8 @@ impl GraphBackend {
             .expect("wire query site was validated during preparation")
     }
 
+    /// Test a guard using the live or captured view specified for each site.
+    /// State tests always read current state. A site test with a missing capture is false.
     pub(super) fn guard_matches(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>) -> bool {
         let matched = self.guard_matches_using(id, captured, None);
         matched
@@ -94,6 +96,9 @@ impl GraphBackend {
         }
     }
 
+    /// Look up the block and receiver at a site.
+    /// Uses the supplied capture, or reads the current component, fixed block
+    /// profile, or contact occupant from the graph.
     pub(super) fn resolve_site(&self, site: SiteId, captured: Option<&ObservedSite>) -> Option<ResolvedSite> {
         if let Some(observed) = captured {
             return self.resolve_observed_site(observed);

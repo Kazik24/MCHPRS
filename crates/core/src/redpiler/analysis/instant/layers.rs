@@ -741,22 +741,7 @@ fn lifecycle_occurrences(
     ];
     for (route, phase) in deferred.into_iter().flatten() {
         let source = graph.routes.get(route.index()).ok_or("deferred lifecycle route is outside the graph")?;
-        for (ordinal, _) in source.deliveries.iter().enumerate() {
-            builder.visit()?;
-            let occurrence = RouteOccurrence {
-                route,
-                ordinal: u32::try_from(ordinal).map_err(|_| "too many callback occurrences in one route")?,
-            };
-            let row = LayerLifecycleOccurrence {
-                actor: use_.actor,
-                occurrence,
-                phase,
-                reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
-            };
-            if !lifecycle.contains(&row) {
-                lifecycle.push(row);
-            }
-        }
+        append_route_lifecycle(&mut lifecycle, source, route, use_.actor, phase, builder)?;
     }
     for occurrence in reset_wake.on_base_changed.iter().chain(&reset_wake.on_base_restored) {
         builder.visit()?;
@@ -791,24 +776,37 @@ fn lifecycle_occurrences(
         if source.source != expected_source {
             return Err("later lifecycle route has a mismatched source".into());
         }
-        for (ordinal, _) in source.deliveries.iter().enumerate() {
-            builder.visit()?;
-            let occurrence = RouteOccurrence {
-                route,
-                ordinal: u32::try_from(ordinal).map_err(|_| "too many callback occurrences in one route")?,
-            };
-            let row = LayerLifecycleOccurrence {
-                actor: use_.actor,
-                occurrence,
-                phase,
-                reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
-            };
-            if !lifecycle.contains(&row) {
-                lifecycle.push(row);
-            }
-        }
+        append_route_lifecycle(&mut lifecycle, source, route, use_.actor, phase, builder)?;
     }
     Ok(Ok(lifecycle))
+}
+
+fn append_route_lifecycle(
+    lifecycle: &mut Vec<LayerLifecycleOccurrence>,
+    source: &Route,
+    route: RouteId,
+    actor: PistonId,
+    phase: LayerLifecyclePhase,
+    builder: &mut LayerBuilder<'_>,
+) -> Result<(), ConstructionError> {
+    for (ordinal, _) in source.deliveries.iter().enumerate() {
+        // Revisited rows still consume the original construction budget.
+        builder.visit()?;
+        let occurrence = RouteOccurrence {
+            route,
+            ordinal: u32::try_from(ordinal).map_err(|_| "too many callback occurrences in one route")?,
+        };
+        let row = LayerLifecycleOccurrence {
+            actor,
+            occurrence,
+            phase,
+            reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
+        };
+        if !lifecycle.contains(&row) {
+            lifecycle.push(row);
+        }
+    }
+    Ok(())
 }
 
 /// Match the value families handled by `compile_outputs` before doing expensive construction.
@@ -827,10 +825,7 @@ fn single_cell_outputs_supported(
         }
         match port.kind {
             BoundaryPortKind::Callback { .. } | BoundaryPortKind::GuardState { .. } => true,
-            BoundaryPortKind::Power { link } => cell.pins.iter().any(|pin| {
-                matches!(pin, CellPin::Read(CellRead::Contribution(contribution))
-                    if local_reset_output_link(graph, power, use_, *contribution) == Some(graph.power_links[link as usize]))
-            }),
+            BoundaryPortKind::Power { link } => is_local_reset_output(graph, power, cell, use_, graph.power_links[link as usize]),
             _ => false,
         }
     })
@@ -873,6 +868,13 @@ fn unsupported_single_cell(
         }
     }
     Ok(None)
+}
+
+fn is_local_reset_output(graph: &CompileGraph, power: &PowerIndex, cell: &CellContract, use_: &CellUse, output: PowerLink) -> bool {
+    cell.pins.iter().any(|pin| match pin {
+        CellPin::Read(CellRead::Contribution(contribution)) => local_reset_output_link(graph, power, use_, *contribution) == Some(output),
+        _ => false,
+    })
 }
 
 /// Accept only the observer output that the existing recognizer already proved is this cell's reset source.
@@ -1063,10 +1065,7 @@ fn compile_outputs(
                 .power_links
                 .get(link_index as usize)
                 .ok_or("power output port references a missing source link")?;
-            if cell.pins.iter().any(|pin| {
-                matches!(pin, CellPin::Read(CellRead::Contribution(contribution))
-                    if local_reset_output_link(graph, power_index, use_, *contribution) == Some(*link))
-            }) {
+            if is_local_reset_output(graph, power_index, cell, use_, *link) {
                 let input = builder.input(
                     LayerInputSource::LocalResetOutput {
                         observer: reset_observer(use_)?,

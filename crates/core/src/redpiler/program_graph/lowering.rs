@@ -2,10 +2,12 @@
 use super::*;
 
 impl CircuitDraft {
+    /// Check the draft and split it into a program and mutable state.
     pub(crate) fn lower(self) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         self.lower_with_monitor(&crate::redpiler::TaskMonitor::default())
     }
 
+    /// Check and lower the draft, stopping if the task is cancelled.
     pub(crate) fn lower_with_monitor(self, monitor: &crate::redpiler::TaskMonitor) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         let layers = self.validate_for_lowering(monitor)?;
         self.lower_checked(monitor, layers)
@@ -249,7 +251,11 @@ impl CircuitDraft {
     }
 }
 
-/// Lower a pipeline-owned graph without reopening the arbitrary-draft trust boundary.
+/// Lower the graph already checked by the pass runner.
+///
+/// Splits instructions from mutable state and maps pending ticks to node IDs.
+/// Keeps their deadlines, priorities, and stale-target checks. Takes ownership
+/// of the checked graph so its validation cannot be reused for a different draft.
 pub(crate) fn lower_prepared(
     checked: crate::redpiler::passes::rich::ValidatedGraph,
     monitor: &crate::redpiler::TaskMonitor,

@@ -34,7 +34,7 @@ impl GraphBackend {
             .iter()
             .map(|&node| {
                 let plan = self.wire_plan(node).clone();
-                self.seed_power_general(&plan).1
+                self.seed_power_general(&plan).block_power
             })
             .collect();
         // Start from zero so cycles cannot retain stale power; publish only the final values.

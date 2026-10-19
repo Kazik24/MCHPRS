@@ -1,5 +1,9 @@
-//! Graph-native execution for rich piston circuits. The World is read only at
-//! compilation; flush and reset project graph state back to it.
+//! Run the compiled circuit.
+//!
+//! [`GraphBackend`] holds the program, circuit state, clock, and pending work.
+//! Power reads and callbacks use these tables. Commands get world access through
+//! a separate host. Flush writes display changes; reset returns the circuit to
+//! the interpreter. See the [redpiler overview](crate::redpiler).
 
 #[cfg(test)]
 #[path = "graph/tests/chungus_census.rs"]
@@ -304,6 +308,7 @@ impl<W: World> GraphCommandHost for W {
     }
 }
 
+/// The running circuit: program, state, clock, queues, and display bookkeeping.
 pub(crate) struct GraphBackend {
     program: CircuitProgram,
     state: CircuitState,
@@ -424,6 +429,9 @@ impl GraphBackend {
         Self::from_lowered(lowered, &monitor)
     }
 
+    /// Create an executor from the program, starting state, clock, and pending ticks.
+    /// Checks runtime support and schedules initial command ticks. The caller
+    /// makes the backend active after this succeeds.
     pub(crate) fn from_lowered(lowered: LoweredCircuit, monitor: &TaskMonitor) -> Result<Self, GraphBackendError> {
         Self::validate_supported(&lowered.program)?;
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
@@ -838,6 +846,8 @@ impl GraphBackend {
         self.tick_with_host(Some(world))
     }
 
+    /// Run a tick, checking for a command host before advancing the clock.
+    /// A missing host can be supplied on retry. Other errors stop later execution.
     fn tick_with_host<'h>(&mut self, mut host: Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());
@@ -892,6 +902,8 @@ impl GraphBackend {
         })
     }
 
+    /// Run due ticks, advance the scheduler and check again, then handle piston
+    /// actions and deferred connections. Callbacks can add work during each phase.
     fn tick_phases<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         self.counts.ticks += 1;
         self.future.clock.logical_tick += 1;
@@ -1026,6 +1038,7 @@ impl GraphBackend {
         }
     }
 
+    /// Run a component's scheduled tick and send any resulting notifications.
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_tick(node);
@@ -1065,6 +1078,8 @@ impl GraphBackend {
         }
     }
 
+    /// Handle a notification using live or captured receiver state.
+    /// The component may change immediately or schedule a tick.
     fn update_component(&mut self, node: NodeId, kind: DeliveryKind, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         if self.classic_proof.is_some()
             && matches!(kind, DeliveryKind::Update { .. })
@@ -1639,6 +1654,7 @@ impl GraphBackend {
         }
     }
 
+    /// Send a node's output notifications, if it has an output route.
     fn fire_route(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         if let Some(program) = &self.fixed_classic {
             let route = program.nodes[node.index()].output_route;
@@ -1676,6 +1692,8 @@ impl GraphBackend {
         }
     }
 
+    /// Run a route in delivery order, using a specialized plan if one is installed.
+    /// The general path keeps duplicate notifications. A callback can run another route.
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
         if self.fixed_classic.is_some() {
@@ -1713,6 +1731,8 @@ impl GraphBackend {
         Ok(())
     }
 
+    /// Check a delivery's guard, then notify its receiver using live or captured state.
+    /// Skip it if the guard is false or a required capture is missing.
     #[inline(always)]
     fn deliver_callback(
         &mut self,

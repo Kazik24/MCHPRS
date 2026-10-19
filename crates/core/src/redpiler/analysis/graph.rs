@@ -52,7 +52,11 @@ impl CandidateGraph {
     }
 }
 
-/// Rebuild the live selection so inspection cannot reuse stale parser identities.
+/// Build a graph for inspection without starting the circuit or changing the world.
+///
+/// Uses the same preparation and passes as compilation. Rebuilds from the current
+/// world each time instead of reusing graph IDs from an earlier inspection.
+/// Leaves the caller's pending ticks untouched.
 pub fn prepare_candidate_graph(
     world: &impl World,
     bounds: (BlockPos, BlockPos),

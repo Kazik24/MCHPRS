@@ -300,7 +300,10 @@ impl<W: World> Probe<'_, W> {
     }
 }
 
-/// Prepare a finite, read-only model of stationary piston contacts and payload identities.
+/// Find supported pistons, movable materials, and the positions they can occupy.
+///
+/// Checks that the world is at a valid compilation boundary. Reads without
+/// changing the world, and stops on unsupported geometry, budget limits, or cancellation.
 pub(crate) fn prepare_geometry(
     world: &impl World,
     bounds: (BlockPos, BlockPos),

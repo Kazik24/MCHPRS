@@ -581,7 +581,7 @@ impl UncheckedProgram {
                 Source::Node(node) => backend.node_state(node).output_strength,
                 Source::LiveBlockPower(node) => {
                     let plan = backend.wire_plan(node).clone();
-                    backend.seed_power_general(&plan).1
+                    backend.seed_power_general(&plan).block_power
                 }
             })
             .collect::<Vec<_>>();
@@ -743,7 +743,7 @@ impl UncheckedProgram {
         sources: &[u8],
     ) {
         let root_plan = backend.wire_plan(root).clone();
-        let seed = backend.seed_power_general(&root_plan).0;
+        let seed = backend.seed_power_general(&root_plan).power;
         let mut wires = vec![root];
         let mut indices = FxHashMap::from_iter([(root, 0usize)]);
         let mut incoming = Vec::new();
@@ -765,7 +765,7 @@ impl UncheckedProgram {
             .iter()
             .map(|&node| {
                 let plan = backend.wire_plan(node).clone();
-                backend.seed_power_general(&plan).1
+                backend.seed_power_general(&plan).block_power
             })
             .collect::<Vec<_>>();
         let mut powers = vec![0u8; wires.len()];
@@ -796,7 +796,7 @@ impl UncheckedProgram {
                 .unwrap_or_else(|| backend.wire_state(node).power);
             if weighted != live {
                 let plan = backend.wire_plan(node).clone();
-                let block = backend.seed_power_general(&plan).1;
+                let block = backend.seed_power_general(&plan).block_power;
                 differences.push(json!({"node":node.index(),"position":backend.program.nodes()[node.index()].position,"kind":format!("{:?}",backend.program.nodes()[node.index()].kind),"old":backend.wire_state(node).power,"weighted":weighted,"live_fixed_point":live,"live_block_power":block,"live_incoming":backend.fixed_point_wire_neighbors(node).iter().map(|node|json!({"node":node.index(),"position":backend.program.nodes()[node.index()].position,"power":backend.wire_state(*node).power})).collect::<Vec<_>>(),"frozen_incoming":net.incoming[index].iter().map(|&index|json!({"node":net.wires[index].index(),"position":backend.program.nodes()[net.wires[index].index()].position})).collect::<Vec<_>>(),"terms":net.terms[index].iter().map(|&(source,weight)|json!({"source":format!("{:?}",net.sources[source]),"source_node":match net.sources[source] {Source::Node(node)|Source::LiveBlockPower(node)=>json!({"position":backend.program.nodes()[node.index()].position,"kind":format!("{:?}",backend.program.nodes()[node.index()].kind)})},"value":sources[source],"attenuation":weight})).collect::<Vec<_>>(),"neighbors":plan.canonical_neighbors.iter().map(|&site|json!({"site":site.index(),"source":format!("{:?}",backend.program.sites()[site.index()].source),"resolved":format!("{:?}",backend.resolve_site(site,None))})).collect::<Vec<_>>()}));
             }
         }

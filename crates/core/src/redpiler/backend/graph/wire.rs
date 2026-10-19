@@ -8,6 +8,37 @@ pub(super) struct WireWalkNeighbors {
     slots: [usize; 24],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct WirePowerSample {
+    /// The resulting strength after attenuation of neighboring dust.
+    pub(super) power: u8,
+    /// The strongest contribution from sources other than dust.
+    pub(super) block_power: u8,
+    /// The strongest sampled dust strength before attenuation; full block power may skip sampling.
+    pub(super) wire_power: u8,
+}
+
+impl WirePowerSample {
+    fn from_inputs(block_power: u8, wire_power: u8) -> Self {
+        Self {
+            power: block_power.max(wire_power.saturating_sub(1)),
+            block_power,
+            wire_power,
+        }
+    }
+}
+
+struct DustPathNeighbors {
+    /// The fixed input site certified for this path.
+    input_site: SiteId,
+    /// The direction used when sampling the fixed input.
+    input_face: BlockFace,
+    /// Whether this wire is the first wire and samples the external input.
+    is_input: bool,
+    /// The preceding and following wires in the certified path.
+    adjacent: [Option<NodeId>; 2],
+}
+
 #[inline]
 fn first_turbo_delivery(
     deliveries: &[RouteDelivery],
@@ -110,6 +141,8 @@ impl GraphBackend {
         Ok(())
     }
 
+    /// Read a notified wire's inputs and start a wire walk if its power changes.
+    /// Input power is live, even when the receiver's wire properties were captured earlier.
     pub(super) fn evaluate_seed(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_seed(node, captured);
@@ -121,16 +154,14 @@ impl GraphBackend {
             })
             .unwrap_or_else(|| self.wire_state(node));
         let plan = self.wire_plan(node).clone();
-        #[cfg(test)]
-        let (power, block_power, wire_power) = self.seed_power(&plan);
-        #[cfg(not(test))]
-        let (power, _, _) = self.seed_power(&plan);
+        let sample = self.seed_power(&plan);
+        let power = sample.power;
         #[cfg(test)]
         graph_test_trace!(
             self,
             format!(
-                "wire seed {node:?} operands=live-sites/live-strong block={block_power} wire={wire_power} power {} -> {power}",
-                wire.power,
+                "wire seed {node:?} operands=live-sites/live-strong block={} wire={} power {} -> {power}",
+                sample.block_power, sample.wire_power, wire.power,
             )
         );
         if wire.power == power {
@@ -156,25 +187,40 @@ impl GraphBackend {
         self.evaluate_turbo_wire(node)
     }
 
-    pub(super) fn seed_power(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
-        if let Some((input_site, input_face, is_input, adjacent)) = {
-            self.program.dust_path_for_wire(plan.node).map(|path| {
-                let index = path
-                    .wires
-                    .iter()
-                    .position(|&node| node == plan.node)
-                    .expect("validated dust path contains its wire");
-                let adjacent = [
-                    index.checked_sub(1).map(|index| path.wires[index]),
-                    (index + 1 < path.wires.len()).then(|| path.wires[index + 1]),
-                ];
-                (path.input_site, path.input_face, index == 0, adjacent)
-            })
-        } {
-            let block_power = if is_input { self.power_no_dust(input_site, input_face, None) } else { 0 };
-            let wire_power = adjacent.into_iter().flatten().map(|node| self.wire_state(node).power).max().unwrap_or(0);
-            self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
-            return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
+    fn dust_path_neighbors(&self, node: NodeId) -> Option<DustPathNeighbors> {
+        let path = self.program.dust_path_for_wire(node)?;
+        let index = path
+            .wires
+            .iter()
+            .position(|&wire| wire == node)
+            .expect("validated dust path contains its wire");
+        Some(DustPathNeighbors {
+            input_site: path.input_site,
+            input_face: path.input_face,
+            is_input: index == 0,
+            adjacent: [
+                index.checked_sub(1).map(|index| path.wires[index]),
+                (index + 1 < path.wires.len()).then(|| path.wires[index + 1]),
+            ],
+        })
+    }
+
+    pub(super) fn seed_power(&mut self, plan: &WirePlan) -> WirePowerSample {
+        if let Some(path) = self.dust_path_neighbors(plan.node) {
+            let block_power = if path.is_input {
+                self.power_no_dust(path.input_site, path.input_face, None)
+            } else {
+                0
+            };
+            let wire_power = path
+                .adjacent
+                .into_iter()
+                .flatten()
+                .map(|node| self.wire_state(node).power)
+                .max()
+                .unwrap_or(0);
+            self.counts.dust_path_power_samples_elided += 6 - u64::from(path.is_input);
+            return WirePowerSample::from_inputs(block_power, wire_power);
         }
         if let Some(transfer) = plan.execution.query_facts.and_then(|facts| facts.transfer) {
             let mut inputs = transfer.seed.selected(false, |slot| self.live_neighbor_geometry(plan, slot));
@@ -192,12 +238,12 @@ impl GraphBackend {
                     .max()
                     .unwrap_or(0)
             });
-            return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
+            return WirePowerSample::from_inputs(block_power, wire_power);
         }
         self.seed_power_general(plan)
     }
 
-    pub(super) fn seed_power_general(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
+    pub(super) fn seed_power_general(&mut self, plan: &WirePlan) -> WirePowerSample {
         let (up_solid, _) = self.live_neighbor_geometry(plan, 3);
         let mut block_power = self.mixed_classic_block_power(plan, None).unwrap_or(0);
         let mixed = !self.program.mixed_classic().wires.is_empty();
@@ -225,7 +271,7 @@ impl GraphBackend {
                 }
             }
         }
-        (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power)
+        WirePowerSample::from_inputs(block_power, wire_power)
     }
 
     fn live_neighbor_geometry(&self, plan: &WirePlan, index: usize) -> (bool, bool) {
@@ -292,7 +338,7 @@ impl GraphBackend {
             return raw;
         }
         if let Some(shape) = plan.execution.shape {
-            return shape.raw_wire_from(wire, |slot|self.site_block(plan.canonical_neighbors[slot]));
+            return shape.raw_wire_from(wire, |slot| self.site_block(plan.canonical_neighbors[slot]));
         }
         crate::redstone::wire::get_raw_sides_from_neighbor_read(wire, |slot| self.site_block(plan.canonical_neighbors[slot]))
     }
@@ -596,6 +642,8 @@ impl GraphBackend {
         result
     }
 
+    /// Run a Turbo wire walk, processing each layer's queue in order.
+    /// Keeps captured site state, intermediate power changes, and callbacks.
     fn run_wire_hops(&mut self, node: NodeId, root: SiteId, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
         let root_slot = self.capture_walk_site(walk, root);
         walk.sites[root_slot].visited = true;
@@ -711,16 +759,14 @@ impl GraphBackend {
             ObservedProperties::Wire(wire) => wire,
             _ => unreachable!("captured wire site has non-wire properties"),
         };
-        #[cfg(test)]
-        let (new_power, block_power, wire_power) = self.turbo_wire_power(&plan, &ordered, walk);
-        #[cfg(not(test))]
-        let (new_power, _, _) = self.turbo_wire_power(&plan, &ordered, walk);
+        let sample = self.turbo_wire_power(&plan, &ordered, walk);
+        let new_power = sample.power;
         #[cfg(test)]
         graph_test_trace!(
             self,
             format!(
-                "wire query {node:?} layer={} operands=captured-walk/live-strong block={block_power} direct={wire_power}",
-                walk.layer,
+                "wire query {node:?} layer={} operands=captured-walk/live-strong block={} wire={}",
+                walk.layer, sample.block_power, sample.wire_power,
             )
         );
         if wire.power == new_power {
@@ -737,30 +783,17 @@ impl GraphBackend {
         Ok(())
     }
 
-    pub(super) fn turbo_wire_power(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (u8, u8, u8) {
-        if let Some((input_site, input_face, is_input, adjacent)) = {
-            self.program.dust_path_for_wire(plan.node).map(|path| {
-                let index = path
-                    .wires
-                    .iter()
-                    .position(|&node| node == plan.node)
-                    .expect("validated dust path contains its wire");
-                let adjacent = [
-                    index.checked_sub(1).map(|index| path.wires[index]),
-                    (index + 1 < path.wires.len()).then(|| path.wires[index + 1]),
-                ];
-                (path.input_site, path.input_face, index == 0, adjacent)
-            })
-        } {
-            let input_power = if is_input {
-                let captured = &walk.sites[walk.slot(input_site).expect("certified input was discovered")].observed;
-                self.power_no_dust(input_site, input_face, Some(captured))
+    pub(super) fn turbo_wire_power(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> WirePowerSample {
+        if let Some(path) = self.dust_path_neighbors(plan.node) {
+            let input_power = if path.is_input {
+                let captured = &walk.sites[walk.slot(path.input_site).expect("certified input was discovered")].observed;
+                self.power_no_dust(path.input_site, path.input_face, Some(captured))
             } else {
                 0
             };
             let mut wire_power = 0;
             if input_power < 15 {
-                for neighbor in adjacent.into_iter().flatten() {
+                for neighbor in path.adjacent.into_iter().flatten() {
                     let site = self.component_sites[neighbor.index()].expect("certified neighboring wire has a root site");
                     let Some(slot) = walk.slot(site) else {
                         return self.turbo_wire_power_general(plan, neighbors, walk);
@@ -772,8 +805,8 @@ impl GraphBackend {
                     wire_power = wire_power.max(wire.power);
                 }
             }
-            self.counts.dust_path_power_samples_elided += 6 - u64::from(is_input);
-            return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
+            self.counts.dust_path_power_samples_elided += 6 - u64::from(path.is_input);
+            return WirePowerSample::from_inputs(input_power, wire_power);
         }
         if let Some(transfer) = plan.execution.query_facts.and_then(|facts| facts.transfer) {
             let input_power = self.mixed_classic_block_power(plan, Some(walk)).unwrap_or_else(|| {
@@ -798,13 +831,13 @@ impl GraphBackend {
                     wire_power = self.walk_wire_strength(neighbors.slots[slot], walk, wire_power);
                 }
             }
-            return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
+            return WirePowerSample::from_inputs(input_power, wire_power);
         }
         self.turbo_wire_power_general(plan, neighbors, walk)
     }
 
-    pub(super) fn turbo_wire_power_general(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (u8, u8, u8) {
-        let wire_power = self.mixed_classic_block_power(plan, Some(walk)).unwrap_or_else(|| {
+    pub(super) fn turbo_wire_power_general(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> WirePowerSample {
+        let block_power = self.mixed_classic_block_power(plan, Some(walk)).unwrap_or_else(|| {
             BlockFace::values()
                 .into_iter()
                 .zip([3, 2, 4, 5, 1, 0])
@@ -815,8 +848,8 @@ impl GraphBackend {
                 .max()
                 .unwrap_or(0)
         });
-        let mut block_power = 0;
-        if wire_power < 15 {
+        let mut wire_power = 0;
+        if block_power < 15 {
             let order = crate::redstone::wire::TURBO_ORDER[neighbors.heading];
             let (center_up_solid, _) = self.captured_neighbor_geometry(plan, order[1], neighbors, walk);
             let horizontal = [4, 5, 6, 7];
@@ -825,15 +858,15 @@ impl GraphBackend {
             for index in 0..4 {
                 let neighbor = neighbors.slots[order[horizontal[index]]];
                 let (solid, transparent) = self.captured_neighbor_geometry(plan, order[horizontal[index]], neighbors, walk);
-                block_power = self.walk_wire_strength(neighbor, walk, block_power);
+                wire_power = self.walk_wire_strength(neighbor, walk, wire_power);
                 if !solid {
-                    block_power = self.walk_wire_strength(neighbors.slots[order[down[index]]], walk, block_power);
+                    wire_power = self.walk_wire_strength(neighbors.slots[order[down[index]]], walk, wire_power);
                 } else if !center_up_solid && !transparent {
-                    block_power = self.walk_wire_strength(neighbors.slots[order[up[index]]], walk, block_power);
+                    wire_power = self.walk_wire_strength(neighbors.slots[order[up[index]]], walk, wire_power);
                 }
             }
         }
-        (wire_power.max(block_power.saturating_sub(1)), block_power, wire_power)
+        WirePowerSample::from_inputs(block_power, wire_power)
     }
 
     fn captured_neighbor_geometry(&self, plan: &WirePlan, index: usize, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (bool, bool) {

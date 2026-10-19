@@ -145,7 +145,7 @@ fn mixed_classic_keeps_held_binary_emitters_and_live_analog_reads_distinct() {
                 results.push((backend.seed_power(&plan), backend.turbo_wire_power(&plan, &neighbors, &walk)));
             }
             assert_eq!(results[0], results[1], "held {old}, live {new}");
-            assert_eq!(results[1].1.2, if old > 0 { 15 } else { new });
+            assert_eq!(results[1].1.block_power, if old > 0 { 15 } else { new });
         }
     }
 }
@@ -167,7 +167,7 @@ fn mixed_classic_keeps_control_flags_live_when_a_walk_holds_old_properties() {
                 results.push(backend.turbo_wire_power(&plan, &neighbors, &walk));
             }
             assert_eq!(results[0], results[1]);
-            assert_eq!(results[1].2, new);
+            assert_eq!(results[1].block_power, new);
         }
     }
 }

@@ -130,7 +130,11 @@ impl Event {
     }
 }
 
-/// Compile routes and their callback links; no circuit state or World is changed.
+/// Build notification routes and their links between nodes.
+///
+/// Keeps delivery order, duplicates, direction, and whether each receiver uses
+/// live or captured state. Changes only preparation tables, leaving circuit and
+/// world state alone.
 pub(crate) fn prepare_callbacks<W: World>(
     world: &W,
     geometry: &GeometryDraft,

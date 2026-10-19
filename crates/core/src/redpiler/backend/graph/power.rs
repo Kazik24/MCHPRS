@@ -38,6 +38,8 @@ impl GraphBackend {
         }
     }
 
+    /// Read a wire's non-dust input using live or captured emitter properties.
+    /// Strong power conducted through a solid block is always read live.
     pub(super) fn power_no_dust(&self, site: SiteId, face: BlockFace, captured_emitter: Option<&ObservedSite>) -> u8 {
         let resolved = self
             .resolve_site_view(site, captured_emitter)
@@ -56,6 +58,8 @@ impl GraphBackend {
         self.conducted_power(site, false)
     }
 
+    /// Read a component's main, side, or quasi input strength.
+    /// Uses a specialized query when available, otherwise follows the power links.
     pub(super) fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_input_strength(node, port);
@@ -70,6 +74,8 @@ impl GraphBackend {
         self.query_power(PowerTarget::Input { node, port })
     }
 
+    /// Return the strongest allowed input after attenuation, or zero if there are none.
+    /// The general path checks guards against live state. This runs no callbacks.
     fn query_power(&self, target: PowerTarget) -> u8 {
         if let Some((constant, inputs)) = self.program.fixed_signal_query(target) {
             return inputs.iter().fold(constant, |maximum, input| {

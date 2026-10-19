@@ -2,6 +2,13 @@
 
 Started 2026-10-18; status updated 2026-10-19. Packing and the second whole-fixed execution stage are implemented at O2+. Mixed circuits now have the fixed-face power-query slice described below; broader mixed lowering, passive-net contraction and SIMD remain proposed work. See [the current state](CURRENT_STATE.md) for measured throughput and remaining scope. This work keeps the existing Graph backend and its single authoritative machine state and future.
 
+Fresh [BubbleSort/FPU profiles and final graph research](CPU_FPU_FINAL_GRAPH_PROFILE.md)
+now identify retained Turbo discovery/capture as the next runtime target. The
+separate wire-shape pass gives 1.160x BubbleSort throughput in three clean pairs;
+all installed CPU/FPU Instant kernels remain singletons with zero owned wires.
+The FPU raw-mask profile is an internal-work diagnostic with constant observed
+output, not verified arithmetic throughput.
+
 ## Recommendation
 
 Build a compact typed execution plan, then replace eligible passive wiring with direct signal transfers. Keep an exact ordered program for the parts whose intermediate receiver samples matter. Use bitsets to find active work and contiguous arrays to execute it. Do not sweep every actor every tick or turn the entire machine into a synchronous Boolean circuit.

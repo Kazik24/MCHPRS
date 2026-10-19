@@ -1,7 +1,14 @@
 # CPU_BubbleSort runtime profile
 
-The current release comparison is below. The later dated stack captures are
-historical; their percentages are not fresh profiles of this executable.
+The latest result is the separate wire-shape pass: three clean full-sort pairs
+reduce median inference from 66.924560 to 57.690753 seconds, **1.160x throughput**.
+All RAM ticks, endpoints and work counts agree. Fresh stack samples and a final
+O5 graph census now cover BubbleSort and the FPU raw-input diagnostic. See the
+[current profile and proof limits](CPU_FPU_FINAL_GRAPH_PROFILE.md). This is a
+frozen-source measurement; concurrent main-tree changes are outside its scope.
+
+The older comparisons and stack captures below retain their original source
+and workload scopes.
 
 ## 2026-10-19: complete O5 sort with queued Instant entries and lazy geometry
 

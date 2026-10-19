@@ -39,7 +39,7 @@ fn source_value(backend: &mut GraphBackend, source: super::Source) -> Option<u8>
         super::Source::Node(node) => Some(output(backend, node)),
         super::Source::LiveBlockPower(node) => {
             let plan = backend.wire_plan(node).clone();
-            Some(backend.seed_power_general(&plan).1)
+            Some(backend.seed_power_general(&plan).block_power)
         }
     }
 }
@@ -112,13 +112,7 @@ fn fixed_signal_rows(backend: &GraphBackend, node: NodeId, port: InputPort) -> s
     json!({"constant":constant,"inputs":inputs})
 }
 
-fn report_boundary(
-    label: &str,
-    backend: &mut GraphBackend,
-    wire: NodeId,
-    comparator: NodeId,
-    sources: &[(super::Source, u8)],
-) {
+fn report_boundary(label: &str, backend: &mut GraphBackend, wire: NodeId, comparator: NodeId, sources: &[(super::Source, u8)]) {
     let source_rows = sources
         .iter()
         .map(|&(source, attenuation)| {
@@ -145,13 +139,15 @@ fn report_boundary(
         .scheduled_ticks()
         .into_iter()
         .enumerate()
-        .map(|(order, tick)| json!({
-            "order":order,
-            "position":tick.pos,
-            "block_type":tick.block_type,
-            "ticks_left":tick.ticks_left,
-            "priority":format!("{:?}",tick.tick_priority),
-        }))
+        .map(|(order, tick)| {
+            json!({
+                "order":order,
+                "position":tick.pos,
+                "block_type":tick.block_type,
+                "ticks_left":tick.ticks_left,
+                "priority":format!("{:?}",tick.tick_priority),
+            })
+        })
         .collect::<Vec<_>>();
     let comparator_main = backend.comparator_input(comparator);
     let comparator_side = backend.comparator_side(comparator);
@@ -189,14 +185,7 @@ fn unchecked_chungus_tick512_traces_live_sources_and_receiver_timing() {
     };
     let monitor = Arc::new(TaskMonitor::default());
     monitor.set_budget_multiplier(8);
-    let template = GraphBackend::compile_with_options(
-        &world,
-        bounds,
-        world.scheduler().iter_entries().collect(),
-        &options,
-        monitor,
-    )
-    .unwrap();
+    let template = GraphBackend::compile_with_options(&world, bounds, world.scheduler().iter_entries().collect(), &options, monitor).unwrap();
     let program = template.program.clone();
     let state = template.state.clone();
     let wire = NodeId::new(

@@ -12,6 +12,8 @@ impl CircuitDraft {
         self.validate_for_lowering(monitor).map(|_| ())
     }
 
+    /// Check graph structure, table references, and execution-plan certificates.
+    /// Keep any layer analysis needed by lowering.
     pub(crate) fn validate_for_lowering(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
         self.validate_structure()?;
         self.validate_execution_plans_with_context(monitor)

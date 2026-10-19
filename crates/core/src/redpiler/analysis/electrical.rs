@@ -113,7 +113,11 @@ enum RootCondition {
     WireDescend { neighbor: BlockPos },
 }
 
-/// Compile directional channel reads, including the local alternatives exposed by geometry.
+/// Find components and connect their inputs to the power sources they can read.
+///
+/// Uses the possible block positions from geometry preparation. Also records
+/// conductors, wire neighbors, and comparator input rules. Callback preparation
+/// adds notification order afterward.
 pub(crate) fn prepare_electrical(
     world: &impl World,
     bounds: (BlockPos, BlockPos),
@@ -995,12 +999,7 @@ fn check_electrical_growth(
     )
 }
 
-fn variant_guard(
-    view: GeometryView,
-    contact: &super::geometry::GeometryContact,
-    contact_id: ContactId,
-    guards: &mut PreparationGuards,
-) -> GuardId {
+fn variant_guard(view: GeometryView, contact: &super::geometry::GeometryContact, contact_id: ContactId, guards: &mut PreparationGuards) -> GuardId {
     if view != GeometryView::Air {
         return occupied_variant_guard(view, contact_id, guards);
     }

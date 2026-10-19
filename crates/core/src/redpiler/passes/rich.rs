@@ -52,7 +52,8 @@ pub(crate) struct PreparedGraph {
 }
 
 impl PreparedGraph {
-    /// Run checked transitions and transfer exclusive ownership of the successful result.
+    /// Run the selected passes and check their results.
+    /// Takes ownership of the draft so validation stays tied to this graph.
     pub(crate) fn run_passes(
         mut self,
         options: &crate::redpiler::CompilerOptions,
@@ -93,6 +94,7 @@ impl ValidatedGraph {
         &self.prepared.report
     }
 
+    /// Turn the checked graph into a program, starting state, and pending work.
     pub(crate) fn lower(self, monitor: &TaskMonitor) -> Result<LoweredCircuit, GraphBuildError> {
         crate::redpiler::program_graph::lower_prepared(self, monitor)
     }
@@ -108,7 +110,11 @@ impl ValidatedGraph {
     }
 }
 
-/// Both execution and read-only inspection use these same required parser stages.
+/// Build the draft from geometry, power connections, and notification routes.
+///
+/// Used by both compilation and inspection. Leaves the world alone and saves its
+/// clock and the supplied pending ticks. Stops if the selection is unsupported,
+/// a budget is exceeded, or the task is cancelled.
 pub(crate) fn prepare(
     world: &impl World,
     bounds: (BlockPos, BlockPos),

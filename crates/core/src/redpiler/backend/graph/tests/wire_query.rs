@@ -91,7 +91,7 @@ fn assert_seed_matches(backend: &mut GraphBackend, plan: &WirePlan) -> u8 {
     let expected = backend.seed_power_general(&general);
     let actual = backend.seed_power(plan);
     assert_eq!(actual, expected, "live seed query");
-    actual.0
+    actual.power
 }
 
 fn assert_captured_matches(backend: &mut GraphBackend, plan: &WirePlan, walk: &mut WireWalk) -> u8 {
@@ -101,7 +101,23 @@ fn assert_captured_matches(backend: &mut GraphBackend, plan: &WirePlan, walk: &m
     let expected = backend.turbo_wire_power_general(&general, &ordered, walk);
     let actual = backend.turbo_wire_power(plan, &ordered, walk);
     assert_eq!(actual, expected, "captured Turbo query");
-    actual.0
+    actual.power
+}
+
+#[test]
+fn wire_power_samples_distinguish_block_input_from_live_and_captured_dust() {
+    let mut backend = backend(query_graph());
+    let plan = root_plan(&backend);
+    set_strength(&mut backend, DIRECT, 3);
+    set_strength(&mut backend, NEIGHBOR, 12);
+    let mut walk = capture_neighbors(&backend, &plan);
+    let ordered = backend.identify_wire_neighbors(plan.node, &mut walk);
+    set_strength(&mut backend, NEIGHBOR, 2);
+
+    let live = backend.seed_power(&plan);
+    assert_eq!((live.power, live.block_power, live.wire_power), (3, 3, 2));
+    let captured = backend.turbo_wire_power(&plan, &ordered, &walk);
+    assert_eq!((captured.power, captured.block_power, captured.wire_power), (11, 3, 12));
 }
 
 fn profile(graph: &mut CompileGraph, block: Block, solid: bool, transparent: bool) -> ProfileId {
@@ -404,7 +420,11 @@ fn assert_compiled_shape_matches_contact_states(graph: CompileGraph) {
                 let expected = crate::redstone::wire::get_raw_sides_from_neighbors(held, &neighbors);
                 let actual = backend.raw_wire_sides(&plan, held);
                 assert_eq!(actual, expected);
-                let partial = plan.execution.shape.unwrap().raw_wire_from(held, |slot| backend.site_block(plan.canonical_neighbors[slot]));
+                let partial = plan
+                    .execution
+                    .shape
+                    .unwrap()
+                    .raw_wire_from(held, |slot| backend.site_block(plan.canonical_neighbors[slot]));
                 assert_eq!(partial, expected, "partially evaluated raw-side formula");
                 assert_eq!(
                     crate::redstone::wire::regulate_sides(held, actual),

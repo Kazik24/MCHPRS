@@ -1,4 +1,8 @@
-//! Read-only, bounded inventory and compiler admission checks.
+//! Inspect the selection and check whether it can be compiled.
+//!
+//! Geometry, electrical discovery, and callback construction build the graph.
+//! [`graph::prepare_candidate_graph`] also runs the selected passes, without
+//! starting the circuit. See the [redpiler overview](crate::redpiler).
 use super::TaskMonitor;
 use crate::plot::PLOT_BLOCK_HEIGHT;
 use crate::world::World;

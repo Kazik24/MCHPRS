@@ -1,4 +1,8 @@
-//! Graph preparation pipelines; backends receive prepared execution data.
+//! Graph rewrites and execution-plan builders.
+//!
+//! Rewrites change the graph and discard old plans. Builders read the graph and
+//! add execution plans for supported cases. The runner checks the input and each
+//! enabled pass's result before lowering. See the [redpiler overview](crate::redpiler).
 pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
@@ -207,6 +211,8 @@ pub(crate) fn run_graph_pipeline(
     run_graph_pipeline_with_analysis(graph, options, entry, pipeline, monitor).map(|_| ())
 }
 
+/// Run enabled passes in order and check each result.
+/// Stops on cancellation or a failed check, before a backend is activated.
 fn run_graph_pipeline_with_analysis(
     graph: &mut CompileGraph,
     options: &CompilerOptions,
@@ -294,7 +300,8 @@ fn run_graph_pipeline_with_analysis(
     Ok(layers)
 }
 
-/// Pass tiers are declared beside their implementations, ordered by minimum level.
+/// Choose passes from the compiler options, with rewrites before plan builders.
+/// Each builder decides whether the circuit fits its optimization.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
     let rewrites: [(usize, Pass); 8] = [

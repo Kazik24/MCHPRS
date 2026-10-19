@@ -357,7 +357,7 @@ impl GraphBackend {
                 || BlockFace::values()
                     .into_iter()
                     .any(|face| crate::redstone::wire::on_neighbor_changed_from(wire, raw, face) != wire)
-                || self.seed_power(&plan).0 != wire.power
+                || self.seed_power(&plan).power != wire.power
             {
                 return false;
             }

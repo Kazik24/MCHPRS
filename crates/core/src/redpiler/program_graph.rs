@@ -1,4 +1,24 @@
-//! Typed construction and immutable program storage for the general graph.
+//! The graph's build-time tables, executable program, and mutable state.
+//!
+//! See the [redpiler overview](crate::redpiler) first. The tables here are linked
+//! by typed indices: [`NodeId`] identifies a node, [`SiteId`] a sampled position,
+//! and [`RouteId`] a notification route. [`PowerLink`] describes electrical reads.
+//! [`LinkSpec`] describes callback connections, with each notification stored as
+//! a [`RouteDelivery`] in a [`Route`].
+//!
+//! ```text
+//! CircuitDraft (mutable tables and derived plans)
+//!        |
+//!   validation + lowering
+//!        |
+//!        +--> CircuitProgram: immutable topology and execution plans
+//!        +--> CircuitState:   mutable component, piston, resource values
+//! ```
+//!
+//! [`LoweredCircuit`] bundles the program and state with the starting clock and
+//! pending ticks. The backend owns the scheduler separately from [`CircuitState`].
+//! [`ContactSpec`] lists the blocks that can occupy a contact; [`Guard`] selects
+//! which one is present as the circuit runs.
 
 mod classic_redstone;
 mod execution_plans;
@@ -15,8 +35,8 @@ mod instant_regions;
 mod wire_callback_selection;
 mod wire_query_facts;
 mod wire_shapes;
-pub(crate) use wire_shapes::WireShape;
 pub(crate) use wire_callback_selection::WireCallbackSelection;
+pub(crate) use wire_shapes::WireShape;
 mod fixed_signals;
 pub(crate) use fixed_signals::*;
 pub(crate) use instant_boundaries::*;

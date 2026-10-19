@@ -1271,7 +1271,7 @@ fn classic_failed_reference_restores_writes_beyond_proposed_guards() {
         let state = probe.wire_state(node);
         let raw = probe.raw_wire_sides(&wire_plan, state);
         assert_eq!(
-            probe.seed_power(&wire_plan).0,
+            probe.seed_power(&wire_plan).power,
             state.power,
             "the poisoned fixture must enter replay with stable guard power"
         );

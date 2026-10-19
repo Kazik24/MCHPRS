@@ -1,5 +1,22 @@
 # Redpiler current state
 
+## BubbleSort/FPU profiling and wire-shape pass, 2026-10-19
+
+The separate O3+ `compile-wire-shapes` pass reduces full O5 BubbleSort inference
+from 66.924560 to 57.690753 seconds across three clean release pairs: **1.160x
+throughput**, with identical RAM, checkpoints and execution counts. A pair that
+overlapped an external compiler is retained separately and replaced explicitly.
+
+Fresh frozen-source profiles put Turbo propagation at about 68% of CPU inference
+and 61% of FPU diagnostic inference. All 2,197 CPU and 2,360 FPU installed kernels
+are singletons with zero owned wires. Next: a separate wire-capture descriptor
+pass, followed by active signal-arrival proofs that actually eliminate walks.
+The FPU raw-mask experiment has constant output and a piston-digest mismatch;
+it establishes neither numerical throughput nor complete state equivalence.
+See the [profile, final graph census and ranked next steps](CPU_FPU_FINAL_GRAPH_PROFILE.md)
+for source provenance, correctness scope and reproducible artifacts. Concurrent
+main-tree changes after this frozen snapshot are outside these measurements.
+
 ## BubbleSort O5 execution update, 2026-10-19
 
 The complete 10,036-tick sort now passes with the queued Instant entry extension.

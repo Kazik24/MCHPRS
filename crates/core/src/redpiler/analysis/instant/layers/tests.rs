@@ -3,6 +3,37 @@ use super::*;
 use mchprs_blocks::{BlockFace, BlockPos};
 
 #[test]
+fn route_lifecycle_preserves_order_phase_identity_and_budget_charges() {
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let mut source = callback_route(0);
+    source.deliveries = vec![source.deliveries[0]; 2].into_boxed_slice();
+    let mut lifecycle = Vec::new();
+    let initial_work = builder.budget.work;
+    for phase in [
+        LayerLifecyclePhase::DeferredBaseRestoration,
+        LayerLifecyclePhase::DeferredBaseRestoration,
+        LayerLifecyclePhase::DeferredHeadRestoration,
+    ] {
+        append_route_lifecycle(&mut lifecycle, &source, RouteId::new(3), PistonId::new(0), phase, &mut builder).unwrap();
+    }
+    assert_eq!(builder.budget.work - initial_work, 6, "duplicate rows must still be charged");
+    assert_eq!(lifecycle.len(), 4);
+    assert_eq!(
+        lifecycle.iter().map(|row| row.occurrence).collect::<Vec<_>>(),
+        [occurrence(3, 0), occurrence(3, 1), occurrence(3, 0), occurrence(3, 1)]
+    );
+    assert!(lifecycle[..2].iter().all(|row| row.phase == LayerLifecyclePhase::DeferredBaseRestoration));
+    assert!(lifecycle[2..].iter().all(|row| row.phase == LayerLifecyclePhase::DeferredHeadRestoration));
+    monitor.cancel();
+    assert!(matches!(
+        append_route_lifecycle(&mut lifecycle, &source, RouteId::new(3), PistonId::new(0), LayerLifecyclePhase::ResetOutput, &mut builder),
+        Err(ConstructionError::Invalid(message)) if message.contains("cancel")
+    ));
+    assert_eq!(lifecycle.len(), 4, "cancelled work must not append another row");
+}
+
+#[test]
 fn proof_budget_limits_are_inclusive_and_cancellation_stays_fatal() {
     let monitor = TaskMonitor::default();
     let mut budget = LayerBudget {
