@@ -92,6 +92,21 @@ Use descriptive function names such as `find_candidates`, `check_boundary`, `pro
 
 ## Use the existing pass API
 
+Required validation stages live in `validation.rs`; they are not optional
+optimizations and do not appear as transformations. The runner validates the
+input, runs each enabled pass, then validates its output before continuing.
+`Rewrite` requires the full graph and plan checks. `Build` cannot mutate the base
+circuit, so it checks every execution plan against the already validated
+structure. Checking all plans matters: changing one plan can invalidate another.
+Disabled steps neither mutate nor invalidate anything. Empty and all-disabled
+pipelines still validate their input; there is no duplicate exit scan. Lowering
+and independent graph/export admission keep full validation.
+
+Do not call the plan-only validator on an arbitrary draft, expose mutable graph
+access to a builder, or turn validation into a configurable optimization pass.
+If a new `PlanOutput` changes a field, its certificate checks must belong to the
+plan-validation stage. Structural fields must remain outside builder access.
+
 | API | Responsibility |
 | --- | --- |
 | `GraphPass::run` | Mutate the circuit graph. The runner clears derived plans before an enabled rewrite. |
@@ -128,6 +143,7 @@ The API and custom compiler entry point remain crate-private. `O0` skips optimiz
 | Build | O3 | `compile-instant-proxies` | Boundary execution proxies. |
 | Build | O2 | `compile-fixed-signals` | Fixed live electrical expressions and separate settled topology witnesses. |
 | Build | O2 | `compile-fixed-classic` | Whole fixed circuits lowered to typed ordered execution. |
+| Build | O2 | `compile-mixed-classic` | Join fixed no-dust wire faces into typed live/held reads when whole fixed execution declines. |
 | Build | O2, classic option | `compile-classic-redstone` | Certified local committed-signal nets when whole compilation declines. |
 
 The unoptimized pipeline still runs the complete general graph. Keep both phases and their order explicit; do not silently reorder entries or turn a custom pipeline into the default. When adding an entry, place it in the correct phase and optimization tier; do not introduce a dedicated setting for it.
@@ -339,6 +355,17 @@ validation reconstructs their conditions. Natural contactless actor routes have
 no live Shape rows, so CHUNGUS's shape optimization removes dead route storage.
 
 ### Opt-in committed-signal classic redstone nets
+
+`compile-mixed-classic` runs after the whole-fixed attempt and fixed signal
+preparation. It reuses the electrical compiler to join eligible no-dust faces of
+each wire into one maximum over original live outputs and held powered states.
+Dynamic contacts, uncertain conductors, unsupported emitters and controls whose
+captured views retain live flags keep their original per-face query. The wire walk,
+captures, heading/layers, intermediate writes, callbacks and piston future remain
+general. Whole-fixed programs skip this extra table. The plan is validated by
+rederivation, lowered without another state owner and exported as
+`mixed_classic` with capability `mixed_classic_queries`. This is query partial
+evaluation, not memory recognition or passive-net contraction.
 
 `compile_classic_redstone` runs at O2+ when `--classic-redstone` is selected and
 whole fixed execution has declined.

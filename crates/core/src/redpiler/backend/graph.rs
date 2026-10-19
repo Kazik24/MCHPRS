@@ -13,6 +13,9 @@ mod chungus_census;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
+#[cfg(test)]
+#[path = "graph/tests/mixed_classic.rs"]
+mod mixed_classic_tests;
 pub(crate) mod classic;
 #[cfg(test)]
 #[path = "graph/tests/fixed_point_cpu.rs"]

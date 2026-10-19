@@ -21,6 +21,7 @@ pub(crate) trait PlanBuilder {
 
 /// Each result names its owner instead of exposing the mutable graph to a builder.
 pub(crate) enum PlanOutput {
+    MixedClassic(crate::redpiler::program_graph::MixedClassicProgram),
     FixedClassic(crate::redpiler::program_graph::FixedClassicPlans),
     Boundaries(crate::redpiler::program_graph::BoundaryCatalog),
     Layers(crate::redpiler::program_graph::LayeredInstantPlan),
@@ -39,6 +40,7 @@ pub(crate) enum PlanOutput {
 impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
         match self {
+            Self::MixedClassic(program) => graph.plans.mixed_classic = program,
             Self::FixedClassic(plans) => graph.plans.fixed_classic = plans,
             Self::Boundaries(catalog) => {
                 graph.plans.instant.layers = None;

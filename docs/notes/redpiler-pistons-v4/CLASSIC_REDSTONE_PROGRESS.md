@@ -1322,14 +1322,56 @@ samples passed endpoint/future/continuation checks; four overlapped build work,
 leaving no complete clean pair. No speedup is established, and the runtime experiment
 was removed. Test-only opportunity counters and frozen evidence remain.
 
-The ANPU 5,000-tick census joins the existing frozen BUD reference's 896 memory actors
+The ANPU 5,000-tick census joins the existing frozen BUD reference's 896 lower read actors
 to 245,453/327,585 piston samples (74.93%) and 2,768/10,682 accepted actions. All have
 both Main and QC input channels. These are labeled fixture actors, not a general
-recognition certificate or CPU-time share. A separate stateful memory pass must
+recognition certificate or CPU-time share. Following the user's two-piston cell
+description, the expanded census links each read actor's QC source contact to an
+upper sticky piston's movable redstone-block payload. It finds 896 disjoint pairs
+with storage four blocks above read output. Upper storage adds 15,227 samples and
+1,421 accepted actions: both actors together account for 79.58% of piston samples
+and 39.22% of accepted actions. This fixture pairing does not prove a replacement.
+A separate stateful memory pass must
 preserve qualifying activation, commit-time revalidation, publication, ownership
-and exact future; large gains additionally require eliminating private wire work.
+and exact future for both actors; large gains additionally require eliminating private
+wire work. Typed fixed execution inside mixed circuits is the preceding lower-risk
+stage because ANPU currently declines whole-fixed execution.
 
 The [stage 3 and BUD-memory plan](CPU_FRIENDLY_CLASSIC_EXECUTION.md#2026-10-19-stage-3-trial-active-coverage-and-a-rejected-runtime-experiment)
 records the measurements, rejection, pass contract and validation limits. The final
 retained changes pass 497 Redpiler tests, zero failures, 33 ignored; workspace checking
 passes. An existing non-Redpiler ANPU admission test still incorrectly expects rejection.
+
+## 2026-10-19 — ANPU mixed fixed-face power queries
+
+The new O2+ `compile-mixed-classic` builder joins fixed no-dust wire faces into
+typed live/held reads while dynamic faces retain their ordinary queries. It covers
+204,727/208,686 ANPU faces (98.10%) without removing propagation, captures or piston
+events. Whole-fixed circuits skip the extra tables. Validation rederives the plan;
+lowering and JSON inspection use the same immutable operands. O2–O5 generated ADDER
+JSON exports are refreshed; O0/O1 exports and physical fixtures are unchanged.
+
+Three alternating release-test pairs over 5,000 active Pong ticks improve median
+inference time from 3.541512 to 3.2172332 seconds: **1.10079x throughput, 9.16% less
+time**, or 1,411.83 to 1,554.13 active game TPS. All six samples execute identical
+work and all three endpoint/future/reset/32-native-continuation comparisons pass.
+The timed repeat has zero observed Cargo/rustc/linker processes across 34 checks;
+the earlier contaminated batch is excluded. This is an optimized cfg(test)
+measurement, not production-only server throughput. Compile medians are 7.5088
+and 7.3903 seconds amid wider variation; no compilation gain is established.
+
+Independent native validation passes all 1,025 boundaries through tick 1,024,
+including screen/ordered output, component/contact projection, analog values and
+scheduled future, then reset and 32 native continuation ticks. Graph state and
+queued work also match the pass-off control. The held/live regression deliberately
+keeps control flags on their general path. Full results and limitations are in
+[the implementation note](CPU_FRIENDLY_CLASSIC_EXECUTION.md#2026-10-19-anpu-implementation-mixed-fixed-face-power-queries)
+and `target/mixed-classic-anpu-summary.json`. BUD storage/read contraction remains
+separate work.
+
+The rebuilt frozen snapshot passes 511 Redpiler tests, zero failures, 35 ignored,
+plus workspace checking and 25 Python graph-loader tests. Evidence is in
+`target/mixed-classic-final-{suite,check}.log` and
+`target/mixed-classic-loader-tests.log`. Measurements and checks are tied to the
+frozen binaries; concurrent unrelated edits in the shared checkout are outside
+those snapshots.

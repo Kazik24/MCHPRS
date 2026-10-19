@@ -3,6 +3,7 @@ pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
 pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_fixed_classic;
+pub(crate) mod compile_mixed_classic;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
 pub(crate) mod compile_wire_hops;
@@ -25,6 +26,7 @@ pub(crate) mod simplify_state_guards;
 pub(crate) mod specialize_instant_pistons;
 pub(crate) mod specialize_wire_queries;
 pub(crate) mod utils;
+mod validation;
 
 use super::program_graph::{CompileGraph, EntryState, GraphBuildError};
 use super::{CompilerOptions, GraphCounts, PassStatistics, TaskMonitor};
@@ -188,7 +190,7 @@ pub(crate) fn run_graph_pipeline(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    graph.validate_with_monitor(monitor).map_err(PassPipelineError::InvalidInput)?;
+    validation::input(graph, monitor)?;
     monitor.set_max_progress(monitor.progress() + pipeline.entries.len() + 1);
     let context = PassContext { monitor, options, entry };
     for item in &pipeline.entries {
@@ -217,7 +219,7 @@ pub(crate) fn run_graph_pipeline(
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::Failed { pass: name, message });
         }
-        if let Err(source) = graph.validate_with_monitor(monitor) {
+        if let Err(source) = validation::after_pass(&item.pass, graph, monitor) {
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
             return Err(PassPipelineError::MalformedOutput { pass: name, source });
         }
@@ -248,10 +250,7 @@ pub(crate) fn run_graph_pipeline(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    graph.validate_with_monitor(monitor).map_err(PassPipelineError::InvalidInput)?;
-    if monitor.cancelled() {
-        return Err(PassPipelineError::Cancelled);
-    }
+    // Entry and every enabled output have already passed their required validation.
     monitor.set_final_graph(GraphCounts::of(graph));
     Ok(())
 }
@@ -288,6 +287,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         })
         .chain(plans.into_iter().map(|(minimum_level,pass)|PassEntry { pass,enabled:level>=minimum_level }))
         .chain(std::iter::once(PassEntry { pass: Pass::build(compile_fixed_classic::CompileFixedClassic), enabled: level >= 2 }))
+        .chain(std::iter::once(PassEntry { pass: Pass::build(compile_mixed_classic::CompileMixedClassic), enabled: level >= 2 }))
         .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
         .collect();
     let mut pipeline = PassPipeline::new(entries);

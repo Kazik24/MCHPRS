@@ -131,7 +131,7 @@ impl GraphBackend {
         }
     }
 
-    fn stored_component_strength(&self, node: NodeId) -> u8 {
+    pub(super) fn stored_component_strength(&self, node: NodeId) -> u8 {
         #[cfg(test)]
         if let Some(tapes) = &self.test_recorder.wire_tapes { tapes.read(self, node); }
         match &self.state.components[node.index()] {

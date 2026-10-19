@@ -2,6 +2,7 @@
 mod classic;
 mod fixed_signals;
 mod fixed_classic;
+mod mixed_classic;
 mod instant_boundaries;
 mod instant_layers;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
@@ -123,6 +124,8 @@ struct GraphTablesDto {
     fixed_signal_queries: Vec<fixed_signals::QueryDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
     fixed_classic: Option<fixed_classic::PlanDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mixed_classic: Option<mixed_classic::PlanDto>,
     nodes: Vec<NodeDto>,
     profiles: Vec<ProfileDto>,
     sites: Vec<SiteDto>,
@@ -842,6 +845,7 @@ impl GraphExport {
         classic::validate(&self.graph.classic_nets,&nodes,&routes,&self.graph)?;
         fixed_signals::validate(&self.graph.fixed_signal_queries, &nodes, &sites)?;
         fixed_classic::validate(&self.graph.fixed_classic, &self.graph, &nodes, &sites, &routes)?;
+        mixed_classic::validate(&self.graph.mixed_classic, &self.graph, &nodes, &sites)?;
         for relation in &self.graph.wire_relations {
             check_ref(&nodes, &relation.from, "wire relation source")?;
             check_ref(&sites, &relation.to, "wire relation target")?;
@@ -1075,6 +1079,7 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         classic_nets: classic::export(source),
         fixed_signal_queries: fixed_signals::export(source),
         fixed_classic: fixed_classic::export(&source.plans.fixed_classic),
+        mixed_classic: mixed_classic::export(source),
         nodes: source
             .nodes
             .iter()
@@ -1427,6 +1432,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         capabilities.push("fixed_classic_program");
     } else if source.plans.fixed_classic.decline.is_some() {
         capabilities.push("fixed_classic_declined");
+    }
+    if !source.plans.mixed_classic.wires.is_empty() {
+        capabilities.push("mixed_classic_queries");
     }
     let export = GraphExport {
         format: "mchprs.redpiler.graph",

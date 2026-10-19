@@ -3,6 +3,7 @@ use super::*;
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
+#[cfg(test)]
 pub(crate) fn lower(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<Arc<InstantKernel>>, String> {
     let (Some(catalog), Some(plan)) = (&graph.plans.instant.boundaries, &graph.plans.instant.layers) else {
         return Ok(Vec::new());
@@ -10,13 +11,29 @@ pub(crate) fn lower(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<A
     if plan.regions.is_empty() {
         return Ok(Vec::new());
     }
-    let partition = super::partition::partition(graph, catalog, monitor)?;
-    let power = index_power(graph);
+    let context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
+    lower_with_context(graph, monitor, Some(&context))
+}
+
+pub(crate) fn lower_with_context(
+    graph: &CompileGraph,
+    monitor: &TaskMonitor,
+    context: Option<&LayerCompilationContext>,
+) -> Result<Vec<Arc<InstantKernel>>, String> {
+    let (Some(catalog), Some(plan)) = (&graph.plans.instant.boundaries, &graph.plans.instant.layers) else {
+        return Ok(Vec::new());
+    };
+    if plan.regions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let context = context.ok_or("kernel lowering requires validated layer analysis")?;
+    let partition = &context.partition;
+    let power = &context.power;
     let mut kernels = Vec::new();
     for (region, program) in plan.regions.iter().zip(&plan.programs) {
         check_cancelled(monitor)?;
         let component = partition.regions.get(region.id.0 as usize).ok_or("kernel region is missing")?;
-        let Some(arrivals) = composition::corridors::certify(graph, catalog, component, &power, monitor)? else {
+        let Some(arrivals) = composition::corridors::certify(graph, catalog, component, power, monitor)? else {
             continue;
         };
         if let Some(kernel) = lower_region(graph, catalog, region, program, &arrivals, monitor)? {

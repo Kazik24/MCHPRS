@@ -15,15 +15,43 @@ mod kernels;
 mod partition;
 mod reduction;
 mod signals;
+#[cfg(test)]
 pub(crate) use kernels::lower as lower_kernels;
+pub(crate) use kernels::lower_with_context as lower_kernels_with_context;
 pub(crate) use reduction::reduce as lower_region;
+
+/// Transient discovery products shared by proof reconstruction and immediate lowering.
+pub(crate) struct LayerCompilationContext {
+    /// The computation partition derived from this unchanged graph and boundary catalog.
+    partition: regions::RegionPartition,
+    /// Incoming power links indexed once for both compilation and corridor certification.
+    power: PowerIndex,
+}
+
+impl LayerCompilationContext {
+    fn prepare(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<Self, String> {
+        Ok(Self {
+            partition: partition::partition(graph, catalog, monitor)?,
+            power: index_power(graph),
+        })
+    }
+}
 
 /// Build deterministic cell regions and compile only the narrow cases with proven request cuts.
 pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<LayeredInstantPlan, String> {
+    compile_layers_with_context(graph, catalog, monitor).map(|(plan, _)| plan)
+}
+
+pub(crate) fn compile_layers_with_context(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &TaskMonitor,
+) -> Result<(LayeredInstantPlan, LayerCompilationContext), String> {
     check_cancelled(monitor)?;
-    let partition = partition::partition(graph, catalog, monitor)?;
-    let perimeters = regions::perimeters(graph, &partition, monitor)?;
-    let power_index = index_power(graph);
+    let context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
+    let partition = &context.partition;
+    let perimeters = regions::perimeters(graph, partition, monitor)?;
+    let power_index = &context.power;
     let mut compiled = Vec::new();
     let mut declined = Vec::new();
     for (region_index, component) in partition.regions.iter().enumerate() {
@@ -33,8 +61,8 @@ pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, mo
             catalog,
             component,
             region_index,
-            &partition,
-            &power_index,
+            partition,
+            power_index,
             &perimeters[region_index],
             monitor,
         )? {
@@ -49,11 +77,14 @@ pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, mo
         .map(|region| lower_region(region, monitor))
         .collect::<Result<Box<[_]>, _>>()?;
     check_cancelled(monitor)?;
-    Ok(LayeredInstantPlan {
-        regions: compiled.into_boxed_slice(),
-        programs,
-        declines: declined.into_boxed_slice(),
-    })
+    Ok((
+        LayeredInstantPlan {
+            regions: compiled.into_boxed_slice(),
+            programs,
+            declines: declined.into_boxed_slice(),
+        },
+        context,
+    ))
 }
 
 fn compile_component(

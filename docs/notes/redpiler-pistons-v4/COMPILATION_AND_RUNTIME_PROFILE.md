@@ -1,5 +1,264 @@
 # Redpiler compilation and runtime costs
 
+## Current pipeline audit and the eight-second target
+
+Source audit: 2026-10-19. The measurements further below belong to the older
+`9831f7e` checkout; they are evidence of repeated work, not timings for the current
+worktree or a claim that the eight-second target has been met.
+
+The target is request-to-activation time for a specified large fixture in an
+optimized server build. Include snapshot creation, preparation, passes, validation,
+lowering and publication. Keep simulation benchmarks separate. Eight seconds
+cannot be promised for arbitrarily large selections; first establish it on
+CPU_BubbleSort, then check ANPU and the larger CHUNGUS workload.
+
+### What the current compiler actually does
+
+1. The plot makes an isolated activation snapshot, including pending ticks and
+   piston state. Closing open barrels is staged on that snapshot.
+2. `passes/rich.rs::prepare` parses geometry/contacts, electrical channels and
+   ordered callback routes, then assembles one `CompileGraph` and its entry state.
+   These parser stages run once, not once per optimization pass.
+3. `passes/mod.rs::run_graph_pipeline` validates the graph and runs the selected
+   sequence. Rewrites have mutable access and clear derived execution plans;
+   builders receive an immutable graph and return a typed `PlanOutput`.
+4. Required stages in `passes/validation.rs` check the whole graph after a
+   rewrite and all execution plans after a read-only builder. Input validation
+   remains mandatory; the duplicate exit validation has been removed.
+5. `PreparedGraph::lower` performs another full validation, lowers kernels and
+   immutable program tables, builds indexes and binds imported ticks.
+6. `GraphBackend::from_lowered` checks supported instructions and constructs the
+   executor. Successful plot-thread publication transfers pending work and closes
+   containers; failures leave the live input intact.
+
+With the current default pipeline and `-O4 --stable-instant-inputs`:
+
+| Operation | Before | After this batch |
+| --- | ---: | ---: |
+| Enabled graph rewrites | 7 | 7 |
+| Enabled read-only builders | 11 | 11 |
+| Full structural validation | 21 | 9: entry + seven rewrites + lowering |
+| Complete execution-plan validation | 21 | 20: entry + 18 outputs + lowering |
+| Instant boundary inference | 5 | 4 |
+| Instant layer compilation | 4 | 3 |
+
+These counts include the concurrently added `compile-mixed-classic` builder
+(one additional builder and full validation). They assume the ordinary successful path, no custom pipeline and no
+`unsafe-turbo-fixed-point` feature. They count calls, not equal-cost operations.
+Empty catalogs and early declines can make some calls cheap.
+
+`program_graph/validation.rs` does more than checking IDs. It reconstructs fixed
+signal plans and fixed classic plans, re-infers instant boundaries, and recompiles
+instant layers to compare their certificates. `layers/kernels.rs::lower` then
+rebuilds the region partition and power index and certifies corridor arrivals.
+Some of this is deliberate proof checking; repeatedly rediscovering the same
+unchanged facts is the simplification opportunity.
+
+Ordered callback links now use a streaming exact comparison with receiver-bearing
+route rows. It compares every original key field and multiplicity without building
+a map. Differently ordered link tables retain the exact `FxHashMap` multiset
+fallback. No route, callback or duplicate is removed. Guard-cycle validation also
+reuses its temporary DFS stack across roots instead of allocating one per root.
+
+### Simplify first, retaining circuit behavior and correctness checks
+
+Items 1–3 and the immediate-lowering sharing in item 5 are implemented. Item 4
+remains a proposal: no persistent validation cache or validation receipt was
+introduced. The shared layer context is transient, never stored in a draft or
+runtime program. Changes
+retain instant admission rules and observable circuit semantics:
+
+1. **Remove the redundant pipeline-exit validation.** Entry and every enabled
+   output are already validated; disabled entries do not mutate the graph. Keep
+   the final cancellation check, statistics and the lowering trust-boundary
+   validation. Read-only JSON inspection also remains covered by input/output
+   validation, including empty and all-disabled pipelines.
+2. **Separate structure validation from execution-plan validation.** After a
+   mutable rewrite, check both. After a read-only builder publishes its typed
+   output, check the plans against the previously validated structure. Initially
+   validate all plans after each builder: one new plan can invalidate an older
+   dependent plan. The base structural scan would then run nine times rather
+   than twenty-one on this O4 path: entry, seven rewrites, lowering. Keep public
+   full validation for arbitrary constructed/exported drafts. This requires a
+   careful split of wire execution certificates from structural wire checks,
+   not simply skipping `validate_inner`.
+3. **Make exact callback correspondence cheap.** For links in parser route order,
+   compare the expected receiver-bearing deliveries with links in a streaming,
+   allocation-free exact comparison. Match source, target, callback reference,
+   guard, kind and direction, and require equal lengths. Preserve the current
+   multiset checker as the fallback for valid differently ordered link tables.
+   This changes no route, delivery multiplicity or acceptance condition.
+4. **Validate proof dependencies once per unchanged version.** After the simpler
+   split is established, identify each certificate's real dependencies. A later
+   unrelated wire-index builder should not need to reconstruct instant layers.
+   Use compiler-local ownership/version evidence, not a persistent unchecked
+   `already_validated` flag or a hash used as proof of equality. Rewrites and
+   replacement of dependencies must invalidate affected certificates. Keep an
+   independent full validator for malformed/custom drafts and differential tests.
+5. **Share discovery products within compilation.** The final full validation
+   reconstructs and checks layers, then returns their region partition and power
+   index in `LayerCompilationContext`. Kernel lowering consumes these immediately
+   against the unchanged draft instead of discovering them again. The context is
+   dropped before program-table construction. Corridor certification still runs;
+   no proof check is skipped. Ordinary standalone kernel tests rebuild their own
+   context and compare kernels with the reused-context result.
+
+Do not merge unrelated passes into one opaque function, reduce proof budgets to
+make compilation look faster, disable validators in release, or assume fixed
+builder order when the developer API allows custom ordering. No new synthesis
+algorithm or runtime behavior change is needed for the first three items.
+
+Required checks: malformed pass output still rejects; empty, disabled, cancelled
+and custom pipelines retain their behavior; out-of-order callback-link tables
+remain accepted; missing/extra/mismatched and duplicate links still reject where
+appropriate; corrupted certificates and stale dependent plans still reject.
+Compare prepared graph/export, lowered program, initial state and imported work
+before/after. Then run existing adder, counter and CPU differential episodes.
+
+For timing, use the existing release harness with the same fixture hash, flags,
+budget and sign normalization on both revisions. Record each paired compile
+sample, not just the median; separate snapshot, parser, pass bodies, validation,
+lowering and activation. Use the existing timing/report infrastructure or
+temporary local measurements, not a new profiling framework. An eight-second
+result needs a fresh measurement; the old breakdown does not establish one.
+
+### Correctness argument for the implemented changes
+
+The runner establishes valid structure at entry. A rewrite discards execution
+plans and checks the complete result. A builder receives only an immutable draft;
+its publisher can change only execution-plan fields. Checking every plan after
+publication therefore preserves valid structure and plans by induction, including
+custom pass orderings and replacement of earlier plan dependencies. No mutation
+occurs between the last output check and pipeline exit. Empty or disabled-only
+pipelines retain the validated input. Lowering still performs a complete check.
+
+For callbacks, equality of the complete expected edge sequence implies equality
+of the old key multiset, including duplicate counts. Any sequence mismatch uses
+the unchanged multiset checker. Both ordered and permuted valid tables therefore
+remain accepted; missing, extra, mistargeted and misdirected edges still reject.
+Receiverless deliveries require no edge, as before. The DFS work stack empties
+before the next root, so reusing its allocation changes no traversal or cycle test.
+
+The layer context comes from reconstruction against the same immutable draft
+that immediately enters kernel lowering. Neither input nor index is mutated in
+between. It is freed before ordinary program tables are constructed. Independent
+context reconstruction remains available in tests; ADDER1BIT and ADDER11BIT
+compare those kernels with reused-context lowering at O0/O2/O4.
+
+Final verification: `cargo test -p mchprs_core --lib redpiler:: --locked --
+--test-threads=1` passed 512 tests, with 35 explicitly ignored. This includes all
+eight new validation regressions, the adder graph/program/state comparison, stale
+dependent-plan rejection, arbitrary callback-link permutations, exact duplicate
+keys and malformed edge multiplicity. The final release CPU benchmark built.
+Long ignored research captures and a new full CPU sort were not run.
+
+### Final paired release measurement
+
+CPU_BubbleSort, `-O4 --stable-instant-inputs`, budget 8. The existing
+`cpu_bubblesort` bench compiles the complete `world.get_corners()` selection,
+then validates 100 active ticks against the frozen interpreter RAM and performs
+32 native continuation ticks after reset. The saved schematic is unchanged;
+both executables remove the same blocking sign only in memory.
+
+The benchmark measures `Compiler::compile` wall time, including required parsing,
+passes, validation, lowering and backend construction. World loading, plot snapshot
+creation, CPU activation and visual publication are outside that compile timer.
+This therefore does not establish the eight-second in-game request-to-activation
+objective. No `graph-profile` feature or test tracing is enabled.
+
+Pinned release executables were run alternately A/B, B/A, A/B on logical CPU 4
+(affinity mask `0x10`), with no Cargo/rustc process running during these final
+pairs. These are three local pairs, not a general hardware performance guarantee.
+
+| Pair | Before | Final | Less compile time |
+| --- | ---: | ---: | ---: |
+| 1 | 29.942870 s | 21.576285 s | 27.94% |
+| 2 | 28.322816 s | 18.951001 s | 33.09% |
+| 3 | 28.245765 s | 18.341420 s | 35.06% |
+| Median | 28.322816 s | 18.951001 s | 33.09% |
+
+Baseline range: 28.245765–29.942870 s. Final range:
+18.341420–21.576285 s. Every pair had matching active/reset/continuation
+checkpoints (blocks, entities, scheduler, piston state and chat), RAM hashes,
+execution counters and kernel ownership. Each individual run also passed the
+existing frozen interpreter RAM checks. No inference-speed improvement is claimed.
+
+On the final median sample, sequential pass totals were 6.625 s for
+`compile-instant-layers` and 2.984 s for `identify-instant-boundaries`. Each total
+includes that builder and its output validation. Another 4.545 s followed the
+pipeline, including full lowering validation, kernel lowering and backend
+construction. These are disjoint wall-time phases, not sampled function self-time.
+They explain why this safe cleanup alone does not reach eight seconds.
+
+The next larger target is the repeated semantic reconstruction of instant
+certificates: layers are still compiled three times and boundaries inferred four
+times. Removing further checks requires a sound certificate/dependency ownership
+contract or a cheaper independent checker. This batch does not replace those
+checks with an unchecked validity flag, weaken input assumptions, or lower
+admission/proof budgets.
+
+Artifacts: `target/compile-pipeline-final-paired/summary.json`, the six per-run
+JSON/log files in that directory, and pinned executables/source snapshots under
+`target/compile-pipeline-baseline` and `target/compile-pipeline-final`. An earlier
+three-pair intermediate experiment is retained separately under
+`target/compile-pipeline-paired`; its numbers are not mixed with this final table.
+Peak RSS, a new full sort and complete server-request latency were not measured.
+
+### Asynchronous plot compilation
+
+The previous scoped-worker loop still blocked normal plot dispatch. It called
+`Player::update` to send keep-alives, but did not run packet handlers that record
+their replies. That can time out a healthy connection; a Broken pipe log alone
+does not prove this caused a particular disconnection.
+
+The current worktree moves compilation into an owned background job in
+`plot/redpiler_compilation.rs`. The normal plot loop continues handling packets,
+commands and players while simulation is paused. Completion is polled without
+waiting. Only successful results matching the live chunk content versions,
+pending ticks and piston state activate. Lighting-only changes do not invalidate
+a circuit. Reset cancels cooperatively; a cancelled worker must finish before
+another worker can start on the same plot. Plot shutdown cancels without joining
+the worker. Compiler errors and panics cannot publish a partial executor.
+
+Snapshot creation and final publication still execute on the plot thread.
+`snapshot_ms` is logged separately so this remaining synchronous work is visible.
+Async execution fixes plot responsiveness; it does not reduce compiler CPU time
+or establish the eight-second target. Analysis/JSON-inspection commands have not
+been converted into background jobs in this change.
+
+The earlier captured-entry prototype is deferred from this compilation-stability
+batch. Its new fixture reached a piston request with `source: None`, not a proven
+captured-route activation, so the prototype has no passing regression for its
+claimed family. Only its three uncommitted draft files were restored to the
+previous implementation; the local patch is saved at
+`target/captured-entry-prototype.patch`. The experiment would treat a delivered
+boundary event as already qualified and require exact initial FIFO equality
+before commitment. Captured-view semantics, acceptance revalidation and a real
+captured-entry fixture still need proof. Production keeps its previous live-entry
+eligibility rules in this batch.
+
+Verification for the asynchronous path: all eight `plot::redpiler_compilation`
+tests passed, together with the existing barrel-close activation, pressure-plate
+input and queued-piston rejection/highlight regressions (eleven focused tests).
+The tests cover a deliberately blocked worker while keep-alive packets and reset
+commands are dispatched, cancellation after completion, prevention of overlapping
+workers, stale block/entity/tick/piston state, lighting-only changes and a worker
+panic. The server check and focused formatting/diff checks passed.
+
+An earlier wider `plot::` run had 284 passes, twelve failures and one ignored test.
+The queued-piston diagnostic failure was fixed and rechecked separately; the
+other failures concern packet/command expectations, local plot database setup,
+sidebar layout, routing and world-edit limits. They were not audited against a
+clean baseline, so this batch does not claim a passing full plot suite. Details
+are in `target/async-compilation-plot-tests.log`; the final focused run is in
+`target/async-compilation-final-tests.log`.
+
+The audit originally contained no fresh timing claim. The implemented changes
+and their new CPU compilation measurements are recorded in this document; the
+historical profile below remains separate. No new full CPU sort was run.
+
+---
+
 Measured 2026-10-19 on an isolated checkout of `9831f7e`. The live checkout was undergoing
 a reset API refactor and briefly failed to build; those unfinished changes are excluded.
 Only benchmark reporting and diagnostic timers differ from that committed snapshot.

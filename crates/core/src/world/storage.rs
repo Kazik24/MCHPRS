@@ -422,6 +422,8 @@ pub struct Chunk {
     pub block_entities: FxHashMap<BlockPos, BlockEntity>,
     instance: u64,
     revision: u64,
+    /// Block and entity changes relevant to compilation, excluding display lighting.
+    circuit_revision: u64,
     routing_revision: u64,
     pub(crate) block_light: [Option<Vec<u8>>; PLOT_SECTIONS],
 }
@@ -435,6 +437,7 @@ impl Chunk {
             block_entities: self.block_entities.clone(),
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: self.revision,
+            circuit_revision: self.circuit_revision,
             routing_revision: self.routing_revision,
             block_light: self.block_light.clone(),
         }
@@ -508,6 +511,10 @@ impl Chunk {
         (self.instance, self.revision)
     }
 
+    pub(crate) fn circuit_snapshot_version(&self) -> (u64, u64) {
+        (self.instance, self.circuit_revision)
+    }
+
     pub(crate) fn routing_snapshot_version(&self) -> (u64, u64) {
         (self.instance, self.routing_revision)
     }
@@ -515,6 +522,7 @@ impl Chunk {
     pub(crate) fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
         let entity = self.block_entities.get_mut(&pos)?;
         self.revision = self.revision.wrapping_add(1);
+        self.circuit_revision = self.circuit_revision.wrapping_add(1);
         Some(entity)
     }
 
@@ -704,6 +712,7 @@ impl Chunk {
         let changed = section.set_block(x, y & 0xF, z, block_id);
         if changed {
             self.revision = self.revision.wrapping_add(1);
+            self.circuit_revision = self.circuit_revision.wrapping_add(1);
             if super::wire_cache::routing_state(Block::from_id(previous)) != super::wire_cache::routing_state(Block::from_id(block_id)) {
                 self.routing_revision = self.routing_revision.wrapping_add(1);
             }
@@ -726,12 +735,14 @@ impl Chunk {
     pub fn delete_block_entity(&mut self, pos: BlockPos) {
         if self.block_entities.remove(&pos).is_some() {
             self.revision = self.revision.wrapping_add(1);
+            self.circuit_revision = self.circuit_revision.wrapping_add(1);
         }
     }
 
     pub fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
         self.block_entities.insert(pos, block_entity);
         self.revision = self.revision.wrapping_add(1);
+        self.circuit_revision = self.circuit_revision.wrapping_add(1);
     }
 
     pub fn save(&mut self) -> ChunkData<PLOT_SECTIONS> {
@@ -749,6 +760,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
+            circuit_revision: 0,
             routing_revision: 0,
             block_light: std::array::from_fn(|_| None),
             sections: chunk_data.sections.map(ChunkSection::load),
@@ -781,6 +793,7 @@ impl Chunk {
             z,
             instance: CHUNK_INSTANCE.fetch_add(1, Ordering::Relaxed),
             revision: 0,
+            circuit_revision: 0,
             routing_revision: 0,
             block_light: std::array::from_fn(|_| None),
             block_entities: FxHashMap::default(),

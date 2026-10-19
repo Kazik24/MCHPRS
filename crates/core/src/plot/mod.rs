@@ -24,6 +24,7 @@ mod picking;
 #[cfg(test)]
 mod piston_tests;
 mod preview;
+mod redpiler_compilation;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;
@@ -88,6 +89,8 @@ pub struct Plot {
     pub world: PlotWorld,
     pub players: Vec<Player>,
     pub redpiler: Compiler,
+    /// In-flight compilation owns a snapshot; the live plot stays on this thread.
+    compilation: Option<redpiler_compilation::CompilationJob>,
 
     // Thread communication
     message_receiver: BusReader<BroadcastMessage>,
@@ -1026,6 +1029,9 @@ impl Plot {
         }
     }
     fn tick(&mut self) -> bool {
+        if self.compiling_redpiler() {
+            return false;
+        }
         self.timings.tick();
         if self.redpiler.is_active() {
             if let Err(error) = self.redpiler.tick_with_world(&mut self.world) {
@@ -1284,113 +1290,14 @@ impl Plot {
         self.timings.reset_timings();
     }
 
-    fn start_redpiler(&mut self, options: CompilerOptions) {
-        let started = Instant::now();
-        info!(plot_x = self.world.x, plot_z = self.world.z, ?options, "Redpiler started");
-        self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Compiling);
-        self.scoreboard.set_redpiler_options(&self.players, &options);
-
-        let bounds = self.world.get_corners();
-        // Compilation currently uses a default monitor whose progress is not shown to players.
-        let monitor = Default::default();
-        let mut staged_world = self.world.activation_snapshot();
-        let open_barrels: HashSet<_> = self
-            .players
-            .iter()
-            .filter_map(|player| player.open_container.as_ref())
-            .filter(|container| container.ty == mchprs_blocks::block_entities::ContainerType::Barrel)
-            .map(|container| container.pos)
-            .collect();
-        for pos in open_barrels {
-            crate::container::set_barrel_open(&mut staged_world, pos, false);
-        }
-        let ticks = staged_world.to_be_ticked.iter_entries().collect();
-
-        let mut players_need_updates = HashSet::new();
-        let result = thread::scope(|s| {
-            // Compile the post-container-close state without changing the live plot on failure.
-            let world = &mut staged_world;
-            let compiler = &mut self.redpiler;
-            let span = tracing::Span::current();
-            let handle = s.spawn(move || {
-                let _entered = span.enter();
-                compiler.compile(world, bounds, options, ticks, monitor)
-            });
-            while !handle.is_finished() {
-                // We'll update the players so that they don't time out.
-                for player_idx in 0..self.players.len() {
-                    if self.players[player_idx].update() {
-                        // Unforunately we can't update a players view position
-                        // since we don't have access to the world, but we can
-                        // save the players that need updating for later.
-                        players_need_updates.insert(player_idx);
-                    }
-                }
-                thread::sleep(Duration::from_millis(20));
-            }
-            handle.join()
-        });
-
-        // Now that we have ownership of the world again, we can update player view positions
-        for player_idx in players_need_updates {
-            self.update_view_pos_for_player(player_idx, false);
-        }
-
-        match result {
-            Ok(Ok(())) => {
-                info!(
-                    plot_x = self.world.x,
-                    plot_z = self.world.z,
-                    elapsed_ms = started.elapsed().as_millis(),
-                    "Redpiler completed"
-                );
-                if let Some(stats) = self.redpiler.stats() {
-                    for line in stats.summary_lines() {
-                        for player in &self.players {
-                            player.send_system_message(&line);
-                        }
-                    }
-                }
-                self.world.publish_activation_changes(&staged_world);
-                // Transfer scheduled work only after the complete backend exists.
-                self.world.clear_scheduled_ticks();
-                self.close_all_containers_after_redpiler();
-                if self.world.history.enabled() {
-                    let bytes = self.world.history.disable();
-                    self.broadcast_plot_chat_message(&messages::history_disabled_for_compilation(history::format_memory(bytes)));
-                }
-                self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Running);
-            }
-            failure => {
-                let reason = match failure {
-                    Ok(Err(error)) => {
-                        if let crate::redpiler::CompileError::Unsupported(report) = &error {
-                            if let Some(piston) = report.pistons.first() {
-                                for player in 0..self.players.len() {
-                                    self.show_block_highlight(player, *piston, false);
-                                }
-                            }
-                        }
-                        error.to_string()
-                    }
-                    Err(_) => "compiler worker failed".to_owned(),
-                    Ok(Ok(())) => unreachable!(),
-                };
-                warn!(plot_x = self.world.x, plot_z = self.world.z,
-                    elapsed_ms = started.elapsed().as_millis(), %reason, "Redpiler rejected");
-                for player in &self.players {
-                    player.send_error_message(&format!("Redpiler: {reason}. Use /rp analyze for details."));
-                }
-                self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
-                self.scoreboard.set_redpiler_options(&self.players, &Default::default());
-            }
-        }
-
-        self.reset_timings();
-    }
-
     /// Redpiler needs to reset implicitly in the case of any block changes done by a player. This can be
     fn reset_redpiler(&mut self) {
+        if self.compiling_redpiler() {
+            self.cancel_redpiler_compilation();
+            self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
+            self.scoreboard.set_redpiler_options(&self.players, &Default::default());
+            self.reset_timings();
+        }
         if self.redpiler.is_active() {
             debug!("Discarding redpiler");
             let bounds = self.world.get_corners();
@@ -1759,6 +1666,7 @@ impl Plot {
         self.update_git();
         self.handle_messages();
         self.update_render_mode();
+        self.poll_redpiler_compilation();
 
         // Only tick if there are players in the plot
         if !self.players.is_empty() {
@@ -1795,7 +1703,9 @@ impl Plot {
             };
 
             self.last_update_time = now;
-            if batch_size != 0 {
+            if self.compiling_redpiler() {
+                self.lag_time = Duration::ZERO;
+            } else if batch_size != 0 {
                 let simulation_started = Instant::now();
                 // 50_000 (= 3.33 MHz) here is arbitrary.
                 // We just need a number that's not too high so we actually get around to sending block updates.
@@ -1829,6 +1739,7 @@ impl Plot {
             }
 
             if self.auto_redpiler
+                && self.compilation.is_none()
                 && !self.git_checkout_locked()
                 && !self.redpiler.is_active()
                 && (self.tps == Tps::Unlimited || self.timings.is_running_behind())
@@ -2028,6 +1939,7 @@ impl Plot {
             piston_animation: plot_data.piston_animation,
             always_running,
             redpiler: Default::default(),
+            compilation: None,
             timings: TimingsMonitor::new(tps),
             owner,
             async_rt: Plot::create_async_rt(),
@@ -2075,7 +1987,7 @@ impl Plot {
 
         while self.running {
             // Fast path, for super high RTPS
-            if self.sleep_time <= Duration::from_millis(5) && !self.players.is_empty() {
+            if self.sleep_time <= Duration::from_millis(5) && !self.players.is_empty() && !self.compiling_redpiler() {
                 self.update();
                 if self.tps != Tps::Unlimited {
                     thread::yield_now();
@@ -2087,7 +1999,9 @@ impl Plot {
             self.update();
             let delta = before.elapsed();
 
-            let cadence = if self.wire_tools_active() {
+            let cadence = if self.compiling_redpiler() {
+                Duration::from_millis(20)
+            } else if self.wire_tools_active() {
                 self.sleep_time.min(Duration::from_millis(20))
             } else {
                 self.sleep_time
@@ -2130,6 +2044,7 @@ impl Plot {
 
 impl Drop for Plot {
     fn drop(&mut self) {
+        self.cancel_redpiler_compilation();
         // Packet-handler tests own an in-memory world, with no persistent saves
         // or server thread to receive crash-recovery messages.
         #[cfg(test)]

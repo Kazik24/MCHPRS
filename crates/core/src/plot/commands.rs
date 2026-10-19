@@ -517,7 +517,10 @@ impl Plot {
                 }
             }
             "compile" | "c" => {
-                let start_time = Instant::now();
+                if self.compilation.is_some() {
+                    self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
+                    return;
+                }
                 let args = args.join(" ");
                 let mut options = match CompilerOptions::parse(&args) {
                     Ok(options) => options,
@@ -530,8 +533,6 @@ impl Plot {
 
                 self.reset_redpiler();
                 self.start_redpiler(options);
-
-                debug!("Compile took {:?}", start_time.elapsed());
             }
             "inspect" | "i" => {
                 let player = &self.players[player];
@@ -852,6 +853,10 @@ impl Plot {
                 }
             }
             "/adv" => {
+                if self.compiling_redpiler() {
+                    self.players[player].send_error_message(messages::REDPILER_COMPILATION_PAUSED);
+                    return false;
+                }
                 let (unit, ticks) = match AdvanceUnit::parse(&args, crate::config::CONFIG.max_command_ticks) {
                     Ok(request) => request,
                     Err(error) => {

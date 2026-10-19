@@ -373,6 +373,66 @@ struct FixedCompiler<'a, 'v> {
     monitor: &'a TaskMonitor,
     operands: Vec<FixedClassicOperand>,
 }
+
+/// Partial evaluation of pure reads only; uncertainty keeps the original face query.
+pub(super) fn compile_mixed_wire_power(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<MixedClassicProgram, String> {
+    let view = FixedClassicView::draft(graph, monitor)?;
+    let mut compiler = FixedCompiler {
+        program: &view,
+        monitor,
+        operands: Vec::new(),
+    };
+    let wire_bytes = graph.wires.len().saturating_mul(std::mem::size_of::<MixedClassicWire>());
+    if wire_bytes > crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES {
+        return Ok(MixedClassicProgram::default());
+    }
+    let mut wires = Vec::with_capacity(graph.wires.len());
+    for wire in &graph.wires {
+        cancelled(monitor)?;
+        let start = compiler.operands.len();
+        let mut constant = 0;
+        let mut general_faces = 0;
+        for (index, (face, slot)) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]).enumerate() {
+            let before = compiler.operands.len();
+            let site = wire.canonical_neighbors[slot];
+            // General captured block reconstruction keeps control flags live.
+            // Their face stays general rather than assuming held-powered semantics.
+            let live_control = matches!(graph.sites[site.index()].source, SiteSource::Component(node)
+                if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate)));
+            let query = if live_control {
+                Err("live control flag".into())
+            } else {
+                compiler.no_dust(site, face)
+            };
+            match query {
+                Ok(query) => constant = constant.max(query.constant),
+                Err(_) => {
+                    cancelled(monitor)?;
+                    compiler.operands.truncate(before);
+                    general_faces |= 1 << index;
+                }
+            }
+        }
+        if wire_bytes.saturating_add(compiler.operands.len().saturating_mul(std::mem::size_of::<FixedClassicOperand>()))
+            > crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES
+        {
+            return Ok(MixedClassicProgram::default());
+        }
+        wires.push(MixedClassicWire {
+            fixed: FixedClassicQuery {
+                constant,
+                start: start as u32,
+                end: compiler.operands.len() as u32,
+            },
+            general_faces,
+        });
+    }
+    Ok(MixedClassicProgram {
+        wires: wires.into_boxed_slice(),
+        operands: compiler.operands.into_boxed_slice(),
+    })
+}
+
 impl FixedCompiler<'_, '_> {
     fn append(&mut self, constant: u8, inputs: impl IntoIterator<Item = FixedClassicOperand>) -> Result<FixedClassicQuery, String> {
         cancelled(self.monitor)?;
@@ -432,6 +492,21 @@ impl FixedCompiler<'_, '_> {
         match self.program.sites()[site.index()].source {
             SiteSource::Constant(_) => self.append(self.program.sites()[site.index()].source_strength, []),
             SiteSource::Component(node) => {
+                if !matches!(
+                    *self.program.node(node.index()).kind,
+                    CircuitNodeKind::Electrical(
+                        NodeType::Torch
+                            | NodeType::Repeater { .. }
+                            | NodeType::Comparator { .. }
+                            | NodeType::Lever
+                            | NodeType::Button
+                            | NodeType::PressurePlate
+                            | NodeType::Constant
+                    ) | CircuitNodeKind::Observer { .. }
+                        | CircuitNodeKind::BuiltinReset { .. }
+                ) {
+                    return Err("unsupported fixed no-dust emitter".into());
+                }
                 let source = if matches!(
                     *self.program.node(node.index()).kind,
                     CircuitNodeKind::Electrical(NodeType::Comparator { .. })

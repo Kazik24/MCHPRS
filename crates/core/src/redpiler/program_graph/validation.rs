@@ -1,5 +1,6 @@
 //! Structural integrity and certificate checks before a draft can execute.
 use super::*;
+use crate::redpiler::analysis::instant::layers::LayerCompilationContext;
 
 impl CircuitDraft {
     #[cfg(test)]
@@ -7,26 +8,66 @@ impl CircuitDraft {
         self.validate_with_monitor(&crate::redpiler::TaskMonitor::default())
     }
 
-    pub(crate) fn validate_with_monitor(&self,monitor:&crate::redpiler::TaskMonitor) -> Result<(),GraphBuildError> {
-        self.validate_inner()?;
+    pub(crate) fn validate_with_monitor(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        self.validate_for_lowering(monitor).map(|_| ())
+    }
+
+    pub(super) fn validate_for_lowering(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
+        self.validate_structure()?;
+        self.validate_execution_plans_with_context(monitor)
+    }
+
+    /// Requires unchanged, validated structure; only the read-only builder runner uses this shortcut.
+    pub(crate) fn validate_execution_plans_with_monitor(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        self.validate_execution_plans_with_context(monitor).map(|_| ())
+    }
+
+    fn validate_execution_plans_with_context(
+        &self,
+        monitor: &crate::redpiler::TaskMonitor,
+    ) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
+        for (name, len) in [
+            ("dust paths", self.plans.dust_paths.len()),
+            ("instant regions", self.plans.instant.regions.len()),
+            ("instant proxies", self.plans.instant.proxies.len()),
+        ] {
+            if u32::try_from(len).is_err() {
+                return Err(GraphBuildError::TooManyEntries { table: name });
+            }
+        }
+        self.validate_wire_execution_plans()?;
+        self.validate_instant_regions()?;
         if self.plans.fixed_signals != FixedSignalPlans::default()
-            && infer_fixed_signals(self, monitor)
-                .map_err(|_| GraphBuildError::InvalidFixedSignals)? != self.plans.fixed_signals {
+            && infer_fixed_signals(self, monitor).map_err(|_| GraphBuildError::InvalidFixedSignals)? != self.plans.fixed_signals
+        {
             return Err(GraphBuildError::InvalidFixedSignals);
         }
-        validate_classic(self,monitor)?;
-        self.plans.fixed_classic.validate(self, monitor).map_err(|_| GraphBuildError::InvalidFixedClassic)?;
+        validate_classic(self, monitor)?;
+        self.plans
+            .fixed_classic
+            .validate(self, monitor)
+            .map_err(|_| GraphBuildError::InvalidFixedClassic)?;
+        self.plans
+            .mixed_classic
+            .validate(self, monitor)
+            .map_err(|_| GraphBuildError::InvalidMixedClassic)?;
         self.validate_instant_boundaries(monitor)
     }
 
-    fn validate_instant_boundaries(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+    fn validate_instant_boundaries(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
         let Some(catalog) = &self.plans.instant.boundaries else {
             if self.plans.instant.layers.is_some() {
-                return Err(GraphBuildError::InvalidInstantRegion { table: "layers without boundaries", index: 0 });
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "layers without boundaries",
+                    index: 0,
+                });
             }
-            return Ok(());
+            return Ok(None);
         };
-        let invalid = || GraphBuildError::InvalidInstantRegion { table: "boundaries", index: 0 };
+        let invalid = || GraphBuildError::InvalidInstantRegion {
+            table: "boundaries",
+            index: 0,
+        };
         if !self.plans.instant.regions.is_empty() || !self.plans.instant.proxies.is_empty() {
             return Err(invalid());
         }
@@ -35,17 +76,17 @@ impl CircuitDraft {
             return Err(invalid());
         }
         if let Some(layers) = &self.plans.instant.layers {
-            let expected = crate::redpiler::analysis::instant::layers::compile_layers(self, catalog, monitor)
+            let (expected, context) = crate::redpiler::analysis::instant::layers::compile_layers_with_context(self, catalog, monitor)
                 .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 })?;
             if *layers != expected {
                 return Err(GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 });
             }
+            return Ok(Some(context));
         }
-        Ok(())
+        Ok(None)
     }
 
-    fn validate_inner(&self) -> Result<(), GraphBuildError> {
-        // TODO: extract to helper function just like all others.
+    fn validate_structure(&self) -> Result<(), GraphBuildError> {
         for (name, len) in [
             ("nodes", self.nodes.len()),
             ("sites", self.sites.len()),
@@ -56,10 +97,7 @@ impl CircuitDraft {
             ("guards", self.guards.len()),
             ("routes", self.routes.len()),
             ("wires", self.wires.len()),
-            ("dust paths", self.plans.dust_paths.len()),
             ("wire relations", self.wire_relations.len()),
-            ("instant regions", self.plans.instant.regions.len()),
-            ("instant proxies", self.plans.instant.proxies.len()),
         ] {
             if u32::try_from(len).is_err() {
                 return Err(GraphBuildError::TooManyEntries { table: name });
@@ -69,18 +107,24 @@ impl CircuitDraft {
         self.validate_nodes()?;
         self.validate_guards()?;
         self.validate_sites_and_wires()?;
-        self.validate_turbo_callback_indices()?;
         self.validate_wire_relations()?;
-        self.validate_dust_paths()?;
         self.validate_contacts_and_pistons()?;
         self.validate_routes()?;
         self.validate_links()?;
         self.validate_power()?;
+        Ok(())
+    }
+
+    fn validate_wire_execution_plans(&self) -> Result<(), GraphBuildError> {
+        self.validate_wire_hops()?;
+        self.validate_turbo_callback_indices()?;
+        self.validate_dust_paths()?;
         // Certificate inference follows contact variants, so their references must be valid first.
         for (index, wire) in self.wires.iter().enumerate() {
             if let Some(selection) = wire.execution.callback_selection
-                && (!selection.valid() || Some(selection) != WireCallbackSelection::infer(self,index)) {
-                return Err(GraphBuildError::InvalidWireCallbackSelection {wire:index});
+                && (!selection.valid() || Some(selection) != WireCallbackSelection::infer(self, index))
+            {
+                return Err(GraphBuildError::InvalidWireCallbackSelection { wire: index });
             }
 
             if let Some(facts) = wire.execution.query_facts
@@ -90,7 +134,6 @@ impl CircuitDraft {
             }
         }
         self.validate_instant_resets()?;
-        self.validate_instant_regions()?;
         Ok(())
     }
 
@@ -480,12 +523,13 @@ impl CircuitDraft {
         }
 
         let mut marks = vec![0u8; self.guards.len()];
+        let mut stack = Vec::new();
         for root_index in 0..self.guards.len() {
             if marks[root_index] != 0 {
                 continue;
             }
             let root = GuardId::try_from_index(root_index).expect("guard count was checked");
-            let mut stack = vec![(root, false)];
+            stack.push((root, false));
             while let Some((id, leaving)) = stack.pop() {
                 let guard_count = marks.len();
                 let mark = marks.get_mut(id.index()).ok_or(GraphBuildError::InvalidReference {
@@ -556,14 +600,6 @@ impl CircuitDraft {
             }
         }
 
-        let mut hop_root_counts = vec![0u32; self.nodes.len()];
-        if self.wires.iter().any(|wire| wire.execution.hop_root.is_some()) {
-            for site in &self.sites {
-                if let SiteSource::Component(node) = site.source {
-                    hop_root_counts[node.index()] += 1;
-                }
-            }
-        }
         for (index, wire) in self.wires.iter().enumerate() {
             let node = self.nodes.get(wire.node.index()).ok_or(GraphBuildError::InvalidReference {
                 table: "nodes",
@@ -573,15 +609,6 @@ impl CircuitDraft {
             if node.kind != CircuitNodeKind::Wire(index) {
                 return Err(GraphBuildError::NodeKindMismatch { node: wire.node });
             }
-            if let Some(root) = wire.execution.hop_root
-                && (hop_root_counts[wire.node.index()] != 1
-                    || !self
-                        .sites
-                        .get(root.index())
-                        .is_some_and(|site| site.source == SiteSource::Component(wire.node)))
-            {
-                return Err(GraphBuildError::InvalidWireHopRoot { wire: index });
-            }
             for site in wire.canonical_neighbors {
                 check_id("sites", site.index(), self.sites.len())?;
             }
@@ -590,6 +617,30 @@ impl CircuitDraft {
                 if self.routes[route.index()].source != wire.node {
                     return Err(GraphBuildError::RouteSourceMismatch { route, node: wire.node });
                 }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_wire_hops(&self) -> Result<(), GraphBuildError> {
+        if !self.wires.iter().any(|wire| wire.execution.hop_root.is_some()) {
+            return Ok(());
+        }
+        let mut root_counts = vec![0u32; self.nodes.len()];
+        for site in &self.sites {
+            if let SiteSource::Component(node) = site.source {
+                root_counts[node.index()] += 1;
+            }
+        }
+        for (index, wire) in self.wires.iter().enumerate() {
+            if let Some(root) = wire.execution.hop_root
+                && (root_counts[wire.node.index()] != 1
+                    || !self
+                        .sites
+                        .get(root.index())
+                        .is_some_and(|site| site.source == SiteSource::Component(wire.node)))
+            {
+                return Err(GraphBuildError::InvalidWireHopRoot { wire: index });
             }
         }
         Ok(())
@@ -907,6 +958,37 @@ impl CircuitDraft {
     }
 
     fn validate_links(&self) -> Result<(), GraphBuildError> {
+        if self.callback_links_match_route_order()? {
+            return Ok(());
+        }
+        self.validate_callback_link_multiset()
+    }
+
+    fn callback_links_match_route_order(&self) -> Result<bool, GraphBuildError> {
+        let mut links = self.links.iter();
+        for (route_index, route) in self.routes.iter().enumerate() {
+            let route_id = RouteId::try_from_index(route_index).expect("route count was checked");
+            for delivery in route.deliveries.iter() {
+                let Some(receiver) = delivery.receiver else { continue };
+                let expected = LinkSpec {
+                    from: route.source,
+                    to: self.receiver_node(receiver)?,
+                    kind: delivery.link_kind(),
+                    callback: CallbackEdgeRef {
+                        route: route_id,
+                        sequence: delivery.sequence,
+                    },
+                };
+                if links.next() != Some(&expected) {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(links.next().is_none())
+    }
+
+    // Link table order is not semantic; custom passes may retain another valid permutation.
+    fn validate_callback_link_multiset(&self) -> Result<(), GraphBuildError> {
         let mut callback_edges = FxHashMap::<(CallbackEdgeRef, NodeId, NodeId, LinkKind), usize>::default();
         for link in &self.links {
             check_id("nodes", link.from.index(), self.nodes.len())?;

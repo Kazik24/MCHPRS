@@ -33,6 +33,7 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
         world,
         players: vec![player],
         redpiler: Default::default(),
+        compilation: None,
         message_receiver: bus::Bus::new(4).add_rx(),
         message_sender,
         priv_message_receiver,
@@ -101,6 +102,7 @@ fn redpiler_activation_stages_barrel_close_notifications() {
     plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
 
     plot.start_redpiler(CompilerOptions::default());
+    plot.wait_for_redpiler();
 
     assert!(plot.redpiler.is_active());
     assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
@@ -138,6 +140,7 @@ fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
         },
     );
     plot.start_redpiler(CompilerOptions::default());
+    plot.wait_for_redpiler();
     assert!(plot.redpiler.is_active());
     assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
     plot.players[0].on_ground = true;

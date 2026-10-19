@@ -354,6 +354,9 @@ catalog! {
         PLOT_UNCLAIMED = "No paws on this plot yet";
         PLOT_UNLOCKED = "Off the plot leash! You're free to roam again ^^";
         PLOT_YOU_WERE_PREVIOUSLY_CRASHED = "The plot you were previously in has crashed!";
+        REDPILER_COMPILATION_BUSY = "A compiler worker is still finishing. Use /rp reset to cancel, then wait before compiling again.";
+        REDPILER_COMPILATION_CHANGED = "The plot changed during compilation. Compile again to use the new state.";
+        REDPILER_COMPILATION_PAUSED = "Simulation is paused during compilation. Use /rp reset to cancel it before advancing ticks.";
         REDPILER_AUTO_DISABLED = "Automatic Redpiler compilation disabled. Give /rp compile a boop when you're ready.";
         REDPILER_AUTO_ENABLED = "Automatic Redpiler compilation enabled—I'll handle that trick for you.";
         REDPILER_INVALID_ARGUMENT = "/redpiler hasn't learned that trick. Check /help redpiler.";

@@ -181,12 +181,14 @@ impl GraphBackend {
                 inputs &= inputs - 1;
                 wire_power = wire_power.max(self.live_neighbor_wire_strength(plan, slot));
             }
-            let block_power = BlockFace::values()
-                .into_iter()
-                .zip([3, 2, 4, 5, 1, 0])
-                .map(|(face, slot)| self.neighbor_power_no_dust(plan, slot, face, None))
-                .max()
-                .unwrap_or(0);
+            let block_power = self.mixed_classic_block_power(plan, None).unwrap_or_else(|| {
+                BlockFace::values()
+                    .into_iter()
+                    .zip([3, 2, 4, 5, 1, 0])
+                    .map(|(face, slot)| self.neighbor_power_no_dust(plan, slot, face, None))
+                    .max()
+                    .unwrap_or(0)
+            });
             return (block_power.max(wire_power.saturating_sub(1)), block_power, wire_power);
         }
         self.seed_power_general(plan)
@@ -194,7 +196,8 @@ impl GraphBackend {
 
     pub(super) fn seed_power_general(&mut self, plan: &WirePlan) -> (u8, u8, u8) {
         let (up_solid, _) = self.live_neighbor_geometry(plan, 3);
-        let mut block_power = 0;
+        let mut block_power = self.mixed_classic_block_power(plan, None).unwrap_or(0);
+        let mixed = !self.program.mixed_classic().wires.is_empty();
         let mut wire_power = 0;
         for face in BlockFace::values() {
             let (index, above, below) = match face {
@@ -206,7 +209,9 @@ impl GraphBackend {
                 BlockFace::West => (0, Some(8), Some(7)),
             };
             let (solid, transparent, neighbor_wire_power) = self.live_neighbor_properties(plan, index);
-            block_power = block_power.max(self.neighbor_power_no_dust(plan, index, face, None));
+            if !mixed {
+                block_power = block_power.max(self.neighbor_power_no_dust(plan, index, face, None));
+            }
             wire_power = wire_power.max(neighbor_wire_power);
             if let (Some(above), Some(below)) = (above, below) {
                 if !up_solid && !transparent {
@@ -282,6 +287,51 @@ impl GraphBackend {
         }
         let neighbors = plan.canonical_neighbors.map(|site| self.site_block(site));
         crate::redstone::wire::get_raw_sides_from_neighbors(wire, &neighbors)
+    }
+
+    fn mixed_classic_block_power(&self, plan: &WirePlan, walk: Option<&WireWalk>) -> Option<u8> {
+        let CircuitNodeKind::Wire(index) = self.program.nodes()[plan.node.index()].kind else {
+            unreachable!()
+        };
+        let program = self.program.mixed_classic();
+        let wire = program.wires.get(index)?;
+        let mut maximum = wire.fixed.constant;
+        if maximum == 15 {
+            return Some(15);
+        }
+        for operand in &program.operands[wire.fixed.start as usize..wire.fixed.end as usize] {
+            if maximum == 15 {
+                return Some(15);
+            }
+            let strength = match operand.source {
+                FixedClassicSource::LiveOutput(node) => {
+                    if operand.require_cross && crate::redstone::wire::is_dot(self.wire_state(node)) {
+                        continue;
+                    }
+                    self.stored_component_strength(node)
+                }
+                FixedClassicSource::CapturedPowered { site, node } => {
+                    let powered = match walk.and_then(|walk| walk.slot(site).map(|slot| &walk.sites[slot].observed.properties)) {
+                        Some(ObservedProperties::Electrical { powered, .. }) => *powered,
+                        None => self.node_state(node).powered,
+                        _ => unreachable!("compiled no-dust emitter has electrical captured properties"),
+                    };
+                    u8::from(powered) * 15
+                }
+            };
+            maximum = maximum.max(strength.saturating_sub(operand.attenuation));
+        }
+        let mut faces = wire.general_faces;
+        while faces != 0 && maximum < 15 {
+            let index = faces.trailing_zeros() as usize;
+            faces &= faces - 1;
+            let face = BlockFace::values()[index];
+            let slot = [3, 2, 4, 5, 1, 0][index];
+            let site = plan.canonical_neighbors[slot];
+            let observed = walk.map(|walk| &walk.sites[walk.slot(site).expect("canonical face was captured")].observed);
+            maximum = maximum.max(self.neighbor_power_no_dust(plan, slot, face, observed));
+        }
+        Some(maximum)
     }
 
     fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) -> usize {
@@ -708,15 +758,17 @@ impl GraphBackend {
             return (input_power.max(wire_power.saturating_sub(1)), wire_power, input_power);
         }
         if let Some(transfer) = plan.execution.query_facts.and_then(|facts| facts.transfer) {
-            let input_power = BlockFace::values()
-                .into_iter()
-                .zip([3, 2, 4, 5, 1, 0])
-                .map(|(face, slot)| {
-                    let observed = &walk.sites[neighbors.slots[slot]].observed;
-                    self.neighbor_power_no_dust(plan, slot, face, Some(observed))
-                })
-                .max()
-                .unwrap_or(0);
+            let input_power = self.mixed_classic_block_power(plan, Some(walk)).unwrap_or_else(|| {
+                BlockFace::values()
+                    .into_iter()
+                    .zip([3, 2, 4, 5, 1, 0])
+                    .map(|(face, slot)| {
+                        let observed = &walk.sites[neighbors.slots[slot]].observed;
+                        self.neighbor_power_no_dust(plan, slot, face, Some(observed))
+                    })
+                    .max()
+                    .unwrap_or(0)
+            });
             let mut wire_power = 0;
             if input_power < 15 {
                 let mut inputs = transfer
@@ -734,11 +786,17 @@ impl GraphBackend {
     }
 
     pub(super) fn turbo_wire_power_general(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> (u8, u8, u8) {
-        let mut wire_power = 0;
-        for (face, index) in BlockFace::values().into_iter().zip([3, 2, 4, 5, 1, 0]) {
-            let observed = &walk.sites[neighbors.slots[index]].observed;
-            wire_power = wire_power.max(self.neighbor_power_no_dust(plan, index, face, Some(observed)));
-        }
+        let wire_power = self.mixed_classic_block_power(plan, Some(walk)).unwrap_or_else(|| {
+            BlockFace::values()
+                .into_iter()
+                .zip([3, 2, 4, 5, 1, 0])
+                .map(|(face, index)| {
+                    let observed = &walk.sites[neighbors.slots[index]].observed;
+                    self.neighbor_power_no_dust(plan, index, face, Some(observed))
+                })
+                .max()
+                .unwrap_or(0)
+        });
         let mut block_power = 0;
         if wire_power < 15 {
             let order = crate::redstone::wire::TURBO_ORDER[neighbors.heading];

@@ -1,6 +1,6 @@
 # CPU-friendly classic execution: measured baseline and proposed next step
 
-Started 2026-10-18; status updated 2026-10-19. Packing and the second whole-fixed execution stage are implemented at O2+. Mixed-circuit fixed lowering, passive-net contraction and SIMD remain proposed work. See [the current state](CURRENT_STATE.md) for measured throughput and remaining scope. This work keeps the existing Graph backend and its single authoritative machine state and future.
+Started 2026-10-18; status updated 2026-10-19. Packing and the second whole-fixed execution stage are implemented at O2+. Mixed circuits now have the fixed-face power-query slice described below; broader mixed lowering, passive-net contraction and SIMD remain proposed work. See [the current state](CURRENT_STATE.md) for measured throughput and remaining scope. This work keeps the existing Graph backend and its single authoritative machine state and future.
 
 ## Recommendation
 
@@ -202,6 +202,24 @@ private feedback and update wiring. It must recognize retained state and qualify
 events, rather than admit ordinary memory as a stationary instant-computation cell.
 Existing tests intentionally keep those ownership contracts separate.
 
+For ANPU, use two implementation stages. First extend typed ordered execution to
+eligible fixed wiring inside a mixed piston/contact circuit: compile static queries,
+neighbor descriptors and dispatch while retaining dynamic guards and the original
+Graph piston/contact operations at their exact positions. The current whole-fixed
+builder declines this entire circuit, so CHUNGUS's two execution-stage gains do not
+establish an ANPU gain. This stage changes execution cost without requiring a proof
+that a complete memory mechanism can disappear. Then add `compile-bud-memory` to
+remove certified private wiring around complete storage/read pairs. Measure each
+stage separately; neither has a demonstrated ANPU speedup yet.
+
+The user's cell description has **two pistons: upper storage and a separate read
+output**. Recognition must prove their relationship and include both roles; proximity
+alone is insufficient. Keep write-data/write-update inputs distinct from read-enable
+and read-output publication. A read must preserve storage unless the physical
+mechanism proves a destructive-read/restore transition. One logical stored bit does
+not replace the read actor's pending motion or observable output state. Shared read
+or write distribution remains a boundary unless explicitly covered by the proof.
+
 A fresh O5 ANPU census executes the existing 5,000-tick Pong window and attributes
 all 327,585 piston power samples and 10,682 accepted actions to individual actors:
 
@@ -215,20 +233,35 @@ all 327,585 piston power samples and 10,682 accepted actions to individual actor
 No actor in this census has the existing observer-reset provenance. **None of these
 signatures proves BUD memory.** The QC-only group covers 4.88% of samples, while
 the Main-plus-QC group covers 89.28%. A recognizer restricted to permanently zero
-Main misses most active piston sampling. Main may carry the update pulse while
-QC carries retained data; the graph and finite-state behavior must establish the
+Main misses most active piston sampling. Main may carry read control or an update
+pulse while QC carries retained data; the graph and finite-state behavior must establish the
 actual roles. The report inventories explicit update route/ordinal/guard/view rows,
 but contact alternatives and captured Turbo activation still require closure.
 
 More directly, the existing frozen `test_data/cpu-references/anpu_bud_updates.json`
-labels **896 physical memory actors**. Joining those positions to the active Graph
+labels **896 lower read actors**. Joining those positions to the active Graph
 census accounts for **245,453 samples (74.93% of piston samples)** and **2,768
 accepted actions (25.91%)**. All 896 have both Main and QC inputs. The reference's
 geometric fixture selector is a downward sticky piston below a note block; this
 is an existing fixture label and oracle, not a general memory-recognition proof.
-Use these actors as the first ANPU measurement target. Their sample share is not
-their fraction of total inference time, and the 50,000-tick frozen BUD replay was
-inspected rather than rerun in this investigation.
+The expanded census links each lower actor's QC source contact to exactly one upper
+sticky piston's far contact and verifies its movable payload is a redstone block.
+All 896 pairs are disjoint; each upper base is four blocks above its lower base.
+The upper actor moves the stored power source, and the lower actor reads it through
+QC. This establishes the fixture's structural pairing, not an executable replacement
+certificate. Both actors and their notification channels still need transition proof.
+
+| Cell role | Actors | Power samples | Accepted actions |
+| --- | ---: | ---: | ---: |
+| Upper storage | 896 | 15,227 | 1,421 |
+| Lower read output (frozen labels) | 896 | 245,453 | 2,768 |
+| Paired total | 1,792 | 260,680 | 4,189 |
+
+Pairs account for **79.58% of piston samples and 39.22% of accepted actions**.
+Most sample activity is in the read side, so a storage-only shortcut would target
+only 4.65% of piston samples. Measure the read-enable/QC/output wire cone before
+choosing which private work to contract. These are event counts, not total inference
+time shares. The 50,000-tick frozen BUD replay was inspected rather than rerun.
 
 The retained ANPU runtime diagnostic estimates piston sampling at about 8.9% of
 instrumented tick time and general wire walks at about 63.4%. These are coarse,
@@ -239,16 +272,18 @@ boundaries to remove private feedback propagation and simplify its data/output r
 
 First implementation contract for a separate `compile-bud-memory` builder:
 
-1. **Identify the state and its encoding.** Start with a bounded private mechanism
-   and prove its stable states, payload ownership and observable output. Reuse
+1. **Identify the pair, state and encoding.** Start with a bounded private mechanism
+   and prove storage/read roles, their dependency, stable states, payload ownership
+   and observable output. Inventory both actors' activity and attributable wire work. Reuse
    CircuitState's actor/resource values; introduce no independently mutable cached
    memory bit. Retain pending/transient phases in GraphFuture. Shared payloads or
    observable interior geometry require an explicit larger contract or decline.
-2. **Derive data and activation separately.** Record Main/QC power expressions,
+2. **Derive write, read and activation separately.** Record Main/QC power expressions,
    polarity and guards independently of every qualifying base/head update. Include
    captured/live reads, contact alternatives, direction when relevant, multiplicity
    and original route ordinals. QC availability alone is not an activation event;
-   a notification with unchanged final power can still be meaningful.
+   a notification with unchanged final power can still be meaningful. Derive the
+   read-enable and stored-state-to-output path independently of the write transition.
 3. **Compile the real transition sequence.** A qualifying notification samples power
    and may enqueue the original request. Acceptance rechecks live power, pose,
    availability and resource conditions at the original FIFO position. Only an
@@ -267,7 +302,8 @@ First implementation contract for a separate `compile-bud-memory` builder:
    piston bookkeeping alone does not address ANPU's dominant propagation cost.
 6. **Validate before promoting.** Use the independent-data/update fixture first,
    then Rilax memory, the counter and ANPU. Exercise data-only changes, repeated
-   updates, both pulse edges, data changing between request and commit, shared
+   updates, both pulse edges, read-only pulses, disabled reads, overlapping reads/writes,
+   data changing between request and commit, shared
    update clocks, pending/imported work, resource conflicts and reset/continuation
    at intermediate phases. Compare ANPU's real output protocol and exact future,
    then run quiet alternating production samples over its active window.
@@ -295,9 +331,80 @@ and whitespace checks pass. Logs: `target/classic-stage3-final-suite.log`,
 `target/classic-stage3-final-check.log`, and
 `target/anpu-memory-cell-opportunity-labeled.log`.
 
+After the two-piston clarification, the expanded census was rebuilt and explicitly
+rerun: one pass in 15.21 seconds. Assertions verify all 896 one-to-one QC/contact
+pairings, upper redstone-block payloads, four-block vertical offsets, disjoint roles
+and unchanged global activity totals. Evidence: `target/anpu-memory-pair-census.log`
+and the expanded `target/anpu-memory-cell-opportunity.json`. This follow-up changes
+only research inventory and documentation; the full suite was not rerun for it.
+
 A broader `bud_` test filter also exposed an existing stale assertion outside the
 Redpiler suite: `redstone::piston::tests::bud_reference::anpu_cannot_bypass_compiled_graph_admission`
 expects ANPU compilation to fail, but the current graph admits it. That run had ten
 passes, one failure and two ignored tests (`target/bud-memory-existing-contracts.log`).
 No admission rule or that test was changed in this work. The earlier three transient
 instant-layer suite failures were resolved by concurrent work before the final run.
+
+## 2026-10-19 ANPU implementation: mixed fixed-face power queries
+
+`compile-mixed-classic` is now an O2+ plan builder after fixed signals and the
+whole-fixed attempt. It joins eligible wire no-dust faces into a typed maximum,
+reusing the whole-fixed electrical compiler. ANPU compiles 204,727 of 208,686
+faces across 34,781 wires (98.10% static face coverage). Contacts, uncertain
+conductors and unsupported emitters retain their original individual queries.
+Whole-fixed circuits skip the extra plan. No wire walk, callback or piston
+lifecycle is removed; this is the first mixed-execution slice, not BUD recognition.
+
+One captured/live counterexample was caught before measurement: general captured
+block reconstruction keeps lever/button/pressure-plate flags live, unlike held
+torch/repeater properties. Those control faces deliberately remain general.
+The regression checks held torch properties against changed live comparator values
+over all 256 old/new analog combinations, and checks live control flags separately.
+Other checks cover changing payload contacts, ordered propagation, pending work,
+plan corruption/cancellation/invalidation, and exported query references/ranges.
+
+An independent ANPU run matches at every boundary 0..1,024: full CircuitState and
+typed Graph scheduler/pending counts, piston request/action FIFO, deferred events
+and clock match the pass-off control. Projected component/contact blocks, comparator
+values, ordered command output, screen frames and scheduled work match the physical
+interpreter. Reset projections and 32 native continuation ticks match; physical
+motion identity allocation is deliberately not compared as a raw encoding.
+
+Three alternating **release cfg(test)** pairs over 5,000 active Pong ticks measure:
+
+| Metric | Pass off | Pass on |
+| --- | ---: | ---: |
+| Median inference seconds | 3.541512 | 3.2172332 |
+| Sample range, seconds | 3.4974253–3.5420881 | 3.1486146–3.3779743 |
+| Active game ticks/s at median | 1,411.83 | 1,554.13 |
+| Median compile seconds (separate) | 7.5087985 | 7.3902732 |
+
+This is **1.10079x throughput, 9.16% less inference time** in the optimized test
+executable, not production-only server TPS. Activation and tick execution are timed;
+loading, compilation, reset/projection and correctness observations are outside the
+inference timer. Every sample performs the same 267,998 scheduled ticks, 16,324,348
+callbacks, 183,752 wire walks, 327,585 piston samples and 10,682 accepted actions.
+Every pair matches full endpoint state, Graph future, reset and 32 native continuation
+ticks. Compilation varies and these three pairs establish no compile-time gain.
+
+The timed repeat has 34 process observations, with no Cargo/rustc/linker process
+observed. The earlier load-contaminated batch is excluded and retained separately.
+Evidence: `target/mixed-classic-anpu-summary.json`,
+`target/mixed-classic-anpu-timing.{json,log}`, its `-observations.json`, and
+`target/mixed-classic-anpu-differential.{json,log}`. The frozen timed executable's
+SHA-256 is `388219840cbdf7da805d6e1211168f7e6ac4cdd36a5091cfa712dbace9b18616`.
+
+The storage/read-pair contraction remains the next separate optimization. This
+slice preserves all wire walks, so it does not claim the larger gain available
+from eliminating certified private read/output wiring. No 50,000-tick physical
+ANPU replay, production-only timing or broad mixed typed dispatch is claimed.
+
+The rebuilt frozen snapshot passes **511 Redpiler tests, zero failures, 35 ignored**
+in 157.90 seconds. Workspace checking and all 25 graph-loader tests pass. This
+includes the regenerated O2–O5 export fixtures, expected pipeline order and the
+corrected test invalidation after deliberately changing an emitter's block class.
+Logs: `target/mixed-classic-final-suite.log`, `target/mixed-classic-final-check.log`
+and `target/mixed-classic-loader-tests.log`. The final suite executable's SHA-256
+is `b1ca5dd90710790a587d0b1e603d592b960568fe8c77d132866f6be344c8aa00`.
+Concurrent unrelated work continues in this shared checkout; these results describe
+the frozen executables, rather than certifying later edits by other work.

@@ -18,7 +18,8 @@
     "wire_query_facts",
     "instant_regions",
     "instant_proxies",
-    "fixed_classic_declined"
+    "fixed_classic_declined",
+    "mixed_classic_queries"
   ],
   "source": {
     "revision": null,
@@ -1020,6 +1021,248 @@
     "fixed_classic": {
       "status": "declined",
       "decline": "fixed classic requires unowned contactless fixed circuitry"
+    },
+    "mixed_classic": {
+      "wires": [
+        {
+          "node": "node:50",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 9
+        },
+        {
+          "node": "node:52",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 32
+        },
+        {
+          "node": "node:53",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 1
+        },
+        {
+          "node": "node:57",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 33
+        },
+        {
+          "node": "node:58",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:60",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 33
+        },
+        {
+          "node": "node:64",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 16
+        },
+        {
+          "node": "node:65",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 4
+        },
+        {
+          "node": "node:66",
+          "constant": 15,
+          "start": 0,
+          "end": 0,
+          "general_faces": 8
+        },
+        {
+          "node": "node:68",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 32
+        },
+        {
+          "node": "node:70",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:73",
+          "constant": 15,
+          "start": 0,
+          "end": 0,
+          "general_faces": 4
+        },
+        {
+          "node": "node:75",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 32
+        },
+        {
+          "node": "node:76",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 4
+        },
+        {
+          "node": "node:79",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 32
+        },
+        {
+          "node": "node:81",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:82",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:83",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:84",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:85",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:86",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:89",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:91",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:92",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:93",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:94",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:95",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:97",
+          "constant": 0,
+          "start": 0,
+          "end": 0,
+          "general_faces": 0
+        },
+        {
+          "node": "node:99",
+          "constant": 0,
+          "start": 0,
+          "end": 1,
+          "general_faces": 0
+        },
+        {
+          "node": "node:100",
+          "constant": 0,
+          "start": 1,
+          "end": 2,
+          "general_faces": 0
+        },
+        {
+          "node": "node:102",
+          "constant": 0,
+          "start": 2,
+          "end": 2,
+          "general_faces": 0
+        },
+        {
+          "node": "node:103",
+          "constant": 0,
+          "start": 2,
+          "end": 2,
+          "general_faces": 0
+        }
+      ],
+      "operands": [
+        {
+          "node": "node:104",
+          "captured_site": null,
+          "attenuation": 0,
+          "require_cross": false
+        },
+        {
+          "node": "node:104",
+          "captured_site": null,
+          "attenuation": 0,
+          "require_cross": false
+        }
+      ]
     },
     "nodes": [
       {

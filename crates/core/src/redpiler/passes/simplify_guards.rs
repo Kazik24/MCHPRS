@@ -573,6 +573,7 @@ mod tests {
             (3, "compile-instant-proxies"),
             (2, "compile-fixed-signals"),
             (2, "compile-fixed-classic"),
+            (2, "compile-mixed-classic"),
             (2, "compile-classic-redstone"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {

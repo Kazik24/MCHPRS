@@ -7,9 +7,10 @@ impl CircuitDraft {
     }
 
     pub(crate) fn lower_with_monitor(mut self,monitor:&crate::redpiler::TaskMonitor) -> Result<(CircuitProgram,CircuitState),GraphBuildError> {
-        self.validate_with_monitor(monitor)?;
-        let kernels = crate::redpiler::analysis::instant::layers::lower_kernels(&self, monitor)
+        let layer_context = self.validate_for_lowering(monitor)?;
+        let kernels = crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&self, monitor, layer_context.as_ref())
             .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "kernel lowering", index: 0 })?;
+        drop(layer_context);
         let mut kernel_by_actor = vec![None; self.pistons.len()];
         for (index, kernel) in kernels.iter().enumerate() {
             for pull in kernel.pulls.iter().filter(|pull| pull.external) {
@@ -182,6 +183,7 @@ impl CircuitDraft {
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
+            mixed_classic: self.plans.mixed_classic,
             fixed_classic: self.plans.fixed_classic.program,
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),

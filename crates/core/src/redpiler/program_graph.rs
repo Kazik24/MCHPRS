@@ -21,6 +21,8 @@ pub(crate) use instant_cells::*;
 pub(crate) use instant_boundaries::*;
 mod fixed_classic;
 pub(crate) use fixed_classic::*;
+mod mixed_classic;
+pub(crate) use mixed_classic::*;
 pub(crate) use instant_layers::*;
 pub(crate) use instant_program::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
@@ -597,6 +599,7 @@ pub(crate) fn command_facing(block: Block) -> BlockFace {
 pub(crate) enum GraphBuildError {
     InvalidFixedSignals,
     InvalidFixedClassic,
+    InvalidMixedClassic,
     InvalidClassicNet { net: usize, reason: &'static str },
     InvalidWireCallbackSelection { wire: usize },
     InvalidInstantRegion {
@@ -710,6 +713,7 @@ impl std::fmt::Display for GraphBuildError {
         match self {
             Self::InvalidFixedSignals => write!(f, "fixed signal queries have a stale or invalid certificate"),
             Self::InvalidFixedClassic => write!(f, "whole fixed classic program has a stale or invalid certificate"),
+            Self::InvalidMixedClassic => write!(f, "mixed classic query program has a stale or invalid certificate"),
             Self::PreparationMemoryLimit {
                 stage,
                 estimated_bytes,
@@ -819,6 +823,8 @@ struct InstantProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
+    /// Fixed electrical reads inside otherwise general mixed-circuit execution.
+    mixed_classic: MixedClassicProgram,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_signals: FixedSignalProgram,
     classic: ClassicProgram,
@@ -861,6 +867,9 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn mixed_classic(&self) -> &MixedClassicProgram {
+        &self.mixed_classic
+    }
     pub(crate) fn instant_kernels(&self) -> &[std::sync::Arc<InstantKernel>] {
         &self.instant.kernels
     }
@@ -1479,6 +1488,57 @@ mod tests {
             duplicate.lower(),
             Err(GraphBuildError::CallbackEdgeMismatch { sequence: 0, .. })
         ));
+    }
+
+    #[test]
+    fn callback_link_permutations_preserve_ordered_delivery_multiplicity() {
+        let draft = draft_with_mixed_links();
+        let expected = draft.clone().lower().unwrap();
+        for order in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            let mut permuted = draft.clone();
+            permuted.links = order.iter().map(|&index| draft.links[index]).collect();
+            assert_eq!(permuted.lower().unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn callback_link_stream_and_multiset_reject_the_same_corruptions() {
+        let draft = draft_with_mixed_links();
+        for reverse in [false, true] {
+            for case in 0..6 {
+                let mut invalid = draft.clone();
+                match case {
+                    0 => { invalid.links.pop(); }
+                    1 => invalid.links.push(invalid.links[0]),
+                    2 => invalid.links[1] = invalid.links[0],
+                    3 => invalid.links[0].from = NodeId::new(99),
+                    4 => invalid.links[0].kind = LinkKind::Update { direction: Some(BlockFace::North), guard: GuardId::new(0) },
+                    5 => invalid.links[0].callback.sequence = 99,
+                    _ => unreachable!(),
+                }
+                if reverse { invalid.links.reverse(); }
+                assert!(invalid.lower().is_err(), "corruption {case}, reverse={reverse}");
+            }
+        }
+    }
+
+    #[test]
+    fn callback_link_validation_counts_identical_keys_and_skips_receiverless_rows() {
+        let mut duplicate = draft_with_mixed_links();
+        duplicate.routes[0].deliveries[1].sequence = 0;
+        duplicate.links[1].callback.sequence = 0;
+        duplicate.validate().unwrap();
+        duplicate.links.reverse();
+        duplicate.validate().unwrap();
+        duplicate.links.pop();
+        assert!(duplicate.validate().is_err());
+
+        let mut receiverless = draft_with_mixed_links();
+        receiverless.routes[0].deliveries[0].receiver = None;
+        receiverless.links.remove(0);
+        receiverless.validate().unwrap();
+        receiverless.links.reverse();
+        receiverless.validate().unwrap();
     }
 
     #[test]

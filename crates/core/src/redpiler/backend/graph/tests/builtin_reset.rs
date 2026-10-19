@@ -97,11 +97,8 @@ fn builtin_resets_keep_one_clock_per_shared_driver_and_reject_output_circuits() 
     );
     let mut mismatched = graph.clone();
     mismatched.nodes[observer.index()].raw_state = Some(Block::Stone {}.get_id());
-    // This deliberately changes electrical emission: discard the derived query certificate.
-    mismatched.plans.fixed_signals = Default::default();
-    for wire in &mut mismatched.wires {
-        wire.execution.query_facts = None;
-    }
+    // This deliberately changes electrical emission: discard all derived certificates.
+    mismatched.clear_execution_plans();
     mismatched.validate().unwrap();
     compile_resets(&mut mismatched, &entry, &TaskMonitor::default()).unwrap();
     assert!(matches!(mismatched.nodes[observer.index()].kind, CircuitNodeKind::Observer { .. }));

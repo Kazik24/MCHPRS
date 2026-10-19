@@ -49,6 +49,8 @@ pub(crate) struct TurboCallbackIndex {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// Derived execution data. A graph rewrite discards it; builders publish typed outputs.
 pub(crate) struct ExecutionPlans {
+    /// Pure fixed-face reads; this plan owns no propagation or mutable state.
+    pub(crate) mixed_classic: MixedClassicProgram,
     /// Whole fixed-circuit executable tables; excludes other execution owners atomically.
     pub(crate) fixed_classic: FixedClassicPlans,
     /// Exact compiled electrical reads and the separate settled weighted topology witness.
