@@ -9,6 +9,9 @@ use mchprs_blocks::{
 use serde_json::json;
 use std::time::{Duration, Instant};
 
+#[path = "fixed_classic_nets.rs"]
+mod net_tests;
+
 const A: BlockPos = BlockPos::new(5, 20, 5);
 const B: BlockPos = BlockPos::new(8, 20, 5);
 const RECEIVER: BlockPos = BlockPos::new(6, 20, 6);

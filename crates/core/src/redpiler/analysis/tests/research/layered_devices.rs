@@ -5,6 +5,8 @@ use crate::redpiler::program_graph::*;
 use crate::redpiler::{CompilerOptions, passes};
 
 mod large_builds;
+mod admission;
+mod kernel_proofs;
 
 #[test]
 #[ignore = "explicit Divider layer census and all 11 native differential histories"]
@@ -96,7 +98,7 @@ fn backend(graph: &CompileGraph) -> GraphBackend {
     let (program, state) = graph.clone().lower().unwrap();
     let backend = GraphBackend::new(program, state, 0).unwrap();
     let coverage = backend.execution_coverage();
-    assert_eq!(coverage.instant_kernel_nodes, 0, "a cold artifact cannot claim kernel execution");
+    assert!(coverage.instant_kernel_nodes <= coverage.piston_nodes + coverage.wire_nodes);
     assert_eq!(coverage.native_nodes, 0);
     backend
 }
@@ -154,7 +156,6 @@ fn layer_report(name: &str, graph: &CompileGraph) -> Value {
             CellDeclineReason::DifferentPullSources(_) => "DifferentPullSources",
             CellDeclineReason::NoPullSource(_) => "NoPullSource",
             CellDeclineReason::MissingDeferredWake(_) => "MissingDeferredWake",
-            CellDeclineReason::MissingResetWake(_) => "MissingResetWake",
             CellDeclineReason::PinTableBudgetExceeded => "PinTableBudgetExceeded",
             CellDeclineReason::ConflictingSourceContact(_) => "ConflictingSourceContact",
             CellDeclineReason::UnsupportedMaterial(_) => "UnsupportedMaterial",
@@ -180,13 +181,17 @@ fn layer_report(name: &str, graph: &CompileGraph) -> Value {
             "reason": format!("{:?}", decline.reason), "witness": format!("{:?}", decline.witness), "power_cut": power_cut})
         })
         .collect();
+    let kernels = crate::redpiler::analysis::instant::layers::lower_kernels(graph, &TaskMonitor::default()).unwrap();
     let report = json!({"fixture":name, "total_actors":graph.pistons.len(), "admitted_actors":admitted_actors,
         "outside_actors":graph.pistons.len()-admitted_actors, "cells":catalog.cells.len(), "corridors":catalog.corridors.len(),
         "boundary_ports":catalog.ports.len(), "compiled_regions":layers.regions.len(), "compiled_actors":compiled_actors,
         "declined_regions":layers.declines.len(), "decline_reasons":decline_reasons, "declines":declines,
         "candidate_occurrences":candidate_occurrences, "admission_declined_actors":admission_reasons,
         "programs":layers.programs.iter().map(|program| json!({"inputs":program.inputs.len(),"expressions":program.expressions.len(),"roots":program.roots.len()})).collect::<Vec<_>>(),
-        "runtime_replacement":false, "native_fallback":false});
+        "runtime_replacement":!kernels.is_empty(), "native_fallback":false,
+        "executable_kernels":kernels.len(),
+        "executable_kernel_actors":kernels.iter().map(|kernel| kernel.actors.len()).sum::<usize>(),
+        "executable_kernel_wires":kernels.iter().map(|kernel| kernel.wires.len()).sum::<usize>()});
     println!(
         "{name}: {admitted_actors}/{} admitted actors, {} cells, {} corridors, {compiled_actors} compiled actors, {} declined regions; {decline_reasons:?}",
         graph.pistons.len(),

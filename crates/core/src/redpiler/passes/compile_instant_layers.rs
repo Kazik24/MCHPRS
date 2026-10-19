@@ -1,8 +1,7 @@
 //! Derive finite causal programs from the experimental instant boundary catalog.
 //!
-//! This inspection-only builder keeps the original graph executable until reduction,
-//! boundary effects and lifecycle lowering have their own correctness gates. Unknown
-//! causal order must be reported by the analysis rather than chosen by discovery order.
+//! Lowering installs only waves whose effect boundary and queue ownership are certified;
+//! the remainder keeps ordinary Graph execution. Discovery order never defines causality.
 use super::PassContext;
 use super::planning::{PlanBuilder, PlanOutput};
 use crate::redpiler::program_graph::CompileGraph;

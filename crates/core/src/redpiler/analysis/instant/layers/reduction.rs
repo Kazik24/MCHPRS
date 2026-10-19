@@ -17,6 +17,7 @@ pub(crate) fn reduce(region: &LayeredRegion, monitor: &TaskMonitor) -> Result<Re
     // Acceptance remains observable to reset/publication even when no immediate external output changes.
     for (layer, frontier) in region.layers.iter().enumerate() {
         for (occurrence, use_) in frontier.uses.iter().enumerate() {
+            roots.push((LayerRoot::Requested { layer, occurrence }, use_.requested));
             roots.push((LayerRoot::Accepted { layer, occurrence }, use_.accepted));
         }
     }

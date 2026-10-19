@@ -9,9 +9,7 @@ pub(crate) mod compile_wire_hops;
 pub(crate) mod compile_wire_callbacks;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_regions;
-#[cfg(test)]
 pub(crate) mod identify_instant_boundaries;
-#[cfg(test)]
 pub(crate) mod compile_instant_layers;
 pub(crate) mod index_turbo_callbacks;
 pub(crate) mod planning;
@@ -292,7 +290,12 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         .chain(std::iter::once(PassEntry { pass: Pass::build(compile_fixed_classic::CompileFixedClassic), enabled: level >= 2 }))
         .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
         .collect();
-    let pipeline = PassPipeline::new(entries);
+    let mut pipeline = PassPipeline::new(entries);
+    if level >= 4 && options.stable_instant_inputs {
+        pipeline.entries.retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
+        pipeline.entries.push(PassEntry { pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries), enabled: true });
+        pipeline.entries.push(PassEntry { pass: Pass::build(compile_instant_layers::CompileInstantLayers), enabled: true });
+    }
     #[cfg(feature = "unsafe-turbo-fixed-point")]
     let pipeline = {
         let mut pipeline = pipeline;
@@ -310,7 +313,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
 pub(crate) fn experimental_boundary_pipeline(options: &CompilerOptions) -> PassPipeline {
     let mut pipeline = default_graph_pipeline(options);
     pipeline.entries.retain(|entry| {
-        !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies")
+        !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies" | "identify-instant-boundaries" | "compile-instant-layers")
     });
     pipeline.entries.push(PassEntry {
         pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),

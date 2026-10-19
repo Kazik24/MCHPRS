@@ -1,6 +1,6 @@
 //! Extract causal order from actual callback rows for connected cells.
 //! Internal Turbo paths still require a separate arrival certificate; no discovery
-//! order is substituted for one. A single outside route may come from any device.
+//! order is substituted for one. Each outside route is a separate possible entry.
 use super::*;
 
 enum Failure {
@@ -20,11 +20,12 @@ pub(crate) fn compile_connected(
     catalog: &BoundaryCatalog,
     component: &RegionComponent,
     region_index: usize,
+    partition: &regions::RegionPartition,
     power: &PowerIndex,
     perimeter: &FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
 ) -> Result<Result<LayeredRegion, LayerDecline>, String> {
-    match compile(graph, catalog, component, region_index, power, perimeter, monitor) {
+    match compile(graph, catalog, component, region_index, partition, power, perimeter, monitor) {
         Ok(region) => Ok(Ok(region)),
         Err(Failure::Unsupported(witness, reason)) => Ok(Err(decline(component, witness, reason))),
         Err(Failure::Invalid(message)) => Err(message),
@@ -40,6 +41,8 @@ struct Routes<'a> {
     resets: FxHashSet<NodeId>,
     /// These externally exposed callback roots preserve actual phase order and duplicate occurrences.
     outputs: Vec<LayerOutput>,
+    /// These unchanged outside Graph readers retain live geometry and captured snapshots.
+    graph_outputs: Vec<u32>,
     /// These catalog ports identify the original outside recipients of each effect.
     ports: &'a [BoundaryPort],
     /// These are the published port ordinals for this connected component.
@@ -55,6 +58,7 @@ fn compile(
     catalog: &BoundaryCatalog,
     component: &RegionComponent,
     region_index: usize,
+    partition: &regions::RegionPartition,
     power: &PowerIndex,
     perimeter: &FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
@@ -64,13 +68,13 @@ fn compile(
         actors: FxHashMap::default(),
         resets: FxHashSet::default(),
         outputs: Vec::new(),
+        graph_outputs: Vec::new(),
         ports: &catalog.ports,
         region_ports: &component.ports,
         perimeter,
         arrivals: Vec::new(),
     };
     let Some(arrivals) = super::corridors::certify(graph, catalog, component, power, monitor)? else {
-        let partition = regions::partition(graph, catalog, monitor)?;
         let witness = first_unproven_power(
             graph,
             catalog,
@@ -87,27 +91,37 @@ fn compile(
     for &cell in &component.cells {
         for use_ in &catalog.cells[cell as usize].uses {
             routes.actors.insert(use_.actor, cell);
-            routes.resets.insert(use_.reset);
+            if let Some(reset) = use_.reset.observer() {
+                routes.resets.insert(reset);
+            }
         }
     }
     let mut entries = FxHashSet::default();
+    let mut captured_entries = FxHashSet::default();
     for &cell in &component.cells {
         for use_ in &catalog.cells[cell as usize].uses {
             for occurrence in &use_.activations {
                 let source = graph.routes[occurrence.route.index()].source;
                 if !routes.owns_node(source) {
                     entries.insert(occurrence.route);
+                    if graph.routes[occurrence.route.index()].deliveries[occurrence.ordinal as usize].view == OperandView::Captured {
+                        captured_entries.insert(occurrence.route);
+                    }
                 }
             }
         }
     }
-    if entries.len() != 1 {
+    // Unsupported entry histories keep their original callbacks and Graph execution;
+    // they must not prevent another, fully live route from using this same region.
+    entries.retain(|entry| !captured_entries.contains(entry));
+    if entries.is_empty() {
         return Err(Failure::Unsupported(
             first_witness(graph, catalog, component),
             LayerDeclineReason::CallbackSemanticsUnsupported,
         ));
     }
-    let entry = *entries.iter().next().expect("one entry was checked");
+    let mut entries: Vec<_> = entries.into_iter().collect();
+    entries.sort_unstable();
     let mut composition = Composition::new(graph, catalog, power, component, monitor)?;
     let no = composition.builder.constant(false)?;
     let mut entry_roots = Vec::new();
@@ -117,10 +131,20 @@ fn compile(
         entry_roots.push(pins[catalog.cells[cell as usize].stationary_entry.index()]);
     }
     let stationary_entry = composition.builder.all(entry_roots)?;
-    routes.entry(entry, &mut composition)?;
+    // Only the actual entry route is active. Sorting keeps construction deterministic;
+    // it does not prescribe an execution order between independent outside events.
+    for entry in entries {
+        routes.entry(entry, &mut composition)?;
+    }
     routes.compose_wave(catalog, &mut composition)?;
     let lifecycle = lifecycle_occurrences(graph, catalog, component)?;
     routes.record_final_values(catalog, component, &mut composition)?;
+    if !routes.bind_boundary_state(catalog, component, &mut composition.builder.inputs) {
+        return Err(Failure::Unsupported(
+            first_witness(graph, catalog, component),
+            LayerDeclineReason::BoundaryEffectUnsupported,
+        ));
+    }
     let region = LayeredRegion {
         id: LayerRegionId(region_index as u32),
         cells: component.cells.clone(),
@@ -131,6 +155,7 @@ fn compile(
         layers: composition.layers.into(),
         resource_outputs: composition.resources.into(),
         outputs: routes.outputs.into(),
+        graph_outputs: routes.graph_outputs.into(),
         cold_lifecycle_occurrences: lifecycle.into(),
         pin_values: Box::new([]),
     };
@@ -156,7 +181,10 @@ fn lifecycle_occurrences(
                     use_.retraction.wake.resource.map(|wake| wake.route),
                     LayerLifecyclePhase::DeferredResourceRestoration,
                 ),
-                (graph.nodes[use_.reset.index()].output_route, LayerLifecyclePhase::ResetOutput),
+                (
+                    use_.reset.observer().and_then(|node| graph.nodes[node.index()].output_route),
+                    LayerLifecyclePhase::ResetOutput,
+                ),
                 (spec.routes.far_shape_changed, LayerLifecyclePhase::ResetFarShapeChange),
                 (spec.routes.resource_restored_far, LayerLifecyclePhase::DeferredResourceRestoration),
             ] {
@@ -174,20 +202,22 @@ fn lifecycle_occurrences(
                     }
                 }
             }
-            for &occurrence in &use_.retraction.reset.on_base_changed {
+            let Some(reset_node) = use_.reset.observer() else { continue };
+            let Some(wake) = use_.reset.observer_wake() else { continue };
+            for &occurrence in &wake.on_base_changed {
                 lifecycle.push(LayerLifecycleOccurrence {
                     actor: use_.actor,
                     occurrence,
                     phase: LayerLifecyclePhase::ResetObserverLifecycle,
-                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
                 });
             }
-            for &occurrence in &use_.retraction.reset.on_base_restored {
+            for &occurrence in &wake.on_base_restored {
                 lifecycle.push(LayerLifecycleOccurrence {
-                    actor: use_.retraction.reset.watched_actor,
+                    actor: wake.watched_actor,
                     occurrence,
                     phase: LayerLifecyclePhase::ResetObserverLifecycle,
-                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
                 });
             }
         }
@@ -196,6 +226,35 @@ fn lifecycle_occurrences(
 }
 
 impl Routes<'_> {
+    fn bind_boundary_state(&self, catalog: &BoundaryCatalog, component: &RegionComponent, inputs: &mut [LayerInput]) -> bool {
+        let resources: FxHashSet<_> = component
+            .cells
+            .iter()
+            .flat_map(|&cell| catalog.cells[cell as usize].resources.iter().map(|pin| pin.resource))
+            .collect();
+        for input in inputs {
+            let LayerInputSource::State(test) = input.source else { continue };
+            let owned = match test {
+                StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. } => {
+                    self.actors.contains_key(&actor)
+                }
+                StateTest::ResourceEnabled(resource) | StateTest::ResourceAt { resource, .. } => resources.contains(&resource),
+            };
+            if owned {
+                continue;
+            }
+            let Some(&port) = self.region_ports.iter().find(|&&port| {
+                let row = self.ports[port as usize];
+                row.direction == BoundaryDirection::Input
+                    && matches!(row.kind, BoundaryPortKind::GuardState { test: candidate, .. } if candidate == test)
+            }) else {
+                return false;
+            };
+            input.source = LayerInputSource::BoundaryState { port, test };
+        }
+        true
+    }
+
     fn compose_wave(&mut self, catalog: &BoundaryCatalog, composition: &mut Composition<'_>) -> Result<(), Failure> {
         while let Some(acceptance) = composition.begin_next()? {
             let actor = acceptance.actor;
@@ -245,12 +304,15 @@ impl Routes<'_> {
                         composition.builder.input_expr(input)?
                     }
                 }
-                BoundaryPortKind::GuardSite {
-                    site,
-                    test,
-                    view: OperandView::Live,
-                    ..
-                } => tracer.site_test(site, test, &mut composition.builder)?,
+                // These readers still execute on Graph against the original authoritative
+                // contacts. A Boolean final value cannot replace an earlier capture.
+                BoundaryPortKind::GuardSite { .. }
+                | BoundaryPortKind::WireRelation { .. }
+                | BoundaryPortKind::WireNeighborhood { .. }
+                | BoundaryPortKind::CapturedWire { .. } => {
+                    self.graph_outputs.push(port);
+                    continue;
+                }
                 BoundaryPortKind::ContactAlternative { contact, ordinal } => {
                     tracer.guard(graph.contacts[contact.index()].variants[ordinal as usize].when, &mut composition.builder)?
                 }
@@ -349,22 +411,30 @@ impl Routes<'_> {
             Some(CallbackReceiver::Component(node)) => match self.graph.nodes[node.index()].kind {
                 CircuitNodeKind::Piston(actor) => Some(actor),
                 CircuitNodeKind::Wire(_) => {
-                    let Some(arrival) = self.arrivals.iter().find(|arrival| arrival.wires.contains(&node)) else {
-                        return Err(Failure::Unsupported(LayerWitness::Wire(node), LayerDeclineReason::SignalArrivalUnproven));
-                    };
-                    if occurrence == arrival.start {
-                        if !ancestors.contains(&arrival.producer) {
-                            return Err(Failure::Invalid("corridor arrival has no accepted source provenance".into()));
+                    if let Some(arrival) = self.arrivals.iter().find(|arrival| arrival.wires.contains(&node)) {
+                        if occurrence == arrival.start {
+                            if !ancestors.contains(&arrival.producer) {
+                                return Err(Failure::Invalid("corridor arrival has no accepted source provenance".into()));
+                            }
+                            composition.sample_after(
+                                self.actors[&arrival.consumer],
+                                arrival.consumer,
+                                when,
+                                vec![arrival.finish].into(),
+                                ancestors,
+                            )?;
                         }
-                        composition.sample_after(
-                            self.actors[&arrival.consumer],
-                            arrival.consumer,
-                            when,
-                            vec![arrival.finish].into(),
-                            ancestors,
-                        )?;
+                        return Ok(());
                     }
-                    return Ok(());
+                    if self.actors.len() != 1 {
+                        return Err(Failure::Unsupported(
+                            LayerWitness::Callback(occurrence),
+                            LayerDeclineReason::SignalArrivalUnproven,
+                        ));
+                    }
+                    // A singleton retains the outside walk; no later owned action can
+                    // observe an unmodelled synchronous feedback change.
+                    None
                 }
                 _ => None,
             },

@@ -9,9 +9,7 @@ pub(crate) use execution_plans::*;
 mod instant_regions;
 mod instant_cells;
 mod instant_boundaries;
-#[cfg(test)]
 mod instant_layers;
-#[cfg(test)]
 mod instant_program;
 mod wire_query_facts;
 mod wire_callback_selection;
@@ -23,9 +21,7 @@ pub(crate) use instant_cells::*;
 pub(crate) use instant_boundaries::*;
 mod fixed_classic;
 pub(crate) use fixed_classic::*;
-#[cfg(test)]
 pub(crate) use instant_layers::*;
-#[cfg(test)]
 pub(crate) use instant_program::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
@@ -808,6 +804,10 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Lowered instant instructions and bindings; compile-time proofs are not retained.
 struct InstantProgram {
+    /// These reduced pull waves replace covered computation while retaining ordinary reset work.
+    kernels: Box<[std::sync::Arc<InstantKernel>]>,
+    /// This maps each eligible first request to its immutable wave program.
+    kernel_by_actor: Box<[Option<u32>]>,
     /// These private-cell programs reuse the existing actor, resource, and clock state.
     proxies: Box<[InstantProxy]>,
     /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
@@ -861,6 +861,13 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn instant_kernels(&self) -> &[std::sync::Arc<InstantKernel>] {
+        &self.instant.kernels
+    }
+
+    pub(crate) fn instant_kernel_for_actor(&self, actor: PistonId) -> Option<&std::sync::Arc<InstantKernel>> {
+        self.instant.kernel_by_actor[actor.index()].map(|index| &self.instant.kernels[index as usize])
+    }
     #[cfg(test)]
     pub(crate) fn without_fixed_wire_callbacks(&self) -> Self {
         let mut general = self.clone();

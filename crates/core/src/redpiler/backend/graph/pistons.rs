@@ -6,6 +6,8 @@ use super::*;
 pub(super) struct PistonRequest {
     pub(super) piston: PistonId,
     pub(super) action: mchprs_world::PistonAction,
+    /// This identifies the actual callback route, when dispatch supplied one.
+    pub(super) source: Option<RouteId>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -27,11 +29,15 @@ pub(super) struct DeferredResourceEvent {
 impl GraphBackend {
     #[inline(always)]
     pub(super) fn sample_piston(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
-        let result = self.sample_piston_inner(piston);
+        let result = self.sample_piston_inner(piston, None);
         result
     }
 
-    fn sample_piston_inner(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
+    pub(super) fn sample_piston_from(&mut self, piston: PistonId, route: RouteId) -> Result<(), GraphExecutionError> {
+        self.sample_piston_inner(piston, Some(route))
+    }
+
+    fn sample_piston_inner(&mut self, piston: PistonId, source: Option<RouteId>) -> Result<(), GraphExecutionError> {
         let spec = self.program.pistons()[piston.index()];
         let state = self.state.pistons[piston.index()];
         if state.availability.base_pending() {
@@ -39,6 +45,10 @@ impl GraphBackend {
         }
         let action = {
             self.counts.piston_samples += 1;
+            #[cfg(test)]
+            if let Some(activity) = self.test_recorder.memory_cell_activity.get_mut(piston.index()) {
+                activity[0] += 1;
+            }
             let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
             #[cfg(test)]
             if self.test_recording {
@@ -55,7 +65,7 @@ impl GraphBackend {
                 _ => return Ok(()),
             }
         };
-        self.enqueue_piston(PistonRequest { piston, action });
+        self.enqueue_piston(PistonRequest { piston, action, source });
         Ok(())
     }
 
@@ -97,7 +107,9 @@ impl GraphBackend {
 
     pub(super) fn drain_piston_actions(&mut self) -> Result<(), GraphExecutionError> {
         while let Some(request) = self.future.piston_requests.pop_front() {
-            self.accept_action(request)?;
+            if !self.run_instant_kernel(request)? {
+                self.accept_action(request)?;
+            }
         }
         Ok(())
     }
@@ -163,6 +175,10 @@ impl GraphBackend {
 
     pub(super) fn accepted(&mut self, request: PistonRequest, extended: bool) {
         self.counts.piston_actions += 1;
+        #[cfg(test)]
+        if let Some(activity) = self.test_recorder.memory_cell_activity.get_mut(request.piston.index()) {
+            activity[1] += 1;
+        }
         let spec = self.program.pistons()[request.piston.index()];
         self.effects.push(PresentationEffect::BlockAction {
             position: self.position(spec.node),

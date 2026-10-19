@@ -39,7 +39,14 @@ pub(super) fn empty_graph(link: PowerLink) -> CompileGraph {
 pub(super) fn use_with_activations(activations: Box<[RouteOccurrence]>, base: RouteId, near: RouteId, far: Option<RouteId>) -> CellUse {
     CellUse {
         actor: PistonId::new(0),
-        reset: NodeId::new(0),
+        reset: CellReset::Observer {
+            node: NodeId::new(0),
+            wake: CellResetWake {
+                watched_actor: PistonId::new(0),
+                on_base_changed: Box::new([]),
+                on_base_restored: Box::new([]),
+            },
+        },
         powered: CellPinId(3),
         requested: CellPinId(5),
         valid: CellPinId(6),
@@ -56,11 +63,6 @@ pub(super) fn use_with_activations(activations: Box<[RouteOccurrence]>, base: Ro
                 ticks_after_acceptance: 2,
                 base_restored: RouteId::new(3),
                 resource: None,
-            },
-            reset: CellResetWake {
-                watched_actor: PistonId::new(0),
-                on_base_changed: Box::new([]),
-                on_base_restored: Box::new([]),
             },
         },
     }
@@ -175,6 +177,7 @@ pub(super) fn compile_synthetic_layer(attenuation: u8) -> LayeredRegion {
         outputs: Box::new([]),
         resource_outputs: Box::new([]),
         cold_lifecycle_occurrences: Box::new([]),
+        graph_outputs: Box::new([]),
         expressions: builder.expressions.into_boxed_slice(),
         pin_values: vec![LayerPinValue {
             cell: 0,
@@ -572,7 +575,9 @@ fn recognized_reset_observer_shape_is_inert_and_foreign_or_wire_shapes_decline()
     graph.routes[0].deliveries[0].guard = GuardId::new(0);
     graph.routes[0].deliveries[0].receiver = Some(CallbackReceiver::Component(reset));
     let mut use_ = use_with_activations(vec![occurrence].into_boxed_slice(), RouteId::new(0), RouteId::new(1), None);
-    use_.reset = reset;
+    if let CellReset::Observer { node, .. } = &mut use_.reset {
+        *node = reset;
+    }
 
     let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
     assert!(bindings.boundary.is_empty());
@@ -783,7 +788,9 @@ fn reset_output_and_far_shape_routes_are_retained_as_exact_later_lifecycle_rows(
     graph.pistons[0].routes.far_shape_changed = Some(RouteId::new(8));
     let activations = [occurrence(7, 0), occurrence(8, 0)];
     let mut use_ = use_with_activations(activations.into(), RouteId::new(0), RouteId::new(1), Some(RouteId::new(2)));
-    use_.reset = reset;
+    if let CellReset::Observer { node, .. } = &mut use_.reset {
+        *node = reset;
+    }
 
     let bindings = activation_bindings(&graph, &BoundaryCatalog::default(), 0, &use_).unwrap().unwrap();
     assert!(bindings.boundary.is_empty());

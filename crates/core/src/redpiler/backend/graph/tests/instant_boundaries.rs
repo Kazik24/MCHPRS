@@ -67,7 +67,7 @@ fn owner_of_node(graph: &CompileGraph, catalog: &BoundaryCatalog, node: NodeId) 
         .find_map(|(index, cell)| {
             cell.uses
                 .iter()
-                .any(|use_| graph.pistons[use_.actor.index()].node == node || use_.reset == node)
+                .any(|use_| graph.pistons[use_.actor.index()].node == node || use_.reset.observer() == Some(node))
                 .then_some(BoundaryOwner::Cell(index as u32))
         })
         .or_else(|| {
@@ -377,7 +377,7 @@ fn comparator_far_guard_and_head_observer_remain_observable_outputs() {
     let actor = contract.uses[0].actor;
     let spec = graph.pistons[actor.index()];
     let head = SiteId::new(graph.sites.iter().position(|site| site.source == SiteSource::Contact(spec.near)).unwrap() as u32);
-    let reset = contract.uses[0].reset;
+    let reset = contract.uses[0].reset.observer().unwrap();
     let comparator = NodeId::new(graph.nodes.len() as u32);
     graph.nodes.push(CircuitNodeDraft {
         position: Some(ORIGIN + BlockPos::new(-8, 0, 0)),

@@ -10,6 +10,9 @@ const CONTROL: BlockPos = BlockPos::new(7, 20, 8);
 const PAYLOAD_OBSERVER: BlockPos = BlockPos::new(10, 21, 8);
 const BOUNDS: (BlockPos, BlockPos) = (BlockPos::new(2, 17, 2), BlockPos::new(15, 24, 15));
 
+#[path = "instant_layer_entry/interfaces.rs"]
+mod interfaces;
+
 fn direct_cell_world() -> PlotWorld {
     let mut world = empty_world();
     for (position, block) in [
@@ -114,7 +117,7 @@ fn parser_admits_a_private_reset_cell_without_synthetic_contracts() {
             assert!(matches!(
                 region.inputs[input.0 as usize].source,
                 LayerInputSource::LocalResetOutput { observer, link: original }
-                    if observer == catalog.cells[0].uses[0].reset && original == prepared.graph.power_links[link as usize]
+                    if Some(observer) == catalog.cells[0].uses[0].reset.observer() && original == prepared.graph.power_links[link as usize]
             ));
         }
     }
@@ -207,7 +210,7 @@ fn entry_input(input: LayerInput, backend: &GraphBackend) -> bool {
         LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => {
             backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
         }
-        LayerInputSource::State(test) => state_predicate(backend, test),
+        LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => state_predicate(backend, test),
     }
 }
 
@@ -254,6 +257,79 @@ fn unproved_payload_observation_is_not_silently_dropped() {
 
 fn direct_chain_world() -> PlotWorld {
     chain_world(false)
+}
+
+#[test]
+fn downstream_reset_is_derived_from_restored_input_and_requires_its_update() {
+    use crate::redpiler::analysis::instant::cells::discover_cells;
+    for dust in [false, true] {
+        let second = BlockPos::new(if dust { 13 } else { 11 }, 20, 8);
+        let mut world = chain_world(dust);
+        world.set_block(second.offset(BlockFace::Top), Block::Air);
+        let monitor = TaskMonitor::default();
+        let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+        let source = &prepared.graph;
+        let actor = PistonId::new(source.pistons.iter().position(|actor| actor.position == second).unwrap() as u32);
+        let cells = discover_cells(source, &monitor).unwrap();
+        let use_ = cells
+            .cells
+            .iter()
+            .flat_map(|cell| cell.uses.iter())
+            .find(|use_| use_.actor == actor)
+            .unwrap_or_else(|| panic!("downstream cell inherits upstream reset (dust={dust}); declines={:?}", cells.declined));
+        let CellReset::InputRestoration { notification, sample, .. } = use_.reset else {
+            panic!("downstream actor has no observer or own-payload return")
+        };
+        assert_eq!(
+            notification == sample,
+            !dust,
+            "a wire reset retains its separate notification and receiver witnesses"
+        );
+        let mut cut = source.clone();
+        for route in &mut cut.routes {
+            route.deliveries = route
+                .deliveries
+                .iter()
+                .copied()
+                .filter(|delivery| {
+                    !matches!(delivery.receiver,Some(CallbackReceiver::PistonBase(target) | CallbackReceiver::PistonHead(target)) if target == actor)
+                        && delivery.receiver != Some(CallbackReceiver::Component(source.pistons[actor.index()].node))
+                })
+                .collect();
+        }
+        let cut_cells = discover_cells(&cut, &monitor).unwrap();
+        assert!(
+            cut_cells.cells.iter().all(|cell| cell.uses.iter().all(|use_| use_.actor != actor)),
+            "power without sampling cannot certify a reset"
+        );
+
+        let (program, state) = source.clone().lower().unwrap();
+        let mut backend = GraphBackend::new(program, state, 0).unwrap();
+        let mut native = chain_world(dust);
+        native.set_block(second.offset(BlockFace::Top), Block::Air);
+        let mut projected = world;
+        let positions: Vec<_> = source.sites.iter().map(|site| site.position).collect();
+        native_step(
+            &mut native,
+            Step::SetLever {
+                position: CONTROL,
+                powered: false,
+            },
+        );
+        backend.use_block(CONTROL).unwrap();
+        for tick in 0..16 {
+            native.tick_interpreted();
+            backend.tick().unwrap();
+            check_boundary(
+                &backend,
+                &native,
+                &mut projected,
+                &positions,
+                &format!("inherited reset dust={dust} tick={tick}"),
+            )
+            .unwrap();
+        }
+    }
 }
 
 fn chain_world(dust: bool) -> PlotWorld {
@@ -327,6 +403,164 @@ fn parser_contracts_a_private_two_wire_chain_into_an_expression_program() {
 }
 
 #[test]
+fn four_cell_wave_executes_without_internal_turbo_and_preserves_reset() {
+    use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
+    let build = || {
+        let mut world = chain_world(true);
+        for (position, facing) in [
+            (BlockPos::new(13, 20, 13), BlockFacing::East),
+            (BlockPos::new(18, 20, 13), BlockFacing::South),
+        ] {
+            world.set_block(
+                position,
+                Block::Piston {
+                    piston: RedstonePiston {
+                        facing,
+                        sticky: true,
+                        extended: true,
+                    },
+                },
+            );
+            let face: BlockFace = facing.into();
+            world.set_block(
+                position.offset(face),
+                Block::PistonHead {
+                    head: RedstonePistonHead {
+                        facing,
+                        sticky: true,
+                        short: false,
+                    },
+                },
+            );
+            world.set_block(position.offset(face).offset(face), Block::RedstoneBlock);
+            world.set_block(
+                position.offset(BlockFace::Top),
+                Block::Observer {
+                    observer: RedstoneObserver {
+                        facing: BlockFacing::Down,
+                        powered: false,
+                    },
+                },
+            );
+            world.set_block(position.offset(BlockFace::Top).offset(BlockFace::Top), Block::Stone {});
+        }
+        for (position, power) in [
+            (BlockPos::new(13, 20, 11), 15),
+            (BlockPos::new(13, 20, 12), 14),
+            (BlockPos::new(16, 20, 13), 15),
+            (BlockPos::new(17, 20, 13), 14),
+        ] {
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(
+                position,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::new(
+                        RedstoneWireSide::Side,
+                        RedstoneWireSide::Side,
+                        RedstoneWireSide::Side,
+                        RedstoneWireSide::Side,
+                        power,
+                    ),
+                },
+            );
+        }
+        world
+    };
+    let world = build();
+    let mut native = build();
+    let monitor = TaskMonitor::default();
+    let bounds = (BOUNDS.0, BlockPos::new(24, 24, 24));
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let catalog = infer_boundaries(&prepared.graph, &monitor).unwrap();
+    let plan = compile_layers(&prepared.graph, &catalog, &monitor).unwrap();
+    assert_eq!(plan.regions.len(), 1, "{:?}", plan.declines);
+    prepared.graph.plans.instant.boundaries = Some(catalog);
+    prepared.graph.plans.instant.layers = Some(plan);
+    let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
+    let (program, state) = prepared.graph.lower().unwrap();
+    assert_eq!(program.instant_kernels().len(), 1);
+    assert_eq!(program.instant_kernels()[0].actors.len(), 4);
+    assert_eq!(program.instant_kernels()[0].wires.len(), 6);
+    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    backend.use_block(CONTROL).unwrap();
+    native_step(
+        &mut native,
+        Step::SetLever {
+            position: CONTROL,
+            powered: false,
+        },
+    );
+    let mut projected = world;
+    for tick in 0..32 {
+        backend.tick().unwrap();
+        native.tick_interpreted();
+        check_boundary(&backend, &native, &mut projected, &positions, &format!("four-cell tick {tick}")).unwrap();
+        if tick == 0 {
+            assert_eq!(backend.execution_counts().instant_kernel_invocations, 1);
+            assert_eq!(backend.execution_counts().piston_actions, 4);
+            assert_eq!(backend.execution_counts().wire_walks, 0);
+        }
+    }
+}
+
+#[test]
+fn public_o4_pipeline_executes_a_wave_and_declines_an_unrelated_request_origin() {
+    for trusted_origin in [false, true] {
+        let options = crate::redpiler::CompilerOptions {
+            optimization_level: Some(4),
+            stable_instant_inputs: true,
+            ..Default::default()
+        };
+        let world = chain_world(true);
+        let mut native = chain_world(true);
+        let monitor = TaskMonitor::default();
+        let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+        passes::run_graph_pipeline(
+            &mut prepared.graph,
+            &options,
+            &prepared.entry,
+            &passes::default_graph_pipeline(&options),
+            &monitor,
+        )
+        .unwrap();
+        let plan = prepared.graph.plans.instant.layers.as_ref().unwrap();
+        assert_eq!(plan.regions.len(), 1, "public pipeline declines: {:?}", plan.declines);
+        let (program, state) = prepared.graph.lower().unwrap();
+        let mut backend = GraphBackend::new(program, state, 0).unwrap();
+        assert_eq!(backend.program.instant_kernels().len(), 1);
+        let positions: Vec<_> = backend.program.sites().iter().map(|site| site.position).collect();
+        backend.use_block(CONTROL).unwrap();
+        native_step(
+            &mut native,
+            Step::SetLever {
+                position: CONTROL,
+                powered: false,
+            },
+        );
+        if !trusted_origin {
+            backend.future.piston_requests.front_mut().expect("entry requested a pull").source = None;
+        }
+        let mut projected = world;
+        for tick in 0..24 {
+            backend.tick().unwrap();
+            native.tick_interpreted();
+            check_boundary(
+                &backend,
+                &native,
+                &mut projected,
+                &positions,
+                &format!("public wave origin={trusted_origin} tick={tick}"),
+            )
+            .unwrap();
+            if tick == 0 {
+                assert_eq!(backend.execution_counts().instant_kernel_invocations, u64::from(trusted_origin));
+                assert_eq!(backend.execution_counts().wire_walks == 0, trusted_origin);
+            }
+        }
+    }
+}
+
+#[test]
 fn cable_arrival_declines_an_observed_or_unsettled_wire_instead_of_dropping_it() {
     for observer in [false, true] {
         let mut world = chain_world(true);
@@ -380,6 +614,7 @@ fn check_composed_chain(dust: bool) {
     stale.plans.instant.layers.as_mut().unwrap().programs = Box::new([]);
     assert!(stale.validate().is_err(), "compact programs cannot be detached from their layer evidence");
     let (program, state) = prepared.graph.clone().lower().unwrap();
+    assert_eq!(program.instant_kernels().len(), 1, "the certified region must lower to an executable");
     let mut backend = GraphBackend::new(program, state, 0).unwrap();
     native_step(
         &mut native,
@@ -404,6 +639,7 @@ fn check_composed_chain(dust: bool) {
             LayerRoot::Transfer(index) => region.resource_outputs[index].transfer_when,
             LayerRoot::SourceAbsent(index) => region.resource_outputs[index].source_absent_after,
             LayerRoot::Accepted { layer, occurrence } => region.layers[layer].uses[occurrence].accepted,
+            LayerRoot::Requested { layer, occurrence } => region.layers[layer].uses[occurrence].requested,
         };
         assert_eq!(scratch[root.0 as usize], values[original.0 as usize]);
     }
@@ -451,6 +687,12 @@ fn check_composed_chain(dust: bool) {
         .collect();
     assert_eq!(predicted, actual);
     backend.tick().unwrap();
+    assert_eq!(
+        backend.execution_counts().instant_kernel_invocations,
+        1,
+        "the reduced program must replace execution, not only predict it"
+    );
+    assert_eq!(backend.execution_counts().wire_walks, 0, "the covered computation must not run Turbo");
     for token in &region.resource_outputs {
         if values[token.transfer_when.0 as usize] {
             assert_eq!(backend.state.resources[token.resource.index()].at, token.destination);

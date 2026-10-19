@@ -145,7 +145,7 @@ fn causal_layer_certificate_requires_its_original_catalog() {
 }
 
 #[test]
-fn causal_layer_building_does_not_change_graph_execution_or_accept_stale_results() {
+fn causal_layer_building_is_read_only_and_lowering_checks_its_certificates() {
     let prepared = prepare_layers("adder_1bit");
     let mut source = prepared.graph.clone();
     let old_plan = source.plans.instant.layers.take().unwrap();
@@ -159,10 +159,14 @@ fn causal_layer_building_does_not_change_graph_execution_or_accept_stale_results
     source.validate().unwrap();
     let lowered = source.lower().unwrap();
     let backend = GraphBackend::new(lowered.0, lowered.1, 0).unwrap();
+    assert!(
+        backend.execution_coverage().instant_kernel_nodes > 0,
+        "lowering installs the newly supported certificates"
+    );
     assert_eq!(
-        backend.execution_coverage().instant_kernel_nodes,
+        backend.execution_counts().instant_kernel_invocations,
         0,
-        "a cold plan is not an executing kernel"
+        "construction does not execute the circuit"
     );
 }
 

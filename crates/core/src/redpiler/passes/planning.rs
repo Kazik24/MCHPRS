@@ -22,9 +22,7 @@ pub(crate) trait PlanBuilder {
 /// Each result names its owner instead of exposing the mutable graph to a builder.
 pub(crate) enum PlanOutput {
     FixedClassic(crate::redpiler::program_graph::FixedClassicPlans),
-    #[cfg(test)]
     Boundaries(crate::redpiler::program_graph::BoundaryCatalog),
-    #[cfg(test)]
     Layers(crate::redpiler::program_graph::LayeredInstantPlan),
     FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
@@ -42,14 +40,12 @@ impl PlanOutput {
     pub(super) fn publish(self, graph: &mut CompileGraph) {
         match self {
             Self::FixedClassic(plans) => graph.plans.fixed_classic = plans,
-            #[cfg(test)]
             Self::Boundaries(catalog) => {
                 graph.plans.instant.layers = None;
                 graph.plans.instant.boundaries = Some(catalog);
                 graph.plans.instant.regions.clear();
                 graph.plans.instant.proxies.clear();
             }
-            #[cfg(test)]
             Self::Layers(layers) => graph.plans.instant.layers = Some(layers),
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
@@ -79,10 +75,7 @@ impl PlanOutput {
                 }
             }
             Self::Regions(regions) => {
-                #[cfg(test)]
-                {
-                    graph.plans.instant.layers = None;
-                }
+                graph.plans.instant.layers = None;
                 graph.plans.instant.boundaries = None;
                 graph.plans.instant.regions = regions;
                 graph.plans.instant.proxies.clear();

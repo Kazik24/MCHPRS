@@ -112,7 +112,7 @@ fn main() -> Result<()> {
     let tier = argument("--graph-tier").unwrap_or("2").parse::<usize>()?;
     let classic_redstone = args.iter().any(|argument| argument == "--classic-redstone");
     ensure!(ticks > 0 && ticks <= u32::MAX - 32 && iterations > 0, "invalid window or sample count");
-    ensure!(matches!(tier, 2 | 3), "baseline supports O2 or O3");
+    ensure!((2..=5).contains(&tier), "baseline supports O2 through O5");
     let git = |args: &[&str]| -> Result<String> {
         let output = Command::new("git").args(args).current_dir(root()).output()?;
         ensure!(output.status.success(), "git metadata failed");
@@ -156,6 +156,14 @@ fn main() -> Result<()> {
             )
             .context("Graph admission failed")?;
         let compile_seconds = compile_started.elapsed().as_secs_f64();
+        let stats = compiler.stats().unwrap();
+        let compile_statistics = json!({
+            "total_seconds":stats.total_duration.as_secs_f64(),
+            "graph_seconds":stats.graph.duration.as_secs_f64(),
+            "passes":stats.graph.passes.iter().map(|pass| json!({
+                "name":pass.name,"enabled":pass.enabled,"seconds":pass.duration.as_secs_f64()
+            })).collect::<Vec<_>>()
+        });
         ensure!(compiler.backend_kind() == Some(BackendKind::Graph), "expected Graph execution");
         let coverage = compiler.graph_execution_coverage().context("missing Graph coverage")?;
         let preparation_tables: Vec<_> = compiler
@@ -215,7 +223,7 @@ fn main() -> Result<()> {
             "load_seconds":load_seconds,"compile_seconds":compile_seconds,"activation_seconds":activation_seconds,
             "final_flush_seconds":final_flush_seconds,"reset_seconds":reset_seconds,"coverage":coverage,
             "coverage_after_activation":coverage_after_activation,"coverage_at_window_end":coverage_at_window_end,
-            "preparation_tables":preparation_tables,
+            "preparation_tables":preparation_tables,"compile_statistics":compile_statistics,
             "work":{"ticks":after.ticks-before.ticks,"scheduled_ticks":after.scheduled_ticks-before.scheduled_ticks,
                 "callbacks":after.callbacks-before.callbacks,"wire_walks":after.wire_walks-before.wire_walks,
                 "piston_samples":after.piston_samples-before.piston_samples,"piston_actions":after.piston_actions-before.piston_actions,

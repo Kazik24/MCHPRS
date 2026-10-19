@@ -259,12 +259,12 @@ fn adder_1bit_fixture_matches_graph_json() {
 }
 
 #[test]
-fn stable_adder_export_keeps_proxies_without_running_disabled_synthesis() {
+fn stable_o3_adder_export_keeps_the_existing_proxy_program() {
     let world = geometry_io_fixture("ADDER_1BIT.schem");
     let export = exported_with_options(
         &world,
         &CompilerOptions {
-            optimization_level: Some(4),
+            optimization_level: Some(3),
             stable_instant_inputs: true,
             ..Default::default()
         },
@@ -293,6 +293,31 @@ fn stable_adder_export_keeps_proxies_without_running_disabled_synthesis() {
     for removed in ["instant_machine", "instant_kernel", "symbolic_region_declines", "symbolic_regions"] {
         assert!(graph.get(removed).is_none(), "removed synthesis artifact {removed} must not be exported");
     }
+}
+
+#[test]
+fn stable_o4_adder_export_reports_partial_layer_coverage_and_retained_observations() {
+    let world = geometry_io_fixture("ADDER_1BIT.schem");
+    let export = exported_with_options(
+        &world,
+        &CompilerOptions {
+            optimization_level: Some(4),
+            stable_instant_inputs: true,
+            ..Default::default()
+        },
+    );
+    let document: Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
+    let graph = &document["graph"];
+    assert!(!graph["instant_cells"].as_array().unwrap().is_empty());
+    assert!(!graph["instant_layer_declines"].as_array().unwrap().is_empty());
+    let regions = graph["instant_layer_regions"].as_array().unwrap();
+    assert!(!regions.is_empty(), "ordinary instant outputs can now be compiled");
+    assert!(regions.iter().any(|region| !region["graph_outputs"].as_array().unwrap().is_empty()));
+    assert!(graph["instant_proxies"].as_array().unwrap().is_empty());
+    assert!(
+        graph.get("instant_kernel").is_none(),
+        "the removed learned kernel is not the layered compiler"
+    );
 }
 
 #[test]

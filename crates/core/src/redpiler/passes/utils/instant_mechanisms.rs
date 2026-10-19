@@ -4,6 +4,10 @@ use crate::redpiler::program_graph::*;
 use mchprs_blocks::{BlockFace, blocks::Block};
 use rustc_hash::FxHashMap;
 
+mod reset_sources;
+pub(crate) use reset_sources::find_payload;
+pub(crate) use reset_sources::{RestorationSource, restoration_inputs};
+
 /// Graph-derived reset provenance; this is not permission to erase a lifecycle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstantMechanism {
@@ -63,7 +67,7 @@ pub(crate) fn discover_indexed_mechanisms(
         if resources.is_empty() {
             continue;
         }
-        let reset = find_reset_source(graph, incoming, &observers, actor.node);
+        let reset = reset_sources::find(graph, incoming, &observers, actor.node, monitor)?;
         if let Some((observer, watched_actor)) = reset {
             found.push(InstantMechanism {
                 piston: PistonId::new(index as u32),
@@ -86,15 +90,7 @@ fn find_reset_observers(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<F
     let mut observers = FxHashMap::default();
     for (index, node) in graph.nodes.iter().enumerate() {
         check_cancelled(monitor)?;
-        let (CircuitNodeKind::Observer {
-            watched,
-            facing: BlockFace::Bottom,
-        }
-        | CircuitNodeKind::BuiltinReset {
-            watched,
-            facing: BlockFace::Bottom,
-        }) = node.kind
-        else {
+        let (CircuitNodeKind::Observer { watched, facing } | CircuitNodeKind::BuiltinReset { watched, facing }) = node.kind else {
             continue;
         };
         let SiteSource::Contact(base) = graph.sites[watched.index()].source else {
@@ -106,63 +102,24 @@ fn find_reset_observers(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<F
         let Block::Observer { observer } = node.raw_state.map(Block::from_id).unwrap_or(Block::Air) else {
             continue;
         };
-        if observer.facing != BlockFace::Bottom.into() {
+        if BlockFace::from(observer.facing) != facing {
             continue;
         }
         let observer = NodeId::new(index as u32);
         let spec = graph.pistons[actor.index()];
-        if has_observer_callback(graph, spec.routes.base_changed, observer) && has_observer_callback(graph, spec.routes.base_restored, observer) {
+        if has_observer_callback(graph, spec.routes.base_changed, observer, facing)
+            && has_observer_callback(graph, spec.routes.base_restored, observer, facing)
+        {
             observers.insert(observer, actor);
         }
     }
     Ok(observers)
 }
 
-fn find_reset_source(
-    graph: &CompileGraph,
-    incoming: &PowerIndex,
-    observers: &FxHashMap<NodeId, PistonId>,
-    node: NodeId,
-) -> Option<(NodeId, PistonId)> {
-    let target = PowerTarget::Input {
-        node,
-        port: InputPort::Quasi,
-    };
-    let mut reset = None;
-    for &input in incoming.get(&target).into_iter().flatten() {
-        if input.attenuation != 0 || !matches!(graph.guards[input.guard.index()], Guard::Always) {
-            continue;
-        }
-        let sources = conductor_inputs(graph, incoming, input).unwrap_or_else(|| vec![input]);
-        for source in sources {
-            if source.attenuation != 0
-                || !matches!(graph.guards[source.guard.index()], Guard::Always)
-                || !matches!(source.from_port, PowerPort::Strong(BlockFace::Bottom) | PowerPort::Output)
-            {
-                continue;
-            }
-            let SiteSource::Component(observer) = graph.sites[source.from.index()].source else {
-                continue;
-            };
-            if let Some(&watched_actor) = observers.get(&observer) {
-                reset = Some((observer, watched_actor));
-                break;
-            }
-        }
-        if reset.is_some() {
-            break;
-        }
-    }
-    reset
-}
-
-fn has_observer_callback(graph: &CompileGraph, route: crate::redpiler::program_graph::RouteId, observer: NodeId) -> bool {
+fn has_observer_callback(graph: &CompileGraph, route: RouteId, observer: NodeId, facing: BlockFace) -> bool {
     graph.routes[route.index()].deliveries.iter().any(|delivery| {
         delivery.receiver == Some(CallbackReceiver::Component(observer))
-            && delivery.kind
-                == DeliveryKind::Update {
-                    direction: Some(BlockFace::Bottom),
-                }
+            && delivery.kind == DeliveryKind::Update { direction: Some(facing) }
             && delivery.view == OperandView::Live
             && matches!(graph.guards[delivery.guard.index()], Guard::Always)
     })

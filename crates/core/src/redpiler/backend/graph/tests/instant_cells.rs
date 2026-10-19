@@ -226,21 +226,29 @@ fn assert_retraction_effects_match_graph(graph: &CompileGraph, cells: &[CellCont
                 assert_eq!(wake.route, spec.routes.resource_restored_near.unwrap());
             }
 
-            let watched = graph.pistons[effect.reset.watched_actor.index()];
-            let facing = match graph.nodes[use_.reset.index()].kind {
+            let Some(reset) = use_.reset.observer() else {
+                assert!(
+                    matches!(use_.reset, CellReset::Payload { resource, .. } if effect.transfer.is_some_and(|transfer| transfer.resource == resource))
+                );
+                uses += 1;
+                continue;
+            };
+            let wake = use_.reset.observer_wake().unwrap();
+            let watched = graph.pistons[wake.watched_actor.index()];
+            let facing = match graph.nodes[reset.index()].kind {
                 CircuitNodeKind::Observer { facing, .. } | CircuitNodeKind::BuiltinReset { facing, .. } => facing,
                 _ => panic!("reset provenance points at an observer or built-in reset"),
             };
             assert_eq!(
-                effect.reset.on_base_changed.as_ref(),
-                expected_reset_rows(graph, watched.routes.base_changed, use_.reset, facing).as_slice()
+                wake.on_base_changed.as_ref(),
+                expected_reset_rows(graph, watched.routes.base_changed, reset, facing).as_slice()
             );
             assert_eq!(
-                effect.reset.on_base_restored.as_ref(),
-                expected_reset_rows(graph, watched.routes.base_restored, use_.reset, facing).as_slice()
+                wake.on_base_restored.as_ref(),
+                expected_reset_rows(graph, watched.routes.base_restored, reset, facing).as_slice()
             );
-            assert!(!effect.reset.on_base_changed.is_empty());
-            assert!(!effect.reset.on_base_restored.is_empty());
+            assert!(!wake.on_base_changed.is_empty());
+            assert!(!wake.on_base_restored.is_empty());
             uses += 1;
         }
     }
@@ -430,7 +438,14 @@ fn accepted_retractions_keep_shared_payload_and_existing_reset_obligations() {
                 .iter()
                 .any(|node| matches!(&node.kind, CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }));
             assert!(!has_reset_observer, "this baseline has no observer-backed reset source");
-            assert!(discovery.cells.is_empty() && discovery.declined.is_empty());
+            assert!(!discovery.cells.is_empty(), "own-payload reset does not require an observer");
+            assert!(
+                discovery
+                    .cells
+                    .iter()
+                    .flat_map(|cell| cell.uses.iter())
+                    .all(|use_| matches!(use_.reset, CellReset::Payload { .. }))
+            );
         }
         println!("{id}: stationary pull uses={uses}, structured declines={:?}", discovery.declined);
     }
@@ -499,6 +514,7 @@ fn graph_after_shared_pull_requests(graph: &CompileGraph, resource: &CellResourc
         assert_eq!(backend.input_strength(spec.node, InputPort::Main), 0, "test input starts low");
         assert_eq!(backend.input_strength(spec.node, InputPort::Quasi), 0, "test quasi input starts low");
         backend.enqueue_piston(PistonRequest {
+            source: None,
             piston: actor,
             action: mchprs_world::PistonAction::Retract,
         });
@@ -707,7 +723,7 @@ fn wrong_direction_and_missing_reset_coowners_do_not_form_cells() {
         .find(|cell| cell.uses.len() > 1)
         .expect("fixture has a shared reset/resource ownership group");
     let actor = target.uses[0].actor;
-    let observer = target.uses[0].reset;
+    let observer = target.uses[0].reset.observer().unwrap();
 
     let mut wrong_direction = graph.clone();
     change_reset_direction(&mut wrong_direction, observer, BlockFace::Top);
@@ -716,12 +732,18 @@ fn wrong_direction_and_missing_reset_coowners_do_not_form_cells() {
         wrong_direction_cells
             .cells
             .iter()
-            .all(|cell| cell.uses.iter().all(|use_| use_.actor != actor)),
-        "a reset observer facing away from the base cannot admit its actor"
+            .flat_map(|cell| &cell.uses)
+            .all(|use_| use_.reset.observer() != Some(observer)),
+        "a facing/raw-state mismatch cannot be used as observer provenance; a separate payload reset remains possible"
     );
 
     let mut missing_reset = graph;
     erase_reset_recognition(&mut missing_reset, observer);
+    let target_node = missing_reset.pistons[actor.index()].node;
+    // Remove every return, including the newly supported payload/upstream alternatives.
+    missing_reset
+        .power_links
+        .retain(|link| !matches!(link.to,PowerTarget::Input {node,..} if node==target_node));
     let missing_reset_cells = discover_cells(&missing_reset, &monitor).unwrap();
     assert!(
         missing_reset_cells
@@ -834,35 +856,42 @@ fn malformed_cell_unary_arity_and_forward_pin_references_are_rejected() {
 fn independent_bud_memory_is_not_admitted_as_a_stationary_instant_cell() {
     use crate::redpiler::CompilerOptions;
 
-    let circuit = boundary_contract_tests::load_mechanism("bud_instantmemorycellobserverupdate");
-    let world = circuit.build();
-    let monitor = TaskMonitor::default();
-    let mut prepared = passes::rich::prepare(&world, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
-    let options = CompilerOptions {
-        optimization_level: Some(3),
-        stable_instant_inputs: true,
-        ..Default::default()
-    };
-    passes::run_graph_pipeline(
-        &mut prepared.graph,
-        &options,
-        &prepared.entry,
-        &passes::default_graph_pipeline(&options),
-        &monitor,
-    )
-    .unwrap();
-    let discovery = discover_cells(&prepared.graph, &monitor).unwrap();
-    let admitted: BTreeSet<_> = discovery.cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect();
-    let memory_position = circuit.place(local(&circuit.ports["observations"]["memory"]));
-    let memory_actor = prepared
-        .graph
-        .pistons
-        .iter()
-        .position(|actor| actor.position == memory_position)
-        .map(|index| PistonId::new(index as u32))
-        .expect("fixture memory site is a piston actor");
-    assert!(
-        !admitted.contains(&memory_actor),
-        "ordinary BUD memory actor is outside instant ownership"
-    );
+    for id in [
+        "bud_instantmemorycellobserverupdate",
+        "bud_instantpistonupdate",
+        "bud_noninstantinputs",
+        "bud_pistonupdate",
+    ] {
+        let circuit = boundary_contract_tests::load_mechanism(id);
+        let world = circuit.build();
+        let monitor = TaskMonitor::default();
+        let mut prepared = passes::rich::prepare(&world, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
+        let options = CompilerOptions {
+            optimization_level: Some(3),
+            stable_instant_inputs: true,
+            ..Default::default()
+        };
+        passes::run_graph_pipeline(
+            &mut prepared.graph,
+            &options,
+            &prepared.entry,
+            &passes::default_graph_pipeline(&options),
+            &monitor,
+        )
+        .unwrap();
+        let discovery = discover_cells(&prepared.graph, &monitor).unwrap();
+        let admitted: BTreeSet<_> = discovery.cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect();
+        let memory_position = circuit.place(local(&circuit.ports["observations"]["memory"]));
+        let memory_actor = prepared
+            .graph
+            .pistons
+            .iter()
+            .position(|actor| actor.position == memory_position)
+            .map(|index| PistonId::new(index as u32))
+            .expect("fixture memory site is a piston actor");
+        assert!(
+            !admitted.contains(&memory_actor),
+            "ordinary BUD memory actor is outside instant ownership"
+        );
+    }
 }

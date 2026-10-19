@@ -8,6 +8,14 @@ impl CircuitDraft {
 
     pub(crate) fn lower_with_monitor(mut self,monitor:&crate::redpiler::TaskMonitor) -> Result<(CircuitProgram,CircuitState),GraphBuildError> {
         self.validate_with_monitor(monitor)?;
+        let kernels = crate::redpiler::analysis::instant::layers::lower_kernels(&self, monitor)
+            .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "kernel lowering", index: 0 })?;
+        let mut kernel_by_actor = vec![None; self.pistons.len()];
+        for (index, kernel) in kernels.iter().enumerate() {
+            for pull in kernel.pulls.iter().filter(|pull| pull.external) {
+                kernel_by_actor[pull.actor.index()] = Some(index as u32);
+            }
+        }
 
         let mut instant_route_by_route = vec![None; self.routes.len()];
         let mut private_resource_owners = vec![None; self.resources.len()];
@@ -178,6 +186,8 @@ impl CircuitDraft {
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {
+                kernels: kernels.into_boxed_slice(),
+                kernel_by_actor: kernel_by_actor.into_boxed_slice(),
                 proxies: self.plans.instant.proxies.into_boxed_slice(),
                 private_resource_owners: private_resource_owners.into_boxed_slice(),
                 route_by_route: instant_route_by_route.into_boxed_slice(),

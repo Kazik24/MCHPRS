@@ -817,6 +817,54 @@ test('loads and selects additive instant boundary records while accepting older 
   assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
 });
 
+test('layer boundary state requires its matching original input guard', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const data = instantLayerFixture();
+  const region = data.graph.instant_layer_regions[0];
+  const guard = data.graph.guards.find(guard => guard.kind === 'state');
+  data.graph.instant_boundary_ports.push({
+    id: 'instant_port:900', owner: region.cells[0], direction: 'input',
+    binding: { kind: 'guard_state', guard: guard.id, test: guard.test },
+  });
+  region.inputs.push({ source: { kind: 'boundary_state', port: 'instant_port:900', test: guard.test }, role: 'request_sample' });
+  await load(viewer, data);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  const previous = viewer.cy;
+  for (const port of ['instant_port:999', 'instant_port:0', 'instant_port:2']) {
+    const damaged = structuredClone(data);
+    damaged.graph.instant_layer_regions[0].inputs.at(-1).source.port = port;
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+});
+
+test('layer Graph observations validate boundary references and retain older exports', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const data = instantLayerFixture();
+  const region = data.graph.instant_layer_regions[0];
+  const wire = data.graph.nodes.find(node => node.kind.kind === 'wire');
+  const plan = data.graph.wire_plans.find(plan => plan.id === wire.kind.plan);
+  data.graph.instant_boundary_ports.push({
+    id: 'instant_port:900', owner: region.cells[0], direction: 'output',
+    binding: { kind: 'wire_neighborhood', wire: wire.id, neighbor: plan.canonical_neighbors[0] },
+  });
+  region.graph_outputs = ['instant_port:900'];
+  await load(viewer, data);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  const previous = viewer.cy;
+  for (const invalid of [['instant_port:900', 'instant_port:900'], ['instant_port:999'],
+    ['instant_port:0'], ['instant_port:2'], 'instant_port:900']) {
+    const damaged = structuredClone(data);
+    damaged.graph.instant_layer_regions[0].graph_outputs = invalid;
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous, 'malformed input must preserve the loaded graph');
+  }
+});
+
 test('layer threshold inputs validate direction, strength and internal wire ownership', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());

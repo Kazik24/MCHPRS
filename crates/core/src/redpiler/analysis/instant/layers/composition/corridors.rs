@@ -5,20 +5,20 @@
 use super::*;
 use mchprs_blocks::blocks::Block;
 
-pub(super) struct Arrival {
+pub(in crate::redpiler::analysis::instant::layers) struct Arrival {
     /// This exact unconditional source-Far delivery starts the synchronous wire response.
-    pub(super) start: RouteOccurrence,
+    pub(in crate::redpiler::analysis::instant::layers) start: RouteOccurrence,
     /// This original wire delivery proves that the consumer receives a qualifying update.
-    pub(super) finish: RouteOccurrence,
+    pub(in crate::redpiler::analysis::instant::layers) finish: RouteOccurrence,
     /// This actor owns the private source removed by the start event.
-    pub(super) producer: PistonId,
+    pub(in crate::redpiler::analysis::instant::layers) producer: PistonId,
     /// This actor is the cable's only potentially active computation receiver.
-    pub(super) consumer: PistonId,
+    pub(in crate::redpiler::analysis::instant::layers) consumer: PistonId,
     /// These wires have no other observable electrical or callback consumers.
-    pub(super) wires: FxHashSet<NodeId>,
+    pub(in crate::redpiler::analysis::instant::layers) wires: FxHashSet<NodeId>,
 }
 
-pub(super) fn certify(
+pub(in crate::redpiler::analysis::instant::layers) fn certify(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,
     component: &RegionComponent,
@@ -28,25 +28,16 @@ pub(super) fn certify(
     if component.corridors.is_empty() {
         return Ok(Some(Vec::new()));
     }
-    // One producer/consumer pair has no competing computation during the walk.
-    // Admit larger frontiers after proving their mutual ordering, rather than picking a DFS order.
-    if component.cells.len() != 2 || component.corridors.len() != 1 {
-        return Ok(None);
-    }
+    // Each cable admits only its producer and one consumer; all requests still enter the
+    // enclosing FIFO after the synchronous walk, even when the component has more cells.
     let mut private = Vec::new();
     for &cell in &component.cells {
         let contract = &catalog.cells[cell as usize];
-        if contract.uses.len() != 1 || contract.resources.len() != 1 {
+        if !super::super::partition::private_observer_cell(graph, contract) {
             return Ok(None);
         }
         let resource = &contract.resources[0];
         let use_ = &contract.uses[0];
-        if resource.owners.as_ref() != [use_.actor]
-            || use_.retraction.reset.watched_actor != use_.actor
-            || Block::from_id(graph.profiles[graph.resources[resource.resource.index()].material.index()].raw_state) != Block::RedstoneBlock
-        {
-            return Ok(None);
-        }
         private.push((use_, resource));
     }
     let all_wires: FxHashSet<_> = component
@@ -168,7 +159,7 @@ pub(super) fn certify(
                             }
                         }
                         Some(CallbackReceiver::Component(node)) => {
-                            if !wires.contains(&node) && node != producer.reset && node != consumer.reset {
+                            if !wires.contains(&node) && Some(node) != producer.reset.observer() && Some(node) != consumer.reset.observer() {
                                 return Ok(None);
                             }
                         }
@@ -223,7 +214,7 @@ pub(super) fn certify(
     Ok(Some(arrivals))
 }
 
-fn closed_straight_cable(graph: &CompileGraph, wires: &FxHashSet<NodeId>) -> bool {
+pub(in crate::redpiler::analysis::instant::layers) fn closed_straight_cable(graph: &CompileGraph, wires: &FxHashSet<NodeId>) -> bool {
     if wires.is_empty() || wires.len() > 15 {
         return false;
     }

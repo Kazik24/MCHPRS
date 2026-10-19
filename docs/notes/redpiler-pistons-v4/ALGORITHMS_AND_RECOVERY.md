@@ -1,5 +1,9 @@
 # Retained execution and archived compiler algorithms
 
+For the current O2 packed executor, O5 promotion and layered compiler progress, read
+[the current state](CURRENT_STATE.md). The algorithm/recovery inventory below was
+written on 2026-10-18; its historical test counts and status are not a fresh validation.
+
 Status: 2026-10-18. The C/LLVM demo and the older finite/symbolic synthesis
 experiments have been removed from source. Classic redstone, ordinary Graph
 execution, O3 reset/piston specialization, instant-region composition and
@@ -152,7 +156,7 @@ showed 16.9% less combined time. Cold setup was about 502 s; generated C was
 451,136,648 bytes and the DLL 118,535,168 bytes. Graph initializers account for
 77.6% of source bytes. Callback and walk counts stayed unchanged. No server TPS
 or scalable semantic-kernel synthesis was established. Full history:
-[LLVM_NATIVE_INFERENCE_DEMO.md](LLVM_NATIVE_INFERENCE_DEMO.md).
+[LLVM_NATIVE_INFERENCE_DEMO.md](../../../scraps/docs/redpiler-pistons-v4/LLVM_NATIVE_INFERENCE_DEMO.md).
 
 ## Archived finite and symbolic algorithms
 
@@ -164,8 +168,8 @@ expression/phase program replaced the trajectories; specialization produced
 unconditional effect lists for each held-input assignment. Private state and
 future work were reconstructed for display, input changes and handoff. This
 bounded approach did not scale to ADDER11BIT. See
-[CLOSED_INSTANT_MACHINE.md](CLOSED_INSTANT_MACHINE.md) and
-[COMPACT_INSTANT_KERNEL.md](COMPACT_INSTANT_KERNEL.md).
+[CLOSED_INSTANT_MACHINE.md](../../../scraps/docs/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md) and
+[COMPACT_INSTANT_KERNEL.md](../../../scraps/docs/redpiler-pistons-v4/COMPACT_INSTANT_KERNEL.md).
 
 The symbolic compiler instead bound reads to expressions, updated state with
 guarded SSA writes and expanded ordered callbacks, captures, FIFO deduplication,
@@ -182,8 +186,8 @@ the 1,048,576-node limit without producing a plan, runtime event dispatch was
 unconnected, and callback-effect handling was a placeholder. Stable inputs did
 not permit unordered internal piston work. Reintroduction must complete event-time
 views, captures, boundary delivery, reentrancy and ownership proof before enabling
-runtime dispatch. See [BOUNDARY_DRIVEN_INSTANT_COMPILER.md](BOUNDARY_DRIVEN_INSTANT_COMPILER.md),
-[SYMBOLIC_VIRTUAL_CIRCUIT.md](SYMBOLIC_VIRTUAL_CIRCUIT.md), and the preserved
+runtime dispatch. See [BOUNDARY_DRIVEN_INSTANT_COMPILER.md](../../../scraps/docs/redpiler-pistons-v4/BOUNDARY_DRIVEN_INSTANT_COMPILER.md),
+[SYMBOLIC_VIRTUAL_CIRCUIT.md](../../../scraps/docs/redpiler-pistons-v4/SYMBOLIC_VIRTUAL_CIRCUIT.md), and the preserved
 [edge-case register](INSTANT_COMPILER_EDGE_CASES.md).
 
 ## Removal validation

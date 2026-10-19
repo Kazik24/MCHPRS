@@ -56,7 +56,20 @@ pub(crate) struct RegionPartition {
 }
 
 /// Bind source graph entities to catalog owners and connect only paired owned dependencies.
+#[cfg(test)]
 pub(crate) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<RegionPartition, String> {
+    let owner_count = catalog.cells.len() + catalog.corridors.len();
+    partition_with_cuts(graph, catalog, monitor, &vec![true; owner_count], |_| true)
+}
+
+/// A cut changes composition ownership, never the retained read/effect evidence.
+pub(crate) fn partition_with_cuts(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &TaskMonitor,
+    joinable: &[bool],
+    couples: impl Fn(BoundaryPortKind) -> bool,
+) -> Result<RegionPartition, String> {
     let mut budget = WorkBudget::new(monitor);
     let owners = build_owner_map(graph, catalog, &mut budget)?;
     let owner_count = catalog
@@ -64,8 +77,11 @@ pub(crate) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor
         .len()
         .checked_add(catalog.corridors.len())
         .ok_or("instant-region owner count overflow")?;
+    if joinable.len() != owner_count {
+        return Err("instant-region cut table has stale owner dimensions".into());
+    }
     let mut sets = DisjointSets::new(owner_count, &mut budget)?;
-    connect_ports(&mut sets, catalog.cells.len(), &catalog.ports, &mut budget)?;
+    connect_selected_ports(&mut sets, catalog.cells.len(), &catalog.ports, &mut budget, joinable, couples)?;
 
     budget.retain_bytes(
         owner_count
@@ -125,7 +141,20 @@ pub(crate) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor
 }
 
 /// Pair typed source witnesses once, retaining outside fanout as separate cell components.
+#[cfg(test)]
 fn connect_ports(sets: &mut DisjointSets, cell_count: usize, ports: &[BoundaryPort], budget: &mut WorkBudget<'_>) -> Result<(), String> {
+    let joinable = vec![true; sets.parents.len()];
+    connect_selected_ports(sets, cell_count, ports, budget, &joinable, |_| true)
+}
+
+fn connect_selected_ports(
+    sets: &mut DisjointSets,
+    cell_count: usize,
+    ports: &[BoundaryPort],
+    budget: &mut WorkBudget<'_>,
+    joinable: &[bool],
+    couples: impl Fn(BoundaryPortKind) -> bool,
+) -> Result<(), String> {
     let owner_count = sets.parents.len();
     let mut endpoints = FxHashMap::<BoundaryPortKind, PortEndpoints>::default();
     for port in ports {
@@ -133,6 +162,9 @@ fn connect_ports(sets: &mut DisjointSets, cell_count: usize, ports: &[BoundaryPo
         let owner = owner_index(port.owner, cell_count)?;
         if owner >= owner_count {
             return Err("instant boundary port references a missing owner".into());
+        }
+        if !joinable[owner] || !couples(port.kind) {
+            continue;
         }
         budget.retain_bytes(std::mem::size_of::<usize>())?;
         let endpoints = endpoints.entry(port.kind).or_default();
@@ -225,7 +257,9 @@ fn build_owner_map(graph: &CompileGraph, catalog: &BoundaryCatalog, budget: &mut
         for use_ in &contract.uses {
             budget.visit()?;
             assign(&mut actors, use_.actor.index(), cell)?;
-            resets.push((use_.reset, cell));
+            if let Some(reset) = use_.reset.observer() {
+                resets.push((reset, cell));
+            }
             let actor = *graph.pistons.get(use_.actor.index()).ok_or("cell actor is outside the source graph")?;
             for contact in [
                 actor.base,

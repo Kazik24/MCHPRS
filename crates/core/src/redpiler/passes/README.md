@@ -36,8 +36,18 @@ plans before it changes the circuit, so plan builders need no preservation flags
 C/LLVM execution and the finite/symbolic synthesis experiments have been removed,
 including their pass registrations, runtime integration and synthesis-only optimizer crate.
 O2 whole fixed classic execution, O3 piston/reset specialization, stable region
-composition, proxies and opt-in local classic nets remain. Higher levels add no
-synthesis passes. The algorithms and exact recovery commits are preserved in
+composition, proxies and opt-in local classic nets remain. O4+ with
+`--stable-instant-inputs` now selects boundary/layer construction and lowers the
+certified pull-wave family. It retains ordinary Graph reset and declines
+unsupported region effects; it is not the removed synthesis implementation.
+The layer builder cuts unsupported owners and cables while retaining every boundary
+obligation. Geometry observations and scheduled reset effects do not by themselves
+couple computation ownership. Full arrival, output and queue certificates still gate
+execution. Multiple live entry routes and shared tokens can be composed; singleton
+kernels retain outside handlers, observations and reset wires. Multi-actor feedback
+and captured entries still keep general execution. The CPU proof-cut census now
+lowers 2,197 singleton kernels; this is partial coverage, not whole-network replacement.
+The algorithms and exact recovery commits are preserved in
 [ALGORITHMS_AND_RECOVERY.md](../../../../../docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
 
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.

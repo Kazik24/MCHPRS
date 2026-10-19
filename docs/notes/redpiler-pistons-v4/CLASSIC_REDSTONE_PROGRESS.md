@@ -1309,3 +1309,27 @@ The rebuilt snapshot passes **480 Redpiler tests, zero failures, 28 ignored rese
 Actual default O5 CHUNGUS matches the general O2 graph and the independent interpreter at every one of 1,025 boundaries through 1,024 ticks. All component blocks, comparator entities and exact scheduled future match the interpreter; complete CircuitState, pending membership/counts and clock match the graph control. All 251,485 actors and 133,623 wires compile into the fixed executor; general wire walks remain zero. Coalescing retains 448,681 route instructions and executes 6,027,572 callbacks versus the control's 6,045,241. Evidence: target/chungus-o5-native-1024.{json,log}. The recorded debug timings are instrumented and overlap other processes; they are not a production O5 speedup measurement.
 
 One intermediate Windows test rebuild hit LNK1104 because another Cargo process was executing the canonical test binary. Rebuilding after it unlocked and copying the executable before long runs resolved this environment collision; no simulation change was needed. Formatting and whitespace checks pass. No complete CHUNGUS or long-duration ANPU run, production O5 timing study, or expanded coalescing admission is claimed. O5 and optimized-all keep the proven pass enabled; O0-O4 retain their existing passes.
+
+Final production cargo check --benches passes after the recorder refactor, with the same two existing test-adapter dead-code warnings. Evidence: target/o5-final-production-check.log.
+
+## 2026-10-19 — Stage 3 trial and ANPU memory opportunity
+
+The active CHUNGUS census attributes 52.30% of frontier visits to small binary-source
+electrical candidates, but only 0.74% to candidates without admitted outside-wire
+callbacks. The separate unchanged-evaluation reuse experiment passed 1,025 native
+boundaries but reused only 2.35% of wire evaluations. All six 4,096-tick production
+samples passed endpoint/future/continuation checks; four overlapped build work,
+leaving no complete clean pair. No speedup is established, and the runtime experiment
+was removed. Test-only opportunity counters and frozen evidence remain.
+
+The ANPU 5,000-tick census joins the existing frozen BUD reference's 896 memory actors
+to 245,453/327,585 piston samples (74.93%) and 2,768/10,682 accepted actions. All have
+both Main and QC input channels. These are labeled fixture actors, not a general
+recognition certificate or CPU-time share. A separate stateful memory pass must
+preserve qualifying activation, commit-time revalidation, publication, ownership
+and exact future; large gains additionally require eliminating private wire work.
+
+The [stage 3 and BUD-memory plan](CPU_FRIENDLY_CLASSIC_EXECUTION.md#2026-10-19-stage-3-trial-active-coverage-and-a-rejected-runtime-experiment)
+records the measurements, rejection, pass contract and validation limits. The final
+retained changes pass 497 Redpiler tests, zero failures, 33 ignored; workspace checking
+passes. An existing non-Redpiler ANPU admission test still incorrectly expects rejection.

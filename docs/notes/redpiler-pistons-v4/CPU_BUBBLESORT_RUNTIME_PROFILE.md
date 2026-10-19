@@ -1,5 +1,9 @@
 # CPU_BubbleSort runtime profile
 
+These dated captures describe mixed Graph execution before the later packed-executor
+and O5 updates. Use [the current state](CURRENT_STATE.md) for current capabilities and
+the limits on applying these older profile percentages.
+
 Captured 2026-10-14 from the current uncommitted worktree, with O3 and the wire-transfer-expression draft enabled. This report supersedes the earlier mixed-tier capture for locating current runtime costs. It does not establish an optimization speedup.
 
 The initial capture below predates the [compiled-hop optimization](COMPILED_WIRE_HOPS.md).

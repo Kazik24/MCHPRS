@@ -5,14 +5,16 @@
 //! and cannot extend again before publication. A pull removes its selected source even
 //! when another shared owner later retracts empty. Reset/early-drop entries need their
 //! own contracts; reset provenance alone never authorizes contracting their execution.
-use super::ownership::close_ownership;
+use super::ownership::close_seeded_ownership;
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES;
 use crate::redpiler::analysis::geometry::is_supported_payload_material;
-use crate::redpiler::passes::utils::instant_mechanisms::{PowerIndex, discover_indexed_mechanisms, index_power};
+use crate::redpiler::passes::utils::instant_mechanisms::{PowerIndex, discover_indexed_mechanisms, find_payload, index_power};
 use crate::redpiler::program_graph::*;
 use mchprs_blocks::blocks::Block;
 use rustc_hash::FxHashSet;
+
+mod resets;
 
 // This share bounds retained pin and operand payloads; boxed-slice/vector allocator overhead is excluded.
 const MAX_CELL_TABLE_BYTES: usize = MAX_GRAPH_PREPARATION_BYTES / 8;
@@ -161,14 +163,38 @@ pub(crate) fn discover_cells(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
     check_cancelled(monitor)?;
     let index = CellIndex::build(graph, monitor)?;
     let mechanisms = discover_indexed_mechanisms(graph, &index.power, monitor)?;
-    let closure = close_ownership(graph, &mechanisms, monitor)?;
     let mut resets = vec![None; graph.pistons.len()];
-    for mechanism in mechanisms {
-        resets[mechanism.piston.index()] = Some(CellResetProvenance {
+    for mechanism in &mechanisms {
+        let provenance = CellResetProvenance {
             observer: mechanism.observer,
             watched_actor: mechanism.watched_actor,
-        });
+        };
+        if let Some(wake) = reset_wake(graph, provenance, monitor)? {
+            resets[mechanism.piston.index()] = Some(CellReset::Observer {
+                node: mechanism.observer,
+                wake,
+            });
+        }
     }
+    for (actor, spec) in graph.pistons.iter().enumerate() {
+        if resets[actor].is_none() {
+            let reset = find_payload(
+                graph,
+                &index.power,
+                PistonId::new(actor as u32),
+                &index.resources[spec.near.index()],
+                monitor,
+            )?;
+            resets[actor] = reset;
+        }
+    }
+    resets::propagate(graph, &index, &mut resets, monitor)?;
+    let seeds: Vec<_> = resets
+        .iter()
+        .enumerate()
+        .filter_map(|(actor, reset)| reset.is_some().then_some(PistonId::new(actor as u32)))
+        .collect();
+    let closure = close_seeded_ownership(graph, &mechanisms, &seeds, monitor)?;
     let mut discovery = CellDiscovery {
         cells: Vec::new(),
         declined: Vec::new(),
@@ -261,7 +287,7 @@ fn build_cell(
     index: &CellIndex,
     actors: &[PistonId],
     resources: &[ResourceId],
-    resets: &[Option<CellResetProvenance>],
+    resets: &[Option<CellReset>],
     monitor: &TaskMonitor,
 ) -> Result<Result<CellContract, CellDeclineReason>, String> {
     if let Some(&actor) = actors.iter().find(|actor| resets[actor.index()].is_none()) {
@@ -365,11 +391,7 @@ fn build_cell(
         } else {
             None
         };
-        let provenance = resets[actor.index()].expect("all owners checked");
-        let reset = provenance.observer;
-        let Some(reset_wake) = reset_wake(graph, provenance, monitor)? else {
-            return Ok(Err(CellDeclineReason::MissingResetWake(actor)));
-        };
+        let reset = resets[actor.index()].as_ref().expect("all owners checked").clone();
         uses.push(CellUse {
             actor,
             reset,
@@ -390,7 +412,6 @@ fn build_cell(
                     base_restored: spec.routes.base_restored,
                     resource: resource_wake,
                 },
-                reset: reset_wake,
             },
         });
     }

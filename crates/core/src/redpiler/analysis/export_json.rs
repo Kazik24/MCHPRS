@@ -3,7 +3,6 @@ mod classic;
 mod fixed_signals;
 mod fixed_classic;
 mod instant_boundaries;
-#[cfg(test)]
 mod instant_layers;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
@@ -103,12 +102,10 @@ struct PositionDto {
 
 #[derive(Debug, Serialize)]
 struct GraphTablesDto {
-    /// These experimental regions retain causal-layer proofs without enabling execution.
-    #[cfg(test)]
+    /// These regions retain the causal proofs from which supported pull kernels are lowered.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_layer_regions: Vec<serde_json::Value>,
     /// These whole components remain outside layer compilation with explicit witnesses.
-    #[cfg(test)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_layer_declines: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -677,7 +674,6 @@ impl GraphExport {
             return Err(ExportError::new("stage", "draft export has an invalid stage"));
         }
         instant_boundaries::validate(&self.graph)?;
-        #[cfg(test)]
         instant_layers::validate(&self.graph)?;
         let nodes = unique_ids("node", self.graph.nodes.iter().map(|item| item.id.as_str()))?;
         let profiles = unique_ids("profile", self.graph.profiles.iter().map(|item| item.id.as_str()))?;
@@ -1068,12 +1064,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         source.validate_with_monitor(&TaskMonitor::default()).map_err(|error| ExportError::new("instant_boundaries", error.to_string()))?;
     }
     let boundaries = instant_boundaries::export(source);
-    #[cfg(test)]
     let layers = instant_layers::export(source);
     let graph = GraphTablesDto {
-        #[cfg(test)]
         instant_layer_regions: layers.regions,
-        #[cfg(test)]
         instant_layer_declines: layers.declines,
         instant_cells: boundaries.cells,
         instant_corridors: boundaries.corridors,
@@ -1421,7 +1414,6 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if source.plans.instant.boundaries.is_some() {
         capabilities.push("instant_boundaries");
     }
-    #[cfg(test)]
     if source.plans.instant.layers.is_some() {
         capabilities.push("instant_layers");
     }

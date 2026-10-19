@@ -66,8 +66,7 @@ pub(crate) struct ExecutionPlans {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// Instant region ownership and private-cell proxy plans.
 pub(crate) struct InstantPlans {
-    /// These cold causal layers are inspection data and never own executing Graph state.
-    #[cfg(test)]
+    /// These cold causal layers are lowered separately into certified pull-wave executables.
     pub(crate) layers: Option<LayeredInstantPlan>,
     /// This cold experimental catalog is the sole owner map when the boundary pipeline is selected.
     pub(crate) boundaries: Option<BoundaryCatalog>,

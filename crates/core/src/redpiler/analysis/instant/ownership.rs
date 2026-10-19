@@ -36,6 +36,15 @@ pub(crate) fn join(parents: &mut [usize], first: usize, second: usize) {
 
 /// Recognition seeds ownership; it does not certify the other actors in the closure.
 pub(crate) fn close_ownership(graph: &CompileGraph, mechanisms: &[InstantMechanism], monitor: &TaskMonitor) -> Result<OwnershipClosure, String> {
+    close_seeded_ownership(graph, mechanisms, &[], monitor)
+}
+
+pub(crate) fn close_seeded_ownership(
+    graph: &CompileGraph,
+    mechanisms: &[InstantMechanism],
+    additional_actors: &[PistonId],
+    monitor: &TaskMonitor,
+) -> Result<OwnershipClosure, String> {
     let mut parents: Vec<_> = (0..graph.pistons.len() + graph.resources.len()).collect();
     let mut contact_owners = vec![None; graph.contacts.len()];
     for (index, actor) in graph.pistons.iter().enumerate() {
@@ -70,6 +79,10 @@ pub(crate) fn close_ownership(graph: &CompileGraph, mechanisms: &[InstantMechani
     let mut active = vec![false; parents.len()];
     for mechanism in mechanisms {
         active[root(&mut parents, mechanism.piston.index())] = true;
+    }
+    for actor in additional_actors {
+        check_cancelled(monitor)?;
+        active[root(&mut parents, actor.index())] = true;
     }
     let mut root_groups = vec![None; parents.len()];
     let mut groups = Vec::new();

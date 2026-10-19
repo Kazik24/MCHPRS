@@ -11,14 +11,17 @@ const MAX_LAYER_BYTES: usize = MAX_GRAPH_PREPARATION_BYTES / 8;
 const MAX_LAYER_WORK: usize = 8 * 1024 * 1024;
 
 mod composition;
+mod kernels;
+mod partition;
 mod reduction;
 mod signals;
+pub(crate) use kernels::lower as lower_kernels;
 pub(crate) use reduction::reduce as lower_region;
 
 /// Build deterministic cell regions and compile only the narrow cases with proven request cuts.
 pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<LayeredInstantPlan, String> {
     check_cancelled(monitor)?;
-    let partition = regions::partition(graph, catalog, monitor)?;
+    let partition = partition::partition(graph, catalog, monitor)?;
     let perimeters = regions::perimeters(graph, &partition, monitor)?;
     let power_index = index_power(graph);
     let mut compiled = Vec::new();
@@ -30,8 +33,7 @@ pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, mo
             catalog,
             component,
             region_index,
-            &partition.owners,
-            &partition.owner_region,
+            &partition,
             &power_index,
             &perimeters[region_index],
             monitor,
@@ -59,17 +61,38 @@ fn compile_component(
     catalog: &BoundaryCatalog,
     component: &RegionComponent,
     region_index: usize,
-    owners: &super::boundaries::OwnerMap,
-    owner_region: &[u32],
+    partition: &regions::RegionPartition,
     power_index: &PowerIndex,
     perimeter: &rustc_hash::FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
 ) -> Result<Result<LayeredRegion, LayerDecline>, String> {
+    if let Some(use_) = component
+        .cells
+        .iter()
+        .flat_map(|&cell| catalog.cells[cell as usize].uses.iter())
+        .find(|use_| use_.reset.observer().is_none())
+    {
+        // Payload-reset cells have boundaries; their lifecycle adapter is not lowered yet.
+        return Ok(Err(decline(
+            component,
+            LayerWitness::Actor(use_.actor),
+            LayerDeclineReason::BoundaryEffectUnsupported,
+        )));
+    }
     if component.cells.len() != 1 || !component.corridors.is_empty() {
         if !component.cells.is_empty() {
-            return composition::compile_connected(graph, catalog, component, region_index, power_index, perimeter, monitor);
+            return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
         }
-        let witness = first_unproven_power(graph, catalog, component, region_index, owners, owner_region, monitor)?.unwrap_or_else(|| {
+        let witness = first_unproven_power(
+            graph,
+            catalog,
+            component,
+            region_index,
+            &partition.owners,
+            &partition.owner_region,
+            monitor,
+        )?
+        .unwrap_or_else(|| {
             if !component.corridors.is_empty() {
                 component
                     .corridors
@@ -95,12 +118,7 @@ fn compile_component(
         return Err("instant region references a missing cell contract".into());
     };
     if cell.uses.len() != 1 || cell.resources.len() != 1 {
-        let actor = cell.uses.first().map_or(PistonId::new(0), |use_| use_.actor);
-        return Ok(Err(decline(
-            component,
-            LayerWitness::Actor(actor),
-            LayerDeclineReason::SharedOwnerOrderUnknown,
-        )));
+        return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
     }
     let use_ = &cell.uses[0];
     let private_resource = &cell.resources[0];
@@ -123,6 +141,11 @@ fn compile_component(
             LayerWitness::Actor(use_.actor),
             LayerDeclineReason::SharedOwnerOrderUnknown,
         )));
+    }
+    // Splitting can expose previously internal reads; decline an unsupported perimeter
+    // before constructing pins or searching the global activation table for this cell.
+    if !single_cell_outputs_supported(graph, catalog, component, cell, use_, power_index) {
+        return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
     }
     let activations = match activation_bindings(graph, catalog, cell_id, use_)? {
         Ok(activations) => activations,
@@ -258,6 +281,7 @@ fn compile_component(
         stationary_entry,
         inputs: builder.inputs.into_boxed_slice(),
         outputs,
+        graph_outputs: Box::new([]),
         resource_outputs: resource_outputs.into_boxed_slice(),
         cold_lifecycle_occurrences: lifecycle.into_boxed_slice(),
         expressions: builder.expressions.into_boxed_slice(),
@@ -386,12 +410,15 @@ fn activation_bindings(
             });
             continue;
         }
-        if reset_occurrence(use_, occurrence) && callback_targets_reset(graph, delivery, use_.reset) {
+        if let Some(reset) = use_.reset.observer()
+            && reset_occurrence(use_, occurrence)
+            && callback_targets_reset(graph, delivery, reset)
+        {
             bindings.lifecycle.push(LayerLifecycleOccurrence {
                 actor,
                 occurrence,
                 phase: LayerLifecyclePhase::ResetObserverLifecycle,
-                reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+                reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset },
             });
             continue;
         }
@@ -447,12 +474,13 @@ fn later_graph_route_phase(
     use_: &CellUse,
     route: RouteId,
 ) -> Result<Option<LayerLifecyclePhase>, String> {
+    let reset_node = reset_observer(use_)?;
     let reset = graph
         .nodes
-        .get(use_.reset.index())
+        .get(reset_node.index())
         .ok_or("cell reset observer is outside the source graph")?;
     if let Some(output_route) = reset.output_route {
-        if graph.routes.get(output_route.index()).is_none_or(|row| row.source != use_.reset) {
+        if graph.routes.get(output_route.index()).is_none_or(|row| row.source != reset_node) {
             return Err("reset observer output route has a mismatched source".into());
         }
         if route == output_route {
@@ -484,10 +512,10 @@ fn is_inert_cell_callback(graph: &CompileGraph, delivery: &RouteDelivery, use_: 
         },
         DeliveryKind::Shape { .. } => match resolved_receiver(graph, delivery) {
             Some(CallbackReceiver::Contact(contact)) => contact_is_local_to_actor(graph, contact, use_.actor),
-            Some(CallbackReceiver::Component(node)) if node == use_.reset => graph
+            Some(CallbackReceiver::Component(node)) if Some(node) == use_.reset.observer() => graph
                 .nodes
                 .get(node.index())
-                .is_some_and(|node| matches!(&node.kind, CircuitNodeKind::Observer { .. })),
+                .is_some_and(|node| matches!(&node.kind, CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. })),
             _ => false,
         },
     }
@@ -535,7 +563,15 @@ fn resolved_receiver(graph: &CompileGraph, delivery: &RouteDelivery) -> Option<C
 }
 
 fn reset_occurrence(use_: &CellUse, occurrence: RouteOccurrence) -> bool {
-    use_.retraction.reset.on_base_changed.contains(&occurrence) || use_.retraction.reset.on_base_restored.contains(&occurrence)
+    use_.reset
+        .observer_wake()
+        .is_some_and(|wake| wake.on_base_changed.contains(&occurrence) || wake.on_base_restored.contains(&occurrence))
+}
+
+fn reset_observer(use_: &CellUse) -> Result<NodeId, String> {
+    use_.reset
+        .observer()
+        .ok_or_else(|| "payload reset needs its own lifecycle adapter".into())
 }
 
 fn lifecycle_occurrences(
@@ -546,6 +582,8 @@ fn lifecycle_occurrences(
     activation_lifecycle: &[LayerLifecycleOccurrence],
     builder: &mut LayerBuilder<'_>,
 ) -> Result<Result<Vec<LayerLifecycleOccurrence>, (LayerWitness, LayerDeclineReason)>, String> {
+    let reset_node = reset_observer(use_)?;
+    let reset_wake = use_.reset.observer_wake().ok_or("observer reset is missing its callback witnesses")?;
     let mut lifecycle = activation_lifecycle.to_vec();
     let actor_spec = *graph
         .pistons
@@ -569,9 +607,9 @@ fn lifecycle_occurrences(
             };
             let (reason, lifecycle_phase) = if is_inert_cell_callback(graph, delivery, use_) {
                 (LayerLifecycleReason::InertCellCallback, phase)
-            } else if reset_occurrence(use_, occurrence) && callback_targets_reset(graph, delivery, use_.reset) {
+            } else if reset_occurrence(use_, occurrence) && callback_targets_reset(graph, delivery, reset_node) {
                 (
-                    LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+                    LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
                     LayerLifecyclePhase::ResetObserverLifecycle,
                 )
             } else {
@@ -622,19 +660,13 @@ fn lifecycle_occurrences(
             }
         }
     }
-    for occurrence in use_
-        .retraction
-        .reset
-        .on_base_changed
-        .iter()
-        .chain(&use_.retraction.reset.on_base_restored)
-    {
+    for occurrence in reset_wake.on_base_changed.iter().chain(&reset_wake.on_base_restored) {
         builder.visit()?;
         let row = LayerLifecycleOccurrence {
             actor: use_.actor,
             occurrence: *occurrence,
             phase: LayerLifecyclePhase::ResetObserverLifecycle,
-            reason: LayerLifecycleReason::ResetObserverUpdate { observer: use_.reset },
+            reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
         };
         if !lifecycle.contains(&row) {
             lifecycle.push(row);
@@ -642,7 +674,7 @@ fn lifecycle_occurrences(
     }
     let reset = graph
         .nodes
-        .get(use_.reset.index())
+        .get(reset_node.index())
         .ok_or("cell reset observer is outside the source graph")?;
     let later_routes = [
         reset.output_route.map(|route| (route, LayerLifecyclePhase::ResetOutput)),
@@ -654,7 +686,7 @@ fn lifecycle_occurrences(
     for (route, phase) in later_routes.into_iter().flatten() {
         let source = graph.routes.get(route.index()).ok_or("later lifecycle route is outside the graph")?;
         let expected_source = if phase == LayerLifecyclePhase::ResetOutput {
-            use_.reset
+            reset_node
         } else {
             actor_spec.node
         };
@@ -686,6 +718,31 @@ fn has_port(catalog: &BoundaryCatalog, cell_id: u32, direction: BoundaryDirectio
         .ports
         .iter()
         .any(|port| port.owner == BoundaryOwner::Cell(cell_id) && port.direction == direction && port.kind == kind)
+}
+
+/// Match the value families handled by `compile_outputs` before doing expensive construction.
+fn single_cell_outputs_supported(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    component: &RegionComponent,
+    cell: &CellContract,
+    use_: &CellUse,
+    power: &PowerIndex,
+) -> bool {
+    component.ports.iter().all(|&index| {
+        let port = catalog.ports[index as usize];
+        if port.direction != BoundaryDirection::Output {
+            return true;
+        }
+        match port.kind {
+            BoundaryPortKind::Callback { .. } | BoundaryPortKind::GuardState { .. } => true,
+            BoundaryPortKind::Power { link } => cell.pins.iter().any(|pin| {
+                matches!(pin, CellPin::Read(CellRead::Contribution(contribution))
+                    if local_reset_output_link(graph, power, use_, *contribution) == Some(graph.power_links[link as usize]))
+            }),
+            _ => false,
+        }
+    })
 }
 
 fn unsupported_single_cell(
@@ -729,6 +786,7 @@ fn unsupported_single_cell(
 
 /// Accept only the observer output that the existing recognizer already proved is this cell's reset source.
 fn local_reset_output_link(graph: &CompileGraph, power: &PowerIndex, use_: &CellUse, contribution: PowerLink) -> Option<PowerLink> {
+    let reset = use_.reset.observer()?;
     let actor_node = graph.pistons.get(use_.actor.index())?.node;
     if contribution.to
         != (PowerTarget::Input {
@@ -752,8 +810,11 @@ fn local_reset_output_link(graph: &CompileGraph, power: &PowerIndex, use_: &Cell
         || !matches!(graph.guards.get(source.guard.index()), Some(Guard::Always))
         || !matches!(source.from_port, PowerPort::Strong(BlockFace::Bottom) | PowerPort::Output)
         || !matches!(source.to, PowerTarget::Conductor { .. } | PowerTarget::Input { .. })
-        || !matches!(graph.sites.get(source.from.index())?.source, SiteSource::Component(node) if node == use_.reset)
-        || !matches!(graph.nodes.get(use_.reset.index())?.kind, CircuitNodeKind::Observer { .. })
+        || !matches!(graph.sites.get(source.from.index())?.source, SiteSource::Component(node) if node == reset)
+        || !matches!(
+            graph.nodes.get(reset.index())?.kind,
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }
+        )
     {
         return None;
     }
@@ -780,7 +841,7 @@ fn compile_pin(
             if let Some(reset_link) = local_reset_output_link(graph, power_index, use_, *link) {
                 let input = builder.input(
                     LayerInputSource::LocalResetOutput {
-                        observer: use_.reset,
+                        observer: reset_observer(use_)?,
                         link: reset_link,
                     },
                     read_role,
@@ -915,7 +976,7 @@ fn compile_outputs(
             }) {
                 let input = builder.input(
                     LayerInputSource::LocalResetOutput {
-                        observer: use_.reset,
+                        observer: reset_observer(use_)?,
                         link: *link,
                     },
                     LayerInputRole::AcceptanceRevalidation,

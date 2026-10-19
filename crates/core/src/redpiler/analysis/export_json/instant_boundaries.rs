@@ -21,7 +21,7 @@ pub(super) fn export(graph: &CompileGraph) -> Tables {
     };
     Tables {
         cells: catalog.cells.iter().enumerate().map(|(index, cell)| {
-            let mut resets: Vec<_> = cell.uses.iter().map(|use_| use_.reset).collect();
+            let mut resets: Vec<_> = cell.uses.iter().filter_map(|use_| use_.reset.observer()).collect();
             resets.sort_unstable();
             resets.dedup();
             json!({"id":typed_id("instant_cell",index),
@@ -104,7 +104,6 @@ fn decline_reason(reason: CellDeclineReason) -> Value {
         }
         CellDeclineReason::NoPullSource(resource) => json!({"code":"no_pull_source","resource":typed_id("resource",resource.index())}),
         CellDeclineReason::MissingDeferredWake(actor) => json!({"code":"missing_deferred_wake","piston":typed_id("piston",actor.index())}),
-        CellDeclineReason::MissingResetWake(actor) => json!({"code":"missing_reset_wake","piston":typed_id("piston",actor.index())}),
         CellDeclineReason::PinTableBudgetExceeded => json!({"code":"pin_table_budget_exceeded"}),
         CellDeclineReason::ConflictingSourceContact(contact) => {
             json!({"code":"conflicting_source_contact","contact":typed_id("contact",contact.index())})

@@ -20,7 +20,7 @@ impl GraphBackend {
                     if self.guard_matches(step.delivery.guard, captured) {
                         #[cfg(test)]
                         self.record_route_event(route, step.delivery, CallbackReceiver::PistonBase(actor));
-                        self.sample_piston(actor)?;
+                        self.sample_piston_from(actor, route)?;
                     }
                 }
                 InstantStepKind::ArmReset(reset) => {

@@ -44,6 +44,7 @@ fn region(value: &LayeredRegion, graph: &CompileGraph) -> Value {
             "port": typed_id("instant_port", output.port as usize),
             "emitted_when": output.emitted_when.0,
         })).collect::<Vec<_>>(),
+        "graph_outputs": value.graph_outputs.iter().map(|port| typed_id("instant_port", *port as usize)).collect::<Vec<_>>(),
         "expressions": value.expressions.iter().map(expression).collect::<Vec<_>>(),
         "pin_values": value.pin_values.iter().map(|pin| json!({
             "cell": typed_id("instant_cell", pin.cell as usize),
@@ -70,6 +71,10 @@ fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
             "kind":"boundary_event",
             "port":typed_id("instant_port",port as usize),
             "occurrence":occurrence_dto(occurrence),
+        }),
+        LayerInputSource::BoundaryState { port, test } => json!({
+            "kind":"boundary_state", "port":typed_id("instant_port",port as usize),
+            "test":serde_json::to_value(state_test_dto(test)).expect("state test DTO serialization is infallible"),
         }),
         LayerInputSource::PowerContribution { port, link } => {
             let index = graph
@@ -424,6 +429,21 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                         }
                     }
                 }
+                Some("boundary_state") => {
+                    let test = &source["test"];
+                    validate_state_test(test, &ids)?;
+                    let port = source["port"]
+                        .as_str()
+                        .and_then(|id| ports.get(id))
+                        .ok_or_else(|| invalid("boundary state port is missing"))?;
+                    if port["direction"] != "input"
+                        || !region_owns(port["owner"].as_str(), &region_cells, &region_corridors)
+                        || port["binding"]["kind"] != "guard_state"
+                        || port["binding"]["test"] != *test
+                    {
+                        return Err(invalid("boundary state does not match its declared input guard"));
+                    }
+                }
                 Some("state") => {
                     let test = &source["test"];
                     validate_state_test(test, &ids)?;
@@ -500,6 +520,24 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                 return Err(invalid("layer output port is outside its output boundary"));
             }
             root(output["emitted_when"].as_u64(), array(row, "expressions")?.len(), "layer output")?;
+        }
+        if let Some(observations) = row.get("graph_outputs") {
+            let observations = observations.as_array().ok_or_else(|| invalid("Graph outputs must be an array"))?;
+            let mut seen = HashSet::new();
+            for observation in observations {
+                let id = observation.as_str().ok_or_else(|| invalid("Graph output has no port"))?;
+                let port = ports.get(id).ok_or_else(|| invalid("Graph output references a missing port"))?;
+                if !seen.insert(id)
+                    || port["direction"] != "output"
+                    || !region_owns(port["owner"].as_str(), &region_cells, &region_corridors)
+                    || !matches!(
+                        port["binding"]["kind"].as_str(),
+                        Some("guard_site" | "wire_relation" | "wire_neighborhood" | "captured_wire")
+                    )
+                {
+                    return Err(invalid("Graph output is not a unique geometry observation on this boundary"));
+                }
+            }
         }
         let resource_outputs = array(row, "resource_outputs")?;
         if resource_outputs.is_empty() {

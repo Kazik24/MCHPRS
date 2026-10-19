@@ -21,7 +21,6 @@ impl CircuitDraft {
 
     fn validate_instant_boundaries(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
         let Some(catalog) = &self.plans.instant.boundaries else {
-            #[cfg(test)]
             if self.plans.instant.layers.is_some() {
                 return Err(GraphBuildError::InvalidInstantRegion { table: "layers without boundaries", index: 0 });
             }
@@ -35,7 +34,6 @@ impl CircuitDraft {
         if *catalog != expected {
             return Err(invalid());
         }
-        #[cfg(test)]
         if let Some(layers) = &self.plans.instant.layers {
             let expected = crate::redpiler::analysis::instant::layers::compile_layers(self, catalog, monitor)
                 .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 })?;
@@ -909,7 +907,7 @@ impl CircuitDraft {
     }
 
     fn validate_links(&self) -> Result<(), GraphBuildError> {
-        let mut callback_edges = HashMap::<(CallbackEdgeRef, NodeId, NodeId, LinkKind), usize>::new();
+        let mut callback_edges = FxHashMap::<(CallbackEdgeRef, NodeId, NodeId, LinkKind), usize>::default();
         for link in &self.links {
             check_id("nodes", link.from.index(), self.nodes.len())?;
             check_id("nodes", link.to.index(), self.nodes.len())?;

@@ -375,6 +375,15 @@ function validateInstantLayers(data, ids, nodes) {
         if (!Number.isInteger(source.threshold) || source.threshold < 0 || source.threshold >= 15 || !validPort) throw Error(`${region.id} has an invalid threshold source.`);
         const ownedWires = new Set([...memberCorridors].flatMap(id => corridors.get(id).wires));
         if (ownedWires.has(sites.get(source.site)?.source?.node)) throw Error(`${region.id} exposes an owned internal wire as input.`);
+      } else if (source.kind === "boundary_state") {
+        const test = stateTest(source.test, region.id);
+        ref(source.port, "instant_port", region.id);
+        const port = ports.get(source.port);
+        if (port.direction !== "input" || !(memberCells.has(port.owner) || memberCorridors.has(port.owner))
+          || port.binding?.kind !== "guard_state"
+          || !["kind", "piston", "resource", "contact", "availability"].every(field => port.binding.test?.[field] === test[field])) {
+          throw Error(`${region.id} boundary state does not match its input guard.`);
+        }
       } else if (source.kind === "state") {
         const test = stateTest(source.test, region.id);
         if (test.kind.startsWith("piston_")) {
@@ -435,6 +444,19 @@ function validateInstantLayers(data, ids, nodes) {
       const port = ports.get(output.port);
       if (!port || port.direction !== "output" || !(memberCells.has(port.owner) || memberCorridors.has(port.owner))) throw Error(`${region.id} output port is outside its boundary.`);
       root(output.emitted_when, expressions.length, region.id);
+    }
+    const graphOutputs = region.graph_outputs ?? [];
+    if (!Array.isArray(graphOutputs)) throw Error(`${region.id} has invalid Graph outputs.`);
+    const seenGraphOutputs = new Set();
+    for (const id of graphOutputs) {
+      ref(id, "instant_port", region.id);
+      const port = ports.get(id);
+      if (seenGraphOutputs.has(id) || port.direction !== "output"
+        || !(memberCells.has(port.owner) || memberCorridors.has(port.owner))
+        || !["guard_site", "wire_relation", "wire_neighborhood", "captured_wire"].includes(port.binding?.kind)) {
+        throw Error(`${region.id} Graph output is not a unique geometry observation on its boundary.`);
+      }
+      seenGraphOutputs.add(id);
     }
     for (const pin of region.pin_values) {
       ref(pin.cell, "instant_cell", region.id);

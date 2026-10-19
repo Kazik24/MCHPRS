@@ -361,6 +361,42 @@ class DustPathLoaderTests(unittest.TestCase):
         graph["instant_layer_declines"] = []
         return data
 
+    def test_instant_boundary_state_requires_its_matching_input_guard(self):
+        data = self.instant_layer_document()
+        graph = data["graph"]
+        region = graph["instant_layer_regions"][0]
+        guard = next(guard for guard in graph["guards"] if guard["kind"] == "state")
+        graph["instant_boundary_ports"].append({
+            "id": "instant_port:900", "owner": region["cells"][0], "direction": "input",
+            "binding": {"kind": "guard_state", "guard": guard["id"], "test": guard["test"]},
+        })
+        source = {"kind": "boundary_state", "port": "instant_port:900", "test": dict(guard["test"])}
+        region["inputs"].append({"source": source, "role": "request_sample"})
+        self.load_data(data)
+        for port in ("instant_port:999", "instant_port:0", "instant_port:2"):
+            source["port"] = port
+            with self.subTest(port=port), self.assertRaises(GraphFormatError):
+                self.load_data(data)
+
+    def test_instant_graph_observations_keep_typed_boundary_bindings(self):
+        data = self.instant_layer_document()
+        graph = data["graph"]
+        region = graph["instant_layer_regions"][0]
+        wire = next(node for node in graph["nodes"] if node["kind"]["kind"] == "wire")
+        plan = next(plan for plan in graph["wire_plans"] if plan["id"] == wire["kind"]["plan"])
+        graph["instant_boundary_ports"].append({
+            "id": "instant_port:3", "owner": region["cells"][0], "direction": "output",
+            "binding": {"kind": "wire_neighborhood", "wire": wire["id"], "neighbor": plan["canonical_neighbors"][0]},
+        })
+        region["graph_outputs"] = ["instant_port:3"]
+        self.load_data(data)
+        for invalid in (["instant_port:3", "instant_port:3"], ["instant_port:999"],
+                        ["instant_port:0"], ["instant_port:2"], "instant_port:3"):
+            with self.subTest(invalid=invalid):
+                region["graph_outputs"] = invalid
+                with self.assertRaises(GraphFormatError):
+                    self.load_data(data)
+
     def test_instant_layer_tables_validate_local_dag_and_preserve_occurrences(self):
         data = self.instant_layer_document()
         actor_routes = data["graph"]["pistons"][0]["routes"]

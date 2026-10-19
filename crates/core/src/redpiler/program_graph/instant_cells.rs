@@ -10,7 +10,6 @@ pub(crate) struct CellPinId(
 );
 
 impl CellPinId {
-    #[cfg(test)]
     pub(crate) fn index(self) -> usize {
         self.0 as usize
     }
@@ -54,8 +53,8 @@ pub(crate) enum CellPin {
 pub(crate) struct CellUse {
     /// This actor contributes one pull-computation use under the stationary entry contract.
     pub(crate) actor: PistonId,
-    /// This existing observer/reset clock provides reset provenance, not a new clock owner.
-    pub(crate) reset: NodeId,
+    /// This records the existing reset source without inventing a clock for payload feedback.
+    pub(crate) reset: CellReset,
     /// This combines Main contributions before Quasi, preserving their typed source ports.
     pub(crate) powered: CellPinId,
     /// This combines activation, an available extended base and absent sampled power.
@@ -144,6 +143,50 @@ pub(crate) struct CellResetWake {
     pub(crate) on_base_restored: Box<[RouteOccurrence]>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CellReset {
+    Observer {
+        /// This is the existing observer whose power returns to the actor.
+        node: NodeId,
+        /// These original observer deliveries preserve its scheduled reset work.
+        wake: CellResetWake,
+    },
+    Payload {
+        /// This actor's own restored Near payload supplies its reset power.
+        resource: ResourceId,
+        /// This original restoration callback starts a qualifying reset recheck.
+        notification: RouteOccurrence,
+        /// This original receiver samples the returned power after restoration.
+        sample: RouteOccurrence,
+    },
+    InputRestoration {
+        /// This already resettable upstream token supplies a restored input signal.
+        resource: ResourceId,
+        /// This is the existing Near or Far contact whose restoration supplies power.
+        contact: ContactId,
+        /// This original source delivery starts the qualifying reset notification path.
+        notification: RouteOccurrence,
+        /// This original actor delivery samples the restored power independently of its value.
+        sample: RouteOccurrence,
+    },
+}
+
+impl CellReset {
+    pub(crate) fn observer(&self) -> Option<NodeId> {
+        match self {
+            Self::Observer { node, .. } => Some(*node),
+            Self::Payload { .. } | Self::InputRestoration { .. } => None,
+        }
+    }
+
+    pub(crate) fn observer_wake(&self) -> Option<&CellResetWake> {
+        match self {
+            Self::Observer { wake, .. } => Some(wake),
+            Self::Payload { .. } | Self::InputRestoration { .. } => None,
+        }
+    }
+}
+
 /// This describes one pull-capable stationary retraction without replacing Graph's action scheduler.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CellRetractionEffect {
@@ -155,8 +198,6 @@ pub(crate) struct CellRetractionEffect {
     pub(crate) routes: CellRetractionRoutes,
     /// This preserves the exact ordinary scheduler publication and its revision checks.
     pub(crate) wake: CellDeferredWake,
-    /// These are route occurrences only; observer/reset state remains under the existing scheduler.
-    pub(crate) reset: CellResetWake,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,8 +257,6 @@ pub(crate) enum CellDeclineReason {
     NoPullSource(ResourceId),
     /// This actor's accepted retract has no original base or payload restoration route.
     MissingDeferredWake(PistonId),
-    /// This actor's reset observer is absent from one of its source-derived base routes.
-    MissingResetWake(PistonId),
     /// Retaining this additional cell would exceed the graph-preparation allocation share.
     PinTableBudgetExceeded,
     /// This contact would need to contain two different stationary payloads at entry.

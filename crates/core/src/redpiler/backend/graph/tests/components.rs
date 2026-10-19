@@ -3608,6 +3608,7 @@ fn blocked_piston_lane_rejects_extension_at_sampling_and_acceptance() {
     assert!(backend.future.piston_requests.is_empty(), "sampling must reject the blocked lane");
 
     backend.enqueue_piston(PistonRequest {
+        source: None,
         piston: id,
         action: mchprs_world::PistonAction::Extend,
     });

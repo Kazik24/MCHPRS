@@ -777,6 +777,12 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
                 owned_wires = {wire for corridor in region_corridors for wire in records["instant_corridor"][corridor]["wires"]}
                 if site.get("source", {}).get("node") in owned_wires:
                     raise GraphFormatError(f"{identifier} exposes an owned internal wire as input")
+            elif source_kind == "boundary_state":
+                test = _validate_state_test(source.get("test"), identifier, ref)
+                port = ref("instant_port", source.get("port"), identifier)
+                if (port.get("direction") != "input" or port.get("owner") not in region_cells | region_corridors
+                        or port.get("binding", {}).get("kind") != "guard_state" or port["binding"].get("test") != test):
+                    raise GraphFormatError(f"{identifier} boundary state does not match its input guard")
             elif source_kind == "state":
                 test = _validate_state_test(source.get("test"), identifier, ref)
                 if test["kind"].startswith("piston_"):
@@ -820,6 +826,17 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
             if port.get("direction") != "output" or port.get("owner") not in region_cells | region_corridors:
                 raise GraphFormatError(f"{identifier} output port is outside its output boundary")
             local_index(item.get("emitted_when"), len(_array(region.get("expressions"), f"{identifier}.expressions")), identifier)
+
+        graph_outputs = _array(region.get("graph_outputs", []), f"{identifier}.graph_outputs")
+        seen_graph_outputs = set()
+        for port_id in graph_outputs:
+            port = ref("instant_port", port_id, identifier)
+            if (port_id in seen_graph_outputs or port.get("direction") != "output"
+                    or port.get("owner") not in region_cells | region_corridors
+                    or port.get("binding", {}).get("kind") not in {
+                        "guard_site", "wire_relation", "wire_neighborhood", "captured_wire"}):
+                raise GraphFormatError(f"{identifier} Graph output is not a unique geometry observation on its boundary")
+            seen_graph_outputs.add(port_id)
 
         resource_outputs = _array(region.get("resource_outputs"), f"{identifier}.resource_outputs")
         if not resource_outputs:

@@ -1,6 +1,6 @@
 # CPU-friendly classic execution: measured baseline and proposed next step
 
-Date: 2026-10-18. Status: design, not an implemented executor. Whole fixed compilation is already the default at O2 and higher. This proposal keeps the existing Graph backend and its single authoritative machine state and future.
+Started 2026-10-18; status updated 2026-10-19. Packing and the second whole-fixed execution stage are implemented at O2+. Mixed-circuit fixed lowering, passive-net contraction and SIMD remain proposed work. See [the current state](CURRENT_STATE.md) for measured throughput and remaining scope. This work keeps the existing Graph backend and its single authoritative machine state and future.
 
 ## Recommendation
 
@@ -149,4 +149,155 @@ Five alternating production release pairs over 16,384 active ticks improve the m
 
 Executable table payload falls from 100,100,492 to 73,588,960 bytes, and route operations from 2,517,665 to 474,520. This is retained executable storage, not total process memory. The original Graph, intermediate wire writes, ordered propagation and shared scheduler remain. SIMD, private net contraction and mixed-piston compilation are still separate work.
 
-The side experiment `experimental-coalesce-delayed-updates` remains outside defaults. It removes equivalent read/schedule-only notifications inside protected runs, with pending/FIFO and direction/lock proofs. CHUNGUS and ANPU match complete state/future through 1,024 ticks plus reset/native continuation. The rule does not replace a wire walk by one piston sample and has no production timing claim. See CLASSIC_REDSTONE_PROGRESS.md and target/chungus-stage2-summary.json for detailed counts, sample ranges, hashes and limitations.
+The pass named `experimental-coalesce-delayed-updates` was subsequently promoted into default O5, bare `-O` and `--optimize`; O0-O4 retain their prior selection. It removes equivalent read/schedule-only notifications inside protected runs, with pending/FIFO and direction/lock proofs. CHUNGUS and ANPU match complete state/future through 1,024 ticks plus reset/native continuation. The rule does not replace a wire walk by one piston sample and has no isolated production timing result. See CLASSIC_REDSTONE_PROGRESS.md and target/chungus-stage2-summary.json for detailed counts, sample ranges, hashes and limitations.
+
+## 2026-10-19 stage 3 trial: active coverage and a rejected runtime experiment
+
+An O5 census ran 16,384 CHUNGUS ticks through the existing exact executor. It records
+seed calls/changes and frontier visits/changes per wire, then attributes them to the
+existing electrical regions. The optional counters exist only in test builds.
+
+| Measurement | Count | Share of all frontier visits |
+| --- | ---: | ---: |
+| All frontier visits | 57,645,484 | 100% |
+| Visits in small 1–4-source binary electrical candidates with invariant wire shapes | 30,150,407 | 52.30% |
+| Same family, without admitted callbacks to outside wires | 427,231 | 0.74% |
+
+These are opportunity counts, not admitted transfer programs or CPU-time shares.
+The closed-net family is too narrow to justify expecting another 1.5x gain. The
+remaining candidates need an explicit interface for outside wire callbacks and
+shared capture/layer state. A binary-source truth table alone cannot establish it.
+
+A separate conservative runtime experiment reused an unchanged wire evaluation
+until any captured wire write advanced an episode-local epoch. Reuse required a
+constant no-dust query; all queue entries, captures, intermediate writes and receiver
+callbacks remained in their original order. Epoch wrap invalidated all entries.
+The experiment passed the focused analog/pending tests and every CHUNGUS boundary
+0..1024 against the general Graph and independent interpreter, including tick 512.
+It reused only 103,970 of 4,422,713 counted wire evaluations: **2.35%**.
+
+Six production O5 samples of 4,096 ticks each passed native endpoint state/future
+and 32-tick interpreter continuation. Four samples overlapped other Cargo/rustc
+jobs. The two uncontaminated samples belonged to different pairs, leaving **zero
+complete clean pairs**. No speedup is established. The limited-reach runtime
+experiment was removed; only the test-only census remains. No five-pair promotion
+run or longer-window performance claim is made for this rejected candidate.
+
+Evidence: `target/chungus-stage3-summary.json`,
+`target/chungus-stage3-active-net-census-control.json`,
+`target/chungus-stage3-native-1024.{json,log}` and
+`target/chungus-stage3-smoke-pair-{1..3}-{control,candidate}.{json,log}`.
+Frozen executables, source diff, prototype tests and process observations are
+retained beside them. These ignored artifacts may be absent in another checkout.
+
+## ANPU next step: recognize BUD memory as a separate stateful contract
+
+The existing ANPU profile points first to general wire work, capture and power/site
+queries, rather than the scheduler. Whole-fixed execution declines on its mixed
+piston/contact circuit. The older local-net optimization eliminated only eight of
+183,751 walks; broad fixed-query/hop execution inside mixed circuits remains useful.
+
+The user's proposed BUD-memory pass is a distinct possible route to eliminating
+private feedback and update wiring. It must recognize retained state and qualifying
+events, rather than admit ordinary memory as a stationary instant-computation cell.
+Existing tests intentionally keep those ownership contracts separate.
+
+A fresh O5 ANPU census executes the existing 5,000-tick Pong window and attributes
+all 327,585 piston power samples and 10,682 accepted actions to individual actors:
+
+| Structural input signature | Actors | Power samples | Accepted actions |
+| --- | ---: | ---: | ---: |
+| QC present, Main structurally zero | 960 | 15,998 | 1,538 |
+| Both Main and QC present | 1,916 | 292,460 | 7,762 |
+| Main present, QC absent | 21 | 18,914 | 1,382 |
+| Both absent | 1 | 213 | 0 |
+
+No actor in this census has the existing observer-reset provenance. **None of these
+signatures proves BUD memory.** The QC-only group covers 4.88% of samples, while
+the Main-plus-QC group covers 89.28%. A recognizer restricted to permanently zero
+Main misses most active piston sampling. Main may carry the update pulse while
+QC carries retained data; the graph and finite-state behavior must establish the
+actual roles. The report inventories explicit update route/ordinal/guard/view rows,
+but contact alternatives and captured Turbo activation still require closure.
+
+More directly, the existing frozen `test_data/cpu-references/anpu_bud_updates.json`
+labels **896 physical memory actors**. Joining those positions to the active Graph
+census accounts for **245,453 samples (74.93% of piston samples)** and **2,768
+accepted actions (25.91%)**. All 896 have both Main and QC inputs. The reference's
+geometric fixture selector is a downward sticky piston below a note block; this
+is an existing fixture label and oracle, not a general memory-recognition proof.
+Use these actors as the first ANPU measurement target. Their sample share is not
+their fraction of total inference time, and the 50,000-tick frozen BUD replay was
+inspected rather than rerun in this investigation.
+
+The retained ANPU runtime diagnostic estimates piston sampling at about 8.9% of
+instrumented tick time and general wire walks at about 63.4%. These are coarse,
+inclusive call-timer estimates from an older source snapshot, not additive current
+CPU shares. They nevertheless argue against expecting 1.5x throughput from reducing
+memory-piston sampling alone. The larger opportunity is using proven memory
+boundaries to remove private feedback propagation and simplify its data/output reads.
+
+First implementation contract for a separate `compile-bud-memory` builder:
+
+1. **Identify the state and its encoding.** Start with a bounded private mechanism
+   and prove its stable states, payload ownership and observable output. Reuse
+   CircuitState's actor/resource values; introduce no independently mutable cached
+   memory bit. Retain pending/transient phases in GraphFuture. Shared payloads or
+   observable interior geometry require an explicit larger contract or decline.
+2. **Derive data and activation separately.** Record Main/QC power expressions,
+   polarity and guards independently of every qualifying base/head update. Include
+   captured/live reads, contact alternatives, direction when relevant, multiplicity
+   and original route ordinals. QC availability alone is not an activation event;
+   a notification with unchanged final power can still be meaningful.
+3. **Compile the real transition sequence.** A qualifying notification samples power
+   and may enqueue the original request. Acceptance rechecks live power, pose,
+   availability and resource conditions at the original FIFO position. Only an
+   accepted action changes stored state; publication retains the original deadlines,
+   contacts and outgoing notifications. Do not replace this with immediate
+   `Q = data` or one toggle per update. Derive the mechanism's encoding and transition
+   table, rather than assuming a generic D latch.
+4. **Attach one executable owner.** Publish the immutable memory plan through
+   ExecutionPlans; integrate validation, lowering, export, inspection and reset.
+   Keep it disjoint from instant/proxy/local-net ownership and register its query
+   and ownership prerequisites explicitly. Unsupported entry states retain ordinary
+   Graph execution before any optimized side effect. Benchmark compilation cost too.
+5. **Eliminate proven private work.** Begin with exact precompiled data/update reads,
+   then remove only the internal feedback/wire/callback work covered by the
+   certificate. Count eliminated dynamic wire visits and query/guard work. Replacing
+   piston bookkeeping alone does not address ANPU's dominant propagation cost.
+6. **Validate before promoting.** Use the independent-data/update fixture first,
+   then Rilax memory, the counter and ANPU. Exercise data-only changes, repeated
+   updates, both pulse edges, data changing between request and commit, shared
+   update clocks, pending/imported work, resource conflicts and reset/continuation
+   at intermediate phases. Compare ANPU's real output protocol and exact future,
+   then run quiet alternating production samples over its active window.
+
+The starting fixture is `bud_instantmemorycellobserverupdate`: its existing regression
+holds memory unchanged for 32 ticks after a data-only change, then applies the
+independent update and checks the sampled state and interpreter handoff. Its stored
+logical one is a retracted piston, so even its polarity must not be guessed.
+See `regional_bud_memory_changes_only_after_the_independent_update` and
+`bud_memory_is_outside_cells_while_its_power_and_update_channels_remain_distinct`.
+
+ANPU evidence is `target/anpu-memory-cell-opportunity.{json,log}`. This is an active
+opportunity census with no memory replacement and no speed measurement. No BUD-memory
+pass, broad BUD recognition percentage or ANPU throughput gain is claimed yet.
+
+### Verification of the retained census changes
+
+The final frozen executable passes **497 Redpiler tests, zero failures, 33 ignored**
+in 149.27 seconds. This includes the existing independent-data/update, BUD boundary,
+Rilax storage and counter regressions. The ANPU labeled census was explicitly run
+despite its ignored-by-default status; its per-actor totals match Graph's counters
+and all 896 frozen memory positions map to actors. Workspace checking passes with
+the two existing fixed-classic test-adapter dead-code warnings. Owned Rust formatting
+and whitespace checks pass. Logs: `target/classic-stage3-final-suite.log`,
+`target/classic-stage3-final-check.log`, and
+`target/anpu-memory-cell-opportunity-labeled.log`.
+
+A broader `bud_` test filter also exposed an existing stale assertion outside the
+Redpiler suite: `redstone::piston::tests::bud_reference::anpu_cannot_bypass_compiled_graph_admission`
+expects ANPU compilation to fail, but the current graph admits it. That run had ten
+passes, one failure and two ignored tests (`target/bud-memory-existing-contracts.log`).
+No admission rule or that test was changed in this work. The earlier three transient
+instant-layer suite failures were resolved by concurrent work before the final run.

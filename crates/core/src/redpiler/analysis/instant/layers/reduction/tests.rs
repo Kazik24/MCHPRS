@@ -41,6 +41,7 @@ fn reduction_keeps_ordered_duplicate_outputs_and_reset_acceptance_but_drops_dead
             LayerRoot::StationaryEntry,
             LayerRoot::Output(0),
             LayerRoot::Output(1),
+            LayerRoot::Requested { layer: 0, occurrence: 0 },
             LayerRoot::Accepted { layer: 0, occurrence: 0 }
         ]
     );

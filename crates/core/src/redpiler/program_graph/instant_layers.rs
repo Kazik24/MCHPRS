@@ -43,6 +43,8 @@ pub(crate) struct LayeredRegion {
     pub(crate) inputs: Box<[LayerInput]>,
     /// These catalog output rows remain externally observable effects or values.
     pub(crate) outputs: Box<[LayerOutput]>,
+    /// These geometry observation ports keep their original Graph readers and capture times.
+    pub(crate) graph_outputs: Box<[u32]>,
     /// These predicates expose the selected token's source vacancy after this finite wave.
     pub(crate) resource_outputs: Box<[LayerResourceOutput]>,
     /// These original callbacks remain ordinary Graph lifecycle work outside this wave.
@@ -82,6 +84,13 @@ pub(crate) enum LayerInputSource {
         port: u32,
         /// This identifies the original route and delivery ordinal of the event.
         occurrence: RouteOccurrence,
+    },
+    /// This reads neighboring state through an explicit original input guard boundary.
+    BoundaryState {
+        /// This indexes the catalog input port that declares the external state read.
+        port: u32,
+        /// This identifies the authoritative outside actor or resource predicate.
+        test: StateTest,
     },
     /// This is positive strength after the original link guard and attenuation are applied.
     PowerContribution {

@@ -151,6 +151,82 @@ fn wrong_observer_power_face_or_missing_change_callback_declines_recognition() {
 }
 
 #[test]
+fn reset_provenance_follows_real_observer_faces_and_main_power() {
+    use mchprs_blocks::blocks::{Block, RedstoneObserver, RedstonePiston};
+    for facing in [
+        BlockFace::Top,
+        BlockFace::Bottom,
+        BlockFace::North,
+        BlockFace::South,
+        BlockFace::East,
+        BlockFace::West,
+    ] {
+        let base = BlockPos::new(50, 50, 50);
+        let observer_position = base.offset(facing.opposite());
+        let cap = observer_position.offset(facing.opposite());
+        let side = if matches!(facing, BlockFace::Top | BlockFace::Bottom) {
+            BlockFace::East
+        } else {
+            BlockFace::Bottom
+        };
+        let receiver = cap.offset(side);
+        let piston_facing = if matches!(facing, BlockFace::North | BlockFace::South) {
+            BlockFace::East
+        } else {
+            BlockFace::South
+        };
+        let piston = RedstonePiston {
+            facing: piston_facing.into(),
+            sticky: true,
+            extended: true,
+        };
+        let mut world = empty_world();
+        for position in [base, receiver] {
+            world.set_block(position, Block::Piston { piston });
+            world.set_block(position.offset(piston_facing), Block::PistonHead { head: piston.into() });
+            world.set_block(position.offset(piston_facing).offset(piston_facing), Block::RedstoneBlock);
+        }
+        world.set_block(
+            observer_position,
+            Block::Observer {
+                observer: RedstoneObserver {
+                    facing: facing.into(),
+                    powered: false,
+                },
+            },
+        );
+        world.set_block(cap, Block::Stone {});
+        let mut graph = rich::prepare(
+            &world,
+            (base - BlockPos::new(6, 6, 6), base + BlockPos::new(6, 6, 6)),
+            vec![],
+            &TaskMonitor::default(),
+            AnalysisLimits::default(),
+        )
+        .unwrap()
+        .graph;
+        let actor = PistonId::new(graph.pistons.iter().position(|actor| actor.position == receiver).unwrap() as u32);
+        let node = graph.pistons[actor.index()].node;
+        // Leave only Main so a coincidental QC path cannot hide the channel regression.
+        graph.power_links.retain(|link| {
+            link.to
+                != PowerTarget::Input {
+                    node,
+                    port: InputPort::Quasi,
+                }
+        });
+        let mechanisms = discover_mechanisms(&graph, &TaskMonitor::default()).unwrap();
+        let mechanism = mechanisms
+            .iter()
+            .find(|mechanism| mechanism.piston == actor)
+            .unwrap_or_else(|| panic!("{facing:?} reset must reach the real Main conductor"));
+        assert_eq!(graph.nodes[mechanism.observer.index()].position, Some(observer_position));
+        assert_eq!(graph.pistons[mechanism.watched_actor.index()].position, base);
+        assert_ne!(mechanism.piston, mechanism.watched_actor, "a shared reset keeps both identities");
+    }
+}
+
+#[test]
 fn cancellation_and_disabled_pipeline_leave_the_graph_unchanged() {
     let original = fixture(None, BlockPos::new(40, 30, 40));
     let mut graph = original.clone();

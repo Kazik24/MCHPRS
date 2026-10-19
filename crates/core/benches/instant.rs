@@ -9,6 +9,8 @@ use anyhow::{Context, Result, bail, ensure};
 use cpu_support::{load_manifest as load, manifest_origin as origin, manifest_position as position};
 #[path = "support/graph_short.rs"]
 mod graph_short;
+#[path = "support/instant_wave.rs"]
+mod instant_wave;
 use mchprs_blocks::{
     BlockColorVariant, BlockDirection, BlockFace, BlockPos,
     blocks::{Block, LeverFace, RedstoneRepeater},
@@ -115,6 +117,9 @@ fn check_workloads() {
 }
 
 fn main() -> Result<()> {
+    if std::env::args().any(|arg| arg == "--kernel-wave") {
+        return instant_wave::run();
+    }
     if std::env::args().any(|arg| arg == "--graph-short" || arg == "--admission-smoke") {
         return graph_short::main();
     }

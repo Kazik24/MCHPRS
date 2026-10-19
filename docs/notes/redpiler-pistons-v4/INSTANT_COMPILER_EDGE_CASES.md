@@ -1,17 +1,19 @@
 # Instant compiler: edge cases and correctness obligations
 
-> Archive status, 2026-10-18: C/LLVM and finite/symbolic synthesis source has been removed.
-> Recover the last combined source from commit `576ae3137492dfa3dcacaf787ac6c9e482840d6e`.
-> Historical results and plans below remain preserved; see
-> [algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for current behavior and restoration details.
+This register remains active for the layered instant compiler, including E51-E55.
+Cases involving the removed C/LLVM and finite/symbolic implementations remain historical
+evidence. See [the current state](CURRENT_STATE.md) for implementation status and
+[algorithms and recovery](ALGORITHMS_AND_RECOVERY.md) for removed-source commits.
 
 This is the single running register for edge cases discovered while developing the
-boundary-driven instant compiler. Add new cases here instead of scattering them across
+instant compilers. Add new cases here instead of scattering them across
 agent reports. Keep the smallest example, its observable consequence, the compiler rule and
 the evidence. A plausible risk is not a confirmed fixture failure; label it accordingly.
 
 The active design and acceptance criteria are in
-[BOUNDARY_DRIVEN_INSTANT_COMPILER.md](BOUNDARY_DRIVEN_INSTANT_COMPILER.md).
+[the layered compiler plan](layered-instant-compiler/README.md). The
+[previous boundary-driven design](../../../scraps/docs/redpiler-pistons-v4/BOUNDARY_DRIVEN_INSTANT_COMPILER.md)
+is preserved as historical evidence.
 
 ## Current assumptions
 
@@ -986,6 +988,50 @@ admission obligation before this certificate can be reused after reset.
 **Evidence/status:** the current parsed examples compare reduced roots to the construction
 arena; ordinary Graph/native reset replay is a separate check. Public execution remains
 unchanged, with zero new layer-kernel coverage. No speedup is inferred from expression counts.
+
+### E56. Unsupported neighbors must not turn local admission into whole-device execution
+
+**Situation:** BubbleSort has 15,200 locally admitted actors, but joining every
+observation/reset dependency creates one component. An unsupported payload-reset
+lifecycle then rejects the whole component. Splitting that component exposes
+new boundary power, geometry and callback obligations.
+
+**Required rule:** retain all original ports when cutting composition. A reset
+clock, geometry read or unsupported neighboring owner may remain on Graph; it
+cannot be silently deleted. Only complete shared-payload groups may be selected.
+The existing route/arrival certificate and actual FIFO check still decide whether
+the resulting candidate can execute. Local admission and static partition counts
+are not kernel invocations.
+
+**Evidence/status:** `unsupported_owners_and_observations_are_cuts_without_erasing_port_rows`
+checks the partition rule. The ignored CPU proof audit distinguishes full-owner
+attempts from its bounded external-wire sample. Full-sort baseline and subsequent
+proof results are recorded in [CPU_BUBBLESORT_KERNEL_PROOFS.md](CPU_BUBBLESORT_KERNEL_PROOFS.md).
+
+### E57. Alternative entries, shared tokens and retained outside work
+
+**Situation:** an ordinary instant may have several potential entry routes,
+including neighboring restoration routes. Its payload can power outside dust;
+nearby captured walks can read the changing contacts. Rejecting the entire cell
+because one entry or observation is unsupported also rejects otherwise usable
+computation. Treating all entries as simultaneously active can choose a wrong
+shared-payload winner.
+
+**Required rule:** select the actual entry route and verify its requested-action
+FIFO before mutation. Mixed-route multi-actor queues retain Graph. Conditional
+transfers must use one authoritative resource store. A singleton may replace the
+already-popped action without consuming unrelated queued actions; its unchanged
+outside callbacks append behind that queue normally. Geometry observations retain
+their original live/captured readers, not a Boolean final-value substitute.
+Neighboring state reads require an explicit matching input guard port. Captured
+entry routes and unproven multi-actor feedback remain general Graph work.
+
+**Evidence/status:** `instant_layer_entry/interfaces.rs` tests either entry route,
+both shared-token contenders and mixed-entry histories, a power output to dust,
+a wired observer/QC reset, and independent queued singleton actions in both
+orders. Each compares state and future work against the interpreter through reset.
+The CPU replay and remaining coverage limits are recorded in
+[CPU_BUBBLESORT_KERNEL_PROOFS.md](CPU_BUBBLESORT_KERNEL_PROOFS.md).
 
 ## Updating this register
 

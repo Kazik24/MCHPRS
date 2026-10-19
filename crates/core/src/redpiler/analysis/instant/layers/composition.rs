@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 use std::collections::VecDeque;
 
 mod connected;
-mod corridors;
+pub(super) mod corridors;
 pub(super) use connected::compile_connected;
 
 struct Request {
@@ -144,6 +144,7 @@ impl<'a> Composition<'a> {
     }
 
     /// The event is already qualified; its source order must be established by the caller.
+    #[cfg(test)]
     pub(super) fn sample(&mut self, cell: u32, actor: PistonId, event: LayerExprId, causes: Box<[RouteOccurrence]>) -> Result<(), String> {
         self.sample_after(cell, actor, event, causes, &FxHashSet::default())
     }

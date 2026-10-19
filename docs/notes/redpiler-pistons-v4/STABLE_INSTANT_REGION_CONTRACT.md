@@ -35,7 +35,7 @@ Internal work can become Boolean/strength expressions and direct memory transiti
 
 Before replacing execution, certify that every read comes from owned memory or a frozen input, all mutable shared payloads are enclosed, and boundary effects preserve outside observation and continuation. Derived feedback through an external repeater/comparator must be included or handled explicitly; it cannot be frozen merely because that component is outside the current ownership group. External observers of an internal wire can make its intermediate values boundary effects. If closure or a transition cannot be proven, retain general ordered execution for that part.
 
-Current regions remain the analysis/program boundary. The first bounded closed-selection transition kernel now covers ADDER1BIT; see [CLOSED_INSTANT_MACHINE.md](CLOSED_INSTANT_MACHINE.md). Larger composed regions still use ordered proxies. Composition alone does not remove internal notifications, reset work or Turbo walks.
+Current regions remain the analysis/program boundary. The first bounded closed-selection transition kernel now covers ADDER1BIT; see [CLOSED_INSTANT_MACHINE.md](../../../scraps/docs/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md). Larger composed regions still use ordered proxies. Composition alone does not remove internal notifications, reset work or Turbo walks.
 
 ## Algorithm and representation
 
@@ -127,4 +127,4 @@ Raw reports are `target/stable-adder1.json`, `target/stable-adder11.json` and `t
 
 ## Remaining contraction
 
-The first bounded implementation is documented in [CLOSED_INSTANT_MACHINE.md](CLOSED_INSTANT_MACHINE.md). Extending it to reusable subregions requires a certified region transition program absorbing internal wire/reset work. Its certificate must identify sampled outputs, retained resource/memory transitions and future obligations. It may preserve a small causal schedule rather than every native notification. Shared-resource arbitration and the counterexample above must be represented before deleting their machinery. This batch creates an inspectable boundary/program without a second state owner.
+The first bounded implementation is documented in [CLOSED_INSTANT_MACHINE.md](../../../scraps/docs/redpiler-pistons-v4/CLOSED_INSTANT_MACHINE.md). Extending it to reusable subregions requires a certified region transition program absorbing internal wire/reset work. Its certificate must identify sampled outputs, retained resource/memory transitions and future obligations. It may preserve a small causal schedule rather than every native notification. Shared-resource arbitration and the counterexample above must be represented before deleting their machinery. This batch creates an inspectable boundary/program without a second state owner.

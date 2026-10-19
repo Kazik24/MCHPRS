@@ -142,6 +142,14 @@ fn execute(
         )
         .with_context(|| format!("O{graph_tier} Graph compile failed"))?;
     let graph_compile_seconds = compile_started.elapsed().as_secs_f64();
+    let stats = compiler.stats().unwrap();
+    let compile_statistics = json!({
+        "total_seconds":stats.total_duration.as_secs_f64(),
+        "graph_seconds":stats.graph.duration.as_secs_f64(),
+        "passes":stats.graph.passes.iter().map(|pass| json!({
+            "name":pass.name,"enabled":pass.enabled,"seconds":pass.duration.as_secs_f64()
+        })).collect::<Vec<_>>()
+    });
 
     let activation_started = Instant::now();
     let start_position = cpu.origin + cpu.start;
@@ -181,6 +189,7 @@ fn execute(
     }
     let active_checkpoint = support::checkpoint(&world, ticks, &chat);
     let execution_counts = compiler.graph_execution_counts().unwrap();
+    let execution_coverage = compiler.graph_execution_coverage().unwrap();
     ensure!(execution_counts.ticks == u64::from(ticks), "Graph tick count did not advance");
     ensure!(execution_counts.scheduled_ticks > 0, "CPU start produced no scheduled Graph work");
     ensure!(
@@ -202,6 +211,7 @@ fn execute(
             "executor": format!("O{graph_tier}-Graph"),
             "setup_seconds": setup_seconds,
             "graph_compile_seconds": graph_compile_seconds,
+            "compile_statistics": compile_statistics,
             "activation_seconds": activation_seconds,
             "tick_seconds": tick_time.as_secs_f64(),
             "flush_seconds": flush_time.as_secs_f64(),
@@ -209,13 +219,16 @@ fn execute(
             "active_ram_sha256": active_ram_sha256,
             "active_ram_samples": active_ram.len(),
             "active_ram_changes": active_ram.windows(2).filter(|pair| pair[0] != pair[1]).count(),
+            "final_sort_words": active_ram.last().map(|words| &words[48..]),
+            "instant_kernel_nodes": execution_coverage.instant_kernel_nodes,
             "active_checkpoint": active_checkpoint,
             "reset_checkpoint": reset_checkpoint,
             "continuation_ram_sha256": hash(&continuation_ram)?,
             "continuation_checkpoint": continuation_checkpoint,
             "graph_execution_counts": json!({"ticks":execution_counts.ticks,"scheduled_ticks":execution_counts.scheduled_ticks,
                 "callbacks":execution_counts.callbacks,"wire_walks":execution_counts.wire_walks,"piston_samples":execution_counts.piston_samples,
-                "piston_actions":execution_counts.piston_actions,"classic_net_invocations":execution_counts.classic_net_invocations,
+                "piston_actions":execution_counts.piston_actions,"instant_kernel_invocations":execution_counts.instant_kernel_invocations,
+                "classic_net_invocations":execution_counts.classic_net_invocations,
                 "classic_receiver_ops":execution_counts.classic_receiver_ops}),
         }),
         active_ram,

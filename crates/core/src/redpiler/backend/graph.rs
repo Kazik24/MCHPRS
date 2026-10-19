@@ -10,12 +10,16 @@ mod unchecked_classic_anpu;
 #[cfg(test)]
 #[path = "graph/tests/chungus_census.rs"]
 mod chungus_census;
+#[cfg(test)]
+#[path = "graph/tests/memory_cells.rs"]
+mod memory_cell_tests;
 pub(crate) mod classic;
 #[cfg(test)]
 #[path = "graph/tests/fixed_point_cpu.rs"]
 mod fixed_point_cpu_tests;
 mod instant;
 mod instant_proxy;
+mod instant_kernel;
 mod pistons;
 mod power;
 mod projection;
@@ -218,6 +222,10 @@ pub(crate) struct TestRecorder {
     unchecked_classic: Option<Arc<unchecked_classic_anpu::UncheckedProgram>>,
     wire_tapes: Option<Arc<unchecked_classic_anpu::TapeProgram>>,
     fixed_classic_counts: fixed_classic::FixedClassicCounts,
+    /// Optional per-wire seed calls/changes and frontier visits/changes for the active-net census.
+    fixed_classic_activity: Vec<[u64; 4]>,
+    /// Optional per-piston samples/actions for measuring prospective memory-cell ownership.
+    memory_cell_activity: Vec<[u64; 2]>,
 }
 
 #[cfg(test)]
@@ -298,6 +306,8 @@ pub(crate) struct GraphBackend {
     classic_proof: Option<classic::ProofRecorder>,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
+    /// This holds reusable wave scratch and the current synchronous route replacement.
+    instant_kernel: instant_kernel::KernelExecution,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -635,6 +645,7 @@ impl GraphBackend {
         let projected_pistons = state.pistons.to_vec();
         let projected_resources = state.resources.to_vec();
         let fixed_classic = program.fixed_classic().cloned();
+        let instant_kernel = instant_kernel::KernelExecution::new(&program);
         Ok(Self {
             program,
             state,
@@ -644,6 +655,7 @@ impl GraphBackend {
             classic_proof: None,
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
+            instant_kernel,
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
@@ -1676,6 +1688,11 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
+        if let Some(kernel) = self.instant_kernel.active.clone()
+            && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
+        {
+            return self.deliver_kernel_route(&kernel.routes[index]);
+        }
         if let Some(binding) = self.program.instant_route_binding(route) {
             return self.deliver_instant_route(route, binding, captured);
         }
@@ -1737,7 +1754,7 @@ impl GraphBackend {
                         kind: "classic proof piston callback",
                     });
                 }
-                self.sample_piston(piston)?;
+                self.sample_piston_from(piston, route)?;
             }
             CallbackReceiver::Contact(_) => {
                 if self.classic_proof.is_some() {

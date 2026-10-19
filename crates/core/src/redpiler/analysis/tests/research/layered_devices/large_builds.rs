@@ -14,6 +14,20 @@ fn pm1_layers_preserve_mixed_devices_and_native_boot_history() {
 }
 
 #[test]
+#[ignore = "explicit previously corrected PM1 fixture, layer census and early instructions"]
+fn pm1_corrected_layers_and_native_boot_history_match() {
+    check_cpu(
+        cpus::Cpu {
+            name: "pm1_corrected",
+            schematic: "PM1_SORT_FIXED.schem",
+            sha256: "ad68a0160990c72612c0105802fade337758de127dcdbd4cc1a195059ad2d893",
+            ..cpus::CPUS[0]
+        },
+        512,
+    );
+}
+
+#[test]
 #[ignore = "explicit fresh mixed PM1 save, layer census, boot and early instructions"]
 fn pm1_fresh_layers_and_native_boot_history_match() {
     // The documented fresh save translates the old control by (-31,+32,-3).
@@ -92,7 +106,7 @@ fn check_cpu(cpu: cpus::Cpu, active_ticks: u32) {
     let lowered = prepared.lower(&monitor).unwrap();
     let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
     backend.set_test_recording(false);
-    assert_eq!(backend.execution_coverage().instant_kernel_nodes, 0);
+    report["installed_kernel_nodes"] = json!(backend.execution_coverage().instant_kernel_nodes);
     assert_eq!(backend.execution_coverage().native_nodes, 0);
     project(&backend, &mut projected);
     pc_counter_contract::compare_checkpoint(&native, &projected, bounds, cpu.name);
@@ -132,7 +146,7 @@ fn check_cpu(cpu: cpus::Cpu, active_ticks: u32) {
     println!("{}: {active_ticks} active native tick pairs and 16 handoff ticks passed", cpu.name);
 }
 
-fn load_cpu(cpu: cpus::Cpu) -> (PlotWorld, (BlockPos, BlockPos), Value) {
+pub(super) fn load_cpu(cpu: cpus::Cpu) -> (PlotWorld, (BlockPos, BlockPos), Value) {
     // Reuse the frozen CPU loader, including BubbleSort's load/reset preparation.
     let mut world = cpus::load_cpu(cpu);
     let bytes = std::fs::read(root().join("test_data").join(cpu.schematic)).unwrap();

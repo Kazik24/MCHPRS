@@ -139,6 +139,10 @@ impl GraphBackend {
             _ => unreachable!("fixed wire seed received a gate"),
         };
         let wire_plan = &program.wires[wire_index];
+        #[cfg(test)]
+        if let Some(activity) = self.test_recorder.fixed_classic_activity.get_mut(wire_index) {
+            activity[0] += 1;
+        }
         let mut wire = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Wire(wire) => Some(wire),
@@ -148,6 +152,10 @@ impl GraphBackend {
         let power = self.fixed_classic_seed_power(program, wire_plan);
         if wire.power == power {
             return Ok(());
+        }
+        #[cfg(test)]
+        if let Some(activity) = self.test_recorder.fixed_classic_activity.get_mut(wire_index) {
+            activity[1] += 1;
         }
         // Only a changing seed enters recursive execution and needs an owned handle.
         let program = self.fixed_classic.clone().unwrap();
@@ -511,6 +519,10 @@ impl GraphBackend {
         };
         let wire_plan = &program.wires[wire_index];
         let root_slot = scratch.capture(self, program, wire_plan.root).expect("wire root is a captured wire site");
+        #[cfg(test)]
+        if let Some(activity) = self.test_recorder.fixed_classic_activity.get_mut(wire_index) {
+            activity[2] += 1;
+        }
         scratch.sites[root_slot].visited_wire = true;
         let neighbors = self.fixed_classic_identify_neighbors(program, wire_index, scratch);
         let FixedCapture::Wire(mut wire) = scratch.sites[root_slot].capture else {
@@ -519,6 +531,10 @@ impl GraphBackend {
         let power = self.fixed_classic_turbo_power(program, wire_plan, scratch, neighbors);
         if wire.power == power {
             return Ok(());
+        }
+        #[cfg(test)]
+        if let Some(activity) = self.test_recorder.fixed_classic_activity.get_mut(wire_index) {
+            activity[3] += 1;
         }
         wire.power = power;
         scratch.sites[root_slot].capture = FixedCapture::Wire(wire);

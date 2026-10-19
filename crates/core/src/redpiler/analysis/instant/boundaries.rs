@@ -174,7 +174,9 @@ pub(crate) fn infer_boundaries(graph: &CompileGraph, monitor: &TaskMonitor) -> R
     let mut resets = Vec::new();
     for (cell, contract) in discovery.cells.iter().enumerate() {
         for use_ in contract.uses.iter() {
-            resets.push((use_.reset, cell));
+            if let Some(reset) = use_.reset.observer() {
+                resets.push((reset, cell));
+            }
         }
     }
     let mut owners = bind_owners(graph, actors, resources, contacts, &resets);
