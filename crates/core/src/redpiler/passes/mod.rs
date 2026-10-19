@@ -10,6 +10,7 @@ pub(crate) mod compile_instant_resets;
 pub(crate) mod compile_mixed_classic;
 pub(crate) mod compile_wire_callbacks;
 pub(crate) mod compile_wire_hops;
+pub(crate) mod compile_wire_shapes;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_boundaries;
 pub(crate) mod identify_instant_regions;
@@ -306,10 +307,11 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
         (5, Pass::rewrite(coalesce_delayed_updates::CoalesceDelayedUpdates)),
     ];
-    let plans: [(usize, Pass); 9] = [
+    let plans: [(usize, Pass); 10] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Pass::build(contract_dust_paths::ContractDustPaths)),
         (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
+        (3, Pass::build(compile_wire_shapes::CompileWireShapes)),
         (2, Pass::build(compile_wire_hops::CompileWireHops)),
         (2, Pass::build(compile_wire_callbacks::CompileWireCallbacks)),
         (3, Pass::build(compile_instant_resets::CompileInstantResets)),

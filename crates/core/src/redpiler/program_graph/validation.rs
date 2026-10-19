@@ -45,7 +45,7 @@ impl CircuitDraft {
                 self.validate_classic_programs(monitor)?;
                 Ok(None)
             }
-            PlanChange::TurboCallbacks | PlanChange::WireQueries | PlanChange::WireCallbacks | PlanChange::WireHops => {
+            PlanChange::TurboCallbacks | PlanChange::WireQueries | PlanChange::WireShapes | PlanChange::WireCallbacks | PlanChange::WireHops => {
                 // Callback inference uses Turbo indices; fixed instructions consume wire facts.
                 self.validate_wire_execution_plans()?;
                 self.validate_classic_programs(monitor)?;
@@ -204,6 +204,11 @@ impl CircuitDraft {
         self.validate_dust_paths()?;
         // Certificate inference follows contact variants, so their references must be valid first.
         for (index, wire) in self.wires.iter().enumerate() {
+            if let Some(shape) = wire.execution.shape
+                && Some(shape) != WireShape::infer(self, wire)
+            {
+                return Err(GraphBuildError::InvalidWireQueryFacts { wire: index });
+            }
             if let Some(selection) = wire.execution.callback_selection
                 && (!selection.valid() || Some(selection) != WireCallbackSelection::infer(self, index))
             {

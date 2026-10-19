@@ -685,18 +685,8 @@ impl GraphBackend {
             FixedClassicKind::Comparator { mode, facing_diode } => (mode, facing_diode),
             _ => unreachable!(),
         };
-        let strength = match mode {
-            ComparatorMode::Compare if input >= side => input,
-            ComparatorMode::Compare => 0,
-            ComparatorMode::Subtract => input.saturating_sub(side),
-        };
-        let powered = if input == 0 {
-            false
-        } else if input > side {
-            true
-        } else {
-            input == side && mode == ComparatorMode::Compare
-        };
+        let strength = crate::redpiler::power_rules::comparator_output_strength(input, side, mode);
+        let powered = crate::redpiler::power_rules::comparator_is_powered(input, side, mode);
         let current = self.node_state(node);
         if strength != current.output_strength || powered != current.powered {
             self.schedule(node, 1, if facing_diode { TickPriority::High } else { TickPriority::Normal });
@@ -707,20 +697,10 @@ impl GraphBackend {
     fn fixed_classic_tick_comparator(&mut self, node: NodeId, mode: ComparatorMode, _facing_diode: bool) -> Result<(), GraphExecutionError> {
         let input = self.fixed_classic_comparator_input(node);
         let side = self.input_strength(node, InputPort::Side);
-        let strength = match mode {
-            ComparatorMode::Compare if input >= side => input,
-            ComparatorMode::Compare => 0,
-            ComparatorMode::Subtract => input.saturating_sub(side),
-        };
+        let strength = crate::redpiler::power_rules::comparator_output_strength(input, side, mode);
         let current = self.node_state(node);
         if strength != current.output_strength || mode == ComparatorMode::Compare {
-            let powered = if input == 0 {
-                false
-            } else if input > side {
-                true
-            } else {
-                input == side && mode == ComparatorMode::Compare
-            };
+            let powered = crate::redpiler::power_rules::comparator_is_powered(input, side, mode);
             self.set_node(node, powered, strength, None, false)?;
             self.fire_route(node)?;
         }

@@ -44,6 +44,7 @@ pub(crate) enum PlanOutput {
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
     WireQueries(Vec<Option<WireQueryFacts>>),
+    WireShapes(Vec<Option<crate::redpiler::program_graph::WireShape>>),
     WireCallbacks(Vec<Option<WireCallbackSelection>>),
     WireHops(Vec<Option<SiteId>>),
     InstantResets(Vec<(usize, InstantResetPlan)>),
@@ -73,6 +74,11 @@ impl PlanOutput {
             Self::WireQueries(facts) => {
                 for (wire, facts) in graph.wires.iter_mut().zip(facts) {
                     wire.execution.query_facts = facts;
+                }
+            }
+            Self::WireShapes(shapes) => {
+                for (wire, shape) in graph.wires.iter_mut().zip(shapes) {
+                    wire.execution.shape = shape;
                 }
             }
             Self::WireCallbacks(plans) => {
@@ -115,6 +121,7 @@ impl PlanOutput {
             Self::TurboCallbacks(_) => PlanChange::TurboCallbacks,
             Self::DustPaths(_) => PlanChange::DustPaths,
             Self::WireQueries(_) => PlanChange::WireQueries,
+            Self::WireShapes(_) => PlanChange::WireShapes,
             Self::WireCallbacks(_) => PlanChange::WireCallbacks,
             Self::WireHops(_) => PlanChange::WireHops,
             Self::InstantResets(_) => PlanChange::InstantResets,
@@ -126,6 +133,7 @@ impl PlanOutput {
     fn validate_shape(&self, graph: &CompileGraph) -> Result<(), GraphBuildError> {
         let aligned = match self {
             Self::WireQueries(rows) => Some(("wire query facts", rows.len())),
+            Self::WireShapes(rows) => Some(("wire shapes", rows.len())),
             Self::WireCallbacks(rows) => Some(("wire callback selection", rows.len())),
             Self::WireHops(rows) => Some(("wire hop roots", rows.len())),
             Self::TurboCallbacks(rows) if !rows.is_empty() => Some(("Turbo callback indices", rows.len())),

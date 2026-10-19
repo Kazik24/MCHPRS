@@ -1543,35 +1543,17 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Comparator { mode, .. }) => mode,
             _ => unreachable!(),
         };
-        match mode {
-            ComparatorMode::Compare => {
-                if input >= side {
-                    input
-                } else {
-                    0
-                }
-            }
-            ComparatorMode::Subtract => input.saturating_sub(side),
-        }
+        crate::redpiler::power_rules::comparator_output_strength(input, side, mode)
     }
 
     fn comparator_powered(&self, node: NodeId) -> bool {
         let input = self.comparator_input(node);
         let side = self.comparator_side(node);
-        if input == 0 {
-            false
-        } else if input > side {
-            true
-        } else {
-            input == side
-                && matches!(
-                    self.program.nodes()[node.index()].kind,
-                    CircuitNodeKind::Electrical(NodeType::Comparator {
-                        mode: ComparatorMode::Compare,
-                        ..
-                    })
-                )
-        }
+        let mode = match self.program.nodes()[node.index()].kind {
+            CircuitNodeKind::Electrical(NodeType::Comparator { mode, .. }) => mode,
+            _ => unreachable!(),
+        };
+        crate::redpiler::power_rules::comparator_is_powered(input, side, mode)
     }
 
     fn override_strength(&self, value: ComparatorOverride) -> u8 {

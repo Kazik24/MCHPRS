@@ -148,6 +148,10 @@ fn execute(
         "graph_seconds":stats.graph.duration.as_secs_f64(),
         "kernel_lowering_seconds":stats.graph.kernel_lowering_duration.as_secs_f64(),
         "program_lowering_seconds":stats.graph.program_lowering_duration.as_secs_f64(),
+        "preparation_tables":stats.graph.preparation_tables.iter().map(|table|json!({
+            "stage":table.stage,"table":table.table,"entries":table.entries,
+            "capacity":table.capacity,"estimated_bytes":table.estimated_bytes
+        })).collect::<Vec<_>>(),
         "passes":stats.graph.passes.iter().map(|pass| json!({
             "name":pass.name,"enabled":pass.enabled,"seconds":pass.duration.as_secs_f64(),
             "body_seconds":pass.duration.saturating_sub(pass.validation_duration).as_secs_f64(),

@@ -566,6 +566,7 @@ mod tests {
             (1, "index-turbo-callbacks"),
             (1, "contract-static-dust-paths"),
             (2, "specialize-wire-queries"),
+            (3, "compile-wire-shapes"),
             (2, "compile-wire-hops"),
             (2, "compile-wire-callbacks"),
             (3, "compile-instant-resets"),

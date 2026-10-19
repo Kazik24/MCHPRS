@@ -13,6 +13,7 @@ pub(crate) enum PlanChange {
     TurboCallbacks,
     DustPaths,
     WireQueries,
+    WireShapes,
     WireCallbacks,
     WireHops,
     InstantResets,
@@ -34,6 +35,8 @@ pub(crate) struct WireExecutionPlan {
     pub(crate) callback_selection: Option<WireCallbackSelection>,
     /// Checked fixed geometry removes repeated property resolution without caching power.
     pub(crate) query_facts: Option<WireQueryFacts>,
+    /// Proven raw shapes and regulated output bits across all contact variants; strength stays live.
+    pub(crate) shape: Option<WireShape>,
     /// This replaces a certified private reset cell's output walk with its exact two-wire transfer.
     pub(crate) instant_reset: Option<InstantResetPlan>,
     /// This binds the root for compiled hops; neighbors reuse canonical_neighbors.

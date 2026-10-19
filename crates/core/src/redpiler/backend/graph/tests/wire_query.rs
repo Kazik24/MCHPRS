@@ -278,6 +278,150 @@ fn changing_a_compiled_input_mask_invalidates_its_certificate() {
 }
 
 #[test]
+fn compiled_shapes_preserve_selectable_geometry_and_decline_changing_sides() {
+    let mut graph = query_graph();
+    let stone = profile(&mut graph, Block::Stone {}, true, false);
+    let air = profile(&mut graph, Block::Air, false, true);
+    let contact = ContactId::new(0);
+    let resource = ResourceId::new(0);
+    let enabled = GuardId::new(graph.guards.len() as u32);
+    graph.guards.push(Guard::State(StateTest::ResourceEnabled(resource)));
+    let disabled = GuardId::new(graph.guards.len() as u32);
+    graph.guards.push(Guard::Not(enabled));
+    let position = ROOT.offset(BlockFace::North);
+    let node = NodeId::new(graph.nodes.len() as u32);
+    graph.nodes.push(CircuitNodeDraft {
+        position: Some(position),
+        raw_state: None,
+        kind: CircuitNodeKind::Contact(contact),
+        state: ComponentState::Specialized,
+        output_route: None,
+    });
+    graph.contacts.push(ContactSpec {
+        node,
+        position,
+        variants: vec![
+            ContactVariant {
+                when: enabled,
+                profile: stone,
+                receiver: None,
+            },
+            ContactVariant {
+                when: disabled,
+                profile: air,
+                receiver: None,
+            },
+        ]
+        .into_boxed_slice(),
+    });
+    graph.resources.push(ResourceSpec {
+        material: stone,
+        contacts: vec![contact].into_boxed_slice(),
+    });
+    graph.initial_resources.push(ResourceState {
+        at: contact,
+        enabled: true,
+        revision: 0,
+    });
+    graph.sites.iter_mut().find(|site| site.position == position).unwrap().source = SiteSource::Contact(contact);
+    let root = graph
+        .wires
+        .iter()
+        .position(|wire| graph.nodes[wire.node.index()].position == Some(ROOT))
+        .unwrap();
+    let shape = WireShape::infer(&graph, &graph.wires[root]).expect("solid/air alternatives cannot change an empty side");
+    assert_eq!(WireQueryFacts::infer(&graph, &graph.wires[root]).raw_sides, None);
+    graph.wires[root].execution.shape = Some(shape);
+    let mut broken = graph.clone();
+    broken.wires[root].execution.shape.as_mut().unwrap().raw = shape.raw.map(|bits| bits ^ 1);
+    assert!(matches!(broken.validate(), Err(GraphBuildError::InvalidWireQueryFacts { .. })));
+    let monitor = TaskMonitor::default();
+    let entry = EntryState {
+        logical_tick: 0,
+        pending_ticks: vec![],
+    };
+    let options = crate::redpiler::CompilerOptions::default();
+    let context = passes::PassContext::new(&monitor, &options, &entry);
+    use passes::planning::PlanBuilder;
+    let pass = passes::compile_wire_shapes::CompileWireShapes;
+    let mut rerun = graph.clone();
+    pass.run(&mut rerun, &context).unwrap();
+    let saved = rerun.clone();
+    pass.run(&mut rerun, &context).unwrap();
+    assert_eq!(rerun, saved);
+    monitor.cancel();
+    assert!(pass.run(&mut rerun, &context).is_err());
+    assert_eq!(rerun, saved);
+    rerun.clear_execution_plans();
+    assert!(rerun.wires.iter().all(|wire| wire.execution.shape.is_none()));
+
+    assert_compiled_shape_matches_contact_states(graph.clone());
+    let mut regulated = graph.clone();
+    let redstone = profile(&mut regulated, Block::RedstoneBlock, true, false);
+    regulated.contacts[0].variants[0].profile = redstone;
+    regulated.resources[0].material = redstone;
+    let block = Block::RedstoneWire {
+        wire: RedstoneWire::default(),
+    };
+    let wire_profile = profile(&mut regulated, block, false, true);
+    set_constant_neighbor(&mut regulated, 20, wire_profile);
+    let line = WireShape::infer(&regulated, &regulated.wires[root]).unwrap();
+    assert!(line.raw.is_none(), "the redstone source changes its raw side when removed");
+    assert_eq!(line.emitted_known, 15, "regulation preserves every output direction");
+    regulated.wires[root].execution.shape = Some(line);
+    assert_compiled_shape_matches_contact_states(regulated);
+
+    let below = profile(&mut graph, block, false, true);
+    set_constant_neighbor(&mut graph, 17, below);
+    let changed = WireShape::infer(&graph, &graph.wires[root]).unwrap();
+    assert!(changed.raw.is_none(), "solid/air selection now changes the step-down connection");
+    assert!(
+        changed.emits(BlockDirection::North).is_none(),
+        "the changing output retains the general query"
+    );
+    assert!(graph.validate().is_err(), "changed dependencies invalidate the old shape");
+    graph.wires[root].execution.shape = Some(changed);
+    assert_compiled_shape_matches_contact_states(graph);
+}
+
+fn assert_compiled_shape_matches_contact_states(graph: CompileGraph) {
+    let mut backend = backend(graph);
+    let plan = root_plan(&backend);
+    let root = backend.component_sites[plan.node.index()].unwrap();
+    for enabled in [true, false, true] {
+        backend.state.resources[0].enabled = enabled;
+        for power in [0, 5, 15] {
+            for pattern in 0..81 {
+                let mut value = pattern;
+                let mut side = || {
+                    let side = RedstoneWireSide::from_id(value % 3);
+                    value /= 3;
+                    side
+                };
+                let held = RedstoneWire::new(side(), side(), side(), side(), power);
+                backend.state.components[plan.node.index()] = ComponentState::Wire(held);
+                let neighbors = plan.canonical_neighbors.map(|site| backend.site_block(site));
+                let expected = crate::redstone::wire::get_raw_sides_from_neighbors(held, &neighbors);
+                let actual = backend.raw_wire_sides(&plan, held);
+                assert_eq!(actual, expected);
+                let partial = plan.execution.shape.unwrap().raw_wire_from(held, |slot| backend.site_block(plan.canonical_neighbors[slot]));
+                assert_eq!(partial, expected, "partially evaluated raw-side formula");
+                assert_eq!(
+                    crate::redstone::wire::regulate_sides(held, actual),
+                    crate::redstone::wire::regulate_sides(held, expected)
+                );
+                let regulated = crate::redstone::wire::regulate_sides(held, expected);
+                for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
+                    let connected = !crate::redstone::wire::get_current_side(regulated, face.unwrap_direction().opposite()).is_none();
+                    assert_eq!(backend.site_power(root, PowerPort::Weak(face)), if connected { power } else { 0 });
+                    assert_eq!(backend.site_power(root, PowerPort::Strong(face)), if connected { power } else { 0 });
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn compiled_raw_sides_preserve_every_supplied_shape_and_held_power() {
     let mut backend = backend(query_graph());
     let plan = root_plan(&backend);

@@ -19,8 +19,6 @@ pub(super) struct ResolvedSiteView {
     pub(super) transparent: bool,
 }
 
-impl ResolvedSite {}
-
 impl GraphBackend {
     /// Capture only the values a queued hop owns; block geometry stays in the program.
     pub(super) fn observe_site(&self, site: SiteId) -> Option<ObservedSite> {
@@ -70,13 +68,7 @@ impl GraphBackend {
     fn guard_matches_using(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>, captured_site: Option<(SiteId, &ObservedSite)>) -> bool {
         match &self.program.guards()[id.index()] {
             Guard::Always => true,
-            Guard::State(test) => match *test {
-                StateTest::PistonExtended(piston) => self.state.pistons[piston.index()].extended,
-                StateTest::PistonHeadPresent(piston) => self.state.pistons[piston.index()].head_present,
-                StateTest::PistonAvailability { piston, is } => self.state.pistons[piston.index()].availability == is,
-                StateTest::ResourceAt { resource, contact } => self.state.resources[resource.index()].at == contact,
-                StateTest::ResourceEnabled(resource) => self.state.resources[resource.index()].enabled,
-            },
+            Guard::State(test) => self.state.matches(*test),
             Guard::Site { site, view, test } => {
                 let resolved = match view {
                     OperandView::Live => self.resolve_site(*site, None),
@@ -216,27 +208,14 @@ impl GraphBackend {
     }
 
     fn resolve_observed_site(&self, observed: &ObservedSite) -> Option<ResolvedSite> {
-        let block = if let Some(receiver) = observed.receiver {
-            match receiver {
-                CallbackReceiver::Component(node) => self.node_block_with_properties(node, &observed.properties),
-                _ => self.block_for_profile(observed.profile?)?,
-            }
-        } else {
-            self.block_for_profile(observed.profile?)?
-        };
-        let (solid, transparent) = if let Some(profile) = observed.profile {
-            let facts = self.program.profiles()[profile.index()];
-            (facts.solid, facts.transparent)
-        } else {
-            (block.is_solid(), block.is_transparent())
-        };
+        let view = self.resolve_observed_site_view(observed)?;
         Some(ResolvedSite {
-            profile: observed.profile,
-            receiver: observed.receiver,
-            block,
+            profile: view.profile,
+            receiver: view.receiver,
+            block: view.block,
             properties: observed.properties.clone(),
-            solid,
-            transparent,
+            solid: view.solid,
+            transparent: view.transparent,
         })
     }
 

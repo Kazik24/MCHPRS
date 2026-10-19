@@ -285,8 +285,14 @@ impl GraphBackend {
     }
 
     pub(super) fn raw_wire_sides(&self, plan: &WirePlan, wire: RedstoneWire) -> RedstoneWire {
+        if let Some(raw) = plan.execution.shape.and_then(|shape| shape.raw_wire(wire.power)) {
+            return raw;
+        }
         if let Some(raw) = plan.execution.query_facts.and_then(|facts| facts.raw_wire(wire.power)) {
             return raw;
+        }
+        if let Some(shape) = plan.execution.shape {
+            return shape.raw_wire_from(wire, |slot|self.site_block(plan.canonical_neighbors[slot]));
         }
         crate::redstone::wire::get_raw_sides_from_neighbor_read(wire, |slot| self.site_block(plan.canonical_neighbors[slot]))
     }

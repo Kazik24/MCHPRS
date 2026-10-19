@@ -43,6 +43,21 @@ fn bubblesort_instant_active_coverage_census() {
     let graph = &prepared.graph;
     let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
     let plan = graph.plans.instant.layers.as_ref().unwrap();
+    println!(
+        "invariant wire shapes: {}/{}; invariant output directions: {}",
+        graph
+            .wires
+            .iter()
+            .filter(|wire| wire.execution.shape.is_some_and(|shape| shape.raw.is_some()))
+            .count(),
+        graph.wires.len(),
+        graph
+            .wires
+            .iter()
+            .filter_map(|wire| wire.execution.shape)
+            .map(|shape| shape.emitted_known.count_ones())
+            .sum::<u32>()
+    );
     let mut family = vec!["unadmitted".to_owned(); graph.pistons.len()];
     let mut status = vec!["unadmitted".to_owned(); graph.pistons.len()];
     for cell in &catalog.cells {

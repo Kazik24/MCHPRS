@@ -1,8 +1,20 @@
-//! Shared directional emission rules; callers regulate variable dust geometry separately.
+//! Shared electrical rules; callers sample inputs and regulate variable dust geometry separately.
 use mchprs_blocks::{
     BlockFace,
-    blocks::{Block, RedstoneWireSide},
+    blocks::{Block, ComparatorMode, RedstoneWireSide},
 };
+
+pub(crate) fn comparator_output_strength(input: u8, side: u8, mode: ComparatorMode) -> u8 {
+    match mode {
+        ComparatorMode::Compare if input >= side => input,
+        ComparatorMode::Compare => 0,
+        ComparatorMode::Subtract => input.saturating_sub(side),
+    }
+}
+
+pub(crate) fn comparator_is_powered(input: u8, side: u8, mode: ComparatorMode) -> bool {
+    input > 0 && (input > side || (input == side && mode == ComparatorMode::Compare))
+}
 
 pub(crate) fn emits_weak(block: Block, side: BlockFace) -> bool {
     match block {

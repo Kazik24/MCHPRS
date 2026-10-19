@@ -92,7 +92,7 @@ pub(super) fn guard_children(guard: &Guard) -> &[GuardId] {
     }
 }
 
-fn table<T>(stage: &'static str, name: &'static str, entries: usize, capacity: usize, nested_bytes: usize) -> PreparationTableStatistics {
+fn table_memory_statistics<T>(stage: &'static str, name: &'static str, entries: usize, capacity: usize, nested_bytes: usize) -> PreparationTableStatistics {
     PreparationTableStatistics {
         stage,
         table: name.to_owned(),
@@ -100,6 +100,15 @@ fn table<T>(stage: &'static str, name: &'static str, entries: usize, capacity: u
         capacity,
         estimated_bytes: capacity.saturating_mul(std::mem::size_of::<T>()).saturating_add(nested_bytes),
     }
+}
+
+// A slice would lose the spare allocation that vector accounting must include.
+fn vector_table_statistics<T>(stage: &'static str, name: &'static str, values: &Vec<T>, nested_bytes: usize) -> PreparationTableStatistics {
+    table_memory_statistics::<T>(stage, name, values.len(), values.capacity(), nested_bytes)
+}
+
+fn slice_table_statistics<T>(stage: &'static str, name: &'static str, values: &[T], nested_bytes: usize) -> PreparationTableStatistics {
+    table_memory_statistics::<T>(stage, name, values.len(), values.len(), nested_bytes)
 }
 
 pub(super) fn record_tables(monitor: &TaskMonitor, stage: &'static str, tables: Vec<PreparationTableStatistics>) -> Result<(), AnalysisError> {
@@ -150,12 +159,12 @@ pub(super) fn geometry_table_statistics(stage: &'static str, graph: &geometry::G
         })
         .sum();
     vec![
-        table::<Profile>(stage, "profiles", graph.profiles.len(), graph.profiles.capacity(), 0),
-        table::<CircuitNodeDraft>(stage, "nodes", graph.nodes.len(), graph.nodes.capacity(), 0),
-        table::<GeometryContact>(stage, "contacts", graph.contacts.len(), graph.contacts.capacity(), contact_variant_bytes),
-        table::<GeometryPiston>(stage, "pistons", graph.pistons.len(), graph.pistons.capacity(), 0),
-        table::<GeometryResource>(stage, "resources", graph.resources.len(), graph.resources.capacity(), resource_bytes),
-        table::<GeometryObservation>(stage, "observations", graph.observations.len(), graph.observations.capacity(), 0),
+        vector_table_statistics(stage, "profiles", &graph.profiles, 0),
+        vector_table_statistics(stage, "nodes", &graph.nodes, 0),
+        vector_table_statistics(stage, "contacts", &graph.contacts, contact_variant_bytes),
+        vector_table_statistics(stage, "pistons", &graph.pistons, 0),
+        vector_table_statistics(stage, "resources", &graph.resources, resource_bytes),
+        vector_table_statistics(stage, "observations", &graph.observations, 0),
     ]
 }
 
@@ -167,37 +176,31 @@ pub(super) fn electrical_table_statistics(stage: &'static str, graph: &electrica
         .iter()
         .map(|contact| boxed_bytes::<crate::redpiler::program_graph::ContactVariant>(contact.variants.len()))
         .sum();
-    let wire_relation_count = graph.wire_relations.len();
     vec![
-        table::<CircuitNodeDraft>(stage, "nodes", graph.nodes.len(), graph.nodes.capacity(), 0),
-        table::<Profile>(stage, "profiles", graph.profiles.len(), graph.profiles.capacity(), 0),
-        table::<SiteSpec>(stage, "sites", graph.sites.len(), graph.sites.capacity(), 0),
-        table::<Guard>(
-            stage,
-            "guards",
-            graph.guards.len(),
-            graph.guards.capacity(),
-            guard_child_bytes(&graph.guards),
-        ),
-        table::<ContactSpec>(stage, "contacts", graph.contacts.len(), graph.contacts.capacity(), contact_variant_bytes),
-        table::<WirePlan>(stage, "wire plans", graph.wires.len(), graph.wires.capacity(), 0),
-        table::<electrical::ElectricalLink>(stage, "power links", graph.links.len(), graph.links.capacity(), 0),
-        table::<WireRelation>(stage, "wire relations", wire_relation_count, graph.wire_relations.capacity(), 0),
-        table::<ComparatorInputPlan>(stage, "comparator inputs", graph.comparators.len(), graph.comparators.capacity(), 0),
+        vector_table_statistics(stage, "nodes", &graph.nodes, 0),
+        vector_table_statistics(stage, "profiles", &graph.profiles, 0),
+        vector_table_statistics(stage, "sites", &graph.sites, 0),
+        vector_table_statistics(stage, "guards", &graph.guards, guard_child_bytes(&graph.guards)),
+        vector_table_statistics(stage, "contacts", &graph.contacts, contact_variant_bytes),
+        vector_table_statistics(stage, "wire plans", &graph.wires, 0),
+        vector_table_statistics(stage, "power links", &graph.links, 0),
+        vector_table_statistics(stage, "wire relations", &graph.wire_relations, 0),
+        vector_table_statistics(stage, "comparator inputs", &graph.comparators, 0),
     ]
 }
 
 pub(super) fn callback_table_statistics(graph: &callbacks::CallbackDraft) -> Vec<PreparationTableStatistics> {
     use crate::redpiler::program_graph::{LinkSpec, PistonSpec, Route, RouteDelivery};
+    let delivery_count = graph.routes.iter().map(|route| route.deliveries.len()).sum();
     vec![
-        table::<Route>("callbacks", "routes", graph.routes.len(), graph.routes.capacity(), 0),
-        table::<LinkSpec>("callbacks", "callback links", graph.links.len(), graph.links.capacity(), 0),
-        table::<PistonSpec>("callbacks", "piston specs", graph.pistons.len(), graph.pistons.capacity(), 0),
-        table::<RouteDelivery>(
+        vector_table_statistics("callbacks", "routes", &graph.routes, 0),
+        vector_table_statistics("callbacks", "callback links", &graph.links, 0),
+        vector_table_statistics("callbacks", "piston specs", &graph.pistons, 0),
+        table_memory_statistics::<RouteDelivery>(
             "callbacks",
             "deliveries",
-            graph.routes.iter().map(|route| route.deliveries.len()).sum(),
-            graph.routes.iter().map(|route| route.deliveries.len()).sum(),
+            delivery_count,
+            delivery_count,
             0,
         ),
     ]
@@ -215,6 +218,7 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         .iter()
         .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
         .sum();
+    let delivery_count = graph.routes.iter().map(|route| route.deliveries.len()).sum();
     let tables = vec![
         PreparationTableStatistics {
             stage: "lowering input",
@@ -228,12 +232,7 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
                 .as_ref()
                 .map_or(0, |program| program.inventory().estimated_bytes),
         },
-        table::<crate::redpiler::program_graph::ClassicNetPlan>(
-            "lowering input",
-            "classic certificates",
-            graph.plans.classic_nets.len(),
-            graph.plans.classic_nets.capacity(),
-            graph
+        vector_table_statistics("lowering input", "classic certificates", &graph.plans.classic_nets, graph
                 .plans
                 .classic_nets
                 .iter()
@@ -243,8 +242,7 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
                         + std::mem::size_of_val(net.entries.as_ref())
                         + net.entries.iter().map(|entry| std::mem::size_of_val(entry.ops.as_ref())).sum::<usize>()
                 })
-                .sum(),
-        ),
+                .sum()),
         PreparationTableStatistics {
             stage: "lowering input",
             table: "classic direct tables projected".into(),
@@ -256,118 +254,46 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
                 graph.routes.len(),
             ) + graph.plans.classic_nets.len(),
         },
-        table::<crate::redpiler::program_graph::InstantRegion>(
-            "lowering input",
-            "instant regions",
-            graph.plans.instant.regions.len(),
-            graph.plans.instant.regions.capacity(),
-            instant_region_bytes(&graph.plans.instant.regions),
-        ),
-        table::<crate::redpiler::program_graph::InstantProxy>(
-            "lowering input",
-            "instant proxies",
-            graph.plans.instant.proxies.len(),
-            graph.plans.instant.proxies.capacity(),
-            instant_proxy_bytes(&graph.plans.instant.proxies),
-        ),
-        table::<crate::redpiler::program_graph::CircuitNodeDraft>("lowering input", "nodes", graph.nodes.len(), graph.nodes.capacity(), 0),
-        table::<crate::redpiler::program_graph::LinkSpec>("lowering input", "callback links", graph.links.len(), graph.links.capacity(), 0),
-        table::<PowerLink>("lowering input", "power links", graph.power_links.len(), graph.power_links.capacity(), 0),
-        table::<crate::redpiler::program_graph::SiteSpec>("lowering input", "sites", graph.sites.len(), graph.sites.capacity(), 0),
-        table::<Guard>(
-            "lowering input",
-            "guards",
-            graph.guards.len(),
-            graph.guards.capacity(),
-            guard_child_bytes(&graph.guards),
-        ),
-        table::<crate::redpiler::program_graph::WireRelation>(
-            "lowering input",
-            "wire relations",
-            graph.wire_relations.len(),
-            graph.wire_relations.capacity(),
-            0,
-        ),
-        table::<crate::redpiler::program_graph::Route>("lowering input", "routes", graph.routes.len(), graph.routes.capacity(), 0),
-        table::<crate::redpiler::program_graph::RouteDelivery>(
+        vector_table_statistics("lowering input", "instant regions", &graph.plans.instant.regions, instant_region_bytes(&graph.plans.instant.regions)),
+        vector_table_statistics("lowering input", "instant proxies", &graph.plans.instant.proxies, instant_proxy_bytes(&graph.plans.instant.proxies)),
+        vector_table_statistics("lowering input", "nodes", &graph.nodes, 0),
+        vector_table_statistics("lowering input", "callback links", &graph.links, 0),
+        vector_table_statistics("lowering input", "power links", &graph.power_links, 0),
+        vector_table_statistics("lowering input", "sites", &graph.sites, 0),
+        vector_table_statistics("lowering input", "guards", &graph.guards, guard_child_bytes(&graph.guards)),
+        vector_table_statistics("lowering input", "wire relations", &graph.wire_relations, 0),
+        vector_table_statistics("lowering input", "routes", &graph.routes, 0),
+        table_memory_statistics::<crate::redpiler::program_graph::RouteDelivery>(
             "lowering input",
             "deliveries",
-            graph.routes.iter().map(|route| route.deliveries.len()).sum(),
-            graph.routes.iter().map(|route| route.deliveries.len()).sum(),
+            delivery_count,
+            delivery_count,
             0,
         ),
-        table::<NodeSpec>("lowering input", "lowered nodes projected", graph.nodes.len(), graph.nodes.len(), 0),
-        table::<Profile>(
-            "lowering input",
-            "profiles",
-            graph.profiles.len(),
-            graph.profiles.capacity(),
-            boxed_bytes::<Block>(graph.profiles.len()),
-        ),
-        table::<ContactSpec>(
-            "lowering input",
-            "contacts",
-            graph.contacts.len(),
-            graph.contacts.capacity(),
-            contact_variant_bytes,
-        ),
-        table::<WirePlan>("lowering input", "wire plans", graph.wires.len(), graph.wires.capacity(), 0),
-        table::<Option<TurboCallbackIndex>>(
-            "lowering input",
-            "Turbo callback indices",
-            graph.plans.turbo_callback_indices.len(),
-            graph.plans.turbo_callback_indices.capacity(),
-            0,
-        ),
-        table::<DustPathPlan>(
-            "lowering input",
-            "dust paths",
-            graph.plans.dust_paths.len(),
-            graph.plans.dust_paths.capacity(),
-            graph
+        table_memory_statistics::<NodeSpec>("lowering input", "lowered nodes projected", graph.nodes.len(), graph.nodes.len(), 0),
+        vector_table_statistics("lowering input", "profiles", &graph.profiles, boxed_bytes::<Block>(graph.profiles.len())),
+        vector_table_statistics("lowering input", "contacts", &graph.contacts, contact_variant_bytes),
+        vector_table_statistics("lowering input", "wire plans", &graph.wires, 0),
+        vector_table_statistics("lowering input", "Turbo callback indices", &graph.plans.turbo_callback_indices, 0),
+        vector_table_statistics("lowering input", "dust paths", &graph.plans.dust_paths, graph
                 .plans
                 .dust_paths
                 .iter()
                 .map(|path| boxed_bytes::<crate::redpiler::program_graph::NodeId>(path.wires.len()))
-                .sum(),
-        ),
-        table::<PistonSpec>("lowering input", "pistons", graph.pistons.len(), graph.pistons.capacity(), 0),
-        table::<ResourceSpec>(
-            "lowering input",
-            "resources",
-            graph.resources.len(),
-            graph.resources.capacity(),
-            resource_contact_bytes,
-        ),
-        table::<ComparatorInputPlan>(
-            "lowering input",
-            "comparator inputs",
-            graph.comparator_inputs.len(),
-            graph.comparator_inputs.capacity(),
-            0,
-        ),
-        table::<crate::redpiler::program_graph::PistonState>(
-            "lowering input",
-            "initial piston states",
-            graph.initial_pistons.len(),
-            graph.initial_pistons.capacity(),
-            0,
-        ),
-        table::<crate::redpiler::program_graph::ResourceState>(
-            "lowering input",
-            "initial resource states",
-            graph.initial_resources.len(),
-            graph.initial_resources.capacity(),
-            0,
-        ),
-        table::<(BlockPos, crate::redpiler::program_graph::NodeId)>(
+                .sum()),
+        vector_table_statistics("lowering input", "pistons", &graph.pistons, 0),
+        vector_table_statistics("lowering input", "resources", &graph.resources, resource_contact_bytes),
+        vector_table_statistics("lowering input", "comparator inputs", &graph.comparator_inputs, 0),
+        vector_table_statistics("lowering input", "initial piston states", &graph.initial_pistons, 0),
+        vector_table_statistics("lowering input", "initial resource states", &graph.initial_resources, 0),
+        table_memory_statistics::<(BlockPos, crate::redpiler::program_graph::NodeId)>(
             "lowering input",
             "position index projected",
             graph.nodes.iter().filter(|node| node.position.is_some()).count(),
             graph.nodes.len(),
             0,
         ),
-        table::<(crate::redpiler::program_graph::PowerTarget, std::ops::Range<usize>)>(
+        table_memory_statistics::<(crate::redpiler::program_graph::PowerTarget, std::ops::Range<usize>)>(
             "lowering input",
             "power index projected",
             graph.power_links.len(),
@@ -389,6 +315,7 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
 
 pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
+    let delivery_count = routes.iter().map(|route| route.deliveries.len()).sum();
     vec![
         PreparationTableStatistics {
             stage: "lowering",
@@ -411,118 +338,70 @@ pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
             capacity: program.classic().nets.len(),
             estimated_bytes: program.classic().nets.len(),
         },
-        table::<crate::redpiler::program_graph::InstantProxy>(
-            "lowering",
-            "instant proxies",
-            program.instant_proxies().len(),
-            program.instant_proxies().len(),
-            instant_proxy_bytes(program.instant_proxies()),
-        ),
-        table::<Option<(u32, u32)>>(
+        slice_table_statistics("lowering", "instant proxies", program.instant_proxies(), instant_proxy_bytes(program.instant_proxies())),
+        table_memory_statistics::<Option<(u32, u32)>>(
             "lowering",
             "instant route bindings",
             routes.len(),
             routes.len(),
             boxed_bytes::<Option<PistonId>>(program.resources().len()),
         ),
-        table::<NodeSpec>("lowering", "nodes", program.nodes().len(), program.nodes().len(), 0),
-        table::<PowerLink>("lowering", "power links", program.power_links().len(), program.power_links().len(), 0),
-        table::<ComparatorInputPlan>(
-            "lowering",
-            "comparator inputs",
-            program.comparator_inputs().len(),
-            program.comparator_inputs().len(),
-            0,
-        ),
-        table::<Profile>(
-            "lowering",
-            "profiles",
-            program.profiles().len(),
-            program.profiles().len(),
-            boxed_bytes::<Block>(program.profiles().len()),
-        ),
-        table::<ContactSpec>(
-            "lowering",
-            "contacts",
-            program.contacts().len(),
-            program.contacts().len(),
-            program
+        slice_table_statistics("lowering", "nodes", program.nodes(), 0),
+        slice_table_statistics("lowering", "power links", program.power_links(), 0),
+        slice_table_statistics("lowering", "comparator inputs", program.comparator_inputs(), 0),
+        slice_table_statistics("lowering", "profiles", program.profiles(), boxed_bytes::<Block>(program.profiles().len())),
+        slice_table_statistics("lowering", "contacts", program.contacts(), program
                 .contacts()
                 .iter()
                 .map(|contact| boxed_bytes::<crate::redpiler::program_graph::ContactVariant>(contact.variants.len()))
-                .sum(),
-        ),
-        table::<SiteSpec>("lowering", "sites", program.sites().len(), program.sites().len(), 0),
-        table::<Guard>(
-            "lowering",
-            "guards",
-            program.guards().len(),
-            program.guards().len(),
-            guard_child_bytes(program.guards()),
-        ),
-        table::<Route>("lowering", "routes", routes.len(), routes.len(), 0),
-        table::<RouteDelivery>(
+                .sum()),
+        slice_table_statistics("lowering", "sites", program.sites(), 0),
+        slice_table_statistics("lowering", "guards", program.guards(), guard_child_bytes(program.guards())),
+        slice_table_statistics("lowering", "routes", routes, 0),
+        table_memory_statistics::<RouteDelivery>(
             "lowering",
             "deliveries",
-            routes.iter().map(|route| route.deliveries.len()).sum(),
-            routes.iter().map(|route| route.deliveries.len()).sum(),
+            delivery_count,
+            delivery_count,
             0,
         ),
-        table::<WirePlan>("lowering", "wire plans", program.wires().len(), program.wires().len(), 0),
-        table::<Option<TurboCallbackIndex>>(
-            "lowering",
-            "Turbo callback indices",
-            program.turbo_callback_indices().len(),
-            program.turbo_callback_indices().len(),
-            0,
-        ),
-        table::<DustPathPlan>(
-            "lowering",
-            "dust paths",
-            program.dust_paths().len(),
-            program.dust_paths().len(),
-            program
+        slice_table_statistics("lowering", "wire plans", program.wires(), 0),
+        slice_table_statistics("lowering", "Turbo callback indices", program.turbo_callback_indices(), 0),
+        slice_table_statistics("lowering", "dust paths", program.dust_paths(), program
                 .dust_paths()
                 .iter()
                 .map(|path| boxed_bytes::<crate::redpiler::program_graph::NodeId>(path.wires.len()))
-                .sum(),
-        ),
-        table::<Option<DustPathId>>("lowering", "dust path wire bindings", program.wires().len(), program.wires().len(), 0),
-        table::<PistonSpec>("lowering", "pistons", program.pistons().len(), program.pistons().len(), 0),
-        table::<ResourceSpec>(
-            "lowering",
-            "resources",
-            program.resources().len(),
-            program.resources().len(),
-            program
+                .sum()),
+        table_memory_statistics::<Option<DustPathId>>("lowering", "dust path wire bindings", program.wires().len(), program.wires().len(), 0),
+        slice_table_statistics("lowering", "pistons", program.pistons(), 0),
+        slice_table_statistics("lowering", "resources", program.resources(), program
                 .resources()
                 .iter()
                 .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
-                .sum(),
-        ),
-        table::<Option<ResourceId>>("lowering", "piston lane bindings", program.pistons().len(), program.pistons().len(), 0),
-        table::<Option<u32>>(
+                .sum()),
+        table_memory_statistics::<Option<ResourceId>>("lowering", "piston lane bindings", program.pistons().len(), program.pistons().len(), 0),
+        table_memory_statistics::<Option<u32>>(
             "lowering",
             "component plan bindings",
             program.nodes().len().saturating_mul(3),
             program.nodes().len().saturating_mul(3),
             0,
         ),
-        table::<ResourceId>(
+        table_memory_statistics::<ResourceId>(
             "lowering",
             "resource contact candidates",
             program.resources().iter().map(|resource| resource.contacts.len()).sum(),
             program.resources().iter().map(|resource| resource.contacts.len()).sum(),
             boxed_bytes::<std::ops::Range<u32>>(program.contacts().len()),
         ),
-        table::<PistonId>(
+        table_memory_statistics::<PistonId>(
             "lowering",
             "base piston candidates",
             program.pistons().len(),
             program.pistons().len(),
             boxed_bytes::<std::ops::Range<u32>>(program.contacts().len()),
         ),
-        table::<PistonId>(
+        table_memory_statistics::<PistonId>(
             "lowering",
             "head piston candidates",
             program.pistons().len(),
@@ -574,7 +453,7 @@ mod tests {
             MAX_GRAPH_PREPARATION_BYTES + 1,
         ] {
             let monitor = TaskMonitor::default();
-            let result = record_tables(&monitor, "test", vec![table::<u8>("test", "bytes", estimated_bytes, estimated_bytes, 0)]);
+            let result = record_tables(&monitor, "test", vec![table_memory_statistics::<u8>("test", "bytes", estimated_bytes, estimated_bytes, 0)]);
 
             assert_eq!(monitor.preparation_stage_estimate("test"), estimated_bytes);
             if estimated_bytes <= MAX_GRAPH_PREPARATION_BYTES {

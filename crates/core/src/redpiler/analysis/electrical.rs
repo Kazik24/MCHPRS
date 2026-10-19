@@ -336,7 +336,7 @@ pub(crate) fn prepare_electrical(
             .iter()
             .enumerate()
             .map(|(variant_index, variant)| {
-                let when = variant_guard(variant.view, contact, id, geometry, &mut guard_table);
+                let when = variant_guard(variant.view, contact, id, &mut guard_table);
                 contact_guards.insert((id, variant_index), when);
                 let receiver = match variant.view {
                     GeometryView::PistonBase { piston, .. } | GeometryView::MovingPistonBase(piston) => Some(CallbackReceiver::PistonBase(piston)),
@@ -999,9 +999,20 @@ fn variant_guard(
     view: GeometryView,
     contact: &super::geometry::GeometryContact,
     contact_id: ContactId,
-    _geometry: &GeometryDraft,
     guards: &mut PreparationGuards,
 ) -> GuardId {
+    if view != GeometryView::Air {
+        return occupied_variant_guard(view, contact_id, guards);
+    }
+    let mut absent = Vec::new();
+    for variant in contact.variants.iter().filter(|variant| variant.view != GeometryView::Air) {
+        let selected = occupied_variant_guard(variant.view, contact_id, guards);
+        absent.push(not_guard(guards, selected));
+    }
+    join_guards(guards, &absent)
+}
+
+fn occupied_variant_guard(view: GeometryView, contact_id: ContactId, guards: &mut PreparationGuards) -> GuardId {
     match view {
         GeometryView::Fixed => push_guard(guards, Guard::Always),
         GeometryView::PistonBase { piston, extended } => stationary_base_guard(guards, piston, extended),
@@ -1034,47 +1045,7 @@ fn variant_guard(
             let enabled = push_guard(guards, Guard::State(StateTest::ResourceEnabled(resource)));
             join_guards(guards, &[at, enabled])
         }
-        GeometryView::Air => {
-            let mut absent = Vec::new();
-            for variant in contact.variants.iter().filter(|v| v.view != GeometryView::Air) {
-                let selected = match variant.view {
-                    GeometryView::PistonBase { piston, extended } => stationary_base_guard(guards, piston, extended),
-                    GeometryView::PistonHead(piston) => {
-                        let present = push_guard(guards, Guard::State(StateTest::PistonHeadPresent(piston)));
-                        let available = [
-                            crate::redpiler::program_graph::PistonAvailability::Ready,
-                            crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent,
-                        ]
-                        .map(|is| push_guard(guards, Guard::State(StateTest::PistonAvailability { piston, is })));
-                        let available = any_guards(guards, &available);
-                        join_guards(guards, &[present, available])
-                    }
-                    GeometryView::MovingPistonHead(piston) => push_guard(
-                        guards,
-                        Guard::State(StateTest::PistonAvailability {
-                            piston,
-                            is: crate::redpiler::program_graph::PistonAvailability::HeadPending,
-                        }),
-                    ),
-                    GeometryView::Resource(resource) => {
-                        let at = push_guard(
-                            guards,
-                            Guard::State(StateTest::ResourceAt {
-                                resource,
-                                contact: contact_id,
-                            }),
-                        );
-                        let enabled = push_guard(guards, Guard::State(StateTest::ResourceEnabled(resource)));
-                        join_guards(guards, &[at, enabled])
-                    }
-                    GeometryView::MovingPistonBase(piston) => moving_base_guard(guards, piston),
-                    GeometryView::Fixed => push_guard(guards, Guard::Always),
-                    GeometryView::Air => unreachable!(),
-                };
-                absent.push(not_guard(guards, selected));
-            }
-            join_guards(guards, &absent)
-        }
+        GeometryView::Air => unreachable!("air is the complement of occupied variants"),
     }
 }
 

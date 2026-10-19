@@ -96,11 +96,21 @@ impl GraphBackend {
     }
 
     pub(super) fn site_power(&self, site: SiteId, port: PowerPort) -> u8 {
-        if matches!(port, PowerPort::Output | PowerPort::Stored)
-            && let SiteSource::Component(node) = self.program.sites()[site.index()].source
-        {
-            // Fixed component values need neither block properties nor contact selection.
-            return self.stored_component_strength(node);
+        if let SiteSource::Component(node) = self.program.sites()[site.index()].source {
+            if matches!(port, PowerPort::Output | PowerPort::Stored) {
+                return self.stored_component_strength(node);
+            }
+            if let PowerPort::Weak(face) | PowerPort::Strong(face) = port
+                && let CircuitNodeKind::Wire(index) = self.program.nodes()[node.index()].kind
+                && let Some(shape) = self.program.wires()[index].execution.shape
+                && let Some(emits) = match face {
+                    BlockFace::Top => Some(true),
+                    BlockFace::Bottom => Some(false),
+                    _ => shape.emits(face.unwrap_direction().opposite()),
+                }
+            {
+                return if emits { self.stored_component_strength(node) } else { 0 };
+            }
         }
         let Some(resolved) = self.resolve_site(site, None) else {
             return 0;

@@ -214,6 +214,7 @@ impl passes::planning::PlanBuilder for MalformedPublication {
         use passes::planning::PlanOutput;
         Ok(match self.kind {
             PlanChange::WireQueries => PlanOutput::WireQueries(vec![None; self.rows]),
+            PlanChange::WireShapes => PlanOutput::WireShapes(vec![None; self.rows]),
             PlanChange::WireCallbacks => PlanOutput::WireCallbacks(vec![None; self.rows]),
             PlanChange::WireHops => PlanOutput::WireHops(vec![None; self.rows]),
             PlanChange::InstantResets => PlanOutput::InstantResets(vec![(
@@ -234,6 +235,7 @@ impl passes::planning::PlanBuilder for MalformedPublication {
 fn publication_rejects_truncated_oversized_and_out_of_range_rows_before_mutation() {
     for kind in [
         PlanChange::WireQueries,
+        PlanChange::WireShapes,
         PlanChange::WireCallbacks,
         PlanChange::WireHops,
         PlanChange::InstantResets,

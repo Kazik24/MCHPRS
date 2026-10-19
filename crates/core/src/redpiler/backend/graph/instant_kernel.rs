@@ -150,13 +150,7 @@ impl GraphBackend {
             LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => {
                 self.guard_matches(link.guard, None) && self.site_power(link.from, link.from_port) > link.attenuation
             }
-            LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => match test {
-                StateTest::PistonExtended(actor) => self.state.pistons[actor.index()].extended,
-                StateTest::PistonHeadPresent(actor) => self.state.pistons[actor.index()].head_present,
-                StateTest::PistonAvailability { piston, is } => self.state.pistons[piston.index()].availability == is,
-                StateTest::ResourceAt { resource, contact } => self.state.resources[resource.index()].at == contact,
-                StateTest::ResourceEnabled(resource) => self.state.resources[resource.index()].enabled,
-            },
+            LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => self.state.matches(test),
         }
     }
 }

@@ -14,6 +14,8 @@ mod instant_program;
 mod instant_regions;
 mod wire_callback_selection;
 mod wire_query_facts;
+mod wire_shapes;
+pub(crate) use wire_shapes::WireShape;
 pub(crate) use wire_callback_selection::WireCallbackSelection;
 mod fixed_signals;
 pub(crate) use fixed_signals::*;
@@ -1067,6 +1069,19 @@ pub(crate) struct CircuitState {
     pub(crate) components: Box<[ComponentState]>,
     pub(crate) pistons: Box<[PistonState]>,
     pub(crate) resources: Box<[ResourceState]>,
+}
+
+impl CircuitState {
+    /// Evaluate a live state predicate; captured site properties are handled separately.
+    pub(crate) fn matches(&self, test: StateTest) -> bool {
+        match test {
+            StateTest::PistonExtended(piston) => self.pistons[piston.index()].extended,
+            StateTest::PistonHeadPresent(piston) => self.pistons[piston.index()].head_present,
+            StateTest::PistonAvailability { piston, is } => self.pistons[piston.index()].availability == is,
+            StateTest::ResourceAt { resource, contact } => self.resources[resource.index()].at == contact,
+            StateTest::ResourceEnabled(resource) => self.resources[resource.index()].enabled,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
