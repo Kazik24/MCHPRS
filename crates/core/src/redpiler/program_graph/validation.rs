@@ -32,6 +32,37 @@ impl CircuitDraft {
         monitor: &crate::redpiler::TaskMonitor,
     ) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
         match change {
+            PlanChange::CpuKernels => {
+                self.validate_cpu_kernels(monitor)?;
+                Ok(None)
+            }
+            PlanChange::BudMemoryReads => {
+                self.validate_bud_memory_reads(monitor)?;
+                self.validate_instant_events(monitor)?;
+                Ok(None)
+            }
+            PlanChange::InstantEvents => {
+                self.validate_instant_events(monitor)?;
+                self.validate_cpu_kernels(monitor)?;
+                Ok(None)
+            }
+            PlanChange::WireCaptures => {
+                self.validate_wire_captures(monitor)?;
+                self.validate_wire_capture_masks(monitor)?;
+                Ok(None)
+            }
+            PlanChange::WireCaptureMasks => {
+                self.validate_wire_capture_masks(monitor)?;
+                Ok(None)
+            }
+            PlanChange::AbstractInstantNets => {
+                self.validate_abstract_instant_nets(monitor)?;
+                Ok(None)
+            }
+            PlanChange::InstantWireNodes => {
+                self.validate_instant_wire_nodes(monitor)?;
+                Ok(None)
+            }
             PlanChange::Layers => self.validate_instant_layers(monitor),
             PlanChange::Boundaries => {
                 // Boundary publication also removes old proxies, affecting fixed ownership.
@@ -50,6 +81,8 @@ impl CircuitDraft {
             PlanChange::TurboCallbacks | PlanChange::WireQueries | PlanChange::WireShapes | PlanChange::WireCallbacks | PlanChange::WireHops => {
                 // Callback inference uses Turbo indices; fixed instructions consume wire facts.
                 self.validate_wire_execution_plans()?;
+                self.validate_cpu_kernels(monitor)?;
+                self.validate_wire_capture_masks(monitor)?;
                 self.validate_classic_programs(monitor)?;
                 Ok(None)
             }
@@ -103,11 +136,83 @@ impl CircuitDraft {
             }
         }
         self.validate_wire_execution_plans()?;
+        self.validate_wire_captures(monitor)?;
+        self.validate_wire_capture_masks(monitor)?;
+        self.validate_instant_events(monitor)?;
+        self.validate_cpu_kernels(monitor)?;
+        self.validate_bud_memory_reads(monitor)?;
+        self.validate_instant_wire_nodes(monitor)?;
+        self.validate_abstract_instant_nets(monitor)?;
         self.validate_instant_regions()?;
         self.validate_fixed_signals(monitor)?;
         validate_classic(self, monitor)?;
         self.validate_classic_programs(monitor)?;
         self.validate_instant_boundaries(monitor)
+    }
+
+    fn validate_bud_memory_reads(&self,monitor:&crate::redpiler::TaskMonitor)->Result<(),GraphBuildError> {
+        if self.plans.bud_memory_reads.is_empty() {return Ok(());}
+        let expected=infer_bud_memory_reads(self,monitor).map_err(|_|GraphBuildError::InvalidInstantRegion {table:"BUD memory reads",index:0})?;
+        if self.plans.bud_memory_reads!=expected {return Err(GraphBuildError::InvalidInstantRegion {table:"BUD memory reads",index:0});}
+        Ok(())
+    }
+
+    fn validate_cpu_kernels(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.cpu_kernels == CpuKernelPlans::default() { return Ok(()); }
+        let expected = CpuKernelPlans::compile(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion { table: "CPU kernels", index: 0 })?;
+        if self.plans.cpu_kernels != expected { return Err(GraphBuildError::InvalidInstantRegion { table: "CPU kernels", index: 0 }); }
+        Ok(())
+    }
+
+    fn validate_instant_events(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.instant_events.is_empty() { return Ok(()); }
+        let expected = crate::redpiler::analysis::instant::event_kernels::infer(self, monitor)
+            .map_err(|_| GraphBuildError::InvalidInstantRegion {table:"instant events",index:0})?;
+        if self.plans.instant_events != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {table:"instant events",index:0});
+        }
+        Ok(())
+    }
+
+    fn validate_wire_capture_masks(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        for (index, wire) in self.wires.iter().enumerate() {
+            if monitor.cancelled() { return Err(GraphBuildError::Cancelled); }
+            let Some(mask) = wire.execution.mutable_captures else { continue };
+            if wire.execution.hop_root.is_none() || mask >> 24 != 0 || self.plans.wire_captures.len() != self.sites.len() {
+                return Err(GraphBuildError::InvalidWireCaptureMask { wire: index });
+            }
+            for (slot, site) in wire.canonical_neighbors.iter().enumerate() {
+                let constant = matches!(WireCapture::infer(self, &self.sites[site.index()]), WireCapture::Fixed(observed)
+                    if observed.receiver.is_none() && observed.properties == ObservedProperties::Passive);
+                if (mask & (1 << slot) != 0) == constant {
+                    return Err(GraphBuildError::InvalidWireCaptureMask { wire: index });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_wire_captures(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        let captures = &self.plans.wire_captures;
+        if captures.is_empty() {
+            return Ok(());
+        }
+        if captures.len() != self.sites.len() {
+            return Err(GraphBuildError::StateTableLength {
+                table: "wire captures",
+                descriptions: self.sites.len(),
+                states: captures.len(),
+            });
+        }
+        for (index, (site, capture)) in self.sites.iter().zip(captures).enumerate() {
+            if monitor.cancelled() {
+                return Err(GraphBuildError::Cancelled);
+            }
+            if capture != &WireCapture::infer(self, site) {
+                return Err(GraphBuildError::InvalidWireCapture { site: index });
+            }
+        }
+        Ok(())
     }
 
     fn validate_fixed_signals(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
@@ -224,6 +329,44 @@ impl CircuitDraft {
             }
         }
         self.validate_instant_resets()?;
+        Ok(())
+    }
+
+    fn validate_abstract_instant_nets(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if !self.wires.iter().any(|wire| wire.execution.abstract_instant_net) {
+            return Ok(());
+        }
+        let expected = infer_abstract_instant_nets(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "abstract instant nets",
+            index: 0,
+        })?;
+        for (index, (wire, allowed)) in self.wires.iter().zip(expected).enumerate() {
+            if wire.execution.abstract_instant_net && !allowed {
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "abstract instant nets",
+                    index,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_instant_wire_nodes(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if !self.wires.iter().any(|wire| wire.execution.instant_node.is_some()) {
+            return Ok(());
+        }
+        let expected = infer_instant_wire_nodes(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "instant wire nodes",
+            index: 0,
+        })?;
+        for (index, (wire, expected)) in self.wires.iter().zip(expected).enumerate() {
+            if wire.execution.instant_node.is_some() && wire.execution.instant_node != expected {
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "instant wire nodes",
+                    index,
+                });
+            }
+        }
         Ok(())
     }
 

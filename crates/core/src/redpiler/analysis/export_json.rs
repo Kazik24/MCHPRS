@@ -4,6 +4,18 @@ mod fixed_classic;
 mod fixed_signals;
 mod instant_boundaries;
 mod instant_layers;
+mod instant_events;
+mod cpu_kernels;
+
+/// The same executable records as the full export, for focused compiler research.
+#[cfg(test)]
+pub(crate) fn event_kernel_records(graph: &CompileGraph) -> Vec<serde_json::Value> {
+    instant_events::export(graph)
+}
+#[cfg(test)]
+pub(crate) fn cpu_kernel_records(graph: &CompileGraph) -> Option<serde_json::Value> {
+    cpu_kernels::export(graph)
+}
 mod mixed_classic;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
@@ -104,6 +116,12 @@ struct PositionDto {
 
 #[derive(Debug, Serialize)]
 struct GraphTablesDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cpu_kernels: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_event_kernels: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    bud_memory_reads: Vec<serde_json::Value>,
     /// These regions retain the causal proofs from which supported pull kernels are lowered.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_layer_regions: Vec<serde_json::Value>,
@@ -319,6 +337,8 @@ struct SiteDto {
     id: String,
     position: PositionDto,
     source: SiteSourceDto,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wire_capture: Option<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -468,6 +488,8 @@ enum PowerTargetDto {
 
 #[derive(Debug, Serialize)]
 struct WirePlanDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mutable_captures: Option<u32>,
     id: String,
     node: String,
     canonical_neighbors: Vec<String>,
@@ -477,6 +499,10 @@ struct WirePlanDto {
     query_facts: Option<WireQueryFacts>,
     #[serde(skip_serializing_if = "Option::is_none")]
     callback_selection: Option<WireCallbackSelection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_node: Option<crate::redpiler::program_graph::InstantWireNode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    abstract_instant_net: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_reset: Option<InstantResetDto>,
     /// This selects compiled hop execution using the existing canonical neighbors.
@@ -679,6 +705,8 @@ impl GraphExport {
         }
         instant_boundaries::validate(&self.graph)?;
         instant_layers::validate(&self.graph)?;
+        instant_events::validate(&self.graph)?;
+        cpu_kernels::validate(&self.graph)?;
         let nodes = unique_ids("node", self.graph.nodes.iter().map(|item| item.id.as_str()))?;
         let profiles = unique_ids("profile", self.graph.profiles.iter().map(|item| item.id.as_str()))?;
         let sites = unique_ids("site", self.graph.sites.iter().map(|item| item.id.as_str()))?;
@@ -804,8 +832,14 @@ impl GraphExport {
         }
         let mut instant_wires = HashSet::new();
         for wire in &self.graph.wire_plans {
+            if wire.mutable_captures.is_some_and(|mask| mask >> 24 != 0 || wire.hop_root.is_none()) {
+                return Err(ExportError::new("validation", "invalid mutable capture mask"));
+            }
             if wire.callback_selection.is_some_and(|selection| !selection.valid()) {
                 return Err(ExportError::new("validation", "invalid compiled wire callback masks"));
+            }
+            if wire.instant_node.is_some_and(|node| node.receivers == 0 || node.receivers & !WireCallbackSelection::ALL != 0) {
+                return Err(ExportError::new("validation", "invalid instant wire node mask"));
             }
             check_ref(&nodes, &wire.node, "wire node")?;
             if let Some(root) = &wire.hop_root {
@@ -1073,6 +1107,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     let layers = instant_layers::export(source);
     let graph = GraphTablesDto {
         instant_layer_regions: layers.regions,
+        instant_event_kernels: instant_events::export(source),
+        cpu_kernels: cpu_kernels::export(source),
+        bud_memory_reads: instant_events::export_memory_reads(source),
         instant_layer_declines: layers.declines,
         instant_cells: boundaries.cells,
         instant_corridors: boundaries.corridors,
@@ -1103,6 +1140,7 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             .map(|(index, item)| SiteDto {
                 id: typed_id("site", index),
                 position: position(item.position),
+                wire_capture: source.plans.wire_captures.get(index).map(|capture| capture.kind()),
                 source: match item.source {
                     SiteSource::Component(node) => SiteSourceDto::Component {
                         node: typed_id("node", node.index()),
@@ -1187,6 +1225,7 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             .iter()
             .enumerate()
             .map(|(index, item)| WirePlanDto {
+                mutable_captures: item.execution.mutable_captures,
                 id: typed_id("wire", index),
                 node: typed_id("node", item.node.index()),
                 canonical_neighbors: item.canonical_neighbors.iter().map(|site| typed_id("site", site.index())).collect(),
@@ -1194,6 +1233,8 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 turbo_route: item.turbo_route.map(|route| typed_id("route", route.index())),
                 query_facts: item.execution.query_facts,
                 callback_selection: item.execution.callback_selection,
+                instant_node: item.execution.instant_node,
+                abstract_instant_net: item.execution.abstract_instant_net.then_some(true),
                 hop_root: item.execution.hop_root.map(|site| typed_id("site", site.index())),
                 instant_reset: item.execution.instant_reset.map(|plan| InstantResetDto {
                     piston: typed_id("piston", plan.piston.index()),
@@ -1425,6 +1466,19 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if source.wires.iter().any(|wire| wire.execution.query_facts.is_some()) {
         capabilities.push("wire_query_facts");
     }
+    if !source.plans.wire_captures.is_empty() {
+        capabilities.push("wire_captures");
+    }
+    if source.wires.iter().any(|wire| wire.execution.mutable_captures.is_some()) {
+        capabilities.push("wire_capture_minimization");
+    }
+    if !source.plans.instant_events.is_empty() {
+        capabilities.push("instant_event_kernels");
+    }
+    if !source.plans.bud_memory_reads.is_empty() {
+        capabilities.push("bud_memory_reads");
+    }
+    if !source.plans.cpu_kernels.entries.is_empty() { capabilities.push("cpu_kernel_execution"); }
     if !source.plans.instant.regions.is_empty() {
         capabilities.push("instant_regions");
     }
@@ -1437,6 +1491,8 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.instant.proxies.is_empty() {
         capabilities.push("instant_proxies");
     }
+    if source.wires.iter().any(|wire| wire.execution.abstract_instant_net) { capabilities.push("unsafe_abstract_instant_nets"); }
+    if source.wires.iter().any(|wire| wire.execution.instant_node.is_some()) { capabilities.push("instant_wire_nodes"); }
     if source.wires.iter().any(|wire| wire.execution.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
     }
@@ -1950,6 +2006,7 @@ mod wire_query_fact_validation_tests {
         validate_wire_query_facts(Some(&facts())).unwrap();
         validate_wire_query_facts(None).unwrap();
         let mut wire = WirePlanDto {
+            mutable_captures: None,
             id: "wire:0".into(),
             node: "node:0".into(),
             canonical_neighbors: vec!["site:0".into(); 24],
@@ -1957,6 +2014,8 @@ mod wire_query_fact_validation_tests {
             turbo_route: None,
             query_facts: None,
             callback_selection: None,
+            instant_node: None,
+            abstract_instant_net: None,
             instant_reset: None,
             hop_root: None,
         };
@@ -2037,6 +2096,7 @@ mod dust_path_validation_tests {
             id: "site:0".into(),
             position: PositionDto { x: 0, y: 0, z: 0 },
             source: SiteSourceDto::Component { node: "node:0".into() },
+            wire_capture: None,
         }];
         let node_ids = nodes.iter().map(|node| node.id.clone()).collect();
         let site_ids = sites.iter().map(|site| site.id.clone()).collect();

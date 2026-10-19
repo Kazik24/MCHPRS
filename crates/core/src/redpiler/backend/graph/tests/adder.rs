@@ -12,6 +12,8 @@ mod builtin_reset_tests;
 mod fixed_point_tests;
 #[path = "instant_cells.rs"]
 mod instant_cell_tests;
+#[path = "instant_events.rs"]
+mod instant_event_tests;
 #[path = "execution_coverage.rs"]
 mod execution_coverage_tests;
 #[path = "instant_contract.rs"]
@@ -20,6 +22,8 @@ mod instant_contract_tests;
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
 mod instant_recognition_tests;
+#[path = "instant_net_counterexample.rs"]
+mod instant_net_counterexample;
 #[path = "reset_elision.rs"]
 mod reset_elision_tests;
 #[path = "stable_region.rs"]

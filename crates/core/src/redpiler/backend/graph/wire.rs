@@ -8,6 +8,8 @@ pub(super) struct WireWalkNeighbors {
     slots: [usize; 24],
 }
 
+const CONSTANT_SITE: usize = usize::MAX;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct WirePowerSample {
     /// The resulting strength after attenuation of neighboring dust.
@@ -183,8 +185,62 @@ impl GraphBackend {
             self.counts.wire_walks += 1;
             return super::fixed_point::with_mode(false, || self.evaluate_turbo_wire(node));
         }
+        #[cfg(any(test, feature = "unsafe-abstract-instant-nets"))]
+        if plan.execution.abstract_instant_net {
+            self.counts.instant_wire_node_invocations += 1;
+            return self.evaluate_fixed_point_wire(node);
+        }
+        if let Some(transfer) = plan.execution.instant_node {
+            return self.deliver_instant_wire_node(&plan, transfer);
+        }
         self.counts.wire_walks += 1;
         self.evaluate_turbo_wire(node)
+    }
+
+    fn deliver_instant_wire_node(&mut self, plan: &WirePlan, transfer: InstantWireNode) -> Result<(), GraphExecutionError> {
+        let Some(route) = plan.turbo_route else { return Ok(()) };
+        let CircuitNodeKind::Wire(index) = self.program.nodes()[plan.node.index()].kind else {
+            unreachable!()
+        };
+        // Admission and captures precede delivery; these receivers only enqueue future work.
+        let observed: [Option<ObservedSite>; 24] = std::array::from_fn(|slot| {
+            if transfer.receivers & (1 << slot) == 0 {
+                return None;
+            }
+            let site = plan.canonical_neighbors[slot];
+            let observed = self.resolve_site(site, None).expect("validated signal receiver").observed();
+            self.wire_route_admitted(index, route, slot, site, &observed).then_some(observed)
+        });
+        self.counts.instant_wire_node_invocations += 1;
+        let order = &crate::redstone::wire::TURBO_ORDER[3];
+        let mut seen = [None; 24];
+        let mut count = 0;
+        for slots in [order.as_slice(), &order[..4]] {
+            for &slot in slots {
+                let Some(observed) = &observed[slot] else { continue };
+                let receiver = match observed.receiver {
+                    Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => CallbackReceiver::PistonBase(actor),
+                    Some(CallbackReceiver::Component(node)) => match self.program.nodes()[node.index()].kind {
+                        CircuitNodeKind::Piston(actor) => CallbackReceiver::PistonBase(actor),
+                        CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } => CallbackReceiver::Component(node),
+                        _ => continue,
+                    },
+                    _ => continue,
+                };
+                if seen[..count].contains(&Some(receiver)) {
+                    continue;
+                }
+                seen[count] = Some(receiver);
+                count += 1;
+                // All reads are unchanged inside this queue-only episode; retain the first operation.
+                match receiver {
+                    CallbackReceiver::PistonBase(actor) => self.sample_piston_from(actor, route)?,
+                    CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(observed))?,
+                    _ => unreachable!(),
+                }
+            }
+        }
+        Ok(())
     }
 
     fn dust_path_neighbors(&self, node: NodeId) -> Option<DustPathNeighbors> {
@@ -382,7 +438,7 @@ impl GraphBackend {
             let face = BlockFace::values()[index];
             let slot = [3, 2, 4, 5, 1, 0][index];
             let site = plan.canonical_neighbors[slot];
-            let observed = walk.map(|walk| &walk.sites[walk.slot(site).expect("canonical face was captured")].observed);
+            let observed = walk.map(|walk| self.captured_wire_site(walk, site));
             maximum = maximum.max(self.neighbor_power_no_dust(plan, slot, face, observed));
         }
         Some(maximum)
@@ -393,7 +449,7 @@ impl GraphBackend {
             return slot;
         }
         let observed = if walk.is_compiled() {
-            self.observe_site(site).expect("compiled hop site was validated during preparation")
+            self.observe_wire_site(site).expect("compiled hop site was validated during preparation")
         } else {
             self.resolve_site(site, None)
                 .expect("wire traversal site was validated during preparation")
@@ -440,9 +496,15 @@ impl GraphBackend {
                     .unwrap_or_else(|| plan.canonical_neighbors.map(|site| walk.slot(site).expect("discovered wire neighbor"))),
             };
         }
-        let slots = plan.canonical_neighbors.map(|site| self.capture_walk_site(walk, site));
+        let slots = std::array::from_fn(|index| {
+            if walk.is_compiled() && plan.execution.mutable_captures.is_some_and(|mask| mask & (1 << index) == 0) {
+                CONSTANT_SITE
+            } else {
+                self.capture_walk_site(walk, plan.canonical_neighbors[index])
+            }
+        });
 
-        let visited = slots.map(|slot| walk.sites[slot].visited);
+        let visited = slots.map(|slot| slot != CONSTANT_SITE && walk.sites[slot].visited);
         let from_west = visited[0] || visited[7] || visited[8];
         let from_east = visited[1] || visited[12] || visited[13];
         let from_north = visited[4] || visited[17] || visited[20];
@@ -468,7 +530,7 @@ impl GraphBackend {
             }
             crate::redstone::wire::compute_heading(x_bias, z_bias)
         };
-        for slot in slots {
+        for slot in slots.into_iter().filter(|&slot| slot != CONSTANT_SITE) {
             let neighbor = &mut walk.sites[slot];
             neighbor.x_bias = x_bias;
             neighbor.z_bias = z_bias;
@@ -520,6 +582,9 @@ impl GraphBackend {
         let neighbors = self.identify_wire_neighbors(node, walk);
         for &slot in &crate::redstone::wire::TURBO_ORDER[neighbors.heading] {
             let walk_slot = neighbors.slots[slot];
+            if walk_slot == CONSTANT_SITE {
+                continue;
+            }
             let site = walk.sites[walk_slot].site;
             let next_layer = layer + 1;
             let changed = {
@@ -540,6 +605,9 @@ impl GraphBackend {
         }
         for &slot in &crate::redstone::wire::TURBO_ORDER[neighbors.heading][..4] {
             let walk_slot = neighbors.slots[slot];
+            if walk_slot == CONSTANT_SITE {
+                continue;
+            }
             let site = walk.sites[walk_slot].site;
             let next_layer = layer + 2;
             let changed = {
@@ -596,9 +664,14 @@ impl GraphBackend {
             unreachable!("isolated Turbo received a non-wire node");
         };
         let observed = plan.canonical_neighbors.map(|site| {
-            self.resolve_site(site, None)
-                .expect("wire traversal site was validated during preparation")
-                .observed()
+            if self.program.wire_capture(site).is_some() {
+                self.observe_wire_site(site)
+                    .expect("compiled wire capture was validated during preparation")
+            } else {
+                self.resolve_site(site, None)
+                    .expect("wire traversal site was validated during preparation")
+                    .observed()
+            }
         });
         #[cfg(test)]
         if let Some(tapes) = &self.test_recorder.wire_tapes {
@@ -714,6 +787,9 @@ impl GraphBackend {
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
+        if self.instant_event_noop(receiver) {
+            return Ok(());
+        }
         #[cfg(test)]
         if let Some(tapes) = &self.test_recorder.wire_tapes {
             tapes.call(self, site, observed, layer);
@@ -786,7 +862,7 @@ impl GraphBackend {
     pub(super) fn turbo_wire_power(&mut self, plan: &WirePlan, neighbors: &WireWalkNeighbors, walk: &WireWalk) -> WirePowerSample {
         if let Some(path) = self.dust_path_neighbors(plan.node) {
             let input_power = if path.is_input {
-                let captured = &walk.sites[walk.slot(path.input_site).expect("certified input was discovered")].observed;
+                let captured = self.captured_wire_site(walk, path.input_site);
                 self.power_no_dust(path.input_site, path.input_face, Some(captured))
             } else {
                 0
@@ -814,7 +890,7 @@ impl GraphBackend {
                     .into_iter()
                     .zip([3, 2, 4, 5, 1, 0])
                     .map(|(face, slot)| {
-                        let observed = &walk.sites[neighbors.slots[slot]].observed;
+                        let observed = self.captured_wire_site(walk, plan.canonical_neighbors[slot]);
                         self.neighbor_power_no_dust(plan, slot, face, Some(observed))
                     })
                     .max()
@@ -842,7 +918,7 @@ impl GraphBackend {
                 .into_iter()
                 .zip([3, 2, 4, 5, 1, 0])
                 .map(|(face, index)| {
-                    let observed = &walk.sites[neighbors.slots[index]].observed;
+                    let observed = self.captured_wire_site(walk, plan.canonical_neighbors[index]);
                     self.neighbor_power_no_dust(plan, index, face, Some(observed))
                 })
                 .max()
@@ -873,7 +949,15 @@ impl GraphBackend {
         if let Some(geometry) = plan.execution.query_facts.and_then(|facts| facts.geometry_at(index)) {
             return geometry;
         }
-        let site = self.walk_site(neighbors.slots[index], walk);
+        let site = if neighbors.slots[index] == CONSTANT_SITE {
+            self.resolve_site_view(
+                plan.canonical_neighbors[index],
+                Some(self.captured_wire_site(walk, plan.canonical_neighbors[index])),
+            )
+            .expect("constant wire operand is valid")
+        } else {
+            self.walk_site(neighbors.slots[index], walk)
+        };
         (site.solid, site.transparent)
     }
 
@@ -884,9 +968,22 @@ impl GraphBackend {
     }
 
     fn walk_wire_strength(&self, slot: usize, walk: &WireWalk, strength: u8) -> u8 {
+        if slot == CONSTANT_SITE {
+            return strength;
+        }
         match walk.sites[slot].observed.properties {
             ObservedProperties::Wire(wire) => strength.max(wire.power),
             _ => strength,
+        }
+    }
+
+    fn captured_wire_site<'a>(&'a self, walk: &'a WireWalk, site: SiteId) -> &'a ObservedSite {
+        if let Some(slot) = walk.slot(site) {
+            &walk.sites[slot].observed
+        } else if let Some(WireCapture::Fixed(observed)) = self.program.wire_capture(site) {
+            observed
+        } else {
+            unreachable!("mutable wire operand must be captured at discovery")
         }
     }
 }

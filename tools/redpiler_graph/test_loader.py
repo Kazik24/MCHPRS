@@ -6,7 +6,30 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from .loader import GraphFormatError, load_graph
+from .loader import GraphFormatError, load_graph, _validate_cpu_kernels
+
+
+class CpuKernelTests(unittest.TestCase):
+    def test_cpu_masks_are_lossless_and_ranges_are_checked(self):
+        predicate = {"read_start": 0, "read_len": 64, "clause_start": 0, "clause_len": 1}
+        program = {"method": "live_bitmask_dnf", "effects": "original_graph_fifo",
+                   "reads": [{"kind": "guard", "guard": "guard:0"}] * 64,
+                   "entries": [{"actor": "piston:0", **{k: predicate.copy() for k in ("main", "quasi", "valid")}}],
+                   "require_true": ["8000000000000000"], "require_false": ["0000000000000001"]}
+        def ref(kind, identifier, owner):
+            if identifier != kind + ":0":
+                raise GraphFormatError(owner)
+        _validate_cpu_kernels(program, ref)
+        for field, value in (("read_len", 65), ("read_start", 1), ("clause_len", 2), ("clause_start", -1), ("read_len", True)):
+            changed = copy.deepcopy(program)
+            changed["entries"][0]["main"][field] = value
+            with self.assertRaises(GraphFormatError):
+                _validate_cpu_kernels(changed, ref)
+        for value in (1 << 63, "800000000000000", "z000000000000000", "0000000000000001"):
+            changed = copy.deepcopy(program)
+            changed["require_true"] = [value]
+            with self.assertRaises(GraphFormatError):
+                _validate_cpu_kernels(changed, ref)
 
 
 def document() -> dict:
@@ -97,6 +120,56 @@ def compact_kernel(graph: dict) -> dict:
 
 
 class DustPathLoaderTests(unittest.TestCase):
+    def test_bud_memory_reads_retain_typed_owners_and_update_scope(self):
+        path = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        graph = data["graph"]
+        memory = {"id": "bud_memory_read:0", "storage": graph["pistons"][1]["id"], "reader": graph["pistons"][0]["id"],
+                  "resource": graph["resources"][0]["id"], "source": graph["contacts"][0]["id"],
+                  "link": graph["power_links"][0]["id"], "updates": "original_graph_fifo", "read": "enabled_at_source"}
+        graph["bud_memory_reads"] = [memory]
+        self.load_data(data)
+        for field, value in (("storage", memory["reader"]), ("reader", "node:0"), ("resource", "resource:99999"),
+                             ("updates", "erased"), ("read", "saved_pose")):
+            bad = copy.deepcopy(data)
+            bad["graph"]["bud_memory_reads"][0][field] = value
+            with self.subTest(field=field), self.assertRaises(GraphFormatError):
+                self.load_data(bad)
+
+    def test_event_kernel_entries_validate_ownership_operands_and_future_scope(self):
+        path = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        actor = data["graph"]["pistons"][0]["id"]
+        kernel = {"id": "instant_event_kernel:0", "actors": [actor], "wire_propagation_removed": False,
+                  "entries": [{"actor": actor, "valid": 1, "pins": [
+                      {"kind": "state", "test": {"kind": "piston_extended", "piston": actor}},
+                      {"kind": "gate", "gate": "invert", "inputs": [0]}]}]}
+        data["graph"]["instant_event_kernels"] = [kernel]
+        self.load_data(data)
+        mutations = (lambda k: k.update(wire_propagation_removed=True),
+                     lambda k: k["actors"].append(actor),
+                     lambda k: k["entries"][0].update(valid=2),
+                     lambda k: k["entries"][0]["pins"][1].update(inputs=[1]),
+                     lambda k: k["entries"][0]["pins"][0].update(kind="activation"),
+                     lambda k: k["entries"][0]["pins"][0]["test"].update(piston="node:0"))
+        for mutate in mutations:
+            bad = copy.deepcopy(data)
+            mutate(bad["graph"]["instant_event_kernels"][0])
+            with self.assertRaises(GraphFormatError):
+                self.load_data(bad)
+
+    def test_wire_capture_operations_are_optional_and_typed(self):
+        data = document()
+        site = data["graph"]["sites"][0]
+        self.load_data(data)
+        for capture in (None, "fixed", "electrical", "bulb", "wire", "piston", "contact"):
+            site["wire_capture"] = capture
+            self.load_data(data)
+        for capture in (False, 1, {}, [], "saved_pose"):
+            site["wire_capture"] = capture
+            with self.subTest(capture=capture), self.assertRaises(GraphFormatError):
+                self.load_data(data)
+
     def instant_boundary_document(self):
         fixture = Path(__file__).resolve().parents[2] / "test_data/graph-fixtures/adder-1bit/adder-1bit.graph.json"
         data = json.loads(fixture.read_text(encoding="utf-8"))
@@ -590,6 +663,28 @@ class DustPathLoaderTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(GraphFormatError):
                 self.load_data(damaged)
 
+    def test_abstract_instant_net_flag_is_explicit_and_typed(self):
+        data = self.instant_boundary_document()
+        wire = data["graph"]["wire_plans"][0]
+        wire["abstract_instant_net"] = True
+        self.load_data(data)
+        for flag in (1, 0, "true", {}):
+            wire["abstract_instant_net"] = flag
+            with self.assertRaises(GraphFormatError):
+                self.load_data(data)
+
+    def test_instant_wire_node_masks_are_optional_and_bounded(self):
+        data = self.instant_boundary_document()
+        wire = data["graph"]["wire_plans"][0]
+        wire["instant_node"] = {"receivers": 1}
+        self.load_data(data)
+        for mask in (0, -1, 0x1000000, True, "1"):
+            wire["instant_node"] = {"receivers": mask}
+            with self.assertRaises(GraphFormatError):
+                self.load_data(data)
+        del wire["instant_node"]
+        self.load_data(data)
+
     def test_wire_hop_roots_bind_their_wire_and_allow_older_exports(self):
         data = document()
         site = {"id": "site:1", "position": {"x": 1, "y": 0, "z": 0},
@@ -815,6 +910,23 @@ class DustPathLoaderTests(unittest.TestCase):
         max_u64 = json.loads(json.dumps(data))
         max_u64["graph"]["instant_kernel"]["expressions"][0]["value"] = "18446744073709551615"
         self.load_data(max_u64)
+
+    def test_mutable_capture_masks_require_24_bits_and_a_compiled_root(self):
+        for mask in [-1, 1 << 24, 0.5, True, "1", [], {}]:
+            data = self.instant_document()
+            data["graph"]["wire_plans"][0]["mutable_captures"] = mask
+            with self.subTest(mask=mask), self.assertRaises(GraphFormatError):
+                self.load_data(data)
+        data = self.instant_document()
+        wire = data["graph"]["wire_plans"][0]
+        wire["mutable_captures"] = 0
+        data["graph"]["sites"].append({"id": "site:1", "position": {"x": 1, "y": 0, "z": 0},
+                                      "source": {"kind": "component", "node": wire["node"]}})
+        wire["hop_root"] = "site:1"
+        self.load_data(data)
+        wire.pop("hop_root", None)
+        with self.assertRaises(GraphFormatError):
+            self.load_data(data)
 
     def test_rejects_invalid_wire_query_fact_masks(self):
         valid = {"known": 0xffffff, "solid": 1, "transparent": 2, "wire": 4, "zero_no_dust": 0xfffffe}

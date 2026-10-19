@@ -32,9 +32,18 @@ impl CircuitDraft {
         let kernel_duration = kernel_start.elapsed();
         let program_start = std::time::Instant::now();
         let mut kernel_by_actor = vec![None; self.pistons.len()];
+        let mut cpu_by_actor = if self.plans.cpu_kernels.entries.is_empty() { Vec::new() } else { vec![u32::MAX; self.pistons.len()] };
+        for (index, entry) in self.plans.cpu_kernels.entries.iter().enumerate() { cpu_by_actor[entry.actor.index()] = index as u32; }
         for (index, kernel) in kernels.iter().enumerate() {
-            for pull in kernel.pulls.iter().filter(|pull| pull.external) {
-                kernel_by_actor[pull.actor.index()] = Some(index as u32);
+            match &kernel.program {
+                KernelProgram::PullWave {pulls, ..} => {
+                    for pull in pulls.iter().filter(|pull| pull.external) {
+                        kernel_by_actor[pull.actor.index()] = Some((index as u32,0));
+                    }
+                }
+                KernelProgram::Events(entries) => {
+                    for (entry_index,entry) in entries.iter().enumerate() { kernel_by_actor[entry.actor.index()] = Some((index as u32,entry_index as u32)); }
+                }
             }
         }
 
@@ -56,6 +65,8 @@ impl CircuitDraft {
         for wire in &mut self.wires {
             if wire.turbo_route.is_some_and(|route| instant_route_by_route[route.index()].is_some()) {
                 wire.execution.callback_selection = None;
+                wire.execution.instant_node = None;
+                wire.execution.abstract_instant_net = false;
             }
         }
         if !self.wires.is_empty()
@@ -201,6 +212,12 @@ impl CircuitDraft {
             }
         }
 
+        let mut bud_read_by_node = if self.plans.bud_memory_reads.is_empty() {Vec::new()} else {vec![None;nodes.len()]};
+        for (index,read) in self.plans.bud_memory_reads.iter().enumerate() {
+            let node=self.pistons[read.reader.index()].node;
+            bud_read_by_node[node.index()]=Some(index as u32);
+        }
+
         let state = CircuitState {
             classic_signals: self.plans.classic_nets.iter().map(|net| net.initial_signal).collect(),
             classic_active: vec![true; self.plans.classic_nets.len()].into_boxed_slice(),
@@ -214,6 +231,8 @@ impl CircuitDraft {
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {
+                cpu: self.plans.cpu_kernels,
+                cpu_by_actor: cpu_by_actor.into_boxed_slice(),
                 kernels: kernels.into_boxed_slice(),
                 kernel_by_actor: kernel_by_actor.into_boxed_slice(),
                 proxies: self.plans.instant.proxies.into_boxed_slice(),
@@ -231,6 +250,9 @@ impl CircuitDraft {
             contacts: self.contacts.into_boxed_slice(),
             routes: self.routes.into_boxed_slice(),
             turbo_callback_indices: self.plans.turbo_callback_indices.into_boxed_slice(),
+            wire_captures: self.plans.wire_captures.into_boxed_slice(),
+            bud_memory_reads: self.plans.bud_memory_reads.into_boxed_slice(),
+            bud_read_by_node: bud_read_by_node.into_boxed_slice(),
             wires: self.wires.into_boxed_slice(),
             dust_paths: self.plans.dust_paths.into_boxed_slice(),
             dust_path_by_wire: dust_path_by_wire.into_boxed_slice(),

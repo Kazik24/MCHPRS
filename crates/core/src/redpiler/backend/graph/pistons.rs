@@ -2,7 +2,7 @@
 use super::graph_test_trace;
 use super::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PistonRequest {
     pub(super) piston: PistonId,
     pub(super) action: mchprs_world::PistonAction,
@@ -10,7 +10,7 @@ pub(super) struct PistonRequest {
     pub(super) source: Option<RouteId>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct DeferredPistonEvent {
     pub(super) piston: PistonId,
     pub(super) revision: u64,
@@ -19,7 +19,7 @@ pub(super) struct DeferredPistonEvent {
     pub(super) extending: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct DeferredResourceEvent {
     pub(super) resource: ResourceId,
     pub(super) revision: u64,
@@ -38,6 +38,7 @@ impl GraphBackend {
     }
 
     fn sample_piston_inner(&mut self, piston: PistonId, source: Option<RouteId>) -> Result<(), GraphExecutionError> {
+        #[cfg(test)]
         let spec = self.program.pistons()[piston.index()];
         let state = self.state.pistons[piston.index()];
         if state.availability.base_pending() {
@@ -49,7 +50,7 @@ impl GraphBackend {
             if let Some(activity) = self.test_recorder.memory_cell_activity.get_mut(piston.index()) {
                 activity[0] += 1;
             }
-            let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
+            let powered = self.piston_powered(piston);
             #[cfg(test)]
             if self.test_recording {
                 self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
@@ -115,6 +116,25 @@ impl GraphBackend {
     }
 
     fn accept_action(&mut self, request: PistonRequest) -> Result<(), GraphExecutionError> {
+        self.accept_action_using(request, None)
+    }
+
+    pub(super) fn accept_compiled_pull(&mut self, request: PistonRequest, accepted: bool) -> Result<(), GraphExecutionError> {
+        #[cfg(test)]
+        if self.test_recording {
+            let node = self.program.pistons()[request.piston.index()].node;
+            let powered = self.input_strength(node, InputPort::Main) > 0 || self.input_strength(node, InputPort::Quasi) > 0;
+            assert_eq!(
+                accepted,
+                !powered && self.piston_retraction_available(request.piston, false),
+                "compiled ready-pull acceptance"
+            );
+        }
+        self.accept_action_using(request, Some(accepted))
+    }
+
+    fn accept_action_using(&mut self, request: PistonRequest, compiled: Option<bool>) -> Result<(), GraphExecutionError> {
+        #[cfg(test)]
         let spec = self.program.pistons()[request.piston.index()];
         let state = self.state.pistons[request.piston.index()];
         #[cfg(test)]
@@ -124,8 +144,8 @@ impl GraphBackend {
                 action: request.action,
             });
         }
-        let accepted = {
-            let powered = self.input_strength(spec.node, InputPort::Main) > 0 || self.input_strength(spec.node, InputPort::Quasi) > 0;
+        let accepted = compiled.unwrap_or_else(|| {
+            let powered = self.piston_powered(request.piston);
             match request.action {
                 mchprs_world::PistonAction::Extend => {
                     powered && !state.extended && state.availability == PistonAvailability::Ready && self.piston_lane_available(request.piston)
@@ -137,7 +157,7 @@ impl GraphBackend {
                         && self.piston_retraction_available(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)
                 }
             }
-        };
+        });
         match request.action {
             mchprs_world::PistonAction::Extend if accepted => {
                 #[cfg(test)]
@@ -216,7 +236,7 @@ impl GraphBackend {
         self.program.resource_for_piston(piston)
     }
 
-    fn piston_resource_at(&self, piston: PistonId, contact: ContactId) -> Option<ResourceId> {
+    pub(super) fn piston_resource_at(&self, piston: PistonId, contact: ContactId) -> Option<ResourceId> {
         let resource = self.resource_for_lane(piston)?;
         (self.state.resources[resource.index()].at == contact).then_some(resource)
     }

@@ -255,6 +255,8 @@ pub enum BackendKind {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// Cumulative work counters for an active graph backend.
 pub struct GraphExecutionCounts {
+    /// Closed single-wire transfers executed without a Turbo walk.
+    pub instant_wire_node_invocations: u64,
     /// Reduced instant pull waves actually executed after entry and FIFO checks.
     pub instant_kernel_invocations: u64,
     pub classic_net_invocations: u64,

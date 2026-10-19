@@ -45,7 +45,14 @@ pub(crate) enum PlanOutput {
     DustPaths(Vec<DustPathPlan>),
     WireQueries(Vec<Option<WireQueryFacts>>),
     WireShapes(Vec<Option<crate::redpiler::program_graph::WireShape>>),
+    WireCaptures(Vec<crate::redpiler::program_graph::WireCapture>),
+    WireCaptureMasks(Vec<u32>),
+    InstantEvents(Vec<crate::redpiler::program_graph::InstantKernel>),
+    CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
+    BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
+    InstantWireNodes(Vec<Option<crate::redpiler::program_graph::InstantWireNode>>),
     WireCallbacks(Vec<Option<WireCallbackSelection>>),
+    AbstractInstantNets(Vec<bool>),
     WireHops(Vec<Option<SiteId>>),
     InstantResets(Vec<(usize, InstantResetPlan)>),
     Regions(Vec<InstantRegion>),
@@ -70,10 +77,32 @@ impl PlanOutput {
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
+            Self::WireCaptures(captures) => graph.plans.wire_captures = captures,
+            Self::WireCaptureMasks(masks) => {
+                for (wire, mask) in graph.wires.iter_mut().zip(masks) {
+                    wire.execution.mutable_captures = Some(mask);
+                }
+            }
+            Self::InstantEvents(kernels) => {
+                graph.plans.instant_events = kernels;
+                graph.plans.cpu_kernels = Default::default();
+            }
+            Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
+            Self::BudMemoryReads(reads) => graph.plans.bud_memory_reads = reads,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
             Self::WireQueries(facts) => {
                 for (wire, facts) in graph.wires.iter_mut().zip(facts) {
                     wire.execution.query_facts = facts;
+                }
+            }
+            Self::AbstractInstantNets(masks) => {
+                for (wire, enabled) in graph.wires.iter_mut().zip(masks) {
+                    wire.execution.abstract_instant_net = enabled;
+                }
+            }
+            Self::InstantWireNodes(nodes) => {
+                for (wire, node) in graph.wires.iter_mut().zip(nodes) {
+                    wire.execution.instant_node = node;
                 }
             }
             Self::WireShapes(shapes) => {
@@ -122,6 +151,13 @@ impl PlanOutput {
             Self::DustPaths(_) => PlanChange::DustPaths,
             Self::WireQueries(_) => PlanChange::WireQueries,
             Self::WireShapes(_) => PlanChange::WireShapes,
+            Self::WireCaptures(_) => PlanChange::WireCaptures,
+            Self::WireCaptureMasks(_) => PlanChange::WireCaptureMasks,
+            Self::InstantEvents(_) => PlanChange::InstantEvents,
+            Self::CpuKernels(_) => PlanChange::CpuKernels,
+            Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
+            Self::InstantWireNodes(_) => PlanChange::InstantWireNodes,
+            Self::AbstractInstantNets(_) => PlanChange::AbstractInstantNets,
             Self::WireCallbacks(_) => PlanChange::WireCallbacks,
             Self::WireHops(_) => PlanChange::WireHops,
             Self::InstantResets(_) => PlanChange::InstantResets,
@@ -131,9 +167,26 @@ impl PlanOutput {
     }
 
     fn validate_shape(&self, graph: &CompileGraph) -> Result<(), GraphBuildError> {
+        if let Self::CpuKernels(plans) = self {
+            if plans.require_true.len() != plans.require_false.len() || plans.entries.len() > graph.pistons.len() {
+                return Err(GraphBuildError::InvalidInstantRegion { table: "CPU kernel shape", index: 0 });
+            }
+        }
+        if let Self::WireCaptures(rows) = self {
+            if !rows.is_empty() && rows.len() != graph.sites.len() {
+                return Err(GraphBuildError::StateTableLength {
+                    table: "wire captures",
+                    descriptions: graph.sites.len(),
+                    states: rows.len(),
+                });
+            }
+        }
         let aligned = match self {
             Self::WireQueries(rows) => Some(("wire query facts", rows.len())),
             Self::WireShapes(rows) => Some(("wire shapes", rows.len())),
+            Self::WireCaptureMasks(rows) => Some(("wire capture masks", rows.len())),
+            Self::InstantWireNodes(rows) => Some(("instant wire nodes", rows.len())),
+            Self::AbstractInstantNets(rows) => Some(("abstract instant nets", rows.len())),
             Self::WireCallbacks(rows) => Some(("wire callback selection", rows.len())),
             Self::WireHops(rows) => Some(("wire hop roots", rows.len())),
             Self::TurboCallbacks(rows) if !rows.is_empty() => Some(("Turbo callback indices", rows.len())),

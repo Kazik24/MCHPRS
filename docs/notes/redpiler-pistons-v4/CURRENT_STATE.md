@@ -1,5 +1,43 @@
 # Redpiler current state
 
+The separate [CPU kernel packing pass](CPU_KERNEL_EXECUTION.md) compiles live
+kernel power/acceptance predicates into contiguous reads and minimized bit-mask
+clauses, with AVX2 and scalar execution. It preserves original FIFO effects and
+dynamic wire state. [Interpreter versus maximum-compilation TPS](CPU_KERNEL_TPS_REPORT.md)
+is measured on ADDER11BIT, Counter, Divider, FPU_MROWW and complete BubbleSort.
+Five isolated FPU pairs show 7.81% less inference time from CPU packing alone.
+The maximum compatible pipeline reaches 194.2 TPS on complete BubbleSort versus
+58.7 interpreter TPS (3.31x), with all five full sorts and pending-work checks
+passing. FPU remains a switching diagnostic rather than arithmetic throughput.
+
+The experimental [stateful event compiler](STATEFUL_INSTANT_KERNELS.md) now
+composes ADDER11BIT, Counter, Divider, FPU and BubbleSort into one instant kernel
+each. FPU covers 7,804 instant actors, with 296 ordinary pistons outside it.
+Separate BUD-read and passive-wire-capture reductions retain original state and
+FIFO ownership. FPU's 4,672 random-input native ticks and handoff pass. Five
+alternating release-harness pairs measure 8.622 → 6.897 s (20.0% less time), with
+LTO disabled. Its native output stays `0xffff`, so this is switching cost rather
+than arithmetic throughput; complete wire-free circuit replacement remains open.
+
+The separate O3+ [wire-capture compilation pass](WIRE_CAPTURE_COMPILATION.md)
+preserves work counts and full BubbleSort correctness. Five release-harness
+pairs show small median changes (about 1.2% CPU and 1.3% FPU), with substantial
+timing variation; this does not establish a large speedup. These earlier timings
+exclude the newer stateful event and passive-capture reductions.
+
+A broader [closed-network and composition investigation](INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md)
+now identifies multi-wire instant-only islands and tests their contraction.
+The largest candidate groups reach 10,228 CPU actors and 5,747 FPU actors.
+A single 16-wire net produces wrong CPU resource positions at tick 26 when
+collapsed to settled values. The next boundary must preserve ordered requests
+and reset events; the separate unsafe mode stays outside normal execution.
+
+The opt-in [experimental instant wire-node pass](EXPERIMENTAL_INSTANT_WIRE_NODES.md)
+now replaces eligible closed single-wire walks with ordered signal transfers.
+Three release-harness pairs show **no speedup**: CPU 7.194 -> 7.289 s per
+1,000 ticks; FPU diagnostic 0.571 -> 0.585 s per 256 ticks. It remains off by
+default. Multi-wire nets and broader reset elision remain outside this slice.
+
 ## BubbleSort/FPU profiling and wire-shape pass, 2026-10-19
 
 The separate O3+ `compile-wire-shapes` pass reduces full O5 BubbleSort inference

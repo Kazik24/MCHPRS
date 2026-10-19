@@ -59,17 +59,35 @@ pub(crate) struct InstantKernel {
     /// These sorted outside routes can each start a wave; mixed entry queues retain Graph.
     pub(crate) entries: Box<[RouteId]>,
     /// These Boolean operations contain boundary reads rather than internal wire reads.
-    pub(crate) program: ReducedLayerProgram,
-    /// This root requires the original stationary entry before any state is changed.
-    pub(crate) stationary: LayerExprId,
-    /// These conditional pulls retain the source-derived FIFO acceptance order.
-    pub(crate) pulls: Box<[KernelPull]>,
+    pub(crate) program: KernelProgram,
     /// These sorted actor IDs delimit the kernel's exclusive computation ownership.
     pub(crate) actors: Box<[PistonId]>,
     /// These original wire levels validate a settled entry without creating walk snapshots.
     pub(crate) wires: Box<[(NodeId, u8)]>,
     /// These sorted routes keep reset notifications and replace owned computation callbacks.
     pub(crate) routes: Box<[KernelRoute]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum KernelProgram {
+    /// An atomic pull wave owns its queue and has a whole-wave entry predicate.
+    PullWave {
+        program: ReducedLayerProgram,
+        stationary: LayerExprId,
+        pulls: Box<[KernelPull]>,
+    },
+    /// Independent cell entries consume only the already-popped request; wires remain live.
+    Events(Box<[InstantEventEntry]>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct InstantEventEntry {
+    /// This actor owns the original action and all mutable pose/publication state.
+    pub(crate) actor: PistonId,
+    /// These live state reads and pure gates check resources after ready/unpowered entry checks.
+    pub(crate) pins: Box<[CellPin]>,
+    /// This is the source cell's remaining validity root after the runtime entry checks.
+    pub(crate) valid: CellPinId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

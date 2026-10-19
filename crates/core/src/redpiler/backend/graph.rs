@@ -20,6 +20,7 @@ mod instant;
 #[path = "graph/tests/instant_cpu.rs"]
 mod instant_cpu_tests;
 mod instant_kernel;
+mod cpu_kernels;
 mod instant_proxy;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
@@ -840,6 +841,19 @@ impl GraphBackend {
 
     pub(crate) fn tick(&mut self) -> Result<(), GraphExecutionError> {
         self.tick_with_host(None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn assert_same_execution_state(&self, other: &Self) {
+        assert_eq!(self.state, other.state, "authoritative graph state");
+        assert_eq!(self.future.clock.logical_tick, other.future.clock.logical_tick);
+        assert_eq!(self.future.clock.phase, other.future.clock.phase);
+        assert_eq!(self.future.clock.scheduled_advanced, other.future.clock.scheduled_advanced);
+        assert_eq!(self.future.scheduler.iter().collect::<Vec<_>>(), other.future.scheduler.iter().collect::<Vec<_>>());
+        assert_eq!(self.future.pending, other.future.pending);
+        assert_eq!(self.future.pending_nodes, other.future.pending_nodes);
+        assert_eq!(self.future.piston_requests, other.future.piston_requests);
+        assert_eq!(self.future.deferred_pistons, other.future.deferred_pistons);
     }
 
     pub(crate) fn tick_with_world<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
@@ -1740,6 +1754,9 @@ impl GraphBackend {
         delivery: RouteDelivery,
         captured: Option<&[Option<ObservedSite>]>,
     ) -> Result<(), GraphExecutionError> {
+        if matches!(delivery.kind,DeliveryKind::Update {..}) && delivery.receiver.is_some_and(|receiver|self.instant_event_noop(receiver)) {
+            return Ok(());
+        }
         if !self.guard_matches(delivery.guard, captured) {
             return Ok(());
         }

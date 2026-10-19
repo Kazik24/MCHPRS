@@ -7,6 +7,8 @@ const tables = {
   instant_cells: "instant_cell", instant_corridors: "instant_corridor",
   instant_boundary_ports: "instant_port", instant_declines: "instant_decline",
   instant_layer_regions: "instant_layer_region", instant_layer_declines: "instant_layer_decline",
+  instant_event_kernels: "instant_event_kernel",
+  bud_memory_reads: "bud_memory_read",
   classic_nets: "classic_net",
   fixed_signal_queries: "fixed_signal",
   dust_paths: "dust_path", comparator_plans: "comparator_plan", callback_links: "callback_link", routes: "route", profiles: "profile",
@@ -35,6 +37,93 @@ function typedIds(value, found = []) {
   return found;
 }
 
+function validateInstantEvents(kernels, ids) {
+  const actors = new Set();
+  const ref = (value, prefix) => typeof value === "string" && value.startsWith(`${prefix}:`) && ids.has(value);
+  for (const kernel of kernels) {
+    if (!Array.isArray(kernel.actors) || !kernel.actors.length || !Array.isArray(kernel.entries)
+      || kernel.actors.length !== kernel.entries.length || kernel.wire_propagation_removed !== false) throw Error("Invalid event kernel ownership.");
+    for (let ordinal = 0; ordinal < kernel.actors.length; ordinal++) {
+      const actor = kernel.actors[ordinal], entry = kernel.entries[ordinal];
+      if (!ref(actor, "piston") || actors.has(actor) || entry?.actor !== actor) throw Error("Invalid event entry actor.");
+      actors.add(actor);
+      if (!Array.isArray(entry.pins) || !Number.isInteger(entry.valid) || entry.valid < 0 || entry.valid >= entry.pins.length) throw Error("Invalid event acceptance root.");
+      entry.pins.forEach((pin, index) => {
+        if (pin?.kind === "contribution") {
+          if (!ref(pin.link, "power_link")) throw Error("Invalid event contribution.");
+        } else if (pin?.kind === "state") {
+          const state = pin.test;
+          if (["piston_extended", "piston_head_present", "piston_availability"].includes(state?.kind)) {
+            if (!ref(state.piston, "piston")) throw Error("Invalid event piston state.");
+            if (state.kind === "piston_availability" && !["ready", "head_pending", "publishing_head_removal", "base_pending_head_present", "base_pending"].includes(state.availability)) throw Error("Invalid event availability.");
+          } else if (["resource_at", "resource_enabled"].includes(state?.kind)) {
+            if (!ref(state.resource, "resource") || state.kind === "resource_at" && !ref(state.contact, "contact")) throw Error("Invalid event resource state.");
+          } else throw Error("Unknown event state.");
+        } else if (pin?.kind === "gate") {
+          if (!["buffer", "invert", "all", "any"].includes(pin.gate) || !Array.isArray(pin.inputs)
+            || ["buffer", "invert"].includes(pin.gate) && pin.inputs.length !== 1
+            || pin.inputs.some((input) => !Number.isInteger(input) || input < 0 || input >= index)) throw Error("Invalid event gate.");
+        } else throw Error("Unknown event operation.");
+      });
+    }
+  }
+}
+
+function validateCpuKernels(program, ids) {
+  if (program == null) return;
+  const fail = () => { throw Error("Invalid packed CPU kernel program."); };
+  const ref = (value, kind) => {
+    if (typeof value !== "string" || !value.startsWith(kind + ":") || !ids.has(value)) fail();
+  };
+  if (program.method !== "live_bitmask_dnf" || program.effects !== "original_graph_fifo"
+    || !Array.isArray(program.reads) || !Array.isArray(program.entries)) fail();
+  for (const read of program.reads) {
+    if (read?.kind === "state") {
+      const s = read.test;
+      if (["piston_extended","piston_head_present","piston_availability"].includes(s?.kind)) {
+        ref(s.piston,"piston");
+        if (s.kind === "piston_availability" && !["ready","head_pending","publishing_head_removal","base_pending","base_pending_head_present"].includes(s.availability)) fail();
+      } else if (["resource_at","resource_enabled"].includes(s?.kind)) {
+        ref(s.resource,"resource");
+        if (s.kind === "resource_at") ref(s.contact,"contact");
+      } else fail();
+    } else if (read?.kind === "guard") ref(read.guard,"guard");
+    else if (["strength","input"].includes(read?.kind)) {
+      ref(read.node,"node");
+      if (read.kind === "input" && !["main","quasi"].includes(read.port)) fail();
+    } else if (read?.kind === "source") {
+      ref(read.site,"site");
+      const port = read.port;
+      if (["weak","strong"].includes(port?.kind)) {
+        if (!["north","south","east","west","top","bottom"].includes(port.face)) fail();
+      } else if (port?.kind === "conducted") {
+        if (typeof port.include_dust !== "boolean") fail();
+      } else if (!["stored","output"].includes(port?.kind)) fail();
+    } else fail();
+    if (["strength","source"].includes(read.kind) && (!Number.isInteger(read.threshold) || read.threshold < 0 || read.threshold > 14)) fail();
+  }
+  const masks = ["require_true","require_false"].map((key) => {
+    if (!Array.isArray(program[key]) || program[key].some((s) => typeof s !== "string" || !/^[0-9a-fA-F]{16}$/.test(s))) fail();
+    return program[key].map((s) => BigInt("0x" + s));
+  });
+  const [yes,no] = masks, actors = new Set();
+  if (yes.length !== no.length) fail();
+  for (const entry of program.entries) {
+    ref(entry?.actor,"piston");
+    if (actors.has(entry.actor)) fail();
+    actors.add(entry.actor);
+    for (const key of ["main","quasi","valid"]) {
+      const p = entry[key];
+      if (!p || ["read_start","read_len","clause_start","clause_len"].some((f) => !Number.isSafeInteger(p[f]) || p[f] < 0)) fail();
+      if (p.read_len > 64 || p.clause_len > 64 || p.read_start + p.read_len > program.reads.length || p.clause_start + p.clause_len > yes.length) fail();
+      const allowed = (1n << BigInt(p.read_len)) - 1n;
+      for (let i = p.clause_start; i < p.clause_start + p.clause_len; i++) {
+        if ((yes[i] & no[i]) !== 0n || ((yes[i] | no[i]) & ~allowed) !== 0n) fail();
+      }
+    }
+  }
+}
+
 function validateGraph(data) {
   if (data?.format !== "mchprs.redpiler.graph") throw Error("Unsupported graph format.");
   if (!Number.isInteger(data.version?.major) || data.version.major !== 1) throw Error(`Unsupported graph major version: ${data.version?.major}`);
@@ -46,7 +135,7 @@ function validateGraph(data) {
     if (table === "callback_links" && rows === undefined) continue;
     if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets", "fixed_signal_queries",
       "instant_cells", "instant_corridors", "instant_boundary_ports", "instant_declines",
-      "instant_layer_regions", "instant_layer_declines"].includes(table) && rows == null) continue;
+      "instant_layer_regions", "instant_layer_declines", "instant_event_kernels", "bud_memory_reads"].includes(table) && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -59,12 +148,27 @@ function validateGraph(data) {
     ids.add(snapshot.id);
   }
   for (const ref of typedIds(data)) if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`);
+  validateInstantEvents(data.graph.instant_event_kernels || [], ids);
+  validateCpuKernels(data.graph.cpu_kernels, ids);
+  const memoryReaders = new Set();
+  for (const memory of data.graph.bud_memory_reads || []) {
+    for (const [field,prefix] of [["storage","piston:"],["reader","piston:"],["resource","resource:"],["source","contact:"],["link","power_link:"]]) {
+      if (typeof memory[field] !== "string" || !memory[field].startsWith(prefix) || !ids.has(memory[field])) throw Error("Invalid BUD memory reference.");
+    }
+    if (memory.storage === memory.reader || memoryReaders.has(memory.reader) || memory.updates !== "original_graph_fifo" || memory.read !== "enabled_at_source") throw Error("Invalid BUD read scope.");
+    memoryReaders.add(memory.reader);
+  }
   const nodes = new Map(data.graph.nodes.map((node) => [node.id, node]));
   for (const node of nodes.values()) {
     if (node.kind?.builtin_reset !== undefined && (typeof node.kind.builtin_reset !== "boolean" || node.kind.kind !== "observer")) throw Error(`${node.id}.builtin_reset must be an observer boolean.`);
     if (node.kind?.builtin_reset && (node.kind.kind !== "observer" || node.output_route != null)) throw Error(`${node.id} has an invalid built-in reset.`);
   }
   const sites = new Map(data.graph.sites.map((site) => [site.id, site]));
+  for (const site of sites.values()) {
+    if (site.wire_capture != null && !["fixed", "electrical", "bulb", "wire", "piston", "contact"].includes(site.wire_capture)) {
+      throw Error(`${site.id} has an invalid wire capture.`);
+    }
+  }
   const regionRows = new Map((data.graph.instant_regions || []).map((region) => [region.id, region]));
   const routeRows = new Map((data.graph.routes || []).map((route) => [route.id, route]));
   for (const region of regionRows.values()) {
@@ -105,10 +209,16 @@ function validateGraph(data) {
   validateInstantKernel(data.graph.instant_kernel, data.graph);
   const instantWires = new Set();
   for (const wire of data.graph.wire_plans) {
+    if (wire.mutable_captures != null && (!Number.isInteger(wire.mutable_captures)
+      || wire.mutable_captures < 0 || wire.mutable_captures > 0xffffff || wire.hop_root == null)) throw Error(`${wire.id} has invalid mutable capture mask.`);
     if (wire.hop_root != null) {
       const root = sites.get(wire.hop_root);
       if (root?.source?.kind !== "component" || root.source.node !== wire.node) throw Error(`${wire.id} hop root must bind its component.`);
     }
+    if (wire.abstract_instant_net != null && typeof wire.abstract_instant_net !== "boolean") throw Error(`${wire.id} has invalid abstract instant-net flag.`);
+    const node = wire.instant_node;
+    if (node != null && (typeof node !== "object" || Array.isArray(node) || !Number.isInteger(node.receivers)
+      || node.receivers <= 0 || node.receivers > 0xffffff)) throw Error(`${wire.id} has invalid instant wire node mask.`);
     const instant = wire.instant_reset;
     if (instant != null) {
       if (typeof instant !== "object" || Array.isArray(instant)

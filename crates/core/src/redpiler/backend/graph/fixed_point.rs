@@ -28,6 +28,7 @@ pub(super) fn with_mode<R>(enabled: bool, work: impl FnOnce() -> R) -> R {
 
 impl GraphBackend {
     pub(super) fn evaluate_fixed_point_wire(&mut self, root: NodeId) -> Result<(), GraphExecutionError> {
+        let preserve_route = self.wire_plan(root).execution.abstract_instant_net;
         let (wires, edges) = self.collect_fixed_point_network(root);
         let initial: Vec<_> = wires.iter().map(|&node| self.wire_state(node).power).collect();
         let sources: Vec<_> = wires
@@ -82,12 +83,12 @@ impl GraphBackend {
                     continue;
                 }
                 if self.wire_route_delivery(index, route, slot, site, &observed).is_some() && seen.insert(site) {
-                    boundary.push((site, observed));
+                    boundary.push((site, observed, route));
                 }
             }
         }
-        for (site, observed) in boundary {
-            self.dispatch_turbo_nonwire(site, &observed, 1, None)?;
+        for (site, observed, route) in boundary {
+            self.dispatch_turbo_nonwire(site, &observed, 1, preserve_route.then_some(route))?;
         }
         Ok(())
     }

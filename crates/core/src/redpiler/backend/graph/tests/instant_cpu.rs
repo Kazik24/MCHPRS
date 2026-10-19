@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 #[path = "../../../../../benches/support/cpus.rs"]
 #[allow(dead_code)]
-mod cpus;
+pub(super) mod cpus;
 
 #[test]
 #[ignore = "research: active BubbleSort Instant actors, proof cuts and runtime vetoes"]

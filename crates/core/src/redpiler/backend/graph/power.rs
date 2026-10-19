@@ -64,6 +64,10 @@ impl GraphBackend {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_input_strength(node, port);
         }
+        if port==InputPort::Quasi && let Some(read)=self.program.bud_memory_read(node) {
+            let state=self.state.resources[read.resource.index()];
+            return u8::from(state.enabled && state.at==read.source)*15;
+        }
         if port == InputPort::Main
             && let Some((net,attenuation,source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten()
             && self.state.classic_active[net as usize] {

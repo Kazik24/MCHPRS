@@ -567,6 +567,7 @@ mod tests {
             (1, "contract-static-dust-paths"),
             (2, "specialize-wire-queries"),
             (3, "compile-wire-shapes"),
+            (3, "compile-wire-captures"),
             (2, "compile-wire-hops"),
             (2, "compile-wire-callbacks"),
             (3, "compile-instant-resets"),
@@ -582,8 +583,14 @@ mod tests {
                 optimization_level: level,
                 ..Default::default()
             });
+            let experimental = usize::from(cfg!(feature = "experimental-instant-wire-nodes") && level.is_none_or(|level| level >= 3));
             #[cfg(not(feature = "unsafe-turbo-fixed-point"))]
-            assert_eq!(pipeline.entries.len(), expected.len());
+            assert_eq!(pipeline.entries.len(), expected.len() + experimental);
+            if experimental != 0 {
+                let entry = &pipeline.entries[expected.len()];
+                assert_eq!(entry.pass.name(), "experimental-compile-instant-wire-nodes");
+                assert!(entry.enabled && matches!(entry.pass, Pass::Build(_)));
+            }
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);
                 let enabled = name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);

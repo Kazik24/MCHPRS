@@ -1,5 +1,41 @@
 # CPU-friendly classic execution: measured baseline and proposed next step
 
+The next separate pass, [CPU kernel packing](CPU_KERNEL_EXECUTION.md), is
+implemented: flat live reads, minimized Boolean masks and AVX2/scalar matching
+replace repeated kernel power/acceptance traversal without moving FIFO effects.
+The [TPS report](CPU_KERNEL_TPS_REPORT.md) compares the interpreter with the
+maximum compatible pipeline across all five requested devices.
+CPU packing alone reduces FPU switching time by 7.81% across five isolated pairs.
+The maximum pipeline completes BubbleSort at 194.2 versus 58.7 interpreter TPS
+(3.31x); all five complete-sort state/future and sorted-RAM checks pass.
+
+The experimental [stateful instant kernels](STATEFUL_INSTANT_KERNELS.md) now
+compose ADDER11BIT, Counter, Divider, FPU and BubbleSort into one instant region
+each. FPU passes 4,672 random-input native ticks and handoff; five alternating
+release-harness pairs measure 20.0% less switching time (LTO disabled). Its native
+output remains `0xffff`, so arithmetic throughput is unverified. The new
+separate passive-capture reduction removes immutable wire-machine bookkeeping;
+general dynamic propagation remains, so one kernel is not a complete Boolean
+replacement of the original circuit.
+
+The separate O3+ [wire-capture pass](WIRE_CAPTURE_COMPILATION.md) is implemented;
+five release-harness pairs show only small, noisy median improvements. Full
+production BubbleSort correctness passes. Those earlier capture-only timings
+exclude the newer stateful event and passive-capture reductions.
+
+A broader [closed-network and composition investigation](INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md)
+now identifies multi-wire instant-only islands and tests their contraction.
+The largest candidate groups reach 10,228 CPU actors and 5,747 FPU actors.
+A single 16-wire net produces wrong CPU resource positions at tick 26 when
+collapsed to settled values. The next boundary must preserve ordered requests
+and reset events; the separate unsafe mode stays outside normal execution.
+
+The opt-in [experimental instant wire-node pass](EXPERIMENTAL_INSTANT_WIRE_NODES.md)
+now replaces eligible closed single-wire walks with ordered signal transfers.
+Three release-harness pairs show **no speedup**: CPU 7.194 -> 7.289 s per
+1,000 ticks; FPU diagnostic 0.571 -> 0.585 s per 256 ticks. It remains off by
+default. Multi-wire nets and broader reset elision remain outside this slice.
+
 Started 2026-10-18; status updated 2026-10-19. Packing and the second whole-fixed execution stage are implemented at O2+. Mixed circuits now have the fixed-face power-query slice described below; broader mixed lowering, passive-net contraction and SIMD remain proposed work. See [the current state](CURRENT_STATE.md) for measured throughput and remaining scope. This work keeps the existing Graph backend and its single authoritative machine state and future.
 
 Fresh [BubbleSort/FPU profiles and final graph research](CPU_FPU_FINAL_GRAPH_PROFILE.md)

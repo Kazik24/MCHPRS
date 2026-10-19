@@ -10,6 +10,19 @@ fn prepare_hops(world: &PlotWorld) -> CompileGraph {
 }
 
 fn compile_hops(graph: &mut CompileGraph) {
+    passes::compile_wire_captures::CompileWireCaptures
+        .run(
+            graph,
+            &PassContext::new(
+                &TaskMonitor::default(),
+                &Default::default(),
+                &EntryState {
+                    logical_tick: 0,
+                    pending_ticks: vec![],
+                },
+            ),
+        )
+        .unwrap();
     passes::compile_wire_hops::CompileWireHops
         .run(
             graph,
@@ -23,6 +36,20 @@ fn compile_hops(graph: &mut CompileGraph) {
             ),
         )
         .unwrap();
+    passes::minimize_wire_captures::MinimizeWireCaptures
+        .run(
+            graph,
+            &PassContext::new(
+                &TaskMonitor::default(),
+                &Default::default(),
+                &EntryState {
+                    logical_tick: 0,
+                    pending_ticks: vec![],
+                },
+            ),
+        )
+        .unwrap();
+    graph.validate().unwrap();
 }
 
 fn hop_backend(mut graph: CompileGraph, compiled: bool) -> GraphBackend {
@@ -41,7 +68,19 @@ pub(super) fn recording_hops_graph(world: &PlotWorld) -> GraphBackend {
 
 fn assert_walk_equivalent(general: &GraphBackend, compiled: &GraphBackend) {
     assert_eq!(compiled.state, general.state);
-    assert_eq!(compiled.trace(), general.trace(), "intermediate writes, headings and delivery layers");
+    let retained_trace = |backend: &GraphBackend| {
+        backend
+            .trace()
+            .iter()
+            .filter(|line| !(line.contains("wire discover") && line.contains("receiver=None properties=Passive")))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        retained_trace(compiled),
+        retained_trace(general),
+        "mutable captures, intermediate writes, headings and delivery layers"
+    );
     assert_eq!(compiled.observed_operations, general.observed_operations);
     assert_eq!(compiled.scheduled_ticks(), general.scheduled_ticks());
     assert_eq!(compiled.counts, general.counts);
@@ -94,6 +133,7 @@ fn compiled_capture_matches_general_for_every_site_and_saved_strength() {
         for index in 0..backend.program.sites().len() {
             let site = SiteId::new(index as u32);
             assert_eq!(backend.observe_site(site), backend.resolve_site(site, None).map(|site| site.observed()));
+            assert_eq!(backend.observe_wire_site(site), backend.observe_site(site));
         }
     }
 }
@@ -134,6 +174,40 @@ fn compiled_hops_preserve_seeded_histories_on_branched_cyclic_dust() {
         assert_walk_equivalent(&general, &compiled);
     }
     assert!(compiled.counts.wire_walks > 0);
+}
+
+#[test]
+fn compiled_capture_selects_live_contacts_and_properties_across_memory_poses() {
+    let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+    let graph = passes::rich::prepare(&world, bounds, vec![], &TaskMonitor::default(), AnalysisLimits::default())
+        .unwrap()
+        .graph;
+    let mut backend = hop_backend(graph, true);
+    assert!(
+        (0..backend.program.sites().len())
+            .any(|index| matches!(backend.program.wire_capture(SiteId::new(index as u32)), Some(WireCapture::Contact(_))))
+    );
+    for pose in 0..4 {
+        for state in &mut backend.state.pistons {
+            state.extended = pose & 1 != 0;
+            state.head_present = pose & 2 != 0;
+        }
+        for (state, spec) in backend.state.resources.iter_mut().zip(backend.program.resources()) {
+            state.at = spec.contacts[pose % spec.contacts.len()];
+            state.enabled = pose & 1 != 0;
+        }
+        for state in &mut backend.state.components {
+            if let ComponentState::Electrical(state) = state {
+                state.powered = pose & 1 != 0;
+                state.repeater_locked = pose & 2 != 0;
+                state.output_strength = if pose & 2 != 0 { 15 } else { 0 };
+            }
+        }
+        for index in 0..backend.program.sites().len() {
+            let site = SiteId::new(index as u32);
+            assert_eq!(backend.observe_wire_site(site), backend.observe_site(site), "pose {pose}, site {index}");
+        }
+    }
 }
 
 #[test]

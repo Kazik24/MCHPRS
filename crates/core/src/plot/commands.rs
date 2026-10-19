@@ -1958,7 +1958,8 @@ mod security_tests {
             let before = [plot.world.get_block(control), plot.world.get_block(output)];
             let mut messages = |last: &str| {
                 let mut messages = Vec::new();
-                for _ in 0..32 {
+                // Analysis includes pass and preparation-table rows before its final status.
+                for _ in 0..256 {
                     let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
                     assert_eq!(id, 0x72, "analysis must send system chat");
                     // Wire text is an unnamed NBT compound; restore its empty
@@ -1994,7 +1995,8 @@ mod security_tests {
                 };
                 // The pipeline registry tests exact names/order; this UI checks the selected mode.
                 if args.contains(&"--optimize") {
-                    assert!(*enabled > 0 && *skipped == 0, "{summary}");
+                    // Local classic nets require their separate opt-in flag.
+                    assert!(*enabled > 0 && *skipped == 1, "{summary}");
                 } else {
                     assert!(*enabled == 0 && *skipped > 0, "{summary}");
                 }

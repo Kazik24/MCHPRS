@@ -35,6 +35,17 @@ mod instant_regions;
 mod wire_callback_selection;
 mod wire_query_facts;
 mod wire_shapes;
+mod wire_captures;
+pub(crate) mod cpu_kernels;
+pub(crate) use cpu_kernels::{CpuKernelPlans, CpuKernelEntry, CpuPredicate, CpuRead};
+mod bud_memory_reads;
+pub(crate) use bud_memory_reads::{BudMemoryRead, infer_bud_memory_reads};
+pub(crate) use wire_captures::WireCapture;
+mod instant_wire_nodes;
+pub(crate) use instant_wire_nodes::{InstantWireNode, infer_instant_wire_nodes};
+#[cfg(test)]
+pub(crate) use instant_wire_nodes::census_closed_instant_nets;
+pub(crate) use instant_wire_nodes::infer_abstract_instant_nets;
 pub(crate) use wire_callback_selection::WireCallbackSelection;
 pub(crate) use wire_shapes::WireShape;
 mod fixed_signals;
@@ -673,6 +684,12 @@ pub(crate) enum GraphBuildError {
     InvalidWireQueryFacts {
         wire: usize,
     },
+    InvalidWireCapture {
+        site: usize,
+    },
+    InvalidWireCaptureMask {
+        wire: usize,
+    },
     InvalidInstantReset {
         wire: usize,
     },
@@ -773,6 +790,8 @@ impl std::fmt::Display for GraphBuildError {
             }
             Self::InvalidWireHopRoot { wire } => write!(f, "wire {wire} has an invalid compiled hop root"),
             Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
+            Self::InvalidWireCapture { site } => write!(f, "site {site} has a stale or invalid wire capture operation"),
+            Self::InvalidWireCaptureMask { wire } => write!(f, "wire {wire} has a stale or invalid mutable capture mask"),
             Self::InvalidWireCallbackSelection { wire } => write!(f, "wire {wire} has an invalid compiled callback selection"),
             Self::InvalidClassicNet { net, reason } => write!(f, "classic net {net} has an invalid certificate: {reason}"),
             Self::InvalidInstantRegion { table, index } => write!(f, "instant {table}[{index}] has a stale or invalid certificate"),
@@ -839,10 +858,14 @@ impl std::error::Error for GraphBuildError {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Lowered instant instructions and bindings; compile-time proofs are not retained.
 struct InstantProgram {
+    /// Packed hot descriptors and read/mask arrays, separate from cold kernel evidence.
+    cpu: CpuKernelPlans,
+    /// Direct hot entry lookup; empty disables packing, MAX marks an uncovered actor.
+    cpu_by_actor: Box<[u32]>,
     /// These reduced pull waves replace covered computation while retaining ordinary reset work.
     kernels: Box<[std::sync::Arc<InstantKernel>]>,
     /// This maps each eligible first request to its immutable wave program.
-    kernel_by_actor: Box<[Option<u32>]>,
+    kernel_by_actor: Box<[Option<(u32, u32)>]>,
     /// These private-cell programs reuse the existing actor, resource, and clock state.
     proxies: Box<[InstantProxy]>,
     /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
@@ -873,6 +896,9 @@ pub(crate) struct CircuitProgram {
     routes: Box<[Route]>,
     /// This maps each wire plan to ordered slices in its Turbo delivery route.
     turbo_callback_indices: Box<[Option<TurboCallbackIndex>]>,
+    wire_captures: Box<[WireCapture]>,
+    bud_memory_reads: Box<[BudMemoryRead]>,
+    bud_read_by_node: Box<[Option<u32>]>,
     wires: Box<[WirePlan]>,
     /// These immutable certificates select the local power calculation for proven wire paths.
     dust_paths: Box<[DustPathPlan]>,
@@ -898,6 +924,14 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    #[cfg(test)]
+    pub(crate) fn bud_memory_reads(&self)->&[BudMemoryRead] {&self.bud_memory_reads}
+    pub(crate) fn bud_memory_read(&self, node:NodeId)->Option<&BudMemoryRead> {
+        self.bud_read_by_node.get(node.index()).copied().flatten().map(|index|&self.bud_memory_reads[index as usize])
+    }
+    pub(crate) fn wire_capture(&self, site: SiteId) -> Option<&WireCapture> {
+        self.wire_captures.get(site.index())
+    }
     pub(crate) fn mixed_classic(&self) -> &MixedClassicProgram {
         &self.mixed_classic
     }
@@ -905,9 +939,21 @@ impl CircuitProgram {
         &self.instant.kernels
     }
 
+    #[cfg(test)]
     pub(crate) fn instant_kernel_for_actor(&self, actor: PistonId) -> Option<&std::sync::Arc<InstantKernel>> {
-        self.instant.kernel_by_actor[actor.index()].map(|index| &self.instant.kernels[index as usize])
+        self.instant_kernel_binding(actor).map(|(kernel,_)|kernel)
     }
+
+    pub(crate) fn instant_kernel_binding(&self, actor:PistonId)->Option<(&std::sync::Arc<InstantKernel>,usize)> {
+        self.instant.kernel_by_actor[actor.index()].map(|(kernel,entry)|(&self.instant.kernels[kernel as usize],entry as usize))
+    }
+
+    pub(crate) fn cpu_kernel_entry(&self, actor: PistonId) -> Option<CpuKernelEntry> {
+        let index = *self.instant.cpu_by_actor.get(actor.index())?;
+        (index != u32::MAX).then(|| self.instant.cpu.entries[index as usize])
+    }
+
+    pub(crate) fn cpu_kernels(&self) -> &CpuKernelPlans { &self.instant.cpu }
     #[cfg(test)]
     pub(crate) fn without_fixed_wire_callbacks(&self) -> Self {
         let mut general = self.clone();
@@ -997,6 +1043,13 @@ impl CircuitProgram {
 
     pub(crate) fn wires(&self) -> &[WirePlan] {
         &self.wires
+    }
+
+    #[cfg(test)]
+    pub(crate) fn retain_abstract_instant_wires(&mut self, keep: &rustc_hash::FxHashSet<NodeId>) {
+        for wire in &mut self.wires {
+            wire.execution.abstract_instant_net &= keep.contains(&wire.node);
+        }
     }
 
     pub(crate) fn turbo_callback_index(&self, wire_index: usize) -> Option<&TurboCallbackIndex> {

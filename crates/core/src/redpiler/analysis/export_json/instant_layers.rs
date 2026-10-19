@@ -191,7 +191,7 @@ fn lifecycle_phase(value: LayerLifecyclePhase) -> &'static str {
     }
 }
 
-fn state_test_dto(test: StateTest) -> StateTestDto {
+pub(super) fn state_test_dto(test: StateTest) -> StateTestDto {
     match test {
         StateTest::PistonExtended(piston) => StateTestDto::PistonExtended {
             piston: typed_id("piston", piston.index()),
@@ -819,7 +819,7 @@ fn array<'a>(row: &'a Value, field: &str) -> Result<&'a [Value], ExportError> {
         .ok_or_else(|| invalid("layer field must be an array"))
 }
 
-fn validate_state_test(value: &Value, ids: &HashSet<&str>) -> Result<(), ExportError> {
+pub(super) fn validate_state_test(value: &Value, ids: &HashSet<&str>) -> Result<(), ExportError> {
     let reference = |field: &str, prefix: &str| {
         value[field]
             .as_str()

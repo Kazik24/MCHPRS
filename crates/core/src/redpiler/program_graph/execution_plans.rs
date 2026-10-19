@@ -14,6 +14,13 @@ pub(crate) enum PlanChange {
     DustPaths,
     WireQueries,
     WireShapes,
+    WireCaptures,
+    WireCaptureMasks,
+    InstantEvents,
+    CpuKernels,
+    BudMemoryReads,
+    InstantWireNodes,
+    AbstractInstantNets,
     WireCallbacks,
     WireHops,
     InstantResets,
@@ -31,6 +38,12 @@ impl PlanChange {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// Optional execution shortcuts for one wire's unchanged canonical bindings.
 pub(crate) struct WireExecutionPlan {
+    /// Mutable canonical sites retained after immutable passive capture elimination.
+    pub(crate) mutable_captures: Option<u32>,
+    /// Experimental closed single-wire signal transfer.
+    pub(crate) instant_node: Option<InstantWireNode>,
+    /// Unsafe experiment: closure is checked; request-order equivalence is not.
+    pub(crate) abstract_instant_net: bool,
     /// Exact fixed admission; dynamic slots keep their original guard search.
     pub(crate) callback_selection: Option<WireCallbackSelection>,
     /// Checked fixed geometry removes repeated property resolution without caching power.
@@ -88,6 +101,14 @@ pub(crate) struct ExecutionPlans {
     pub(crate) classic_nets: Vec<ClassicNetPlan>,
     /// Empty disables indexing; otherwise entries align with the wire table.
     pub(crate) turbo_callback_indices: Vec<Option<TurboCallbackIndex>>,
+    /// Empty uses general capture; otherwise aligned with sites, shared by all walks.
+    pub(crate) wire_captures: Vec<WireCapture>,
+    /// Experimental FIFO cell kernels; empty retains the existing pull-wave lowering.
+    pub(crate) instant_events: Vec<InstantKernel>,
+    /// Flat pure predicates compiled from event kernels; no mutable values are duplicated.
+    pub(crate) cpu_kernels: CpuKernelPlans,
+    /// Exact private storage/read pairs; their original state and update work remain owned by Graph.
+    pub(crate) bud_memory_reads: Vec<BudMemoryRead>,
     /// Local wire-power certificates, retaining the original ordered walks.
     pub(crate) dust_paths: Vec<DustPathPlan>,
     /// Ownership boundaries and their dependent instant programs.

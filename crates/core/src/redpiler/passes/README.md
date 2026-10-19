@@ -464,3 +464,72 @@ include the counterexample torch -> immediate bulb change -> same torch, importe
 pending work, direction, lock/Side declines, cancellation and CPU diagnostics.
 The rewrite edits existing delivery/link tables; normal validation, lowering,
 export and reset retain the resulting graph.
+
+
+### Compiled wire captures
+
+`compile_wire_captures.rs` is a separate O3+ read-only builder. It publishes one
+capture recipe per site, shared across walks: fixed observation, electrical
+properties, bulb properties, live wire, piston pose, or guarded contact selection.
+The recipes specialize `observe_site`; they do not cache mutable observations.
+Both first discovery in compiled walks and isolated Turbo capture use the table.
+The general capture remains available when the table is absent. Validation
+rederives every recipe, rewrites clear it, and lowering preserves it. JSON exports
+the recipe kind on each site with the `wire_captures` capability.
+
+Each site is still captured at the same discovery cut. Site identity, heading,
+visited state, capture reuse, original routes, duplicate deliveries and nested
+walk scratch stay unchanged. Contacts still select live variants and mutable
+components still read current state. The relation is equality of every captured
+`ObservedSite`; therefore it preserves the following operations, work counts,
+machine state and pending work. Analog-transition, live-contact and nested-walk
+differential tests exercise that relation.
+
+### Experimental stateful instant kernels
+
+The separate `compile_instant_events.rs`, `compile_bud_memory_reads.rs` and
+`minimize_wire_captures.rs` builders implement the opt-in
+`experimental-instant-events` O4+ stable-input family. It composes FIFO-local
+shared-cell entries, exact private BUD reads, and constant passive capture
+elimination. Their validators independently reconstruct the source certificates.
+The pipeline omits old layer compilation because event entries cover the same
+admitted actors; dynamic wires, outside actors and pending work retain their
+original state owners. See [scope and evidence](../../../../../docs/notes/redpiler-pistons-v4/STATEFUL_INSTANT_KERNELS.md).
+
+### Experimental CPU kernel packing
+
+`optimize_instant_kernels_cpu.rs` runs after event compilation when the
+`experimental-cpu-kernels` feature selects the O4+ stable-input family. It
+compiles live power and acceptance predicates into bounded, minimized bit-mask
+clauses and contiguous typed reads, with dense actor bindings. The executor
+selects AVX2 clause matching once when available; other CPUs use scalar word
+operations. It preserves Main-before-Quasi sampling, contact priority, live
+wire strengths and every original FIFO action/publication. Budget or unsupported
+entries use the original query/event program. Validation reconstructs the whole
+table from the source graph; export records hex masks losslessly. See
+[implementation and measurements](../../../../../docs/notes/redpiler-pistons-v4/CPU_KERNEL_EXECUTION.md).
+
+### Experimental instant wire nodes
+
+`compile_instant_wire_nodes.rs` is a separate read-only builder, enabled only
+by the `experimental-instant-wire-nodes` Cargo feature at O3+. It annotates
+closed single-wire nets with a validated receiver mask. The runtime replaces
+Turbo discovery and generic callbacks with the first ordered signal operation
+per instant actor/reset. Power writes, shape behavior, request provenance,
+reset clocks, imported future work and native continuation retain their owners.
+Every possible contact receiver and conducted power consumer must stay inside
+the admitted boundary; mixed consumers, other dust and overlapping private
+owners decline. This is local execution and needs no whole-kernel queue claim.
+See [scope, evidence and the multi-wire limit](../../../../../docs/notes/redpiler-pistons-v4/EXPERIMENTAL_INSTANT_WIRE_NODES.md).
+
+
+### Closed instant-net hypothesis test
+
+`abstract_instant_nets.rs` is a separate builder selected only by the
+`unsafe-abstract-instant-nets` Cargo feature at O4+ with stable inputs. It marks
+structurally closed multi-wire corridors, retaining mixed/classic nets and other
+execution owners. The existing final-state solver executes those marks.
+Closure validation does not certify request or reset FIFO equivalence. The mode
+is deliberately excluded from normal tiers; diagnostic success must not be
+reported as native correctness or useful throughput. See the
+[boundary investigation and counterexamples](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md).

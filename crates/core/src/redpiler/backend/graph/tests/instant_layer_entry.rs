@@ -13,6 +13,9 @@ const BOUNDS: (BlockPos, BlockPos) = (BlockPos::new(2, 17, 2), BlockPos::new(15,
 #[path = "instant_layer_entry/interfaces.rs"]
 mod interfaces;
 
+#[path = "instant_layer_entry/wire_nodes.rs"]
+mod wire_nodes;
+
 fn wire_controlled_cell_world() -> PlotWorld {
     use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
     let source = CONTROL.offset(BlockFace::West);
@@ -563,7 +566,7 @@ fn four_cell_wave_executes_without_internal_turbo_and_preserves_reset() {
 }
 
 #[test]
-fn public_o4_pipeline_executes_a_wave_and_declines_an_unrelated_request_origin() {
+fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins() {
     for trusted_origin in [false, true] {
         let options = crate::redpiler::CompilerOptions {
             optimization_level: Some(4),
@@ -582,8 +585,13 @@ fn public_o4_pipeline_executes_a_wave_and_declines_an_unrelated_request_origin()
             &monitor,
         )
         .unwrap();
-        let plan = prepared.graph.plans.instant.layers.as_ref().unwrap();
-        assert_eq!(plan.regions.len(), 1, "public pipeline declines: {:?}", plan.declines);
+        if cfg!(feature = "experimental-instant-events") {
+            assert!(prepared.graph.plans.instant.layers.is_none());
+            assert_eq!(prepared.graph.plans.instant_events.len(), 1);
+        } else {
+            let plan = prepared.graph.plans.instant.layers.as_ref().unwrap();
+            assert_eq!(plan.regions.len(), 1, "public pipeline declines: {:?}", plan.declines);
+        }
         let (program, state) = prepared.graph.lower().unwrap();
         let mut backend = GraphBackend::new(program, state, 0).unwrap();
         assert_eq!(backend.program.instant_kernels().len(), 1);
@@ -612,8 +620,13 @@ fn public_o4_pipeline_executes_a_wave_and_declines_an_unrelated_request_origin()
             )
             .unwrap();
             if tick == 0 {
-                assert_eq!(backend.execution_counts().instant_kernel_invocations, u64::from(trusted_origin));
-                assert_eq!(backend.execution_counts().wire_walks == 0, trusted_origin);
+                if cfg!(feature = "experimental-instant-events") {
+                    assert!(backend.execution_counts().instant_kernel_invocations >= 2);
+                    assert!(backend.execution_counts().wire_walks > 0);
+                } else {
+                    assert_eq!(backend.execution_counts().instant_kernel_invocations, u64::from(trusted_origin));
+                    assert_eq!(backend.execution_counts().wire_walks == 0, trusted_origin);
+                }
             }
         }
     }

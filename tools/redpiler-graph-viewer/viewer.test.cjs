@@ -4,6 +4,27 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 
+test('CPU bit masks preserve bit 63 and reject malformed programs', () => {
+  const context = vm.createContext({document: {addEventListener() {}}});
+  const source = fs.readFileSync(path.join(__dirname, 'viewer.js'), 'utf8');
+  vm.runInContext(source.slice(source.indexOf('function validateCpuKernels'), source.indexOf('function validateGraph')), context);
+  const p = {read_start: 0, read_len: 64, clause_start: 0, clause_len: 1};
+  const program = {method: 'live_bitmask_dnf', effects: 'original_graph_fifo',
+    reads: Array.from({length: 64}, () => ({kind:'guard', guard:'guard:0'})),
+    entries: [{actor:'piston:0',main:{...p},quasi:{...p},valid:{...p}}],
+    require_true:['8000000000000000'],require_false:['0000000000000001']};
+  const ids = new Set(['guard:0','piston:0']);
+  context.validateCpuKernels(program, ids);
+  for (const [field,value] of [['read_len',65],['read_start',1],['clause_len',2],['clause_start',-1],['read_len',true]]) {
+    const changed=structuredClone(program); changed.entries[0].main[field]=value;
+    assert.throws(() => context.validateCpuKernels(changed, ids));
+  }
+  for (const value of [2 ** 63, '800000000000000', 'z000000000000000', '0000000000000001']) {
+    const changed=structuredClone(program); changed.require_true=[value];
+    assert.throws(() => context.validateCpuKernels(changed, ids));
+  }
+});
+
 class Element {
   constructor() {
     this.listeners = new Map();
@@ -1047,4 +1068,115 @@ test('rejects malformed instant boundary tables, ownership, and dangling binding
   await load(viewer, classicOwned);
   assert.equal(viewer.elements.get('error').hidden, false);
   assert.equal(viewer.cy, previous);
+});
+
+test('instant wire node masks are optional and bounded', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const wire = graph.graph.wire_plans[0];
+  wire.instant_node = { receivers: 1 };
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  for (const receivers of [0, -1, 0x1000000, true, '1']) {
+    wire.instant_node = { receivers };
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false);
+  }
+  delete wire.instant_node;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+});
+
+test('BUD reads retain typed owners and original update scope', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture(), rows = graph.graph;
+  rows.bud_memory_reads = [{id:'bud_memory_read:0',storage:rows.pistons[1].id,reader:rows.pistons[0].id,
+    resource:rows.resources[0].id,source:rows.contacts[0].id,link:rows.power_links[0].id,updates:'original_graph_fifo',read:'enabled_at_source'}];
+  await load(viewer,graph);
+  assert.equal(viewer.elements.get('error').hidden,true);
+  for (const [field,value] of [['storage',rows.pistons[0].id],['reader','node:0'],['resource','resource:99999'],['updates','erased'],['read','saved_pose']]) {
+    const bad = structuredClone(graph);
+    bad.graph.bud_memory_reads[0][field] = value;
+    await load(viewer,bad);
+    assert.equal(viewer.elements.get('error').hidden,false);
+  }
+});
+
+test('event kernels validate ownership and ordered predicate operands', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const actor = graph.graph.pistons[0].id;
+  graph.graph.instant_event_kernels = [{id:'instant_event_kernel:0',actors:[actor],wire_propagation_removed:false,
+    entries:[{actor,valid:1,pins:[{kind:'state',test:{kind:'piston_extended',piston:actor}},{kind:'gate',gate:'invert',inputs:[0]}]}]}];
+  await load(viewer,graph);
+  assert.equal(viewer.elements.get('error').hidden,true);
+  const mutations = [
+    (kernel) => {kernel.wire_propagation_removed = true;},
+    (kernel) => {kernel.actors.push(actor);},
+    (kernel) => {kernel.entries[0].valid = 2;},
+    (kernel) => {kernel.entries[0].pins[1].inputs = [1];},
+    (kernel) => {kernel.entries[0].pins[0].kind = 'activation';},
+    (kernel) => {kernel.entries[0].pins[0].test.piston = 'node:0';},
+  ];
+  for (const mutate of mutations) {
+    const bad = structuredClone(graph);
+    mutate(bad.graph.instant_event_kernels[0]);
+    await load(viewer,bad);
+    assert.equal(viewer.elements.get('error').hidden,false);
+  }
+});
+
+test('wire capture operations are optional and typed', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  for (const value of [null, 'fixed', 'electrical', 'bulb', 'wire', 'piston', 'contact']) {
+    graph.graph.sites[0].wire_capture = value;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, true);
+  }
+  for (const value of [false, 1, {}, [], 'saved_pose']) {
+    graph.graph.sites[0].wire_capture = value;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false);
+  }
+});
+
+test('abstract instant net flags are explicit and typed', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  const wire = graph.graph.wire_plans[0];
+  wire.abstract_instant_net = true;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true);
+  for (const value of [0, 1, 'true', {}]) {
+    wire.abstract_instant_net = value;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false);
+  }
+});
+
+test('mutable capture masks require 24 bits and a compiled root', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture(), wire = graph.graph.wire_plans[0];
+  wire.hop_root = graph.graph.sites.find((site) => site.source.kind === 'component' && site.source.node === wire.node).id;
+  for (const value of [0, 0xffffff]) {
+    wire.mutable_captures = value;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, true);
+  }
+  for (const value of [-1, 0x1000000, 0.5, true, '1', [], {}]) {
+    wire.mutable_captures = value;
+    await load(viewer, graph);
+    assert.equal(viewer.elements.get('error').hidden, false);
+  }
+  wire.mutable_captures = 0;
+  delete wire.hop_root;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, false);
 });

@@ -56,7 +56,6 @@ pub(crate) struct RegionPartition {
 }
 
 /// Bind source graph entities to catalog owners and connect only paired owned dependencies.
-#[cfg(test)]
 pub(crate) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<RegionPartition, String> {
     let owner_count = catalog.cells.len() + catalog.corridors.len();
     partition_with_cuts(graph, catalog, monitor, &vec![true; owner_count], |_| true)

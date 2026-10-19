@@ -27,6 +27,8 @@ TABLES = {
     "instant_decline": "instant_declines",
     "instant_layer_region": "instant_layer_regions",
     "instant_layer_decline": "instant_layer_declines",
+    "instant_event_kernel": "instant_event_kernels",
+    "bud_memory_read": "bud_memory_reads",
     "wire_relation": "wire_relations",
     "comparator_plan": "comparator_plans",
     "callback_link": "callback_links",
@@ -136,6 +138,68 @@ def _route_occurrence(value: Any, owner: str, records: dict, ref: Any) -> tuple[
     return route, ordinal, deliveries[ordinal]
 
 
+def _validate_cpu_kernels(program: Any, ref: Any) -> None:
+    if program is None:
+        return
+    program = _object(program, "cpu_kernels")
+    def fail() -> None:
+        raise GraphFormatError("invalid packed CPU kernel program")
+    if program.get("method") != "live_bitmask_dnf" or program.get("effects") != "original_graph_fifo":
+        fail()
+    reads = _array(program.get("reads"), "cpu_kernels.reads")
+    for read in reads:
+        read = _object(read, "CPU read")
+        kind = read.get("kind")
+        if kind == "state":
+            _validate_state_test(read.get("test"), "CPU read", ref)
+        elif kind == "guard":
+            ref("guard", read.get("guard"), "CPU read")
+        elif kind in ("strength", "input"):
+            ref("node", read.get("node"), "CPU read")
+            if kind == "input" and read.get("port") not in ("main", "quasi"):
+                fail()
+        elif kind == "source":
+            ref("site", read.get("site"), "CPU read")
+            port = _object(read.get("port"), "CPU source port")
+            if port.get("kind") in ("weak", "strong"):
+                if port.get("face") not in ("north", "south", "east", "west", "top", "bottom"):
+                    fail()
+            elif port.get("kind") == "conducted":
+                if type(port.get("include_dust")) is not bool:
+                    fail()
+            elif port.get("kind") not in ("stored", "output"):
+                fail()
+        else:
+            fail()
+        if kind in ("source", "strength") and (type(read.get("threshold")) is not int or not 0 <= read["threshold"] <= 14):
+            fail()
+    masks = []
+    for key in ("require_true", "require_false"):
+        values = _array(program.get(key), f"cpu_kernels.{key}")
+        if any(not isinstance(v, str) or not re.fullmatch(r"[0-9a-fA-F]{16}", v) for v in values):
+            fail()
+        masks.append([int(v, 16) for v in values])
+    yes, no = masks
+    if len(yes) != len(no):
+        fail()
+    actors = set()
+    for entry in _array(program.get("entries"), "cpu_kernels.entries"):
+        entry = _object(entry, "CPU entry")
+        ref("piston", entry.get("actor"), "CPU entry")
+        if entry["actor"] in actors:
+            fail()
+        actors.add(entry["actor"])
+        for key in ("main", "quasi", "valid"):
+            p = _object(entry.get(key), f"CPU entry.{key}")
+            if any(type(p.get(f)) is not int or p[f] < 0 for f in ("read_start", "read_len", "clause_start", "clause_len")):
+                fail()
+            r, n, c, count = (p[f] for f in ("read_start", "read_len", "clause_start", "clause_len"))
+            if n > 64 or count > 64 or r + n > len(reads) or c + count > len(yes):
+                fail()
+            allowed = (1 << n) - 1
+            if any(yes[i] & no[i] or (yes[i] | no[i]) & ~allowed for i in range(c, c + count)):
+                fail()
+
 def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
     root = _object(data, "graph document")
     if root.get("format") != "mchprs.redpiler.graph":
@@ -154,7 +218,7 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
         values = graph.get(table)
         if table in ("routes", "callback_links", "dust_paths", "instant_regions", "instant_proxies", "classic_nets",
                      "instant_cells", "instant_corridors", "instant_boundary_ports", "instant_declines",
-                     "instant_layer_regions", "instant_layer_declines") and values is None:
+              "instant_layer_regions", "instant_layer_declines", "instant_event_kernels", "bud_memory_reads") and values is None:
             values = []
         values = _array(values, f"graph.{table}")
         indexed: dict[str, dict[str, Any]] = {}
@@ -210,7 +274,53 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
         elif node_type != "electrical":
             raise GraphFormatError(f"{identifier} has unknown node kind {node_type!r}")
 
+    _validate_cpu_kernels(graph.get("cpu_kernels"), ref)
+    event_actors = set()
+    memory_readers = set()
+    for identifier, memory in records["bud_memory_read"].items():
+        for field, prefix in (("storage", "piston"), ("reader", "piston"), ("resource", "resource"), ("source", "contact"), ("link", "power_link")):
+            ref(prefix, memory.get(field), identifier)
+        reader = memory["reader"]
+        if (reader == memory["storage"] or reader in memory_readers
+                or memory.get("updates") != "original_graph_fifo" or memory.get("read") != "enabled_at_source"):
+            raise GraphFormatError(f"{identifier} has invalid BUD read ownership or update scope")
+        memory_readers.add(reader)
+    for identifier, kernel in records["instant_event_kernel"].items():
+        actors = _array(kernel.get("actors"), f"{identifier}.actors")
+        entries = _array(kernel.get("entries"), f"{identifier}.entries")
+        if not actors or len(actors) != len(entries) or kernel.get("wire_propagation_removed") is not False:
+            raise GraphFormatError(f"{identifier} has invalid event ownership")
+        for actor, entry in zip(actors, entries):
+            ref("piston", actor, identifier)
+            entry = _object(entry, f"{identifier}.entry")
+            if entry.get("actor") != actor or actor in event_actors:
+                raise GraphFormatError(f"{identifier} has duplicate or mismatched entry actor")
+            event_actors.add(actor)
+            pins = _array(entry.get("pins"), f"{identifier}.pins")
+            root = entry.get("valid")
+            if type(root) is not int or not 0 <= root < len(pins):
+                raise GraphFormatError(f"{identifier} has invalid acceptance root")
+            for index, pin in enumerate(pins):
+                pin = _object(pin, f"{identifier}.pin")
+                kind = pin.get("kind")
+                if kind == "state":
+                    _validate_state_test(pin.get("test"), identifier, ref)
+                elif kind == "contribution":
+                    ref("power_link", pin.get("link"), identifier)
+                elif kind == "gate":
+                    inputs = _array(pin.get("inputs"), f"{identifier}.inputs")
+                    gate = pin.get("gate")
+                    if (gate not in ("buffer", "invert", "all", "any")
+                            or gate in ("buffer", "invert") and len(inputs) != 1
+                            or any(type(value) is not int or not 0 <= value < index for value in inputs)):
+                        raise GraphFormatError(f"{identifier} has invalid gate operands")
+                else:
+                    raise GraphFormatError(f"{identifier} has unknown event operation")
+
     for identifier, site in records["site"].items():
+        capture = site.get("wire_capture")
+        if capture is not None and capture not in ("fixed", "electrical", "bulb", "wire", "piston", "contact"):
+            raise GraphFormatError(f"{identifier} has invalid wire capture {capture!r}")
         source = _object(site.get("source"), f"{identifier}.source")
         source_kind = source.get("kind")
         if source_kind == "component":
@@ -311,10 +421,21 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
         optional("route", wire.get("shape_route"), identifier)
         optional("route", wire.get("turbo_route"), identifier)
         root = wire.get("hop_root")
+        mask = wire.get("mutable_captures")
+        if mask is not None and (type(mask) is not int or not 0 <= mask <= 0xffffff or root is None):
+            raise GraphFormatError(f"{identifier} has invalid mutable capture mask")
         if root is not None:
             ref("site", root, identifier)
             if records["site"][root].get("source") != {"kind": "component", "node": wire["node"]}:
                 raise GraphFormatError(f"{identifier} hop root must bind its component")
+        if wire.get("abstract_instant_net") is not None and type(wire["abstract_instant_net"]) is not bool:
+            raise GraphFormatError(f"{identifier} has invalid abstract instant-net flag")
+        node = wire.get("instant_node")
+        if node is not None:
+            node = _object(node, f"{identifier}.instant_node")
+            mask = node.get("receivers")
+            if type(mask) is not int or not 0 < mask <= 0xffffff:
+                raise GraphFormatError(f"{identifier} has invalid instant wire node mask")
         instant = wire.get("instant_reset")
         if instant is not None:
             instant = _object(instant, f"{identifier}.instant_reset")

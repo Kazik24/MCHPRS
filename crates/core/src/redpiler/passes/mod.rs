@@ -3,16 +3,23 @@
 //! Rewrites change the graph and discard old plans. Builders read the graph and
 //! add execution plans for supported cases. The runner checks the input and each
 //! enabled pass's result before lowering. See the [redpiler overview](crate::redpiler).
+pub(crate) mod abstract_instant_nets;
 pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_builtin_resets;
+pub(crate) mod compile_bud_memory_reads;
 pub(crate) mod compile_classic_redstone;
 pub(crate) mod compile_fixed_classic;
 mod compile_fixed_signals;
 pub(crate) mod compile_instant_layers;
+pub(crate) mod compile_instant_events;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
+pub(crate) mod compile_instant_wire_nodes;
 pub(crate) mod compile_mixed_classic;
 pub(crate) mod compile_wire_callbacks;
+pub(crate) mod compile_wire_captures;
+pub(crate) mod optimize_instant_kernels_cpu;
+pub(crate) mod minimize_wire_captures;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod compile_wire_shapes;
 pub(crate) mod contract_dust_paths;
@@ -314,11 +321,12 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
         (5, Pass::rewrite(coalesce_delayed_updates::CoalesceDelayedUpdates)),
     ];
-    let plans: [(usize, Pass); 10] = [
+    let plans: [(usize, Pass); 11] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Pass::build(contract_dust_paths::ContractDustPaths)),
         (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
         (3, Pass::build(compile_wire_shapes::CompileWireShapes)),
+        (3, Pass::build(compile_wire_captures::CompileWireCaptures)),
         (2, Pass::build(compile_wire_hops::CompileWireHops)),
         (2, Pass::build(compile_wire_callbacks::CompileWireCallbacks)),
         (3, Pass::build(compile_instant_resets::CompileInstantResets)),
@@ -346,20 +354,28 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         }))
         .chain(std::iter::once(PassEntry {
             pass: Pass::build(compile_classic_redstone::CompileClassicRedstone),
-            enabled: level >= 2 && options.classic_redstone,
+            enabled: level >= 4 || level >= 2 && options.classic_redstone,
         }))
         .collect();
     let mut pipeline = PassPipeline::new(entries);
-    if level >= 4 && options.stable_instant_inputs {
+    if level >= 4 {
         pipeline
             .entries
             .retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
+    }
+    // FIFO-local entries sample live inputs; stable-input promises belong only to old O3 composition.
+    let kernels = [
+        (4, Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries)),
+        (4, Pass::build(compile_instant_wire_nodes::CompileInstantWireNodes)),
+        (4, Pass::build(minimize_wire_captures::MinimizeWireCaptures)),
+        (4, Pass::build(compile_bud_memory_reads::CompileBudMemoryReads)),
+        (4, Pass::build(compile_instant_events::CompileInstantEvents)),
+        (5, Pass::build(optimize_instant_kernels_cpu::OptimizeInstantKernelsCpu)),
+    ];
+    pipeline.entries.extend(kernels.into_iter().map(|(minimum_level, pass)| PassEntry { pass, enabled: level >= minimum_level }));
+    if cfg!(feature = "unsafe-abstract-instant-nets") && level >= 4 && options.stable_instant_inputs {
         pipeline.entries.push(PassEntry {
-            pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
-            enabled: true,
-        });
-        pipeline.entries.push(PassEntry {
-            pass: Pass::build(compile_instant_layers::CompileInstantLayers),
+            pass: Pass::build(abstract_instant_nets::AbstractInstantNets),
             enabled: true,
         });
     }
@@ -383,6 +399,8 @@ pub(crate) fn experimental_boundary_pipeline(options: &CompilerOptions) -> PassP
         !matches!(
             entry.pass.name(),
             "identify-instant-regions" | "compile-instant-proxies" | "identify-instant-boundaries" | "compile-instant-layers"
+                | "experimental-compile-instant-wire-nodes" | "experimental-minimize-wire-captures"
+                | "experimental-compile-bud-memory-reads" | "experimental-compile-instant-events" | "optimize-instant-kernels-cpu"
         )
     });
     pipeline.entries.push(PassEntry {

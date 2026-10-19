@@ -20,6 +20,56 @@ pub(super) struct ResolvedSiteView {
 }
 
 impl GraphBackend {
+    /// Execute the recipe at discovery; contacts and mutable properties remain live.
+    pub(super) fn observe_wire_site(&self, site: SiteId) -> Option<ObservedSite> {
+        let capture = match self.program.wire_capture(site) {
+            Some(capture) => capture,
+            None => return self.observe_site(site),
+        };
+        let (node, properties) = match capture {
+            WireCapture::Fixed(observed) => return Some(observed.clone()),
+            WireCapture::Contact(contact) => {
+                return self.program.contacts()[contact.index()]
+                    .variants
+                    .iter()
+                    .find(|variant| self.guard_matches(variant.when, None))
+                    .map(|variant| self.observe_profile(variant.profile, variant.receiver));
+            }
+            WireCapture::Electrical(node) => {
+                let state = self.node_state(*node);
+                (
+                    *node,
+                    ObservedProperties::Electrical {
+                        powered: state.powered,
+                        locked: state.repeater_locked,
+                    },
+                )
+            }
+            WireCapture::Bulb(node) => {
+                let state = self.node_state(*node);
+                (
+                    *node,
+                    ObservedProperties::CopperBulb {
+                        powered: state.powered,
+                        lit: state.output_strength > 0,
+                    },
+                )
+            }
+            WireCapture::Wire(node) => (*node, ObservedProperties::Wire(self.wire_state(*node))),
+            WireCapture::Piston { node, piston } => (
+                *node,
+                ObservedProperties::Piston {
+                    extended: self.state.pistons[piston.index()].extended,
+                },
+            ),
+        };
+        Some(ObservedSite {
+            profile: None,
+            receiver: Some(CallbackReceiver::Component(node)),
+            properties,
+        })
+    }
+
     /// Capture only the values a queued hop owns; block geometry stays in the program.
     pub(super) fn observe_site(&self, site: SiteId) -> Option<ObservedSite> {
         match self.program.sites()[site.index()].source {

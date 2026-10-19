@@ -6,16 +6,35 @@ use std::sync::Arc;
 #[cfg(test)]
 pub(crate) fn lower(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<Arc<InstantKernel>>, String> {
     let (Some(catalog), Some(plan)) = (&graph.plans.instant.boundaries, &graph.plans.instant.layers) else {
-        return Ok(Vec::new());
+        return lower_with_context(graph,monitor,None);
     };
     if plan.regions.is_empty() {
-        return Ok(Vec::new());
+        return lower_with_context(graph,monitor,None);
     }
     let context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
     lower_with_context(graph, monitor, Some(&context))
 }
 
 pub(crate) fn lower_with_context(
+    graph: &CompileGraph,
+    monitor: &TaskMonitor,
+    context: Option<&LayerCompilationContext>,
+) -> Result<Vec<Arc<InstantKernel>>, String> {
+    let mut kernels = lower_pull_waves(graph, monitor, context)?;
+    if !graph.plans.instant_events.is_empty() {
+        let actors: FxHashSet<_> = graph
+            .plans
+            .instant_events
+            .iter()
+            .flat_map(|kernel| kernel.actors.iter().copied())
+            .collect();
+        kernels.retain(|kernel| !kernel.actors.iter().any(|actor| actors.contains(actor)));
+        kernels.extend(graph.plans.instant_events.iter().cloned().map(Arc::new));
+    }
+    Ok(kernels)
+}
+
+fn lower_pull_waves(
     graph: &CompileGraph,
     monitor: &TaskMonitor,
     context: Option<&LayerCompilationContext>,
@@ -141,9 +160,11 @@ fn lower_region(
     wire_levels.sort_unstable_by_key(|&(node, _)| node);
     Ok(Some(InstantKernel {
         entries: entries.into(),
-        stationary: root(LayerRoot::StationaryEntry)?,
-        program,
-        pulls: pulls.into(),
+        program: KernelProgram::PullWave {
+            stationary: root(LayerRoot::StationaryEntry)?,
+            program,
+            pulls: pulls.into(),
+        },
         actors: actors.into(),
         wires: wire_levels.into(),
         routes: routes.into(),

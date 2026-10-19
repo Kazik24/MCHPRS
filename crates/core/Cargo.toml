@@ -6,6 +6,12 @@ edition = "2024"
 
 [features]
 graph-trace = []
+# Compatibility feature names: these passes now follow normal O4/O5 tiers.
+experimental-instant-events = []
+experimental-cpu-kernels = []
+experimental-instant-wire-nodes = []
+# Hypothesis test only: closed instant membership does not certify FIFO equivalence.
+unsafe-abstract-instant-nets = []
 # Deliberately incorrect experiment; never enable in a production build.
 unsafe-turbo-fixed-point = []
 

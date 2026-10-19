@@ -16,6 +16,7 @@
     "callback_links",
     "piston_routes",
     "wire_query_facts",
+    "wire_captures",
     "instant_regions",
     "instant_proxies",
     "fixed_classic_declined",
@@ -3068,7 +3069,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:1",
@@ -3080,7 +3082,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:2",
@@ -3092,7 +3095,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:3",
@@ -3104,7 +3108,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:4",
@@ -3116,7 +3121,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:5",
@@ -3128,7 +3134,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:6",
@@ -3140,7 +3147,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:7",
@@ -3152,7 +3160,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:8",
@@ -3164,7 +3173,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:9",
@@ -3176,7 +3186,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:10",
@@ -3188,7 +3199,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:11",
@@ -3200,7 +3212,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:30"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:12",
@@ -3212,7 +3225,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:13",
@@ -3224,7 +3238,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:14",
@@ -3236,7 +3251,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:15",
@@ -3248,7 +3264,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:16",
@@ -3260,7 +3277,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:17",
@@ -3272,7 +3290,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:18",
@@ -3284,7 +3303,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:19",
@@ -3296,7 +3316,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:20",
@@ -3308,7 +3329,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:21",
@@ -3320,7 +3342,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:22",
@@ -3332,7 +3355,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:23",
@@ -3344,7 +3368,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:24",
@@ -3356,7 +3381,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:25",
@@ -3368,7 +3394,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:26",
@@ -3380,7 +3407,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:27",
@@ -3392,7 +3420,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:28",
@@ -3404,7 +3433,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:29",
@@ -3416,7 +3446,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:30",
@@ -3428,7 +3459,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:31",
@@ -3440,7 +3472,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:32",
@@ -3452,7 +3485,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:33",
@@ -3464,7 +3498,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:34",
@@ -3476,7 +3511,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:35",
@@ -3488,7 +3524,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:36",
@@ -3500,7 +3537,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:37",
@@ -3512,7 +3550,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:38",
@@ -3524,7 +3563,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:39",
@@ -3536,7 +3576,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:40",
@@ -3548,7 +3589,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:41",
@@ -3560,7 +3602,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:42",
@@ -3572,7 +3615,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:43",
@@ -3584,7 +3628,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:44",
@@ -3596,7 +3641,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:45",
@@ -3608,7 +3654,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:46",
@@ -3620,7 +3667,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:47",
@@ -3632,7 +3680,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:48",
@@ -3644,7 +3693,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:49",
@@ -3656,7 +3706,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:50",
@@ -3668,7 +3719,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:51",
@@ -3680,7 +3732,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:52",
@@ -3692,7 +3745,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:53",
@@ -3704,7 +3758,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:54",
@@ -3716,7 +3771,8 @@
         "source": {
           "kind": "component",
           "node": "node:49"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:55",
@@ -3728,7 +3784,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:56",
@@ -3740,7 +3797,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:57",
@@ -3752,7 +3810,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:58",
@@ -3764,7 +3823,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:59",
@@ -3776,7 +3836,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:60",
@@ -3788,7 +3849,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:61",
@@ -3800,7 +3862,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:62",
@@ -3812,7 +3875,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:63",
@@ -3824,7 +3888,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:64",
@@ -3836,7 +3901,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:65",
@@ -3848,7 +3914,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:66",
@@ -3860,7 +3927,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:67",
@@ -3872,7 +3940,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:68",
@@ -3884,7 +3953,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:17"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:69",
@@ -3896,7 +3966,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:70",
@@ -3908,7 +3979,8 @@
         "source": {
           "kind": "component",
           "node": "node:50"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:71",
@@ -3920,7 +3992,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:72",
@@ -3932,7 +4005,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:73",
@@ -3944,7 +4018,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:74",
@@ -3956,7 +4031,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:75",
@@ -3968,7 +4044,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:76",
@@ -3980,7 +4057,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:77",
@@ -3992,7 +4070,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:78",
@@ -4004,7 +4083,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:79",
@@ -4016,7 +4096,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:30"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:80",
@@ -4028,7 +4109,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:81",
@@ -4040,7 +4122,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:82",
@@ -4052,7 +4135,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:27"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:83",
@@ -4064,7 +4148,8 @@
         "source": {
           "kind": "component",
           "node": "node:52"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:84",
@@ -4076,7 +4161,8 @@
         "source": {
           "kind": "component",
           "node": "node:53"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:85",
@@ -4088,7 +4174,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:86",
@@ -4100,7 +4187,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:0"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:87",
@@ -4112,7 +4200,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:1"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:88",
@@ -4124,7 +4213,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:2"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:89",
@@ -4136,7 +4226,8 @@
         "source": {
           "kind": "component",
           "node": "node:54"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:90",
@@ -4148,7 +4239,8 @@
         "source": {
           "kind": "component",
           "node": "node:55"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:91",
@@ -4160,7 +4252,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:92",
@@ -4172,7 +4265,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:93",
@@ -4184,7 +4278,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:94",
@@ -4196,7 +4291,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:95",
@@ -4208,7 +4304,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:96",
@@ -4220,7 +4317,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:97",
@@ -4232,7 +4330,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:98",
@@ -4244,7 +4343,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:99",
@@ -4256,7 +4356,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:100",
@@ -4268,7 +4369,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:101",
@@ -4280,7 +4382,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:102",
@@ -4292,7 +4395,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:103",
@@ -4304,7 +4408,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:104",
@@ -4316,7 +4421,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:105",
@@ -4328,7 +4434,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:106",
@@ -4340,7 +4447,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:107",
@@ -4352,7 +4460,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:108",
@@ -4364,7 +4473,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:109",
@@ -4376,7 +4486,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:110",
@@ -4388,7 +4499,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:111",
@@ -4400,7 +4512,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:112",
@@ -4412,7 +4525,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:113",
@@ -4424,7 +4538,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:114",
@@ -4436,7 +4551,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:115",
@@ -4448,7 +4564,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:116",
@@ -4460,7 +4577,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:117",
@@ -4472,7 +4590,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:118",
@@ -4484,7 +4603,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:119",
@@ -4496,7 +4616,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:120",
@@ -4508,7 +4629,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:121",
@@ -4520,7 +4642,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:122",
@@ -4532,7 +4655,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:123",
@@ -4544,7 +4668,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:124",
@@ -4556,7 +4681,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:125",
@@ -4568,7 +4694,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:126",
@@ -4580,7 +4707,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:127",
@@ -4592,7 +4720,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:128",
@@ -4604,7 +4733,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:129",
@@ -4616,7 +4746,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:130",
@@ -4628,7 +4759,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:131",
@@ -4640,7 +4772,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:132",
@@ -4652,7 +4785,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:133",
@@ -4664,7 +4798,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:134",
@@ -4676,7 +4811,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:135",
@@ -4688,7 +4824,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:136",
@@ -4700,7 +4837,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:137",
@@ -4712,7 +4850,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:138",
@@ -4724,7 +4863,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:139",
@@ -4736,7 +4876,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:140",
@@ -4748,7 +4889,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:141",
@@ -4760,7 +4902,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:142",
@@ -4772,7 +4915,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:143",
@@ -4784,7 +4928,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:144",
@@ -4796,7 +4941,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:145",
@@ -4808,7 +4954,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:146",
@@ -4820,7 +4967,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:147",
@@ -4832,7 +4980,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:148",
@@ -4844,7 +4993,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:149",
@@ -4856,7 +5006,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:150",
@@ -4868,7 +5019,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:151",
@@ -4880,7 +5032,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:152",
@@ -4892,7 +5045,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:153",
@@ -4904,7 +5058,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:154",
@@ -4916,7 +5071,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:155",
@@ -4928,7 +5084,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:156",
@@ -4940,7 +5097,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:157",
@@ -4952,7 +5110,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:158",
@@ -4964,7 +5123,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:3"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:159",
@@ -4976,7 +5136,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:4"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:160",
@@ -4988,7 +5149,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:5"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:161",
@@ -5000,7 +5162,8 @@
         "source": {
           "kind": "component",
           "node": "node:57"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:162",
@@ -5012,7 +5175,8 @@
         "source": {
           "kind": "component",
           "node": "node:58"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:163",
@@ -5024,7 +5188,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:164",
@@ -5036,7 +5201,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:6"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:165",
@@ -5048,7 +5214,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:7"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:166",
@@ -5060,7 +5227,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:8"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:167",
@@ -5072,7 +5240,8 @@
         "source": {
           "kind": "component",
           "node": "node:60"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:168",
@@ -5084,7 +5253,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:21"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:169",
@@ -5096,7 +5266,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:9"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:170",
@@ -5108,7 +5279,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:10"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:171",
@@ -5120,7 +5292,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:11"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:172",
@@ -5132,7 +5305,8 @@
         "source": {
           "kind": "component",
           "node": "node:62"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:173",
@@ -5144,7 +5318,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:174",
@@ -5156,7 +5331,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:175",
@@ -5168,7 +5344,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:176",
@@ -5180,7 +5357,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:177",
@@ -5192,7 +5370,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:178",
@@ -5204,7 +5383,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:179",
@@ -5216,7 +5396,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:26"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:180",
@@ -5228,7 +5409,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:181",
@@ -5240,7 +5422,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:13"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:182",
@@ -5252,7 +5435,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:183",
@@ -5264,7 +5448,8 @@
         "source": {
           "kind": "component",
           "node": "node:63"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:184",
@@ -5276,7 +5461,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:185",
@@ -5288,7 +5474,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:29"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:186",
@@ -5300,7 +5487,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:187",
@@ -5312,7 +5500,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:15"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:188",
@@ -5324,7 +5513,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:189",
@@ -5336,7 +5526,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:190",
@@ -5348,7 +5539,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:191",
@@ -5360,7 +5552,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:192",
@@ -5372,7 +5565,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:193",
@@ -5384,7 +5578,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:194",
@@ -5396,7 +5591,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:195",
@@ -5408,7 +5604,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:196",
@@ -5420,7 +5617,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:197",
@@ -5432,7 +5630,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:198",
@@ -5444,7 +5643,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:199",
@@ -5456,7 +5656,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:200",
@@ -5468,7 +5669,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:201",
@@ -5480,7 +5682,8 @@
         "source": {
           "kind": "component",
           "node": "node:64"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:202",
@@ -5492,7 +5695,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:12"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:203",
@@ -5504,7 +5708,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:204",
@@ -5516,7 +5721,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:205",
@@ -5528,7 +5734,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:206",
@@ -5540,7 +5747,8 @@
         "source": {
           "kind": "component",
           "node": "node:65"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:207",
@@ -5552,7 +5760,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:21"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:208",
@@ -5564,7 +5773,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:14"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:209",
@@ -5576,7 +5786,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:210",
@@ -5588,7 +5799,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:211",
@@ -5600,7 +5812,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:212",
@@ -5612,7 +5825,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:213",
@@ -5624,7 +5838,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:214",
@@ -5636,7 +5851,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:215",
@@ -5648,7 +5864,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:216",
@@ -5660,7 +5877,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:217",
@@ -5672,7 +5890,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:218",
@@ -5684,7 +5903,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:219",
@@ -5696,7 +5916,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:220",
@@ -5708,7 +5929,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:221",
@@ -5720,7 +5942,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:222",
@@ -5732,7 +5955,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:223",
@@ -5744,7 +5968,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:224",
@@ -5756,7 +5981,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:225",
@@ -5768,7 +5994,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:226",
@@ -5780,7 +6007,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:227",
@@ -5792,7 +6020,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:228",
@@ -5804,7 +6033,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:229",
@@ -5816,7 +6046,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:230",
@@ -5828,7 +6059,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:231",
@@ -5840,7 +6072,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:232",
@@ -5852,7 +6085,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:233",
@@ -5864,7 +6098,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:234",
@@ -5876,7 +6111,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:235",
@@ -5888,7 +6124,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:236",
@@ -5900,7 +6137,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:237",
@@ -5912,7 +6150,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:238",
@@ -5924,7 +6163,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:239",
@@ -5936,7 +6176,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:240",
@@ -5948,7 +6189,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:241",
@@ -5960,7 +6202,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:242",
@@ -5972,7 +6215,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:243",
@@ -5984,7 +6228,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:244",
@@ -5996,7 +6241,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:245",
@@ -6008,7 +6254,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:246",
@@ -6020,7 +6267,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:247",
@@ -6032,7 +6280,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:248",
@@ -6044,7 +6293,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:249",
@@ -6056,7 +6306,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:250",
@@ -6068,7 +6319,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:251",
@@ -6080,7 +6332,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:252",
@@ -6092,7 +6345,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:253",
@@ -6104,7 +6358,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:254",
@@ -6116,7 +6371,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:255",
@@ -6128,7 +6384,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:256",
@@ -6140,7 +6397,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:257",
@@ -6152,7 +6410,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:258",
@@ -6164,7 +6423,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:259",
@@ -6176,7 +6436,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:260",
@@ -6188,7 +6449,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:261",
@@ -6200,7 +6462,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:262",
@@ -6212,7 +6475,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:263",
@@ -6224,7 +6488,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:264",
@@ -6236,7 +6501,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:265",
@@ -6248,7 +6514,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:266",
@@ -6260,7 +6527,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:267",
@@ -6272,7 +6540,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:268",
@@ -6284,7 +6553,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:269",
@@ -6296,7 +6566,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:270",
@@ -6308,7 +6579,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:271",
@@ -6320,7 +6592,8 @@
         "source": {
           "kind": "component",
           "node": "node:66"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:272",
@@ -6332,7 +6605,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:273",
@@ -6344,7 +6618,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:274",
@@ -6356,7 +6631,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:275",
@@ -6368,7 +6644,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:276",
@@ -6380,7 +6657,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:277",
@@ -6392,7 +6670,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:278",
@@ -6404,7 +6683,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:279",
@@ -6416,7 +6696,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:280",
@@ -6428,7 +6709,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:281",
@@ -6440,7 +6722,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:282",
@@ -6452,7 +6735,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:283",
@@ -6464,7 +6748,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:284",
@@ -6476,7 +6761,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:285",
@@ -6488,7 +6774,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:16"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:286",
@@ -6500,7 +6787,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:17"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:287",
@@ -6512,7 +6800,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:18"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:288",
@@ -6524,7 +6813,8 @@
         "source": {
           "kind": "component",
           "node": "node:68"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:289",
@@ -6536,7 +6826,8 @@
         "source": {
           "kind": "component",
           "node": "node:69"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:290",
@@ -6548,7 +6839,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:19"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:291",
@@ -6560,7 +6852,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:20"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:292",
@@ -6572,7 +6865,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:21"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:293",
@@ -6584,7 +6878,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:294",
@@ -6596,7 +6891,8 @@
         "source": {
           "kind": "component",
           "node": "node:70"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:295",
@@ -6608,7 +6904,8 @@
         "source": {
           "kind": "component",
           "node": "node:71"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:296",
@@ -6620,7 +6917,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:22"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:297",
@@ -6632,7 +6930,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:23"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:298",
@@ -6644,7 +6943,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:24"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:299",
@@ -6656,7 +6956,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:300",
@@ -6668,7 +6969,8 @@
         "source": {
           "kind": "component",
           "node": "node:72"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:301",
@@ -6680,7 +6982,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:302",
@@ -6692,7 +6995,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:303",
@@ -6704,7 +7008,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:304",
@@ -6716,7 +7021,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:305",
@@ -6728,7 +7034,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:306",
@@ -6740,7 +7047,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:307",
@@ -6752,7 +7060,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:308",
@@ -6764,7 +7073,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:309",
@@ -6776,7 +7086,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:310",
@@ -6788,7 +7099,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:17"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:311",
@@ -6800,7 +7112,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:25"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:312",
@@ -6812,7 +7125,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:313",
@@ -6824,7 +7138,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:314",
@@ -6836,7 +7151,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:315",
@@ -6848,7 +7164,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:316",
@@ -6860,7 +7177,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:17"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:317",
@@ -6872,7 +7190,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:28"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:318",
@@ -6884,7 +7203,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:319",
@@ -6896,7 +7216,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:320",
@@ -6908,7 +7229,8 @@
         "source": {
           "kind": "component",
           "node": "node:73"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:321",
@@ -6920,7 +7242,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:322",
@@ -6932,7 +7255,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:323",
@@ -6944,7 +7268,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:324",
@@ -6956,7 +7281,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:325",
@@ -6968,7 +7294,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:326",
@@ -6980,7 +7307,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:327",
@@ -6992,7 +7320,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:328",
@@ -7004,7 +7333,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:30"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:329",
@@ -7016,7 +7346,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:31"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:330",
@@ -7028,7 +7359,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:32"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:331",
@@ -7040,7 +7372,8 @@
         "source": {
           "kind": "component",
           "node": "node:75"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:332",
@@ -7052,7 +7385,8 @@
         "source": {
           "kind": "component",
           "node": "node:76"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:333",
@@ -7064,7 +7398,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:334",
@@ -7076,7 +7411,8 @@
         "source": {
           "kind": "component",
           "node": "node:77"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:335",
@@ -7088,7 +7424,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:336",
@@ -7100,7 +7437,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:35"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:337",
@@ -7112,7 +7450,8 @@
         "source": {
           "kind": "component",
           "node": "node:79"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:338",
@@ -7124,7 +7463,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:339",
@@ -7136,7 +7476,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:340",
@@ -7148,7 +7489,8 @@
         "source": {
           "kind": "component",
           "node": "node:80"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:341",
@@ -7160,7 +7502,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:342",
@@ -7172,7 +7515,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:343",
@@ -7184,7 +7528,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:344",
@@ -7196,7 +7541,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:345",
@@ -7208,7 +7554,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:346",
@@ -7220,7 +7567,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:347",
@@ -7232,7 +7580,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:348",
@@ -7244,7 +7593,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:349",
@@ -7256,7 +7606,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:350",
@@ -7268,7 +7619,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:351",
@@ -7280,7 +7632,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:352",
@@ -7292,7 +7645,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:353",
@@ -7304,7 +7658,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:354",
@@ -7316,7 +7671,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:34"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:355",
@@ -7328,7 +7684,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:356",
@@ -7340,7 +7697,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:357",
@@ -7352,7 +7710,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:358",
@@ -7364,7 +7723,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:359",
@@ -7376,7 +7736,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:360",
@@ -7388,7 +7749,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:361",
@@ -7400,7 +7762,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:362",
@@ -7412,7 +7775,8 @@
         "source": {
           "kind": "component",
           "node": "node:81"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:363",
@@ -7424,7 +7788,8 @@
         "source": {
           "kind": "component",
           "node": "node:82"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:364",
@@ -7436,7 +7801,8 @@
         "source": {
           "kind": "component",
           "node": "node:83"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:365",
@@ -7448,7 +7814,8 @@
         "source": {
           "kind": "component",
           "node": "node:84"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:366",
@@ -7460,7 +7827,8 @@
         "source": {
           "kind": "component",
           "node": "node:85"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:367",
@@ -7472,7 +7840,8 @@
         "source": {
           "kind": "component",
           "node": "node:86"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:368",
@@ -7484,7 +7853,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:369",
@@ -7496,7 +7866,8 @@
         "source": {
           "kind": "contact",
           "contact": "contact:33"
-        }
+        },
+        "wire_capture": "contact"
       },
       {
         "id": "site:370",
@@ -7508,7 +7879,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:371",
@@ -7520,7 +7892,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:372",
@@ -7532,7 +7905,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:373",
@@ -7544,7 +7918,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:374",
@@ -7556,7 +7931,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:375",
@@ -7568,7 +7944,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:376",
@@ -7580,7 +7957,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:377",
@@ -7592,7 +7970,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:378",
@@ -7604,7 +7983,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:379",
@@ -7616,7 +7996,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:380",
@@ -7628,7 +8009,8 @@
         "source": {
           "kind": "component",
           "node": "node:87"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:381",
@@ -7640,7 +8022,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:382",
@@ -7652,7 +8035,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:383",
@@ -7664,7 +8048,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:384",
@@ -7676,7 +8061,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:385",
@@ -7688,7 +8074,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:386",
@@ -7700,7 +8087,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:387",
@@ -7712,7 +8100,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:388",
@@ -7724,7 +8113,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:389",
@@ -7736,7 +8126,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:390",
@@ -7748,7 +8139,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:391",
@@ -7760,7 +8152,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:392",
@@ -7772,7 +8165,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:393",
@@ -7784,7 +8178,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:394",
@@ -7796,7 +8191,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:395",
@@ -7808,7 +8204,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:396",
@@ -7820,7 +8217,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:397",
@@ -7832,7 +8230,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:398",
@@ -7844,7 +8243,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:399",
@@ -7856,7 +8256,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:400",
@@ -7868,7 +8269,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:401",
@@ -7880,7 +8282,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:402",
@@ -7892,7 +8295,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:403",
@@ -7904,7 +8308,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:404",
@@ -7916,7 +8321,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:405",
@@ -7928,7 +8334,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:406",
@@ -7940,7 +8347,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:407",
@@ -7952,7 +8360,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:408",
@@ -7964,7 +8373,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:409",
@@ -7976,7 +8386,8 @@
         "source": {
           "kind": "component",
           "node": "node:88"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:410",
@@ -7988,7 +8399,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:411",
@@ -8000,7 +8412,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:412",
@@ -8012,7 +8425,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:413",
@@ -8024,7 +8438,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:414",
@@ -8036,7 +8451,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:415",
@@ -8048,7 +8464,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:416",
@@ -8060,7 +8477,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:417",
@@ -8072,7 +8490,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:418",
@@ -8084,7 +8503,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:419",
@@ -8096,7 +8516,8 @@
         "source": {
           "kind": "component",
           "node": "node:89"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:420",
@@ -8108,7 +8529,8 @@
         "source": {
           "kind": "component",
           "node": "node:90"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:421",
@@ -8120,7 +8542,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:422",
@@ -8132,7 +8555,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:423",
@@ -8144,7 +8568,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:424",
@@ -8156,7 +8581,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:425",
@@ -8168,7 +8594,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:426",
@@ -8180,7 +8607,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:427",
@@ -8192,7 +8620,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:428",
@@ -8204,7 +8633,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:429",
@@ -8216,7 +8646,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:430",
@@ -8228,7 +8659,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:431",
@@ -8240,7 +8672,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:432",
@@ -8252,7 +8685,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:433",
@@ -8264,7 +8698,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:434",
@@ -8276,7 +8711,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:435",
@@ -8288,7 +8724,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:31"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:436",
@@ -8300,7 +8737,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:437",
@@ -8312,7 +8750,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:438",
@@ -8324,7 +8763,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:439",
@@ -8336,7 +8776,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:440",
@@ -8348,7 +8789,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:441",
@@ -8360,7 +8802,8 @@
         "source": {
           "kind": "component",
           "node": "node:91"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:442",
@@ -8372,7 +8815,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:443",
@@ -8384,7 +8828,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:444",
@@ -8396,7 +8841,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:445",
@@ -8408,7 +8854,8 @@
         "source": {
           "kind": "component",
           "node": "node:92"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:446",
@@ -8420,7 +8867,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:447",
@@ -8432,7 +8880,8 @@
         "source": {
           "kind": "component",
           "node": "node:93"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:448",
@@ -8444,7 +8893,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:449",
@@ -8456,7 +8906,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:450",
@@ -8468,7 +8919,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:451",
@@ -8480,7 +8932,8 @@
         "source": {
           "kind": "component",
           "node": "node:94"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:452",
@@ -8492,7 +8945,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:453",
@@ -8504,7 +8958,8 @@
         "source": {
           "kind": "component",
           "node": "node:95"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:454",
@@ -8516,7 +8971,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:455",
@@ -8528,7 +8984,8 @@
         "source": {
           "kind": "component",
           "node": "node:96"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:456",
@@ -8540,7 +8997,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:457",
@@ -8552,7 +9010,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:458",
@@ -8564,7 +9023,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:459",
@@ -8576,7 +9036,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:460",
@@ -8588,7 +9049,8 @@
         "source": {
           "kind": "component",
           "node": "node:97"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:461",
@@ -8600,7 +9062,8 @@
         "source": {
           "kind": "component",
           "node": "node:98"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:462",
@@ -8612,7 +9075,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:463",
@@ -8624,7 +9088,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:464",
@@ -8636,7 +9101,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:465",
@@ -8648,7 +9114,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:16"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:466",
@@ -8660,7 +9127,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:467",
@@ -8672,7 +9140,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:468",
@@ -8684,7 +9153,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:469",
@@ -8696,7 +9166,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:470",
@@ -8708,7 +9179,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:471",
@@ -8720,7 +9192,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:472",
@@ -8732,7 +9205,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:473",
@@ -8744,7 +9218,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:474",
@@ -8756,7 +9231,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:475",
@@ -8768,7 +9244,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:476",
@@ -8780,7 +9257,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:477",
@@ -8792,7 +9270,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:478",
@@ -8804,7 +9283,8 @@
         "source": {
           "kind": "component",
           "node": "node:99"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:479",
@@ -8816,7 +9296,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:480",
@@ -8828,7 +9309,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:481",
@@ -8840,7 +9322,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:482",
@@ -8852,7 +9335,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:483",
@@ -8864,7 +9348,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:484",
@@ -8876,7 +9361,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:485",
@@ -8888,7 +9374,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:486",
@@ -8900,7 +9387,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:487",
@@ -8912,7 +9400,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:488",
@@ -8924,7 +9413,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:489",
@@ -8936,7 +9426,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:490",
@@ -8948,7 +9439,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:491",
@@ -8960,7 +9452,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:492",
@@ -8972,7 +9465,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:493",
@@ -8984,7 +9478,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:494",
@@ -8996,7 +9491,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:495",
@@ -9008,7 +9504,8 @@
         "source": {
           "kind": "component",
           "node": "node:100"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:496",
@@ -9020,7 +9517,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:497",
@@ -9032,7 +9530,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:498",
@@ -9044,7 +9543,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:499",
@@ -9056,7 +9556,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:500",
@@ -9068,7 +9569,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:501",
@@ -9080,7 +9582,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:502",
@@ -9092,7 +9595,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:503",
@@ -9104,7 +9608,8 @@
         "source": {
           "kind": "component",
           "node": "node:101"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:504",
@@ -9116,7 +9621,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:505",
@@ -9128,7 +9634,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:506",
@@ -9140,7 +9647,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:507",
@@ -9152,7 +9660,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:508",
@@ -9164,7 +9673,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:509",
@@ -9176,7 +9686,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:510",
@@ -9188,7 +9699,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:511",
@@ -9200,7 +9712,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:512",
@@ -9212,7 +9725,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:513",
@@ -9224,7 +9738,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:514",
@@ -9236,7 +9751,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:515",
@@ -9248,7 +9764,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:32"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:516",
@@ -9260,7 +9777,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:517",
@@ -9272,7 +9790,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:518",
@@ -9284,7 +9803,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:519",
@@ -9296,7 +9816,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:520",
@@ -9308,7 +9829,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:521",
@@ -9320,7 +9842,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:522",
@@ -9332,7 +9855,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:523",
@@ -9344,7 +9868,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:524",
@@ -9356,7 +9881,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:525",
@@ -9368,7 +9894,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:526",
@@ -9380,7 +9907,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:527",
@@ -9392,7 +9920,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:528",
@@ -9404,7 +9933,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:529",
@@ -9416,7 +9946,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:530",
@@ -9428,7 +9959,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:531",
@@ -9440,7 +9972,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:33"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:532",
@@ -9452,7 +9985,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:533",
@@ -9464,7 +9998,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:534",
@@ -9476,7 +10011,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:535",
@@ -9488,7 +10024,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:536",
@@ -9500,7 +10037,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:537",
@@ -9512,7 +10050,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:538",
@@ -9524,7 +10063,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:539",
@@ -9536,7 +10076,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:540",
@@ -9548,7 +10089,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:541",
@@ -9560,7 +10102,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:542",
@@ -9572,7 +10115,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:543",
@@ -9584,7 +10128,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:544",
@@ -9596,7 +10141,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:545",
@@ -9608,7 +10154,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:546",
@@ -9620,7 +10167,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:547",
@@ -9632,7 +10180,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:548",
@@ -9644,7 +10193,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:549",
@@ -9656,7 +10206,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:550",
@@ -9668,7 +10219,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:551",
@@ -9680,7 +10232,8 @@
         "source": {
           "kind": "component",
           "node": "node:102"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:552",
@@ -9692,7 +10245,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:553",
@@ -9704,7 +10258,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:554",
@@ -9716,7 +10271,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:555",
@@ -9728,7 +10284,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:556",
@@ -9740,7 +10297,8 @@
         "source": {
           "kind": "component",
           "node": "node:103"
-        }
+        },
+        "wire_capture": "wire"
       },
       {
         "id": "site:557",
@@ -9752,7 +10310,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:558",
@@ -9764,7 +10323,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:559",
@@ -9776,7 +10336,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:560",
@@ -9788,7 +10349,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:561",
@@ -9800,7 +10362,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:562",
@@ -9812,7 +10375,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:33"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:563",
@@ -9824,7 +10388,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:25"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:564",
@@ -9836,7 +10401,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:565",
@@ -9848,7 +10414,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:566",
@@ -9860,7 +10427,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:567",
@@ -9872,7 +10440,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:568",
@@ -9884,7 +10453,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:569",
@@ -9896,7 +10466,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:570",
@@ -9908,7 +10479,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:571",
@@ -9920,7 +10492,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:572",
@@ -9932,7 +10505,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:573",
@@ -9944,7 +10518,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:574",
@@ -9956,7 +10531,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:575",
@@ -9968,7 +10544,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:576",
@@ -9980,7 +10557,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:577",
@@ -9992,7 +10570,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:578",
@@ -10004,7 +10583,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:579",
@@ -10016,7 +10596,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:580",
@@ -10028,7 +10609,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:581",
@@ -10040,7 +10622,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:582",
@@ -10052,7 +10635,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:583",
@@ -10064,7 +10648,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:584",
@@ -10076,7 +10661,8 @@
         "source": {
           "kind": "component",
           "node": "node:104"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:585",
@@ -10088,7 +10674,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:586",
@@ -10100,7 +10687,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:587",
@@ -10112,7 +10700,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:588",
@@ -10124,7 +10713,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:589",
@@ -10136,7 +10726,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:590",
@@ -10148,7 +10739,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:591",
@@ -10160,7 +10752,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:592",
@@ -10172,7 +10765,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:593",
@@ -10184,7 +10778,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:14"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:594",
@@ -10196,7 +10791,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:595",
@@ -10208,7 +10804,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:596",
@@ -10220,7 +10817,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:597",
@@ -10232,7 +10830,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:598",
@@ -10244,7 +10843,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:599",
@@ -10256,7 +10856,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:600",
@@ -10268,7 +10869,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:601",
@@ -10280,7 +10882,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:602",
@@ -10292,7 +10895,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:603",
@@ -10304,7 +10908,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:604",
@@ -10316,7 +10921,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:605",
@@ -10328,7 +10934,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:606",
@@ -10340,7 +10947,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:607",
@@ -10352,7 +10960,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:608",
@@ -10364,7 +10973,8 @@
         "source": {
           "kind": "component",
           "node": "node:105"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:609",
@@ -10376,7 +10986,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:610",
@@ -10388,7 +10999,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:611",
@@ -10400,7 +11012,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:612",
@@ -10412,7 +11025,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:613",
@@ -10424,7 +11038,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:614",
@@ -10436,7 +11051,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:615",
@@ -10448,7 +11064,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:616",
@@ -10460,7 +11077,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:617",
@@ -10472,7 +11090,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:618",
@@ -10484,7 +11103,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:619",
@@ -10496,7 +11116,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:620",
@@ -10508,7 +11129,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:621",
@@ -10520,7 +11142,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:622",
@@ -10532,7 +11155,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:623",
@@ -10544,7 +11168,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:624",
@@ -10556,7 +11181,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:625",
@@ -10568,7 +11194,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:626",
@@ -10580,7 +11207,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:627",
@@ -10592,7 +11220,8 @@
         "source": {
           "kind": "component",
           "node": "node:106"
-        }
+        },
+        "wire_capture": "electrical"
       },
       {
         "id": "site:628",
@@ -10604,7 +11233,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:629",
@@ -10616,7 +11246,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:630",
@@ -10628,7 +11259,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:631",
@@ -10640,7 +11272,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:632",
@@ -10652,7 +11285,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:633",
@@ -10664,7 +11298,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:634",
@@ -10676,7 +11311,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:635",
@@ -10688,7 +11324,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:636",
@@ -10700,7 +11337,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:637",
@@ -10712,7 +11350,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:638",
@@ -10724,7 +11363,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:639",
@@ -10736,7 +11376,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:640",
@@ -10748,7 +11389,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:641",
@@ -10760,7 +11402,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:642",
@@ -10772,7 +11415,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:643",
@@ -10784,7 +11428,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:644",
@@ -10796,7 +11441,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:645",
@@ -10808,7 +11454,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:646",
@@ -10820,7 +11467,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:647",
@@ -10832,7 +11480,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:648",
@@ -10844,7 +11493,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:649",
@@ -10856,7 +11506,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:650",
@@ -10868,7 +11519,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:651",
@@ -10880,7 +11532,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:652",
@@ -10892,7 +11545,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:653",
@@ -10904,7 +11558,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:654",
@@ -10916,7 +11571,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:655",
@@ -10928,7 +11584,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:656",
@@ -10940,7 +11597,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:657",
@@ -10952,7 +11610,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:658",
@@ -10964,7 +11623,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       },
       {
         "id": "site:659",
@@ -10976,7 +11636,8 @@
         "source": {
           "kind": "constant",
           "profile": "profile:4"
-        }
+        },
+        "wire_capture": "fixed"
       }
     ],
     "guards": [

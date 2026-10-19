@@ -417,6 +417,7 @@ fn requesting_reference_analysis_never_exempts_forged_builder_output() {
         let mut pipeline = passes::default_graph_pipeline(&options);
         let entry = pipeline.entries.iter_mut().find(|entry| entry.pass.name() == replaced).unwrap();
         entry.pass = Pass::build(AlterPreparedInstant { analysis });
+        entry.enabled = true;
         let result = prepared.run_passes(&options, &pipeline, &TaskMonitor::default());
         assert!(
             matches!(
