@@ -3,6 +3,10 @@ use crate::plot::client_sync_tests::fixture;
 use mchprs_network::packets::serverbound::SKeepAlive;
 use std::sync::mpsc;
 
+#[path = "../../../benches/support/cpus.rs"]
+#[allow(dead_code)]
+mod cpu_fixture;
+
 impl Plot {
     pub(in crate::plot) fn wait_for_redpiler(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(20);
@@ -24,6 +28,57 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
         monitor,
         worker: thread::spawn(move || work(world, worker_monitor)),
     });
+}
+
+#[test]
+#[ignore = "release-only CPU request-to-activation timing; run without competing builds"]
+fn cpu_bubblesort_request_to_activation_stays_within_ten_seconds() {
+    let mut samples = Vec::new();
+    for _ in 0..3 {
+        let (mut plot, _peer) = fixture(false);
+        let cpu = cpu_fixture::CPUS[2];
+        plot.world = cpu_fixture::load_cpu(cpu);
+        let sign = cpu.origin + BlockPos::new(186, 2, 184);
+        assert!(matches!(plot.world.get_block(sign), Block::WallSign { .. }));
+        assert!(plot.world.set_block(sign, Block::Air));
+        plot.world.flush_block_changes();
+        let started = Instant::now();
+        plot.start_redpiler(CompilerOptions {
+            optimization_level: Some(4),
+            stable_instant_inputs: true,
+            budget_multiplier: 8,
+            ..Default::default()
+        });
+        let setup = started.elapsed();
+        let mut publication = Duration::ZERO;
+        while plot.compilation.is_some() {
+            assert!(started.elapsed() < Duration::from_secs(60), "compiler worker did not finish");
+            let poll = Instant::now();
+            plot.poll_redpiler_compilation();
+            if plot.compilation.is_none() {
+                publication = poll.elapsed();
+            } else {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+        let elapsed = started.elapsed();
+        assert!(plot.redpiler.is_active(), "compilation rejected instead of activating");
+        let compile = plot.redpiler.stats().unwrap().total_duration;
+        samples.push(serde_json::json!({
+            "request_to_activation_seconds": elapsed.as_secs_f64(),
+            "request_setup_seconds": setup.as_secs_f64(),
+            "final_poll_seconds": publication.as_secs_f64(),
+            "worker_compile_seconds": compile.as_secs_f64(),
+        }));
+    }
+    let report = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/compilation-simplification/activation.json");
+    std::fs::create_dir_all(report.parent().unwrap()).unwrap();
+    std::fs::write(report, serde_json::to_vec_pretty(&samples).unwrap()).unwrap();
+    println!("CPU request-to-activation: {samples:?}");
+    assert!(
+        samples.iter().all(|row| row["request_to_activation_seconds"].as_f64().unwrap() <= 10.0),
+        "ten-second activation target not met"
+    );
 }
 
 fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
@@ -62,6 +117,7 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
 #[test]
 fn blocked_compiler_keeps_packets_and_reset_commands_responsive() {
     let (mut plot, _peer) = fixture(false);
+    plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.redpiler.reset", "mchprs.build"]);
     let connection = mchprs_network::test_support::connection(false).unwrap();
     plot.players[0].client = connection.player;
     let received = Instant::now() - Duration::from_secs(20);

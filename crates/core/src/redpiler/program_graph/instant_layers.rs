@@ -85,6 +85,15 @@ pub(crate) enum LayerInputSource {
         /// This identifies the original route and delivery ordinal of the event.
         occurrence: RouteOccurrence,
     },
+    /// This is an already sampled retraction in the authoritative entry FIFO.
+    BoundaryRequest {
+        /// This original callback input declares the owning cell.
+        port: u32,
+        /// This potential delivery resolves to the actual actor retained in the FIFO.
+        occurrence: RouteOccurrence,
+        /// The queued action, rather than a later contact lookup, selects this actor.
+        actor: PistonId,
+    },
     /// This reads neighboring state through an explicit original input guard boundary.
     BoundaryState {
         /// This indexes the catalog input port that declares the external state read.
@@ -303,6 +312,8 @@ pub(crate) enum LayerWitness {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Structured reason why a whole connected owner component remains general Graph execution.
 pub(crate) enum LayerDeclineReason {
+    /// Optional construction exceeded its per-region work or retained-table limit.
+    ProofBudgetExceeded,
     /// This electrical dependency has no proven value at the relevant request/acceptance cut.
     SignalArrivalUnproven,
     /// This callback's capture/receiver alternatives cannot be represented safely.

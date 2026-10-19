@@ -48,7 +48,8 @@ impl GraphBackend {
             ComponentState::Wire(wire) => {
                 let mut wire = *wire;
                 if let Some((net, attenuation)) = self.program.classic().wire_by_node.get(node.index()).copied().flatten()
-                    && self.state.classic_active[net as usize] {
+                    && self.state.classic_active[net as usize]
+                {
                     wire.power = self.state.classic_signals[net as usize].saturating_sub(attenuation);
                 }
                 wire
@@ -59,7 +60,9 @@ impl GraphBackend {
 
     pub(super) fn set_wire(&mut self, node: NodeId, wire: RedstoneWire) {
         if let Some((net, _)) = self.program.classic().wire_by_node.get(node.index()).copied().flatten()
-            && self.state.classic_active[net as usize] && self.wire_state(node) != wire {
+            && self.state.classic_active[net as usize]
+            && self.wire_state(node) != wire
+        {
             self.deopt_classic_net(net as usize);
         }
         #[cfg(test)]
@@ -285,8 +288,7 @@ impl GraphBackend {
         if let Some(raw) = plan.execution.query_facts.and_then(|facts| facts.raw_wire(wire.power)) {
             return raw;
         }
-        let neighbors = plan.canonical_neighbors.map(|site| self.site_block(site));
-        crate::redstone::wire::get_raw_sides_from_neighbors(wire, &neighbors)
+        crate::redstone::wire::get_raw_sides_from_neighbor_read(wire, |slot| self.site_block(plan.canonical_neighbors[slot]))
     }
 
     fn mixed_classic_block_power(&self, plan: &WirePlan, walk: Option<&WireWalk>) -> Option<u8> {
@@ -427,12 +429,13 @@ impl GraphBackend {
     }
 
     #[inline]
-    pub(super) fn wire_route_admitted(&self, wire_index:usize, route:RouteId, slot:usize, target:SiteId, observed:&ObservedSite)->bool {
+    pub(super) fn wire_route_admitted(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> bool {
         if let Some(plan) = self.program.wires()[wire_index].execution.callback_selection
-            && plan.known & (1 << slot) != 0 {
+            && plan.known & (1 << slot) != 0
+        {
             return plan.admitted & (1 << slot) != 0;
         }
-        self.wire_route_delivery(wire_index,route,slot,target,observed).is_some()
+        self.wire_route_delivery(wire_index, route, slot, target, observed).is_some()
     }
 
     pub(super) fn wire_route_delivery(
@@ -476,11 +479,11 @@ impl GraphBackend {
                     false
                 }
             };
-            if changed
-                && self
-                    .wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
-            {
-                walk.queues[1].push_back(walk_slot);
+            if changed && self.wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed) {
+                walk.queues[1].push_back(QueuedWireSite {
+                    slot: u32::try_from(walk_slot).expect("validated site count fits u32"),
+                    route,
+                });
             }
         }
         for &slot in &crate::redstone::wire::TURBO_ORDER[neighbors.heading][..4] {
@@ -496,11 +499,11 @@ impl GraphBackend {
                     false
                 }
             };
-            if changed
-                && self
-                    .wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed)
-            {
-                walk.queues[2].push_back(walk_slot);
+            if changed && self.wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed) {
+                walk.queues[2].push_back(QueuedWireSite {
+                    slot: u32::try_from(walk_slot).expect("validated site count fits u32"),
+                    route,
+                });
             }
         }
     }
@@ -552,9 +555,8 @@ impl GraphBackend {
             }
         }
         // Both original enqueue loops finish before any callback can change a guard.
-        let selected: [bool; 24] = std::array::from_fn(|slot| {
-            self.wire_route_admitted(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot])
-        });
+        let selected: [bool; 24] =
+            std::array::from_fn(|slot| self.wire_route_admitted(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot]));
         // A fresh walk has no visited neighbors or bias: compute_heading(0, 0) == 3.
         let order = &crate::redstone::wire::TURBO_ORDER[3];
         #[cfg(test)]
@@ -562,7 +564,7 @@ impl GraphBackend {
         for (slots, layer) in [(order.as_slice(), 1), (&order[..4], 2)] {
             for &slot in slots {
                 if selected[slot] {
-                    self.dispatch_turbo_nonwire(plan.canonical_neighbors[slot], &observed[slot], layer)?;
+                    self.dispatch_turbo_nonwire(plan.canonical_neighbors[slot], &observed[slot], layer, Some(route))?;
                 }
             }
         }
@@ -599,8 +601,8 @@ impl GraphBackend {
         while !walk.queues[0].is_empty() || !walk.queues[1].is_empty() {
             let count = walk.queues[0].len();
             for _ in 0..count {
-                let slot = walk.queues[0].pop_front().unwrap();
-                self.dispatch_turbo_site(slot, walk)?;
+                let queued = walk.queues[0].pop_front().unwrap();
+                self.dispatch_turbo_site(queued, walk)?;
             }
             self.shift_wire_queues(walk);
             walk.layer += 1;
@@ -610,7 +612,8 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn dispatch_turbo_site(&mut self, slot: usize, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
+    fn dispatch_turbo_site(&mut self, queued: QueuedWireSite, walk: &mut WireWalk) -> Result<(), GraphExecutionError> {
+        let slot = queued.slot as usize;
         let site = walk.sites[slot].site;
         let observed = walk.sites[slot].observed.clone();
         if let Some(receiver @ CallbackReceiver::Component(node)) = observed.receiver
@@ -619,7 +622,7 @@ impl GraphBackend {
             self.record_turbo_delivery(site, receiver, walk.layer);
             return self.evaluate_turbo_wire_node(node, walk);
         }
-        self.dispatch_turbo_nonwire(site, &observed, walk.layer)
+        self.dispatch_turbo_nonwire(site, &observed, walk.layer, Some(queued.route))
     }
 
     fn record_turbo_delivery(&mut self, _site: SiteId, _receiver: CallbackReceiver, _layer: u32) {
@@ -647,7 +650,13 @@ impl GraphBackend {
         );
     }
 
-    pub(super) fn dispatch_turbo_nonwire(&mut self, site: SiteId, observed: &ObservedSite, layer: u32) -> Result<(), GraphExecutionError> {
+    pub(super) fn dispatch_turbo_nonwire(
+        &mut self,
+        site: SiteId,
+        observed: &ObservedSite,
+        layer: u32,
+        source: Option<RouteId>,
+    ) -> Result<(), GraphExecutionError> {
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
@@ -665,7 +674,10 @@ impl GraphBackend {
                         kind: "classic proof piston callback",
                     });
                 }
-                self.sample_piston(piston)
+                match source {
+                    Some(route) => self.sample_piston_from(piston, route),
+                    None => self.sample_piston(piston),
+                }
             }
             CallbackReceiver::Contact(_) => {
                 if self.classic_proof.is_some() {

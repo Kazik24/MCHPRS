@@ -69,7 +69,7 @@ impl<'a> Composition<'a> {
         power: &'a PowerIndex,
         component: &RegionComponent,
         monitor: &'a TaskMonitor,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, ConstructionError> {
         let wires = component
             .corridors
             .iter()
@@ -91,7 +91,7 @@ impl<'a> Composition<'a> {
         })
     }
 
-    fn use_(&self, cell: u32, actor: PistonId) -> Result<&CellUse, String> {
+    fn use_(&self, cell: u32, actor: PistonId) -> Result<&CellUse, ConstructionError> {
         self.catalog
             .cells
             .get(cell as usize)
@@ -99,7 +99,7 @@ impl<'a> Composition<'a> {
             .ok_or_else(|| "scheduled actor is not owned by its cell".into())
     }
 
-    pub(super) fn state(&mut self, test: StateTest) -> Result<LayerExprId, String> {
+    pub(super) fn state(&mut self, test: StateTest) -> Result<LayerExprId, ConstructionError> {
         if let Some(&value) = self.state.get(&test) {
             return Ok(value);
         }
@@ -109,7 +109,7 @@ impl<'a> Composition<'a> {
         Ok(value)
     }
 
-    fn pins(&mut self, cell: u32, actor: PistonId, event: LayerExprId) -> Result<Vec<LayerExprId>, String> {
+    fn pins(&mut self, cell: u32, actor: PistonId, event: LayerExprId) -> Result<Vec<LayerExprId>, ConstructionError> {
         for pin in &self.catalog.cells[cell as usize].pins {
             if let CellPin::Read(CellRead::State(test)) = pin {
                 self.state(*test)?;
@@ -145,7 +145,7 @@ impl<'a> Composition<'a> {
 
     /// The event is already qualified; its source order must be established by the caller.
     #[cfg(test)]
-    pub(super) fn sample(&mut self, cell: u32, actor: PistonId, event: LayerExprId, causes: Box<[RouteOccurrence]>) -> Result<(), String> {
+    pub(super) fn sample(&mut self, cell: u32, actor: PistonId, event: LayerExprId, causes: Box<[RouteOccurrence]>) -> Result<(), ConstructionError> {
         self.sample_after(cell, actor, event, causes, &FxHashSet::default())
     }
 
@@ -156,7 +156,7 @@ impl<'a> Composition<'a> {
         event: LayerExprId,
         causes: Box<[RouteOccurrence]>,
         ancestors: &FxHashSet<PistonId>,
-    ) -> Result<(), String> {
+    ) -> Result<(), ConstructionError> {
         let use_ = self.use_(cell, actor)?;
         if causes.is_empty() || causes.iter().any(|cause| !use_.activations.contains(cause)) {
             return Err("sample has no original actor callback witness".into());
@@ -167,9 +167,34 @@ impl<'a> Composition<'a> {
         }
         let requested_pin = use_.requested;
         let values = self.pins(cell, actor, event)?;
+        self.push_request(cell, actor, values[requested_pin.index()], causes, ancestors)
+    }
+
+    /// The original callback already sampled this request; acceptance still reads live state.
+    pub(super) fn queued_sample(
+        &mut self,
+        cell: u32,
+        actor: PistonId,
+        requested: LayerExprId,
+        cause: RouteOccurrence,
+    ) -> Result<(), ConstructionError> {
+        if !self.use_(cell, actor)?.activations.contains(&cause) {
+            return Err("queued request has no original actor callback witness".into());
+        }
+        self.push_request(cell, actor, requested, vec![cause].into(), &FxHashSet::default())
+    }
+
+    fn push_request(
+        &mut self,
+        cell: u32,
+        actor: PistonId,
+        sampled: LayerExprId,
+        causes: Box<[RouteOccurrence]>,
+        ancestors: &FxHashSet<PistonId>,
+    ) -> Result<(), ConstructionError> {
         let pending = self.pending.get(&actor).copied().unwrap_or(self.builder.constant(false)?);
         let not_pending = self.builder.not(pending)?;
-        let requested = self.builder.all([values[requested_pin.index()], not_pending])?;
+        let requested = self.builder.all([sampled, not_pending])?;
         let pending_after = self.builder.any([pending, requested])?;
         self.pending.insert(actor, pending_after);
         self.requests.push_back(Request {
@@ -183,7 +208,7 @@ impl<'a> Composition<'a> {
     }
 
     /// Expose the base-change cut before token transfer and downstream Far callbacks.
-    pub(super) fn begin_next(&mut self) -> Result<Option<Acceptance>, String> {
+    pub(super) fn begin_next(&mut self) -> Result<Option<Acceptance>, ConstructionError> {
         if self.open.is_some() {
             return Err("nested acceptance before the current Far/Near cut".into());
         }
@@ -235,7 +260,7 @@ impl<'a> Composition<'a> {
     }
 
     /// Move the token exactly once before the caller samples Far/Near callback consequences.
-    pub(super) fn finish_base(&mut self, acceptance: Acceptance) -> Result<LayerExprId, String> {
+    pub(super) fn finish_base(&mut self, acceptance: Acceptance) -> Result<LayerExprId, ConstructionError> {
         if self.open != Some(acceptance.actor) {
             return Err("acceptance phase does not own the open actor".into());
         }
@@ -276,7 +301,7 @@ impl<'a> Composition<'a> {
         Ok(transfer_when)
     }
 
-    fn write(&mut self, test: StateTest, value: bool, when: LayerExprId) -> Result<(), String> {
+    fn write(&mut self, test: StateTest, value: bool, when: LayerExprId) -> Result<(), ConstructionError> {
         let old = self.state(test)?;
         let next = if value {
             self.builder.any([old, when])?
@@ -288,7 +313,7 @@ impl<'a> Composition<'a> {
         Ok(())
     }
 
-    fn set_availability(&mut self, actor: PistonId, value: PistonAvailability, when: LayerExprId) -> Result<(), String> {
+    fn set_availability(&mut self, actor: PistonId, value: PistonAvailability, when: LayerExprId) -> Result<(), ConstructionError> {
         for is in [
             PistonAvailability::Ready,
             PistonAvailability::HeadPending,

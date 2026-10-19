@@ -10,6 +10,24 @@ use rustc_hash::FxHashMap;
 const MAX_LAYER_BYTES: usize = MAX_GRAPH_PREPARATION_BYTES / 8;
 const MAX_LAYER_WORK: usize = 8 * 1024 * 1024;
 
+#[derive(Debug, PartialEq, Eq)]
+enum ConstructionError {
+    BudgetExceeded,
+    Invalid(String),
+}
+
+impl From<String> for ConstructionError {
+    fn from(message: String) -> Self {
+        Self::Invalid(message)
+    }
+}
+
+impl From<&str> for ConstructionError {
+    fn from(message: &str) -> Self {
+        Self::Invalid(message.into())
+    }
+}
+
 mod composition;
 mod kernels;
 mod partition;
@@ -20,19 +38,32 @@ pub(crate) use kernels::lower as lower_kernels;
 pub(crate) use kernels::lower_with_context as lower_kernels_with_context;
 pub(crate) use reduction::reduce as lower_region;
 
+/// A region and the optional arrival evidence already used to establish its causal order.
+struct CompiledRegion {
+    /// The cold layer description later checked and reduced into runtime roots.
+    region: LayeredRegion,
+    /// Successful connected-corridor proofs; singleton lowering may still derive its empty proof.
+    arrivals: Option<Vec<composition::corridors::Arrival>>,
+}
+
 /// Transient discovery products shared by proof reconstruction and immediate lowering.
 pub(crate) struct LayerCompilationContext {
     /// The computation partition derived from this unchanged graph and boundary catalog.
     partition: regions::RegionPartition,
     /// Incoming power links indexed once for both compilation and corridor certification.
     power: PowerIndex,
+    /// Successful connected-region arrival proofs, indexed by the unchanged partition.
+    arrivals: Vec<Option<Vec<composition::corridors::Arrival>>>,
 }
 
 impl LayerCompilationContext {
     fn prepare(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<Self, String> {
+        let partition = partition::partition(graph, catalog, monitor)?;
+        let arrivals = (0..partition.regions.len()).map(|_| None).collect();
         Ok(Self {
-            partition: partition::partition(graph, catalog, monitor)?,
+            partition,
             power: index_power(graph),
+            arrivals,
         })
     }
 }
@@ -48,7 +79,7 @@ pub(crate) fn compile_layers_with_context(
     monitor: &TaskMonitor,
 ) -> Result<(LayeredInstantPlan, LayerCompilationContext), String> {
     check_cancelled(monitor)?;
-    let context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
+    let mut context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
     let partition = &context.partition;
     let perimeters = regions::perimeters(graph, partition, monitor)?;
     let power_index = &context.power;
@@ -56,7 +87,7 @@ pub(crate) fn compile_layers_with_context(
     let mut declined = Vec::new();
     for (region_index, component) in partition.regions.iter().enumerate() {
         check_cancelled(monitor)?;
-        match compile_component(
+        let result = compile_component(
             graph,
             catalog,
             component,
@@ -65,8 +96,12 @@ pub(crate) fn compile_layers_with_context(
             power_index,
             &perimeters[region_index],
             monitor,
-        )? {
-            Ok(region) => compiled.push(region),
+        );
+        match component_result(graph, catalog, component, result)? {
+            Ok(result) => {
+                context.arrivals[region_index] = result.arrivals;
+                compiled.push(result.region);
+            }
             Err(decline) => declined.push(decline),
         }
     }
@@ -87,6 +122,23 @@ pub(crate) fn compile_layers_with_context(
     ))
 }
 
+fn component_result(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    component: &RegionComponent,
+    result: Result<Result<CompiledRegion, LayerDecline>, ConstructionError>,
+) -> Result<Result<CompiledRegion, LayerDecline>, String> {
+    match result {
+        Ok(result) => Ok(result),
+        Err(ConstructionError::BudgetExceeded) => Ok(Err(decline(
+            component,
+            first_witness(graph, catalog, component),
+            LayerDeclineReason::ProofBudgetExceeded,
+        ))),
+        Err(ConstructionError::Invalid(message)) => Err(message),
+    }
+}
+
 fn compile_component(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,
@@ -96,7 +148,7 @@ fn compile_component(
     power_index: &PowerIndex,
     perimeter: &rustc_hash::FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
-) -> Result<Result<LayeredRegion, LayerDecline>, String> {
+) -> Result<Result<CompiledRegion, LayerDecline>, ConstructionError> {
     if let Some(use_) = component
         .cells
         .iter()
@@ -152,6 +204,13 @@ fn compile_component(
         return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
     }
     let use_ = &cell.uses[0];
+    if use_
+        .activations
+        .iter()
+        .any(|event| graph.routes[event.route.index()].deliveries[event.ordinal as usize].view == OperandView::Captured)
+    {
+        return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
+    }
     let private_resource = &cell.resources[0];
     let Some(transfer) = use_.retraction.transfer else {
         return Ok(Err(decline(
@@ -305,7 +364,7 @@ fn compile_component(
         }]
         .into_boxed_slice(),
     };
-    Ok(Ok(LayeredRegion {
+    let region = LayeredRegion {
         id: LayerRegionId(u32::try_from(region_index).map_err(|_| "too many instant regions")?),
         cells: component.cells.clone(),
         corridors: component.corridors.clone(),
@@ -318,7 +377,8 @@ fn compile_component(
         expressions: builder.expressions.into_boxed_slice(),
         pin_values: pin_values.into_boxed_slice(),
         layers: vec![layer].into_boxed_slice(),
-    }))
+    };
+    Ok(Ok(CompiledRegion { region, arrivals: None }))
 }
 
 fn first_unproven_power(
@@ -329,7 +389,7 @@ fn first_unproven_power(
     owners: &super::boundaries::OwnerMap,
     owner_region: &[u32],
     monitor: &TaskMonitor,
-) -> Result<Option<LayerWitness>, String> {
+) -> Result<Option<LayerWitness>, ConstructionError> {
     let mut work = 0usize;
     for &cell_id in &component.cells {
         let cell = catalog
@@ -342,7 +402,7 @@ fn first_unproven_power(
             while let Some(pin) = pending.pop() {
                 work = work.checked_add(1).ok_or("layer support walk work overflow")?;
                 if work > MAX_LAYER_WORK {
-                    return Err("layer support walk exceeded its preparation work budget".into());
+                    return Err(ConstructionError::BudgetExceeded);
                 }
                 if work & 0x3ff == 0 {
                     check_cancelled(monitor)?;
@@ -612,7 +672,7 @@ fn lifecycle_occurrences(
     use_: &CellUse,
     activation_lifecycle: &[LayerLifecycleOccurrence],
     builder: &mut LayerBuilder<'_>,
-) -> Result<Result<Vec<LayerLifecycleOccurrence>, (LayerWitness, LayerDeclineReason)>, String> {
+) -> Result<Result<Vec<LayerLifecycleOccurrence>, (LayerWitness, LayerDeclineReason)>, ConstructionError> {
     let reset_node = reset_observer(use_)?;
     let reset_wake = use_.reset.observer_wake().ok_or("observer reset is missing its callback witnesses")?;
     let mut lifecycle = activation_lifecycle.to_vec();
@@ -644,7 +704,14 @@ fn lifecycle_occurrences(
                     LayerLifecyclePhase::ResetObserverLifecycle,
                 )
             } else {
-                if has_port(catalog, cell_id, BoundaryDirection::Output, BoundaryPortKind::Callback { occurrence }) {
+                if find_port(
+                    catalog,
+                    BoundaryOwner::Cell(cell_id),
+                    BoundaryDirection::Output,
+                    BoundaryPortKind::Callback { occurrence },
+                )
+                .is_some()
+                {
                     continue;
                 }
                 return Ok(Err((LayerWitness::Callback(occurrence), LayerDeclineReason::BoundaryEffectUnsupported)));
@@ -742,13 +809,6 @@ fn lifecycle_occurrences(
         }
     }
     Ok(Ok(lifecycle))
-}
-
-fn has_port(catalog: &BoundaryCatalog, cell_id: u32, direction: BoundaryDirection, kind: BoundaryPortKind) -> bool {
-    catalog
-        .ports
-        .iter()
-        .any(|port| port.owner == BoundaryOwner::Cell(cell_id) && port.direction == direction && port.kind == kind)
 }
 
 /// Match the value families handled by `compile_outputs` before doing expensive construction.
@@ -865,7 +925,7 @@ fn compile_pin(
     activations: &[RouteOccurrence],
     previous_pins: &[LayerExprId],
     builder: &mut LayerBuilder<'_>,
-) -> Result<LayerExprId, String> {
+) -> Result<LayerExprId, ConstructionError> {
     builder.visit()?;
     match pin {
         CellPin::Read(CellRead::Contribution(link)) => {
@@ -895,7 +955,8 @@ fn compile_pin(
                 return Err(format!(
                     "cell {} reads internal or unbound power link {link_index} at acceptance/request time",
                     use_.actor.index()
-                ));
+                )
+                .into());
             };
             let input = builder.input(
                 LayerInputSource::PowerContribution {
@@ -923,7 +984,8 @@ fn compile_pin(
                         "actor {} activation occurrence {:?} has no external callback input",
                         actor.index(),
                         occurrence
-                    ));
+                    )
+                    .into());
                 };
                 let input = builder.input(
                     LayerInputSource::BoundaryEvent {
@@ -938,7 +1000,7 @@ fn compile_pin(
         }
         CellPin::Read(CellRead::State(test)) => {
             if !state_is_owned_stationary_read(*test, use_.actor, private_resource, graph) {
-                return Err(format!("actor {} has a nonlocal mutable state read {:?}", use_.actor.index(), test));
+                return Err(format!("actor {} has a nonlocal mutable state read {:?}", use_.actor.index(), test).into());
             }
             let input = builder.input(LayerInputSource::State(*test), read_role)?;
             builder.input_expr(input)
@@ -982,7 +1044,7 @@ fn compile_outputs(
     transfer_when: LayerExprId,
     lifecycle: &[LayerLifecycleOccurrence],
     builder: &mut LayerBuilder<'_>,
-) -> Result<Result<Box<[LayerOutput]>, (LayerWitness, LayerDeclineReason)>, String> {
+) -> Result<Result<Box<[LayerOutput]>, (LayerWitness, LayerDeclineReason)>, ConstructionError> {
     let mut outputs = Vec::new();
     let mut value_outputs = Vec::new();
     let phases = [
@@ -1082,7 +1144,7 @@ fn compile_state_output(
     accepted: LayerExprId,
     transfer_when: LayerExprId,
     builder: &mut LayerBuilder<'_>,
-) -> Result<Option<LayerExprId>, String> {
+) -> Result<Option<LayerExprId>, ConstructionError> {
     let state_is_owned = match test {
         StateTest::PistonExtended(piston) | StateTest::PistonHeadPresent(piston) | StateTest::PistonAvailability { piston, .. } => piston == actor,
         StateTest::ResourceEnabled(id) => id == resource.resource && id == transfer.resource && graph.resources.get(id.index()).is_some(),
@@ -1190,7 +1252,7 @@ struct LayerBuilder<'a> {
 }
 
 impl<'a> LayerBuilder<'a> {
-    fn new(monitor: &'a TaskMonitor) -> Result<Self, String> {
+    fn new(monitor: &'a TaskMonitor) -> Result<Self, ConstructionError> {
         let mut builder = Self {
             monitor,
             inputs: Vec::new(),
@@ -1205,11 +1267,11 @@ impl<'a> LayerBuilder<'a> {
         Ok(builder)
     }
 
-    fn visit(&mut self) -> Result<(), String> {
+    fn visit(&mut self) -> Result<(), ConstructionError> {
         self.budget.visit(self.monitor)
     }
 
-    fn input(&mut self, source: LayerInputSource, role: LayerInputRole) -> Result<LayerInputId, String> {
+    fn input(&mut self, source: LayerInputSource, role: LayerInputRole) -> Result<LayerInputId, ConstructionError> {
         self.visit()?;
         let key = (source, role);
         if let Some(&id) = self.input_ids.get(&key) {
@@ -1222,15 +1284,15 @@ impl<'a> LayerBuilder<'a> {
         Ok(id)
     }
 
-    fn input_expr(&mut self, input: LayerInputId) -> Result<LayerExprId, String> {
+    fn input_expr(&mut self, input: LayerInputId) -> Result<LayerExprId, ConstructionError> {
         self.intern(LayerExpr::Input(input))
     }
 
-    fn constant(&mut self, value: bool) -> Result<LayerExprId, String> {
+    fn constant(&mut self, value: bool) -> Result<LayerExprId, ConstructionError> {
         self.intern(LayerExpr::Constant(value))
     }
 
-    fn not(&mut self, value: LayerExprId) -> Result<LayerExprId, String> {
+    fn not(&mut self, value: LayerExprId) -> Result<LayerExprId, ConstructionError> {
         match self.expression(value)?.clone() {
             LayerExpr::Constant(value) => self.constant(!value),
             LayerExpr::Not(inner) => Ok(inner),
@@ -1238,15 +1300,15 @@ impl<'a> LayerBuilder<'a> {
         }
     }
 
-    fn all(&mut self, values: impl IntoIterator<Item = LayerExprId>) -> Result<LayerExprId, String> {
+    fn all(&mut self, values: impl IntoIterator<Item = LayerExprId>) -> Result<LayerExprId, ConstructionError> {
         self.combine(values, true)
     }
 
-    fn any(&mut self, values: impl IntoIterator<Item = LayerExprId>) -> Result<LayerExprId, String> {
+    fn any(&mut self, values: impl IntoIterator<Item = LayerExprId>) -> Result<LayerExprId, ConstructionError> {
         self.combine(values, false)
     }
 
-    fn combine(&mut self, values: impl IntoIterator<Item = LayerExprId>, all: bool) -> Result<LayerExprId, String> {
+    fn combine(&mut self, values: impl IntoIterator<Item = LayerExprId>, all: bool) -> Result<LayerExprId, ConstructionError> {
         let identity = if all { true } else { false };
         let absorbing = !identity;
         let mut operands = Vec::new();
@@ -1283,7 +1345,7 @@ impl<'a> LayerBuilder<'a> {
         self.intern(if all { LayerExpr::All(operands) } else { LayerExpr::Any(operands) })
     }
 
-    fn gate(&mut self, kind: CellGateKind, values: Vec<LayerExprId>) -> Result<LayerExprId, String> {
+    fn gate(&mut self, kind: CellGateKind, values: Vec<LayerExprId>) -> Result<LayerExprId, ConstructionError> {
         match kind {
             CellGateKind::Buffer if values.len() == 1 => Ok(values[0]),
             CellGateKind::Invert if values.len() == 1 => self.not(values[0]),
@@ -1293,13 +1355,13 @@ impl<'a> LayerBuilder<'a> {
         }
     }
 
-    fn expression(&self, value: LayerExprId) -> Result<&LayerExpr, String> {
+    fn expression(&self, value: LayerExprId) -> Result<&LayerExpr, ConstructionError> {
         self.expressions
             .get(value.0 as usize)
             .ok_or_else(|| "layer expression references a missing root".into())
     }
 
-    fn intern(&mut self, expression: LayerExpr) -> Result<LayerExprId, String> {
+    fn intern(&mut self, expression: LayerExpr) -> Result<LayerExprId, ConstructionError> {
         if let Some(&id) = self.interned.get(&expression) {
             return Ok(id);
         }
@@ -1328,19 +1390,19 @@ struct LayerBudget {
 }
 
 impl LayerBudget {
-    fn retain(&mut self, bytes: usize) -> Result<(), String> {
+    fn retain(&mut self, bytes: usize) -> Result<(), ConstructionError> {
         self.bytes = self.bytes.checked_add(bytes).ok_or("layer retained byte counter overflow")?;
         if self.bytes > MAX_LAYER_BYTES {
-            return Err("instant layer retained-table budget exceeded".into());
+            return Err(ConstructionError::BudgetExceeded);
         }
         Ok(())
     }
 
-    fn visit(&mut self, monitor: &TaskMonitor) -> Result<(), String> {
+    fn visit(&mut self, monitor: &TaskMonitor) -> Result<(), ConstructionError> {
         check_cancelled(monitor)?;
         self.work = self.work.checked_add(1).ok_or("layer work counter overflow")?;
         if self.work > MAX_LAYER_WORK {
-            return Err("instant layer construction-work budget exceeded".into());
+            return Err(ConstructionError::BudgetExceeded);
         }
         Ok(())
     }

@@ -13,6 +13,62 @@ const BOUNDS: (BlockPos, BlockPos) = (BlockPos::new(2, 17, 2), BlockPos::new(15,
 #[path = "instant_layer_entry/interfaces.rs"]
 mod interfaces;
 
+fn wire_controlled_cell_world() -> PlotWorld {
+    use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
+    let source = CONTROL.offset(BlockFace::West);
+    let mut world = direct_cell_world();
+    world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(source, world.get_block(CONTROL));
+    world.set_block(
+        CONTROL,
+        Block::RedstoneWire {
+            wire: RedstoneWire::new(
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                15,
+            ),
+        },
+    );
+    world
+}
+
+#[test]
+fn turbo_requests_retain_the_actual_captured_update_route() {
+    let source = CONTROL.offset(BlockFace::West);
+    let mut world = wire_controlled_cell_world();
+    let mut native = wire_controlled_cell_world();
+    let monitor = TaskMonitor::default();
+    let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let (program, state) = prepared.graph.lower().unwrap();
+    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let wire = backend.positions[&CONTROL];
+    let route = backend.wire_plan(wire).turbo_route.unwrap();
+    backend.use_block(source).unwrap();
+    native_step(
+        &mut native,
+        Step::SetLever {
+            position: source,
+            powered: false,
+        },
+    );
+    let request = backend.future.piston_requests.front().expect("the falling wire requested retraction");
+    assert_eq!(request.source, Some(route));
+    assert_eq!(backend.program.pistons()[request.piston.index()].position, BASE);
+    assert_eq!(
+        std::mem::size_of::<QueuedWireSite>(),
+        8,
+        "provenance must not enlarge the 64-bit wire queue entry"
+    );
+    let positions: Vec<_> = backend.program.sites().iter().map(|site| site.position).collect();
+    for tick in 0..24 {
+        backend.tick().unwrap();
+        native.tick_interpreted();
+        check_boundary(&backend, &native, &mut world, &positions, &format!("Turbo origin tick={tick}")).unwrap();
+    }
+}
+
 fn direct_cell_world() -> PlotWorld {
     let mut world = empty_world();
     for (position, block) in [
@@ -207,6 +263,9 @@ fn entry_input(input: LayerInput, backend: &GraphBackend) -> bool {
         LayerInputSource::BoundaryEvent { occurrence, .. } => {
             backend.program.nodes()[backend.program.routes()[occurrence.route.index()].source.index()].position == Some(CONTROL)
         }
+        LayerInputSource::BoundaryRequest { occurrence, actor, .. } => backend.future.piston_requests.iter().any(|request| {
+            request.piston == actor && request.action == mchprs_world::PistonAction::Retract && request.source == Some(occurrence.route)
+        }),
         LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => {
             backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
         }

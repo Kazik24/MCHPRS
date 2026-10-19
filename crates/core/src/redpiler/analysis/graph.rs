@@ -61,7 +61,7 @@ pub fn prepare_candidate_graph(
     monitor: Arc<TaskMonitor>,
 ) -> Result<CandidateGraph, GraphPreparationError> {
     monitor.set_budget_multiplier(options.budget_multiplier);
-    let mut prepared = passes::rich::prepare(
+    let prepared = passes::rich::prepare(
         world,
         bounds,
         ticks.to_vec(),
@@ -70,9 +70,10 @@ pub fn prepare_candidate_graph(
     )
     .map_err(map_preparation_error)?;
     let pipeline = passes::default_graph_pipeline(options);
-    passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, &monitor)
-        .map_err(|error| GraphPreparationError::Graph(error.to_string()))?;
-    prepared.finish_pipeline_statistics(&monitor);
+    let prepared = prepared
+        .run_passes(options, &pipeline, &monitor)
+        .map_err(|error| GraphPreparationError::Graph(error.to_string()))?
+        .into_prepared();
     Ok(CandidateGraph {
         graph: prepared.graph,
         report: prepared.report,

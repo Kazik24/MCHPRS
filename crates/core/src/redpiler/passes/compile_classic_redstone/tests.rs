@@ -42,14 +42,7 @@ fn classic_discovery_census() {
                 let monitor = TaskMonitor::default();
                 let options = Default::default();
                 let output = CompileClassicRedstone
-                    .build(
-                        &prepared.graph,
-                        &PassContext {
-                            monitor: &monitor,
-                            options: &options,
-                            entry: &prepared.entry,
-                        },
-                    )
+                    .build(&prepared.graph, &PassContext::new(&monitor, &options, &prepared.entry))
                     .unwrap();
                 let PlanOutput::ClassicNets(plans) = output else { unreachable!() };
                 println!(

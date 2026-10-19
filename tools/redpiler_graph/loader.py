@@ -751,14 +751,36 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
                 raise GraphFormatError(f"{identifier} has an invalid input role")
             source = _object(item.get("source"), f"{identifier}.input.source")
             source_kind = source.get("kind")
-            if source_kind in ("boundary_event", "power_contribution"):
+            if source_kind in ("boundary_event", "boundary_request", "power_contribution"):
                 port = ref("instant_port", source.get("port"), identifier)
                 if port.get("direction") != "input" or port.get("owner") not in region_cells | region_corridors:
                     raise GraphFormatError(f"{identifier} input port is outside its input boundary")
-                if source_kind == "boundary_event":
-                    occurrence(source.get("occurrence"), identifier)
+                if source_kind in ("boundary_event", "boundary_request"):
+                    route, ordinal = occurrence(source.get("occurrence"), identifier)
                     if port.get("binding", {}).get("kind") != "callback" or port["binding"].get("occurrence") != source.get("occurrence"):
                         raise GraphFormatError(f"{identifier} event source does not match its callback port")
+                    if source_kind == "boundary_request":
+                        actor = source.get("actor")
+                        actor_row = ref("piston", actor, identifier)
+                        delivery = records["route"][route]["deliveries"][ordinal]
+                        receiver = delivery.get("receiver")
+                        if not receiver:
+                            receiver = ref("site", delivery["target"], identifier).get("source", {})
+                        pending = [receiver]
+                        visited = set()
+                        matches_actor = False
+                        while pending:
+                            receiver = pending.pop()
+                            matches_actor |= (receiver.get("kind") in ("piston_base", "piston_head") and receiver.get("piston") == actor) or (
+                                receiver.get("kind") == "component" and receiver.get("node") == actor_row["node"]
+                            )
+                            if receiver.get("kind") == "contact" and receiver.get("contact") not in visited:
+                                visited.add(receiver["contact"])
+                                contact = ref("contact", receiver["contact"], identifier)
+                                pending.extend(variant["receiver"] for variant in contact["variants"] if variant.get("receiver"))
+                        owner_matches = port.get("owner") in region_cells and actor in cells[port["owner"]]["actors"]
+                        if actor not in region_actors or not owner_matches or not matches_actor or delivery.get("kind") != "update" or item.get("role") != "activation_event":
+                            raise GraphFormatError(f"{identifier} queued request does not match its owned actor callback")
                 else:
                     ref("power_link", source.get("link"), identifier)
                     binding = port.get("binding", {})
@@ -989,7 +1011,7 @@ def _validate_instant_layers(graph: dict[str, Any], records: dict[str, dict[str,
 
     decline_reasons = {
         "signal_arrival_unproven", "callback_semantics_unsupported", "shared_owner_order_unknown",
-        "boundary_effect_unsupported",
+        "boundary_effect_unsupported", "proof_budget_exceeded",
     }
     for identifier, decline in declines.items():
         declined_cells: set[str] = set()

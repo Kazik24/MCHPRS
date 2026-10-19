@@ -24,14 +24,7 @@ fn reset_graph() -> (CompileGraph, EntryState) {
 }
 
 fn compile_resets(graph: &mut CompileGraph, entry: &EntryState, monitor: &TaskMonitor) -> Result<(), String> {
-    passes::compile_builtin_resets::CompileBuiltinResets.run(
-        graph,
-        &passes::PassContext {
-            monitor,
-            options: &CompilerOptions::default(),
-            entry,
-        },
-    )
+    passes::compile_builtin_resets::CompileBuiltinResets.run(graph, &passes::PassContext::new(monitor, &CompilerOptions::default(), entry))
 }
 
 #[test]

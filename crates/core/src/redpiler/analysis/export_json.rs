@@ -1,17 +1,18 @@
 //! Versioned inspection JSON for the richer graph drafts.
 mod classic;
-mod fixed_signals;
 mod fixed_classic;
-mod mixed_classic;
+mod fixed_signals;
 mod instant_boundaries;
 mod instant_layers;
+mod mixed_classic;
 use super::electrical::{ComparatorInputPlan, ComparatorOverride, WireRelationKind};
 use super::{AnalysisLimits, AnalysisReport};
 use crate::redpiler::components::{NodeState, NodeType};
 use crate::redpiler::passes;
 use crate::redpiler::program_graph::{
     CallbackReceiver, CircuitNodeKind, CompileGraph, ComponentState, Guard, InputPort, LinkKind, LinkSpec, OperandView, PistonAvailability,
-    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest, WireQueryFacts, WireCallbackSelection,
+    PistonLane, PistonRoutes, PowerLink, PowerPort, PowerTarget, Profile, ProfileElectrical, SiteSource, SiteTest, StateTest, WireCallbackSelection,
+    WireQueryFacts,
 };
 use crate::redpiler::{CompilerOptions, TaskMonitor};
 use crate::world::World;
@@ -842,7 +843,7 @@ impl GraphExport {
             }
         }
         validate_dust_paths(&self.graph.dust_paths, &nodes, &sites, &node_records, &site_records)?;
-        classic::validate(&self.graph.classic_nets,&nodes,&routes,&self.graph)?;
+        classic::validate(&self.graph.classic_nets, &nodes, &routes, &self.graph)?;
         fixed_signals::validate(&self.graph.fixed_signal_queries, &nodes, &sites)?;
         fixed_classic::validate(&self.graph.fixed_classic, &self.graph, &nodes, &sites, &routes)?;
         mixed_classic::validate(&self.graph.mixed_classic, &self.graph, &nodes, &sites)?;
@@ -977,11 +978,10 @@ pub(crate) fn prepare<W: World>(
     monitor: &TaskMonitor,
     limits: AnalysisLimits,
 ) -> Result<GraphExport, ExportError> {
-    let mut prepared = passes::rich::prepare(world, bounds, ticks.to_vec(), monitor, limits).map_err(map_preparation_error)?;
+    let prepared = passes::rich::prepare(world, bounds, ticks.to_vec(), monitor, limits).map_err(map_preparation_error)?;
     let pipeline = passes::default_graph_pipeline(options);
-    passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, monitor).map_err(map_pass_error)?;
-    prepared.finish_pipeline_statistics(monitor);
-    let export = from_graph(&prepared.report, &prepared.graph)?;
+    let prepared = prepared.run_passes(options, &pipeline, monitor).map_err(map_pass_error)?;
+    let export = from_graph(prepared.report(), prepared.graph())?;
     check_export_cancellation(monitor)?;
     monitor.inc_progress();
     Ok(export)
@@ -1065,7 +1065,9 @@ fn map_pass_error(error: passes::PassPipelineError) -> ExportError {
 
 pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Result<GraphExport, ExportError> {
     if source.plans.instant.boundaries.is_some() {
-        source.validate_with_monitor(&TaskMonitor::default()).map_err(|error| ExportError::new("instant_boundaries", error.to_string()))?;
+        source
+            .validate_with_monitor(&TaskMonitor::default())
+            .map_err(|error| ExportError::new("instant_boundaries", error.to_string()))?;
     }
     let boundaries = instant_boundaries::export(source);
     let layers = instant_layers::export(source);
@@ -1321,7 +1323,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             .enumerate()
             .map(|(index, link)| {
                 let mut dto = callback_link_dto(index, link);
-                if classic::owned(source,link.from) || classic::owned(source,link.to) { dto.execution=Some("classic_provenance"); }
+                if classic::owned(source, link.from) || classic::owned(source, link.to) {
+                    dto.execution = Some("classic_provenance");
+                }
                 dto
             })
             .collect(),
@@ -1338,7 +1342,13 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                         .iter()
                         .enumerate()
                         .map(|(ordinal, delivery)| RouteDeliveryDto {
-                            execution: (classic::owned(source,route.source) || source.plans.classic_nets.iter().any(|net|net.entries.iter().any(|entry|entry.route.index()==index && entry.ordinal as usize==ordinal))).then_some("classic_provenance"),
+                            execution: (classic::owned(source, route.source)
+                                || source.plans.classic_nets.iter().any(|net| {
+                                    net.entries
+                                        .iter()
+                                        .any(|entry| entry.route.index() == index && entry.ordinal as usize == ordinal)
+                                }))
+                            .then_some("classic_provenance"),
                             ordinal: ordinal as u32,
                             sequence: delivery.sequence,
                             target: typed_id("site", delivery.target.index()),
@@ -1409,7 +1419,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.dust_paths.is_empty() {
         capabilities.push("dust_path_certificates");
     }
-    if !source.plans.classic_nets.is_empty() { capabilities.push("classic_signal_nets"); }
+    if !source.plans.classic_nets.is_empty() {
+        capabilities.push("classic_signal_nets");
+    }
     if source.wires.iter().any(|wire| wire.execution.query_facts.is_some()) {
         capabilities.push("wire_query_facts");
     }
@@ -1979,8 +1991,6 @@ mod wire_query_fact_validation_tests {
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod dust_path_validation_tests {

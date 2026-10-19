@@ -62,6 +62,12 @@ impl TaskMonitor {
         self.graph_statistics.lock().unwrap().duration = duration;
     }
 
+    pub(crate) fn record_lowering(&self, kernels: Duration, program: Duration) {
+        let mut statistics = self.graph_statistics.lock().unwrap();
+        statistics.kernel_lowering_duration = kernels;
+        statistics.program_lowering_duration = program;
+    }
+
     pub fn set_budget_multiplier(&self, multiplier: usize) {
         self.budget_multiplier.store(multiplier.clamp(1, 8), Ordering::Relaxed);
     }

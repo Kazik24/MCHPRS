@@ -1,8 +1,81 @@
 # CPU_BubbleSort runtime profile
 
-These dated captures describe mixed Graph execution before the later packed-executor
-and O5 updates. Use [the current state](CURRENT_STATE.md) for current capabilities and
-the limits on applying these older profile percentages.
+The current release comparison is below. The later dated stack captures are
+historical; their percentages are not fresh profiles of this executable.
+
+## 2026-10-19: complete O5 sort with queued Instant entries and lazy geometry
+
+Three interleaved release pairs use identical `--graph-tier 5 --stable-instant-inputs`,
+`classic_redstone=false`, budget 8 and the complete
+10,036-tick CPU_BubbleSort episode. Both executables are frozen, pinned to logical
+CPU 4 (`0x10`), and use the same approved in-memory sign removal. The schematic
+and frozen interpreter trace are unchanged. No competing compiler/test process
+was observed in 321 two-second process samples across these pairs and the control.
+
+| Metric | Before | Candidate |
+| --- | ---: | ---: |
+| Inference samples, seconds | 86.364786, 73.149302, 72.707857 | 65.166980, 64.682660, 66.500502 |
+| Median inference | 73.149302 s | 65.166980 s |
+| Active game ticks/s | 137.20 | 154.00 |
+| Median compilation | 14.151171 s | 10.307165 s |
+| Median per-tick publication total | 8.219185 s | 8.019773 s |
+| Installed kernel actors | 2,197 | 2,197 |
+| Executed kernel invocations | 3,565 | 524,910 |
+| Callbacks | 205,665,211 | 205,197,749 |
+| General wire walks | 3,882,011 | 3,882,011 |
+
+The median result is **1.12249x throughput**, or **10.91% less inference time**.
+All three pairs improve; individual throughput ratios are 1.32528, 1.13090 and
+1.09334. The slow first baseline remains in the data. Its 32.5% pair gain is not
+the repeated result. Timers exclude loading, activation, RAM probes, reset and
+continuation; publication and compilation are reported separately. Compiler
+simplification is also present in the candidate, so its compile-time change is
+not attributed to the Instant entry/runtime changes alone.
+
+The entry change retains the actual source route in each eight-byte Turbo queue
+item. Captured entries consume typed predicates for already queued retractions;
+they do not re-read a historical contact to invent a request. Acceptance still
+checks live state and power. Unknown origins and unmatched multi-actor FIFO
+orders keep Graph. Kernel callbacks preserve the existing reset/publication path.
+
+Mixed wire-side calculation now reads only relevant geometry, at most 13
+neighbors rather than constructing all 24 views; fully connected or blocked
+neighborhoods need five. The existing array-based calculation remains an
+independent oracle, exercised over 4,096 generated neighborhoods.
+
+A separate candidate O5-default control, without stable Instant inputs, takes
+65.109283 s and executes zero kernels. This is one sample, within the observed
+candidate timing variation. **No isolated Instant-only speedup is established.**
+The batch is faster and executes substantially more real kernels; it still
+retains every general wire walk. Whole-CPU Boolean contraction is not complete.
+
+All seven runs match every frozen RAM tick, the final sorted words `0..15`,
+and each other's complete active/reset/32-native-tick-continuation checkpoints.
+Accepted actions (3,295,083) and scheduled component ticks (2,344,242) are equal.
+The independent 100-active-tick Graph/native replay also passes ordered pending
+work each tick, full checkpoints and 16 native handoff ticks. This does not claim
+a native full-state comparison at every tick of the complete sort.
+
+Final regressions pass 527 Redpiler tests (36 ignored), two geometry tests,
+26 loader tests, 32 viewer tests and the workspace check. The separate FPU
+replay passes all three retained histories, without a numeric arithmetic claim.
+
+Artifacts: [paired summary](../../../target/bubblesort-instant-perf/summary.json),
+[provenance](../../../target/bubblesort-instant-perf/provenance.json),
+[native prefix](../../../target/bubblesort-queued-geometry-cpu-native.log).
+The directory also retains individual reports, logs, process observations,
+the source diff and both release executables. Baseline SHA-256 starts `ae401341`;
+candidate starts `ebba0c97`.
+
+Next performance target: certify and absorb active wire/reset interiors. The
+1,000-tick activity census identifies a 28-cell/one-corridor group with 8,937
+actions and a 60-cell/44-corridor group with 6,833; both decline on arrival
+obligations. Preserve actual update qualification, capture points, FIFO order,
+boundary effects and native continuation rather than treating settled power as
+an arrival certificate. Entry-specific Boolean slicing is another opportunity
+to avoid evaluating inactive alternative entry paths.
+
+## Historical captures
 
 Captured 2026-10-14 from the current uncommitted worktree, with O3 and the wire-transfer-expression draft enabled. This report supersedes the earlier mixed-tier capture for locating current runtime costs. It does not establish an optimization speedup.
 

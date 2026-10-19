@@ -349,14 +349,7 @@ mod tests {
         let entry = entry();
         assert!(
             SpecializeWireQueries
-                .run(
-                    &mut graph,
-                    &PassContext {
-                        monitor: &monitor,
-                        options: &options,
-                        entry: &entry
-                    }
-                )
+                .run(&mut graph, &PassContext::new(&monitor, &options, &entry))
                 .is_err()
         );
         assert_eq!(graph, before);

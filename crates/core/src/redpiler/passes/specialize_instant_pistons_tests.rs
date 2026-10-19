@@ -236,14 +236,14 @@ fn cancellation_and_disabled_pipeline_leave_the_graph_unchanged() {
         SpecializeInstantPistons
             .run(
                 &mut graph,
-                &PassContext {
-                    monitor: &monitor,
-                    options: &CompilerOptions::default(),
-                    entry: &EntryState {
+                &PassContext::new(
+                    &monitor,
+                    &CompilerOptions::default(),
+                    &EntryState {
                         logical_tick: 0,
                         pending_ticks: vec![]
                     }
-                }
+                )
             )
             .is_err()
     );

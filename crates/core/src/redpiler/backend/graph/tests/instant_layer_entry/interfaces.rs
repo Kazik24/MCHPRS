@@ -46,6 +46,37 @@ fn turn_off(backend: &mut GraphBackend, native: &mut PlotWorld, position: BlockP
 }
 
 #[test]
+fn captured_wire_request_executes_a_kernel_and_rechecks_restored_power() {
+    let source = CONTROL.offset(BlockFace::West);
+    for restore in [false, true] {
+        let mut world = wire_controlled_cell_world();
+        let mut native = wire_controlled_cell_world();
+        let mut backend = compile_world(&world);
+        assert!(backend.program.instant_kernels().iter().any(|kernel| {
+            kernel
+                .program
+                .inputs
+                .iter()
+                .any(|input| matches!(input.source, LayerInputSource::BoundaryRequest { .. }))
+        }));
+        turn_off(&mut backend, &mut native, source);
+        assert!(backend.future.piston_requests.front().unwrap().source.is_some());
+        if restore {
+            backend.use_block(source).unwrap();
+            native_step(
+                &mut native,
+                Step::SetLever {
+                    position: source,
+                    powered: true,
+                },
+            );
+        }
+        check_ticks(&mut backend, &mut native, &mut world, "captured request");
+        assert!(backend.execution_counts().instant_kernel_invocations > 0);
+    }
+}
+
+#[test]
 fn either_boundary_route_can_start_a_direct_instant_chain() {
     let alternate = BASE.offset(BlockFace::North);
     for order in [[CONTROL, alternate], [alternate, CONTROL]] {

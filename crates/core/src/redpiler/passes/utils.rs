@@ -203,7 +203,7 @@ pub(super) fn callback_table_statistics(graph: &callbacks::CallbackDraft) -> Vec
     ]
 }
 
-pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &CompileGraph) -> Result<(), GraphBuildError> {
+pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &CompileGraph) -> Result<(), GraphBuildError> {
     use crate::redpiler::program_graph::{ComparatorInputPlan, ContactSpec, DustPathPlan, NodeSpec, PistonSpec, Profile, ResourceSpec, WirePlan};
     let contact_variant_bytes = graph
         .contacts
@@ -216,12 +216,46 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         .map(|resource| boxed_bytes::<crate::redpiler::program_graph::ContactId>(resource.contacts.len()))
         .sum();
     let tables = vec![
-        PreparationTableStatistics { stage: "lowering input", table: "whole fixed executable".into(), entries: usize::from(graph.plans.fixed_classic.program.is_some()), capacity: usize::from(graph.plans.fixed_classic.program.is_some()), estimated_bytes: graph.plans.fixed_classic.program.as_ref().map_or(0, |program| program.inventory().estimated_bytes) },
+        PreparationTableStatistics {
+            stage: "lowering input",
+            table: "whole fixed executable".into(),
+            entries: usize::from(graph.plans.fixed_classic.program.is_some()),
+            capacity: usize::from(graph.plans.fixed_classic.program.is_some()),
+            estimated_bytes: graph
+                .plans
+                .fixed_classic
+                .program
+                .as_ref()
+                .map_or(0, |program| program.inventory().estimated_bytes),
+        },
         table::<crate::redpiler::program_graph::ClassicNetPlan>(
-            "lowering input","classic certificates",graph.plans.classic_nets.len(),graph.plans.classic_nets.capacity(),
-            graph.plans.classic_nets.iter().map(|net|std::mem::size_of_val(net.wires.as_ref())+std::mem::size_of_val(net.inputs.as_ref())+std::mem::size_of_val(net.entries.as_ref())+net.entries.iter().map(|entry|std::mem::size_of_val(entry.ops.as_ref())).sum::<usize>()).sum(),
+            "lowering input",
+            "classic certificates",
+            graph.plans.classic_nets.len(),
+            graph.plans.classic_nets.capacity(),
+            graph
+                .plans
+                .classic_nets
+                .iter()
+                .map(|net| {
+                    std::mem::size_of_val(net.wires.as_ref())
+                        + std::mem::size_of_val(net.inputs.as_ref())
+                        + std::mem::size_of_val(net.entries.as_ref())
+                        + net.entries.iter().map(|entry| std::mem::size_of_val(entry.ops.as_ref())).sum::<usize>()
+                })
+                .sum(),
         ),
-        PreparationTableStatistics { stage:"lowering input",table:"classic direct tables projected".into(),entries:graph.plans.classic_nets.len(),capacity:graph.plans.classic_nets.len(),estimated_bytes:crate::redpiler::program_graph::ClassicProgram::estimate_plans(&graph.plans.classic_nets,graph.nodes.len(),graph.routes.len())+graph.plans.classic_nets.len() },
+        PreparationTableStatistics {
+            stage: "lowering input",
+            table: "classic direct tables projected".into(),
+            entries: graph.plans.classic_nets.len(),
+            capacity: graph.plans.classic_nets.len(),
+            estimated_bytes: crate::redpiler::program_graph::ClassicProgram::estimate_plans(
+                &graph.plans.classic_nets,
+                graph.nodes.len(),
+                graph.routes.len(),
+            ) + graph.plans.classic_nets.len(),
+        },
         table::<crate::redpiler::program_graph::InstantRegion>(
             "lowering input",
             "instant regions",
@@ -353,12 +387,30 @@ pub(super) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
     Ok(())
 }
 
-pub(super) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
+pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph::CircuitProgram) -> Vec<PreparationTableStatistics> {
     let routes = program.routes();
     vec![
-        PreparationTableStatistics { stage: "lowering", table: "whole fixed executable".into(), entries: usize::from(program.fixed_classic().is_some()), capacity: usize::from(program.fixed_classic().is_some()), estimated_bytes: program.fixed_classic().map_or(0, |fixed| fixed.inventory().estimated_bytes) },
-        PreparationTableStatistics { stage:"lowering",table:"classic signal tables".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().estimated_bytes() },
-        PreparationTableStatistics { stage:"lowering",table:"committed classic signals".into(),entries:program.classic().nets.len(),capacity:program.classic().nets.len(),estimated_bytes:program.classic().nets.len() },
+        PreparationTableStatistics {
+            stage: "lowering",
+            table: "whole fixed executable".into(),
+            entries: usize::from(program.fixed_classic().is_some()),
+            capacity: usize::from(program.fixed_classic().is_some()),
+            estimated_bytes: program.fixed_classic().map_or(0, |fixed| fixed.inventory().estimated_bytes),
+        },
+        PreparationTableStatistics {
+            stage: "lowering",
+            table: "classic signal tables".into(),
+            entries: program.classic().nets.len(),
+            capacity: program.classic().nets.len(),
+            estimated_bytes: program.classic().estimated_bytes(),
+        },
+        PreparationTableStatistics {
+            stage: "lowering",
+            table: "committed classic signals".into(),
+            entries: program.classic().nets.len(),
+            capacity: program.classic().nets.len(),
+            estimated_bytes: program.classic().nets.len(),
+        },
         table::<crate::redpiler::program_graph::InstantProxy>(
             "lowering",
             "instant proxies",
@@ -487,17 +539,26 @@ pub(super) fn record_preparation_pass(monitor: &TaskMonitor, name: &'static str,
         before,
         after,
         duration: start.elapsed(),
+        validation_duration: std::time::Duration::ZERO,
     });
     monitor.inc_progress();
 }
 
-pub(super) fn record_transformation(monitor: &TaskMonitor, name: &'static str, before: GraphCounts, after: GraphCounts, start: Instant) {
+pub(super) fn record_transformation(
+    monitor: &TaskMonitor,
+    name: &'static str,
+    before: GraphCounts,
+    after: GraphCounts,
+    start: Instant,
+    validation_duration: std::time::Duration,
+) {
     monitor.record_transformation(PassStatistics {
         name,
         enabled: true,
         before,
         after,
         duration: start.elapsed(),
+        validation_duration,
     });
 }
 

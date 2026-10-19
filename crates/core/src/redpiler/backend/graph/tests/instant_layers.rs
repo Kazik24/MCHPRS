@@ -38,11 +38,7 @@ fn causal_layers_require_boundaries_and_cancellation_never_publishes() {
         stable_instant_inputs: true,
         ..Default::default()
     };
-    let context = passes::PassContext {
-        monitor: &monitor,
-        options: &options,
-        entry: &prepared.entry,
-    };
+    let context = passes::PassContext::new(&monitor, &options, &prepared.entry);
     assert!(CompileInstantLayers.build(&prepared.graph, &context).is_err());
     assert!(prepared.graph.plans.instant.layers.is_none());
 
@@ -50,11 +46,7 @@ fn causal_layers_require_boundaries_and_cancellation_never_publishes() {
     prepared.graph.plans.instant.boundaries = Some(catalog);
     let before = prepared.graph.clone();
     let unstable_options = CompilerOptions::default();
-    let unstable_context = passes::PassContext {
-        monitor: &monitor,
-        options: &unstable_options,
-        entry: &prepared.entry,
-    };
+    let unstable_context = passes::PassContext::new(&monitor, &unstable_options, &prepared.entry);
     assert!(
         CompileInstantLayers
             .run(&mut prepared.graph, &unstable_context)

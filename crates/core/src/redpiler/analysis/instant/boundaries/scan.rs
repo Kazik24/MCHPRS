@@ -4,6 +4,10 @@ use crate::redpiler::TaskMonitor;
 use crate::redpiler::program_graph::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+#[cfg(test)]
+#[path = "tests/guard_support.rs"]
+mod tests;
+
 /// Reuse the same typed dependency scan for legacy region projections and the new catalog.
 pub(crate) fn scan_boundaries(graph: &CompileGraph, owners: &OwnerMap, monitor: &TaskMonitor) -> Result<BoundaryScan, String> {
     let mut budget = Budget::bounded(monitor);
@@ -371,7 +375,7 @@ fn push_port(
     Ok(())
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GuardLeaf {
     Site {
         /// This original guard atom owns the site-read predicate.
@@ -442,51 +446,86 @@ fn append_guard_support(
 }
 
 fn guard_leaves<'a>(graph: &CompileGraph, cache: &'a mut GuardSupport, budget: &mut Budget<'_>, root: GuardId) -> Result<&'a [GuardLeaf], String> {
-    if !cache.leaves.contains_key(&root) {
-        budget.retain(&root)?;
-        let mut pending = vec![root];
-        let mut visited = FxHashSet::default();
-        let mut leaves = Vec::new();
-        while let Some(id) = pending.pop() {
-            budget.visit()?;
-            if !visited.insert(id) {
-                continue;
-            }
-            budget.retain(&id)?;
-            match graph.guards.get(id.index()).ok_or("guard references missing during boundary scan")? {
-                Guard::Always => {}
+    use std::collections::hash_map::Entry;
+    match cache.leaves.entry(root) {
+        Entry::Occupied(entry) => Ok(entry.into_mut()),
+        Entry::Vacant(entry) => {
+            budget.retain(&root)?;
+            // Atomic guards need neither a DFS stack nor a visited hash table.
+            let leaves = match graph.guards.get(root.index()).ok_or("guard references missing during boundary scan")? {
+                Guard::Always => {
+                    budget.visit()?;
+                    budget.retain(&root)?;
+                    Vec::new()
+                }
                 Guard::State(test) => {
-                    let leaf = GuardLeaf::State { atom: id, test: *test };
+                    budget.visit()?;
+                    budget.retain(&root)?;
+                    let leaf = GuardLeaf::State { atom: root, test: *test };
                     budget.retain(&leaf)?;
-                    leaves.push(leaf);
+                    vec![leaf]
                 }
                 Guard::Site { site, view, test } => {
+                    budget.visit()?;
+                    budget.retain(&root)?;
                     let leaf = GuardLeaf::Site {
-                        atom: id,
+                        atom: root,
                         site: *site,
                         view: *view,
                         test: *test,
                     };
                     budget.retain(&leaf)?;
-                    leaves.push(leaf);
+                    vec![leaf]
                 }
-                Guard::Not(child) => {
+                _ => walk_guard_leaves(graph, budget, root)?,
+            };
+            budget.retain(&root)?;
+            budget.retain(&leaves)?;
+            Ok(entry.insert(leaves))
+        }
+    }
+}
+
+fn walk_guard_leaves(graph: &CompileGraph, budget: &mut Budget<'_>, root: GuardId) -> Result<Vec<GuardLeaf>, String> {
+    let mut pending = vec![root];
+    let mut visited = FxHashSet::default();
+    let mut leaves = Vec::new();
+    while let Some(id) = pending.pop() {
+        budget.visit()?;
+        if !visited.insert(id) {
+            continue;
+        }
+        budget.retain(&id)?;
+        match graph.guards.get(id.index()).ok_or("guard references missing during boundary scan")? {
+            Guard::Always => {}
+            Guard::State(test) => {
+                let leaf = GuardLeaf::State { atom: id, test: *test };
+                budget.retain(&leaf)?;
+                leaves.push(leaf);
+            }
+            Guard::Site { site, view, test } => {
+                let leaf = GuardLeaf::Site {
+                    atom: id,
+                    site: *site,
+                    view: *view,
+                    test: *test,
+                };
+                budget.retain(&leaf)?;
+                leaves.push(leaf);
+            }
+            Guard::Not(child) => {
+                budget.retain(child)?;
+                pending.push(*child);
+            }
+            Guard::All(children) | Guard::Any(children) => {
+                for child in children.iter().rev() {
                     budget.retain(child)?;
                     pending.push(*child);
                 }
-                Guard::All(children) | Guard::Any(children) => {
-                    for child in children.iter().rev() {
-                        budget.retain(child)?;
-                        pending.push(*child);
-                    }
-                }
             }
         }
-        budget.retain(&root)?;
-        budget.retain(&leaves)?;
-        cache.leaves.insert(root, leaves);
     }
-    Ok(cache.leaves.get(&root).expect("inserted guard support"))
+    Ok(leaves)
 }
 
 fn for_each_state_owner(owners: &OwnerMap, test: StateTest, mut visit: impl FnMut(Option<usize>) -> Result<(), String>) -> Result<(), String> {

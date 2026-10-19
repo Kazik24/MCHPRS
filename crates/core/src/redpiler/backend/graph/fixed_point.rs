@@ -87,7 +87,7 @@ impl GraphBackend {
             }
         }
         for (site, observed) in boundary {
-            self.dispatch_turbo_nonwire(site, &observed, 1)?;
+            self.dispatch_turbo_nonwire(site, &observed, 1, None)?;
         }
         Ok(())
     }

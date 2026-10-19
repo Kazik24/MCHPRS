@@ -12,14 +12,79 @@ impl CircuitDraft {
         self.validate_for_lowering(monitor).map(|_| ())
     }
 
-    pub(super) fn validate_for_lowering(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
+    pub(crate) fn validate_for_lowering(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
         self.validate_structure()?;
         self.validate_execution_plans_with_context(monitor)
     }
 
     /// Requires unchanged, validated structure; only the read-only builder runner uses this shortcut.
+    #[cfg(test)]
     pub(crate) fn validate_execution_plans_with_monitor(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
         self.validate_execution_plans_with_context(monitor).map(|_| ())
+    }
+
+    /// Requires a previously valid graph changed only by the named typed publication.
+    pub(crate) fn validate_plan_change(
+        &self,
+        change: PlanChange,
+        monitor: &crate::redpiler::TaskMonitor,
+    ) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
+        match change {
+            PlanChange::Layers => self.validate_instant_layers(monitor),
+            PlanChange::Boundaries => {
+                // Boundary publication also removes old proxies, affecting fixed ownership.
+                self.validate_classic_programs(monitor)?;
+                self.validate_instant_boundaries(monitor)
+            }
+            PlanChange::FixedSignals => {
+                self.validate_fixed_signals(monitor)?;
+                self.validate_classic_programs(monitor)?;
+                Ok(None)
+            }
+            PlanChange::FixedClassic | PlanChange::MixedClassic => {
+                self.validate_classic_programs(monitor)?;
+                Ok(None)
+            }
+            PlanChange::TurboCallbacks | PlanChange::WireQueries | PlanChange::WireCallbacks | PlanChange::WireHops => {
+                // Callback inference uses Turbo indices; fixed instructions consume wire facts.
+                self.validate_wire_execution_plans()?;
+                self.validate_classic_programs(monitor)?;
+                Ok(None)
+            }
+            // Ownership changes have indirect dependencies through discovery helpers.
+            // Keep their complete checks until every affected consumer is audited.
+            PlanChange::ClassicNets | PlanChange::DustPaths | PlanChange::InstantResets | PlanChange::Regions | PlanChange::Proxies => {
+                self.validate_execution_plans_with_context(monitor)
+            }
+        }
+    }
+
+    /// The runner derived this reference from the valid input immediately before publication.
+    pub(crate) fn validate_boundary_reference(
+        &self,
+        expected: &BoundaryCatalog,
+        monitor: &crate::redpiler::TaskMonitor,
+    ) -> Result<(), GraphBuildError> {
+        if self.plans.instant.boundaries.as_ref() != Some(expected)
+            || self.plans.instant.layers.is_some()
+            || !self.plans.instant.regions.is_empty()
+            || !self.plans.instant.proxies.is_empty()
+        {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "boundaries",
+                index: 0,
+            });
+        }
+        // Publication removes old proxy ownership, so existing fixed programs must still agree.
+        self.validate_classic_programs(monitor)
+    }
+
+    /// Layer publication changes no catalog or circuit inputs used to derive this reference.
+    pub(crate) fn validate_layer_reference(&self, expected: &LayeredInstantPlan) -> Result<(), GraphBuildError> {
+        if self.plans.instant.boundaries.is_none() || self.plans.instant.layers.as_ref() != Some(expected) {
+            return Err(GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 });
+        }
+        Ok(())
     }
 
     fn validate_execution_plans_with_context(
@@ -37,12 +102,22 @@ impl CircuitDraft {
         }
         self.validate_wire_execution_plans()?;
         self.validate_instant_regions()?;
+        self.validate_fixed_signals(monitor)?;
+        validate_classic(self, monitor)?;
+        self.validate_classic_programs(monitor)?;
+        self.validate_instant_boundaries(monitor)
+    }
+
+    fn validate_fixed_signals(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
         if self.plans.fixed_signals != FixedSignalPlans::default()
             && infer_fixed_signals(self, monitor).map_err(|_| GraphBuildError::InvalidFixedSignals)? != self.plans.fixed_signals
         {
             return Err(GraphBuildError::InvalidFixedSignals);
         }
-        validate_classic(self, monitor)?;
+        Ok(())
+    }
+
+    fn validate_classic_programs(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
         self.plans
             .fixed_classic
             .validate(self, monitor)
@@ -51,7 +126,7 @@ impl CircuitDraft {
             .mixed_classic
             .validate(self, monitor)
             .map_err(|_| GraphBuildError::InvalidMixedClassic)?;
-        self.validate_instant_boundaries(monitor)
+        Ok(())
     }
 
     fn validate_instant_boundaries(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
@@ -75,7 +150,15 @@ impl CircuitDraft {
         if *catalog != expected {
             return Err(invalid());
         }
+        self.validate_instant_layers(monitor)
+    }
+
+    fn validate_instant_layers(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
         if let Some(layers) = &self.plans.instant.layers {
+            let catalog = self.plans.instant.boundaries.as_ref().ok_or(GraphBuildError::InvalidInstantRegion {
+                table: "layers without boundaries",
+                index: 0,
+            })?;
             let (expected, context) = crate::redpiler::analysis::instant::layers::compile_layers_with_context(self, catalog, monitor)
                 .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "layers", index: 0 })?;
             if *layers != expected {

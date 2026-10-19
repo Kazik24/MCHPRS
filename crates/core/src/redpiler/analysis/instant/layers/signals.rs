@@ -54,7 +54,7 @@ impl<'a> SignalTracer<'a> {
         }
     }
 
-    pub(super) fn contribution(&mut self, link: PowerLink, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    pub(super) fn contribution(&mut self, link: PowerLink, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         builder.visit()?;
         let threshold = threshold.saturating_add(link.attenuation);
         if threshold >= 15 {
@@ -68,7 +68,7 @@ impl<'a> SignalTracer<'a> {
         builder.all([guard, source])
     }
 
-    pub(super) fn query(&mut self, target: PowerTarget, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    pub(super) fn query(&mut self, target: PowerTarget, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         builder.visit()?;
         if threshold >= 15 {
             return builder.constant(false);
@@ -94,7 +94,7 @@ impl<'a> SignalTracer<'a> {
         Ok(root)
     }
 
-    fn source(&mut self, site: SiteId, port: PowerPort, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    fn source(&mut self, site: SiteId, port: PowerPort, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         builder.visit()?;
         let key = (site, port, threshold);
         if let Some(&root) = self.sources.get(&key) {
@@ -151,7 +151,7 @@ impl<'a> SignalTracer<'a> {
         Ok(root)
     }
 
-    pub(super) fn guard(&mut self, guard: GuardId, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    pub(super) fn guard(&mut self, guard: GuardId, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         builder.visit()?;
         if let Some(&root) = self.guards.get(&guard) {
             return Ok(root);
@@ -195,7 +195,7 @@ impl<'a> SignalTracer<'a> {
         Ok(root)
     }
 
-    pub(super) fn site_test(&mut self, site: SiteId, test: SiteTest, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    pub(super) fn site_test(&mut self, site: SiteId, test: SiteTest, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         match self.graph.sites[site.index()].source {
             SiteSource::Constant(profile) => builder.constant(profile_matches(self.graph.profiles[profile.index()], Some(profile), test)),
             SiteSource::Component(node) => {
@@ -230,7 +230,7 @@ impl<'a> SignalTracer<'a> {
         }
     }
 
-    fn wire_emits(&mut self, node: NodeId, port: PowerPort, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    fn wire_emits(&mut self, node: NodeId, port: PowerPort, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         let face = match port {
             PowerPort::Output | PowerPort::Stored => return builder.constant(true),
             PowerPort::Weak(face) | PowerPort::Strong(face) => face,
@@ -287,7 +287,12 @@ impl<'a> SignalTracer<'a> {
         builder.any([connected[side], complete_axis])
     }
 
-    fn block_test(&mut self, site: SiteId, predicate: impl Fn(Block) -> bool, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, String> {
+    fn block_test(
+        &mut self,
+        site: SiteId,
+        predicate: impl Fn(Block) -> bool,
+        builder: &mut LayerBuilder<'_>,
+    ) -> Result<LayerExprId, ConstructionError> {
         match self.graph.sites[site.index()].source {
             SiteSource::Constant(profile) => builder.constant(predicate(Block::from_id(self.graph.profiles[profile.index()].raw_state))),
             SiteSource::Component(node) => {

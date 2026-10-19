@@ -3,7 +3,7 @@
 //! Lowering installs only waves whose effect boundary and queue ownership are certified;
 //! the remainder keeps ordinary Graph execution. Discovery order never defines causality.
 use super::PassContext;
-use super::planning::{PlanBuilder, PlanOutput};
+use super::planning::{InstantAnalysis, PlanBuilder, PlanOutput};
 use crate::redpiler::program_graph::CompileGraph;
 
 pub(crate) struct CompileInstantLayers;
@@ -11,6 +11,10 @@ pub(crate) struct CompileInstantLayers;
 impl PlanBuilder for CompileInstantLayers {
     fn name(&self) -> &'static str {
         "compile-instant-layers"
+    }
+
+    fn instant_analysis(&self) -> Option<InstantAnalysis> {
+        Some(InstantAnalysis::Layers)
     }
 
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
@@ -23,7 +27,10 @@ impl PlanBuilder for CompileInstantLayers {
         if !context.options.stable_instant_inputs {
             return Err("instant layers require the declared stable-input contract".into());
         }
-        let layers = crate::redpiler::analysis::instant::layers::compile_layers(graph, catalog, context.monitor)?;
+        let layers = match context.instant_layers() {
+            Some(layers) => layers.clone(),
+            None => crate::redpiler::analysis::instant::layers::compile_layers(graph, catalog, context.monitor)?,
+        };
         Ok(PlanOutput::Layers(layers))
     }
 }

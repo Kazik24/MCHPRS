@@ -1,5 +1,55 @@
 use super::*;
+
 use mchprs_blocks::{BlockFace, BlockPos};
+
+#[test]
+fn proof_budget_limits_are_inclusive_and_cancellation_stays_fatal() {
+    let monitor = TaskMonitor::default();
+    let mut budget = LayerBudget {
+        bytes: MAX_LAYER_BYTES - 1,
+        work: MAX_LAYER_WORK - 1,
+    };
+    budget.retain(1).unwrap();
+    budget.visit(&monitor).unwrap();
+    assert_eq!(budget.retain(1), Err(ConstructionError::BudgetExceeded));
+    assert_eq!(budget.visit(&monitor), Err(ConstructionError::BudgetExceeded));
+
+    monitor.cancel();
+    assert!(matches!(budget.visit(&monitor), Err(ConstructionError::Invalid(message)) if message.contains("cancel")));
+
+    let graph = empty_graph(power_link(0));
+    let catalog = BoundaryCatalog::default();
+    let component = RegionComponent {
+        cells: Box::new([]),
+        corridors: Box::new([]),
+        ports: Box::new([]),
+    };
+    for message in [
+        "cancelled while compiling instant causal layers",
+        "instant layer construction-work budget exceeded",
+    ] {
+        // Text from an invalid graph must never be interpreted as a recoverable budget error.
+        assert!(matches!(
+            component_result(&graph, &catalog, &component, Err(ConstructionError::Invalid(message.into()))),
+            Err(error) if error == message
+        ));
+    }
+}
+
+#[test]
+fn retained_budget_failure_does_not_publish_an_input_or_hide_malformed_expressions() {
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    builder.budget.bytes = MAX_LAYER_BYTES;
+    let source = LayerInputSource::State(StateTest::PistonExtended(PistonId::new(0)));
+    assert_eq!(
+        builder.input(source, LayerInputRole::RequestSample),
+        Err(ConstructionError::BudgetExceeded)
+    );
+    assert!(builder.inputs.is_empty());
+    assert!(builder.input_ids.is_empty());
+    assert!(matches!(builder.not(LayerExprId(u32::MAX)), Err(ConstructionError::Invalid(_))));
+}
 
 fn power_link(attenuation: u8) -> PowerLink {
     PowerLink {

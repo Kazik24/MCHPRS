@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod tests;
 mod turbo;
 
 pub(crate) const TURBO_ORDER: [[usize; 24]; 4] = [
@@ -221,6 +223,35 @@ pub(crate) fn get_raw_sides_from(wire: RedstoneWire, pos: BlockPos, read: impl F
     state.east = get_side_from(pos, BlockDirection::East, &mut above, &read);
     state.west = get_side_from(pos, BlockDirection::West, &mut above, &read);
     state
+}
+
+/// Query only geometry that can affect a side; the caller performs no callbacks between reads.
+pub(crate) fn get_raw_sides_from_neighbor_read(mut wire: RedstoneWire, read: impl Fn(usize) -> Block) -> RedstoneWire {
+    let up_solid = read(3).is_solid();
+    for (side, neighbor, above, below) in [
+        (BlockDirection::North, 4, 20, 17),
+        (BlockDirection::South, 5, 21, 18),
+        (BlockDirection::East, 1, 13, 12),
+        (BlockDirection::West, 0, 8, 7),
+    ] {
+        let neighbor = read(neighbor);
+        let side_state = if crate::world::wire_cache::connects(neighbor, side) {
+            RedstoneWireSide::Side
+        } else if !up_solid && can_connect_diagonal_to(read(above)) {
+            RedstoneWireSide::Up
+        } else if !neighbor.is_solid() && can_connect_diagonal_to(read(below)) {
+            RedstoneWireSide::Side
+        } else {
+            RedstoneWireSide::None
+        };
+        match side {
+            BlockDirection::North => wire.north = side_state,
+            BlockDirection::South => wire.south = side_state,
+            BlockDirection::East => wire.east = side_state,
+            BlockDirection::West => wire.west = side_state,
+        }
+    }
+    wire
 }
 
 pub(crate) fn get_raw_sides_from_neighbors(mut wire: RedstoneWire, neighbors: &[Block; 24]) -> RedstoneWire {

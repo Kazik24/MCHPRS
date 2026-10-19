@@ -13,14 +13,14 @@ fn compile_hops(graph: &mut CompileGraph) {
     passes::compile_wire_hops::CompileWireHops
         .run(
             graph,
-            &PassContext {
-                monitor: &TaskMonitor::default(),
-                options: &Default::default(),
-                entry: &EntryState {
+            &PassContext::new(
+                &TaskMonitor::default(),
+                &Default::default(),
+                &EntryState {
                     logical_tick: 0,
                     pending_ticks: vec![],
                 },
-            },
+            ),
         )
         .unwrap();
 }

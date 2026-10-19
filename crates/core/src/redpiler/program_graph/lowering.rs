@@ -6,11 +6,29 @@ impl CircuitDraft {
         self.lower_with_monitor(&crate::redpiler::TaskMonitor::default())
     }
 
-    pub(crate) fn lower_with_monitor(mut self,monitor:&crate::redpiler::TaskMonitor) -> Result<(CircuitProgram,CircuitState),GraphBuildError> {
-        let layer_context = self.validate_for_lowering(monitor)?;
-        let kernels = crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&self, monitor, layer_context.as_ref())
-            .map_err(|_| GraphBuildError::InvalidInstantRegion { table: "kernel lowering", index: 0 })?;
-        drop(layer_context);
+    pub(crate) fn lower_with_monitor(self, monitor: &crate::redpiler::TaskMonitor) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
+        let layers = self.validate_for_lowering(monitor)?;
+        self.lower_checked(monitor, layers)
+    }
+
+    fn lower_checked(
+        mut self,
+        monitor: &crate::redpiler::TaskMonitor,
+        layers: Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>,
+    ) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
+        if monitor.cancelled() {
+            return Err(GraphBuildError::Cancelled);
+        }
+        let kernel_start = std::time::Instant::now();
+        let kernels = crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&self, monitor, layers.as_ref()).map_err(|_| {
+            GraphBuildError::InvalidInstantRegion {
+                table: "kernel lowering",
+                index: 0,
+            }
+        })?;
+        drop(layers);
+        let kernel_duration = kernel_start.elapsed();
+        let program_start = std::time::Instant::now();
         let mut kernel_by_actor = vec![None; self.pistons.len()];
         for (index, kernel) in kernels.iter().enumerate() {
             for pull in kernel.pulls.iter().filter(|pull| pull.external) {
@@ -38,7 +56,13 @@ impl CircuitDraft {
                 wire.execution.callback_selection = None;
             }
         }
-        if !self.wires.is_empty() && self.wires.iter().all(|wire|wire.execution.callback_selection.is_some_and(|plan|plan.known==WireCallbackSelection::ALL)) {
+        if !self.wires.is_empty()
+            && self.wires.iter().all(|wire| {
+                wire.execution
+                    .callback_selection
+                    .is_some_and(|plan| plan.known == WireCallbackSelection::ALL)
+            })
+        {
             self.plans.turbo_callback_indices.clear();
         }
 
@@ -220,6 +244,40 @@ impl CircuitDraft {
             note_blocks,
             note_plan_by_node: note_plan_by_node.into_boxed_slice(),
         };
+        monitor.record_lowering(kernel_duration, program_start.elapsed());
         Ok((program, state))
     }
+}
+
+/// Lower a pipeline-owned graph without reopening the arbitrary-draft trust boundary.
+pub(crate) fn lower_prepared(
+    checked: crate::redpiler::passes::rich::ValidatedGraph,
+    monitor: &crate::redpiler::TaskMonitor,
+) -> Result<LoweredCircuit, GraphBuildError> {
+    use crate::redpiler::passes::utils::{lowered_table_statistics, record_lowering_input_tables};
+    let (prepared, layers) = checked.into_lowering_parts();
+    record_lowering_input_tables(monitor, &prepared.graph)?;
+    let (program, state) = prepared.graph.lower_checked(monitor, layers)?;
+    monitor.record_preparation_tables(lowered_table_statistics(&program));
+    let positions = program.position_index();
+    let imported_ticks = prepared
+        .entry
+        .pending_ticks
+        .into_iter()
+        .map(|entry| ImportedTick {
+            target: positions.get(&entry.tick.pos).copied(),
+            position: entry.tick.pos,
+            block_type: entry.tick.block_type,
+            delay: entry.tick.ticks_left,
+            priority: entry.tick.tick_priority,
+            current_registry_type: entry.current_registry_type,
+        })
+        .collect();
+    Ok(LoweredCircuit {
+        program,
+        state,
+        logical_tick: prepared.entry.logical_tick,
+        imported_ticks,
+        positions,
+    })
 }

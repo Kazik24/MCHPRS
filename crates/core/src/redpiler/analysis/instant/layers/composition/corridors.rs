@@ -24,7 +24,7 @@ pub(in crate::redpiler::analysis::instant::layers) fn certify(
     component: &RegionComponent,
     power: &PowerIndex,
     monitor: &TaskMonitor,
-) -> Result<Option<Vec<Arrival>>, String> {
+) -> Result<Option<Vec<Arrival>>, ConstructionError> {
     if component.corridors.is_empty() {
         return Ok(Some(Vec::new()));
     }

@@ -102,11 +102,8 @@ fn private_proxies_decline_uncertain_reset_ingress_and_are_idempotent() {
     }
     let mut twice = graph.clone();
     let monitor = TaskMonitor::default();
-    let context = PassContext {
-        monitor: &monitor,
-        options: &Default::default(),
-        entry: &entry,
-    };
+    let options = crate::redpiler::CompilerOptions::default();
+    let context = PassContext::new(&monitor, &options, &entry);
     passes::identify_instant_regions::IdentifyInstantRegions
         .run(&mut twice, &context)
         .unwrap();
@@ -220,14 +217,7 @@ fn instant_certificates_reject_corruption_and_unknown_passes_invalidate_them() {
     monitor.cancel();
     assert!(
         passes::identify_instant_regions::IdentifyInstantRegions
-            .run(
-                &mut cancelled,
-                &PassContext {
-                    monitor: &monitor,
-                    options: &Default::default(),
-                    entry: &entry,
-                }
-            )
+            .run(&mut cancelled, &PassContext::new(&monitor, &Default::default(), &entry))
             .is_err()
     );
     assert_eq!(cancelled, graph, "cancelled discovery must publish nothing");

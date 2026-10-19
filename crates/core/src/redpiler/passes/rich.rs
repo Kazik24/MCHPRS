@@ -1,13 +1,8 @@
 //! Shared geometry, electrical, and callback preparation for the general graph.
 
-use super::utils::{
-    callback_table_statistics, electrical_table_statistics, geometry_table_statistics, lowered_table_statistics, record_lowering_input_tables,
-    record_preparation_pass, record_tables,
-};
+use super::utils::{callback_table_statistics, electrical_table_statistics, geometry_table_statistics, record_preparation_pass, record_tables};
 use crate::redpiler::analysis::{AnalysisError, AnalysisLimits, AnalysisReport, callbacks, electrical, geometry};
-use crate::redpiler::program_graph::{
-    CircuitDraft, CompileGraph, EntryState, EntryTick, GraphBuildError, ImportedTick, LoweredCircuit, PowerLink, PowerTarget,
-};
+use crate::redpiler::program_graph::{CircuitDraft, CompileGraph, EntryState, EntryTick, GraphBuildError, LoweredCircuit, PowerLink, PowerTarget};
 use crate::redpiler::{GraphCounts, TaskMonitor};
 use crate::world::World;
 use mchprs_blocks::BlockPos;
@@ -57,36 +52,59 @@ pub(crate) struct PreparedGraph {
 }
 
 impl PreparedGraph {
+    /// Run checked transitions and transfer exclusive ownership of the successful result.
+    pub(crate) fn run_passes(
+        mut self,
+        options: &crate::redpiler::CompilerOptions,
+        pipeline: &super::PassPipeline,
+        monitor: &TaskMonitor,
+    ) -> Result<ValidatedGraph, super::PassPipelineError> {
+        let layers = super::run_graph_pipeline_with_analysis(&mut self.graph, options, &self.entry, pipeline, monitor)?;
+        self.finish_pipeline_statistics(monitor);
+        Ok(ValidatedGraph { prepared: self, layers })
+    }
+
+    #[cfg(test)]
     pub(crate) fn lower(self, monitor: &TaskMonitor) -> Result<LoweredCircuit, GraphBuildError> {
-        let logical_tick = self.entry.logical_tick;
-        let pending_ticks = self.entry.pending_ticks;
-        record_lowering_input_tables(monitor, &self.graph)?;
-        let (program, state) = self.graph.lower_with_monitor(monitor)?;
-        monitor.record_preparation_tables(lowered_table_statistics(&program));
-        let positions = program.position_index();
-        let imported_ticks = pending_ticks
-            .into_iter()
-            .map(|entry| ImportedTick {
-                target: positions.get(&entry.tick.pos).copied(),
-                position: entry.tick.pos,
-                block_type: entry.tick.block_type,
-                delay: entry.tick.ticks_left,
-                priority: entry.tick.tick_priority,
-                current_registry_type: entry.current_registry_type,
-            })
-            .collect();
-        Ok(LoweredCircuit {
-            program,
-            state,
-            logical_tick,
-            imported_ticks,
-            positions,
-        })
+        let layers = self.graph.validate_for_lowering(monitor)?;
+        ValidatedGraph { prepared: self, layers }.lower(monitor)
     }
 
     pub(crate) fn finish_pipeline_statistics(&self, monitor: &TaskMonitor) {
         monitor.set_final_graph(GraphCounts::of(&self.graph));
         monitor.finish_graph_statistics(self.pipeline_start.elapsed());
+    }
+}
+
+/// An owned pipeline result; graph mutation requires consuming and discarding its proof.
+pub(crate) struct ValidatedGraph {
+    /// The exact prepared graph and entry accepted by the pipeline.
+    prepared: PreparedGraph,
+    /// Transient analysis checked against this graph, retained only until lowering.
+    layers: Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>,
+}
+
+impl ValidatedGraph {
+    pub(crate) fn graph(&self) -> &CompileGraph {
+        &self.prepared.graph
+    }
+
+    pub(crate) fn report(&self) -> &AnalysisReport {
+        &self.prepared.report
+    }
+
+    pub(crate) fn lower(self, monitor: &TaskMonitor) -> Result<LoweredCircuit, GraphBuildError> {
+        crate::redpiler::program_graph::lower_prepared(self, monitor)
+    }
+
+    /// Moving the draft out also discards the validation and all transient analysis.
+    pub(crate) fn into_prepared(self) -> PreparedGraph {
+        self.prepared
+    }
+
+    /// Only consuming lowering can recover the checked graph and its matching analysis.
+    pub(crate) fn into_lowering_parts(self) -> (PreparedGraph, Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>) {
+        (self.prepared, self.layers)
     }
 }
 
@@ -211,6 +229,7 @@ pub(crate) fn prepare(
 
 #[cfg(test)]
 mod tests {
+    use super::super::utils::lowered_table_statistics;
     use super::*;
     #[test]
     fn lowered_delivery_storage_is_counted_once() {

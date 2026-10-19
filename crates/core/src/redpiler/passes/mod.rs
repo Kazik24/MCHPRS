@@ -1,17 +1,18 @@
 //! Graph preparation pipelines; backends receive prepared execution data.
+pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
-pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_fixed_classic;
-pub(crate) mod compile_mixed_classic;
+mod compile_fixed_signals;
+pub(crate) mod compile_instant_layers;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
-pub(crate) mod compile_wire_hops;
+pub(crate) mod compile_mixed_classic;
 pub(crate) mod compile_wire_callbacks;
+pub(crate) mod compile_wire_hops;
 pub(crate) mod contract_dust_paths;
-pub(crate) mod identify_instant_regions;
 pub(crate) mod identify_instant_boundaries;
-pub(crate) mod compile_instant_layers;
+pub(crate) mod identify_instant_regions;
 pub(crate) mod index_turbo_callbacks;
 pub(crate) mod planning;
 pub(crate) mod prune_inert_callbacks;
@@ -20,7 +21,6 @@ pub(crate) mod rich;
 #[cfg(any(test, feature = "unsafe-turbo-fixed-point"))]
 mod settle_dust_networks;
 pub(crate) mod simplify_guards;
-mod compile_fixed_signals;
 pub(crate) mod simplify_instant_resets;
 pub(crate) mod simplify_state_guards;
 pub(crate) mod specialize_instant_pistons;
@@ -45,12 +45,39 @@ pub(crate) trait GraphPass {
 #[allow(dead_code)]
 /// Shared compilation inputs available to each graph transformation.
 pub(crate) struct PassContext<'a> {
+    /// Canonical source analysis prepared by the runner before this builder executes.
+    prepared_instant: Option<&'a validation::PreparedInstant>,
     /// This shares cancellation and progress reporting with compilation.
     pub(crate) monitor: &'a TaskMonitor,
     /// This exposes compiler settings without choosing which passes run.
     pub(crate) options: &'a CompilerOptions,
     /// This exposes entry time and pending work to transformation checks.
     pub(crate) entry: &'a EntryState,
+}
+
+impl<'a> PassContext<'a> {
+    pub(crate) fn new(monitor: &'a TaskMonitor, options: &'a CompilerOptions, entry: &'a EntryState) -> Self {
+        Self {
+            monitor,
+            options,
+            entry,
+            prepared_instant: None,
+        }
+    }
+
+    pub(crate) fn instant_boundaries(&self) -> Option<&super::program_graph::BoundaryCatalog> {
+        match self.prepared_instant {
+            Some(validation::PreparedInstant::Boundaries(catalog)) => Some(catalog),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn instant_layers(&self) -> Option<&super::program_graph::LayeredInstantPlan> {
+        match self.prepared_instant {
+            Some(validation::PreparedInstant::Layers { plan, .. }) => Some(plan),
+            _ => None,
+        }
+    }
 }
 
 /// The variant determines access and invalidation; passes declare no preservation flags.
@@ -82,6 +109,7 @@ impl Pass {
         }
     }
 
+    #[cfg(test)]
     fn run(&self, graph: &mut CompileGraph, context: &PassContext<'_>) -> Result<(), String> {
         match self {
             Self::Rewrite(pass) => pass.run(graph, context),
@@ -90,7 +118,7 @@ impl Pass {
                 if context.monitor.cancelled() {
                     return Err("cancelled before publishing execution plans".into());
                 }
-                output.publish(graph);
+                output.publish(graph).map_err(|error| error.to_string())?;
                 Ok(())
             }
         }
@@ -167,6 +195,7 @@ impl std::error::Error for PassPipelineError {}
 
 // shortcut: this batch has no ID-changing passes; add remaps with the first such rewrite.
 /// Run exactly the supplied entries; current transformations preserve typed IDs.
+#[cfg(test)]
 pub(crate) fn run_graph_pipeline(
     graph: &mut CompileGraph,
     options: &CompilerOptions,
@@ -174,6 +203,16 @@ pub(crate) fn run_graph_pipeline(
     pipeline: &PassPipeline,
     monitor: &TaskMonitor,
 ) -> Result<(), PassPipelineError> {
+    run_graph_pipeline_with_analysis(graph, options, entry, pipeline, monitor).map(|_| ())
+}
+
+fn run_graph_pipeline_with_analysis(
+    graph: &mut CompileGraph,
+    options: &CompilerOptions,
+    entry: &EntryState,
+    pipeline: &PassPipeline,
+    monitor: &TaskMonitor,
+) -> Result<Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>, PassPipelineError> {
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
@@ -190,9 +229,9 @@ pub(crate) fn run_graph_pipeline(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    validation::input(graph, monitor)?;
+    let mut layers = validation::input(graph, monitor)?;
     monitor.set_max_progress(monitor.progress() + pipeline.entries.len() + 1);
-    let context = PassContext { monitor, options, entry };
+    let context = PassContext::new(monitor, options, entry);
     for item in &pipeline.entries {
         if monitor.cancelled() {
             return Err(PassPipelineError::Cancelled);
@@ -212,17 +251,16 @@ pub(crate) fn run_graph_pipeline(
         let start = Instant::now();
 
         if let Err(message) = item.pass.validate_input(graph) {
-            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
+            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start, std::time::Duration::ZERO);
             return Err(PassPipelineError::Precondition { pass: name, message });
         }
-        if let Err(message) = item.pass.run(graph, &context) {
-            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
-            return Err(PassPipelineError::Failed { pass: name, message });
-        }
-        if let Err(source) = validation::after_pass(&item.pass, graph, monitor) {
-            utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start);
-            return Err(PassPipelineError::MalformedOutput { pass: name, source });
-        }
+        let validation_duration = match validation::run_checked(&item.pass, graph, &context, &mut layers) {
+            Ok(duration) => duration,
+            Err(error) => {
+                utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start, std::time::Duration::ZERO);
+                return Err(error);
+            }
+        };
 
         let after = GraphCounts::of(graph);
 
@@ -239,7 +277,7 @@ pub(crate) fn run_graph_pipeline(
             "graph pass complete"
         );
 
-        utils::record_transformation(monitor, name, before, after, start);
+        utils::record_transformation(monitor, name, before, after, start, validation_duration);
 
         monitor.inc_progress();
 
@@ -252,7 +290,7 @@ pub(crate) fn run_graph_pipeline(
     }
     // Entry and every enabled output have already passed their required validation.
     monitor.set_final_graph(GraphCounts::of(graph));
-    Ok(())
+    Ok(layers)
 }
 
 /// Pass tiers are declared beside their implementations, ordered by minimum level.
@@ -285,16 +323,36 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             pass,
             enabled: level >= minimum_level,
         })
-        .chain(plans.into_iter().map(|(minimum_level,pass)|PassEntry { pass,enabled:level>=minimum_level }))
-        .chain(std::iter::once(PassEntry { pass: Pass::build(compile_fixed_classic::CompileFixedClassic), enabled: level >= 2 }))
-        .chain(std::iter::once(PassEntry { pass: Pass::build(compile_mixed_classic::CompileMixedClassic), enabled: level >= 2 }))
-        .chain(std::iter::once(PassEntry { pass:Pass::build(compile_classic_redstone::CompileClassicRedstone),enabled:level>=2 && options.classic_redstone }))
+        .chain(plans.into_iter().map(|(minimum_level, pass)| PassEntry {
+            pass,
+            enabled: level >= minimum_level,
+        }))
+        .chain(std::iter::once(PassEntry {
+            pass: Pass::build(compile_fixed_classic::CompileFixedClassic),
+            enabled: level >= 2,
+        }))
+        .chain(std::iter::once(PassEntry {
+            pass: Pass::build(compile_mixed_classic::CompileMixedClassic),
+            enabled: level >= 2,
+        }))
+        .chain(std::iter::once(PassEntry {
+            pass: Pass::build(compile_classic_redstone::CompileClassicRedstone),
+            enabled: level >= 2 && options.classic_redstone,
+        }))
         .collect();
     let mut pipeline = PassPipeline::new(entries);
     if level >= 4 && options.stable_instant_inputs {
-        pipeline.entries.retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
-        pipeline.entries.push(PassEntry { pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries), enabled: true });
-        pipeline.entries.push(PassEntry { pass: Pass::build(compile_instant_layers::CompileInstantLayers), enabled: true });
+        pipeline
+            .entries
+            .retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
+        pipeline.entries.push(PassEntry {
+            pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
+            enabled: true,
+        });
+        pipeline.entries.push(PassEntry {
+            pass: Pass::build(compile_instant_layers::CompileInstantLayers),
+            enabled: true,
+        });
     }
     #[cfg(feature = "unsafe-turbo-fixed-point")]
     let pipeline = {
@@ -313,7 +371,10 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
 pub(crate) fn experimental_boundary_pipeline(options: &CompilerOptions) -> PassPipeline {
     let mut pipeline = default_graph_pipeline(options);
     pipeline.entries.retain(|entry| {
-        !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies" | "identify-instant-boundaries" | "compile-instant-layers")
+        !matches!(
+            entry.pass.name(),
+            "identify-instant-regions" | "compile-instant-proxies" | "identify-instant-boundaries" | "compile-instant-layers"
+        )
     });
     pipeline.entries.push(PassEntry {
         pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
@@ -596,7 +657,10 @@ mod tests {
                 .unwrap();
                 let statistics = monitor.graph_statistics();
                 for name in synthesis {
-                    assert!(statistics.passes.iter().all(|pass| pass.name != name), "{name} must remain removed for {options:?}");
+                    assert!(
+                        statistics.passes.iter().all(|pass| pass.name != name),
+                        "{name} must remain removed for {options:?}"
+                    );
                 }
             }
         }

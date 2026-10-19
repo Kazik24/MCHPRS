@@ -4,7 +4,9 @@ use crate::redpiler::passes::{PassContext, planning::PlanBuilder};
 
 pub(super) fn local_net_pipeline(options: &crate::redpiler::CompilerOptions) -> passes::PassPipeline {
     let mut pipeline = passes::default_graph_pipeline(options);
-    pipeline.entries.retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+    pipeline
+        .entries
+        .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
     pipeline
 }
 
@@ -53,14 +55,7 @@ fn prepare(world: &PlotWorld) -> passes::rich::PreparedGraph {
 fn optimize(graph: &mut CompileGraph, entry: &EntryState) {
     let monitor = TaskMonitor::default();
     passes::compile_classic_redstone::CompileClassicRedstone
-        .run(
-            graph,
-            &PassContext {
-                monitor: &monitor,
-                options: &Default::default(),
-                entry,
-            },
-        )
+        .run(graph, &PassContext::new(&monitor, &Default::default(), entry))
         .unwrap();
     if graph.plans.classic_nets.is_empty() {
         println!("classic declined: {:?}", monitor.graph_statistics().preparation_tables);
@@ -623,14 +618,7 @@ fn classic_captured_guard_without_capture_is_inert_and_plan_publication_is_cance
     monitor.cancel();
     assert!(
         passes::compile_classic_redstone::CompileClassicRedstone
-            .run(
-                &mut prepared.graph,
-                &PassContext {
-                    monitor: &monitor,
-                    options: &Default::default(),
-                    entry: &prepared.entry
-                }
-            )
+            .run(&mut prepared.graph, &PassContext::new(&monitor, &Default::default(), &prepared.entry))
             .is_err()
     );
     assert_eq!(prepared.graph, saved);
@@ -715,8 +703,15 @@ fn classic_imported_receiver_ticks_cover_powered_pending_states_and_continuation
                 };
                 let mut general =
                     GraphBackend::compile_with_options(&native, bounds, ticks.clone(), &general_options, Arc::new(TaskMonitor::default())).unwrap();
-                let mut classic =
-                    GraphBackend::compile_with_pipeline(&native, bounds, ticks, &classic_options, &local_net_pipeline(&classic_options), Arc::new(TaskMonitor::default())).unwrap();
+                let mut classic = GraphBackend::compile_with_pipeline(
+                    &native,
+                    bounds,
+                    ticks,
+                    &classic_options,
+                    &local_net_pipeline(&classic_options),
+                    Arc::new(TaskMonitor::default()),
+                )
+                .unwrap();
                 assert!(
                     !classic.program.classic().nets.is_empty(),
                     "torch={torch} powered={powered} pending={pending}"

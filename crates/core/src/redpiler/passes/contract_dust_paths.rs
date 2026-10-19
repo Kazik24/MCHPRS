@@ -44,8 +44,13 @@ impl PlanBuilder for ContractDustPaths {
         let mut report = CandidateReport::default();
         let candidates = discover_wire_components(graph);
         report.candidates = candidates.len();
-        let already_assigned: FxHashSet<_> = graph.plans.dust_paths.iter().flat_map(|path| path.wires.iter().copied())
-            .chain(graph.plans.classic_nets.iter().flat_map(|net|net.wires.iter().map(|wire|wire.node))).collect();
+        let already_assigned: FxHashSet<_> = graph
+            .plans
+            .dust_paths
+            .iter()
+            .flat_map(|path| path.wires.iter().copied())
+            .chain(graph.plans.classic_nets.iter().flat_map(|net| net.wires.iter().map(|wire| wire.node)))
+            .collect();
         let mut accepted = Vec::new();
 
         for (index, component) in candidates.into_iter().enumerate() {
@@ -726,14 +731,7 @@ mod tests {
         let mut prepared = rich::prepare(world, BOUNDS, ticks, &monitor, AnalysisLimits::default()).expect("dust fixture should parse");
         let options = CompilerOptions::default();
         ContractDustPaths
-            .run(
-                &mut prepared.graph,
-                &PassContext {
-                    monitor: &monitor,
-                    options: &options,
-                    entry: &prepared.entry,
-                },
-            )
+            .run(&mut prepared.graph, &PassContext::new(&monitor, &options, &prepared.entry))
             .unwrap();
         prepared.graph.validate().unwrap();
         prepared
@@ -741,9 +739,14 @@ mod tests {
 
     fn compile_path(world: &PlotWorld, optimization_level: Option<usize>) -> Compiler {
         let mut compiler = Compiler::default();
-        let options = CompilerOptions { optimization_level, ..Default::default() };
+        let options = CompilerOptions {
+            optimization_level,
+            ..Default::default()
+        };
         let mut pipeline = super::super::default_graph_pipeline(&options);
-        pipeline.entries.retain(|entry| !matches!(&entry.pass, super::super::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+        pipeline
+            .entries
+            .retain(|entry| !matches!(&entry.pass, super::super::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
         compiler
             .compile_with_graph_pipeline(
                 world,
@@ -804,14 +807,7 @@ mod tests {
         let monitor = TaskMonitor::default();
         let entry = first.entry.clone();
         ContractDustPaths
-            .run(
-                &mut first.graph,
-                &PassContext {
-                    monitor: &monitor,
-                    options: &CompilerOptions::default(),
-                    entry: &entry,
-                },
-            )
+            .run(&mut first.graph, &PassContext::new(&monitor, &CompilerOptions::default(), &entry))
             .unwrap();
         assert_eq!(first.graph.plans.dust_paths, expected);
     }

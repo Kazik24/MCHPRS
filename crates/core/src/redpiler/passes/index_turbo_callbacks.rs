@@ -292,11 +292,7 @@ mod tests {
             logical_tick: 0,
             pending_ticks: vec![],
         };
-        let context = PassContext {
-            monitor: &monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let context = PassContext::new(&monitor, &options, &entry);
         IndexTurboCallbacks.run(&mut graph, &context).unwrap();
         let expected = graph.plans.turbo_callback_indices.clone();
         assert!(expected[0].is_some());
@@ -306,11 +302,7 @@ mod tests {
         let mut cancelled = graph.clone();
         let cancelled_monitor = TaskMonitor::default();
         cancelled_monitor.cancel();
-        let cancelled_context = PassContext {
-            monitor: &cancelled_monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let cancelled_context = PassContext::new(&cancelled_monitor, &options, &entry);
         assert!(IndexTurboCallbacks.run(&mut cancelled, &cancelled_context).is_err());
         assert_eq!(cancelled.plans.turbo_callback_indices, expected);
 

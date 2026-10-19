@@ -103,6 +103,8 @@ pub struct PassStatistics {
     pub before: GraphCounts,
     pub after: GraphCounts,
     pub duration: Duration,
+    /// Portion of the total spent checking the output rather than constructing it.
+    pub validation_duration: Duration,
 }
 
 impl PassStatistics {
@@ -113,6 +115,7 @@ impl PassStatistics {
             before: counts,
             after: counts,
             duration: Duration::ZERO,
+            validation_duration: Duration::ZERO,
         }
     }
 }
@@ -141,6 +144,10 @@ pub struct GraphStatistics {
     /// This records the final graph independently of the supplied pass count.
     pub final_counts: Option<GraphCounts>,
     pub duration: Duration,
+    /// Time spent turning checked instant layers into runtime kernels.
+    pub kernel_lowering_duration: Duration,
+    /// Time spent constructing ordinary immutable tables and initial state.
+    pub program_lowering_duration: Duration,
 }
 
 impl GraphStatistics {

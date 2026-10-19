@@ -1,33 +1,36 @@
 //! Graph-native execution for rich piston circuits. The World is read only at
 //! compilation; flush and reset project graph state back to it.
 
-mod coverage;
-mod fixed_point;
-mod fixed_classic;
-#[cfg(test)]
-#[path = "graph/tests/unchecked_classic_anpu.rs"]
-mod unchecked_classic_anpu;
 #[cfg(test)]
 #[path = "graph/tests/chungus_census.rs"]
 mod chungus_census;
+pub(crate) mod classic;
+mod coverage;
+mod fixed_classic;
+mod fixed_point;
+#[cfg(test)]
+#[path = "graph/tests/fixed_point_cpu.rs"]
+mod fixed_point_cpu_tests;
+mod instant;
+#[cfg(test)]
+#[path = "graph/tests/instant_cpu.rs"]
+mod instant_cpu_tests;
+mod instant_kernel;
+mod instant_proxy;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
 #[cfg(test)]
 #[path = "graph/tests/mixed_classic.rs"]
 mod mixed_classic_tests;
-pub(crate) mod classic;
-#[cfg(test)]
-#[path = "graph/tests/fixed_point_cpu.rs"]
-mod fixed_point_cpu_tests;
-mod instant;
-mod instant_proxy;
-mod instant_kernel;
 mod pistons;
 mod power;
 mod projection;
 mod reset;
 mod sites;
+#[cfg(test)]
+#[path = "graph/tests/unchecked_classic_anpu.rs"]
+mod unchecked_classic_anpu;
 mod wire;
 
 use pistons::{DeferredPistonEvent, PistonRequest};
@@ -229,6 +232,8 @@ pub(crate) struct TestRecorder {
     fixed_classic_activity: Vec<[u64; 4]>,
     /// Optional per-piston samples/actions for measuring prospective memory-cell ownership.
     memory_cell_activity: Vec<[u64; 2]>,
+    /// Optional per-actor Instant attempt outcomes for the active CPU census.
+    instant_kernel_activity: Vec<[u64; 7]>,
 }
 
 #[cfg(test)]
@@ -395,7 +400,9 @@ impl GraphBackend {
     ) -> Result<Self, GraphBackendError> {
         // Keep research controls on the general executor when O2 enables the whole program.
         let mut pipeline = passes::default_graph_pipeline(options);
-        pipeline.entries.retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+        pipeline
+            .entries
+            .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
         Self::compile_with_pipeline(world, bounds, ticks, options, &pipeline, monitor)
     }
 
@@ -409,9 +416,10 @@ impl GraphBackend {
         monitor: Arc<TaskMonitor>,
     ) -> Result<Self, GraphBackendError> {
         let limits = AnalysisLimits::for_budget(monitor.budget_multiplier());
-        let mut prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits).map_err(map_preparation_error)?;
-        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, pipeline, &monitor).map_err(GraphBackendError::PassPipeline)?;
-        prepared.finish_pipeline_statistics(&monitor);
+        let prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits).map_err(map_preparation_error)?;
+        let prepared = prepared
+            .run_passes(options, pipeline, &monitor)
+            .map_err(GraphBackendError::PassPipeline)?;
         let lowered = prepared.lower(&monitor).map_err(GraphBackendError::Graph)?;
         Self::from_lowered(lowered, &monitor)
     }
@@ -633,16 +641,9 @@ impl GraphBackend {
             }
         }
         let node_count = program.nodes().len();
-        let (contacts_by_piston, contacts_by_resource, always_dirty_contacts) =
-            projection::contact_projection_dependencies(&program);
+        let (contacts_by_piston, contacts_by_resource, always_dirty_contacts) = projection::contact_projection_dependencies(&program);
         let contact_count = program.contacts().len();
-        let full_contact_projection = program
-            .contacts()
-            .iter()
-            .map(|contact| contact.position)
-            .collect::<FxHashSet<_>>()
-            .len()
-            != contact_count;
+        let full_contact_projection = program.contacts().iter().map(|contact| contact.position).collect::<FxHashSet<_>>().len() != contact_count;
         let contact_dirty = vec![true; contact_count];
         let dirty_contacts = (0..contact_count).map(|index| ContactId::new(index as u32)).collect();
         let projected_pistons = state.pistons.to_vec();
@@ -796,8 +797,11 @@ impl GraphBackend {
         let node = tick.node?;
         let spec = self.program.nodes().get(node.index())?;
         let registry_type = spec.block?.registry_id();
-        (spec.position == Some(tick.position) && tick.block_type == Some(registry_type)
-            && tick.registry_type == registry_type && tick.current_registry_type == registry_type).then_some(node)
+        (spec.position == Some(tick.position)
+            && tick.block_type == Some(registry_type)
+            && tick.registry_type == registry_type
+            && tick.current_registry_type == registry_type)
+            .then_some(node)
     }
 
     #[cfg(test)]
@@ -966,7 +970,9 @@ impl GraphBackend {
     }
 
     pub(crate) fn use_block(&mut self, position: BlockPos) -> Result<(), GraphExecutionError> {
-        if let Some(error) = &self.failure { return Err(error.clone()); }
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
         let result = self.use_block_inner(position);
         self.latch_error(&result);
         result
@@ -993,7 +999,9 @@ impl GraphBackend {
     }
 
     pub(crate) fn set_pressure_plate(&mut self, position: BlockPos, powered: bool) -> Result<(), GraphExecutionError> {
-        if let Some(error) = &self.failure { return Err(error.clone()); }
+        if let Some(error) = &self.failure {
+            return Err(error.clone());
+        }
         let result = self.set_pressure_plate_inner(position, powered);
         self.latch_error(&result);
         result
@@ -1058,8 +1066,11 @@ impl GraphBackend {
     }
 
     fn update_component(&mut self, node: NodeId, kind: DeliveryKind, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
-        if self.classic_proof.is_some() && matches!(kind, DeliveryKind::Update { .. }) && !matches!(self.program.nodes()[node.index()].kind,CircuitNodeKind::Wire(_)) {
-            return self.record_classic_sample(node,captured);
+        if self.classic_proof.is_some()
+            && matches!(kind, DeliveryKind::Update { .. })
+            && !matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
+        {
+            return self.record_classic_sample(node, captured);
         }
         let direction = match kind {
             DeliveryKind::Update { direction } => direction,
@@ -1452,30 +1463,32 @@ impl GraphBackend {
         #[cfg(test)]
         if self.test_recorder.comparator_tick_focus == Some((node, self.future.clock.logical_tick)) {
             let fixed_operands = |port| {
-                self.program.fixed_signal_query(PowerTarget::Input { node, port }).map(|(constant, inputs)| {
-                    let inputs = inputs
-                        .iter()
-                        .map(|input| {
-                            let strength = match &self.state.components[input.node.index()] {
-                                ComponentState::Electrical(state) => state.output_strength,
-                                ComponentState::Wire(_) => self.wire_state(input.node).power,
-                                ComponentState::Specialized => 0,
-                            };
-                            let shape_ok = !input.require_cross || !crate::redstone::wire::is_dot(self.wire_state(input.node));
-                            serde_json::json!({
-                                "node":input.node.index(),
-                                "position":self.program.nodes()[input.node.index()].position,
-                                "kind":format!("{:?}", self.program.nodes()[input.node.index()].kind),
-                                "strength":strength,
-                                "attenuation":input.attenuation,
-                                "require_cross":input.require_cross,
-                                "shape_ok":shape_ok,
-                                "contribution":if shape_ok { strength.saturating_sub(input.attenuation) } else { 0 },
+                self.program
+                    .fixed_signal_query(PowerTarget::Input { node, port })
+                    .map(|(constant, inputs)| {
+                        let inputs = inputs
+                            .iter()
+                            .map(|input| {
+                                let strength = match &self.state.components[input.node.index()] {
+                                    ComponentState::Electrical(state) => state.output_strength,
+                                    ComponentState::Wire(_) => self.wire_state(input.node).power,
+                                    ComponentState::Specialized => 0,
+                                };
+                                let shape_ok = !input.require_cross || !crate::redstone::wire::is_dot(self.wire_state(input.node));
+                                serde_json::json!({
+                                    "node":input.node.index(),
+                                    "position":self.program.nodes()[input.node.index()].position,
+                                    "kind":format!("{:?}", self.program.nodes()[input.node.index()].kind),
+                                    "strength":strength,
+                                    "attenuation":input.attenuation,
+                                    "require_cross":input.require_cross,
+                                    "shape_ok":shape_ok,
+                                    "contribution":if shape_ok { strength.saturating_sub(input.attenuation) } else { 0 },
+                                })
                             })
-                        })
-                        .collect::<Vec<_>>();
-                    serde_json::json!({"constant":constant,"inputs":inputs})
-                })
+                            .collect::<Vec<_>>();
+                        serde_json::json!({"constant":constant,"inputs":inputs})
+                    })
             };
             println!(
                 "CHUNGUS TICK512 COMPARATOR HANDLER {:?} tick={} phase={:?} main={} side={} calculated={} stored={} powered={} main_operands={:?} side_operands={:?}",
@@ -1707,7 +1720,9 @@ impl GraphBackend {
                 let binding = self.program.classic().route_entries[classic_cursor];
                 if binding.ordinal as usize == index {
                     classic_cursor += 1;
-                    if self.run_classic_entry(binding.entry as usize) { continue; }
+                    if self.run_classic_entry(binding.entry as usize) {
+                        continue;
+                    }
                 }
             }
             let delivery = self.program.routes()[route.index()].deliveries[index];
@@ -1950,8 +1965,8 @@ mod instant_reset_tests;
 mod wire_callback_tests;
 
 #[cfg(test)]
-#[path = "graph/tests/fixed_classic.rs"]
-mod fixed_classic_tests;
-#[cfg(test)]
 #[path = "graph/tests/fixed_classic_edges.rs"]
 mod fixed_classic_edges;
+#[cfg(test)]
+#[path = "graph/tests/fixed_classic.rs"]
+mod fixed_classic_tests;

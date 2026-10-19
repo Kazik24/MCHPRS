@@ -1,30 +1,31 @@
 //! Typed construction and immutable program storage for the general graph.
 
-mod execution_plans;
 mod classic_redstone;
+mod execution_plans;
 pub(crate) use classic_redstone::*;
 mod lowering;
+pub(crate) use lowering::lower_prepared;
 mod validation;
 pub(crate) use execution_plans::*;
-mod instant_regions;
-mod instant_cells;
 mod instant_boundaries;
+mod instant_cells;
 mod instant_layers;
 mod instant_program;
-mod wire_query_facts;
+mod instant_regions;
 mod wire_callback_selection;
+mod wire_query_facts;
 pub(crate) use wire_callback_selection::WireCallbackSelection;
 mod fixed_signals;
 pub(crate) use fixed_signals::*;
-pub(crate) use instant_regions::*;
-pub(crate) use instant_cells::*;
 pub(crate) use instant_boundaries::*;
+pub(crate) use instant_cells::*;
+pub(crate) use instant_regions::*;
 mod fixed_classic;
 pub(crate) use fixed_classic::*;
 mod mixed_classic;
-pub(crate) use mixed_classic::*;
 pub(crate) use instant_layers::*;
 pub(crate) use instant_program::*;
+pub(crate) use mixed_classic::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
 use crate::redpiler::components::{NodeState, NodeType};
@@ -597,11 +598,18 @@ pub(crate) fn command_facing(block: Block) -> BlockFace {
 #[derive(Debug)]
 /// Structural validation failures encountered while building or lowering a graph.
 pub(crate) enum GraphBuildError {
+    /// Cooperative cancellation stopped validation or lowering before publication.
+    Cancelled,
     InvalidFixedSignals,
     InvalidFixedClassic,
     InvalidMixedClassic,
-    InvalidClassicNet { net: usize, reason: &'static str },
-    InvalidWireCallbackSelection { wire: usize },
+    InvalidClassicNet {
+        net: usize,
+        reason: &'static str,
+    },
+    InvalidWireCallbackSelection {
+        wire: usize,
+    },
     InvalidInstantRegion {
         /// This names the derived table whose witness no longer agrees with the graph.
         table: &'static str,
@@ -711,6 +719,7 @@ pub(crate) enum GraphBuildError {
 impl std::fmt::Display for GraphBuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cancelled => f.write_str("graph construction cancelled"),
             Self::InvalidFixedSignals => write!(f, "fixed signal queries have a stale or invalid certificate"),
             Self::InvalidFixedClassic => write!(f, "whole fixed classic program has a stale or invalid certificate"),
             Self::InvalidMixedClassic => write!(f, "mixed classic query program has a stale or invalid certificate"),
@@ -742,8 +751,8 @@ impl std::fmt::Display for GraphBuildError {
             }
             Self::InvalidWireHopRoot { wire } => write!(f, "wire {wire} has an invalid compiled hop root"),
             Self::InvalidWireQueryFacts { wire } => write!(f, "wire {wire} has stale or invalid static query facts"),
-            Self::InvalidWireCallbackSelection { wire } => write!(f,"wire {wire} has an invalid compiled callback selection"),
-            Self::InvalidClassicNet { net,reason } => write!(f,"classic net {net} has an invalid certificate: {reason}"),
+            Self::InvalidWireCallbackSelection { wire } => write!(f, "wire {wire} has an invalid compiled callback selection"),
+            Self::InvalidClassicNet { net, reason } => write!(f, "classic net {net} has an invalid certificate: {reason}"),
             Self::InvalidInstantRegion { table, index } => write!(f, "instant {table}[{index}] has a stale or invalid certificate"),
             Self::InvalidInstantReset { wire } => write!(f, "wire {wire} has a stale or invalid instant reset certificate"),
             Self::InvalidNodeState { node } => {
@@ -903,7 +912,9 @@ impl CircuitProgram {
         self.fixed_signals = FixedSignalProgram::default();
         self
     }
-    pub(crate) fn classic(&self) -> &ClassicProgram { &self.classic }
+    pub(crate) fn classic(&self) -> &ClassicProgram {
+        &self.classic
+    }
     pub(crate) fn private_resource_owner(&self, resource: ResourceId) -> Option<PistonId> {
         self.instant.private_resource_owners[resource.index()]
     }
@@ -1090,8 +1101,14 @@ pub(crate) struct WalkSite {
     pub(crate) neighbor_slots: Option<u32>,
 }
 
-/// Per-invocation dust scratch. It is constructed separately from persistent
-/// circuit state, so nested walks cannot overwrite a caller's captured sites.
+/// One admitted captured update retains both its walk-local target and actual source route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct QueuedWireSite {
+    pub(crate) slot: u32,
+    pub(crate) route: RouteId,
+}
+
+/// Per-invocation dust scratch; each queued update retains its actual source route.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WireWalk {
     pub(crate) site_slots: FxHashMap<SiteId, usize>,
@@ -1101,7 +1118,7 @@ pub(crate) struct WireWalk {
     neighbor_slots: Vec<[usize; 24]>,
     // shortcut: inline storage covers the root plus one 24-neighbor set; larger walks spill.
     pub(crate) sites: SmallVec<[WalkSite; 25]>,
-    pub(crate) queues: [VecDeque<usize>; 3],
+    pub(crate) queues: [VecDeque<QueuedWireSite>; 3],
     pub(crate) layer: u32,
 }
 
@@ -1508,15 +1525,24 @@ mod tests {
             for case in 0..6 {
                 let mut invalid = draft.clone();
                 match case {
-                    0 => { invalid.links.pop(); }
+                    0 => {
+                        invalid.links.pop();
+                    }
                     1 => invalid.links.push(invalid.links[0]),
                     2 => invalid.links[1] = invalid.links[0],
                     3 => invalid.links[0].from = NodeId::new(99),
-                    4 => invalid.links[0].kind = LinkKind::Update { direction: Some(BlockFace::North), guard: GuardId::new(0) },
+                    4 => {
+                        invalid.links[0].kind = LinkKind::Update {
+                            direction: Some(BlockFace::North),
+                            guard: GuardId::new(0),
+                        }
+                    }
                     5 => invalid.links[0].callback.sequence = 99,
                     _ => unreachable!(),
                 }
-                if reverse { invalid.links.reverse(); }
+                if reverse {
+                    invalid.links.reverse();
+                }
                 assert!(invalid.lower().is_err(), "corruption {case}, reverse={reverse}");
             }
         }

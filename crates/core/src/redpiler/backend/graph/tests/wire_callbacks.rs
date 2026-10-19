@@ -50,11 +50,7 @@ fn compile(graph: &mut CompileGraph) {
         logical_tick: 0,
         pending_ticks: vec![],
     };
-    let context = PassContext {
-        monitor: &monitor,
-        options: &options,
-        entry: &entry,
-    };
+    let context = PassContext::new(&monitor, &options, &entry);
     passes::index_turbo_callbacks::IndexTurboCallbacks.run(graph, &context).unwrap();
     passes::compile_wire_callbacks::CompileWireCallbacks.run(graph, &context).unwrap();
 }

@@ -60,6 +60,11 @@ The algorithms and exact recovery commits are preserved in
 
 The required preparation driver `rich.rs` is not an optional optimization. Disabling optimization must still produce a complete, executable general graph.
 
+Guard-remapping maps should contain only exceptions to the ordinary ID remap.
+`simplify_state_guards` retains extra syntactic witnesses for contact callbacks;
+ordinary callbacks use the existing fallback in both links and route deliveries.
+Do not allocate one exception entry per callback when the fallback is identical.
+
 ## Start here
 
 Before editing:
@@ -96,16 +101,39 @@ Required validation stages live in `validation.rs`; they are not optional
 optimizations and do not appear as transformations. The runner validates the
 input, runs each enabled pass, then validates its output before continuing.
 `Rewrite` requires the full graph and plan checks. `Build` cannot mutate the base
-circuit, so it checks every execution plan against the already validated
-structure. Checking all plans matters: changing one plan can invalidate another.
+circuit. Its actual `PlanOutput` selects required checks of the new product and
+its dependent plans against the already validated structure. Publication checks
+aligned lengths and reset indices before modifying the graph. Ownership changes
+whose dependencies are not fully narrowed still check all execution plans.
 Disabled steps neither mutate nor invalidate anything. Empty and all-disabled
-pipelines still validate their input; there is no duplicate exit scan. Lowering
-and independent graph/export admission keep full validation.
+pipelines still validate their input; there is no duplicate exit scan.
+`PreparedGraph::run_passes` returns an owning `ValidatedGraph` with no mutable
+graph access. Production lowering consumes it and its matching transient layer
+analysis, without reopening admission. Converting it back into a mutable prepared
+graph discards that proof. Arbitrary-draft lowering and independent graph/export
+admission keep full validation.
 
 Do not call the plan-only validator on an arbitrary draft, expose mutable graph
 access to a builder, or turn validation into a configurable optimization pass.
-If a new `PlanOutput` changes a field, its certificate checks must belong to the
-plan-validation stage. Structural fields must remain outside builder access.
+If a new `PlanOutput` changes a field, extend the exhaustive `PlanChange` dispatch
+in `program_graph/validation.rs`. Audit indirect helper dependencies and ownership
+conflicts, not only direct field reads; use full checks until that audit is done.
+Pass authors cannot declare their own preservation flags. Structural fields must
+remain outside builder access. Keep the full validator as a differential oracle.
+
+Use `PassContext::new(monitor, options, entry)` in standalone tests. Internal
+analysis fields stay private so a new shared product does not require changing
+every test initializer.
+
+Instant builders can request `InstantAnalysis::Boundaries` or `Layers`. The runner
+derives the reference from its own valid input **before** invoking the builder;
+`context.instant_boundaries()` / `instant_layers()` expose immutable results.
+Publication still compares the complete candidate against that reference. A
+builder returning another output kind receives that kind's ordinary checks.
+No builder can publish its own reference or request exemption from validation.
+Without a prepared reference, standalone builders and arbitrary-draft admission
+retain independent reconstruction. Shared reference data lives for one builder
+invocation; only matching checked lowering evidence survives with the owned graph.
 
 | API | Responsibility |
 | --- | --- |

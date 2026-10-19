@@ -215,7 +215,8 @@ fn chungus_bounded_interpreter_graph_differential() {
         };
         let started = Instant::now();
         graphs.push(
-            GraphBackend::compile_without_fixed_classic(&native, bounds, native.scheduler().iter_entries().collect(), &options, monitor.clone()).unwrap(),
+            GraphBackend::compile_without_fixed_classic(&native, bounds, native.scheduler().iter_entries().collect(), &options, monitor.clone())
+                .unwrap(),
         );
         compile_seconds.push(started.elapsed().as_secs_f64());
         println!(
@@ -485,14 +486,7 @@ fn chungus_binary_classic_candidate_census() {
         pending_ticks: vec![],
     };
     passes::simplify_guards::GuardAndUpdateReduction
-        .run(
-            &mut graph,
-            &PassContext {
-                monitor: &monitor,
-                options: &options,
-                entry: &entry,
-            },
-        )
+        .run(&mut graph, &PassContext::new(&monitor, &options, &entry))
         .unwrap();
     let analysis = ClassicAnalysis::new(&graph);
     let regions = passes::compile_classic_redstone::census_regions(&graph);

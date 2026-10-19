@@ -76,14 +76,7 @@ mod tests {
         monitor.cancel();
         assert!(
             CompileMixedClassic
-                .build(
-                    &prepared.graph,
-                    &PassContext {
-                        monitor: &monitor,
-                        options: &options,
-                        entry: &entry
-                    }
-                )
+                .build(&prepared.graph, &PassContext::new(&monitor, &options, &entry))
                 .is_err()
         );
         assert_eq!(prepared.graph, saved);

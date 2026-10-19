@@ -140,11 +140,7 @@ pub(crate) mod tests {
             logical_tick: 0,
             pending_ticks: vec![],
         };
-        let context = PassContext {
-            monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let context = PassContext::new(monitor, &options, &entry);
         SimplifyInstantResets.run(graph, &context)?;
         CompileInstantResets.run(graph, &context)
     }

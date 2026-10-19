@@ -1,6 +1,32 @@
 //! Derived compile-time plans. Circuit and resource state keep their original owners.
 use super::*;
 
+#[derive(Clone, Copy, Debug)]
+/// The actual product replaced by a builder, used for required dependency checks.
+pub(crate) enum PlanChange {
+    MixedClassic,
+    FixedClassic,
+    Boundaries,
+    Layers,
+    FixedSignals,
+    ClassicNets,
+    TurboCallbacks,
+    DustPaths,
+    WireQueries,
+    WireCallbacks,
+    WireHops,
+    InstantResets,
+    Regions,
+    Proxies,
+}
+
+impl PlanChange {
+    /// These replacements can change instant ownership or its source catalog.
+    pub(crate) fn replaces_layer_analysis(self) -> bool {
+        matches!(self, Self::Boundaries | Self::Layers | Self::ClassicNets | Self::Regions | Self::Proxies)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// Optional execution shortcuts for one wire's unchanged canonical bindings.
 pub(crate) struct WireExecutionPlan {

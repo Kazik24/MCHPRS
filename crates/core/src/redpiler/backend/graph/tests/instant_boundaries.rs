@@ -274,11 +274,7 @@ fn boundary_catalog_rejects_missing_witnesses_and_cancelled_publication() {
     let cancelled = TaskMonitor::default();
     cancelled.cancel();
     let options = CompilerOptions::default();
-    let context = passes::PassContext {
-        monitor: &cancelled,
-        options: &options,
-        entry: &prepared.entry,
-    };
+    let context = passes::PassContext::new(&cancelled, &options, &prepared.entry);
     assert!(
         passes::identify_instant_boundaries::IdentifyInstantBoundaries
             .run(&mut prepared.graph, &context)

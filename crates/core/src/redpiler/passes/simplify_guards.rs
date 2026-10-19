@@ -876,11 +876,7 @@ mod tests {
             logical_tick: 0,
             pending_ticks: Vec::new(),
         };
-        let context = PassContext {
-            monitor: &monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let context = PassContext::new(&monitor, &options, &entry);
         assert!(GuardAndUpdateReduction.run(&mut graph, &context).is_err());
         assert_eq!(graph, input);
     }
@@ -895,11 +891,7 @@ mod tests {
             logical_tick: 0,
             pending_ticks: Vec::new(),
         };
-        let context = PassContext {
-            monitor: &monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let context = PassContext::new(&monitor, &options, &entry);
         GuardAndUpdateReduction.run(graph, &context).unwrap();
         graph.validate().unwrap();
     }

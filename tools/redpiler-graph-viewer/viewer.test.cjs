@@ -840,6 +840,44 @@ test('layer boundary state requires its matching original input guard', async (t
   }
 });
 
+test('queued layer requests require the matching owned actor callback', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const data = instantLayerFixture();
+  const actor = data.graph.pistons[0].id;
+  const region = data.graph.instant_layer_regions[0];
+  const route = data.graph.routes.find(route => route.deliveries.some(delivery =>
+    delivery.kind === 'update' && delivery.receiver?.kind === 'piston_base' && delivery.receiver.piston === actor));
+  const ordinal = route.deliveries.findIndex(delivery =>
+    delivery.kind === 'update' && delivery.receiver?.kind === 'piston_base' && delivery.receiver.piston === actor);
+  const event = { route: route.id, ordinal };
+  const port = data.graph.instant_boundary_ports.find(port => port.id === region.inputs[0].source.port);
+  port.binding.occurrence = event;
+  region.inputs[0] = { role: 'activation_event', source: { kind: 'boundary_request', actor, port: port.id, occurrence: event } };
+  await load(viewer, data);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  const contact = data.graph.contacts.find(contact => contact.variants.some(variant =>
+    variant.receiver?.kind === 'piston_base' && variant.receiver.piston === actor));
+  const directReceiver = route.deliveries[ordinal].receiver;
+  route.deliveries[ordinal].receiver = { kind: 'contact', contact: contact.id };
+  await load(viewer, data);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  route.deliveries[ordinal].receiver = directReceiver;
+  const previous = viewer.cy;
+  for (const damage of [
+    input => { input.source.actor = data.graph.pistons[1].id; },
+    input => { input.source.actor = 'piston:999'; },
+    input => { input.source.port = 'instant_port:0'; },
+    input => { input.role = 'acceptance_revalidation'; },
+  ]) {
+    const damaged = structuredClone(data);
+    damage(damaged.graph.instant_layer_regions[0].inputs[0]);
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+});
+
 test('layer Graph observations validate boundary references and retain older exports', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
@@ -963,6 +1001,10 @@ test('loads causal-layer records and keeps local expressions and callback causes
   assert.equal(viewer.evaluate("recordIndex.has('instant_layer_decline:4')"), true);
   viewer.evaluate('focusRecord("instant_layer_decline:4")');
   assert.match(viewer.elements.get('details').textContent, /instant_layer_decline:4/);
+  declined.graph.instant_layer_declines[0].reason = 'proof_budget_exceeded';
+  await load(viewer, declined);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.evaluate("recordIndex.has('instant_layer_decline:4')"), true);
   const older = structuredClone(graph);
   delete older.graph.instant_layer_regions;
   delete older.graph.instant_layer_declines;

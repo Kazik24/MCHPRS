@@ -165,6 +165,50 @@ fn evaluated(composition: &Composition<'_>, roots: &[LayerExprId]) -> Vec<bool> 
 }
 
 #[test]
+fn queued_entry_preserves_the_sampled_request_and_revalidates_live_power() {
+    let (graph, catalog, component) = fixture(false);
+    let monitor = TaskMonitor::default();
+    let power = index_power(&graph);
+    let mut composition = Composition::new(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let yes = composition.builder.constant(true).unwrap();
+    composition.queued_sample(1, PistonId::new(1), yes, occurrence(1)).unwrap();
+    let acceptance = composition.begin_next().unwrap().unwrap();
+    composition.finish_base(acceptance).unwrap();
+    let use_ = &composition.layers[0].uses[0];
+    assert_eq!(evaluated(&composition, &[use_.requested, use_.accepted]), [true, false]);
+
+    let no = composition.builder.constant(false).unwrap();
+    composition.queued_sample(0, PistonId::new(0), no, occurrence(0)).unwrap();
+    let acceptance = composition.begin_next().unwrap().unwrap();
+    composition.finish_base(acceptance).unwrap();
+    let use_ = &composition.layers[1].uses[0];
+    assert_eq!(evaluated(&composition, &[use_.requested, use_.accepted]), [false, false]);
+}
+
+#[test]
+fn partial_symbolic_wave_is_discarded_when_its_region_exhausts_the_proof_budget() {
+    let (graph, catalog, component) = fixture(true);
+    let monitor = TaskMonitor::default();
+    let power = index_power(&graph);
+    let mut composition = Composition::new(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let yes = composition.builder.constant(true).unwrap();
+    composition.sample(0, PistonId::new(0), yes, vec![occurrence(0)].into()).unwrap();
+    let acceptance = composition.begin_next().unwrap().unwrap();
+    composition.finish_base(acceptance).unwrap();
+    assert_eq!(composition.resources.len(), 1);
+
+    composition.builder.budget.work = MAX_LAYER_WORK;
+    let error = composition.sample(1, PistonId::new(1), yes, vec![occurrence(1)].into()).unwrap_err();
+    assert_eq!(error, ConstructionError::BudgetExceeded);
+    let decline = component_result(&graph, &catalog, &component, Err(error)).unwrap().err().unwrap();
+    assert_eq!(decline.cells, component.cells);
+    assert_eq!(decline.corridors, component.corridors);
+    assert_eq!(decline.reason, LayerDeclineReason::ProofBudgetExceeded);
+    assert_eq!(decline.witness, LayerWitness::Actor(PistonId::new(0)));
+    assert!(graph.plans.instant.layers.is_none());
+}
+
+#[test]
 fn failed_samples_can_retry_after_a_causal_resource_change_without_burning_the_use() {
     let (graph, catalog, component) = fixture(false);
     let monitor = TaskMonitor::default();

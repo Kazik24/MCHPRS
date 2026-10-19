@@ -6,7 +6,9 @@ use super::*;
 enum Failure {
     /// This whole region lacks a representable source or observation witness.
     Unsupported(LayerWitness, LayerDeclineReason),
-    /// This graph, allocation budget or cancellation prevents publication.
+    /// Optional symbolic construction exhausted its per-region proof budget.
+    BudgetExceeded,
+    /// This graph or cancellation prevents publication.
     Invalid(String),
 }
 impl From<String> for Failure {
@@ -15,7 +17,16 @@ impl From<String> for Failure {
     }
 }
 
-pub(crate) fn compile_connected(
+impl From<ConstructionError> for Failure {
+    fn from(error: ConstructionError) -> Self {
+        match error {
+            ConstructionError::BudgetExceeded => Self::BudgetExceeded,
+            ConstructionError::Invalid(message) => Self::Invalid(message),
+        }
+    }
+}
+
+pub(in crate::redpiler::analysis::instant::layers) fn compile_connected(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,
     component: &RegionComponent,
@@ -24,11 +35,15 @@ pub(crate) fn compile_connected(
     power: &PowerIndex,
     perimeter: &FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
-) -> Result<Result<LayeredRegion, LayerDecline>, String> {
+) -> Result<Result<CompiledRegion, LayerDecline>, ConstructionError> {
     match compile(graph, catalog, component, region_index, partition, power, perimeter, monitor) {
-        Ok(region) => Ok(Ok(region)),
+        Ok((region, arrivals)) => Ok(Ok(CompiledRegion {
+            region,
+            arrivals: Some(arrivals),
+        })),
         Err(Failure::Unsupported(witness, reason)) => Ok(Err(decline(component, witness, reason))),
-        Err(Failure::Invalid(message)) => Err(message),
+        Err(Failure::BudgetExceeded) => Err(ConstructionError::BudgetExceeded),
+        Err(Failure::Invalid(message)) => Err(ConstructionError::Invalid(message)),
     }
 }
 
@@ -62,7 +77,7 @@ fn compile(
     power: &PowerIndex,
     perimeter: &FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
-) -> Result<LayeredRegion, Failure> {
+) -> Result<(LayeredRegion, Vec<super::corridors::Arrival>), Failure> {
     let mut routes = Routes {
         graph,
         actors: FxHashMap::default(),
@@ -97,23 +112,16 @@ fn compile(
         }
     }
     let mut entries = FxHashSet::default();
-    let mut captured_entries = FxHashSet::default();
     for &cell in &component.cells {
         for use_ in &catalog.cells[cell as usize].uses {
             for occurrence in &use_.activations {
                 let source = graph.routes[occurrence.route.index()].source;
                 if !routes.owns_node(source) {
                     entries.insert(occurrence.route);
-                    if graph.routes[occurrence.route.index()].deliveries[occurrence.ordinal as usize].view == OperandView::Captured {
-                        captured_entries.insert(occurrence.route);
-                    }
                 }
             }
         }
     }
-    // Unsupported entry histories keep their original callbacks and Graph execution;
-    // they must not prevent another, fully live route from using this same region.
-    entries.retain(|entry| !captured_entries.contains(entry));
     if entries.is_empty() {
         return Err(Failure::Unsupported(
             first_witness(graph, catalog, component),
@@ -159,7 +167,7 @@ fn compile(
         cold_lifecycle_occurrences: lifecycle.into(),
         pin_values: Box::new([]),
     };
-    Ok(region)
+    Ok((region, routes.arrivals))
 }
 
 fn lifecycle_occurrences(
@@ -340,16 +348,44 @@ impl Routes<'_> {
                 route,
                 ordinal: ordinal as u32,
             };
-            let Some(port) = self.region_ports.iter().find(|&&port| {
-                self.ports[port as usize].direction == BoundaryDirection::Input
-                    && self.ports[port as usize].kind == BoundaryPortKind::Callback { occurrence }
-            }) else {
+            let ports: Vec<_> = self
+                .region_ports
+                .iter()
+                .copied()
+                .filter(|&port| {
+                    self.ports[port as usize].direction == BoundaryDirection::Input
+                        && self.ports[port as usize].kind == BoundaryPortKind::Callback { occurrence }
+                })
+                .collect();
+            let Some(&port) = ports.first() else { continue };
+            let delivery = self.graph.routes[route.index()].deliveries[ordinal];
+            if delivery.view == OperandView::Captured {
+                // The external callback already ran before the action FIFO; do not
+                // re-resolve a captured contact or replay its non-piston effects.
+                for port in ports {
+                    let BoundaryOwner::Cell(cell) = self.ports[port as usize].owner else {
+                        continue;
+                    };
+                    let actors: Vec<_> = composition.catalog.cells[cell as usize]
+                        .uses
+                        .iter()
+                        .filter(|use_| use_.activations.contains(&occurrence))
+                        .map(|use_| use_.actor)
+                        .collect();
+                    for actor in actors {
+                        let input = composition.builder.input(
+                            LayerInputSource::BoundaryRequest { port, occurrence, actor },
+                            LayerInputRole::ActivationEvent,
+                        )?;
+                        let requested = composition.builder.input_expr(input)?;
+                        composition.queued_sample(cell, actor, requested, occurrence)?;
+                    }
+                }
                 continue;
-            };
-            let input = composition.builder.input(
-                LayerInputSource::BoundaryEvent { port: *port, occurrence },
-                LayerInputRole::ActivationEvent,
-            )?;
+            }
+            let input = composition
+                .builder
+                .input(LayerInputSource::BoundaryEvent { port, occurrence }, LayerInputRole::ActivationEvent)?;
             let event = composition.builder.input_expr(input)?;
             self.delivery(occurrence, event, &FxHashSet::default(), composition)?;
         }

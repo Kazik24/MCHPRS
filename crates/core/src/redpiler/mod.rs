@@ -24,9 +24,7 @@ pub use backend::{Queues, TickScheduler};
 pub use options::CompilerOptions;
 #[cfg(test)]
 pub(crate) use options::MAX_OPTIMIZATION_LEVEL;
-pub use statistics::{
-    CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, PassStatistics, PreparationTableStatistics,
-};
+pub use statistics::{CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, PassStatistics, PreparationTableStatistics};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
@@ -224,12 +222,12 @@ impl Compiler {
         graph_pipeline: Option<passes::PassPipeline>,
     ) -> Result<(Box<GraphBackend>, Duration), CompileError> {
         let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
-        let mut prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits).map_err(|error| graph_preparation_error(error, monitor))?;
+        let prepared = passes::rich::prepare(world, bounds, ticks, monitor, limits).map_err(|error| graph_preparation_error(error, monitor))?;
         let analysis_duration = prepared.analysis_duration;
         let pipeline = graph_pipeline.unwrap_or_else(|| passes::default_graph_pipeline(options));
-        passes::run_graph_pipeline(&mut prepared.graph, options, &prepared.entry, &pipeline, monitor)
+        let prepared = prepared
+            .run_passes(options, &pipeline, monitor)
             .map_err(|error| graph_pipeline_error(error, monitor))?;
-        prepared.finish_pipeline_statistics(monitor);
         let lowered = prepared
             .lower(monitor)
             .map_err(|error| graph_backend_error(backend::graph::GraphBackendError::Graph(error), monitor))?;

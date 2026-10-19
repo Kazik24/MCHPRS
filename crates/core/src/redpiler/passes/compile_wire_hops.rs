@@ -95,14 +95,14 @@ mod tests {
         CompileWireHops
             .run(
                 graph,
-                &PassContext {
-                    monitor: &TaskMonitor::default(),
-                    options: &Default::default(),
-                    entry: &EntryState {
+                &PassContext::new(
+                    &TaskMonitor::default(),
+                    &Default::default(),
+                    &EntryState {
                         logical_tick: 0,
                         pending_ticks: vec![],
                     },
-                },
+                ),
             )
             .unwrap();
     }
@@ -159,14 +159,12 @@ mod tests {
         assert_eq!(graph, expected);
         let monitor = TaskMonitor::default();
         monitor.cancel();
-        let context = PassContext {
-            monitor: &monitor,
-            options: &Default::default(),
-            entry: &EntryState {
-                logical_tick: 0,
-                pending_ticks: vec![],
-            },
+        let options = crate::redpiler::CompilerOptions::default();
+        let entry = EntryState {
+            logical_tick: 0,
+            pending_ticks: vec![],
         };
+        let context = PassContext::new(&monitor, &options, &entry);
         assert!(passes::compile_wire_hops::CompileWireHops.run(&mut graph, &context).is_err());
         assert_eq!(graph, expected);
     }

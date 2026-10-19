@@ -355,14 +355,31 @@ function validateInstantLayers(data, ids, nodes) {
         || !["request_sample", "activation_event", "acceptance_revalidation"].includes(input.role)) throw Error(`${region.id} has an invalid input.`);
       const source = input.source;
       if (!source || typeof source !== "object" || Array.isArray(source)) throw Error(`${region.id} has an invalid input source.`);
-      if (["boundary_event", "power_contribution"].includes(source.kind)) {
+      if (["boundary_event", "boundary_request", "power_contribution"].includes(source.kind)) {
         ref(source.port, "instant_port", region.id);
         const port = ports.get(source.port);
         if (!port || port.direction !== "input" || !(memberCells.has(port.owner) || memberCorridors.has(port.owner))) throw Error(`${region.id} input port is outside its boundary.`);
-        if (source.kind === "boundary_event") {
+        if (["boundary_event", "boundary_request"].includes(source.kind)) {
           occurrence(source.occurrence, region.id);
           if (port.binding?.kind !== "callback" || port.binding.occurrence.route !== source.occurrence.route
             || port.binding.occurrence.ordinal !== source.occurrence.ordinal) throw Error(`${region.id} event source does not match its callback port.`);
+          if (source.kind === "boundary_request") {
+            ref(source.actor, "piston", region.id);
+            const delivery = routes.get(source.occurrence.route).deliveries[source.occurrence.ordinal];
+            const pending = [delivery.receiver || sites.get(delivery.target)?.source], visited = new Set();
+            let matchesActor = false;
+            while (pending.length) {
+              const receiver = pending.pop();
+              matchesActor ||= (["piston_base", "piston_head"].includes(receiver?.kind) && receiver.piston === source.actor)
+                || (receiver?.kind === "component" && receiver.node === pistons.get(source.actor)?.node);
+              if (receiver?.kind === "contact" && !visited.has(receiver.contact)) {
+                visited.add(receiver.contact);
+                for (const variant of contacts.get(receiver.contact)?.variants || []) if (variant.receiver) pending.push(variant.receiver);
+              }
+            }
+            const ownerMatches = memberCells.has(port.owner) && cells.get(port.owner).actors.includes(source.actor);
+            if (!actors.has(source.actor) || !ownerMatches || !matchesActor || delivery.kind !== "update" || input.role !== "activation_event") throw Error(`${region.id} queued request does not match its owned actor callback.`);
+          }
         } else {
           ref(source.link, "power_link", region.id);
           if (port.binding?.kind !== "power" || port.binding.link !== source.link) throw Error(`${region.id} power source does not match its power port.`);
@@ -537,7 +554,7 @@ function validateInstantLayers(data, ids, nodes) {
     }
   }
   const reasons = new Set(["signal_arrival_unproven", "callback_semantics_unsupported",
-    "shared_owner_order_unknown", "boundary_effect_unsupported"]);
+    "shared_owner_order_unknown", "boundary_effect_unsupported", "proof_budget_exceeded"]);
   for (const decline of declines) {
     const memberCells = new Set(), memberCorridors = new Set();
     for (const [field, prefix, available, all, local] of [

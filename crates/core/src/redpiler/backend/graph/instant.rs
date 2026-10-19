@@ -56,10 +56,10 @@ impl GraphBackend {
                 self.set_wire(partner.node, partner_wire);
             }
             if root_repeater {
-                self.dispatch_turbo_nonwire(repeater_site, &repeater, layer)?;
+                self.dispatch_turbo_nonwire(repeater_site, &repeater, layer, Some(root_route))?;
             }
             if root_head {
-                self.dispatch_turbo_nonwire(head_site, &head, layer)?;
+                self.dispatch_turbo_nonwire(head_site, &head, layer, Some(root_route))?;
             }
             if !partner_changed {
                 return Ok(());
@@ -67,7 +67,7 @@ impl GraphBackend {
 
             layer += 1;
             if partner_repeater {
-                self.dispatch_turbo_nonwire(repeater_site, &repeater, layer)?;
+                self.dispatch_turbo_nonwire(repeater_site, &repeater, layer, Some(partner_route))?;
             }
             let root_power = source_power.max(partner_wire.power.saturating_sub(1));
             let root_changed = root_power != root_wire.power;
@@ -77,7 +77,7 @@ impl GraphBackend {
             }
             // T remains ahead of the next B delivery even when A changed.
             if partner_tail {
-                self.dispatch_turbo_nonwire(tail_site, &tail, layer)?;
+                self.dispatch_turbo_nonwire(tail_site, &tail, layer, Some(partner_route))?;
             }
             if !root_changed {
                 return Ok(());

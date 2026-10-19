@@ -486,9 +486,10 @@ fn callback_delivery_rewrites(
             if rewritten.contains_key(&key) {
                 continue;
             }
+            let Some(required) = witnesses.get(&key) else { continue };
             let mut root = old_to_new[delivery.guard.index()];
             let mut retained = vec![root];
-            for old_witness in witnesses.get(&key).into_iter().flatten() {
+            for old_witness in required {
                 let witness = old_to_new[old_witness.index()];
                 if !guard_implies(&interner.guards, root, witness) && !retained.contains(&witness) {
                     retained.push(witness);
@@ -497,7 +498,10 @@ fn callback_delivery_rewrites(
             if retained.len() > 1 {
                 root = interner.intern(Guard::All(retained.into_boxed_slice()))?;
             }
-            rewritten.insert(key, root);
+            // Every other consumer already uses this ordinary remap as its fallback.
+            if root != old_to_new[delivery.guard.index()] {
+                rewritten.insert(key, root);
+            }
         }
     }
     Ok(rewritten)
@@ -1225,6 +1229,61 @@ mod tests {
     }
 
     #[test]
+    fn ordinary_callback_remaps_need_no_exception_entries() {
+        use crate::redpiler::program_graph::{DeliveryKind, LinkSpec, NodeId, RouteId, SiteId};
+        use mchprs_blocks::BlockFace;
+
+        let mut graph = test_graph();
+        graph.guards.extend([Guard::Always, Guard::Not(GuardId::new(0))]);
+        let mut interner = GuardInterner::new();
+        let never = interner.constant(false).unwrap();
+        let mapping = [GuardId::new(0), GuardId::new(0), never];
+        let deliveries: Vec<_> = (0..128)
+            .map(|sequence| RouteDelivery {
+                target: SiteId::new(0),
+                kind: DeliveryKind::Update {
+                    direction: Some(if sequence % 2 == 0 { BlockFace::North } else { BlockFace::South }),
+                },
+                guard: GuardId::new(if sequence % 3 == 0 { 2 } else { 1 }),
+                view: OperandView::Live,
+                sequence,
+                receiver: Some(CallbackReceiver::Component(NodeId::new(0))),
+            })
+            .collect();
+        graph.links = deliveries
+            .iter()
+            .map(|delivery| LinkSpec {
+                from: NodeId::new(0),
+                to: NodeId::new(0),
+                callback: CallbackEdgeRef {
+                    route: RouteId::new(0),
+                    sequence: delivery.sequence,
+                },
+                kind: delivery.link_kind(),
+            })
+            .collect();
+        graph.routes[0].deliveries = deliveries.clone().into_boxed_slice();
+        let monitor = TaskMonitor::default();
+        let exceptions = callback_delivery_rewrites(&graph, &mapping, &mut interner, &monitor).unwrap();
+        assert!(exceptions.is_empty(), "ordinary remaps must stay out of the exception map");
+
+        let staged = stage_references(&graph, &mapping, &exceptions, &monitor).unwrap();
+        let expected: Vec<_> = deliveries.iter().map(|delivery| mapping[delivery.guard.index()]).collect();
+        assert_eq!(staged.links, expected);
+        assert_eq!(staged.deliveries[0], expected);
+        staged.apply(&mut graph, interner.guards);
+        for (actual, original) in graph.routes[0].deliveries.iter().zip(deliveries) {
+            assert_eq!(
+                *actual,
+                RouteDelivery {
+                    guard: mapping[original.guard.index()],
+                    ..original
+                }
+            );
+        }
+    }
+
+    #[test]
     fn false_callback_guard_keeps_its_validation_witness() {
         let mut interner = GuardInterner::new();
         let witness = interner.intern(Guard::State(StateTest::PistonExtended(PistonId::new(0)))).unwrap();
@@ -1245,11 +1304,7 @@ mod tests {
             logical_tick: 0,
             pending_ticks: Vec::new(),
         };
-        let context = PassContext {
-            monitor: &monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let context = PassContext::new(&monitor, &options, &entry);
         assert!(SimplifyStateGuards.run(&mut graph, &context).is_err());
         assert_eq!(graph, before);
     }
@@ -1270,11 +1325,7 @@ mod tests {
             logical_tick: 0,
             pending_ticks: Vec::new(),
         };
-        let context = PassContext {
-            monitor: &monitor,
-            options: &options,
-            entry: &entry,
-        };
+        let context = PassContext::new(&monitor, &options, &entry);
         SimplifyStateGuards.run(graph, &context).unwrap();
     }
 

@@ -33,10 +33,20 @@ pub(crate) fn lower_with_context(
     for (region, program) in plan.regions.iter().zip(&plan.programs) {
         check_cancelled(monitor)?;
         let component = partition.regions.get(region.id.0 as usize).ok_or("kernel region is missing")?;
-        let Some(arrivals) = composition::corridors::certify(graph, catalog, component, power, monitor)? else {
+        let retained = context.arrivals.get(region.id.0 as usize).and_then(|proof| proof.as_deref());
+        let reconstructed = if retained.is_none() {
+            match composition::corridors::certify(graph, catalog, component, power, monitor) {
+                Ok(arrivals) => arrivals,
+                Err(ConstructionError::BudgetExceeded) => continue,
+                Err(ConstructionError::Invalid(message)) => return Err(message),
+            }
+        } else {
+            None
+        };
+        let Some(arrivals) = retained.or(reconstructed.as_deref()) else {
             continue;
         };
-        if let Some(kernel) = lower_region(graph, catalog, region, program, &arrivals, monitor)? {
+        if let Some(kernel) = lower_region(graph, catalog, region, program, arrivals, monitor)? {
             kernels.push(Arc::new(kernel));
         }
     }

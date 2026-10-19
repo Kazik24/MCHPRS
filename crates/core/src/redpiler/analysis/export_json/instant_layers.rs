@@ -72,6 +72,10 @@ fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
             "port":typed_id("instant_port",port as usize),
             "occurrence":occurrence_dto(occurrence),
         }),
+        LayerInputSource::BoundaryRequest { port, occurrence, actor } => json!({
+            "kind":"boundary_request", "port":typed_id("instant_port",port as usize),
+            "occurrence":occurrence_dto(occurrence), "actor":typed_id("piston",actor.index()),
+        }),
         LayerInputSource::BoundaryState { port, test } => json!({
             "kind":"boundary_state", "port":typed_id("instant_port",port as usize),
             "test":serde_json::to_value(state_test_dto(test)).expect("state test DTO serialization is infallible"),
@@ -260,6 +264,7 @@ fn witness(value: LayerWitness, graph: &CompileGraph) -> Value {
 
 fn decline_reason(value: LayerDeclineReason) -> &'static str {
     match value {
+        LayerDeclineReason::ProofBudgetExceeded => "proof_budget_exceeded",
         LayerDeclineReason::SignalArrivalUnproven => "signal_arrival_unproven",
         LayerDeclineReason::CallbackSemanticsUnsupported => "callback_semantics_unsupported",
         LayerDeclineReason::SharedOwnerOrderUnknown => "shared_owner_order_unknown",
@@ -344,6 +349,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
     let guards: HashMap<_, _> = graph.guards.iter().map(|guard| (guard.id.as_str(), guard)).collect();
     let pistons: HashSet<_> = graph.pistons.iter().map(|piston| piston.id.as_str()).collect();
     let piston_rows: HashMap<_, _> = graph.pistons.iter().map(|piston| (piston.id.as_str(), piston)).collect();
+    let contacts: HashMap<_, _> = graph.contacts.iter().map(|contact| (contact.id.as_str(), contact)).collect();
     let links: HashMap<_, _> = graph.power_links.iter().map(|link| (link.id.as_str(), link)).collect();
     let routes: HashMap<_, _> = graph
         .routes
@@ -411,14 +417,46 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                         }
                     }
                 }
-                Some("boundary_event" | "power_contribution") => {
+                Some("boundary_event" | "boundary_request" | "power_contribution") => {
                     let port = source["port"].as_str().ok_or_else(|| invalid("layer input has no port"))?;
                     let row_port = ports.get(port).ok_or_else(|| invalid("layer input references a missing port"))?;
                     if row_port["direction"] != "input" || !region_owns(row_port["owner"].as_str(), &region_cells, &region_corridors) {
                         return Err(invalid("layer input port is outside its input boundary"));
                     }
-                    if source["kind"] == "boundary_event" {
-                        occurrence(&source["occurrence"], &routes)?;
+                    if source["kind"] == "boundary_event" || source["kind"] == "boundary_request" {
+                        let (route, ordinal) = occurrence(&source["occurrence"], &routes)?;
+                        if row_port["binding"]["kind"] != "callback" || row_port["binding"]["occurrence"] != source["occurrence"] {
+                            return Err(invalid("event input does not match its callback boundary"));
+                        }
+                        if source["kind"] == "boundary_request" {
+                            let actor = source["actor"].as_str().ok_or_else(|| invalid("queued boundary request has no actor"))?;
+                            let delivery = &routes[route.as_str()].deliveries[ordinal as usize];
+                            let owner_matches = row_port["owner"]
+                                .as_str()
+                                .and_then(|owner| cell_rows.get(owner))
+                                .and_then(|cell| cell["actors"].as_array())
+                                .is_some_and(|actors| actors.iter().any(|candidate| candidate == actor));
+                            let receiver_matches = piston_rows.get(actor).is_some_and(|piston| {
+                                queued_receiver_matches(
+                                    delivery.receiver.as_ref(),
+                                    &sites[delivery.target.as_str()].source,
+                                    actor,
+                                    &piston.node,
+                                    &contacts,
+                                )
+                            });
+                            if !region_actors.contains(actor)
+                                || !owner_matches
+                                || !receiver_matches
+                                || delivery.kind != "update"
+                                || input["role"] != "activation_event"
+                            {
+                                return Err(invalid(&format!(
+                                    "queued boundary request does not match its owned actor callback: actor={actor}, route={route}:{ordinal}, receiver={:?}",
+                                    delivery.receiver
+                                )));
+                            }
+                        }
                     } else {
                         let link = source["link"].as_str().ok_or_else(|| invalid("power input has no link"))?;
                         if row_port["binding"]["kind"] != "power"
@@ -725,13 +763,53 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
         let reason = row["reason"].as_str().ok_or_else(|| invalid("layer decline has no reason"))?;
         if !matches!(
             reason,
-            "signal_arrival_unproven" | "callback_semantics_unsupported" | "shared_owner_order_unknown" | "boundary_effect_unsupported"
+            "signal_arrival_unproven"
+                | "callback_semantics_unsupported"
+                | "shared_owner_order_unknown"
+                | "boundary_effect_unsupported"
+                | "proof_budget_exceeded"
         ) {
             return Err(invalid("layer decline has an unknown reason"));
         }
         validate_witness(&row["witness"], &actors, &wires, &nodes, &routes, &graph.power_links)?;
     }
     Ok(())
+}
+
+fn queued_receiver_matches(
+    receiver: Option<&ReceiverDto>,
+    fallback: &SiteSourceDto,
+    actor: &str,
+    actor_node: &str,
+    contacts: &HashMap<&str, &ContactDto>,
+) -> bool {
+    let mut pending: Vec<_> = receiver.into_iter().collect();
+    let mut visited = HashSet::new();
+    if receiver.is_none() {
+        match fallback {
+            SiteSourceDto::Component { node } => return node == actor_node,
+            SiteSourceDto::Contact { contact } => {
+                visited.insert(contact.as_str());
+                if let Some(contact) = contacts.get(contact.as_str()) {
+                    pending.extend(contact.variants.iter().filter_map(|variant| variant.receiver.as_ref()));
+                }
+            }
+            _ => {}
+        }
+    }
+    while let Some(receiver) = pending.pop() {
+        match receiver {
+            ReceiverDto::PistonBase { piston } | ReceiverDto::PistonHead { piston } if piston == actor => return true,
+            ReceiverDto::Component { node } if node == actor_node => return true,
+            ReceiverDto::Contact { contact } if visited.insert(contact.as_str()) => {
+                if let Some(contact) = contacts.get(contact.as_str()) {
+                    pending.extend(contact.variants.iter().filter_map(|variant| variant.receiver.as_ref()));
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 fn array<'a>(row: &'a Value, field: &str) -> Result<&'a [Value], ExportError> {

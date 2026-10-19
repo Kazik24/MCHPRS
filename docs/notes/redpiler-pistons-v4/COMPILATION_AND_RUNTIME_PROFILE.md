@@ -1,18 +1,201 @@
 # Redpiler compilation and runtime costs
 
-## Current pipeline audit and the eight-second target
+## Current simplification implementation
+
+The [implementation plan](COMPILATION_SIMPLIFICATION_PLAN.md) now has a checked,
+owning pipeline path. Rewrites still clear plans and receive complete validation.
+Builders publish a typed `PlanChange`; audited changes check the product and its
+dependents, while ownership changes retain conservative complete checks.
+Wire-aligned outputs reject wrong lengths before `zip`; reset rows reject invalid
+and duplicate indices before changing the graph.
+
+For instant boundaries and layers, the runner constructs a canonical reference
+from its valid input before invoking the builder. Builders can read that result;
+publication compares the complete candidate against the runner's reference.
+The builder cannot submit its own reference or exempt another output kind from
+checking. Canonical data lives for that invocation only. Standalone builders,
+arbitrary-draft lowering and independent export admission keep reconstruction.
+
+This preserves the former check, rather than adding a second symbolic proof
+engine. Let `C` be the existing deterministic reference algorithm and `P` the
+published artifact. The old validator accepts when `P == C(input_after)`.
+The new runner derives `R = C(input_before)`; the immutable builder and typed
+publisher leave `C`'s dependencies unchanged, so `C(input_after) == R`.
+Exact `P == R` therefore retains the check, including missing effects, altered
+expressions and forged but in-range references. Canonical algorithms themselves
+still need interpreter differential evidence; repetition was not an independent
+semantic oracle.
+
+`ValidatedGraph` owns the successful prepared graph and matching transient layer
+analysis. It exposes immutable inspection and consuming lowering. Recovering a
+mutable draft consumes the wrapper and discards analysis. Lowering uses retained
+connected-corridor evidence instead of certifying those successful corridors a
+second time; raw-draft lowering still validates and reconstructs independently.
+
+For fresh parsed input, default O4 with stable inputs, ordinary successful
+execution and no unsafe feature:
+
+| Operation | Prior cleanup | Current implementation |
+| --- | ---: | ---: |
+| Structural validations | 9 | 8: entry and seven rewrites |
+| Boundary inferences | 4 | 1, shared reference |
+| Layer compilations | 3 | 1, shared reference |
+| Independent reconstructions of successful connected corridors during immediate lowering | 1 | 0 |
+
+The counts describe this default pipeline, not arbitrary repeated custom builds
+or independent inspection of serialized data. Unrelated rewrites and plan
+dependency replacements retain their required checks.
+
+Compile statistics now split successful pass output validation from body time and
+record kernel/program lowering separately. There is no new runtime profiler or
+per-row timer. Atomic guard support avoids DFS scratch and uses one map entry
+lookup; its leaf sequence is checked against the general walk.
+
+Verification: 527 Redpiler tests passed in both debug and release, with 36 ignored
+in each run. This includes a full-check comparison over builder pairs, both adder
+graphs/programs/states, corrupted shared-reference outputs, mismatched requested
+versus published kinds, malformed publication, callbacks, captured requests and
+interpreter differential histories. An earlier snapshot had one failure while
+the concurrent captured-entry changes were incomplete; the current full rerun
+passed it. Async request-to-activation timing has a separate ignored release
+test; timing results are recorded separately from these correctness checks.
+
+The O2 callback-remap table now stores only witness-preserving exceptions.
+For a delivery without a required witness, the old table entry was exactly
+`old_to_new[delivery.guard]`; both delivery and link consumers already use that
+value when the key is absent. A required witness that is already implied also
+needs no exception entry. Rows that need a stronger syntactic witness still
+keep their original interning order and explicit override. This changes scratch
+allocation rather than executable callback order, multiplicity or guard values.
+The new fallback test checks 128 ordered directional deliveries and both consumer
+tables; existing contact/captured-view and idempotence tests exercise exceptions.
+
+All eight asynchronous compilation tests passed in debug. The packet/reset test
+now grants its synthetic player the required command/build permissions, making
+the check independent of local server permission configuration. Production
+permissions and command handling are unchanged.
+
+Exploratory owner-grouped source lookups and guard/evaluator emission memoization
+showed no attributable improvement in single CPU diagnostics and were removed.
+Their binaries/reports remain under `target/compilation-simplification/` for local
+inspection. Temporary diagnostic timers were removed too.
+
+### Final reference measurements, 2026-10-19
+
+The actual asynchronous plot path was tested in release on logical CPU 4
+(`0x10` affinity), with three freshly loaded CPU_BubbleSort worlds. Configuration:
+O4, declared stable inputs, budget multiplier 8, identical in-memory removal of
+the fixture's blocking sign. The schematic on disk was preserved. Timing starts
+before `start_redpiler` and ends after successful polling/publication; schematic
+loading is outside the request window.
+
+| Trial | Request to activation | Worker compile | Request setup | Final publication poll |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 9.617495 s | 9.610273 s | 0.004005 s | 0.002546 s |
+| 2 | 9.665429 s | 9.659778 s | 0.002108 s | 0.002603 s |
+| 3 | 9.576019 s | 9.570752 s | 0.002169 s | 0.002902 s |
+
+The ignored ten-second activation test passed. These are fresh worlds in one
+test process, not cold-boot trials or a loaded production server. The margin is
+small: the separate compiler-only series below exceeded ten seconds. Therefore
+the reference activation probe meets the target, while a reliable ten-second
+upper bound under varying load is **not established**.
+
+The last isolated comparison measures only sparse callback-remap scratch storage.
+Both pinned binaries already contain canonical reference sharing, checked owning
+lowering and the concurrent captured-entry fixes. Five alternating fresh-process
+pairs use O4/stable/budget 8, 100 active ticks and 32 interpreter-continuation
+ticks, on the same logical CPU and without another Cargo or benchmark process.
+
+| Pair and order | Before compile | Sparse-map compile | Before O2 body | Sparse-map O2 body |
+| --- | ---: | ---: | ---: | ---: |
+| 1: before, after | 9.667662 s | 9.145282 s | 0.876332 s | 0.553216 s |
+| 2: after, before | 9.211621 s | 9.311227 s | 0.830819 s | 0.566323 s |
+| 3: before, after | 10.932313 s | 10.901820 s | 0.984724 s | 0.787419 s |
+| 4: after, before | 11.182398 s | 10.965090 s | 1.081200 s | 0.755691 s |
+| 5: before, after | 11.062605 s | 10.085580 s | 1.051753 s | 0.723498 s |
+
+Compiler medians: 10.932313 s before and 10.085580 s after, with overlapping
+ranges. The median paired change is only -1.94%, so the ratio of medians must not
+be presented as a stable whole-compiler speedup. O2's body is lower in every pair,
+by 0.197–0.328 s. The series shows substantial machine/workload variability even
+without competing Rust processes.
+
+Every sample matched the frozen interpreter RAM trace. The pair driver also
+required identical active/reset/continuation checkpoints, RAM digests, kernel
+node count and execution counters across all ten samples: 20,005 scheduled ticks,
+1,755,798 callbacks, 32,505 wire walks, 302,784 piston samples, 27,884 actions and
+4,706 kernel invocations. Those counts belong to the current captured-entry
+runtime, not the older 29-invocation snapshot. This cleanup changes compilation
+work, not the executed algorithm.
+
+Before binary SHA-256:
+`EBBA0C9741971C822B1791E49898647791D64516BBFD6A1CEAC857EF1D6512EA`.
+Sparse-map binary SHA-256:
+`5A6118040D8859581107DB95F4D1D9E585A2DE2BBB23034AF89A632590361511`.
+Local artifacts: `target/compilation-simplification/sparse-pairs.json`, the ten
+per-sample JSON files, `run-sparse-pairs.ps1`, and `activation.json`.
+
+Earlier single diagnostics do not isolate this final change. In particular,
+`canonical-diagnostic.json` ran concurrently on CPU 4 with another agent's first
+full-sort baseline and is excluded from performance claims; that external first
+baseline timing is also contaminated. Historical 18.951 s compiler and later O5
+full-sort measurements use different source/runtime snapshots and cannot serve
+as an isolated speedup estimate for this batch.
+
+Remaining cost is useful source analysis as well as required checks: the slower
+fourth sparse sample spent 2.002 s in boundary identification and 3.606 s in layer
+compilation, versus 0.849 s in O2 and 0.246 s in kernel/program lowering. Region
+perimeters rescan the graph with merged owners; simply filtering catalog ports
+would need a separate proof for guard/contact closure. That semantic change was
+not mixed into this refactor.
+
+Not measured here: peak RSS, cold-boot latency, compilation scaling on ANPU or
+CHUNGUS, or a full sort after the sparse-map change. The full workspace and live
+server load were not tested. The broad Redpiler suites and fixture comparisons
+cover correctness; ten 100-tick CPU episodes are not a proof for every history.
+
+Final check commands:
+
+```powershell
+cargo test -p mchprs_core --lib --locked simplify_state_guards::tests -- --test-threads=1
+cargo test -p mchprs_core --lib --locked plot::redpiler_compilation::tests:: -- --test-threads=1
+cargo bench -p mchprs_core --bench cpu_bubblesort --locked --no-run
+cargo test -p mchprs_core --lib --release --locked --no-run
+& target/debug/deps/mchprs_core-a06d773381490471.exe redpiler:: --test-threads=1
+& target/release/deps/mchprs_core-a7e20bbfecf9adbb.exe redpiler:: --test-threads=1
+cargo check -p mchprs_core --tests --benches --locked
+cargo check -p mroww --locked
+git diff --check
+```
+
+The actual timing run additionally selects the ignored activation test by its
+full name and pins its process to CPU 4. Release includes final production and
+Redpiler test code; the subsequent test-only player-permission setup was checked
+in debug. All ten guard tests, eight async behavior tests and the release
+activation test passed. Focused `rustfmt --check` passed for the changed compiler
+files. Whole-core `cargo fmt --check` still reports existing drift in unrelated
+messages, WorldEdit safety, classic-redstone and other files; those were left
+unchanged. The two inherited fixed-classic dead-code warnings remain. No commit
+was made.
+
+## Current pipeline audit and the ten-second target
+
+The current target supersedes the earlier eight-second proposal. The next
+cleanup is implemented as described above and scoped in
+[Compilation simplification plan](COMPILATION_SIMPLIFICATION_PLAN.md).
 
 Source audit: 2026-10-19. The measurements further below belong to the older
 `9831f7e` checkout; they are evidence of repeated work, not timings for the current
-worktree or a claim that the eight-second target has been met.
+worktree or a claim that the ten-second target has been met.
 
 The target is request-to-activation time for a specified large fixture in an
 optimized server build. Include snapshot creation, preparation, passes, validation,
-lowering and publication. Keep simulation benchmarks separate. Eight seconds
+lowering and publication. Keep simulation benchmarks separate. Ten seconds
 cannot be promised for arbitrarily large selections; first establish it on
 CPU_BubbleSort, then check ANPU and the larger CHUNGUS workload.
 
-### What the current compiler actually does
+### Pipeline before this simplification
 
 1. The plot makes an isolated activation snapshot, including pending ticks and
    piston state. Closing open barrels is staged on that snapshot.
@@ -119,7 +302,7 @@ For timing, use the existing release harness with the same fixture hash, flags,
 budget and sign normalization on both revisions. Record each paired compile
 sample, not just the median; separate snapshot, parser, pass bodies, validation,
 lowering and activation. Use the existing timing/report infrastructure or
-temporary local measurements, not a new profiling framework. An eight-second
+temporary local measurements, not a new profiling framework. A ten-second
 result needs a fresh measurement; the old breakdown does not establish one.
 
 ### Correctness argument for the implemented changes
@@ -163,7 +346,7 @@ both executables remove the same blocking sign only in memory.
 The benchmark measures `Compiler::compile` wall time, including required parsing,
 passes, validation, lowering and backend construction. World loading, plot snapshot
 creation, CPU activation and visual publication are outside that compile timer.
-This therefore does not establish the eight-second in-game request-to-activation
+This therefore does not establish the ten-second in-game request-to-activation
 objective. No `graph-profile` feature or test tracing is enabled.
 
 Pinned release executables were run alternately A/B, B/A, A/B on logical CPU 4
@@ -188,7 +371,7 @@ On the final median sample, sequential pass totals were 6.625 s for
 includes that builder and its output validation. Another 4.545 s followed the
 pipeline, including full lowering validation, kernel lowering and backend
 construction. These are disjoint wall-time phases, not sampled function self-time.
-They explain why this safe cleanup alone does not reach eight seconds.
+They explain why this safe cleanup alone does not reach ten seconds.
 
 The next larger target is the repeated semantic reconstruction of instant
 certificates: layers are still compiled three times and boundaries inferred four
@@ -223,7 +406,7 @@ the worker. Compiler errors and panics cannot publish a partial executor.
 Snapshot creation and final publication still execute on the plot thread.
 `snapshot_ms` is logged separately so this remaining synchronous work is visible.
 Async execution fixes plot responsiveness; it does not reduce compiler CPU time
-or establish the eight-second target. Analysis/JSON-inspection commands have not
+or establish the ten-second target. Analysis/JSON-inspection commands have not
 been converted into background jobs in this change.
 
 The earlier captured-entry prototype is deferred from this compilation-stability

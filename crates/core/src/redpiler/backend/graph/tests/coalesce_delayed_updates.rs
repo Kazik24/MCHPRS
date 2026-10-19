@@ -306,18 +306,7 @@ fn cancellation_retains_routes_and_default_pipeline_selects_coalescing_at_o5() {
         logical_tick: 17,
         pending_ticks: vec![],
     };
-    assert!(
-        passes::GraphPass::run(
-            &CoalesceDelayedUpdates,
-            &mut graph,
-            &passes::PassContext {
-                monitor: &monitor,
-                options: &options,
-                entry: &entry
-            }
-        )
-        .is_err()
-    );
+    assert!(passes::GraphPass::run(&CoalesceDelayedUpdates, &mut graph, &passes::PassContext::new(&monitor, &options, &entry)).is_err());
     assert_eq!(graph, before);
     for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {
         let options = crate::redpiler::CompilerOptions {

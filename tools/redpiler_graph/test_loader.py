@@ -1,5 +1,6 @@
 """Regression tests for graph export certificate loading."""
 
+import copy
 import json
 import tempfile
 import unittest
@@ -378,6 +379,41 @@ class DustPathLoaderTests(unittest.TestCase):
             with self.subTest(port=port), self.assertRaises(GraphFormatError):
                 self.load_data(data)
 
+    def test_instant_queued_request_requires_its_owned_actor_callback(self):
+        data = self.instant_layer_document()
+        graph = data["graph"]
+        region = graph["instant_layer_regions"][0]
+        actor = graph["pistons"][0]["id"]
+        route, ordinal = next((route, ordinal) for route in graph["routes"]
+                              for ordinal, delivery in enumerate(route["deliveries"])
+                              if delivery.get("kind") == "update" and delivery.get("receiver") == {"kind": "piston_base", "piston": actor})
+        event = {"route": route["id"], "ordinal": ordinal}
+        source = {"kind": "boundary_request", "port": "instant_port:1", "occurrence": event, "actor": actor}
+        graph["instant_boundary_ports"][1]["binding"]["occurrence"] = event
+        region["inputs"][0] = {"role": "activation_event", "source": source}
+        self.load_data(data)
+        contact = next(contact for contact in graph["contacts"] if any(
+            variant.get("receiver") == {"kind": "piston_base", "piston": actor} for variant in contact["variants"]
+        ))
+        direct_receiver = route["deliveries"][ordinal]["receiver"]
+        route["deliveries"][ordinal]["receiver"] = {"kind": "contact", "contact": contact["id"]}
+        self.load_data(data)
+        cyclic = copy.deepcopy(data)
+        cyclic_contact = next(row for row in cyclic["graph"]["contacts"] if row["id"] == contact["id"])
+        for variant in cyclic_contact["variants"]:
+            variant["receiver"] = {"kind": "contact", "contact": contact["id"]}
+        with self.assertRaises(GraphFormatError):
+            self.load_data(cyclic)
+        route["deliveries"][ordinal]["receiver"] = direct_receiver
+        for field, value in (("actor", graph["pistons"][1]["id"]), ("actor", "piston:999"), ("port", "instant_port:0")):
+            damaged = copy.deepcopy(data)
+            damaged["graph"]["instant_layer_regions"][0]["inputs"][0]["source"][field] = value
+            with self.subTest(field=field, value=value), self.assertRaises(GraphFormatError):
+                self.load_data(damaged)
+        region["inputs"][0]["role"] = "acceptance_revalidation"
+        with self.assertRaises(GraphFormatError):
+            self.load_data(data)
+
     def test_instant_graph_observations_keep_typed_boundary_bindings(self):
         data = self.instant_layer_document()
         graph = data["graph"]
@@ -492,6 +528,8 @@ class DustPathLoaderTests(unittest.TestCase):
             "witness": {"kind": "actor", "piston": graph["pistons"][0]["id"]},
             "reason": "shared_owner_order_unknown",
         }]
+        self.assertIn("instant_layer_decline:4", self.load_data(data).records["instant_layer_decline"])
+        graph["instant_layer_declines"][0]["reason"] = "proof_budget_exceeded"
         self.assertIn("instant_layer_decline:4", self.load_data(data).records["instant_layer_decline"])
         graph["instant_layer_declines"][0]["witness"]["piston"] = "piston:999"
         with self.assertRaises(GraphFormatError):

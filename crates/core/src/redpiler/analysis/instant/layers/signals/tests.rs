@@ -186,7 +186,7 @@ fn zero_source_wire_cycles_terminate_but_zero_loss_conductor_cycles_decline() {
             &mut builder,
         )
         .unwrap_err();
-    assert!(error.contains("zero-loss"));
+    assert!(matches!(error, ConstructionError::Invalid(message) if message.contains("zero-loss")));
 }
 
 #[test]
@@ -197,12 +197,11 @@ fn corridor_tracing_checks_cancellation() {
     let state = FxHashMap::default();
     let mut builder = LayerBuilder::new(&monitor).unwrap();
     monitor.cancel();
-    assert!(
+    assert!(matches!(
         SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample)
-            .query(target(3), 0, &mut builder)
-            .unwrap_err()
-            .contains("cancel")
-    );
+            .query(target(3), 0, &mut builder),
+        Err(ConstructionError::Invalid(message)) if message.contains("cancel")
+    ));
 }
 
 #[test]
@@ -261,12 +260,11 @@ fn contact_power_and_geometry_use_the_first_selected_profile() {
         .unwrap();
     assert!(!evaluate(&builder, root, |_| false));
     graph.profiles[1].electrical = ProfileElectrical::Component;
-    assert!(
+    assert!(matches!(
         SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample)
-            .query(target(1), 0, &mut builder)
-            .unwrap_err()
-            .contains("active contact")
-    );
+            .query(target(1), 0, &mut builder),
+        Err(ConstructionError::Invalid(message)) if message.contains("active contact")
+    ));
 }
 
 #[test]

@@ -3,6 +3,10 @@
 Start with [the current state](CURRENT_STATE.md): supported execution, measured speed,
 remaining compiler work, validation limits and the document retirement map.
 
+For the current compilation cleanup and the ten-second target, use the
+[compilation simplification plan](COMPILATION_SIMPLIFICATION_PLAN.md). It separates
+implemented improvements from the next proposed validation and ownership changes.
+
 Graph and the O2/O3/O5 optimizations work today. The layered instant compiler has tested
 analysis and reduced expressions, but no live kernel replacement. Recognition, a reduced
 compiler artifact and executed replacement are different coverage claims.

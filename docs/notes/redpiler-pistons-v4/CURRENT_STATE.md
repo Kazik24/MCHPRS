@@ -1,5 +1,61 @@
 # Redpiler current state
 
+## BubbleSort O5 execution update, 2026-10-19
+
+The complete 10,036-tick sort now passes with the queued Instant entry extension.
+Actual kernel invocations rise from 3,565 to 524,910 with the same 2,197 installed
+kernel actors. Captured requests retain their actual Turbo route and FIFO actor;
+live acceptance, resource ownership, reset and unsupported-entry fallback remain
+explicit. Mixed wire-side queries also avoid unnecessary neighbor reconstruction.
+
+Three interleaved production release pairs reduce median inference from
+73.149302 to 65.166980 seconds: **1.12249x throughput**, 137.20 to 154.00 active
+game ticks/s. All RAM ticks and final/reset/native-continuation checkpoints match.
+A separate O5-default control is 65.109283 seconds, so this does not establish an
+Instant-only gain. General wire walks remain 3,882,011; whole-CPU contraction is
+still incomplete. See the [current timing and proof scope](CPU_BUBBLESORT_RUNTIME_PROFILE.md#2026-10-19-complete-o5-sort-with-queued-instant-entries-and-lazy-geometry).
+
+Final validation passes 527 Redpiler tests (36 ignored), two wire-geometry tests,
+26 Python loader tests, 32 viewer tests and the workspace check. The separately
+selected FPU replay passes all three histories: 480 native tick pairs and 16
+native handoff ticks per case. This does not certify floating-point arithmetic.
+See the [suite log](../../../target/bubblesort-final-redpiler.log) and
+[FPU replay](../../../target/bubblesort-final-fpu.log).
+
+## Instant boundary update, 2026-10-19
+
+This update supersedes the analysis-only and zero-kernel claims in the earlier
+review below. Production O4+ with `--stable-instant-inputs` installs supported
+layered kernels inside Graph. Recognition still does not establish whole-device
+coverage or a CPU speedup; see [current CPU proof cuts](CPU_BUBBLESORT_KERNEL_PROOFS.md#follow-up-implementation).
+
+Optional per-region construction work/table exhaustion now records
+`ProofBudgetExceeded` and leaves the complete region on Graph. Partially built
+symbolic waves are discarded. Invalid graph references, arithmetic overflow and
+cancellation remain fatal; the work and retained-table limits are unchanged.
+Rust export validation, the Python loader and the viewer accept the exported
+`proof_budget_exceeded` reason while retaining their reference checks.
+
+The FPU layered replay now compiles: 2,412 symbolic actors and 2,360 installed
+singleton kernels. Two regions containing 35 and 15 actors exhaust the proof
+budget and remain on Graph. All three histories pass 480 Graph/native tick pairs,
+full snapshots after every operation and 16 native handoff ticks per case.
+This verifies the tested input/update/reset histories, not numeric floating-point
+results or a performance gain. The 100-active-tick BubbleSort replay also passes,
+including 16 handoff ticks, with the previous 2,197 installed kernels.
+
+Evidence: [FPU replay](../../../target/instant-boundary-fpu.log),
+[FPU coverage](../../../target/layered-instant-devices/fpu.json),
+[CPU replay](../../../target/instant-boundary-cpu.log).
+The final frozen test build passes 519 Redpiler tests (35 ignored), including
+budget/cancellation and partial-wave regressions; the two device replays above
+were selected explicitly. Workspace check, 25 Python loader tests and 31 viewer
+tests pass. [Full suite log](../../../target/instant-boundary-redpiler-tests.log).
+Next: profile construction in the two budget-limited regions and extend active
+corridor/reset arrival proofs without replacing callback order with settled power.
+
+## Earlier review of `9831f7e`
+
 Reviewed 2026-10-19 against `9831f7e` and the working tree. Concurrent layered-device
 research was already present and continued during review. Performance below comes
 from identified retained executables, not a new benchmark of this changing checkout.

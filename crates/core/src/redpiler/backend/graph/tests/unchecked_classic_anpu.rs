@@ -636,7 +636,7 @@ impl UncheckedProgram {
         }
         for (site, observed) in boundary {
             self.boundary_calls.fetch_add(1, Ordering::Relaxed);
-            backend.dispatch_turbo_nonwire(site, &observed, 1)?;
+            backend.dispatch_turbo_nonwire(site, &observed, 1, None)?;
         }
         Ok(())
     }
@@ -1591,7 +1591,7 @@ impl TapeProgram {
                     match *op {
                         TapeOp::Capture(site) => captures.push(backend.observe_site(site).expect("fixed tape capture")),
                         TapeOp::Write(node, wire) => backend.set_wire(node, wire),
-                        TapeOp::Call { site, capture, layer } => backend.dispatch_turbo_nonwire(site, &captures[capture], layer)?,
+                        TapeOp::Call { site, capture, layer } => backend.dispatch_turbo_nonwire(site, &captures[capture], layer, None)?,
                     }
                 }
                 Ok(())

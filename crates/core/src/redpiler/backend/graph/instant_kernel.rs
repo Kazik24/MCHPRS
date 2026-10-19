@@ -31,9 +31,13 @@ impl GraphBackend {
             return Ok(false);
         }
         let Some(kernel) = self.program.instant_kernel_for_actor(request.piston).cloned() else {
+            #[cfg(test)]
+            self.record_kernel_attempt(request.piston, 0);
             return Ok(false);
         };
         let Some(entry) = request.source.filter(|entry| kernel.entries.binary_search(entry).is_ok()) else {
+            #[cfg(test)]
+            self.record_kernel_attempt(request.piston, if request.source.is_none() { 1 } else { 2 });
             return Ok(false);
         };
         if kernel.actors.iter().any(|actor| self.early_resource_retraction(*actor))
@@ -42,12 +46,23 @@ impl GraphBackend {
                 wire.power != expected || crate::redstone::wire::is_dot(wire)
             })
         {
+            #[cfg(test)]
+            self.record_kernel_attempt(request.piston, 3);
             return Ok(false);
         }
         let mut scratch = std::mem::take(&mut self.instant_kernel.scratch);
-        let evaluated = kernel.program.evaluate(&mut scratch, |input| self.kernel_input(input, entry));
+        let evaluated = kernel.program.evaluate(&mut scratch, |input| self.kernel_input(input, entry, request));
         let eligible = evaluated.is_ok() && scratch[kernel.stationary.0 as usize] && self.kernel_owns_queue(&kernel, &scratch, request);
         if !eligible {
+            #[cfg(test)]
+            self.record_kernel_attempt(
+                request.piston,
+                if evaluated.is_err() || !scratch[kernel.stationary.0 as usize] {
+                    4
+                } else {
+                    5
+                },
+            );
             self.instant_kernel.scratch = scratch;
             return Ok(false);
         }
@@ -61,7 +76,16 @@ impl GraphBackend {
         self.instant_kernel.scratch = scratch;
         result?;
         self.counts.instant_kernel_invocations += 1;
+        #[cfg(test)]
+        self.record_kernel_attempt(request.piston, 6);
         Ok(true)
+    }
+
+    #[cfg(test)]
+    fn record_kernel_attempt(&mut self, actor: PistonId, outcome: usize) {
+        if let Some(activity) = self.test_recorder.instant_kernel_activity.get_mut(actor.index()) {
+            activity[outcome] += 1;
+        }
     }
 
     fn kernel_owns_queue(&self, kernel: &InstantKernel, values: &[bool], first: PistonRequest) -> bool {
@@ -113,9 +137,15 @@ impl GraphBackend {
         Ok(())
     }
 
-    fn kernel_input(&self, input: LayerInput, entry: RouteId) -> bool {
+    fn kernel_input(&self, input: LayerInput, entry: RouteId, first: PistonRequest) -> bool {
         match input.source {
             LayerInputSource::BoundaryEvent { occurrence, .. } => occurrence.route == entry,
+            LayerInputSource::BoundaryRequest { occurrence, actor, .. } => {
+                occurrence.route == entry
+                    && std::iter::once(first).chain(self.future.piston_requests.iter().copied()).any(|request| {
+                        request.piston == actor && request.action == mchprs_world::PistonAction::Retract && request.source == Some(entry)
+                    })
+            }
             LayerInputSource::SourceAbove { site, port, threshold } => self.site_power(site, port) > threshold,
             LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => {
                 self.guard_matches(link.guard, None) && self.site_power(link.from, link.from_port) > link.attenuation

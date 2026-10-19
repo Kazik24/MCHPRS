@@ -1,5 +1,10 @@
 # BubbleSort: full-sort baseline and kernel proof cuts
 
+The later queued-entry extension completes the full sort and executes 524,910
+kernel invocations. Its paired release comparison and limits are recorded in
+[the current runtime report](CPU_BUBBLESORT_RUNTIME_PROFILE.md#2026-10-19-complete-o5-sort-with-queued-instant-entries-and-lazy-geometry).
+The initial audit and first follow-up below retain their original counts.
+
 ## Concrete compiler limitations, not a noninstant counterexample
 
 The investigation found **no counterexample showing noninstant CPU computation**.

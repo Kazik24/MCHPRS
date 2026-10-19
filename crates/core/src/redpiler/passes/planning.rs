@@ -1,11 +1,16 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, InstantProxy, InstantRegion, InstantResetPlan, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
+    CompileGraph, DustPathPlan, GraphBuildError, InstantProxy, InstantRegion, InstantResetPlan, PlanChange, SiteId, TurboCallbackIndex,
+    WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
     fn name(&self) -> &'static str;
+    /// Request source-derived reference data; this never exempts an output from checking.
+    fn instant_analysis(&self) -> Option<InstantAnalysis> {
+        None
+    }
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String>;
 
     #[cfg(test)]
@@ -14,9 +19,18 @@ pub(crate) trait PlanBuilder {
         if context.monitor.cancelled() {
             return Err("cancelled before publishing execution plans".into());
         }
-        output.publish(graph);
+        output.publish(graph).map_err(|error| error.to_string())?;
         Ok(())
     }
+}
+
+#[derive(Clone, Copy)]
+/// Immutable reference products the runner can prepare from its current validated input.
+pub(crate) enum InstantAnalysis {
+    /// The complete cell/corridor boundary catalog for this graph and current classic ownership.
+    Boundaries,
+    /// The causal plan and lowering evidence for this graph and its validated catalog.
+    Layers,
 }
 
 /// Each result names its owner instead of exposing the mutable graph to a builder.
@@ -38,7 +52,10 @@ pub(crate) enum PlanOutput {
 }
 
 impl PlanOutput {
-    pub(super) fn publish(self, graph: &mut CompileGraph) {
+    /// Check publication shapes before zip/index operations can discard data or panic.
+    pub(super) fn publish(self, graph: &mut CompileGraph) -> Result<PlanChange, GraphBuildError> {
+        self.validate_shape(graph)?;
+        let change = self.change();
         match self {
             Self::MixedClassic(program) => graph.plans.mixed_classic = program,
             Self::FixedClassic(plans) => graph.plans.fixed_classic = plans,
@@ -84,5 +101,53 @@ impl PlanOutput {
             }
             Self::Proxies(proxies) => graph.plans.instant.proxies = proxies,
         }
+        Ok(change)
+    }
+
+    fn change(&self) -> PlanChange {
+        match self {
+            Self::MixedClassic(_) => PlanChange::MixedClassic,
+            Self::FixedClassic(_) => PlanChange::FixedClassic,
+            Self::Boundaries(_) => PlanChange::Boundaries,
+            Self::Layers(_) => PlanChange::Layers,
+            Self::FixedSignals(_) => PlanChange::FixedSignals,
+            Self::ClassicNets(_) => PlanChange::ClassicNets,
+            Self::TurboCallbacks(_) => PlanChange::TurboCallbacks,
+            Self::DustPaths(_) => PlanChange::DustPaths,
+            Self::WireQueries(_) => PlanChange::WireQueries,
+            Self::WireCallbacks(_) => PlanChange::WireCallbacks,
+            Self::WireHops(_) => PlanChange::WireHops,
+            Self::InstantResets(_) => PlanChange::InstantResets,
+            Self::Regions(_) => PlanChange::Regions,
+            Self::Proxies(_) => PlanChange::Proxies,
+        }
+    }
+
+    fn validate_shape(&self, graph: &CompileGraph) -> Result<(), GraphBuildError> {
+        let aligned = match self {
+            Self::WireQueries(rows) => Some(("wire query facts", rows.len())),
+            Self::WireCallbacks(rows) => Some(("wire callback selection", rows.len())),
+            Self::WireHops(rows) => Some(("wire hop roots", rows.len())),
+            Self::TurboCallbacks(rows) if !rows.is_empty() => Some(("Turbo callback indices", rows.len())),
+            _ => None,
+        };
+        if let Some((table, actual)) = aligned {
+            if actual != graph.wires.len() {
+                return Err(GraphBuildError::StateTableLength {
+                    table,
+                    descriptions: graph.wires.len(),
+                    states: actual,
+                });
+            }
+        }
+        if let Self::InstantResets(rows) = self {
+            let mut seen = vec![false; graph.wires.len()];
+            for &(wire, _) in rows {
+                if wire >= seen.len() || std::mem::replace(&mut seen[wire], true) {
+                    return Err(GraphBuildError::InvalidInstantReset { wire });
+                }
+            }
+        }
+        Ok(())
     }
 }
