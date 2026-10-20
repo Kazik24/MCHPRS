@@ -63,7 +63,9 @@ impl DiscoveryIndex {
             check_cancelled(monitor)?;
             index.dust_path_wires.extend(path.wires.iter().copied());
         }
-        index.dust_path_wires.extend(graph.plans.classic_nets.iter().flat_map(|net|net.wires.iter().map(|wire|wire.node)));
+        index
+            .dust_path_wires
+            .extend(graph.plans.classic_nets.iter().flat_map(|net| net.wires.iter().map(|wire| wire.node)));
         for (id, site) in graph.sites.iter().enumerate() {
             check_cancelled(monitor)?;
             index.sites_at.insert(site.position, SiteId::new(id as u32));

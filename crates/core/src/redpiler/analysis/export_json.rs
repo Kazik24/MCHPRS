@@ -1,11 +1,11 @@
 //! Versioned inspection JSON for the richer graph drafts.
 mod classic;
+mod cpu_kernels;
 mod fixed_classic;
 mod fixed_signals;
 mod instant_boundaries;
-mod instant_layers;
 mod instant_events;
-mod cpu_kernels;
+mod instant_layers;
 
 /// The same executable records as the full export, for focused compiler research.
 #[cfg(test)]
@@ -838,7 +838,10 @@ impl GraphExport {
             if wire.callback_selection.is_some_and(|selection| !selection.valid()) {
                 return Err(ExportError::new("validation", "invalid compiled wire callback masks"));
             }
-            if wire.instant_node.is_some_and(|node| node.receivers == 0 || node.receivers & !WireCallbackSelection::ALL != 0) {
+            if wire
+                .instant_node
+                .is_some_and(|node| node.receivers == 0 || node.receivers & !WireCallbackSelection::ALL != 0)
+            {
                 return Err(ExportError::new("validation", "invalid instant wire node mask"));
             }
             check_ref(&nodes, &wire.node, "wire node")?;
@@ -1478,7 +1481,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.bud_memory_reads.is_empty() {
         capabilities.push("bud_memory_reads");
     }
-    if !source.plans.cpu_kernels.entries.is_empty() { capabilities.push("cpu_kernel_execution"); }
+    if !source.plans.cpu_kernels.entries.is_empty() {
+        capabilities.push("cpu_kernel_execution");
+    }
     if !source.plans.instant.regions.is_empty() {
         capabilities.push("instant_regions");
     }
@@ -1491,8 +1496,12 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.instant.proxies.is_empty() {
         capabilities.push("instant_proxies");
     }
-    if source.wires.iter().any(|wire| wire.execution.abstract_instant_net) { capabilities.push("unsafe_abstract_instant_nets"); }
-    if source.wires.iter().any(|wire| wire.execution.instant_node.is_some()) { capabilities.push("instant_wire_nodes"); }
+    if source.wires.iter().any(|wire| wire.execution.abstract_instant_net) {
+        capabilities.push("unsafe_abstract_instant_nets");
+    }
+    if source.wires.iter().any(|wire| wire.execution.instant_node.is_some()) {
+        capabilities.push("instant_wire_nodes");
+    }
     if source.wires.iter().any(|wire| wire.execution.instant_reset.is_some()) {
         capabilities.push("instant_reset_plans");
     }

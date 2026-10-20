@@ -309,20 +309,19 @@ fn stable_o4_adder_export_reports_selected_kernels_and_retained_observations() {
     let document: Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
     let graph = &document["graph"];
     assert!(!graph["instant_cells"].as_array().unwrap().is_empty());
-    if cfg!(feature = "experimental-instant-events") {
-        assert!(graph.get("instant_layer_regions").is_none());
-        let kernels = graph["instant_event_kernels"].as_array().unwrap();
-        assert_eq!(kernels.len(), 1);
-        assert_eq!(kernels[0]["actors"].as_array().unwrap().len(), 13);
-        assert_eq!(kernels[0]["entries"].as_array().unwrap().len(), 13);
-        assert_eq!(kernels[0]["wire_propagation_removed"], false);
-        assert!(graph["wire_plans"].as_array().unwrap().iter().all(|wire| wire["mutable_captures"].is_u64()));
-    } else {
-        assert!(!graph["instant_layer_declines"].as_array().unwrap().is_empty());
-        let regions = graph["instant_layer_regions"].as_array().unwrap();
-        assert!(!regions.is_empty(), "ordinary instant outputs can now be compiled");
-        assert!(regions.iter().any(|region| !region["graph_outputs"].as_array().unwrap().is_empty()));
-    }
+    assert!(graph.get("instant_layer_regions").is_none());
+    let kernels = graph["instant_event_kernels"].as_array().unwrap();
+    assert_eq!(kernels.len(), 1);
+    assert_eq!(kernels[0]["actors"].as_array().unwrap().len(), 13);
+    assert_eq!(kernels[0]["entries"].as_array().unwrap().len(), 13);
+    assert_eq!(kernels[0]["wire_propagation_removed"], false);
+    assert!(
+        graph["wire_plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|wire| wire["mutable_captures"].is_u64())
+    );
     assert!(graph["instant_proxies"].as_array().unwrap().is_empty());
     assert!(
         graph.get("instant_kernel").is_none(),

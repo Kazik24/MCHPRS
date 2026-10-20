@@ -24,7 +24,12 @@ impl GraphBackend {
             certified_classic_wires: classic.wires.len(),
             fixed_classic_nodes: self.fixed_classic.as_ref().map_or(0, |program| program.nodes.len()),
             fixed_classic_wires: self.fixed_classic.as_ref().map_or(0, |program| program.wires.len()),
-            instant_kernel_nodes: self.program.instant_kernels().iter().map(|kernel| kernel.actors.len() + kernel.wires.len()).sum(),
+            instant_kernel_nodes: self
+                .program
+                .instant_kernels()
+                .iter()
+                .map(|kernel| kernel.actors.len() + kernel.wires.len())
+                .sum(),
             native_nodes: 0,
             private_proxy_pistons: self.program.instant_proxies().iter().map(|proxy| proxy.private_cells.len()).sum(),
             reset_transfer_entries: self.program.wires().iter().filter(|wire| wire.execution.instant_reset.is_some()).count(),

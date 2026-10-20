@@ -88,8 +88,9 @@ function validateCpuKernels(program, ids) {
         if (s.kind === "resource_at") ref(s.contact,"contact");
       } else fail();
     } else if (read?.kind === "guard") ref(read.guard,"guard");
-    else if (["strength","input"].includes(read?.kind)) {
+    else if (["strength","input","wire_emission"].includes(read?.kind)) {
       ref(read.node,"node");
+      if (read.kind === "wire_emission" && !["north","south","east","west","top","bottom"].includes(read.face)) fail();
       if (read.kind === "input" && !["main","quasi"].includes(read.port)) fail();
     } else if (read?.kind === "source") {
       ref(read.site,"site");
@@ -100,7 +101,7 @@ function validateCpuKernels(program, ids) {
         if (typeof port.include_dust !== "boolean") fail();
       } else if (!["stored","output"].includes(port?.kind)) fail();
     } else fail();
-    if (["strength","source"].includes(read.kind) && (!Number.isInteger(read.threshold) || read.threshold < 0 || read.threshold > 14)) fail();
+    if (["strength","source","wire_emission"].includes(read.kind) && (!Number.isInteger(read.threshold) || read.threshold < 0 || read.threshold > 14)) fail();
   }
   const masks = ["require_true","require_false"].map((key) => {
     if (!Array.isArray(program[key]) || program[key].some((s) => typeof s !== "string" || !/^[0-9a-fA-F]{16}$/.test(s))) fail();

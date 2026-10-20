@@ -53,11 +53,6 @@ fn native_operation(world: &mut PlotWorld, operation: Operation) {
 #[test]
 #[ignore = "five alternating interpreter/max pairs for five devices, including full BubbleSort"]
 fn maximum_pipeline_interpreter_tps_for_all_requested_builds() {
-    assert!(cfg!(feature = "experimental-cpu-kernels"), "TPS maximum requires CPU kernel feature");
-    assert!(
-        cfg!(feature = "experimental-instant-wire-nodes"),
-        "TPS maximum includes the certified wire-node experiment"
-    );
     assert!(
         !cfg!(feature = "unsafe-abstract-instant-nets") && !cfg!(feature = "unsafe-turbo-fixed-point"),
         "known incorrect experiments cannot enter the maximum-correctness comparison"
@@ -251,6 +246,106 @@ fn maximum_pipeline_interpreter_tps_for_all_requested_builds() {
         std::fs::write(
             directory.join("maximum-vs-interpreter-tps.json"),
             serde_json::to_vec_pretty(&reports).unwrap(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+#[ignore = "five complete BubbleSort pairs: packed masks/Source reads versus scalar predicates/typed wires"]
+fn cpu_scalar_wire_bubblesort_paired_inference() {
+    let cpu = cpus::CPUS[2];
+    let (world, bounds, _) = large_builds::load_cpu(cpu);
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(5),
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(
+        &world,
+        bounds,
+        world.scheduler().iter_entries().collect(),
+        &monitor,
+        AnalysisLimits::for_budget(8),
+    )
+    .unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    assert_eq!(prepared.graph.plans.instant_events.len(), 1);
+    let lowered = prepared.lower(&monitor).unwrap();
+    let reference = lowered.program.clone().with_general_cpu_predicates().with_general_cpu_wire_reads();
+    let directory = root().join("target/cpu-scalar-wire-bubblesort");
+    std::fs::create_dir_all(&directory).unwrap();
+    let mut samples = Vec::new();
+    for pair in 0..5 {
+        let mut runs = Vec::new();
+        for enabled in if pair % 2 == 0 { [false, true] } else { [true, false] } {
+            let mut backend = GraphBackend::from_lowered(
+                LoweredCircuit {
+                    program: if enabled { lowered.program.clone() } else { reference.clone() },
+                    state: lowered.state.clone(),
+                    logical_tick: lowered.logical_tick,
+                    positions: lowered.positions.clone(),
+                    imported_ticks: lowered.imported_ticks.clone(),
+                },
+                &monitor,
+            )
+            .unwrap();
+            backend.set_test_recording(false);
+            let mut host = empty();
+            host.disable_command_output_limits_for_replay();
+            let start = Instant::now();
+            backend.use_block(cpu.origin + cpu.start).unwrap();
+            for _ in 0..10036 {
+                backend.tick_with_world(&mut host).unwrap();
+            }
+            let seconds = start.elapsed().as_secs_f64();
+            runs.push((enabled, seconds, backend, host));
+        }
+        runs.sort_by_key(|run| run.0);
+        runs[0].2.assert_same_execution_state(&runs[1].2);
+        assert_eq!(runs[0].2.execution_counts(), runs[1].2.execution_counts());
+        assert_eq!(
+            runs[0].3.command_output().collect::<Vec<_>>(),
+            runs[1].3.command_output().collect::<Vec<_>>()
+        );
+        let mut projected = large_builds::load_cpu(cpu).0;
+        project(&runs[1].2, &mut projected);
+        for row in 0..16 {
+            let word = (0..12).fold(0u16, |word, bit| {
+                let Block::Piston { piston } = projected.get_block(cpu.origin + BlockPos::new(175 + 4 * bit, 37, 62 - 4 * row)) else {
+                    panic!("RAM cell")
+                };
+                word | (u16::from(!piston.extended) << bit)
+            });
+            assert_eq!(word, row as u16, "complete sorted RAM");
+        }
+        println!(
+            "BubbleSort scalar/wire pair {}: {:.6}s -> {:.6}s ({:.2} -> {:.2} TPS)",
+            pair + 1,
+            runs[0].1,
+            runs[1].1,
+            10036.0 / runs[0].1,
+            10036.0 / runs[1].1
+        );
+        samples.push(json!({"pair":pair+1,"ticks":10036,"baseline_seconds":runs[0].1,"enabled_seconds":runs[1].1,"baseline_tps":10036.0/runs[0].1,"enabled_tps":10036.0/runs[1].1,"work_counts":format!("{:?}",runs[1].2.execution_counts())}));
+        std::fs::write(
+            directory.join("paired.json"),
+            serde_json::to_vec_pretty(&json!({
+                "build":"cpu_bubblesort","source_hash":cpu.sha256,"optimization_level":5,"stable_instant_inputs":false,
+                "baseline":"same production graph with general packed-mask predicates and Source wire reads",
+                "candidate":"scalar predicate specialization and typed wire emission reads",
+                "original_world_used_for_graph_inference":false,"sorted_ram":true,"exact_state_future_work_counts":true,"samples":samples
+            }))
+            .unwrap(),
         )
         .unwrap();
     }

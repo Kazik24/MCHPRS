@@ -10,6 +10,7 @@
 mod chungus_census;
 pub(crate) mod classic;
 mod coverage;
+mod cpu_kernels;
 mod fixed_classic;
 mod fixed_point;
 #[cfg(test)]
@@ -20,7 +21,6 @@ mod instant;
 #[path = "graph/tests/instant_cpu.rs"]
 mod instant_cpu_tests;
 mod instant_kernel;
-mod cpu_kernels;
 mod instant_proxy;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
@@ -844,12 +844,20 @@ impl GraphBackend {
     }
 
     #[cfg(test)]
+    pub(crate) fn circuit_state(&self) -> &CircuitState {
+        &self.state
+    }
+
+    #[cfg(test)]
     pub(crate) fn assert_same_execution_state(&self, other: &Self) {
         assert_eq!(self.state, other.state, "authoritative graph state");
         assert_eq!(self.future.clock.logical_tick, other.future.clock.logical_tick);
         assert_eq!(self.future.clock.phase, other.future.clock.phase);
         assert_eq!(self.future.clock.scheduled_advanced, other.future.clock.scheduled_advanced);
-        assert_eq!(self.future.scheduler.iter().collect::<Vec<_>>(), other.future.scheduler.iter().collect::<Vec<_>>());
+        assert_eq!(
+            self.future.scheduler.iter().collect::<Vec<_>>(),
+            other.future.scheduler.iter().collect::<Vec<_>>()
+        );
         assert_eq!(self.future.pending, other.future.pending);
         assert_eq!(self.future.pending_nodes, other.future.pending_nodes);
         assert_eq!(self.future.piston_requests, other.future.piston_requests);
@@ -1754,7 +1762,7 @@ impl GraphBackend {
         delivery: RouteDelivery,
         captured: Option<&[Option<ObservedSite>]>,
     ) -> Result<(), GraphExecutionError> {
-        if matches!(delivery.kind,DeliveryKind::Update {..}) && delivery.receiver.is_some_and(|receiver|self.instant_event_noop(receiver)) {
+        if matches!(delivery.kind, DeliveryKind::Update { .. }) && delivery.receiver.is_some_and(|receiver| self.instant_event_noop(receiver)) {
             return Ok(());
         }
         if !self.guard_matches(delivery.guard, captured) {

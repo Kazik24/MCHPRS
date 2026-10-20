@@ -137,6 +137,7 @@ impl FixedClassicPlans {
 
 impl FixedClassicProgram {
     /// Keep the lowered-program entry point for differential tests of both views.
+    #[cfg(test)]
     pub(crate) fn compile(program: &CircuitProgram, state: &CircuitState) -> Result<Self, String> {
         Self::compile_view(FixedClassicView::Lowered(program, state), &TaskMonitor::default())
     }
@@ -594,6 +595,7 @@ enum FixedClassicView<'a> {
         readers: rustc_hash::FxHashSet<PowerTarget>,
         comparators: Vec<Option<usize>>,
     },
+    #[cfg_attr(not(test), expect(dead_code, reason = "The lowered view is constructed only by differential tests."))]
     Lowered(&'a CircuitProgram, &'a CircuitState),
 }
 struct FixedClassicNodeView<'a> {

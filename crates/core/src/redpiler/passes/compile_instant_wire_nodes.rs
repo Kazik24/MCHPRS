@@ -1,4 +1,4 @@
-//! Experimental local signal nodes for isolated dust serving only recognized instant cells.
+//! O4 local signal nodes for isolated dust serving only recognized instant cells.
 //!
 //! The builder reads the graph and publishes a receiver-slot mask. Lowering keeps the
 //! original wire state and routes; execution replaces discovery/capture with ordered
@@ -6,7 +6,7 @@
 //! must stay inside the instant boundary. Lamps, classic gates, ordinary pistons,
 //! other dust, and overlapping execution owners decline. Reset clocks retain their
 //! original scheduler obligations. Cost is linear in graph edges plus local closure.
-//! Enable explicitly with the experimental-instant-wire-nodes Cargo feature at O3+.
+//! Selected by normal O4/O5; every admitted boundary is certified without a Cargo feature.
 use super::{
     PassContext,
     planning::{PlanBuilder, PlanOutput},

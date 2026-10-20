@@ -70,7 +70,9 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "-O2",
         "-O3",
         "-O4",
+        "-O5",
         "--stable-instant-inputs",
+        "--classic-redstone",
     ]
     .into_iter()
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
@@ -2045,7 +2047,9 @@ mod security_tests {
                     "-O2",
                     "-O3",
                     "-O4",
+                    "-O5",
                     "--stable-instant-inputs",
+                    "--classic-redstone",
                 ],
             ),
             ("/rp analyze --ex", vec!["--export-json"]),

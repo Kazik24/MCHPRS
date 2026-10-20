@@ -69,6 +69,7 @@ impl LayerCompilationContext {
 }
 
 /// Build deterministic cell regions and compile only the narrow cases with proven request cuts.
+#[cfg(test)]
 pub(crate) fn compile_layers(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<LayeredInstantPlan, String> {
     compile_layers_with_context(graph, catalog, monitor).map(|(plan, _)| plan)
 }

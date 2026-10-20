@@ -383,9 +383,7 @@ fn graph_feedback_preserves_hidden_state_and_scheduler_on_reset() {
                     let transformations = &statistics.graph.transformations;
                     assert!(!transformations.is_empty());
                     assert!(
-                        transformations
-                            .iter()
-                            .all(|pass| pass.enabled == (optimize && pass.name != "compile-classic-redstone")),
+                        transformations.iter().all(|pass| pass.enabled == optimize),
                         "the selected optimization mode must reach every configured pass"
                     );
                     compiled.clear_scheduled_ticks();

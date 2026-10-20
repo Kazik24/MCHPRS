@@ -1,5 +1,9 @@
 # CPU-friendly classic execution: measured baseline and proposed next step
 
+All certified passes are now selected in normal production
+[O1–O5 tiers](../../REDPILER_OPTIMIZATION_LEVELS.md), including live-input event
+kernels at O4 and CPU packing at O5. No experimental Cargo flag is required.
+
 The next separate pass, [CPU kernel packing](CPU_KERNEL_EXECUTION.md), is
 implemented: flat live reads, minimized Boolean masks and AVX2/scalar matching
 replace repeated kernel power/acceptance traversal without moving FIFO effects.

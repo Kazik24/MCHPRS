@@ -67,22 +67,43 @@ fn execute(backend: &mut GraphBackend, operation: Operation, controls: &mut std:
 #[test]
 #[ignore = "explicit one-kernel FPU, random native histories, and five alternating timing pairs"]
 fn fpu_random_inputs_one_kernel_and_paired_inference() {
-    random_fpu(true, false);
+    random_fpu(true, CpuComparison::Off);
 }
 
 #[test]
 #[ignore = "explicit random switching-cost diagnostic; constant outputs do not establish arithmetic throughput"]
 fn fpu_random_inputs_one_kernel_diagnostic_measurement() {
-    random_fpu(false, false);
+    random_fpu(false, CpuComparison::Off);
 }
 
 #[test]
 #[ignore = "explicit isolated CPU packing versus event kernels: native replay and five alternating timing pairs"]
 fn fpu_cpu_kernels_paired_inference() {
-    random_fpu(false, true);
+    random_fpu(false, CpuComparison::Packing);
 }
 
-fn random_fpu(require_activity: bool, cpu: bool) {
+#[test]
+#[ignore = "explicit scalar predicates versus mask packing on the same FPU graph and executable"]
+fn fpu_cpu_scalar_paired_inference() {
+    random_fpu(false, CpuComparison::Scalar);
+}
+
+#[test]
+#[ignore = "explicit typed wire emission versus original Source reads with identical scalar predicates"]
+fn fpu_cpu_wire_emission_paired_inference() {
+    random_fpu(false, CpuComparison::WireEmission);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CpuComparison {
+    Off,
+    Packing,
+    Scalar,
+    WireEmission,
+}
+
+fn random_fpu(require_activity: bool, comparison: CpuComparison) {
+    let cpu = comparison != CpuComparison::Off;
     let fixture = manifest("fpu_legal");
     let (mut native, bounds) = load(&fixture);
     native.disable_command_output_limits_for_replay();
@@ -150,10 +171,19 @@ fn random_fpu(require_activity: bool, cpu: bool) {
         .iter()
         .map(|wire| wire.execution.mutable_captures.unwrap().count_ones() as usize)
         .sum::<usize>();
-    let directory = root().join(if cpu { "target/cpu-kernels" } else { "target/instant-event-kernels" });
+    let directory = root().join(match comparison {
+        CpuComparison::Off => "target/instant-event-kernels",
+        CpuComparison::Packing => "target/cpu-kernels",
+        CpuComparison::Scalar => "target/cpu-scalar",
+        CpuComparison::WireEmission => "target/cpu-wire-emission",
+    });
     std::fs::create_dir_all(&directory).unwrap();
     if cpu {
-        std::fs::write(directory.join("fpu-packed-kernel.json"),serde_json::to_vec_pretty(&crate::redpiler::analysis::export_json::cpu_kernel_records(&prepared.graph)).unwrap()).unwrap();
+        std::fs::write(
+            directory.join("fpu-packed-kernel.json"),
+            serde_json::to_vec_pretty(&crate::redpiler::analysis::export_json::cpu_kernel_records(&prepared.graph)).unwrap(),
+        )
+        .unwrap();
     }
     let records = crate::redpiler::analysis::export_json::event_kernel_records(&prepared.graph);
     std::fs::write(
@@ -252,7 +282,17 @@ fn random_fpu(require_activity: bool, cpu: bool) {
     for pair in 0..5 {
         let mut runs = Vec::new();
         for enabled in if pair % 2 == 0 { [false, true] } else { [true, false] } {
-            let mut backend = make(if enabled { &prepared.graph } else { &baseline_graph });
+            let mut backend = make(if enabled || matches!(comparison, CpuComparison::Scalar | CpuComparison::WireEmission) {
+                &prepared.graph
+            } else {
+                &baseline_graph
+            });
+            if !enabled && comparison == CpuComparison::Scalar {
+                backend.use_general_cpu_predicates();
+            }
+            if !enabled && comparison == CpuComparison::WireEmission {
+                backend.use_general_cpu_wire_reads();
+            }
             let mut controls = initial_controls.clone();
             let mut host = empty();
             host.disable_command_output_limits_for_replay();
@@ -288,7 +328,9 @@ fn random_fpu(require_activity: bool, cpu: bool) {
     }
     let packed = &prepared.graph.plans.cpu_kernels;
     let predicates: Vec<_> = packed.entries.iter().flat_map(|e| [e.main, e.quasi, e.valid]).collect();
-    let report = json!({"fixture":"fpu_legal","cpu_packing":cpu,"packing_seconds":packing_seconds,
+    let report = json!({"fixture":"fpu_legal","cpu_packing":cpu,"scalar_comparison":comparison == CpuComparison::Scalar,"packing_seconds":packing_seconds,
+        "wire_emission_comparison":comparison == CpuComparison::WireEmission,
+        "predicate_kinds":predicates.iter().fold(std::collections::BTreeMap::<String,usize>::new(), |mut m,p| { *m.entry(if p.read_len == 0 { "Constant".into() } else { format!("{:?}",p.kind) }).or_default() += 1; m }),
         "cpu_entries":packed.entries.len(),"cpu_reads":packed.reads.len(),"cpu_clauses":packed.require_true.len(),
         "simd_predicates":predicates.iter().filter(|p| p.clause_len >= 4).count(),
         "cpu_read_kinds":format!("{:?}",packed.reads.iter().fold(std::collections::BTreeMap::<String,usize>::new(), |mut m,r| { *m.entry(format!("{:?}",r).split(['(', '{']).next().unwrap().trim().to_owned()).or_default()+=1; m })),

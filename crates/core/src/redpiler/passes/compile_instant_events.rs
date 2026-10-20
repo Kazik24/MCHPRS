@@ -1,4 +1,5 @@
-//! Experimental stateful kernels: compile connected shared cells with FIFO-local entries.
+//! O4 stateful kernels: compile connected shared cells with FIFO-local entries.
+//! Live-input sampling requires no stable-input promise; old layer execution is separate.
 //!
 //! Each entry checks readiness and Main/Quasi power at the original acceptance
 //! cut, then evaluates its reduced resource predicate. It consumes only the popped request; foreign requests, clocks,

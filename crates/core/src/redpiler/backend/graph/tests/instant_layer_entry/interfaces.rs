@@ -53,8 +53,11 @@ fn captured_wire_request_executes_a_kernel_and_rechecks_restored_power() {
         let mut native = wire_controlled_cell_world();
         let mut backend = compile_world(&world);
         assert!(backend.program.instant_kernels().iter().any(|kernel| {
-            let KernelProgram::PullWave {program, ..} = &kernel.program else { return false };
-            program.inputs
+            let KernelProgram::PullWave { program, .. } = &kernel.program else {
+                return false;
+            };
+            program
+                .inputs
                 .iter()
                 .any(|input| matches!(input.source, LayerInputSource::BoundaryRequest { .. }))
         }));

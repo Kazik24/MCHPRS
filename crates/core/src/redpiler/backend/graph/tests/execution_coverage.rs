@@ -4,7 +4,11 @@ use crate::redpiler::GraphExecutionCoverage;
 
 fn assert_partition(coverage: GraphExecutionCoverage) {
     assert_eq!(
-        coverage.general_graph_nodes() + coverage.compiled_classic_wires + coverage.fixed_classic_nodes + coverage.instant_kernel_nodes + coverage.native_nodes,
+        coverage.general_graph_nodes()
+            + coverage.compiled_classic_wires
+            + coverage.fixed_classic_nodes
+            + coverage.instant_kernel_nodes
+            + coverage.native_nodes,
         coverage.component_nodes
     );
     assert!(coverage.compiled_classic_wires <= coverage.certified_classic_wires);
@@ -104,10 +108,14 @@ fn active_classic_wire_coverage_returns_to_graph_after_deoptimization() {
         world.set_block(position, Block::RedstoneWire { wire });
     }
     let options = crate::redpiler::CompilerOptions {
-        optimization_level: Some(2), classic_redstone: true, ..Default::default()
+        optimization_level: Some(2),
+        classic_redstone: true,
+        ..Default::default()
     };
     let mut pipeline = passes::default_graph_pipeline(&options);
-    pipeline.entries.retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+    pipeline
+        .entries
+        .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
     let mut backend = GraphBackend::compile_with_pipeline(
         &world,
         (ORIGIN - BlockPos::new(1, 1, 1), ORIGIN + BlockPos::new(6, 2, 1)),

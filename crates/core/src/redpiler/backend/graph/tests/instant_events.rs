@@ -46,7 +46,7 @@ fn prepare_mode(circuit: &Adder, cpu: bool) -> (LoweredCircuit, LoweredCircuit) 
     if cpu {
         let directory = root().join("target/cpu-kernels");
         std::fs::create_dir_all(&directory).unwrap();
-        std::fs::write(directory.join("packed-test.graph.json"),exported).unwrap();
+        std::fs::write(directory.join("packed-test.graph.json"), exported).unwrap();
     }
     let entry = graph.graph.plans.instant_events[0].clone();
     graph.graph.plans.instant_events[0].actors = Box::new([]);

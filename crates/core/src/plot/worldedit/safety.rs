@@ -116,7 +116,10 @@ mod tests {
         let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
         let connection = mchprs_network::test_support::connection(false).unwrap();
         let mut player = Player::test_player(connection.player);
-        let cb = load_schematic(std::io::Cursor::new(include_bytes!("../../../../../test_data/instant-pistons/PM1_SORT.schem"))).unwrap();
+        let cb = load_schematic(std::io::Cursor::new(include_bytes!(
+            "../../../../../test_data/instant-pistons/PM1_SORT.schem"
+        )))
+        .unwrap();
         assert_eq!((cb.size_x, cb.size_y, cb.size_z), (235, 202, 182));
         assert_eq!(cb.data.entries(), 8_639_540);
         player.pos = PlayerPos {

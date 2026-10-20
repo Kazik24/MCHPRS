@@ -27,25 +27,29 @@ mod lowering;
 pub(crate) use lowering::lower_prepared;
 mod validation;
 pub(crate) use execution_plans::*;
+pub(crate) mod cpu_kernels;
 mod instant_boundaries;
 mod instant_cells;
 mod instant_layers;
 mod instant_program;
 mod instant_regions;
 mod wire_callback_selection;
+mod wire_captures;
 mod wire_query_facts;
 mod wire_shapes;
-mod wire_captures;
-pub(crate) mod cpu_kernels;
-pub(crate) use cpu_kernels::{CpuKernelPlans, CpuKernelEntry, CpuPredicate, CpuRead};
+pub(crate) use cpu_kernels::{CpuKernelEntry, CpuKernelPlans, CpuPredicate, CpuRead};
 mod bud_memory_reads;
 pub(crate) use bud_memory_reads::{BudMemoryRead, infer_bud_memory_reads};
 pub(crate) use wire_captures::WireCapture;
 mod instant_wire_nodes;
+#[cfg(test)]
+pub(crate) use instant_wire_nodes::ClosedInstantNetCensus;
+pub(crate) use instant_wire_nodes::infer_abstract_instant_nets;
+#[cfg(test)]
+pub(crate) use instant_wire_nodes::with_relaxed_instant_net_electrical_boundaries;
 pub(crate) use instant_wire_nodes::{InstantWireNode, infer_instant_wire_nodes};
 #[cfg(test)]
-pub(crate) use instant_wire_nodes::census_closed_instant_nets;
-pub(crate) use instant_wire_nodes::infer_abstract_instant_nets;
+pub(crate) use instant_wire_nodes::{census_closed_instant_nets, census_instant_nets};
 pub(crate) use wire_callback_selection::WireCallbackSelection;
 pub(crate) use wire_shapes::WireShape;
 mod fixed_signals;
@@ -925,9 +929,15 @@ pub(crate) struct CircuitProgram {
 
 impl CircuitProgram {
     #[cfg(test)]
-    pub(crate) fn bud_memory_reads(&self)->&[BudMemoryRead] {&self.bud_memory_reads}
-    pub(crate) fn bud_memory_read(&self, node:NodeId)->Option<&BudMemoryRead> {
-        self.bud_read_by_node.get(node.index()).copied().flatten().map(|index|&self.bud_memory_reads[index as usize])
+    pub(crate) fn bud_memory_reads(&self) -> &[BudMemoryRead] {
+        &self.bud_memory_reads
+    }
+    pub(crate) fn bud_memory_read(&self, node: NodeId) -> Option<&BudMemoryRead> {
+        self.bud_read_by_node
+            .get(node.index())
+            .copied()
+            .flatten()
+            .map(|index| &self.bud_memory_reads[index as usize])
     }
     pub(crate) fn wire_capture(&self, site: SiteId) -> Option<&WireCapture> {
         self.wire_captures.get(site.index())
@@ -941,11 +951,11 @@ impl CircuitProgram {
 
     #[cfg(test)]
     pub(crate) fn instant_kernel_for_actor(&self, actor: PistonId) -> Option<&std::sync::Arc<InstantKernel>> {
-        self.instant_kernel_binding(actor).map(|(kernel,_)|kernel)
+        self.instant_kernel_binding(actor).map(|(kernel, _)| kernel)
     }
 
-    pub(crate) fn instant_kernel_binding(&self, actor:PistonId)->Option<(&std::sync::Arc<InstantKernel>,usize)> {
-        self.instant.kernel_by_actor[actor.index()].map(|(kernel,entry)|(&self.instant.kernels[kernel as usize],entry as usize))
+    pub(crate) fn instant_kernel_binding(&self, actor: PistonId) -> Option<(&std::sync::Arc<InstantKernel>, usize)> {
+        self.instant.kernel_by_actor[actor.index()].map(|(kernel, entry)| (&self.instant.kernels[kernel as usize], entry as usize))
     }
 
     pub(crate) fn cpu_kernel_entry(&self, actor: PistonId) -> Option<CpuKernelEntry> {
@@ -953,7 +963,43 @@ impl CircuitProgram {
         (index != u32::MAX).then(|| self.instant.cpu.entries[index as usize])
     }
 
-    pub(crate) fn cpu_kernels(&self) -> &CpuKernelPlans { &self.instant.cpu }
+    pub(crate) fn cpu_kernels(&self) -> &CpuKernelPlans {
+        &self.instant.cpu
+    }
+    #[cfg(test)]
+    pub(crate) fn with_general_cpu_predicates(mut self) -> Self {
+        for entry in &mut self.instant.cpu.entries {
+            for predicate in [&mut entry.main, &mut entry.quasi, &mut entry.valid] {
+                predicate.kind = cpu_kernels::CpuPredicateKind::Masks;
+            }
+        }
+        self
+    }
+    #[cfg(test)]
+    pub(crate) fn with_general_cpu_wire_reads(mut self) -> Self {
+        let sites: FxHashMap<_, _> = self
+            .sites
+            .iter()
+            .enumerate()
+            .filter_map(|(index, site)| {
+                if let SiteSource::Component(node) = site.source {
+                    Some((node, SiteId::new(index as u32)))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for read in &mut self.instant.cpu.reads {
+            if let CpuRead::WireEmission { node, face, threshold } = *read {
+                *read = CpuRead::Source {
+                    site: sites[&node],
+                    port: PowerPort::Strong(face),
+                    threshold,
+                };
+            }
+        }
+        self
+    }
     #[cfg(test)]
     pub(crate) fn without_fixed_wire_callbacks(&self) -> Self {
         let mut general = self.clone();

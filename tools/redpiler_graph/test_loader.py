@@ -30,6 +30,13 @@ class CpuKernelTests(unittest.TestCase):
             changed["require_true"] = [value]
             with self.assertRaises(GraphFormatError):
                 _validate_cpu_kernels(changed, ref)
+        program["reads"][0] = {"kind": "wire_emission", "node": "node:0", "face": "north", "threshold": 3}
+        _validate_cpu_kernels(program, ref)
+        for field, value in (("face", "up"), ("threshold", 15), ("threshold", True), ("node", "node:1")):
+            changed = copy.deepcopy(program)
+            changed["reads"][0][field] = value
+            with self.assertRaises(GraphFormatError):
+                _validate_cpu_kernels(changed, ref)
 
 
 def document() -> dict:

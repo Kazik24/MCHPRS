@@ -2,6 +2,24 @@
 use super::*;
 use rustc_hash::FxHashSet;
 
+#[cfg(test)]
+thread_local! {
+    static RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn with_relaxed_instant_net_electrical_boundaries<R>(work: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES.set(self.0);
+        }
+    }
+    let previous = RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES.replace(true);
+    let _restore = Restore(previous);
+    work()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct InstantWireNode {
     /// Canonical receiver slots; execution retains each receiver's first qualifying sample.
@@ -135,7 +153,11 @@ pub(crate) fn infer_abstract_instant_nets(graph: &CompileGraph, monitor: &crate:
     let Some(catalog) = &graph.plans.instant.boundaries else {
         return Ok(masks);
     };
-    let census = census_closed_instant_nets(graph, catalog, monitor)?;
+    #[cfg(test)]
+    let relax_electrical_boundaries = RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES.get();
+    #[cfg(not(test))]
+    let relax_electrical_boundaries = false;
+    let census = census_instant_nets(graph, catalog, monitor, relax_electrical_boundaries)?;
     for net in census.closed.iter().filter(|net| net.wires > 1) {
         debug_assert!(!net.actors.is_empty());
         for &node in &catalog.corridors[net.corridor as usize].wires {
@@ -153,6 +175,15 @@ pub(crate) fn census_closed_instant_nets(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,
     monitor: &crate::redpiler::TaskMonitor,
+) -> Result<ClosedInstantNetCensus, String> {
+    census_instant_nets(graph, catalog, monitor, false)
+}
+
+pub(crate) fn census_instant_nets(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &crate::redpiler::TaskMonitor,
+    relax_electrical_boundaries: bool,
 ) -> Result<ClosedInstantNetCensus, String> {
     let actors: FxHashSet<_> = catalog.cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect();
     let resets: FxHashSet<_> = catalog
@@ -205,7 +236,7 @@ pub(crate) fn census_closed_instant_nets(
             if !closed_instant_sources(graph, node, &members, &actors, &resets, &allowed_contacts, &incoming) {
                 issue.get_or_insert("outside_signal_source");
             }
-            if !closed_net_power(graph, node, Some(&members), &aliases, &outgoing, &actors) {
+            if !relax_electrical_boundaries && !closed_net_power(graph, node, Some(&members), &aliases, &outgoing, &actors) {
                 issue.get_or_insert("outside_electrical_consumer");
             }
             let CircuitNodeKind::Wire(index) = graph.nodes[node.index()].kind else {

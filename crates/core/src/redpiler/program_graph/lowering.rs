@@ -32,17 +32,25 @@ impl CircuitDraft {
         let kernel_duration = kernel_start.elapsed();
         let program_start = std::time::Instant::now();
         let mut kernel_by_actor = vec![None; self.pistons.len()];
-        let mut cpu_by_actor = if self.plans.cpu_kernels.entries.is_empty() { Vec::new() } else { vec![u32::MAX; self.pistons.len()] };
-        for (index, entry) in self.plans.cpu_kernels.entries.iter().enumerate() { cpu_by_actor[entry.actor.index()] = index as u32; }
+        let mut cpu_by_actor = if self.plans.cpu_kernels.entries.is_empty() {
+            Vec::new()
+        } else {
+            vec![u32::MAX; self.pistons.len()]
+        };
+        for (index, entry) in self.plans.cpu_kernels.entries.iter().enumerate() {
+            cpu_by_actor[entry.actor.index()] = index as u32;
+        }
         for (index, kernel) in kernels.iter().enumerate() {
             match &kernel.program {
-                KernelProgram::PullWave {pulls, ..} => {
+                KernelProgram::PullWave { pulls, .. } => {
                     for pull in pulls.iter().filter(|pull| pull.external) {
-                        kernel_by_actor[pull.actor.index()] = Some((index as u32,0));
+                        kernel_by_actor[pull.actor.index()] = Some((index as u32, 0));
                     }
                 }
                 KernelProgram::Events(entries) => {
-                    for (entry_index,entry) in entries.iter().enumerate() { kernel_by_actor[entry.actor.index()] = Some((index as u32,entry_index as u32)); }
+                    for (entry_index, entry) in entries.iter().enumerate() {
+                        kernel_by_actor[entry.actor.index()] = Some((index as u32, entry_index as u32));
+                    }
                 }
             }
         }
@@ -212,10 +220,14 @@ impl CircuitDraft {
             }
         }
 
-        let mut bud_read_by_node = if self.plans.bud_memory_reads.is_empty() {Vec::new()} else {vec![None;nodes.len()]};
-        for (index,read) in self.plans.bud_memory_reads.iter().enumerate() {
-            let node=self.pistons[read.reader.index()].node;
-            bud_read_by_node[node.index()]=Some(index as u32);
+        let mut bud_read_by_node = if self.plans.bud_memory_reads.is_empty() {
+            Vec::new()
+        } else {
+            vec![None; nodes.len()]
+        };
+        for (index, read) in self.plans.bud_memory_reads.iter().enumerate() {
+            let node = self.pistons[read.reader.index()].node;
+            bud_read_by_node[node.index()] = Some(index as u32);
         }
 
         let state = CircuitState {

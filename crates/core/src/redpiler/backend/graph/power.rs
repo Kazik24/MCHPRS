@@ -4,9 +4,12 @@ use crate::redpiler::power_rules::{emits_strong, emits_weak};
 impl GraphBackend {
     fn site_source_strength(&self, site: SiteId, resolved: &ResolvedSiteView) -> u8 {
         #[cfg(test)]
-        if let Some(tapes) = &self.test_recorder.wire_tapes { tapes.source_site(self, site); }
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
+            tapes.source_site(self, site);
+        }
         if let Some(proof) = &self.classic_proof
-            && self.program.sites()[site.index()].source == SiteSource::Component(proof.source) {
+            && self.program.sites()[site.index()].source == SiteSource::Component(proof.source)
+        {
             return proof.signal;
         }
         if let Some(CallbackReceiver::Component(node)) = resolved.receiver {
@@ -64,15 +67,19 @@ impl GraphBackend {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_input_strength(node, port);
         }
-        if port==InputPort::Quasi && let Some(read)=self.program.bud_memory_read(node) {
-            let state=self.state.resources[read.resource.index()];
-            return u8::from(state.enabled && state.at==read.source)*15;
+        if port == InputPort::Quasi
+            && let Some(read) = self.program.bud_memory_read(node)
+        {
+            let state = self.state.resources[read.resource.index()];
+            return u8::from(state.enabled && state.at == read.source) * 15;
         }
         if port == InputPort::Main
-            && let Some((net,attenuation,source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten()
-            && self.state.classic_active[net as usize] {
+            && let Some((net, attenuation, source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten()
+            && self.state.classic_active[net as usize]
+        {
             let source = self.program.classic().nets[net as usize].source;
-            return self.state.classic_signals[net as usize].saturating_sub(attenuation)
+            return self.state.classic_signals[net as usize]
+                .saturating_sub(attenuation)
                 .max(self.node_state(source).output_strength.saturating_sub(source_attenuation));
         }
         self.query_power(PowerTarget::Input { node, port })
@@ -92,7 +99,9 @@ impl GraphBackend {
         let mut maximum = 0;
         for link in self.program.power_links_to(target) {
             #[cfg(test)]
-            self.test_recorder.power_links_examined.set(self.test_recorder.power_links_examined.get() + 1);
+            self.test_recorder
+                .power_links_examined
+                .set(self.test_recorder.power_links_examined.get() + 1);
             if !self.guard_matches(link.guard, None) {
                 continue;
             }
@@ -153,7 +162,9 @@ impl GraphBackend {
 
     pub(super) fn stored_component_strength(&self, node: NodeId) -> u8 {
         #[cfg(test)]
-        if let Some(tapes) = &self.test_recorder.wire_tapes { tapes.read(self, node); }
+        if let Some(tapes) = &self.test_recorder.wire_tapes {
+            tapes.read(self, node);
+        }
         match &self.state.components[node.index()] {
             ComponentState::Electrical(state) => state.output_strength,
             ComponentState::Wire(_) => self.wire_state(node).power,
@@ -191,6 +202,16 @@ impl GraphBackend {
         let CircuitNodeKind::Wire(_) = self.program.nodes()[node.index()].kind else {
             return crate::redstone::wire::get_current_side(wire, side.unwrap_direction().opposite()) != RedstoneWireSide::None;
         };
+        self.wire_emits(node, wire, side)
+    }
+
+    pub(super) fn wire_emits(&self, node: NodeId, wire: RedstoneWire, side: BlockFace) -> bool {
+        if side == BlockFace::Top {
+            return true;
+        }
+        if side == BlockFace::Bottom {
+            return false;
+        }
         let plan = self.wire_plan(node);
         let raw = self.raw_wire_sides(plan, wire);
         let regulated = crate::redstone::wire::regulate_sides(wire, raw);

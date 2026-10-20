@@ -1662,6 +1662,15 @@ impl Plot {
         self.sync_small_models();
     }
 
+    fn interpreter_idle(&self) -> bool {
+        !self.redpiler.is_active()
+            && !self.world.history.enabled()
+            && self.world.piston_state.phase == AdvancePhase::BetweenTicks
+            && self.world.piston_state.events.is_empty()
+            && self.world.piston_state.motions.is_empty()
+            && self.world.to_be_ticked.queues_iter().all(|queue| queue.is_empty())
+    }
+
     fn update(&mut self) {
         self.update_git();
         self.handle_messages();
@@ -1670,7 +1679,8 @@ impl Plot {
 
         // Only tick if there are players in the plot
         if !self.players.is_empty() {
-            self.timings.set_ticking(true);
+            let idle = self.interpreter_idle();
+            self.timings.set_ticking(!idle);
             let now = Instant::now();
             self.last_player_time = now;
 
@@ -1703,7 +1713,8 @@ impl Plot {
             };
 
             self.last_update_time = now;
-            if self.compiling_redpiler() {
+            if self.compiling_redpiler() || idle {
+                // Idle time must not become tick debt when a player wakes the circuit.
                 self.lag_time = Duration::ZERO;
             } else if batch_size != 0 {
                 let simulation_started = Instant::now();
@@ -1739,6 +1750,7 @@ impl Plot {
             }
 
             if self.auto_redpiler
+                && !idle
                 && self.compilation.is_none()
                 && !self.git_checkout_locked()
                 && !self.redpiler.is_active()
@@ -1987,7 +1999,7 @@ impl Plot {
 
         while self.running {
             // Fast path, for super high RTPS
-            if self.sleep_time <= Duration::from_millis(5) && !self.players.is_empty() && !self.compiling_redpiler() {
+            if self.sleep_time <= Duration::from_millis(5) && !self.players.is_empty() && !self.compiling_redpiler() && !self.interpreter_idle() {
                 self.update();
                 if self.tps != Tps::Unlimited {
                     thread::yield_now();
@@ -1999,7 +2011,7 @@ impl Plot {
             self.update();
             let delta = before.elapsed();
 
-            let cadence = if self.compiling_redpiler() {
+            let cadence = if self.compiling_redpiler() || self.interpreter_idle() {
                 Duration::from_millis(20)
             } else if self.wire_tools_active() {
                 self.sleep_time.min(Duration::from_millis(20))

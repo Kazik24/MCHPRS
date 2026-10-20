@@ -5,27 +5,28 @@
 //! enabled pass's result before lowering. See the [redpiler overview](crate::redpiler).
 pub(crate) mod abstract_instant_nets;
 pub(crate) mod coalesce_delayed_updates;
-pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_bud_memory_reads;
+pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
 pub(crate) mod compile_fixed_classic;
 mod compile_fixed_signals;
-pub(crate) mod compile_instant_layers;
 pub(crate) mod compile_instant_events;
+#[cfg(test)]
+pub(crate) mod compile_instant_layers;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
 pub(crate) mod compile_instant_wire_nodes;
 pub(crate) mod compile_mixed_classic;
 pub(crate) mod compile_wire_callbacks;
 pub(crate) mod compile_wire_captures;
-pub(crate) mod optimize_instant_kernels_cpu;
-pub(crate) mod minimize_wire_captures;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod compile_wire_shapes;
 pub(crate) mod contract_dust_paths;
 pub(crate) mod identify_instant_boundaries;
 pub(crate) mod identify_instant_regions;
 pub(crate) mod index_turbo_callbacks;
+pub(crate) mod minimize_wire_captures;
+pub(crate) mod optimize_instant_kernels_cpu;
 pub(crate) mod planning;
 pub(crate) mod prune_inert_callbacks;
 pub(crate) mod prune_unhandled_updates;
@@ -84,6 +85,7 @@ impl<'a> PassContext<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn instant_layers(&self) -> Option<&super::program_graph::LayeredInstantPlan> {
         match self.prepared_instant {
             Some(validation::PreparedInstant::Layers { plan, .. }) => Some(plan),
@@ -372,7 +374,10 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (4, Pass::build(compile_instant_events::CompileInstantEvents)),
         (5, Pass::build(optimize_instant_kernels_cpu::OptimizeInstantKernelsCpu)),
     ];
-    pipeline.entries.extend(kernels.into_iter().map(|(minimum_level, pass)| PassEntry { pass, enabled: level >= minimum_level }));
+    pipeline.entries.extend(kernels.into_iter().map(|(minimum_level, pass)| PassEntry {
+        pass,
+        enabled: level >= minimum_level,
+    }));
     if cfg!(feature = "unsafe-abstract-instant-nets") && level >= 4 && options.stable_instant_inputs {
         pipeline.entries.push(PassEntry {
             pass: Pass::build(abstract_instant_nets::AbstractInstantNets),
@@ -398,9 +403,15 @@ pub(crate) fn experimental_boundary_pipeline(options: &CompilerOptions) -> PassP
     pipeline.entries.retain(|entry| {
         !matches!(
             entry.pass.name(),
-            "identify-instant-regions" | "compile-instant-proxies" | "identify-instant-boundaries" | "compile-instant-layers"
-                | "experimental-compile-instant-wire-nodes" | "experimental-minimize-wire-captures"
-                | "experimental-compile-bud-memory-reads" | "experimental-compile-instant-events" | "optimize-instant-kernels-cpu"
+            "identify-instant-regions"
+                | "compile-instant-proxies"
+                | "identify-instant-boundaries"
+                | "compile-instant-layers"
+                | "experimental-compile-instant-wire-nodes"
+                | "experimental-minimize-wire-captures"
+                | "experimental-compile-bud-memory-reads"
+                | "experimental-compile-instant-events"
+                | "optimize-instant-kernels-cpu"
         )
     });
     pipeline.entries.push(PassEntry {
@@ -424,6 +435,45 @@ pub(crate) fn experimental_layer_pipeline(options: &CompilerOptions) -> PassPipe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn production_tiers_enable_certified_passes_without_semantic_promises() {
+        for flags in ["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "--optimize"] {
+            let options = CompilerOptions::parse(flags).unwrap();
+            let level = options.optimization_level.unwrap_or(5);
+            assert!(!options.stable_instant_inputs && !options.classic_redstone);
+            let pipeline = default_graph_pipeline(&options);
+            let enabled: Vec<_> = pipeline.entries.iter().filter(|p| p.enabled).map(|p| p.pass.name()).collect();
+            for (name, minimum) in [
+                ("compile-fixed-classic", 2),
+                ("compile-mixed-classic", 2),
+                ("compile-wire-captures", 3),
+                ("compile-classic-redstone", 4),
+                ("experimental-compile-instant-wire-nodes", 4),
+                ("experimental-minimize-wire-captures", 4),
+                ("experimental-compile-bud-memory-reads", 4),
+                ("experimental-compile-instant-events", 4),
+                ("optimize-instant-kernels-cpu", 5),
+                ("experimental-coalesce-delayed-updates", 5),
+            ] {
+                assert_eq!(enabled.contains(&name), level >= minimum, "{flags}: {name}");
+            }
+            assert!(!enabled.contains(&"compile-instant-layers"));
+            #[cfg(not(any(feature = "unsafe-abstract-instant-nets", feature = "unsafe-turbo-fixed-point")))]
+            assert!(
+                enabled
+                    .iter()
+                    .all(|p| !p.starts_with("unsafe-") && *p != "experimental-settle-dust-networks")
+            );
+        }
+        let options = CompilerOptions::parse("-O2 --classic-redstone").unwrap();
+        assert!(
+            default_graph_pipeline(&options)
+                .entries
+                .iter()
+                .any(|p| p.enabled && p.pass.name() == "compile-classic-redstone")
+        );
+    }
     use crate::plot::PlotWorld;
     use crate::redpiler::components::{NodeState, NodeType};
     use crate::redpiler::program_graph::{CircuitNodeDraft, ComponentState, EntryState};

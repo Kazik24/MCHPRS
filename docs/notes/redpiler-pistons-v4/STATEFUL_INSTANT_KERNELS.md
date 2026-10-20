@@ -1,7 +1,8 @@
 # Stateful instant kernels and FPU inference
 
-2026-10-19. Experimental, selected by the `experimental-instant-events` Cargo
-feature at O4+ with stable instant inputs. Default execution is unchanged.
+Promoted to normal O4+ production execution, with live inputs and no required
+Cargo feature or stable-input promise. See [production tiers](../../REDPILER_OPTIMIZATION_LEVELS.md).
+The measurements below record the earlier opt-in configuration of 2026-10-19.
 
 ## What composes
 

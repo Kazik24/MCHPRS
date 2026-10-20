@@ -4,14 +4,15 @@ use crate::redpiler::backend::graph::GraphBackend;
 use crate::redpiler::program_graph::*;
 use crate::redpiler::{CompilerOptions, passes};
 
-mod large_builds;
 mod admission;
-mod kernel_proofs;
-mod wire_nodes;
 mod closed_nets;
 mod instant_events;
-mod random_fpu;
+mod kernel_proofs;
+mod large_builds;
 mod max_tps;
+mod memory_only;
+mod random_fpu;
+mod wire_nodes;
 
 #[test]
 #[ignore = "explicit Divider layer census and all 11 native differential histories"]
@@ -234,20 +235,54 @@ fn check_manifest_device_mode(name: &str, fixture: &Value, budget: usize, events
         use crate::redpiler::passes::planning::PlanBuilder;
         let monitor = TaskMonitor::default();
         monitor.set_budget_multiplier(budget);
-        let options = CompilerOptions {stable_instant_inputs:true,..Default::default()};
-        let entry = EntryState {logical_tick:0,pending_ticks:vec![]};
-        passes::compile_bud_memory_reads::CompileBudMemoryReads.run(&mut graph,&passes::PassContext::new(&monitor,&options,&entry)).unwrap();
-        passes::compile_instant_events::CompileInstantEvents.run(&mut graph,&passes::PassContext::new(&monitor,&options,&entry)).unwrap();
+        let options = CompilerOptions {
+            stable_instant_inputs: true,
+            ..Default::default()
+        };
+        let entry = EntryState {
+            logical_tick: 0,
+            pending_ticks: vec![],
+        };
+        passes::compile_bud_memory_reads::CompileBudMemoryReads
+            .run(&mut graph, &passes::PassContext::new(&monitor, &options, &entry))
+            .unwrap();
+        passes::compile_instant_events::CompileInstantEvents
+            .run(&mut graph, &passes::PassContext::new(&monitor, &options, &entry))
+            .unwrap();
         graph.validate().unwrap();
-        println!("{name}: {} event kernels, actor groups {:?}",graph.plans.instant_events.len(),graph.plans.instant_events.iter().map(|kernel|kernel.actors.len()).collect::<Vec<_>>());
-        assert_eq!(graph.plans.instant_events.len(),1,"the declared device computation must compose into one kernel");
+        println!(
+            "{name}: {} event kernels, actor groups {:?}",
+            graph.plans.instant_events.len(),
+            graph.plans.instant_events.iter().map(|kernel| kernel.actors.len()).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            graph.plans.instant_events.len(),
+            1,
+            "the declared device computation must compose into one kernel"
+        );
     }
     let mut report = layer_report(name, &graph);
     if events {
-        report["event_kernels"] = json!(graph.plans.instant_events.iter().map(|kernel|json!({"actors":kernel.actors.len(),"wires_eliminated":kernel.wires.len(),"entry_routes":kernel.entries.len()})).collect::<Vec<_>>());
-        report["general_pistons"] = json!(graph.pistons.len()-graph.plans.instant_events.iter().map(|kernel|kernel.actors.len()).sum::<usize>());
-        report["bud_memory_reads"] = json!(graph.plans.bud_memory_reads.iter().map(|read|json!({"storage":read.storage.index(),"reader":read.reader.index(),"resource":read.resource.index()})).collect::<Vec<_>>());
-        if name=="counter_event_kernel" {assert_eq!(graph.plans.bud_memory_reads.len(),16,"all Counter storage/read pairs compile");}
+        report["event_kernels"] = json!(
+            graph
+                .plans
+                .instant_events
+                .iter()
+                .map(|kernel| json!({"actors":kernel.actors.len(),"wires_eliminated":kernel.wires.len(),"entry_routes":kernel.entries.len()}))
+                .collect::<Vec<_>>()
+        );
+        report["general_pistons"] = json!(graph.pistons.len() - graph.plans.instant_events.iter().map(|kernel| kernel.actors.len()).sum::<usize>());
+        report["bud_memory_reads"] = json!(
+            graph
+                .plans
+                .bud_memory_reads
+                .iter()
+                .map(|read| json!({"storage":read.storage.index(),"reader":read.reader.index(),"resource":read.resource.index()}))
+                .collect::<Vec<_>>()
+        );
+        if name == "counter_event_kernel" {
+            assert_eq!(graph.plans.bud_memory_reads.len(), 16, "all Counter storage/read pairs compile");
+        }
     }
     drop(world);
     let mut ticks = 0;
@@ -259,7 +294,9 @@ fn check_manifest_device_mode(name: &str, fixture: &Value, budget: usize, events
         native.disable_command_output_limits_for_replay();
         projected.disable_command_output_limits_for_replay();
         let mut backend = backend(&graph);
-        if events { backend.set_test_recording(true); }
+        if events {
+            backend.set_test_recording(true);
+        }
         let positions = observation_positions(fixture);
         let mut steps = case.get("steps").or_else(|| case.get("actions")).unwrap().as_array().unwrap().clone();
         if let Some(tail) = case.get("ticks") {
@@ -272,7 +309,9 @@ fn check_manifest_device_mode(name: &str, fixture: &Value, budget: usize, events
                     backend.tick_with_world(&mut projected).unwrap();
                     project(&backend, &mut projected);
                     assert_observations(&native, &projected, &positions, case["id"].as_str().unwrap());
-                    if events { assert_future_work(&native,&projected,name); }
+                    if events {
+                        assert_future_work(&native, &projected, name);
+                    }
                     ticks += 1;
                 }
             } else if let Some(diagnose) = step.get("diagnose") {

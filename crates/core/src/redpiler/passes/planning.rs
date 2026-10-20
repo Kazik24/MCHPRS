@@ -30,6 +30,7 @@ pub(crate) enum InstantAnalysis {
     /// The complete cell/corridor boundary catalog for this graph and current classic ownership.
     Boundaries,
     /// The causal plan and lowering evidence for this graph and its validated catalog.
+    #[cfg_attr(not(test), expect(dead_code, reason = "Layers are built only by the experimental test pipeline."))]
     Layers,
 }
 
@@ -38,6 +39,7 @@ pub(crate) enum PlanOutput {
     MixedClassic(crate::redpiler::program_graph::MixedClassicProgram),
     FixedClassic(crate::redpiler::program_graph::FixedClassicPlans),
     Boundaries(crate::redpiler::program_graph::BoundaryCatalog),
+    #[cfg_attr(not(test), expect(dead_code, reason = "Layers are built only by the experimental test pipeline."))]
     Layers(crate::redpiler::program_graph::LayeredInstantPlan),
     FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
@@ -169,7 +171,10 @@ impl PlanOutput {
     fn validate_shape(&self, graph: &CompileGraph) -> Result<(), GraphBuildError> {
         if let Self::CpuKernels(plans) = self {
             if plans.require_true.len() != plans.require_false.len() || plans.entries.len() > graph.pistons.len() {
-                return Err(GraphBuildError::InvalidInstantRegion { table: "CPU kernel shape", index: 0 });
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "CPU kernel shape",
+                    index: 0,
+                });
             }
         }
         if let Self::WireCaptures(rows) = self {

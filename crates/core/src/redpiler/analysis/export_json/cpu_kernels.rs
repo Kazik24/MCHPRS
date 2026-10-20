@@ -18,6 +18,7 @@ pub(super) fn export(graph: &CompileGraph) -> Option<Value> {
         "reads":plans.reads.iter().map(|r| match *r {
             CpuRead::State(test)=>json!({"kind":"state","test":super::instant_layers::state_test_dto(test)}),
             CpuRead::Strength{node,threshold}=>json!({"kind":"strength","node":typed_id("node",node.index()),"threshold":threshold}),
+            CpuRead::WireEmission{node,face:direction,threshold}=>json!({"kind":"wire_emission","node":typed_id("node",node.index()),"face":face(direction),"threshold":threshold}),
             CpuRead::Guard(guard)=>json!({"kind":"guard","guard":typed_id("guard",guard.index())}),
             CpuRead::Input{node,port}=>json!({"kind":"input","node":typed_id("node",node.index()),"port":input_port(port)}),
             CpuRead::Source{site,port,threshold}=>json!({"kind":"source","site":typed_id("site",site.index()),"threshold":threshold,"port":match port {
@@ -61,8 +62,11 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
         match read["kind"].as_str() {
             Some("state") => super::instant_layers::validate_state_test(&read["test"], &ids)?,
             Some("guard") => reference(&read["guard"], "guard:")?,
-            Some("input" | "strength") => {
+            Some("input" | "strength" | "wire_emission") => {
                 reference(&read["node"], "node:")?;
+                if read["kind"] == "wire_emission" && !matches!(read["face"].as_str(), Some("north" | "south" | "east" | "west" | "top" | "bottom")) {
+                    return Err(invalid());
+                }
                 if read["kind"] == "input" && !matches!(read["port"].as_str(), Some("main" | "quasi")) {
                     return Err(invalid());
                 }
@@ -82,7 +86,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
             }
             _ => return Err(invalid()),
         }
-        if matches!(read["kind"].as_str(), Some("strength" | "source")) && read["threshold"].as_u64().is_none_or(|n| n > 14) {
+        if matches!(read["kind"].as_str(), Some("strength" | "source" | "wire_emission")) && read["threshold"].as_u64().is_none_or(|n| n > 14) {
             return Err(invalid());
         }
     }

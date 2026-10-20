@@ -576,24 +576,29 @@ mod tests {
             (2, "compile-fixed-signals"),
             (2, "compile-fixed-classic"),
             (2, "compile-mixed-classic"),
-            (2, "compile-classic-redstone"),
+            (4, "compile-classic-redstone"),
+            (4, "identify-instant-boundaries"),
+            (4, "experimental-compile-instant-wire-nodes"),
+            (4, "experimental-minimize-wire-captures"),
+            (4, "experimental-compile-bud-memory-reads"),
+            (4, "experimental-compile-instant-events"),
+            (5, "optimize-instant-kernels-cpu"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {
                 optimization_level: level,
                 ..Default::default()
             });
-            let experimental = usize::from(cfg!(feature = "experimental-instant-wire-nodes") && level.is_none_or(|level| level >= 3));
+            let expected: Vec<_> = expected
+                .iter()
+                .copied()
+                .filter(|(_, name)| level.is_some_and(|level| level < 4) || !matches!(*name, "identify-instant-regions" | "compile-instant-proxies"))
+                .collect();
             #[cfg(not(feature = "unsafe-turbo-fixed-point"))]
-            assert_eq!(pipeline.entries.len(), expected.len() + experimental);
-            if experimental != 0 {
-                let entry = &pipeline.entries[expected.len()];
-                assert_eq!(entry.pass.name(), "experimental-compile-instant-wire-nodes");
-                assert!(entry.enabled && matches!(entry.pass, Pass::Build(_)));
-            }
+            assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);
-                let enabled = name != "compile-classic-redstone" && level.is_none_or(|level| level >= minimum);
+                let enabled = level.is_none_or(|level| level >= minimum);
                 assert_eq!(entry.enabled, enabled, "{name} at {level:?}");
                 assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 8);
             }

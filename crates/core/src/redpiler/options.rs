@@ -10,7 +10,7 @@ pub struct CompilerOptions {
     pub optimization_level: Option<usize>,
     /// Promise stable inputs through reset; enables O3 region composition.
     pub stable_instant_inputs: bool,
-    /// Opt-in local net compilation when default O2 whole fixed execution declines.
+    /// Allow certified local nets at O2/O3; O4+ attempts them automatically.
     pub classic_redstone: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
@@ -79,7 +79,7 @@ impl CompilerOptions {
         if options.stable_instant_inputs && options.optimization_level.is_some_and(|level| level < 3) {
             return Err("--stable-instant-inputs requires -O3 or higher, or --optimize".into());
         }
-        if options.classic_redstone && options.optimization_level.is_some_and(|level|level<2) {
+        if options.classic_redstone && options.optimization_level.is_some_and(|level| level < 2) {
             return Err("--classic-redstone requires -O2 or higher, or --optimize".into());
         }
         Ok(options)

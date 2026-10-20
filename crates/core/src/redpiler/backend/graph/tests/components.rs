@@ -1,8 +1,8 @@
 //! Graph backend differential and regression tests.
-#[path = "wire_hops.rs"]
-mod wire_hops;
 #[path = "classic_redstone.rs"]
 mod classic_redstone;
+#[path = "wire_hops.rs"]
+mod wire_hops;
 
 use super::*;
 use crate::plot::worldedit::{WorldEditClipboard, load_schematic, paste_clipboard};
@@ -156,12 +156,7 @@ impl World for CountingContactWorld {
     }
 }
 
-fn assert_contact_projection_matches_full(
-    backend: &GraphBackend,
-    optimized: &CountingContactWorld,
-    include_pending_motions: bool,
-    label: &str,
-) {
+fn assert_contact_projection_matches_full(backend: &GraphBackend, optimized: &CountingContactWorld, include_pending_motions: bool, label: &str) {
     let mut full = empty_world();
     backend.project_future(&mut full);
     for contact in backend.program.contacts() {
@@ -353,7 +348,8 @@ fn dust_path_seed_and_captured_queries_match_for_all_strength_transitions() {
 fn dust_path_keeps_nested_input_callback_order_and_intermediate_writes() {
     let world = analog_dust_world();
     let mut general = dust_path_backend(&world, Some(0));
-    let mut contracted = dust_path_backend(&world, None);
+    // O3 isolates ordered contraction; O4 deliberately omits passive capture trace rows.
+    let mut contracted = dust_path_backend(&world, Some(3));
     let input = general.positions[&LEVER_POS];
     let wires = contracted.program.dust_paths()[0].wires.to_vec();
     general.set_test_recording(true);

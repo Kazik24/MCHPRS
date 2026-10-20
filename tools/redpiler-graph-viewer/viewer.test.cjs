@@ -23,6 +23,13 @@ test('CPU bit masks preserve bit 63 and reject malformed programs', () => {
     const changed=structuredClone(program); changed.require_true=[value];
     assert.throws(() => context.validateCpuKernels(changed, ids));
   }
+  ids.add('node:0');
+  program.reads[0] = {kind:'wire_emission',node:'node:0',face:'north',threshold:3};
+  context.validateCpuKernels(program, ids);
+  for (const [field,value] of [['face','up'],['threshold',15],['threshold',true],['node','node:1']]) {
+    const changed=structuredClone(program); changed.reads[0][field]=value;
+    assert.throws(() => context.validateCpuKernels(changed, ids));
+  }
 });
 
 class Element {

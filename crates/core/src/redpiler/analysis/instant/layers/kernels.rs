@@ -6,10 +6,10 @@ use std::sync::Arc;
 #[cfg(test)]
 pub(crate) fn lower(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<Arc<InstantKernel>>, String> {
     let (Some(catalog), Some(plan)) = (&graph.plans.instant.boundaries, &graph.plans.instant.layers) else {
-        return lower_with_context(graph,monitor,None);
+        return lower_with_context(graph, monitor, None);
     };
     if plan.regions.is_empty() {
-        return lower_with_context(graph,monitor,None);
+        return lower_with_context(graph, monitor, None);
     }
     let context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
     lower_with_context(graph, monitor, Some(&context))

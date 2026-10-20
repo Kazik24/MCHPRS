@@ -2,28 +2,30 @@
 use crate::redpiler::passes::Pass;
 #[path = "boundary_contract.rs"]
 mod boundary_contract_tests;
-#[path = "instant_boundaries.rs"]
-mod instant_boundary_tests;
-#[path = "instant_layers.rs"]
-mod instant_layer_tests;
 #[path = "builtin_reset.rs"]
 mod builtin_reset_tests;
-#[path = "fixed_point_adder.rs"]
-mod fixed_point_tests;
-#[path = "instant_cells.rs"]
-mod instant_cell_tests;
-#[path = "instant_events.rs"]
-mod instant_event_tests;
 #[path = "execution_coverage.rs"]
 mod execution_coverage_tests;
+#[path = "fixed_point_adder.rs"]
+mod fixed_point_tests;
+#[path = "instant_boundaries.rs"]
+mod instant_boundary_tests;
+#[path = "instant_cells.rs"]
+mod instant_cell_tests;
 #[path = "instant_contract.rs"]
 mod instant_contract_tests;
+#[path = "instant_events.rs"]
+mod instant_event_tests;
+#[path = "instant_layers.rs"]
+mod instant_layer_tests;
+#[path = "instant_net_counterexample.rs"]
+mod instant_net_counterexample;
 #[path = "instant_proxy.rs"]
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
 mod instant_recognition_tests;
-#[path = "instant_net_counterexample.rs"]
-mod instant_net_counterexample;
+#[path = "production_tiers.rs"]
+mod production_tier_tests;
 #[path = "reset_elision.rs"]
 mod reset_elision_tests;
 #[path = "stable_region.rs"]

@@ -65,6 +65,77 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
 }
 
 #[test]
+fn idle_interpreter_skips_empty_batches_and_resumes_scheduled_work() {
+    for tps in [Tps::Unlimited, Tps::Limited(1_000_000), Tps::Limited(20)] {
+        let (mut plot, _peer) = fixture(false);
+        let connection = connection(false).unwrap();
+        let _incoming = connection.incoming;
+        let _live_peer = connection.peer;
+        plot.players[0].client = connection.player;
+        plot.world.packet_senders.clear();
+        plot.world.packet_senders.push(PlayerPacketSender::new(&plot.players[0].client));
+        plot.tps = tps;
+        plot.auto_redpiler = true;
+        plot.lag_time = Duration::from_secs(30);
+        plot.last_update_time = Instant::now() - Duration::from_secs(30);
+
+        plot.update();
+
+        assert_eq!(plot.world.update_stats.simulated_ticks, 0);
+        assert_eq!(plot.lag_time, Duration::ZERO);
+        assert_eq!(plot.world.piston_state.logical_tick, 0);
+        assert!(!plot.compiling_redpiler());
+        assert!(!plot.redpiler.is_active());
+
+        let lamp = BlockPos::new(34, 20, 32);
+        plot.world.set_block(lamp, Block::RedstoneLamp { lit: true });
+        plot.world.schedule_tick(lamp, 1, TickPriority::Normal);
+        assert!(!plot.interpreter_idle());
+        plot.auto_redpiler = false;
+        plot.last_update_time = Instant::now() - Duration::from_secs(1);
+        plot.last_nspt = Some(Duration::from_nanos(1));
+
+        plot.update();
+
+        assert_eq!(plot.world.get_block(lamp), Block::RedstoneLamp { lit: false });
+        assert!(plot.interpreter_idle());
+        assert!(plot.world.update_stats.simulated_ticks > 0);
+        let ticks = plot.world.piston_state.logical_tick;
+        plot.update();
+        assert_eq!(plot.world.piston_state.logical_tick, ticks);
+        assert_eq!(plot.lag_time, Duration::ZERO);
+        assert!(plot.tick(), "manual advancement still works on an idle plot");
+        assert_eq!(plot.world.piston_state.logical_tick, ticks + 1);
+    }
+}
+
+#[test]
+fn interpreter_stays_awake_for_partial_ticks_pistons_and_history() {
+    let (mut plot, _peer) = fixture(false);
+    assert!(plot.interpreter_idle());
+    for phase in [AdvancePhase::ScheduledTicks, AdvancePhase::PistonEvents, AdvancePhase::MovingEntities] {
+        plot.world.piston_state.phase = phase;
+        assert!(!plot.interpreter_idle());
+    }
+    plot.world.piston_state.phase = AdvancePhase::BetweenTicks;
+    let pos = BlockPos::new(34, 20, 32);
+    plot.world.piston_state.events.push_back(mchprs_world::PistonEvent {
+        pos,
+        sticky: false,
+        facing: BlockFace::East,
+        action: mchprs_world::PistonAction::Extend,
+    });
+    assert!(!plot.interpreter_idle());
+    plot.world.piston_state.events.clear();
+    plot.world.register_motion(pos, 0.0);
+    assert!(!plot.interpreter_idle());
+    plot.world.remove_motions_at(pos);
+    assert!(plot.interpreter_idle());
+    plot.world.enable_history(2, false).unwrap();
+    assert!(!plot.interpreter_idle());
+}
+
+#[test]
 fn redpiler_activation_stages_barrel_close_notifications() {
     use mchprs_blocks::BlockFacing;
     use mchprs_blocks::block_entities::ContainerType;
@@ -105,6 +176,7 @@ fn redpiler_activation_stages_barrel_close_notifications() {
     plot.wait_for_redpiler();
 
     assert!(plot.redpiler.is_active());
+    assert!(!plot.interpreter_idle());
     assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
     assert!(plot.players[0].open_container.is_none());
     assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
@@ -336,6 +408,7 @@ fn wire_input_slices_retain_unfinished_limited_tps_tick_debt() {
     plot.lag_time = Duration::from_secs(1);
     plot.last_nspt = Some(Duration::from_nanos(100));
     for _ in 0..2 {
+        plot.world.schedule_tick(BlockPos::new(34, 20, 32), 15, TickPriority::Normal);
         let previous_time = plot.last_update_time;
         let previous_debt = plot.lag_time;
         let previous_ticks = plot.world.update_stats.simulated_ticks;

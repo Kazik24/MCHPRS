@@ -631,8 +631,10 @@ mod tests {
         let name = "Pup{owner}🐾";
         assert!(plot_owner(name).contains(name));
         assert!(selection_first(-123, 319, 456).contains("(-123, 319, 456)"));
-        assert!(history_tick_limit_permission(1000, "plots.admin.rewind.unlimited")
-            .contains("1000 game ticks of pawprints requires plots.admin.rewind.unlimited permission"));
+        assert!(
+            history_tick_limit_permission(1000, "plots.admin.rewind.unlimited")
+                .contains("1000 game ticks of pawprints requires plots.admin.rewind.unlimited permission")
+        );
         assert!(worldedit_completed(17, Duration::from_millis(123)).contains("17 block(s) affected (123ms)"));
         let diagnostic = "permission denied: C:\\schems\\{reason}.schem";
         assert_eq!(schematic_save_failed(diagnostic), format!("Could not save schematic: {diagnostic}"));

@@ -1,5 +1,9 @@
 # Interpreter and maximum compilation TPS
 
+These frozen measurements precede promotion to the normal production tiers.
+Current activation is described in [O1–O5 production levels](../../REDPILER_OPTIMIZATION_LEVELS.md);
+the historical build flags and timing evidence below remain unchanged.
+
 Medians of five alternating release-harness pairs, measured on 2026-10-19:
 
 | Build | Interpreter TPS | Maximum TPS | Throughput ratio | Measured ticks per pair |

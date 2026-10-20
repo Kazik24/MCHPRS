@@ -2,7 +2,7 @@
 //! One-ingress, delayed-receiver regions are checked against ordered Graph samples for
 //! every old/new strength pair; compact masks select receiver scheduling at original
 //! route occurrences. Unsupported boundaries and exhausted proof budgets stay general.
-//! Runs after whole fixed compilation declines, only with the O2+ classic option.
+//! Runs after whole fixed compilation declines, at O4+ or with the O2/O3 classic option.
 //! See docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md for the algorithm.
 use super::{
     PassContext,

@@ -585,13 +585,8 @@ fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins(
             &monitor,
         )
         .unwrap();
-        if cfg!(feature = "experimental-instant-events") {
-            assert!(prepared.graph.plans.instant.layers.is_none());
-            assert_eq!(prepared.graph.plans.instant_events.len(), 1);
-        } else {
-            let plan = prepared.graph.plans.instant.layers.as_ref().unwrap();
-            assert_eq!(plan.regions.len(), 1, "public pipeline declines: {:?}", plan.declines);
-        }
+        assert!(prepared.graph.plans.instant.layers.is_none());
+        assert_eq!(prepared.graph.plans.instant_events.len(), 1);
         let (program, state) = prepared.graph.lower().unwrap();
         let mut backend = GraphBackend::new(program, state, 0).unwrap();
         assert_eq!(backend.program.instant_kernels().len(), 1);
@@ -620,13 +615,8 @@ fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins(
             )
             .unwrap();
             if tick == 0 {
-                if cfg!(feature = "experimental-instant-events") {
-                    assert!(backend.execution_counts().instant_kernel_invocations >= 2);
-                    assert!(backend.execution_counts().wire_walks > 0);
-                } else {
-                    assert_eq!(backend.execution_counts().instant_kernel_invocations, u64::from(trusted_origin));
-                    assert_eq!(backend.execution_counts().wire_walks == 0, trusted_origin);
-                }
+                assert!(backend.execution_counts().instant_kernel_invocations >= 2);
+                assert!(backend.execution_counts().wire_walks > 0);
             }
         }
     }

@@ -1,5 +1,9 @@
 # BubbleSort and FPU: O5 runtime profile and final graph
 
+For the current event/packed implementation, see the
+[fresh ETW profile](CPU_FPU_PACKED_KERNEL_PROFILE.md). The singleton kernels and
+timings below belong to the older frozen implementation.
+
 Measured 2026-10-19. The next runtime pass should compile wire capture descriptors.
 The larger algorithmic target is signal-arrival certification that lets connected
 Instant kernels own wires. Both workloads still spend most inference samples in

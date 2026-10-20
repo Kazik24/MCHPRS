@@ -12,6 +12,7 @@
 //! selected once when supported by CPU/OS, and a portable scalar implementation.
 //! Work is bounded per entry; all runtime tables are contiguous immutable arrays
 //! without a second mutable state owner. See CPU_KERNEL_EXECUTION.md for evidence.
+//! Selected at O5 after the O4 event family; no Cargo feature or input promise is needed.
 use super::{
     PassContext,
     planning::{PlanBuilder, PlanOutput},

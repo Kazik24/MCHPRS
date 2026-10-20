@@ -154,8 +154,10 @@ def _validate_cpu_kernels(program: Any, ref: Any) -> None:
             _validate_state_test(read.get("test"), "CPU read", ref)
         elif kind == "guard":
             ref("guard", read.get("guard"), "CPU read")
-        elif kind in ("strength", "input"):
+        elif kind in ("strength", "input", "wire_emission"):
             ref("node", read.get("node"), "CPU read")
+            if kind == "wire_emission" and read.get("face") not in ("north", "south", "east", "west", "top", "bottom"):
+                fail()
             if kind == "input" and read.get("port") not in ("main", "quasi"):
                 fail()
         elif kind == "source":
@@ -171,7 +173,7 @@ def _validate_cpu_kernels(program: Any, ref: Any) -> None:
                 fail()
         else:
             fail()
-        if kind in ("source", "strength") and (type(read.get("threshold")) is not int or not 0 <= read["threshold"] <= 14):
+        if kind in ("source", "strength", "wire_emission") and (type(read.get("threshold")) is not int or not 0 <= read["threshold"] <= 14):
             fail()
     masks = []
     for key in ("require_true", "require_false"):

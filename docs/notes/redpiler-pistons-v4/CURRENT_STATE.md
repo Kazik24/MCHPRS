@@ -1,5 +1,18 @@
 # Redpiler current state
 
+The [fresh packed-kernel ETW profile](CPU_FPU_PACKED_KERNEL_PROFILE.md) measures
+current production O5: propagation owns 68.2% of BubbleSort and 63.8% of FPU
+inference samples. Capture and general route/contact guards remain the largest
+targets; kernel predicates are about 4.6–4.8%. This supersedes the older runtime
+profile's singleton-kernel census for current performance planning.
+
+The certified passes are now enabled in normal production
+[O1–O5 tiers](../../REDPILER_OPTIMIZATION_LEVELS.md). O4 selects connected
+live-input event kernels, BUD reads, passive capture elimination, closed wire
+transfers and certified local classic nets; O5 adds CPU packing. No experimental
+Cargo features or stable-input promise is needed for O4/O5. The measurements below
+refer to the frozen configurations recorded in their reports before promotion.
+
 The separate [CPU kernel packing pass](CPU_KERNEL_EXECUTION.md) compiles live
 kernel power/acceptance predicates into contiguous reads and minimized bit-mask
 clauses, with AVX2 and scalar execution. It preserves original FIFO effects and

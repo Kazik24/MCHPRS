@@ -1,5 +1,11 @@
 # Redpiler optimization passes
 
+Normal production builds include every certified pass. See the
+[O1–O5 tier table](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md).
+O4 selects live-input FIFO event kernels, capture elimination, BUD reads, closed
+single-wire transfers and certified classic nets; O5 adds CPU packing and delayed
+update coalescing. Old experimental feature names are compatibility aliases.
+
 Read this before implementing or reviewing a pass. These rules apply to every new optimization, including experimental passes. They describe how to work on the shared graph; they do not authorize implementing additional projects beyond the assigned task.
 
 An optimization must preserve the supported circuit's observable behavior and future execution while reducing runtime work or storage. A smaller graph, a correct final truth table, or a passing CPU benchmark alone does not establish correctness.
@@ -35,18 +41,12 @@ plans before it changes the circuit, so plan builders need no preservation flags
 
 C/LLVM execution and the finite/symbolic synthesis experiments have been removed,
 including their pass registrations, runtime integration and synthesis-only optimizer crate.
-O2 whole fixed classic execution, O3 piston/reset specialization, stable region
-composition, proxies and opt-in local classic nets remain. O4+ with
-`--stable-instant-inputs` now selects boundary/layer construction and lowers the
-certified pull-wave family. It retains ordinary Graph reset and declines
-unsupported region effects; it is not the removed synthesis implementation.
-The layer builder cuts unsupported owners and cables while retaining every boundary
-obligation. Geometry observations and scheduled reset effects do not by themselves
-couple computation ownership. Full arrival, output and queue certificates still gate
-execution. Multiple live entry routes and shared tokens can be composed; singleton
-kernels retain outside handlers, observations and reset wires. Multi-actor feedback
-and captured entries still keep general execution. The CPU proof-cut census now
-lowers 2,197 singleton kernels; this is partial coverage, not whole-network replacement.
+O2 whole fixed classic execution and mixed queries, O3 piston/reset specialization
+and private proxies remain. O4+ selects certified local classic nets and the
+FIFO-local event family without stable-input assumptions. The old whole-wave
+layer builder remains an explicit research path with its stable-input contract.
+Event kernels retain live wire execution and every original pending-work owner;
+their connected groups are not a simultaneous Boolean replacement of the circuit.
 The algorithms and exact recovery commits are preserved in
 [ALGORITHMS_AND_RECOVERY.md](../../../../../docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
 
@@ -485,21 +485,20 @@ components still read current state. The relation is equality of every captured
 machine state and pending work. Analog-transition, live-contact and nested-walk
 differential tests exercise that relation.
 
-### Experimental stateful instant kernels
+### O4 stateful instant kernels
 
 The separate `compile_instant_events.rs`, `compile_bud_memory_reads.rs` and
-`minimize_wire_captures.rs` builders implement the opt-in
-`experimental-instant-events` O4+ stable-input family. It composes FIFO-local
+`minimize_wire_captures.rs` builders implement the production
+O4+ live-input family. It composes FIFO-local
 shared-cell entries, exact private BUD reads, and constant passive capture
 elimination. Their validators independently reconstruct the source certificates.
 The pipeline omits old layer compilation because event entries cover the same
 admitted actors; dynamic wires, outside actors and pending work retain their
 original state owners. See [scope and evidence](../../../../../docs/notes/redpiler-pistons-v4/STATEFUL_INSTANT_KERNELS.md).
 
-### Experimental CPU kernel packing
+### O5 CPU kernel packing
 
-`optimize_instant_kernels_cpu.rs` runs after event compilation when the
-`experimental-cpu-kernels` feature selects the O4+ stable-input family. It
+`optimize_instant_kernels_cpu.rs` runs after O4 event compilation at normal O5. It
 compiles live power and acceptance predicates into bounded, minimized bit-mask
 clauses and contiguous typed reads, with dense actor bindings. The executor
 selects AVX2 clause matching once when available; other CPUs use scalar word
@@ -509,10 +508,9 @@ entries use the original query/event program. Validation reconstructs the whole
 table from the source graph; export records hex masks losslessly. See
 [implementation and measurements](../../../../../docs/notes/redpiler-pistons-v4/CPU_KERNEL_EXECUTION.md).
 
-### Experimental instant wire nodes
+### O4 instant wire nodes
 
-`compile_instant_wire_nodes.rs` is a separate read-only builder, enabled only
-by the `experimental-instant-wire-nodes` Cargo feature at O3+. It annotates
+`compile_instant_wire_nodes.rs` is a separate read-only builder at O4+. It annotates
 closed single-wire nets with a validated receiver mask. The runtime replaces
 Turbo discovery and generic callbacks with the first ordered signal operation
 per instant actor/reset. Power writes, shape behavior, request provenance,

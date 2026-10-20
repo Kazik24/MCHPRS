@@ -18,6 +18,7 @@ graph rewrites:
 | [Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md) | Compilation lifecycle, ordinary graph preparation, backends, and handoff. |
 | [Redpiler parser](../scraps/docs/REDPILER_PARSER.md) | Selection inventory, admission, and ordinary graph preparation. |
 | [Redpiler optimizer](../scraps/docs/REDPILER_OPTIMIZER.md) | Actual pass order, rewrite rules, and correctness conditions. |
+| [Production optimization levels](REDPILER_OPTIMIZATION_LEVELS.md) | O1–O5 pass selection, compatibility flags and maximum production compilation. |
 | [Redpiler model](../scraps/docs/REDPILER_MODEL.md) | Region contract, graph transitions, memory, restricted activation, electrical boundaries and handoff. |
 | [Interpreter verification](INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction) | Physical checks, frozen replay observations and reproduction commands. |
 

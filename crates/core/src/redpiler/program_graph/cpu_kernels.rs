@@ -12,12 +12,23 @@ pub(crate) enum CpuRead {
     State(StateTest),
     /// Read an existing strength owner, including active classic wire overlays.
     Strength { node: NodeId, threshold: u8 },
+    /// A fixed wire owner with live strength, shape and dot/cross regulation.
+    WireEmission { node: NodeId, face: BlockFace, threshold: u8 },
     /// Unsupported live geometry keeps its original pure guard operation.
     Guard(GuardId),
     /// Unsupported emission keeps the original pure source query, not a cached value.
     Source { site: SiteId, port: PowerPort, threshold: u8 },
     /// Budget/ownership fallback samples an original Main or Quasi input.
     Input { node: NodeId, port: InputPort },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum CpuPredicateKind {
+    #[default]
+    Masks,
+    Literal,
+    All,
+    Any,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -30,6 +41,8 @@ pub(crate) struct CpuPredicate {
     pub(crate) read_len: u16,
     /// Zero clauses means false; one empty clause means true.
     pub(crate) clause_len: u16,
+    /// Derived from the masks once, keeping the common scalar forms out of bit packing.
+    pub(crate) kind: CpuPredicateKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,11 +255,14 @@ impl Builder<'_> {
                     PowerPort::Output | PowerPort::Stored => Some(true),
                     PowerPort::Weak(face) | PowerPort::Strong(face) if matches!(spec.kind, CircuitNodeKind::Wire(_)) => {
                         if let CircuitNodeKind::Wire(index) = spec.kind {
-                            self.graph.wires[index].execution.shape.and_then(|shape| match face {
+                            match face {
                                 BlockFace::Top => Some(true),
                                 BlockFace::Bottom => Some(false),
-                                _ => shape.emits(face.unwrap_direction().opposite()),
-                            })
+                                _ => self.graph.wires[index]
+                                    .execution
+                                    .shape
+                                    .and_then(|shape| shape.emits(face.unwrap_direction().opposite())),
+                            }
                         } else {
                             unreachable!()
                         }
@@ -265,7 +281,15 @@ impl Builder<'_> {
                 match emits {
                     Some(false) => Ok(Vec::new()),
                     Some(true) => self.atom(CpuRead::Strength { node, threshold }, false),
-                    None => self.atom(CpuRead::Source { site, port, threshold }, false),
+                    None => {
+                        if let CircuitNodeKind::Wire(_) = spec.kind
+                            && let PowerPort::Weak(face) | PowerPort::Strong(face) = port
+                        {
+                            self.atom(CpuRead::WireEmission { node, face, threshold }, false)
+                        } else {
+                            self.atom(CpuRead::Source { site, port, threshold }, false)
+                        }
+                    }
                 }
             }
             SiteSource::Contact(contact) => {
@@ -438,6 +462,15 @@ impl CpuKernelPlans {
             clause_start: u32::try_from(self.require_true.len()).map_err(|_| "CPU clause table overflow")?,
             read_len: order.len() as u16,
             clause_len: clauses.len() as u16,
+            kind: if order.len() == 1 && clauses.len() == 1 {
+                CpuPredicateKind::Literal
+            } else if clauses.len() == 1 && clauses[0].1 == 0 {
+                CpuPredicateKind::All
+            } else if clauses.len() == order.len() && clauses.iter().all(|&(yes, no)| no == 0 && yes.count_ones() == 1) {
+                CpuPredicateKind::Any
+            } else {
+                CpuPredicateKind::Masks
+            },
         };
         self.reads.extend(order.iter().map(|&id| reads[id]));
         let remap = |bits: u64| {
@@ -458,7 +491,14 @@ impl CpuKernelPlans {
             return predicate.clause_len != 0;
         }
         let start = predicate.read_start as usize;
-        let values = self.reads[start..start + predicate.read_len as usize]
+        let reads = &self.reads[start..start + predicate.read_len as usize];
+        match predicate.kind {
+            CpuPredicateKind::Literal => return read(reads[0]) == (self.require_true[predicate.clause_start as usize] != 0),
+            CpuPredicateKind::All => return reads.iter().copied().all(read),
+            CpuPredicateKind::Any => return reads.iter().copied().any(read),
+            CpuPredicateKind::Masks => {}
+        }
+        let values = reads
             .iter()
             .enumerate()
             .fold(0u64, |value, (bit, &input)| value | (u64::from(read(input)) << bit));
@@ -474,7 +514,7 @@ fn read_order(read: CpuRead) -> (u8, usize) {
         CpuRead::State(
             StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. },
         ) => (1, actor.index()),
-        CpuRead::Strength { node, .. } => (2, node.index()),
+        CpuRead::Strength { node, .. } | CpuRead::WireEmission { node, .. } => (2, node.index()),
         CpuRead::Guard(guard) => (3, guard.index()),
         CpuRead::Source { site, .. } => (4, site.index()),
         CpuRead::Input { node, .. } => (5, node.index()),
@@ -529,6 +569,114 @@ unsafe fn match_avx2(values: u64, required: &[u64], forbidden: &[u64]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cpu_wire_emission_only_specializes_fixed_wire_owners() {
+        let (world, bounds) = crate::redpiler::passes::simplify_instant_resets::tests::fixture();
+        let monitor = TaskMonitor::default();
+        let mut graph =
+            crate::redpiler::passes::rich::prepare(&world, bounds, vec![], &monitor, crate::redpiler::analysis::AnalysisLimits::default())
+                .unwrap()
+                .graph;
+        let node = graph.wires[0].node;
+        graph.wires[0].execution.shape = None;
+        let site = SiteId::new(graph.sites.iter().position(|s| s.source == SiteSource::Component(node)).unwrap() as u32);
+        let incoming = FxHashMap::default();
+        for face in BlockFace::values() {
+            for port in [PowerPort::Weak(face), PowerPort::Strong(face)] {
+                for threshold in 0..15 {
+                    let mut builder = Builder {
+                        graph: &graph,
+                        incoming: &incoming,
+                        monitor: &monitor,
+                        reads: vec![],
+                        ids: FxHashMap::default(),
+                        guards: FxHashMap::default(),
+                        work: 0,
+                    };
+                    let clauses = builder.source(site, port, threshold, 0).unwrap();
+                    match face {
+                        BlockFace::Top => assert_eq!(builder.reads, vec![CpuRead::Strength { node, threshold }]),
+                        BlockFace::Bottom => assert!(clauses.is_empty()),
+                        _ => assert_eq!(builder.reads, vec![CpuRead::WireEmission { node, face, threshold }]),
+                    }
+                }
+            }
+        }
+        let contact = graph.resources[0].contacts[0];
+        graph.sites[site.index()].source = SiteSource::Contact(contact);
+        graph.contacts[contact.index()].variants[0].receiver = Some(CallbackReceiver::Component(node));
+        let mut builder = Builder {
+            graph: &graph,
+            incoming: &incoming,
+            monitor: &monitor,
+            reads: vec![],
+            ids: FxHashMap::default(),
+            guards: FxHashMap::default(),
+            work: 0,
+        };
+        let port = PowerPort::Strong(BlockFace::North);
+        builder.source(site, port, 3, 0).unwrap();
+        assert_eq!(builder.reads, vec![CpuRead::Source { site, port, threshold: 3 }]);
+    }
+
+    #[test]
+    fn cpu_scalar_predicates_match_masks_and_short_circuit() {
+        for count in (1..=8).chain([64]) {
+            let reads = (0..count)
+                .map(|bit| CpuRead::Strength {
+                    node: NodeId::new(bit),
+                    threshold: 0,
+                })
+                .collect::<Vec<_>>();
+            let all = u64::MAX >> (64 - count);
+            for clauses in [vec![(all, 0)], (0..count).map(|bit| (1 << bit, 0)).collect(), vec![(0, all)]] {
+                let mut plans = CpuKernelPlans::default();
+                let predicate = plans.append(reads.clone(), clauses).unwrap();
+                let general = CpuPredicate {
+                    kind: CpuPredicateKind::Masks,
+                    ..predicate
+                };
+                let words = if count == 64 {
+                    vec![0, 1, u64::MAX >> 1, u64::MAX]
+                } else {
+                    (0..=all).collect()
+                };
+                for bits in words {
+                    let read = |input| {
+                        let CpuRead::Strength { node, .. } = input else { unreachable!() };
+                        bits & (1 << node.index()) != 0
+                    };
+                    assert_eq!(
+                        plans.evaluate(predicate, read, clause_matcher()),
+                        plans.evaluate(general, read, clause_matcher())
+                    );
+                }
+                if matches!(predicate.kind, CpuPredicateKind::All | CpuPredicateKind::Any | CpuPredicateKind::Literal) {
+                    let mut calls = 0;
+                    let value = predicate.kind == CpuPredicateKind::Any;
+                    plans.evaluate(
+                        predicate,
+                        |_| {
+                            calls += 1;
+                            value
+                        },
+                        |_, _, _| panic!("scalar predicate called mask matcher"),
+                    );
+                    assert_eq!(calls, 1, "scalar predicate must stop at its first decisive read");
+                }
+            }
+        }
+        let mut plans = CpuKernelPlans::default();
+        for clauses in [vec![], vec![(0, 0)]] {
+            let expected = !clauses.is_empty();
+            let predicate = plans.append(vec![], clauses).unwrap();
+            assert_eq!(
+                plans.evaluate(predicate, |_| panic!("constant read"), |_, _, _| panic!("constant matcher")),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn cpu_kernel_contact_priority_and_missing_profile_are_exact() {

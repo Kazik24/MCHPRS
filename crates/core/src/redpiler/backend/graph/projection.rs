@@ -3,9 +3,7 @@ use super::*;
 /// Index contact selectors that only depend on graph state. Contact profile
 /// lookup ignores callback receiver properties, so site observations stay on
 /// the conservative full-projection path.
-pub(super) fn contact_projection_dependencies(
-    program: &CircuitProgram,
-) -> (Vec<Vec<ContactId>>, Vec<Vec<ContactId>>, Vec<ContactId>) {
+pub(super) fn contact_projection_dependencies(program: &CircuitProgram) -> (Vec<Vec<ContactId>>, Vec<Vec<ContactId>>, Vec<ContactId>) {
     let mut pistons = vec![Vec::new(); program.pistons().len()];
     let mut resources = vec![Vec::new(); program.resources().len()];
     let mut always_dirty = Vec::new();
@@ -185,23 +183,13 @@ impl GraphBackend {
 
     fn refresh_contact_projection(&mut self) {
         let mut changed = Vec::new();
-        for (index, (projected, current)) in self
-            .projected_pistons
-            .iter_mut()
-            .zip(&self.state.pistons)
-            .enumerate()
-        {
+        for (index, (projected, current)) in self.projected_pistons.iter_mut().zip(&self.state.pistons).enumerate() {
             if projected != current {
                 changed.extend(self.contacts_by_piston[index].iter().copied());
                 *projected = *current;
             }
         }
-        for (index, (projected, current)) in self
-            .projected_resources
-            .iter_mut()
-            .zip(&self.state.resources)
-            .enumerate()
-        {
+        for (index, (projected, current)) in self.projected_resources.iter_mut().zip(&self.state.resources).enumerate() {
             if projected != current {
                 changed.extend(self.contacts_by_resource[index].iter().copied());
                 *projected = *current;

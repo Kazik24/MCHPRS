@@ -150,33 +150,63 @@ impl CircuitDraft {
         self.validate_instant_boundaries(monitor)
     }
 
-    fn validate_bud_memory_reads(&self,monitor:&crate::redpiler::TaskMonitor)->Result<(),GraphBuildError> {
-        if self.plans.bud_memory_reads.is_empty() {return Ok(());}
-        let expected=infer_bud_memory_reads(self,monitor).map_err(|_|GraphBuildError::InvalidInstantRegion {table:"BUD memory reads",index:0})?;
-        if self.plans.bud_memory_reads!=expected {return Err(GraphBuildError::InvalidInstantRegion {table:"BUD memory reads",index:0});}
+    fn validate_bud_memory_reads(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.bud_memory_reads.is_empty() {
+            return Ok(());
+        }
+        let expected = infer_bud_memory_reads(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "BUD memory reads",
+            index: 0,
+        })?;
+        if self.plans.bud_memory_reads != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "BUD memory reads",
+                index: 0,
+            });
+        }
         Ok(())
     }
 
     fn validate_cpu_kernels(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
-        if self.plans.cpu_kernels == CpuKernelPlans::default() { return Ok(()); }
-        let expected = CpuKernelPlans::compile(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion { table: "CPU kernels", index: 0 })?;
-        if self.plans.cpu_kernels != expected { return Err(GraphBuildError::InvalidInstantRegion { table: "CPU kernels", index: 0 }); }
+        if self.plans.cpu_kernels == CpuKernelPlans::default() {
+            return Ok(());
+        }
+        let expected = CpuKernelPlans::compile(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "CPU kernels",
+            index: 0,
+        })?;
+        if self.plans.cpu_kernels != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "CPU kernels",
+                index: 0,
+            });
+        }
         Ok(())
     }
 
     fn validate_instant_events(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
-        if self.plans.instant_events.is_empty() { return Ok(()); }
-        let expected = crate::redpiler::analysis::instant::event_kernels::infer(self, monitor)
-            .map_err(|_| GraphBuildError::InvalidInstantRegion {table:"instant events",index:0})?;
+        if self.plans.instant_events.is_empty() {
+            return Ok(());
+        }
+        let expected =
+            crate::redpiler::analysis::instant::event_kernels::infer(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+                table: "instant events",
+                index: 0,
+            })?;
         if self.plans.instant_events != expected {
-            return Err(GraphBuildError::InvalidInstantRegion {table:"instant events",index:0});
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "instant events",
+                index: 0,
+            });
         }
         Ok(())
     }
 
     fn validate_wire_capture_masks(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
         for (index, wire) in self.wires.iter().enumerate() {
-            if monitor.cancelled() { return Err(GraphBuildError::Cancelled); }
+            if monitor.cancelled() {
+                return Err(GraphBuildError::Cancelled);
+            }
             let Some(mask) = wire.execution.mutable_captures else { continue };
             if wire.execution.hop_root.is_none() || mask >> 24 != 0 || self.plans.wire_captures.len() != self.sites.len() {
                 return Err(GraphBuildError::InvalidWireCaptureMask { wire: index });

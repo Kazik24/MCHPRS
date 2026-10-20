@@ -414,7 +414,11 @@ fn requesting_reference_analysis_never_exempts_forged_builder_output() {
         (passes::planning::InstantAnalysis::Layers, "compile-instant-layers"),
     ] {
         let prepared = passes::rich::prepare(&world, bounds, vec![], &TaskMonitor::default(), AnalysisLimits::default()).unwrap();
-        let mut pipeline = passes::default_graph_pipeline(&options);
+        let mut pipeline = if matches!(analysis, passes::planning::InstantAnalysis::Layers) {
+            passes::experimental_layer_pipeline(&options)
+        } else {
+            passes::default_graph_pipeline(&options)
+        };
         let entry = pipeline.entries.iter_mut().find(|entry| entry.pass.name() == replaced).unwrap();
         entry.pass = Pass::build(AlterPreparedInstant { analysis });
         entry.enabled = true;

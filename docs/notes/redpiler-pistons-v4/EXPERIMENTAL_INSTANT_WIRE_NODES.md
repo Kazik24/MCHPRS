@@ -1,8 +1,9 @@
 # Experimental instant wire nodes
 
-2026-10-19. Separate opt-in pass: `experimental-compile-instant-wire-nodes`.
-Build core with `--features experimental-instant-wire-nodes`; O3 and higher
-append the builder after the normal pipeline. Ordinary builds are unchanged.
+The certified single-wire pass is now selected by normal production O4+;
+see [production tiers](../../REDPILER_OPTIMIZATION_LEVELS.md). Its original
+diagnostic name remains `experimental-compile-instant-wire-nodes`.
+The experiments below record the earlier opt-in configuration of 2026-10-19.
 
 ## Implemented boundary
 
@@ -116,3 +117,77 @@ nets can exhaust source transitions; runtime entry checks must retain general
 execution for unsettled wire state or unproved source changes. This avoids the
 current whole-kernel requirement to own the surrounding action queue. It is a
 proposed next step, not a certificate implemented by this pass.
+
+## Memory-only retry (2026-10-20)
+
+`analysis::tests::research::layered_devices::memory_only` retries the existing
+closed multi-wire fixed-point experiment without rejecting it for changed wire
+strengths, revision counters, or pending-work order. Both sides use the current
+O5 pipeline with the isolated single-wire experiment disabled, then only the
+candidate installs `unsafe-abstract-instant-nets`. The experiment stays outside
+production tiers.
+
+BubbleSort watches the frozen RAM decoder's 768 piston bits: four banks at
+local Y=7,17,27,37, sixteen words per bank, twelve bits per word. A published
+piston encodes `!extended`; a moving base is unreadable. Every baseline sample,
+including unreadability, is checked against native execution. Candidate value
+differences count only when both bits are readable. Availability differences
+are recorded separately. Execution continues after a difference, through all
+10,036 ticks and the final sorted output bank.
+
+FPU uses `FPU_MROWW.schem`, the green-wool trigger, and the existing seeded
+random-input history (four warm-up and thirty-two measured vectors, 64 ticks
+per trigger level). Its ordinary pistons outside the instant kernel are
+observation candidates; these fixtures do not provide a certified FPU memory
+map. They must not be reported as proven BUD storage pairs. The Counter/ANPU
+vertical-pair recognizer finds no pairs in these two prepared fixtures.
+
+The probes also count native bit transitions to detect inactive histories and
+record the first resource-location difference separately from the RAM verdict.
+Graph inference receives empty command hosts. Native runs independently; it is
+not an inference fallback. Timings are one interleaved diagnostic run, not clean
+alternating performance pairs. The current harness uses release optimization
+with LTO disabled and 256 codegen units.
+
+Raw reports: `target/instant-wire-nodes/memory-only/{cpu_bubblesort,fpu}.json`.
+Run the ignored `memory_only::` tests with `--nocapture --test-threads=1`.
+
+### Results
+
+| Build | Ticks | Probed pistons | Active probes / native bit transitions | Readable bit differences | Availability differences |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| CPU_BUBBLESORT | 10,036 | 768 documented RAM bits | 64 / 512 | 0 | 0 |
+| FPU_MROWW | 4,672 | 296 ordinary-piston candidates | 164 / 9,254 | 0 | 0 |
+
+BubbleSort's complete four-bank RAM trace matches native, including unreadable
+samples during motion. Its final output bank is correctly sorted 0..15 on all
+three executions. FPU's probe trace also matches, including availability; this
+does not establish arithmetic correctness or completeness of the memory map.
+There are 512 unavailable CPU samples and 10,354 unavailable FPU samples, with
+the same cells unavailable in baseline and candidate.
+
+The first resource-location differences are CPU tick 26 and FPU tick 65. Both
+payloads are disabled at those samples. These internal differences do not
+become differences in the observed storage histories. Scheduled tick, accepted
+piston action, and deferred-publication totals are identical in both runs;
+this statement does not claim their ordering is identical.
+
+| Build | Admitted multi-wire nets / wires | General walks, baseline -> candidate | Callbacks, baseline -> candidate | Diagnostic inference seconds, baseline -> candidate |
+| --- | ---: | ---: | ---: | ---: |
+| CPU_BUBBLESORT | 1,408 / 19,362 | 3,882,011 -> 1,933,735 (-50.19%) | 204,031,794 -> 165,996,351 (-18.64%) | 51.260 -> 55.317 (+7.92%) |
+| FPU_MROWW | 1,006 / 10,918 | 604,145 -> 399,212 (-33.92%) | 33,596,586 -> 25,364,027 (-24.50%) | 7.992 -> 8.491 (+6.25%) |
+
+Both ignored probes completed successfully. The existing causal ADDER1BIT
+request-order regression was also rerun successfully; its wrong arithmetic
+response remains a counterexample to unrestricted contraction.
+
+For an abstract CPU replacement, equality of internal pending queues is too
+strict as the sole rejection test. The tested RAM boundary admits changes that
+full physical-state equality rejects. These histories support further logical
+contraction research; they do not certify arbitrary inputs, all output timings,
+or interpreter handoff.
+
+The research executor still discovers topology, allocates net scratch, and
+uses general source queries at runtime. The next performance experiment should
+compile fixed topology and weighted source-to-receiver transfers into the kernel
+and eliminate that work. Fewer walks alone have not delivered a speedup here.

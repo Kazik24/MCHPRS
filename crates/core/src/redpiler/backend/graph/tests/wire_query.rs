@@ -433,6 +433,11 @@ fn assert_compiled_shape_matches_contact_states(graph: CompileGraph) {
                 let regulated = crate::redstone::wire::regulate_sides(held, expected);
                 for face in [BlockFace::North, BlockFace::South, BlockFace::East, BlockFace::West] {
                     let connected = !crate::redstone::wire::get_current_side(regulated, face.unwrap_direction().opposite()).is_none();
+                    assert_eq!(
+                        backend.wire_emits(plan.node, backend.wire_state(plan.node), face),
+                        connected,
+                        "typed live emission"
+                    );
                     assert_eq!(backend.site_power(root, PowerPort::Weak(face)), if connected { power } else { 0 });
                     assert_eq!(backend.site_power(root, PowerPort::Strong(face)), if connected { power } else { 0 });
                 }

@@ -67,6 +67,34 @@ fn backend(graph: CompileGraph) -> GraphBackend {
     GraphBackend::new(program, state, 0).unwrap()
 }
 
+#[test]
+fn cpu_wire_emission_keeps_classic_overlay_strength() {
+    let mut prepared = prepare(&line(3));
+    optimize(&mut prepared.graph, &prepared.entry);
+    assert!(!prepared.graph.plans.classic_nets.is_empty());
+    let mut backend = backend(prepared.graph);
+    for active in [true, false, true] {
+        backend.state.classic_active.fill(active);
+        backend.state.classic_signals.fill(11);
+        for node in backend.program.wires().iter().map(|w| w.node).collect::<Vec<_>>() {
+            let ComponentState::Wire(held) = &mut backend.state.components[node.index()] else {
+                unreachable!()
+            };
+            held.power = 3;
+            let site = backend.component_sites[node.index()].unwrap();
+            let wire = backend.wire_state(node);
+            assert_eq!(wire.power == 3, !active, "read the active overlay before applying the threshold");
+            for face in BlockFace::values() {
+                for threshold in 0..16 {
+                    let typed = wire.power > threshold && backend.wire_emits(node, wire, face);
+                    assert_eq!(typed, backend.site_power(site, PowerPort::Strong(face)) > threshold);
+                    assert_eq!(typed, backend.site_power(site, PowerPort::Weak(face)) > threshold);
+                }
+            }
+        }
+    }
+}
+
 fn assert_same(general: &GraphBackend, classic: &GraphBackend) {
     assert_eq!(general.scheduled_ticks(), classic.scheduled_ticks(), "deadline, priority and FIFO");
     for index in 0..general.program.nodes().len() {
