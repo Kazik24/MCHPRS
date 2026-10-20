@@ -541,8 +541,8 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
         assert_eq!(frame.read_varint().unwrap(), 42);
         assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
         assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_varint().unwrap(), 5);
-        for expected in ["-O0", "-O1", "-O2", "-O3", "-O4"] {
+        assert_eq!(frame.read_varint().unwrap(), 6);
+        for expected in ["-O0", "-O1", "-O2", "-O3", "-O4", "-O5"] {
             assert_eq!(frame.read_string().unwrap(), expected);
             assert!(!frame.read_bool().unwrap());
         }

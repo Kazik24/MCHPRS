@@ -1,8 +1,10 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
+#[cfg(test)]
+use crate::redpiler::program_graph::GuardPredicatePlans;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, GraphBuildError, InstantProxy, InstantRegion, InstantResetPlan, InstantTransport, PlanChange, SiteId,
-    TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
+    CompileGraph, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan, InstantTransitionPrograms,
+    InstantTransport, InstantValueRegions, PlanChange, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -42,6 +44,11 @@ pub(crate) enum PlanOutput {
     #[cfg_attr(not(test), expect(dead_code, reason = "Layers are built only by the experimental test pipeline."))]
     Layers(crate::redpiler::program_graph::LayeredInstantPlan),
     FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
+    InstantDrives(InstantDriveProgram),
+    InstantTransitionPrograms(InstantTransitionPrograms),
+    SignalChannels(crate::redpiler::program_graph::SignalChannels),
+    StableInstantLogic(crate::redpiler::program_graph::StableInstantLogic),
+    InstantValueRegions(InstantValueRegions),
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
@@ -51,6 +58,8 @@ pub(crate) enum PlanOutput {
     WireCaptureMasks(Vec<u32>),
     InstantEvents(Vec<crate::redpiler::program_graph::InstantKernel>),
     CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
+    #[cfg(test)]
+    GuardPredicates(GuardPredicatePlans),
     BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
     InstantTransport(InstantTransport),
     InstantWireNodes(Vec<Option<crate::redpiler::program_graph::InstantWireNode>>),
@@ -78,6 +87,11 @@ impl PlanOutput {
             }
             Self::Layers(layers) => graph.plans.instant.layers = Some(layers),
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
+            Self::InstantDrives(plans) => graph.plans.instant_drives = plans,
+            Self::InstantTransitionPrograms(plans) => graph.plans.instant_transition_programs = plans,
+            Self::SignalChannels(plans) => graph.plans.signal_channels = plans,
+            Self::StableInstantLogic(plans) => graph.plans.stable_instant_logic = plans,
+            Self::InstantValueRegions(plans) => graph.plans.instant_value_regions = plans,
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::WireCaptures(captures) => graph.plans.wire_captures = captures,
@@ -91,6 +105,8 @@ impl PlanOutput {
                 graph.plans.cpu_kernels = Default::default();
             }
             Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
+            #[cfg(test)]
+            Self::GuardPredicates(plans) => graph.plans.guard_predicates = plans,
             Self::BudMemoryReads(reads) => graph.plans.bud_memory_reads = reads,
             Self::InstantTransport(plan) => graph.plans.instant_transport = plan,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
@@ -150,6 +166,11 @@ impl PlanOutput {
             Self::Boundaries(_) => PlanChange::Boundaries,
             Self::Layers(_) => PlanChange::Layers,
             Self::FixedSignals(_) => PlanChange::FixedSignals,
+            Self::InstantDrives(_) => PlanChange::InstantDrives,
+            Self::InstantTransitionPrograms(_) => PlanChange::InstantTransitionPrograms,
+            Self::SignalChannels(_) => PlanChange::SignalChannels,
+            Self::StableInstantLogic(_) => PlanChange::StableInstantLogic,
+            Self::InstantValueRegions(_) => PlanChange::InstantValueRegions,
             Self::ClassicNets(_) => PlanChange::ClassicNets,
             Self::TurboCallbacks(_) => PlanChange::TurboCallbacks,
             Self::DustPaths(_) => PlanChange::DustPaths,
@@ -159,6 +180,8 @@ impl PlanOutput {
             Self::WireCaptureMasks(_) => PlanChange::WireCaptureMasks,
             Self::InstantEvents(_) => PlanChange::InstantEvents,
             Self::CpuKernels(_) => PlanChange::CpuKernels,
+            #[cfg(test)]
+            Self::GuardPredicates(_) => PlanChange::GuardPredicates,
             Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
             Self::InstantTransport(_) => PlanChange::InstantTransport,
             Self::InstantWireNodes(_) => PlanChange::InstantWireNodes,
@@ -172,10 +195,74 @@ impl PlanOutput {
     }
 
     fn validate_shape(&self, graph: &CompileGraph) -> Result<(), GraphBuildError> {
+        if let Self::StableInstantLogic(plan) = self {
+            if !plan.nets.is_empty() && plan.nets.len() != graph.plans.instant_transport.nets.len() {
+                return Err(GraphBuildError::StateTableLength {
+                    table: "stable instant logic",
+                    descriptions: graph.plans.instant_transport.nets.len(),
+                    states: plan.nets.len(),
+                });
+            }
+        }
+        if let Self::InstantValueRegions(plan) = self {
+            if !plan.nets.is_empty() && plan.nets.len() != graph.plans.instant_transport.nets.len() {
+                return Err(GraphBuildError::StateTableLength {
+                    table: "instant value regions",
+                    descriptions: graph.plans.instant_transport.nets.len(),
+                    states: plan.nets.len(),
+                });
+            }
+        }
+        if let Self::InstantTransitionPrograms(plan) = self {
+            if plan.nets.len() != graph.plans.instant_transport.nets.len() {
+                return Err(GraphBuildError::StateTableLength {
+                    table: "instant transition programs",
+                    descriptions: graph.plans.instant_transport.nets.len(),
+                    states: plan.nets.len(),
+                });
+            }
+            for (index, net) in plan.nets.iter().enumerate() {
+                if net
+                    .as_ref()
+                    .is_some_and(|net| net.wire_queries.len() != graph.plans.instant_transport.nets[index].wires.len())
+                {
+                    return Err(GraphBuildError::InvalidInstantRegion {
+                        table: "instant transition program shape",
+                        index,
+                    });
+                }
+            }
+        }
+        if let Self::SignalChannels(plan) = self {
+            if plan.channels.len() != graph.plans.instant_transport.nets.len() {
+                return Err(GraphBuildError::StateTableLength {
+                    table: "signal channels",
+                    descriptions: graph.plans.instant_transport.nets.len(),
+                    states: plan.channels.len(),
+                });
+            }
+        }
         if let Self::CpuKernels(plans) = self {
             if plans.require_true.len() != plans.require_false.len() || plans.entries.len() > graph.pistons.len() {
                 return Err(GraphBuildError::InvalidInstantRegion {
                     table: "CPU kernel shape",
+                    index: 0,
+                });
+            }
+        }
+        #[cfg(test)]
+        if let Self::GuardPredicates(plans) = self {
+            if plans.require_true.len() != plans.require_false.len()
+                || plans.by_guard.len() != 0 && plans.by_guard.len() != graph.guards.len()
+                || plans.stats.compiled != plans.predicates.len()
+                || plans.stats.compiled != plans.by_guard.iter().filter(|&&entry| entry != u32::MAX).count()
+                || plans
+                    .by_guard
+                    .iter()
+                    .any(|&entry| entry != u32::MAX && entry as usize >= plans.predicates.len())
+            {
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "guard predicate shape",
                     index: 0,
                 });
             }
@@ -191,6 +278,7 @@ impl PlanOutput {
         }
         let aligned = match self {
             Self::WireQueries(rows) => Some(("wire query facts", rows.len())),
+            Self::InstantDrives(plan) => Some(("instant drive wire map", plan.by_wire.len())),
             Self::WireShapes(rows) => Some(("wire shapes", rows.len())),
             Self::WireCaptureMasks(rows) => Some(("wire capture masks", rows.len())),
             Self::InstantWireNodes(rows) => Some(("instant wire nodes", rows.len())),

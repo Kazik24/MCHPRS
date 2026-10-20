@@ -1,5 +1,23 @@
 # CPU-friendly classic execution: measured baseline and proposed next step
 
+Latest CPU follow-up (2026-10-20): [minimized transition programs](INSTANT_TRANSITION_PROGRAMS.md)
+remove 88.65% of guarded-transport wire visits, pass both complete CPU/native
+and continuation checks, and reduce execution time by 7.09% in five pairs
+against the preceding transition program. The [fresh inference profile](INSTANT_TRANSITION_PROFILE.md)
+finds general guard evaluation at 18.96% inclusive. The separate
+[compact guard predicate experiment](COMPILED_GUARD_PREDICATES.md) passes full
+correctness but increases time by 8.38% in five pairs and is excluded from production.
+The unchanged minimized reference measures 428.70 median / 437.97 best TPS in
+those pairs; host conditions differ from the preceding session.
+Whole-circuit replacement remains unfinished. Historical TPS below
+comes from separate experiments and host conditions.
+
+Fresh [production FPU random-input measurements](FPU_CURRENT_INFERENCE.md) use
+the green-wool trigger and five rotated rounds: interpreter **387.01 TPS**, O5
+**1,281.73 TPS**, and O5 with stable inputs **1,347.51 TPS** medians. Physical
+checkpoints, semantic pending work and native continuation pass in every run.
+The native output bank remains constant, so these measure switching cost.
+
 All certified passes are now selected in normal production
 [O1–O5 tiers](../../REDPILER_OPTIMIZATION_LEVELS.md), including live-input event
 kernels at O4 and CPU packing at O5. No experimental Cargo flag is required.

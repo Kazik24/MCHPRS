@@ -40,6 +40,7 @@
     </aside>
     <section class="graph-shell">
       <div class="toolbar">
+        <label>Program <select id="program-view"><option value="physical">Circuit (physical)</option><option value="compiled">Compiled plans</option></select></label>
         <label>View <select id="scope"><option value="overview">Circuit overview</option><option value="neighborhood">Selected neighborhood</option></select></label>
         <label>Hops <select id="depth"><option>1</option><option selected>2</option><option>3</option></select></label>
         <label>Layout <select id="layout"><option value="cose">Connections</option><option value="breadthfirst">Signal flow</option><option value="position">World X/Z by Y layer</option></select></label>
@@ -50,6 +51,7 @@
       <div id="drop-hint">Drop a graph JSON file here, or choose one above.</div>
       <div id="graph" aria-label="Redpiler graph"></div>
       <footer><span id="counts">No graph loaded</span><span>Drag nodes to arrange · drag background to pan · scroll to zoom · Esc clears highlight</span></footer>
+      <p id="program-status" class="muted" aria-live="polite"></p>
     </section>
     <aside class="inspector">
       <h2>Selection</h2>

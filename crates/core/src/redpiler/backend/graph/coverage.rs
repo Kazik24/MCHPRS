@@ -40,6 +40,23 @@ impl GraphBackend {
                 .iter()
                 .filter(|node| matches!(node.kind, CircuitNodeKind::BuiltinReset { .. }))
                 .count(),
+            compiled_cpu_piston_predicates: self.program.cpu_kernels().entries.len(),
+            compiled_transport_wires: self
+                .program
+                .wires()
+                .iter()
+                .filter(|wire| self.program.transport_wire(wire.node).is_some())
+                .count(),
+            stable_logic_wires: self
+                .program
+                .wires()
+                .iter()
+                .filter(|wire| {
+                    self.program
+                        .transport_wire(wire.node)
+                        .is_some_and(|(net, _)| self.program.stable_logic_net(net).is_some())
+                })
+                .count(),
         }
     }
 }

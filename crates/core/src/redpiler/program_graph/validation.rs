@@ -36,9 +36,21 @@ impl CircuitDraft {
         if !self.plans.instant_transport.nets.is_empty() {
             self.validate_instant_transport(monitor)?;
         }
+        if !self.plans.instant_drives.by_wire.is_empty() {
+            self.validate_instant_drives(monitor)?;
+        }
+        self.validate_signal_channels(monitor)?;
+        self.validate_stable_instant_logic(monitor)?;
+        self.validate_instant_value_regions(monitor)?;
+        self.validate_instant_transition_programs(monitor)?;
         match change {
             PlanChange::CpuKernels => {
                 self.validate_cpu_kernels(monitor)?;
+                Ok(None)
+            }
+            #[cfg(test)]
+            PlanChange::GuardPredicates => {
+                self.validate_guard_predicates(monitor)?;
                 Ok(None)
             }
             PlanChange::BudMemoryReads => {
@@ -69,6 +81,9 @@ impl CircuitDraft {
                 Ok(None)
             }
             PlanChange::InstantTransport => Ok(None),
+            PlanChange::SignalChannels => Ok(None),
+            PlanChange::StableInstantLogic => Ok(None),
+            PlanChange::InstantValueRegions => Ok(None),
             PlanChange::Layers => self.validate_instant_layers(monitor),
             PlanChange::Boundaries => {
                 // Boundary publication also removes old proxies, affecting fixed ownership.
@@ -78,6 +93,14 @@ impl CircuitDraft {
             PlanChange::FixedSignals => {
                 self.validate_fixed_signals(monitor)?;
                 self.validate_classic_programs(monitor)?;
+                Ok(None)
+            }
+            PlanChange::InstantDrives => {
+                self.validate_instant_drives(monitor)?;
+                Ok(None)
+            }
+            PlanChange::InstantTransitionPrograms => {
+                self.validate_instant_transition_programs(monitor)?;
                 Ok(None)
             }
             PlanChange::FixedClassic | PlanChange::MixedClassic => {
@@ -146,9 +169,15 @@ impl CircuitDraft {
         self.validate_wire_capture_masks(monitor)?;
         self.validate_instant_events(monitor)?;
         self.validate_cpu_kernels(monitor)?;
+        self.validate_guard_predicates(monitor)?;
         self.validate_bud_memory_reads(monitor)?;
         self.validate_instant_wire_nodes(monitor)?;
         self.validate_instant_transport(monitor)?;
+        self.validate_instant_drives(monitor)?;
+        self.validate_signal_channels(monitor)?;
+        self.validate_stable_instant_logic(monitor)?;
+        self.validate_instant_value_regions(monitor)?;
+        self.validate_instant_transition_programs(monitor)?;
         self.validate_abstract_instant_nets(monitor)?;
         self.validate_instant_regions()?;
         self.validate_fixed_signals(monitor)?;
@@ -185,6 +214,23 @@ impl CircuitDraft {
         if self.plans.cpu_kernels != expected {
             return Err(GraphBuildError::InvalidInstantRegion {
                 table: "CPU kernels",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_guard_predicates(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.guard_predicates == GuardPredicatePlans::default() {
+            return Ok(());
+        }
+        let expected = GuardPredicatePlans::compile(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "guard predicates",
+            index: 0,
+        })?;
+        if self.plans.guard_predicates != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "guard predicates",
                 index: 0,
             });
         }
@@ -411,13 +457,107 @@ impl CircuitDraft {
         if self.plans.instant_transport.nets.is_empty() {
             return Ok(());
         }
-        let expected = instant_transport::infer(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+        let infer = if self.plans.instant_transport.guarded {
+            instant_transport::infer_guarded
+        } else {
+            instant_transport::infer
+        };
+        let expected = infer(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
             table: "instant transport",
             index: 0,
         })?;
         if self.plans.instant_transport != expected {
             return Err(GraphBuildError::InvalidInstantRegion {
                 table: "instant transport",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_instant_drives(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.instant_drives.by_wire.is_empty() {
+            return Ok(());
+        }
+        let expected = infer_instant_drives(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "instant drives",
+            index: 0,
+        })?;
+        if self.plans.instant_drives != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "instant drives",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_signal_channels(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.signal_channels.channels.is_empty() {
+            return Ok(());
+        }
+        let expected = infer_signal_channels(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "signal channels",
+            index: 0,
+        })?;
+        if self.plans.signal_channels != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "signal channels",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_stable_instant_logic(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.stable_instant_logic.nets.is_empty() {
+            return Ok(());
+        }
+        let expected = infer_stable_instant_logic(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "stable instant logic",
+            index: 0,
+        })?;
+        if self.plans.stable_instant_logic != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "stable instant logic",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_instant_value_regions(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.instant_value_regions.nets.is_empty() {
+            return Ok(());
+        }
+        let expected = infer_instant_value_regions(self, &self.plans.instant_transport, &self.plans.instant_drives, monitor).map_err(|_| {
+            GraphBuildError::InvalidInstantRegion {
+                table: "instant value regions",
+                index: 0,
+            }
+        })?;
+        if self.plans.instant_value_regions != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "instant value regions",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_instant_transition_programs(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.instant_transition_programs.nets.is_empty() {
+            return Ok(());
+        }
+        let expected = infer_instant_transition_programs(self, &self.plans.instant_transport, &self.plans.instant_drives, monitor).map_err(|_| {
+            GraphBuildError::InvalidInstantRegion {
+                table: "instant transition programs",
+                index: 0,
+            }
+        })?;
+        if self.plans.instant_transition_programs != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "instant transition programs",
                 index: 0,
             });
         }

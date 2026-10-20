@@ -38,6 +38,7 @@ mod wire_callback_selection;
 mod wire_captures;
 mod wire_query_facts;
 mod wire_shapes;
+pub(crate) use cpu_kernels::GuardPredicatePlans;
 pub(crate) use cpu_kernels::{CpuKernelEntry, CpuKernelPlans, CpuPredicate, CpuRead};
 mod bud_memory_reads;
 pub(crate) use bud_memory_reads::{BudMemoryRead, infer_bud_memory_reads};
@@ -55,18 +56,31 @@ pub(crate) use wire_callback_selection::WireCallbackSelection;
 pub(crate) use wire_shapes::WireShape;
 mod fixed_signals;
 pub(crate) use fixed_signals::*;
+mod instant_drives;
+pub(crate) use instant_drives::*;
+mod instant_transition_programs;
+pub(crate) use instant_transition_programs::*;
+mod instant_value_regions;
+pub(crate) use instant_value_regions::*;
+mod signal_channels;
+mod stable_instant_logic;
+pub(crate) use stable_instant_logic::*;
+mod signal_transitions;
 pub(crate) use instant_boundaries::*;
 pub(crate) use instant_cells::*;
 pub(crate) use instant_regions::*;
+pub(crate) use signal_channels::*;
+pub(crate) use signal_transitions::{SignalOp, SignalTranscript, minimize_signal_operations};
 mod fixed_classic;
 pub(crate) use fixed_classic::*;
 mod mixed_classic;
 pub(crate) use instant_layers::*;
 pub(crate) use instant_program::*;
 pub(crate) use instant_transport::infer as infer_instant_transport;
+pub(crate) use instant_transport::infer_guarded as infer_guarded_instant_transport;
 pub(crate) use instant_transport::*;
 pub(crate) use mixed_classic::*;
-pub(crate) use wire_query_facts::WireQueryFacts;
+pub(crate) use wire_query_facts::{WireInputs, WireQueryFacts};
 
 use crate::redpiler::components::{NodeState, NodeType};
 use mchprs_blocks::blocks::{Block, RedstoneWire};
@@ -888,6 +902,13 @@ pub(crate) struct CircuitProgram {
     mixed_classic: MixedClassicProgram,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_signals: FixedSignalProgram,
+    instant_drives: InstantDriveProgram,
+    signal_channels: Box<[Option<std::sync::Arc<SignalChannel>>]>,
+    stable_instant_logic: Box<[Option<std::sync::Arc<StableLogicNet>>]>,
+    /// Compiled max-plus value kernels aligned with certified transport nets.
+    instant_value_regions: Box<[Option<std::sync::Arc<InstantValueRegionNet>>]>,
+    /// Eligibility maps for exact ordered transport-episode transcripts.
+    instant_transition_programs: Box<[Option<std::sync::Arc<InstantTransitionNet>>]>,
     classic: ClassicProgram,
     instant: InstantProgram,
     nodes: Box<[NodeSpec]>,
@@ -899,6 +920,8 @@ pub(crate) struct CircuitProgram {
     profiles: Box<[Profile]>,
     profile_blocks: Box<[Block]>,
     guards: Box<[Guard]>,
+    /// Packed pure guards preserve the original live/captured sampling context.
+    guard_predicates: GuardPredicatePlans,
     contacts: Box<[ContactSpec]>,
     routes: Box<[Route]>,
     /// This maps each wire plan to ordered slices in its Turbo delivery route.
@@ -935,8 +958,70 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn instant_transition_net(&self, net: u32) -> Option<&std::sync::Arc<InstantTransitionNet>> {
+        self.instant_transition_programs.get(net as usize)?.as_ref()
+    }
+
+    pub(crate) fn stable_logic_net(&self, net: u32) -> Option<&std::sync::Arc<StableLogicNet>> {
+        self.stable_instant_logic.get(net as usize)?.as_ref()
+    }
+
+    pub(crate) fn instant_value_region_net(&self, net: u32) -> Option<&std::sync::Arc<InstantValueRegionNet>> {
+        self.instant_value_regions.get(net as usize)?.as_ref()
+    }
+
+    pub(crate) fn signal_channel(&self, net: u32) -> Option<&std::sync::Arc<SignalChannel>> {
+        self.signal_channels.get(net as usize)?.as_ref()
+    }
+
+    pub(crate) fn instant_drive_program(&self) -> &InstantDriveProgram {
+        &self.instant_drives
+    }
+
     pub(crate) fn instant_transport_net(&self, net: u32) -> &std::sync::Arc<TransportNet> {
         &self.instant_transport[net as usize]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transport_census_metadata(&self) -> Vec<serde_json::Value> {
+        fn root(parents: &mut [usize], mut node: usize) -> usize {
+            while parents[node] != node {
+                parents[node] = parents[parents[node]];
+                node = parents[node];
+            }
+            node
+        }
+        self.instant_transport
+            .iter()
+            .map(|net| {
+                let conditional_slots: usize = net.wires.iter().map(|wire| wire.conditional_inputs.count_ones() as usize).sum();
+                let mut parents = (0..net.wires.len()).collect::<Vec<_>>();
+                for (target, wire) in net.wires.iter().enumerate() {
+                    let mut inputs = wire.inputs | wire.conditional_inputs;
+                    while inputs != 0 {
+                        let slot = inputs.trailing_zeros() as usize;
+                        inputs &= inputs - 1;
+                        let source = net.site_wire[wire.neighbors[slot] as usize];
+                        assert_ne!(source, u32::MAX, "certified transfer source is a member wire");
+                        let source = root(&mut parents, source as usize);
+                        let target = root(&mut parents, target);
+                        parents[source] = target;
+                    }
+                }
+                let mut sizes = vec![0; net.wires.len()];
+                for node in 0..net.wires.len() {
+                    sizes[root(&mut parents, node)] += 1;
+                }
+                sizes.retain(|&size| size > 0);
+                sizes.sort_unstable_by(|a, b| b.cmp(a));
+                assert_eq!(sizes.iter().sum::<usize>(), net.wires.len());
+                serde_json::json!({
+                    "wires": net.wires.len(), "conditional_slots": conditional_slots,
+                    "ordered_receivers": net.ordered_receivers, "canonical_repeaters": net.canonical_repeaters.len(),
+                    "possible_power_component_sizes": sizes,
+                })
+            })
+            .collect()
     }
 
     pub(crate) fn transport_wire(&self, node: NodeId) -> Option<(u32, u32)> {
@@ -979,6 +1064,23 @@ impl CircuitProgram {
 
     pub(crate) fn cpu_kernels(&self) -> &CpuKernelPlans {
         &self.instant.cpu
+    }
+
+    pub(crate) fn guard_predicate(&self, guard: GuardId) -> Option<CpuPredicate> {
+        self.guard_predicates.predicate(guard)
+    }
+
+    pub(crate) fn evaluate_guard_predicate(
+        &self,
+        predicate: CpuPredicate,
+        read: impl FnMut(CpuRead) -> bool,
+        matches: cpu_kernels::ClauseMatcher,
+    ) -> bool {
+        self.guard_predicates.evaluate(predicate, read, matches)
+    }
+
+    pub(crate) fn guard_predicate_plans(&self) -> &GuardPredicatePlans {
+        &self.guard_predicates
     }
     #[cfg(test)]
     pub(crate) fn with_general_cpu_predicates(mut self) -> Self {
@@ -1031,6 +1133,10 @@ impl CircuitProgram {
     }
     pub(crate) fn fixed_signal_query(&self, target: PowerTarget) -> Option<(u8, &[WeightedSignal])> {
         self.fixed_signals.query(target)
+    }
+    pub(crate) fn instant_drive(&self, wire: usize) -> Option<(&DriveExpr, &InstantDriveProgram)> {
+        let index = self.instant_drives.by_wire.get(wire).copied().flatten()?;
+        Some((&self.instant_drives.queries[index as usize], &self.instant_drives))
     }
     pub(crate) fn fixed_classic(&self) -> Option<&std::sync::Arc<FixedClassicProgram>> {
         self.fixed_classic.as_ref()

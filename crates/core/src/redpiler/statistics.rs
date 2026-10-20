@@ -32,6 +32,12 @@ pub struct GraphExecutionCoverage {
     pub instant_instruction_routes: usize,
     /// Observer state owners using the built-in reset pulse handler instead of ordinary observer dispatch.
     pub builtin_reset_clocks: usize,
+    /// Piston predicates with a compiled CPU evaluation plan; actors still own and commit actions.
+    pub compiled_cpu_piston_predicates: usize,
+    /// Wire nodes mapped into a compiled transport plan; this is not whole-region ownership.
+    pub compiled_transport_wires: usize,
+    /// Wire nodes with an additional stable-input value plan.
+    pub stable_logic_wires: usize,
 }
 
 impl GraphExecutionCoverage {
@@ -64,6 +70,55 @@ impl GraphExecutionCoverage {
                 self.builtin_reset_clocks,
             ),
         ]
+    }
+
+    /// Compact structural coverage for player chat.
+    pub fn chat_summary_lines(&self) -> Vec<String> {
+        let graph_nodes = self
+            .component_nodes
+            .saturating_sub(self.compiled_classic_wires)
+            .saturating_sub(self.fixed_classic_nodes)
+            .saturating_sub(self.instant_kernel_nodes)
+            .saturating_sub(self.native_nodes);
+        let graph_wires = self
+            .wire_nodes
+            .saturating_sub(self.compiled_classic_wires)
+            .saturating_sub(self.fixed_classic_wires);
+        let deoptimized = self.certified_classic_wires.saturating_sub(self.compiled_classic_wires);
+        let mut node_owners = vec![format!("Graph {graph_nodes}")];
+        if self.compiled_classic_wires > 0 {
+            node_owners.push(format!("classic {}", self.compiled_classic_wires));
+        }
+        if self.fixed_classic_nodes > 0 {
+            node_owners.push(format!("fixed {}", self.fixed_classic_nodes));
+        }
+        if self.instant_kernel_nodes > 0 {
+            node_owners.push(format!("whole-region kernels {}", self.instant_kernel_nodes));
+        }
+        if self.native_nodes > 0 {
+            node_owners.push(format!("native fallback {}", self.native_nodes));
+        }
+        let mut lines = vec![format!("Nodes ({}): {}.", self.component_nodes, node_owners.join("; "))];
+
+        let mut wire_owners = vec![format!("Graph {graph_wires}")];
+        if self.compiled_classic_wires > 0 {
+            wire_owners.push(format!("classic {}", self.compiled_classic_wires));
+        }
+        if self.fixed_classic_wires > 0 {
+            wire_owners.push(format!("fixed {}", self.fixed_classic_wires));
+        }
+        let mut wire_line = format!("Wires ({}): {}.", self.wire_nodes, wire_owners.join("; "));
+        if deoptimized > 0 {
+            wire_line.push_str(&format!(" {deoptimized} classic wires deoptimized."));
+        }
+        lines.push(wire_line);
+        if self.compiled_cpu_piston_predicates + self.compiled_transport_wires + self.stable_logic_wires > 0 {
+            lines.push(format!(
+                "Plans: piston checks {}/{}; transport {}/{} wires; stable logic {} wires.",
+                self.compiled_cpu_piston_predicates, self.piston_nodes, self.compiled_transport_wires, self.wire_nodes, self.stable_logic_wires,
+            ));
+        }
+        lines
     }
 }
 
@@ -198,6 +253,46 @@ impl GraphStatistics {
         lines
     }
 
+    /// Short user-facing overview. Detailed pass and table rows remain available through
+    /// `summary_lines` for diagnostics and logs.
+    pub fn chat_summary_lines(&self) -> Vec<String> {
+        let enabled = self.transformations.iter().filter(|pass| pass.enabled).count();
+        let skipped = self.transformations.len().saturating_sub(enabled);
+        let graph = match (self.baseline(), self.final_graph()) {
+            (Some(before), Some(after)) => format!(
+                "Graph: {} nodes, {} links → {} nodes, {} links; passes configured: {enabled} on, {skipped} off.",
+                before.nodes, before.links, after.nodes, after.links,
+            ),
+            _ => format!("Optimization passes configured: {enabled} on, {skipped} off."),
+        };
+        let mut lines = vec![graph];
+        if let Some(summary) = self.top_passes_summary(2) {
+            lines.push(summary);
+        }
+        lines
+    }
+
+    fn top_passes_summary(&self, limit: usize) -> Option<String> {
+        let mut top: Vec<&PassStatistics> = Vec::with_capacity(limit);
+        for pass in self.passes.iter().filter(|pass| !pass.duration.is_zero()) {
+            let index = top.iter().position(|existing| pass.duration > existing.duration).unwrap_or(top.len());
+            if index < limit {
+                top.insert(index, pass);
+                if top.len() > limit {
+                    top.pop();
+                }
+            }
+        }
+        (!top.is_empty()).then(|| {
+            let steps = top
+                .iter()
+                .map(|pass| format!("{} {:.0} ms", short_pass_name(pass.name), pass.duration.as_secs_f64() * 1000.0))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Longest compile steps: {steps}.")
+        })
+    }
+
     fn preparation_table_summary(&self) -> Option<String> {
         let stage = self.preparation_tables.last()?.stage;
         let mut tables: Vec<_> = self.preparation_tables.iter().filter(|table| table.stage == stage).collect();
@@ -238,6 +333,23 @@ pub struct CompileStatistics {
 }
 
 impl CompileStatistics {
+    /// Compact completion summary for player chat; detailed rows remain in `summary_lines`.
+    pub fn chat_summary_lines(&self, mode: &str) -> Vec<String> {
+        let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
+        let mut lines = vec![format!(
+            "Compiled {mode} with {:?}: {:.0} ms total (analysis {:.0}, graph {:.0}, backend {:.0}); {} nodes.",
+            self.backend,
+            ms(self.total_duration),
+            ms(self.analysis_duration),
+            ms(self.graph.duration),
+            ms(self.backend_duration),
+            self.backend_nodes,
+        )];
+        lines.extend(self.graph.chat_summary_lines());
+        lines.extend(self.execution_coverage.chat_summary_lines());
+        lines
+    }
+
     pub fn summary_lines(&self) -> Vec<String> {
         let ms = |duration: Duration| duration.as_secs_f64() * 1000.0;
         let mut lines = vec![format!(
@@ -251,5 +363,81 @@ impl CompileStatistics {
         lines.extend(self.graph.summary_lines().into_iter().take(3));
         lines.extend(self.execution_coverage.summary_lines());
         lines
+    }
+}
+
+fn short_pass_name(name: &str) -> String {
+    const MAX_CHARS: usize = 26;
+    let mut chars = name.chars();
+    let short: String = chars.by_ref().take(MAX_CHARS).collect();
+    if chars.next().is_some() { format!("{short}…") } else { short }
+}
+
+#[cfg(test)]
+mod chat_summary_tests {
+    use super::*;
+
+    #[test]
+    fn chat_summary_stays_compact_and_keeps_fallback_coverage_visible() {
+        let graph = GraphStatistics {
+            passes: (0..40)
+                .map(|index| PassStatistics {
+                    name: "preparation-pass",
+                    enabled: true,
+                    before: GraphCounts::new(100, 200),
+                    after: GraphCounts::new(100, 200),
+                    duration: Duration::from_millis(index + 1),
+                    validation_duration: Duration::ZERO,
+                })
+                .collect(),
+            transformations: vec![
+                PassStatistics::disabled("skipped-pass", GraphCounts::default()),
+                PassStatistics {
+                    name: "enabled-pass",
+                    enabled: true,
+                    before: GraphCounts::default(),
+                    after: GraphCounts::default(),
+                    duration: Duration::ZERO,
+                    validation_duration: Duration::ZERO,
+                },
+            ],
+            parser_complete: Some(GraphCounts::new(100, 200)),
+            final_counts: Some(GraphCounts::new(90, 180)),
+            ..Default::default()
+        };
+        let coverage = GraphExecutionCoverage {
+            component_nodes: 100,
+            native_nodes: 2,
+            wire_nodes: 40,
+            piston_nodes: 10,
+            compiled_classic_wires: 10,
+            certified_classic_wires: 12,
+            compiled_cpu_piston_predicates: 4,
+            compiled_transport_wires: 40,
+            stable_logic_wires: 40,
+            ..Default::default()
+        };
+        let summary = CompileStatistics {
+            graph,
+            backend: BackendKind::Graph,
+            backend_nodes: 90,
+            execution_coverage: coverage,
+            analysis_duration: Duration::from_millis(10),
+            backend_duration: Duration::from_millis(5),
+            total_duration: Duration::from_millis(30),
+        }
+        .chat_summary_lines("O5 + stable inputs");
+        let joined = summary.join("\n");
+
+        assert!(summary.len() <= 6, "chat summary unexpectedly grew: {joined}");
+        assert!(joined.contains("Compiled O5 + stable inputs with Graph in 30 ms"));
+        assert!(joined.contains("passes configured: 1 on, 1 off."));
+        assert!(joined.contains("native fallback 2"));
+        assert!(joined.contains("Plans: piston checks"));
+        assert!(joined.contains("transport 40/40 wires"));
+        assert!(joined.contains("Longest compile steps:"));
+        assert!(!joined.contains("preparation_tables"));
+        assert_eq!(joined.matches("preparation-pass").count(), 2);
+        assert!(summary.iter().all(|line| line.chars().count() <= 140), "chat line too wide: {joined}");
     }
 }

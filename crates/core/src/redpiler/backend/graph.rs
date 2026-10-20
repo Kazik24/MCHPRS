@@ -11,6 +11,7 @@ mod chungus_census;
 pub(crate) mod classic;
 mod coverage;
 mod cpu_kernels;
+mod drives;
 mod fixed_classic;
 mod fixed_point;
 #[cfg(test)]
@@ -32,8 +33,11 @@ mod pistons;
 mod power;
 mod projection;
 mod reset;
+mod signal_channels;
 mod sites;
-mod transport;
+mod stable_instant_logic;
+mod transitions;
+pub(crate) mod transport;
 #[cfg(test)]
 #[path = "graph/tests/unchecked_classic_anpu.rs"]
 mod unchecked_classic_anpu;
@@ -223,12 +227,18 @@ pub(crate) struct TestRecorder {
     /// Benchmark control; production reads the dense canonical pending index.
     general_pending_queries: bool,
     test_recording: bool,
+    callback_census_enabled: bool,
     comparator_tick_focus: Option<(NodeId, u64)>,
     // Episode observations; clear() resets only these logs.
     trace: Vec<String>,
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     comparator_updates: Vec<BlockPos>,
     observed_operations: Vec<GraphObservedOperation>,
+    /// Optional callback attribution; updated only by test builds and never changes trace order.
+    callback_census: CallbackCensus,
+    /// Opt-in per-value-region execution attribution for ignored research runs only.
+    value_region_census_enabled: bool,
+    value_region_census: ValueRegionExecutionCensus,
     // Experimental executor bindings and counters outlive individual trace episodes.
     power_links_examined: Cell<usize>,
     unchecked_classic: Option<Arc<unchecked_classic_anpu::UncheckedProgram>>,
@@ -243,12 +253,77 @@ pub(crate) struct TestRecorder {
 }
 
 #[cfg(test)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct CallbackCensus {
+    /// Accepted callbacks by [Update/Shape][Wire/Piston/Observer/ElectricalOther/Contact].
+    pub(crate) accepted: [[u64; 5]; 2],
+    /// Explicit piston receiver deliveries seen before any guard or no-op checks.
+    pub(crate) piston_candidates: u64,
+    /// Such candidates whose piston was already base-pending before guard evaluation.
+    pub(crate) piston_candidates_base_pending: u64,
+    /// Accepted piston deliveries whose receiver is base-pending at dispatch time.
+    pub(crate) accepted_piston_base_pending: u64,
+    pub(crate) transport_by_net: Vec<TransportNetCensus>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct TransportNetCensus {
+    pub(crate) invocations: u64,
+    pub(crate) wire_visits: u64,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct ValueRegionExecutionRow {
+    pub(crate) dense_visits: u64,
+    pub(crate) inert_visits: u64,
+    pub(crate) changed_wire_writes: u64,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ValueRegionExecutionCensus {
+    /// Rows align with transport net, then the net's value-region table.
+    pub(crate) by_net: Vec<Vec<ValueRegionExecutionRow>>,
+    /// Complete transport invocations whose every wire visit was inert.
+    pub(crate) all_inert_invocations: u64,
+    pub(crate) all_inert_visits: u64,
+}
+
+#[cfg(test)]
+fn callback_kind_index(kind: DeliveryKind) -> usize {
+    match kind {
+        DeliveryKind::Update { .. } => 0,
+        DeliveryKind::Shape { .. } => 1,
+    }
+}
+
+#[cfg(test)]
+fn callback_family_index(receiver: CallbackReceiver, nodes: &[NodeSpec]) -> usize {
+    match receiver {
+        CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => 1,
+        CallbackReceiver::Contact(_) => 4,
+        CallbackReceiver::Component(node) => match &nodes[node.index()].kind {
+            CircuitNodeKind::Wire(_) => 0,
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. }) => 2,
+            CircuitNodeKind::Electrical(_) => 3,
+            _ => 3,
+        },
+    }
+}
+
+#[cfg(test)]
 impl TestRecorder {
     fn clear(&mut self) {
         self.trace.clear();
         self.callback_order.clear();
         self.comparator_updates.clear();
         self.observed_operations.clear();
+        self.callback_census = CallbackCensus::default();
+        for rows in &mut self.value_region_census.by_net {
+            rows.fill(ValueRegionExecutionRow::default());
+        }
     }
 }
 
@@ -320,6 +395,12 @@ pub(crate) struct GraphBackend {
     wire_walks: Vec<WireWalk>,
     /// Closed transport programs reuse private scratch between propagation episodes.
     transport_scratch: Vec<transport::TransportScratch>,
+    value_region_cache: Vec<transport::ValueRegionCache>,
+    transition_cache: transitions::TransitionCache,
+    /// False requires per-net checks; a noncanonical import or write permanently clears this hint.
+    canonical_transport_repeaters: bool,
+    stable_logic_scratch: Vec<stable_instant_logic::StableLogicScratch>,
+    stable_logic_cache: Vec<stable_instant_logic::StableLogicCache>,
     classic_proof: Option<classic::ProofRecorder>,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
@@ -372,6 +453,32 @@ impl DerefMut for GraphBackend {
 }
 
 impl GraphBackend {
+    #[cfg(test)]
+    pub(super) fn record_callback_candidate(&mut self, receiver: CallbackReceiver) {
+        if !self.test_recorder.callback_census_enabled {
+            return;
+        }
+        if let CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) = receiver {
+            self.test_recorder.callback_census.piston_candidates += 1;
+            self.test_recorder.callback_census.piston_candidates_base_pending +=
+                u64::from(self.state.pistons[piston.index()].availability.base_pending());
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_accepted_callback(&mut self, kind: DeliveryKind, receiver: CallbackReceiver) {
+        if !self.test_recorder.callback_census_enabled {
+            return;
+        }
+        let census = &mut self.test_recorder.callback_census;
+        let event_kind = callback_kind_index(kind);
+        let family = callback_family_index(receiver, self.program.nodes());
+        census.accepted[event_kind][family] += 1;
+        if let CallbackReceiver::PistonBase(piston) | CallbackReceiver::PistonHead(piston) = receiver {
+            census.accepted_piston_base_pending += u64::from(self.state.pistons[piston.index()].availability.base_pending());
+        }
+    }
+
     pub(crate) fn new(program: CircuitProgram, state: CircuitState, logical_tick: u64) -> Result<Self, GraphBackendError> {
         let positions = program.position_index();
         Self::new_with_positions(program, state, logical_tick, positions)
@@ -662,6 +769,10 @@ impl GraphBackend {
         let projected_resources = state.resources.to_vec();
         let fixed_classic = program.fixed_classic().cloned();
         let instant_kernel = instant_kernel::KernelExecution::new(&program);
+        let canonical_transport_repeaters = program.nodes().iter().zip(state.components.iter()).all(|(node, state)| {
+            !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
+                || matches!(state, ComponentState::Electrical(value) if value.output_strength == 15 * u8::from(value.powered))
+        });
         Ok(Self {
             program,
             state,
@@ -669,6 +780,11 @@ impl GraphBackend {
             component_sites,
             wire_walks: Vec::new(),
             transport_scratch: Vec::new(),
+            value_region_cache: Vec::new(),
+            transition_cache: transitions::TransitionCache::default(),
+            canonical_transport_repeaters,
+            stable_logic_scratch: Vec::new(),
+            stable_logic_cache: Vec::new(),
             classic_proof: None,
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
@@ -1766,6 +1882,12 @@ impl GraphBackend {
         delivery: RouteDelivery,
         captured: Option<&[Option<ObservedSite>]>,
     ) -> Result<(), GraphExecutionError> {
+        #[cfg(test)]
+        if self.test_recorder.callback_census_enabled
+            && let Some(receiver) = delivery.receiver
+        {
+            self.record_callback_candidate(receiver);
+        }
         if matches!(delivery.kind, DeliveryKind::Update { .. }) && delivery.receiver.is_some_and(|receiver| self.instant_event_noop(receiver)) {
             return Ok(());
         }
@@ -1790,6 +1912,10 @@ impl GraphBackend {
             return Ok(());
         };
         self.counts.callbacks += 1;
+        #[cfg(test)]
+        if self.test_recorder.callback_census_enabled {
+            self.record_accepted_callback(delivery.kind, receiver);
+        }
         #[cfg(test)]
         self.record_route_event(route, delivery, receiver);
         #[cfg(not(test))]
@@ -1838,6 +1964,15 @@ impl GraphBackend {
         };
         let changed =
             state.powered != powered || state.output_strength != output_strength || locked.is_some_and(|locked| state.repeater_locked != locked);
+        if self.canonical_transport_repeaters
+            && matches!(
+                self.program.nodes()[node.index()].kind,
+                CircuitNodeKind::Electrical(NodeType::Repeater { .. })
+            )
+            && (state.output_strength != 15 * u8::from(state.powered) || output_strength != 15 * u8::from(powered))
+        {
+            self.canonical_transport_repeaters = false;
+        }
         state.powered = powered;
         state.output_strength = output_strength;
         state.pending_tick = false;
@@ -1933,6 +2068,96 @@ impl GraphBackend {
     }
 
     #[cfg(test)]
+    pub(crate) fn callback_census(&self) -> CallbackCensus {
+        self.test_recorder.callback_census.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn enable_callback_census(&mut self) {
+        self.test_recorder.callback_census_enabled = true;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn enable_value_region_census(&mut self) {
+        self.test_recorder.value_region_census_enabled = true;
+        let metadata = self.program.transport_census_metadata();
+        let mut rows = Vec::with_capacity(metadata.len());
+        for net in 0..metadata.len() {
+            let count = self.program.instant_value_region_net(net as u32).map_or(0, |plan| plan.regions.len());
+            rows.push(vec![ValueRegionExecutionRow::default(); count]);
+        }
+        self.test_recorder.value_region_census.by_net = rows;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value_region_census(&self) -> ValueRegionExecutionCensus {
+        self.test_recorder.value_region_census.clone()
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_value_region_visit(&mut self, net: usize, region: u32, inert: bool) {
+        if let Some(row) = self
+            .test_recorder
+            .value_region_census
+            .by_net
+            .get_mut(net)
+            .and_then(|rows| rows.get_mut(region as usize))
+        {
+            if inert {
+                row.inert_visits += 1;
+            } else {
+                row.dense_visits += 1;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn record_value_region_write(&mut self, net: usize, region: u32) {
+        if let Some(row) = self
+            .test_recorder
+            .value_region_census
+            .by_net
+            .get_mut(net)
+            .and_then(|rows| rows.get_mut(region as usize))
+        {
+            row.changed_wire_writes += 1;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transport_census_metadata(&self) -> Vec<serde_json::Value> {
+        self.program.transport_census_metadata()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value_region_census_program_net(&self, net: u32) -> Option<(&TransportNet, &InstantValueRegionNet)> {
+        Some((
+            self.program.instant_transport_net(net).as_ref(),
+            self.program.instant_value_region_net(net)?.as_ref(),
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value_region_census_drive_program(&self) -> &InstantDriveProgram {
+        self.program.instant_drive_program()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value_region_census_node_position(&self, node: NodeId) -> Option<BlockPos> {
+        self.program.nodes().get(node.index()).and_then(|spec| spec.position)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value_region_census_site_position(&self, site: SiteId) -> Option<BlockPos> {
+        self.program.sites().get(site.index()).map(|spec| spec.position)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value_region_census_route(&self, route: RouteId) -> &Route {
+        &self.program.routes()[route.index()]
+    }
+
+    #[cfg(test)]
     fn scheduled_ticks(&self) -> Vec<TickEntry> {
         self.future
             .scheduler
@@ -1994,6 +2219,10 @@ mod instant_reset_tests;
 #[cfg(test)]
 #[path = "graph/tests/wire_callbacks.rs"]
 mod wire_callback_tests;
+
+#[cfg(test)]
+#[path = "graph/tests/guard_predicates.rs"]
+mod guard_predicate_tests;
 
 #[cfg(test)]
 #[path = "graph/tests/fixed_classic_edges.rs"]

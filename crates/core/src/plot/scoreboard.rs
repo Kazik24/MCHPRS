@@ -78,6 +78,19 @@ fn compact_memory(bytes: usize) -> String {
     }
 }
 
+pub(super) fn optimization_mode_label(options: &CompilerOptions) -> String {
+    let optimization_label = options.optimization_label();
+    let mut words = optimization_label.split_whitespace();
+    let mut label = words.next().unwrap_or("O0").to_owned();
+    for modifier in words {
+        match modifier {
+            "stable" => label.push_str(" + stable inputs"),
+            other => label.push_str(&format!(" + {other}")),
+        }
+    }
+    label
+}
+
 struct PlotMetrics {
     tps: String,
     history: String,
@@ -288,10 +301,7 @@ impl Scoreboard {
     pub fn set_redpiler_options(&mut self, players: &[Player], options: &CompilerOptions) {
         self.compiler_flags.clear();
         if options.optimization_level != Some(0) {
-            self.compiler_flags.push(match options.optimization_level {
-                Some(level) => format!("O{level}"),
-                None => "Omax".to_owned(),
-            });
+            self.compiler_flags.push(optimization_mode_label(options));
         }
         if options.io_only {
             self.compiler_flags.push("io-only".to_owned());
@@ -368,6 +378,19 @@ mod tests {
     }
 
     #[test]
+    fn optimization_mode_uses_the_selected_tier_and_promise() {
+        assert_eq!(optimization_mode_label(&CompilerOptions::default()), "O0");
+        assert_eq!(
+            optimization_mode_label(&CompilerOptions {
+                optimization_level: None,
+                stable_instant_inputs: true,
+                ..Default::default()
+            }),
+            "O5 + stable inputs"
+        );
+    }
+
+    #[test]
     fn footer_stays_below_flags_and_within_sidebar_limits() {
         let mut board = Scoreboard::default();
         board.set_redpiler_state(&[], RedpilerState::Running);
@@ -391,9 +414,9 @@ mod tests {
             Some(20),
             status(Some("very-long-branch-name")),
         );
-        assert_eq!(board.current_state.len(), 13);
+        assert_eq!(board.current_state.len(), 11);
         assert_eq!(
-            &board.current_state[10..],
+            &board.current_state[8..],
             &["Pistons: auto/off", "Screen only: on", "Git: very-long-b...",]
         );
         for engine in [RedpilerState::Running, RedpilerState::Compiling, RedpilerState::Stopped] {

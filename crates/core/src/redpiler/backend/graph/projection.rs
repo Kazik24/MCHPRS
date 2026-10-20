@@ -233,6 +233,9 @@ impl GraphBackend {
     /// boundary and drop graph-owned pending work. Pending transitions are
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
+        for cache in &mut self.stable_logic_cache {
+            cache.invalidate();
+        }
         self.flush(world, false);
         self.project_future(world);
         self.dirty.fill(false);

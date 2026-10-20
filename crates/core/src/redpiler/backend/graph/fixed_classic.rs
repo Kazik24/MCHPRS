@@ -222,6 +222,14 @@ impl GraphBackend {
                 self.test_recorder.fixed_classic_counts.route_ops += 1;
             }
             self.counts.callbacks += 1;
+            #[cfg(test)]
+            if self.test_recorder.callback_census_enabled {
+                let kind = match operation.kind {
+                    FixedClassicOpKind::Shape(direction) => DeliveryKind::Shape { direction },
+                    FixedClassicOpKind::Seed | FixedClassicOpKind::Update { .. } => DeliveryKind::Update { direction: None },
+                };
+                self.record_accepted_callback(kind, CallbackReceiver::Component(operation.target));
+            }
             match operation.kind {
                 FixedClassicOpKind::Seed => self.fixed_classic_seed(operation.target, None)?,
                 FixedClassicOpKind::Shape(direction) => self.fixed_classic_shape(operation.target, direction, None)?,
@@ -353,6 +361,10 @@ impl GraphBackend {
             FixedCapture::Wire(_) => {
                 self.counts.callbacks += 1;
                 #[cfg(test)]
+                if self.test_recorder.callback_census_enabled {
+                    self.record_accepted_callback(DeliveryKind::Update { direction: None }, CallbackReceiver::Component(node));
+                }
+                #[cfg(test)]
                 {
                     self.test_recorder.fixed_classic_counts.wire_steps += 1;
                 }
@@ -360,6 +372,10 @@ impl GraphBackend {
             }
             FixedCapture::Gate { powered, locked } => {
                 self.counts.callbacks += 1;
+                #[cfg(test)]
+                if self.test_recorder.callback_census_enabled {
+                    self.record_accepted_callback(DeliveryKind::Update { direction: None }, CallbackReceiver::Component(node));
+                }
                 let observed = ObservedSite {
                     profile: None,
                     receiver: Some(CallbackReceiver::Component(node)),

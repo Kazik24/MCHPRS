@@ -576,7 +576,7 @@ mod tests {
             (2, "compile-fixed-signals"),
             (2, "compile-fixed-classic"),
             (2, "compile-mixed-classic"),
-            (4, "compile-classic-redstone"),
+            (2, "compile-classic-redstone"),
             (4, "identify-instant-boundaries"),
             (4, "experimental-compile-instant-wire-nodes"),
             (4, "experimental-minimize-wire-captures"),
@@ -584,6 +584,12 @@ mod tests {
             (4, "experimental-compile-instant-events"),
             (5, "optimize-instant-kernels-cpu"),
             (5, "compile-instant-transport"),
+            (5, "compile-guarded-instant-transport"),
+            (5, "compile-instant-drives"),
+            (5, "compile-instant-transition-programs"),
+            (5, "compile-instant-value-regions"),
+            (5, "compile-signal-channels"),
+            (5, "compile-stable-instant-logic"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {

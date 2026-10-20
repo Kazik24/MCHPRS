@@ -8,10 +8,8 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Promise stable inputs through reset; enables O3 region composition.
+    /// Promise stable inputs through reset; enables O3 composition and O5 stable logic.
     pub stable_instant_inputs: bool,
-    /// Allow certified local nets at O2/O3; O4+ attempts them automatically.
-    pub classic_redstone: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
@@ -26,7 +24,6 @@ impl Default for CompilerOptions {
             budget_multiplier: 0,
             optimization_level: Some(0),
             stable_instant_inputs: false,
-            classic_redstone: false,
             io_only: false,
             update: false,
         }
@@ -34,6 +31,14 @@ impl Default for CompilerOptions {
 }
 
 impl CompilerOptions {
+    pub(crate) fn optimization_label(&self) -> String {
+        let mut label = format!("O{}", self.optimization_level.unwrap_or(MAX_OPTIMIZATION_LEVEL));
+        if self.stable_instant_inputs {
+            label.push_str(" stable");
+        }
+        label
+    }
+
     pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
         let mut options = Self::default();
         for option in flags.split_whitespace() {
@@ -43,7 +48,6 @@ impl CompilerOptions {
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
                     "--stable-instant-inputs" => options.stable_instant_inputs = true,
-                    "--classic-redstone" => options.classic_redstone = true,
                     _ => return Err(format!("Unrecognized Redpiler option: {option}")),
                 }
             } else if let Some(short_flags) = option.strip_prefix('-') {
@@ -78,9 +82,6 @@ impl CompilerOptions {
         }
         if options.stable_instant_inputs && options.optimization_level.is_some_and(|level| level < 3) {
             return Err("--stable-instant-inputs requires -O3 or higher, or --optimize".into());
-        }
-        if options.classic_redstone && options.optimization_level.is_some_and(|level| level < 2) {
-            return Err("--classic-redstone requires -O2 or higher, or --optimize".into());
         }
         Ok(options)
     }

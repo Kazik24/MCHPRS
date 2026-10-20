@@ -112,6 +112,7 @@ impl GraphBackend {
         let old = *current;
         *current = wire;
         self.dirty[node.index()] = true;
+        self.invalidate_wire_programs(node);
         #[cfg(test)]
         graph_test_trace!(self, format!("wire state {node:?} {old:?} -> {wire:?}"));
     }
@@ -148,6 +149,9 @@ impl GraphBackend {
     pub(super) fn evaluate_seed(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_seed(node, captured);
+        }
+        if self.try_stable_instant_logic(node, captured)? || self.try_signal_channel(node, captured)? {
+            return Ok(());
         }
         let mut wire = captured
             .and_then(|site| match site.properties {
@@ -196,6 +200,7 @@ impl GraphBackend {
         if self.classic_proof.is_none()
             && !super::fixed_point::enabled()
             && let Some((net, wire)) = self.program.transport_wire(node)
+            && self.transport_entry_admitted(net)
         {
             return self.run_instant_transport(net, wire, sample.block_power);
         }
@@ -215,7 +220,7 @@ impl GraphBackend {
             }
             let site = plan.canonical_neighbors[slot];
             let observed = self.resolve_site(site, None).expect("validated signal receiver").observed();
-            self.wire_route_admitted(index, route, slot, site, &observed).then_some(observed)
+            self.wire_route_admitted(index, route, slot, site, Some(&observed)).then_some(observed)
         });
         self.counts.instant_wire_node_invocations += 1;
         let order = &crate::redstone::wire::TURBO_ORDER[3];
@@ -452,6 +457,9 @@ impl GraphBackend {
 
     /// Queue-only transport keeps all no-dust inputs stable throughout this episode.
     pub(super) fn transport_block_power(&self, node: NodeId) -> u8 {
+        if let Some(power) = self.instant_drive_power(node) {
+            return power;
+        }
         let plan = self.wire_plan(node);
         self.mixed_classic_block_power(plan, None).unwrap_or_else(|| {
             BlockFace::values()
@@ -562,13 +570,27 @@ impl GraphBackend {
     }
 
     #[inline]
-    pub(super) fn wire_route_admitted(&self, wire_index: usize, route: RouteId, slot: usize, target: SiteId, observed: &ObservedSite) -> bool {
+    pub(super) fn wire_route_admitted(
+        &self,
+        wire_index: usize,
+        route: RouteId,
+        slot: usize,
+        target: SiteId,
+        observed: Option<&ObservedSite>,
+    ) -> bool {
         if let Some(plan) = self.program.wires()[wire_index].execution.callback_selection
             && plan.known & (1 << slot) != 0
         {
             return plan.admitted & (1 << slot) != 0;
         }
-        self.wire_route_delivery(wire_index, route, slot, target, observed).is_some()
+        self.wire_route_delivery(
+            wire_index,
+            route,
+            slot,
+            target,
+            observed.expect("dynamic admission requires captured properties"),
+        )
+        .is_some()
     }
 
     pub(super) fn wire_route_delivery(
@@ -615,7 +637,7 @@ impl GraphBackend {
                     false
                 }
             };
-            if changed && self.wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed) {
+            if changed && self.wire_route_admitted(wire_index, route, slot, site, Some(&walk.sites[walk_slot].observed)) {
                 walk.queues[1].push_back(QueuedWireSite {
                     slot: u32::try_from(walk_slot).expect("validated site count fits u32"),
                     route,
@@ -638,7 +660,7 @@ impl GraphBackend {
                     false
                 }
             };
-            if changed && self.wire_route_admitted(wire_index, route, slot, site, &walk.sites[walk_slot].observed) {
+            if changed && self.wire_route_admitted(wire_index, route, slot, site, Some(&walk.sites[walk_slot].observed)) {
                 walk.queues[2].push_back(QueuedWireSite {
                     slot: u32::try_from(walk_slot).expect("validated site count fits u32"),
                     route,
@@ -700,7 +722,7 @@ impl GraphBackend {
         }
         // Both original enqueue loops finish before any callback can change a guard.
         let selected: [bool; 24] =
-            std::array::from_fn(|slot| self.wire_route_admitted(wire_index, route, slot, plan.canonical_neighbors[slot], &observed[slot]));
+            std::array::from_fn(|slot| self.wire_route_admitted(wire_index, route, slot, plan.canonical_neighbors[slot], Some(&observed[slot])));
         // A fresh walk has no visited neighbors or bias: compute_heading(0, 0) == 3.
         let order = &crate::redstone::wire::TURBO_ORDER[3];
         #[cfg(test)]
@@ -773,6 +795,10 @@ impl GraphBackend {
 
     pub(super) fn record_turbo_delivery(&mut self, _site: SiteId, _receiver: CallbackReceiver, _layer: u32) {
         self.counts.callbacks += 1;
+        #[cfg(test)]
+        if self.test_recorder.callback_census_enabled {
+            self.record_accepted_callback(DeliveryKind::Update { direction: None }, _receiver);
+        }
         // Dust-to-dust steps stay inside the walk; native dispatches only the rest.
         #[cfg(test)]
         if self.test_recording
@@ -806,6 +832,10 @@ impl GraphBackend {
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
+        #[cfg(test)]
+        if self.test_recorder.callback_census_enabled {
+            self.record_callback_candidate(receiver);
+        }
         if self.instant_event_noop(receiver) {
             return Ok(());
         }

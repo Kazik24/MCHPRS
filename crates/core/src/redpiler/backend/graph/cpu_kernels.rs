@@ -13,21 +13,23 @@ impl GraphBackend {
     }
 
     pub(super) fn cpu_predicate(&self, predicate: CpuPredicate) -> bool {
-        self.program.cpu_kernels().evaluate(
-            predicate,
-            |input| match input {
-                CpuRead::State(test) => self.state.matches(test),
-                CpuRead::Strength { node, threshold } => self.stored_component_strength(node) > threshold,
-                CpuRead::WireEmission { node, face, threshold } => {
-                    let wire = self.wire_state(node);
-                    wire.power > threshold && self.wire_emits(node, wire, face)
-                }
-                CpuRead::Guard(guard) => self.guard_matches(guard, None),
-                CpuRead::Source { site, port, threshold } => self.site_power(site, port) > threshold,
-                CpuRead::Input { node, port } => self.input_strength(node, port) > 0,
-            },
-            self.instant_kernel.clause_matcher,
-        )
+        self.program
+            .cpu_kernels()
+            .evaluate(predicate, |input| self.cpu_read(input), self.instant_kernel.clause_matcher)
+    }
+
+    pub(super) fn cpu_read(&self, input: CpuRead) -> bool {
+        match input {
+            CpuRead::State(test) => self.state.matches(test),
+            CpuRead::Strength { node, threshold } => self.stored_component_strength(node) > threshold,
+            CpuRead::WireEmission { node, face, threshold } => {
+                let wire = self.wire_state(node);
+                wire.power > threshold && self.wire_emits(node, wire, face)
+            }
+            CpuRead::Guard(guard) => self.guard_matches(guard, None),
+            CpuRead::Source { site, port, threshold } => self.site_power(site, port) > threshold,
+            CpuRead::Input { node, port } => self.input_strength(node, port) > 0,
+        }
     }
 
     pub(super) fn piston_powered(&self, actor: PistonId) -> bool {

@@ -1,5 +1,6 @@
 //! Deterministic end-to-end interpreter benchmarks, with frozen-state assertions.
 //! Run once by default; CPU initialization and verification are excluded from timing.
+#![recursion_limit = "256"]
 #[path = "support/cpus.rs"]
 mod cpu_support;
 use cpu_support::*;

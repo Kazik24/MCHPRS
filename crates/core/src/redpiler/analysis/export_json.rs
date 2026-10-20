@@ -6,6 +6,7 @@ mod fixed_signals;
 mod instant_boundaries;
 mod instant_events;
 mod instant_layers;
+mod instant_programs;
 
 /// The same executable records as the full export, for focused compiler research.
 #[cfg(test)]
@@ -65,6 +66,33 @@ impl fmt::Display for ExportError {
 
 impl std::error::Error for ExportError {}
 
+fn validate_guard_predicate_stats(graph: &GraphTablesDto) -> Result<(), ExportError> {
+    let Some(stats) = &graph.guard_predicate_stats else {
+        return Ok(());
+    };
+    let invalid = || ExportError::new("guard_predicate_stats", "invalid compiled guard predicate statistics");
+    if stats["method"] != "live_captured_bitmask_dnf" {
+        return Err(invalid());
+    }
+    let guards = stats["guards"].as_array().ok_or_else(invalid)?;
+    let known: HashSet<_> = graph.guards.iter().map(|guard| guard.id.as_str()).collect();
+    let mut seen = HashSet::new();
+    for id in guards {
+        let id = id.as_str().ok_or_else(invalid)?;
+        if !id.starts_with("guard:") || !known.contains(id) || !seen.insert(id) {
+            return Err(invalid());
+        }
+    }
+    if stats["compiled"].as_u64() != Some(guards.len() as u64)
+        || ["fallback", "reads", "clauses", "work", "bytes"]
+            .iter()
+            .any(|key| stats[*key].as_u64().is_none())
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
 /// Counts the graph records shown in the command's success message.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExportCounts {
@@ -118,6 +146,8 @@ struct PositionDto {
 struct GraphTablesDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     cpu_kernels: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guard_predicate_stats: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_event_kernels: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -138,6 +168,18 @@ struct GraphTablesDto {
     instant_transport: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_transport_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_drive_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signal_channel_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stable_instant_logic_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_value_region_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_transition_program_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_programs: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_declines: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -711,6 +753,7 @@ impl GraphExport {
         instant_layers::validate(&self.graph)?;
         instant_events::validate(&self.graph)?;
         cpu_kernels::validate(&self.graph)?;
+        validate_guard_predicate_stats(&self.graph)?;
         let nodes = unique_ids("node", self.graph.nodes.iter().map(|item| item.id.as_str()))?;
         let profiles = unique_ids("profile", self.graph.profiles.iter().map(|item| item.id.as_str()))?;
         let sites = unique_ids("site", self.graph.sites.iter().map(|item| item.id.as_str()))?;
@@ -721,6 +764,12 @@ impl GraphExport {
         let wires = unique_ids("wire", self.graph.wire_plans.iter().map(|item| item.id.as_str()))?;
         let node_records: HashMap<_, _> = self.graph.nodes.iter().map(|item| (item.id.as_str(), item)).collect();
         let site_records: HashMap<_, _> = self.graph.sites.iter().map(|item| (item.id.as_str(), item)).collect();
+        let wire_nodes: HashSet<_> = self
+            .graph
+            .nodes
+            .iter()
+            .filter_map(|node| matches!(&node.kind, NodeKindDto::Wire { .. }).then_some(node.id.clone()))
+            .collect();
         let routes = self
             .graph
             .routes
@@ -728,6 +777,17 @@ impl GraphExport {
             .map(|items| unique_ids("route", items.iter().map(|item| item.id.as_str())))
             .transpose()?
             .unwrap_or_default();
+        instant_programs::validate(
+            self.graph.instant_programs.as_ref(),
+            &nodes,
+            &wire_nodes,
+            &sites,
+            &routes,
+            &pistons,
+            &resources,
+            &contacts,
+            &self.graph.instant_transport,
+        )?;
         unique_ids("power_link", self.graph.power_links.iter().map(|item| item.id.as_str()))?;
         unique_ids("wire_relation", self.graph.wire_relations.iter().map(|item| item.id.as_str()))?;
         unique_ids("callback_link", self.graph.callback_links.iter().map(|item| item.id.as_str()))?;
@@ -1112,10 +1172,30 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     }
     let boundaries = instant_boundaries::export(source);
     let layers = instant_layers::export(source);
+    let instant_programs = instant_programs::export(source)?;
+    let has_instant_programs = instant_programs.is_some();
     let graph = GraphTablesDto {
         instant_layer_regions: layers.regions,
         instant_event_kernels: instant_events::export(source),
         cpu_kernels: cpu_kernels::export(source),
+        guard_predicate_stats: (source.plans.guard_predicates.stats.compiled > 0).then(|| {
+            serde_json::json!({
+                "method": "live_captured_bitmask_dnf",
+                "compiled": source.plans.guard_predicates.stats.compiled,
+                "fallback": source.plans.guard_predicates.stats.fallback,
+                "reads": source.plans.guard_predicates.stats.reads,
+                "clauses": source.plans.guard_predicates.stats.clauses,
+                "work": source.plans.guard_predicates.stats.work,
+                "bytes": source.plans.guard_predicates.stats.bytes,
+                "guards": source.plans.guard_predicates.by_guard.iter().enumerate()
+                    .filter_map(|(index, _)| {
+                        crate::redpiler::program_graph::GuardId::try_from_index(index)
+                            .filter(|&guard| source.plans.guard_predicates.predicate(guard).is_some())
+                            .map(|_| typed_id("guard", index))
+                    })
+                    .collect::<Vec<_>>(),
+            })
+        }),
         bud_memory_reads: instant_events::export_memory_reads(source),
         instant_layer_declines: layers.declines,
         instant_cells: boundaries.cells,
@@ -1133,10 +1213,14 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                     "wires": net.wires.iter().map(|wire| typed_id("node", wire.node.index())).collect::<Vec<_>>(),
                     "sites": net.sites.iter().map(|site| typed_id("site", site.index())).collect::<Vec<_>>(),
                     "site_wire": net.site_wire,
+                    "conditional_inputs": net.wires.iter().map(|wire| wire.conditional_inputs).collect::<Vec<_>>(),
+                    "ordered_receivers": net.ordered_receivers,
+                    "canonical_repeaters": net.canonical_repeaters.iter().map(|node| typed_id("node", node.index())).collect::<Vec<_>>(),
                 })
             })
             .collect(),
         instant_transport_stats: Some(serde_json::json!({
+            "guarded": source.plans.instant_transport.guarded,
             "corridors": source.plans.instant_transport.stats.corridors,
             "admitted": source.plans.instant_transport.stats.admitted,
             "too_small": source.plans.instant_transport.stats.too_small,
@@ -1148,6 +1232,63 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
             "unsafe_input": source.plans.instant_transport.stats.unsafe_input,
             "unsupported": source.plans.instant_transport.stats.unsupported,
         })),
+        instant_drive_stats: Some(serde_json::json!({
+            "wires": source.plans.instant_drives.stats.wires,
+            "compiled": source.plans.instant_drives.stats.compiled,
+            "fallback": source.plans.instant_drives.stats.fallback,
+            "declines": source.plans.instant_drives.stats.declines,
+            "shared_binary_nets": source.plans.instant_drives.stats.shared_binary_nets,
+            "shared_binary_wires": source.plans.instant_drives.stats.shared_binary_wires,
+            "work": source.plans.instant_drives.stats.work,
+        })),
+        signal_channel_stats: (!source.plans.signal_channels.channels.is_empty()).then(|| {
+            serde_json::json!({
+                "nets": source.plans.signal_channels.stats.nets,
+                "wires": source.plans.signal_channels.stats.wires,
+                "transitions": source.plans.signal_channels.stats.transitions,
+                "operations": source.plans.signal_channels.stats.operations,
+                "declines": source.plans.signal_channels.stats.declines,
+            })
+        }),
+        stable_instant_logic_stats: (!source.plans.stable_instant_logic.nets.is_empty()).then(|| {
+            serde_json::json!({
+                "nets": source.plans.stable_instant_logic.stats.admitted,
+                "wires": source.plans.stable_instant_logic.stats.wires,
+                "shared_inputs": source.plans.stable_instant_logic.stats.inputs,
+                "terms": source.plans.stable_instant_logic.stats.terms,
+                "outputs": source.plans.stable_instant_logic.stats.outputs,
+            })
+        }),
+        instant_value_region_stats: (!source.plans.instant_value_regions.nets.is_empty()).then(|| {
+            let stats = &source.plans.instant_value_regions.stats;
+            serde_json::json!({
+                "nets": stats.nets,
+                "regions": stats.regions,
+                "admitted": stats.admitted,
+                "declined": stats.declined,
+                "compact_wire_captures": stats.compact_wire_captures,
+                "wires": stats.wires,
+                "drive_groups": stats.drive_groups,
+                "conditional_arcs": stats.conditional_arcs,
+                "distance_rows": stats.distance_rows,
+                "work": stats.work,
+                "bytes": stats.bytes,
+                "declines": stats.declines,
+            })
+        }),
+        instant_transition_program_stats: (!source.plans.instant_transition_programs.nets.is_empty()).then(|| {
+            let stats = &source.plans.instant_transition_programs.stats;
+            serde_json::json!({
+                "eligible_nets": stats.eligible_nets,
+                "eligible_wires": stats.eligible_wires,
+                "declined_nets": stats.declined_nets,
+                "work": stats.work,
+                "bytes": stats.bytes,
+                "declines": stats.declines,
+                "semantics": "eligibility only; runtime transcript must preserve ordered captures, admissions, calls, and effects",
+            })
+        }),
+        instant_programs,
         instant_declines: boundaries.declines,
         classic_nets: classic::export(source),
         fixed_signal_queries: fixed_signals::export(source),
@@ -1515,6 +1656,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.cpu_kernels.entries.is_empty() {
         capabilities.push("cpu_kernel_execution");
     }
+    if source.plans.guard_predicates.stats.compiled > 0 {
+        capabilities.push("compiled_guard_predicates");
+    }
     if !source.plans.instant.regions.is_empty() {
         capabilities.push("instant_regions");
     }
@@ -1523,6 +1667,24 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     }
     if !source.plans.instant_transport.nets.is_empty() {
         capabilities.push("instant_transport");
+    }
+    if has_instant_programs {
+        capabilities.push("instant_program_ir");
+    }
+    if !source.plans.instant_drives.by_wire.is_empty() {
+        capabilities.push("instant_drive_expressions");
+    }
+    if source.plans.signal_channels.stats.nets != 0 {
+        capabilities.push("compiled_signal_channels");
+    }
+    if source.plans.stable_instant_logic.stats.admitted != 0 {
+        capabilities.push("stable_instant_logic");
+    }
+    if source.plans.instant_value_regions.stats.admitted != 0 {
+        capabilities.push("instant_value_regions");
+    }
+    if source.plans.instant_transition_programs.stats.eligible_nets != 0 {
+        capabilities.push("instant_transition_programs");
     }
     if source.plans.instant.layers.is_some() {
         capabilities.push("instant_layers");

@@ -25,6 +25,7 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
     plot.compilation = Some(CompilationJob {
         started: Instant::now(),
         entry: EntryVersion::capture(&plot.world),
+        mode: "O0".into(),
         monitor,
         worker: thread::spawn(move || work(world, worker_monitor)),
     });

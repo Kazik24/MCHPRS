@@ -64,7 +64,7 @@ fn assert_selections(backend: &GraphBackend) {
         for (slot, &site) in wire.canonical_neighbors.iter().enumerate() {
             let observed = backend.observe_site(site).unwrap();
             assert_eq!(
-                backend.wire_route_admitted(index, route, slot, site, &observed),
+                backend.wire_route_admitted(index, route, slot, site, Some(&observed)),
                 backend.wire_route_delivery(index, route, slot, site, &observed).is_some(),
                 "wire {index} slot {slot}"
             );

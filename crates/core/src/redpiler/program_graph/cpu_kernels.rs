@@ -5,6 +5,9 @@ use crate::redpiler::{TaskMonitor, power_rules};
 const MAX_READS: usize = 64;
 const MAX_CLAUSES: usize = 64;
 const MAX_WORK: usize = 16_384;
+const MAX_GUARD_GLOBAL_WORK: usize = 8_000_000;
+const MAX_GUARD_PLAN_BYTES: usize = 64 * 1024 * 1024;
+const NO_GUARD_PREDICATE: u32 = u32::MAX;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum CpuRead {
@@ -28,6 +31,8 @@ pub(crate) enum CpuPredicateKind {
     Masks,
     Literal,
     All,
+    /// One conjunction with positive and negative literals, evaluated in short-circuit order.
+    AllLiterals,
     Any,
 }
 
@@ -80,14 +85,18 @@ struct Builder<'a> {
     ids: FxHashMap<CpuRead, usize>,
     guards: FxHashMap<(GuardId, bool), Dnf>,
     work: usize,
+    work_limit: usize,
+    /// Event-kernel predicates have no capture context; standalone guards do.
+    captured_site_reads: bool,
 }
 
 impl Builder<'_> {
     fn budget(&mut self, work: usize) -> Result<(), ()> {
-        self.work = self.work.saturating_add(work);
-        if self.work > MAX_WORK || self.monitor.cancelled() {
+        let next = self.work.saturating_add(work);
+        if next > self.work_limit || self.monitor.cancelled() {
             Err(())
         } else {
+            self.work = next;
             Ok(())
         }
     }
@@ -158,6 +167,9 @@ impl Builder<'_> {
                 }
                 value
             }
+            Guard::Site {
+                view: OperandView::Captured, ..
+            } if self.captured_site_reads => self.atom(CpuRead::Guard(id), negated)?,
             Guard::Site {
                 view: OperandView::Captured, ..
             } => constant(negated),
@@ -391,6 +403,8 @@ impl CpuKernelPlans {
                     ids: FxHashMap::default(),
                     guards: FxHashMap::default(),
                     work: 0,
+                    work_limit: MAX_WORK,
+                    captured_site_reads: false,
                 };
                 let mut valid = make();
                 let Ok(valid_clauses) = valid.pin(&entry.pins, entry.valid, false, 0) else {
@@ -466,6 +480,8 @@ impl CpuKernelPlans {
                 CpuPredicateKind::Literal
             } else if clauses.len() == 1 && clauses[0].1 == 0 {
                 CpuPredicateKind::All
+            } else if clauses.len() == 1 {
+                CpuPredicateKind::AllLiterals
             } else if clauses.len() == order.len() && clauses.iter().all(|&(yes, no)| no == 0 && yes.count_ones() == 1) {
                 CpuPredicateKind::Any
             } else {
@@ -487,25 +503,219 @@ impl CpuKernelPlans {
     }
 
     pub(crate) fn evaluate(&self, predicate: CpuPredicate, mut read: impl FnMut(CpuRead) -> bool, matches: ClauseMatcher) -> bool {
-        if predicate.read_len == 0 {
-            return predicate.clause_len != 0;
+        evaluate_cpu_predicate(predicate, &self.reads, &self.require_true, &self.require_false, &mut read, matches)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct GuardPredicateStats {
+    pub(crate) compiled: usize,
+    pub(crate) fallback: usize,
+    pub(crate) reads: usize,
+    pub(crate) clauses: usize,
+    pub(crate) work: usize,
+    pub(crate) bytes: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct GuardPredicatePlans {
+    /// Dense predicate index per original GuardId; the sentinel retains recursive evaluation.
+    pub(crate) by_guard: Vec<u32>,
+    /// Contiguous descriptors, separate from the root map to keep per-guard storage compact.
+    pub(crate) predicates: Vec<CpuPredicate>,
+    pub(crate) reads: Vec<CpuRead>,
+    pub(crate) require_true: Vec<u64>,
+    pub(crate) require_false: Vec<u64>,
+    pub(crate) stats: GuardPredicateStats,
+}
+
+impl GuardPredicatePlans {
+    pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Self, String> {
+        if monitor.cancelled() {
+            return Err("cancelled before guard predicate compilation".into());
         }
-        let start = predicate.read_start as usize;
-        let reads = &self.reads[start..start + predicate.read_len as usize];
-        match predicate.kind {
-            CpuPredicateKind::Literal => return read(reads[0]) == (self.require_true[predicate.clause_start as usize] != 0),
-            CpuPredicateKind::All => return reads.iter().copied().all(read),
-            CpuPredicateKind::Any => return reads.iter().copied().any(read),
-            CpuPredicateKind::Masks => {}
+        let incoming: FxHashMap<PowerTarget, Vec<PowerLink>> = FxHashMap::default();
+        let map_bytes = graph.guards.len().saturating_mul(std::mem::size_of::<u32>());
+        let mut complex_guards = 0usize;
+        for (index, guard) in graph.guards.iter().enumerate() {
+            if index & 0x3ff == 0 && monitor.cancelled() {
+                return Err("cancelled while counting guard roots".into());
+            }
+            if !matches!(guard, Guard::Always | Guard::State(_)) {
+                complex_guards += 1;
+            }
         }
-        let values = reads
+        if map_bytes > MAX_GUARD_PLAN_BYTES {
+            let mut result = Self::default();
+            result.stats.fallback = complex_guards;
+            return Ok(result);
+        }
+        let mut result = Self {
+            by_guard: vec![NO_GUARD_PREDICATE; graph.guards.len()],
+            ..Default::default()
+        };
+        let mut packed = CpuKernelPlans::default();
+        let mut total_work = 0usize;
+        let mut total_bytes = map_bytes;
+        for (index, guard) in graph.guards.iter().enumerate() {
+            if monitor.cancelled() {
+                return Err("cancelled while compiling guard predicates".into());
+            }
+            if matches!(guard, Guard::Always | Guard::State(_)) {
+                continue;
+            }
+            if total_work >= MAX_GUARD_GLOBAL_WORK || total_bytes >= MAX_GUARD_PLAN_BYTES {
+                break;
+            }
+            let id = GuardId::try_from_index(index).ok_or("guard id overflow")?;
+            let mut builder = Builder {
+                graph,
+                incoming: &incoming,
+                monitor,
+                reads: Vec::new(),
+                ids: FxHashMap::default(),
+                guards: FxHashMap::default(),
+                work: 0,
+                work_limit: MAX_WORK.min(MAX_GUARD_GLOBAL_WORK.saturating_sub(total_work)),
+                captured_site_reads: true,
+            };
+            let clauses = builder.guard(id, false, 0);
+            total_work = total_work.saturating_add(builder.work);
+            if total_work > MAX_GUARD_GLOBAL_WORK {
+                break;
+            }
+            let Ok(clauses) = clauses else {
+                if monitor.cancelled() {
+                    return Err("cancelled while compiling guard predicates".into());
+                }
+                result.stats.fallback += 1;
+                continue;
+            };
+            // Preserve the cheapest direct path when a candidate merely calls itself recursively.
+            if builder.reads.as_slice() == [CpuRead::Guard(id)] && clauses.as_slice() == [(1, 0)] {
+                result.stats.fallback += 1;
+                continue;
+            }
+            let used = clauses.iter().fold(0u64, |bits, &(yes, no)| bits | yes | no);
+            let added_reads = used.count_ones() as usize;
+            let added_bytes = added_reads * std::mem::size_of::<CpuRead>() + clauses.len() * 2 * std::mem::size_of::<u64>();
+            let append_work = added_reads.saturating_add(clauses.len());
+            if total_work.saturating_add(append_work) > MAX_GUARD_GLOBAL_WORK {
+                break;
+            }
+            let descriptor_bytes = std::mem::size_of::<CpuPredicate>();
+            if total_bytes.saturating_add(added_bytes).saturating_add(descriptor_bytes) > MAX_GUARD_PLAN_BYTES {
+                break;
+            }
+            packed
+                .reads
+                .try_reserve(added_reads)
+                .map_err(|_| "guard predicate read table allocation failed")?;
+            packed
+                .require_true
+                .try_reserve(clauses.len())
+                .map_err(|_| "guard predicate clause table allocation failed")?;
+            packed
+                .require_false
+                .try_reserve(clauses.len())
+                .map_err(|_| "guard predicate clause table allocation failed")?;
+            result
+                .predicates
+                .try_reserve(1)
+                .map_err(|_| "guard predicate descriptor allocation failed")?;
+            let reserved_bytes = map_bytes
+                .saturating_add(result.predicates.capacity() * std::mem::size_of::<CpuPredicate>())
+                .saturating_add(packed.reads.capacity() * std::mem::size_of::<CpuRead>())
+                .saturating_add(packed.require_true.capacity() * std::mem::size_of::<u64>())
+                .saturating_add(packed.require_false.capacity() * std::mem::size_of::<u64>());
+            if reserved_bytes > MAX_GUARD_PLAN_BYTES {
+                result.predicates.shrink_to_fit();
+                packed.reads.shrink_to_fit();
+                packed.require_true.shrink_to_fit();
+                packed.require_false.shrink_to_fit();
+                break;
+            }
+            let predicate = packed.append(builder.reads, clauses)?;
+            total_bytes = total_bytes.saturating_add(added_bytes).saturating_add(descriptor_bytes);
+            total_work = total_work.saturating_add(append_work);
+            let predicate_index = u32::try_from(result.predicates.len()).map_err(|_| "guard predicate index overflow")?;
+            result.predicates.push(predicate);
+            result.by_guard[index] = predicate_index;
+            result.stats.compiled += 1;
+        }
+        if monitor.cancelled() {
+            return Err("cancelled before publishing guard predicates".into());
+        }
+        result.stats.fallback = graph
+            .guards
             .iter()
             .enumerate()
-            .fold(0u64, |value, (bit, &input)| value | (u64::from(read(input)) << bit));
-        let start = predicate.clause_start as usize;
-        let end = start + predicate.clause_len as usize;
-        matches(values, &self.require_true[start..end], &self.require_false[start..end])
+            .filter(|(index, guard)| !matches!(guard, Guard::Always | Guard::State(_)) && result.by_guard[*index] == NO_GUARD_PREDICATE)
+            .count();
+        result.stats.reads = packed.reads.len();
+        result.stats.clauses = packed.require_true.len();
+        result.stats.work = total_work;
+        result.stats.bytes = map_bytes
+            .saturating_add(result.predicates.capacity() * std::mem::size_of::<CpuPredicate>())
+            .saturating_add(packed.reads.capacity() * std::mem::size_of::<CpuRead>())
+            .saturating_add(packed.require_true.capacity() * std::mem::size_of::<u64>())
+            .saturating_add(packed.require_false.capacity() * std::mem::size_of::<u64>());
+        result.reads = packed.reads;
+        result.require_true = packed.require_true;
+        result.require_false = packed.require_false;
+        if result.stats.compiled == 0 {
+            result.by_guard.clear();
+            result.by_guard.shrink_to_fit();
+            result.stats.bytes = 0;
+        }
+        Ok(result)
     }
+
+    pub(crate) fn predicate(&self, guard: GuardId) -> Option<CpuPredicate> {
+        let index = *self.by_guard.get(guard.index())?;
+        (index != NO_GUARD_PREDICATE)
+            .then(|| self.predicates.get(index as usize).copied())
+            .flatten()
+    }
+
+    pub(crate) fn evaluate(&self, predicate: CpuPredicate, mut read: impl FnMut(CpuRead) -> bool, matches: ClauseMatcher) -> bool {
+        evaluate_cpu_predicate(predicate, &self.reads, &self.require_true, &self.require_false, &mut read, matches)
+    }
+}
+
+fn evaluate_cpu_predicate(
+    predicate: CpuPredicate,
+    all_reads: &[CpuRead],
+    require_true: &[u64],
+    require_false: &[u64],
+    read: &mut impl FnMut(CpuRead) -> bool,
+    matches: ClauseMatcher,
+) -> bool {
+    if predicate.read_len == 0 {
+        return predicate.clause_len != 0;
+    }
+    let start = predicate.read_start as usize;
+    let reads = &all_reads[start..start + predicate.read_len as usize];
+    match predicate.kind {
+        CpuPredicateKind::Literal => return read(reads[0]) == (require_true[predicate.clause_start as usize] != 0),
+        CpuPredicateKind::All => return reads.iter().copied().all(read),
+        CpuPredicateKind::AllLiterals => {
+            let required = require_true[predicate.clause_start as usize];
+            return reads
+                .iter()
+                .enumerate()
+                .all(|(index, &input)| read(input) == (required & (1u64 << index) != 0));
+        }
+        CpuPredicateKind::Any => return reads.iter().copied().any(read),
+        CpuPredicateKind::Masks => {}
+    }
+    let values = reads
+        .iter()
+        .enumerate()
+        .fold(0u64, |value, (bit, &input)| value | (u64::from(read(input)) << bit));
+    let start = predicate.clause_start as usize;
+    let end = start + predicate.clause_len as usize;
+    matches(values, &require_true[start..end], &require_false[start..end])
 }
 
 fn read_order(read: CpuRead) -> (u8, usize) {
@@ -570,6 +780,200 @@ unsafe fn match_avx2(values: u64, required: &[u64], forbidden: &[u64]) -> bool {
 mod tests {
     use super::*;
 
+    fn guard_graph() -> (
+        CompileGraph,
+        ResourceId,
+        ContactId,
+        SiteId,
+        ProfileId,
+        ProfileId,
+        GuardId,
+        GuardId,
+        GuardId,
+    ) {
+        let (world, bounds) = crate::redpiler::passes::simplify_instant_resets::tests::fixture();
+        let monitor = TaskMonitor::default();
+        let mut graph =
+            crate::redpiler::passes::rich::prepare(&world, bounds, vec![], &monitor, crate::redpiler::analysis::AnalysisLimits::default())
+                .unwrap()
+                .graph;
+        let resource = ResourceId::new(0);
+        let contact = graph.resources[0].contacts[0];
+        let site = SiteId::try_from_index(graph.sites.iter().position(|site| site.source == SiteSource::Contact(contact)).unwrap()).unwrap();
+        let profile_a = ProfileId::new(0);
+        let profile_b = ProfileId::new(1);
+        let enabled = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::State(StateTest::ResourceEnabled(resource)));
+        let at = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::State(StateTest::ResourceAt { resource, contact }));
+        let always = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Always);
+        graph.contacts[contact.index()].variants = vec![
+            ContactVariant {
+                when: enabled,
+                profile: profile_a,
+                receiver: None,
+            },
+            ContactVariant {
+                when: at,
+                profile: profile_b,
+                receiver: None,
+            },
+            ContactVariant {
+                when: always,
+                profile: profile_a,
+                receiver: None,
+            },
+        ]
+        .into_boxed_slice();
+        (graph, resource, contact, site, profile_a, profile_b, enabled, at, always)
+    }
+
+    #[test]
+    fn guard_predicates_match_compound_state_and_live_contact_first_match_truth_tables() {
+        let (mut graph, _resource, _contact, site, _profile_a, profile_b, enabled, at, _always) = guard_graph();
+        let site_guard = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Site {
+            site,
+            view: OperandView::Live,
+            test: SiteTest::Profile(profile_b),
+        });
+        let extended = GuardId::try_from_index(graph.guards.len()).unwrap();
+        let piston = PistonId::new(0);
+        graph.guards.push(Guard::State(StateTest::PistonExtended(piston)));
+        let all = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::All(vec![site_guard, extended].into_boxed_slice()));
+        let not_enabled = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Not(enabled));
+        let any = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Any(vec![site_guard, not_enabled].into_boxed_slice()));
+        let negated = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Not(site_guard));
+
+        let plans = GuardPredicatePlans::compile(&graph, &TaskMonitor::default()).unwrap();
+        for root in [site_guard, all, any, negated] {
+            assert!(plans.predicate(root).is_some(), "compound guard {root:?} should be packed");
+        }
+        for enabled_value in [false, true] {
+            for at_value in [false, true] {
+                for extended_value in [false, true] {
+                    let site_value = !enabled_value && at_value;
+                    let read = |input| match input {
+                        CpuRead::State(StateTest::ResourceEnabled(_)) => enabled_value,
+                        CpuRead::State(StateTest::ResourceAt { .. }) => at_value,
+                        CpuRead::State(StateTest::PistonExtended(_)) => extended_value,
+                        CpuRead::Guard(_) => panic!("live contact should expand into first-match state tests"),
+                        _ => unreachable!("guard compiler emitted an unrelated read: {input:?}"),
+                    };
+                    for (root, expected) in [
+                        (site_guard, site_value),
+                        (all, site_value && extended_value),
+                        (any, site_value || !enabled_value),
+                        (negated, !site_value),
+                    ] {
+                        assert_eq!(plans.evaluate(plans.predicate(root).unwrap(), read, clause_matcher()), expected);
+                    }
+                }
+            }
+        }
+        assert!(plans.stats.compiled >= 4);
+        assert!(plans.stats.bytes <= MAX_GUARD_PLAN_BYTES);
+        let _ = at;
+    }
+
+    #[test]
+    fn guard_predicates_keep_captured_reads_and_skip_identity_fallbacks() {
+        let (mut graph, _resource, _contact, site, _profile_a, _profile_b, enabled, _at, _always) = guard_graph();
+        let captured = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Site {
+            site,
+            view: OperandView::Captured,
+            test: SiteTest::Solid,
+        });
+        let combined = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::All(vec![captured, enabled].into_boxed_slice()));
+        let disabled = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::Not(enabled));
+        let mixed = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::All(vec![disabled, captured].into_boxed_slice()));
+        let plans = GuardPredicatePlans::compile(&graph, &TaskMonitor::default()).unwrap();
+        assert!(plans.predicate(captured).is_none(), "identity guard fallback should remain recursive");
+        let predicate = plans.predicate(combined).expect("compound captured guard uses a packed context read");
+        assert!(
+            plans.reads[predicate.read_start as usize..(predicate.read_start + predicate.read_len as u32) as usize]
+                .contains(&CpuRead::Guard(captured))
+        );
+        for captured_value in [false, true] {
+            for enabled_value in [false, true] {
+                let actual = plans.evaluate(
+                    predicate,
+                    |input| match input {
+                        CpuRead::Guard(guard) if guard == captured => captured_value,
+                        CpuRead::State(StateTest::ResourceEnabled(_)) => enabled_value,
+                        other => unreachable!("unexpected captured guard read {other:?}"),
+                    },
+                    clause_matcher(),
+                );
+                assert_eq!(actual, captured_value && enabled_value);
+            }
+        }
+        let mixed_predicate = plans.predicate(mixed).unwrap();
+        assert_eq!(mixed_predicate.kind, CpuPredicateKind::AllLiterals);
+        for captured_value in [false, true] {
+            for enabled_value in [false, true] {
+                let actual = plans.evaluate(
+                    mixed_predicate,
+                    |input| match input {
+                        CpuRead::Guard(guard) if guard == captured => captured_value,
+                        CpuRead::State(StateTest::ResourceEnabled(_)) => enabled_value,
+                        other => unreachable!("unexpected mixed guard read {other:?}"),
+                    },
+                    clause_matcher(),
+                );
+                assert_eq!(actual, captured_value && !enabled_value);
+            }
+        }
+        let mut sampled = Vec::new();
+        assert!(!plans.evaluate(
+            mixed_predicate,
+            |input| {
+                sampled.push(input);
+                match input {
+                    CpuRead::State(StateTest::ResourceEnabled(_)) => true,
+                    CpuRead::Guard(_) => panic!("negative state literal must short-circuit the captured read"),
+                    other => unreachable!("unexpected mixed guard read {other:?}"),
+                }
+            },
+            clause_matcher(),
+        ));
+        assert_eq!(sampled.len(), 1);
+    }
+
+    #[test]
+    fn guard_predicate_plan_rederives_rejects_forgery_and_honors_cancellation() {
+        let (mut graph, _resource, _contact, site, _profile_a, _profile_b, enabled, _at, _always) = guard_graph();
+        let compound = GuardId::try_from_index(graph.guards.len()).unwrap();
+        graph.guards.push(Guard::All(vec![enabled, GuardId::new(0)].into_boxed_slice()));
+        graph.plans.guard_predicates = GuardPredicatePlans::compile(&graph, &TaskMonitor::default()).unwrap();
+        graph.validate_execution_plans_with_monitor(&TaskMonitor::default()).unwrap();
+
+        let mut forged = graph.clone();
+        forged.plans.guard_predicates.stats.work ^= 1;
+        assert!(forged.validate_execution_plans_with_monitor(&TaskMonitor::default()).is_err());
+
+        let mut stale = graph.clone();
+        stale.guards[compound.index()] = Guard::Site {
+            site,
+            view: OperandView::Live,
+            test: SiteTest::Transparent,
+        };
+        assert!(stale.validate_execution_plans_with_monitor(&TaskMonitor::default()).is_err());
+
+        let cancelled = TaskMonitor::default();
+        cancelled.cancel();
+        assert!(GuardPredicatePlans::compile(&graph, &cancelled).is_err());
+    }
+
     #[test]
     fn cpu_wire_emission_only_specializes_fixed_wire_owners() {
         let (world, bounds) = crate::redpiler::passes::simplify_instant_resets::tests::fixture();
@@ -593,6 +997,8 @@ mod tests {
                         ids: FxHashMap::default(),
                         guards: FxHashMap::default(),
                         work: 0,
+                        work_limit: MAX_WORK,
+                        captured_site_reads: false,
                     };
                     let clauses = builder.source(site, port, threshold, 0).unwrap();
                     match face {
@@ -614,6 +1020,8 @@ mod tests {
             ids: FxHashMap::default(),
             guards: FxHashMap::default(),
             work: 0,
+            work_limit: MAX_WORK,
+            captured_site_reads: false,
         };
         let port = PowerPort::Strong(BlockFace::North);
         builder.source(site, port, 3, 0).unwrap();
@@ -718,6 +1126,8 @@ mod tests {
                 ids: FxHashMap::default(),
                 guards: FxHashMap::default(),
                 work: 0,
+                work_limit: MAX_WORK,
+                captured_site_reads: false,
             };
             let clauses = builder.source(site, PowerPort::Stored, threshold, 0).unwrap();
             let mut plan = CpuKernelPlans::default();
@@ -746,6 +1156,8 @@ mod tests {
             ids: FxHashMap::default(),
             guards: FxHashMap::default(),
             work: 0,
+            work_limit: MAX_WORK,
+            captured_site_reads: false,
         };
         let clauses = builder.guard(test, true, 0).unwrap();
         let mut plan = CpuKernelPlans::default();

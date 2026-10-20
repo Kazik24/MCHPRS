@@ -448,7 +448,6 @@ fn fixed_classic_whole_decline_keeps_local_classic_net_and_native_future() {
         vec![],
         &crate::redpiler::CompilerOptions {
             optimization_level: Some(2),
-            classic_redstone: true,
             ..Default::default()
         },
         Arc::new(TaskMonitor::default()),

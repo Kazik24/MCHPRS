@@ -14,6 +14,8 @@ pub(super) struct CompilationJob {
     monitor: Arc<TaskMonitor>,
     /// Live entry state that must still match before activation.
     entry: EntryVersion,
+    /// Selected public tier label for the completion summary.
+    mode: String,
     /// Worker owning all temporary compilation data and no live plot references.
     worker: JoinHandle<CompilationResult>,
 }
@@ -97,6 +99,7 @@ impl Plot {
             .map(|container| container.pos)
             .collect();
         let snapshot_ms = started.elapsed().as_millis();
+        let mode = super::scoreboard::optimization_mode_label(&options);
         let monitor = Arc::new(TaskMonitor::default());
         let worker_monitor = monitor.clone();
         let span = tracing::Span::current();
@@ -122,6 +125,7 @@ impl Plot {
                     started,
                     monitor,
                     entry,
+                    mode,
                     worker,
                 })
             }
@@ -159,7 +163,7 @@ impl Plot {
         } else {
             self.redpiler = output.compiler;
             if let Some(stats) = self.redpiler.stats() {
-                for line in stats.summary_lines() {
+                for line in stats.chat_summary_lines(&job.mode) {
                     for player in &self.players {
                         player.send_system_message(&line);
                     }

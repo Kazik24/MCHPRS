@@ -109,7 +109,6 @@ fn active_classic_wire_coverage_returns_to_graph_after_deoptimization() {
     }
     let options = crate::redpiler::CompilerOptions {
         optimization_level: Some(2),
-        classic_redstone: true,
         ..Default::default()
     };
     let mut pipeline = passes::default_graph_pipeline(&options);

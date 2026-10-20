@@ -27,7 +27,7 @@ use super::{
     PassContext,
     planning::{PlanBuilder, PlanOutput},
 };
-use crate::redpiler::program_graph::{CompileGraph, InstantTransport};
+use crate::redpiler::program_graph::CompileGraph;
 
 pub(crate) struct CompileInstantTransport;
 

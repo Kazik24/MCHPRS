@@ -108,16 +108,44 @@ impl GraphBackend {
     /// Test a guard using the live or captured view specified for each site.
     /// State tests always read current state. A site test with a missing capture is false.
     pub(super) fn guard_matches(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>) -> bool {
-        let matched = self.guard_matches_using(id, captured, None);
-        matched
+        self.guard_matches_with_context(id, captured, None)
     }
 
     pub(super) fn guard_matches_for_site(&self, id: GuardId, site: SiteId, observed: &ObservedSite) -> bool {
-        let matched = self.guard_matches_using(id, None, Some((site, observed)));
-        matched
+        self.guard_matches_with_context(id, None, Some((site, observed)))
     }
 
-    fn guard_matches_using(&self, id: GuardId, captured: Option<&[Option<ObservedSite>]>, captured_site: Option<(SiteId, &ObservedSite)>) -> bool {
+    fn guard_matches_with_context(
+        &self,
+        id: GuardId,
+        captured: Option<&[Option<ObservedSite>]>,
+        captured_site: Option<(SiteId, &ObservedSite)>,
+    ) -> bool {
+        match self.program.guards().get(id.index()) {
+            Some(Guard::Always) => return true,
+            Some(Guard::State(test)) => return self.state.matches(*test),
+            _ => {}
+        }
+        if let Some(predicate) = self.program.guard_predicate(id) {
+            return self.program.evaluate_guard_predicate(
+                predicate,
+                |read| match read {
+                    // Raw recursion is essential: unsupported site atoms may name their own guard.
+                    CpuRead::Guard(guard) => self.guard_matches_using(guard, captured, captured_site),
+                    other => self.cpu_read(other),
+                },
+                self.instant_kernel.clause_matcher,
+            );
+        }
+        self.guard_matches_using(id, captured, captured_site)
+    }
+
+    pub(super) fn guard_matches_using(
+        &self,
+        id: GuardId,
+        captured: Option<&[Option<ObservedSite>]>,
+        captured_site: Option<(SiteId, &ObservedSite)>,
+    ) -> bool {
         match &self.program.guards()[id.index()] {
             Guard::Always => true,
             Guard::State(test) => self.state.matches(*test),

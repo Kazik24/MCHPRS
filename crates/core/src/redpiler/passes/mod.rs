@@ -10,14 +10,20 @@ pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
 pub(crate) mod compile_fixed_classic;
 mod compile_fixed_signals;
+mod compile_guarded_instant_transport;
+mod compile_instant_drives;
 pub(crate) mod compile_instant_events;
 #[cfg(test)]
 pub(crate) mod compile_instant_layers;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
+mod compile_instant_transition_programs;
 pub(crate) mod compile_instant_transport;
+mod compile_instant_value_regions;
 pub(crate) mod compile_instant_wire_nodes;
 pub(crate) mod compile_mixed_classic;
+mod compile_signal_channels;
+mod compile_stable_instant_logic;
 pub(crate) mod compile_wire_callbacks;
 pub(crate) mod compile_wire_captures;
 pub(crate) mod compile_wire_hops;
@@ -357,7 +363,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         }))
         .chain(std::iter::once(PassEntry {
             pass: Pass::build(compile_classic_redstone::CompileClassicRedstone),
-            enabled: level >= 4 || level >= 2 && options.classic_redstone,
+            enabled: level >= 2,
         }))
         .collect();
     let mut pipeline = PassPipeline::new(entries);
@@ -366,7 +372,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             .entries
             .retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
     }
-    // FIFO-local entries sample live inputs; stable-input promises belong only to old O3 composition.
+    // FIFO-local entries sample live inputs; stable logic checks its explicit promise separately.
     let kernels = [
         (4, Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries)),
         (4, Pass::build(compile_instant_wire_nodes::CompileInstantWireNodes)),
@@ -387,6 +393,30 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
     }
     pipeline.entries.push(PassEntry {
         pass: Pass::build(compile_instant_transport::CompileInstantTransport),
+        enabled: level >= 5,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_guarded_instant_transport::CompileGuardedInstantTransport),
+        enabled: level >= 5,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_instant_drives::CompileInstantDrives),
+        enabled: level >= 5,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_instant_transition_programs::CompileInstantTransitionPrograms),
+        enabled: level >= 5,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_instant_value_regions::CompileInstantValueRegions),
+        enabled: level >= 5,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_signal_channels::CompileSignalChannels),
+        enabled: level >= 5,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_stable_instant_logic::CompileStableInstantLogic),
         enabled: level >= 5,
     });
     #[cfg(feature = "unsafe-turbo-fixed-point")]
@@ -442,28 +472,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn production_tiers_enable_certified_passes_without_semantic_promises() {
-        for flags in ["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "--optimize"] {
+    fn production_tiers_and_aliases_enable_certified_passes() {
+        for flags in [
+            "-O0",
+            "-O1",
+            "-O2",
+            "-O3",
+            "-O4",
+            "-O5",
+            "-O",
+            "-o",
+            "--optimize",
+            "-O5 --stable-instant-inputs",
+            "-O --stable-instant-inputs",
+            "-o --stable-instant-inputs",
+            "--optimize --stable-instant-inputs",
+        ] {
             let options = CompilerOptions::parse(flags).unwrap();
             let level = options.optimization_level.unwrap_or(5);
-            assert!(!options.stable_instant_inputs && !options.classic_redstone);
+            assert_eq!(options.stable_instant_inputs, flags.contains("--stable-instant-inputs"));
             let pipeline = default_graph_pipeline(&options);
             let enabled: Vec<_> = pipeline.entries.iter().filter(|p| p.enabled).map(|p| p.pass.name()).collect();
             for (name, minimum) in [
                 ("compile-fixed-classic", 2),
                 ("compile-mixed-classic", 2),
                 ("compile-wire-captures", 3),
-                ("compile-classic-redstone", 4),
+                ("compile-classic-redstone", 2),
                 ("experimental-compile-instant-wire-nodes", 4),
                 ("experimental-minimize-wire-captures", 4),
                 ("experimental-compile-bud-memory-reads", 4),
                 ("experimental-compile-instant-events", 4),
                 ("optimize-instant-kernels-cpu", 5),
+                ("compile-instant-transport", 5),
+                ("compile-guarded-instant-transport", 5),
+                ("compile-instant-drives", 5),
+                ("compile-instant-transition-programs", 5),
+                ("compile-instant-value-regions", 5),
+                ("compile-signal-channels", 5),
+                ("compile-stable-instant-logic", 5),
                 ("experimental-coalesce-delayed-updates", 5),
             ] {
                 assert_eq!(enabled.contains(&name), level >= minimum, "{flags}: {name}");
             }
             assert!(!enabled.contains(&"compile-instant-layers"));
+            assert!(!enabled.contains(&"compile-guard-predicates"));
             #[cfg(not(any(feature = "unsafe-abstract-instant-nets", feature = "unsafe-turbo-fixed-point")))]
             assert!(
                 enabled
@@ -471,7 +523,7 @@ mod tests {
                     .all(|p| !p.starts_with("unsafe-") && *p != "experimental-settle-dust-networks")
             );
         }
-        let options = CompilerOptions::parse("-O2 --classic-redstone").unwrap();
+        let options = CompilerOptions::parse("-O2").unwrap();
         assert!(
             default_graph_pipeline(&options)
                 .entries
@@ -538,6 +590,21 @@ mod tests {
             cancel: false,
             calls,
         }
+    }
+
+    #[test]
+    fn diagnostic_guard_predicates_validate_before_publication() {
+        use crate::redpiler::program_graph::{Guard, GuardPredicatePlans};
+        let mut graph = graph_for_passes();
+        graph.guards.push(Guard::Always);
+        let plans = GuardPredicatePlans::compile(&graph, &TaskMonitor::default()).unwrap();
+        let mut malformed = plans.clone();
+        malformed.require_true.push(0);
+        assert!(planning::PlanOutput::GuardPredicates(malformed).publish(&mut graph).is_err());
+        assert_eq!(graph.plans.guard_predicates, GuardPredicatePlans::default());
+        let change = planning::PlanOutput::GuardPredicates(plans.clone()).publish(&mut graph).unwrap();
+        graph.validate_plan_change(change, &TaskMonitor::default()).unwrap();
+        assert_eq!(graph.plans.guard_predicates, plans);
     }
 
     fn graph_for_passes() -> CompileGraph {

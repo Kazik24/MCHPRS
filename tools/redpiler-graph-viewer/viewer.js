@@ -8,6 +8,7 @@ const tables = {
   instant_boundary_ports: "instant_port", instant_declines: "instant_decline",
   instant_layer_regions: "instant_layer_region", instant_layer_declines: "instant_layer_decline",
   instant_event_kernels: "instant_event_kernel",
+  instant_transport: "instant_transport",
   bud_memory_reads: "bud_memory_read",
   classic_nets: "classic_net",
   fixed_signal_queries: "fixed_signal",
@@ -24,6 +25,18 @@ let selectedId;
 let viewCenter;
 let currentView;
 let guardStates = new Map();
+let physicalIndex;
+let physicalConnections;
+let physicalNeighbors;
+let compiledIndex;
+let compiledConnections;
+let compiledNeighbors;
+let compiledPlan;
+let compiledNodeIds = [];
+let compiledWireToNet = new Map();
+let compiledSearchIds = [];
+let programMode = 'physical';
+let activeNodeIds = [];
 const MAX_VIEW_NODES = 400;
 const MAX_VIEW_EDGES = 800;
 
@@ -125,6 +138,194 @@ function validateCpuKernels(program, ids) {
   }
 }
 
+function validateInstantPrograms(programs, graph, ids) {
+  if (programs == null) return;
+  const fail = (where) => { throw Error(`Invalid compiled program: ${where}`); };
+  const ref = (value, kind, where) => {
+    if (typeof value !== 'string' || !value.startsWith(`${kind}:`) || !ids.has(value)) fail(`${where} reference`);
+  };
+  const index = (value, length, where) => {
+    if (!Number.isSafeInteger(value) || value < 0 || value >= length) fail(`${where} index`);
+  };
+  const range = (value, length, where) => {
+    if (!Array.isArray(value) || value.length !== 2 || !Number.isSafeInteger(value[0]) || !Number.isSafeInteger(value[1])
+      || value[0] < 0 || value[1] < value[0] || value[1] > length) fail(`${where} range`);
+    return value;
+  };
+  const scalar = (value, max, where) => {
+    if (!Number.isInteger(value) || value < 0 || value > max) fail(`${where} value`);
+  };
+  const driveSource = (value, where) => {
+    if (value?.kind === 'output' || value?.kind === 'powered') ref(value.node, 'node', where);
+    else if (value?.kind === 'constant') scalar(value.value, 15, where);
+    else fail(`${where} source`);
+  };
+  const source = (value, conditions, where) => {
+    driveSource(value.source, where);
+    index(value.condition, conditions, where);
+  };
+  const netWires = (netId, where) => {
+    index(netId, (graph.instant_transport || []).length, where);
+    const wires = graph.instant_transport[netId].wires;
+    if (!Array.isArray(wires)) fail(`${where} transport wires`);
+    return wires;
+  };
+
+  const drives = programs.instant_drives;
+  if (drives != null) {
+    if (!Array.isArray(drives.wires) || !Array.isArray(drives.queries) || !Array.isArray(drives.terms) || !Array.isArray(drives.conditions)) fail('drive tables');
+    for (const row of drives.wires) {
+      ref(row?.node, 'node', 'drive wire');
+      if (row.query != null) index(row.query, drives.queries.length, 'drive query');
+    }
+    for (const [i, query] of drives.queries.entries()) {
+      scalar(query?.constant, 15, `drive query ${i}`);
+      range(query.terms, drives.terms.length, `drive query ${i}`);
+    }
+    for (const [i, term] of drives.terms.entries()) {
+      source(term, drives.conditions.length, `drive term ${i}`);
+      scalar(term.attenuation, 14, `drive term ${i}`);
+    }
+    const faces = new Set(['north', 'south', 'east', 'west', 'top', 'bottom']);
+    for (const [i, condition] of drives.conditions.entries()) {
+      if (condition?.kind === 'always' || condition?.kind === 'never') continue;
+      if (condition?.kind === 'state') {
+        const test = condition.test;
+        if (['piston_extended', 'piston_head_present', 'piston_availability'].includes(test?.kind)) {
+          ref(test.piston, 'piston', `condition ${i}`);
+          if (test.kind === 'piston_availability' && !['ready', 'head_pending', 'publishing_head_removal', 'base_pending_head_present', 'base_pending'].includes(test.availability)) fail(`condition ${i} availability`);
+        } else if (test?.kind === 'resource_at') {
+          ref(test.resource, 'resource', `condition ${i}`); ref(test.contact, 'contact', `condition ${i}`);
+        } else if (test?.kind === 'resource_enabled') ref(test.resource, 'resource', `condition ${i}`);
+        else fail(`condition ${i} state`);
+      } else if (condition?.kind === 'wire_emits') {
+        ref(condition.node, 'node', `condition ${i}`);
+        if (!faces.has(condition.face)) fail(`condition ${i} face`);
+        scalar(condition.raw_sides, 63, `condition ${i}`);
+      } else if (condition?.kind === 'not') index(condition.child, i, `condition ${i} child`);
+      else if (condition?.kind === 'all' || condition?.kind === 'any') {
+        if (!Array.isArray(condition.children)) fail(`condition ${i} children`);
+        for (const child of condition.children) index(child, i, `condition ${i} child`);
+      } else fail(`condition ${i} opcode`);
+    }
+  }
+
+  const channels = programs.signal_channels;
+  if (channels != null) {
+    if (!Array.isArray(channels) || !drives) fail('signal channel table');
+    const used = new Set();
+    for (const [i, channel] of channels.entries()) {
+      const wires = netWires(channel?.net, `signal channel ${i}`);
+      if (used.has(channel.net)) fail(`duplicate signal channel ${i}`); used.add(channel.net);
+      if (!Array.isArray(channel.wires) || channel.wires.length !== wires.length || channel.wires.some((id, j) => id !== wires[j])) fail(`signal channel ${i} wire mapping`);
+      source(channel.input, drives.conditions.length, `signal channel ${i}`);
+      if (!Array.isArray(channel.profiles) || channel.profiles.length !== 2 || channel.profiles.some((row) => !Array.isArray(row) || row.length !== wires.length || row.some((v) => !Number.isInteger(v) || v < 0 || v > 15))) fail(`signal channel ${i} profiles`);
+      index(channel.discriminator, Math.max(1, wires.length), `signal channel ${i} discriminator`);
+      if (!Array.isArray(channel.transitions)) fail(`signal channel ${i} transitions`);
+      for (const transition of channel.transitions) {
+        scalar(transition?.old_input, 1, `signal channel ${i} transition input`);
+        index(transition?.root, wires.length, `signal channel ${i} root`);
+        if (transition.transcript == null) continue;
+        const transcript = transition.transcript;
+        if (!Number.isSafeInteger(transcript.selections) || transcript.selections < 0 || !Array.isArray(transcript.final_powers)
+          || transcript.final_powers.length !== wires.length || transcript.final_powers.some((v) => !Number.isInteger(v) || v < 0 || v > 15)
+          || !Array.isArray(transcript.ops)) fail(`signal channel ${i} transcript`);
+        for (const op of transcript.ops) {
+          if (op?.op === 'capture') index(op.site, graph.instant_transport[channel.net].sites?.length || 0, `signal channel ${i} capture site`);
+          else if (op?.op === 'select') {
+            index(op.wire, wires.length, `signal channel ${i} selected wire`); scalar(op.slot, 23, `signal channel ${i} slot`);
+            if (op.selection !== 4294967295) index(op.selection, transcript.selections, `signal channel ${i} selection`);
+          } else if (op?.op === 'set_power') { index(op.wire, wires.length, `signal channel ${i} write wire`); scalar(op.power, 15, `signal channel ${i} power`); }
+          else if (op?.op === 'call') {
+            index(op.site, graph.instant_transport[channel.net].sites?.length || 0, `signal channel ${i} call site`);
+            if (op.selection !== 4294967295) index(op.selection, transcript.selections, `signal channel ${i} call selection`);
+            if (!Number.isSafeInteger(op.layer) || op.layer < 0) fail(`signal channel ${i} call layer`);
+            ref(op.route, 'route', `signal channel ${i} call`);
+          } else fail(`signal channel ${i} operation`);
+        }
+      }
+    }
+  }
+
+  const stable = programs.stable_logic;
+  if (stable != null) {
+    if (!Array.isArray(stable) || !drives) fail('stable logic table');
+    const used = new Set();
+    for (const [i, row] of stable.entries()) {
+      const wires = netWires(row?.net, `stable logic ${i}`);
+      if (used.has(row.net)) fail(`duplicate stable logic ${i}`); used.add(row.net);
+      if (!Array.isArray(row.wires) || row.wires.length !== wires.length || row.wires.some((id, j) => id !== wires[j])
+        || !Array.isArray(row.expressions) || row.expressions.length !== wires.length || !Array.isArray(row.inputs)
+        || !Array.isArray(row.terms) || !Array.isArray(row.outputs)) fail(`stable logic ${i} tables`);
+      for (const input of row.inputs) source(input, drives.conditions.length, `stable logic ${i} input`);
+      for (const term of row.terms) { index(term?.input, row.inputs.length, `stable logic ${i} term`); scalar(term.attenuation, 14, `stable logic ${i} attenuation`); }
+      for (const expression of row.expressions) { scalar(expression?.constant, 15, `stable logic ${i} expression`); range(expression.terms, row.terms.length, `stable logic ${i} expression`); }
+      for (const output of row.outputs) {
+        ref(output?.site, 'site', `stable logic ${i} output`);
+        if (!Array.isArray(output.candidates)) fail(`stable logic ${i} candidates`);
+        for (const candidate of output.candidates) {
+          index(candidate?.wire, wires.length, `stable logic ${i} output wire`); scalar(candidate.slot, 23, `stable logic ${i} output slot`);
+          if (candidate.admission !== null && typeof candidate.admission !== 'boolean') fail(`stable logic ${i} output admission`);
+        }
+      }
+      for (const field of ['input_users', 'wire_outputs']) if (!Array.isArray(row[field])) fail(`stable logic ${i} ${field}`);
+      if (row.input_users.length !== row.inputs.length || row.wire_outputs.length !== wires.length
+        || !Array.isArray(row.input_user_expressions) || !Array.isArray(row.wire_output_indices)) fail(`stable logic ${i} dependency tables`);
+      row.input_users.forEach((r) => range(r, row.input_user_expressions.length, `stable logic ${i} input users`));
+      row.wire_outputs.forEach((r) => range(r, row.wire_output_indices.length, `stable logic ${i} wire outputs`));
+      row.input_user_expressions.forEach((v) => index(v, wires.length, `stable logic ${i} expression dependency`));
+      row.wire_output_indices.forEach((v) => index(v, row.outputs.length, `stable logic ${i} output dependency`));
+    }
+  }
+
+  const values = programs.value_regions;
+  if (values != null) {
+    if (!Array.isArray(values) || !drives) fail('value region table');
+    for (const [i, row] of values.entries()) {
+      const wires = netWires(row?.net, `value region ${i}`);
+      if (!Array.isArray(row.wires) || row.wires.length !== wires.length || !Array.isArray(row.regions)
+        || !Array.isArray(row.region_wires) || !Array.isArray(row.drive_groups) || !Array.isArray(row.conditional_arcs)
+        || !Array.isArray(row.selectors) || !Array.isArray(row.distance_rows) || !Array.isArray(row.distances)) fail(`value region ${i} tables`);
+      for (let j = 0; j < row.wires.length; j++) {
+        const wire = row.wires[j]; ref(wire?.node, 'node', `value region ${i} wire`);
+        if (wire.node !== wires[j] || typeof wire.compact_capture !== 'boolean') fail(`value region ${i} wire map`);
+        if (wire.region !== null) {
+          index(wire.region, row.regions.length, `value region ${i} region`);
+          const componentWires = range(row.regions[wire.region].wires, row.region_wires.length, `value region ${i} component wires`);
+          index(wire.region_local, componentWires[1] - componentWires[0], `value region ${i} local wire`);
+        }
+        else if (wire.region_local !== null) fail(`value region ${i} absent region local`);
+      }
+      row.regions.forEach((region) => {
+        for (const field of ['wires', 'drive_groups', 'conditional_arcs']) range(region[field], field === 'wires' ? row.region_wires.length : field === 'drive_groups' ? row.drive_groups.length : row.conditional_arcs.length, `value region ${i} component`);
+      });
+      row.region_wires.forEach((v) => index(v, wires.length, `value region ${i} wire`));
+      for (const group of row.drive_groups) { index(group?.query, drives?.queries.length || 0, `value region ${i} drive query`); index(group.row, row.distance_rows.length, `value region ${i} drive row`); }
+      for (const arc of row.conditional_arcs) { index(arc?.source, wires.length, `value region ${i} arc source`); index(arc.row, row.distance_rows.length, `value region ${i} arc row`); index(arc.selector, row.selectors.length, `value region ${i} selector`); }
+      for (const selector of row.selectors) { ref(selector?.horizontal_site, 'site', `value region ${i} selector`); if (selector.ascent_up_site !== null) ref(selector.ascent_up_site, 'site', `value region ${i} ascent selector`); }
+      for (const distance of row.distance_rows) range([distance?.start, distance?.start + distance?.len], row.distances.length, `value region ${i} distance row`);
+      row.distances.forEach((v) => scalar(v, 15, `value region ${i} distance`));
+    }
+  }
+
+  const eligibility = programs.transition_eligibility;
+  if (eligibility != null) {
+    if (eligibility.semantics !== 'eligibility only; runtime-learned transcripts are unavailable' || !Array.isArray(eligibility.nets)) fail('transition eligibility semantics');
+    const seen = new Set();
+    for (const [i, row] of eligibility.nets.entries()) {
+      const wires = netWires(row?.net, `transition eligibility ${i}`);
+      if (seen.has(row.net) || typeof row.eligible !== 'boolean') fail(`transition eligibility ${i}`); seen.add(row.net);
+      if (!row.eligible) { if ('wire_queries' in row) fail(`declined transition eligibility ${i}`); continue; }
+      if (!Array.isArray(row.wire_queries) || row.wire_queries.length !== wires.length || !drives) fail(`transition eligibility ${i} queries`);
+      for (let j = 0; j < row.wire_queries.length; j++) {
+        const query = row.wire_queries[j]; index(query?.wire, wires.length, `transition eligibility ${i} local wire`);
+        ref(query.node, 'node', `transition eligibility ${i}`); if (query.node !== wires[query.wire]) fail(`transition eligibility ${i} wire mapping`);
+        index(query.query, drives.queries.length, `transition eligibility ${i} query`);
+      }
+    }
+  }
+}
+
 function validateGraph(data) {
   if (data?.format !== "mchprs.redpiler.graph") throw Error("Unsupported graph format.");
   if (!Number.isInteger(data.version?.major) || data.version.major !== 1) throw Error(`Unsupported graph major version: ${data.version?.major}`);
@@ -136,7 +337,7 @@ function validateGraph(data) {
     if (table === "callback_links" && rows === undefined) continue;
     if (["dust_paths", "instant_regions", "instant_proxies", "classic_nets", "fixed_signal_queries",
       "instant_cells", "instant_corridors", "instant_boundary_ports", "instant_declines",
-      "instant_layer_regions", "instant_layer_declines", "instant_event_kernels", "bud_memory_reads"].includes(table) && rows == null) continue;
+      "instant_layer_regions", "instant_layer_declines", "instant_event_kernels", "instant_transport", "bud_memory_reads"].includes(table) && rows == null) continue;
     if (!Array.isArray(rows)) throw Error(`graph.${table} must be an array or null for routes.`);
     for (const row of rows) {
       if (!row || typeof row.id !== "string" || !new RegExp(`^${prefix}:(0|[1-9][0-9]*)$`).test(row.id)) throw Error(`Invalid ID in graph.${table}.`);
@@ -151,6 +352,7 @@ function validateGraph(data) {
   for (const ref of typedIds(data)) if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`);
   validateInstantEvents(data.graph.instant_event_kernels || [], ids);
   validateCpuKernels(data.graph.cpu_kernels, ids);
+  validateInstantPrograms(data.graph.instant_programs, data.graph, ids);
   const memoryReaders = new Set();
   for (const memory of data.graph.bud_memory_reads || []) {
     for (const [field,prefix] of [["storage","piston:"],["reader","piston:"],["resource","resource:"],["source","contact:"],["link","power_link:"]]) {
@@ -864,11 +1066,199 @@ function indexConnections(data, index) {
   return { edges, adjacent };
 }
 
+function connect(adjacency, id, source, target, type, record) {
+  const edge = { id, source, target, type, record };
+  for (const node of new Set([source, target])) {
+    if (!adjacency.has(node)) adjacency.set(node, []);
+    adjacency.get(node).push(edge);
+  }
+  return edge;
+}
+
+function makeCompiledView(data, physicalIndex, originalConnections) {
+  const graph = data.graph, programs = graph.instant_programs;
+  if (!programs) return null;
+  const index = new Map(physicalIndex), nodes = new Set(), wireToNet = new Map(), netIds = [];
+  let edgeOrdinal = 0;
+  const edges = new Map(), adjacent = new Map(), edgeBySignature = new Map();
+  const addNode = (id) => { if (index.has(id)) nodes.add(id); };
+  const addEdge = (source, target, type, record, key = '') => {
+    if (!index.has(source) || !index.has(target)) return;
+    const signature = `${type}\0${source}\0${target}\0${key}`;
+    const previous = edgeBySignature.get(signature);
+    if (previous) {
+      previous.record.count = (previous.record.count || 1) + (record.count || 1);
+      if (previous.record.examples && record.id && previous.record.examples.length < 4) previous.record.examples.push(record.id);
+      return previous;
+    }
+    const id = `compiled_edge:${edgeOrdinal++}`;
+    const edge = connect(adjacent, id, source, target, type, { ...record, count: record.count || 1 });
+    edge.signature = signature;
+    edges.set(id, edge);
+    edgeBySignature.set(signature, edge);
+    nodes.add(source); nodes.add(target);
+    return edge;
+  };
+  const netRows = graph.instant_transport || [];
+  for (let net = 0; net < netRows.length; net++) {
+    const transport = netRows[net];
+    const id = `compiled_net:${net}`;
+    const row = { id, name: `Transport net ${net}`, kind: { kind: 'compiled_net' }, program_kind: 'transport_net', net_index: net,
+      wire_count: transport.wires.length, internal_witnesses: {} };
+    index.set(id, row); nodes.add(id); netIds.push(id);
+    for (const wire of transport.wires) wireToNet.set(wire, id);
+  }
+
+  const endpoint = (id) => wireToNet.get(id) || id;
+  const internalWitnesses = new Map();
+  const witnessCounts = new Map();
+  for (const connection of originalConnections.values()) {
+    const source = endpoint(connection.source), target = endpoint(connection.target);
+    if (source === target && wireToNet.has(connection.source) && wireToNet.has(connection.target)) {
+      const net = Number(source.slice('compiled_net:'.length));
+      const stats = internalWitnesses.get(net) || {};
+      stats[connection.type] = (stats[connection.type] || 0) + 1;
+      internalWitnesses.set(net, stats);
+      continue;
+    }
+    const signature = `${connection.type}\0${source}\0${target}`;
+    const aggregate = witnessCounts.get(signature) || { count: 0, examples: [] };
+    aggregate.count++;
+    if (aggregate.examples.length < 4) aggregate.examples.push(connection.id);
+    witnessCounts.set(signature, aggregate);
+  }
+  for (const [signature, aggregate] of witnessCounts) {
+    const [original_type, source, target] = signature.split('\0');
+    addEdge(source, target, 'mapping_witness', { kind: 'original graph mapping witness', original_type, ...aggregate }, original_type);
+  }
+  for (const [net, witnesses] of internalWitnesses) index.get(netIds[net]).internal_witnesses = witnesses;
+
+  const drives = programs.instant_drives;
+  const queryTargets = new Map();
+  if (drives) {
+    for (const row of drives.wires) if (row.query != null) {
+      if (!queryTargets.has(row.query)) queryTargets.set(row.query, []);
+      queryTargets.get(row.query).push(row.node);
+    }
+    const conditionIds = drives.conditions.map((_, i) => `compiled_condition:${i}`);
+    drives.conditions.forEach((condition, i) => {
+      const id = conditionIds[i];
+      index.set(id, { id, name: `Drive condition ${i}`, kind: { kind: 'compiled_condition' }, program_kind: 'drive_condition', condition_index: i });
+      nodes.add(id);
+      if (condition.kind === 'state') {
+        for (const ref of conditionStateRefs(condition.test)) addEdge(endpoint(ref), id, 'program_predicate', { kind: condition.kind, condition: i, test: condition.test }, `state:${ref}`);
+      } else if (condition.kind === 'wire_emits') addEdge(endpoint(condition.node), id, 'program_predicate', { kind: condition.kind, condition: i, test: condition }, `wire:${condition.node}`);
+      else if (condition.kind === 'not') addEdge(conditionIds[condition.child], id, 'program_predicate', { kind: 'not', condition: i, child: condition.child });
+      else if (condition.kind === 'all' || condition.kind === 'any') condition.children.forEach((child, ordinal) => addEdge(conditionIds[child], id, 'program_predicate', { kind: condition.kind, condition: i, child, ordinal }));
+    });
+    drives.queries.forEach((query, i) => {
+      const id = `compiled_drive:${i}`;
+      index.set(id, { id, name: `Drive expression ${i}`, kind: { kind: 'compiled_drive' }, program_kind: 'drive_expression', query_index: i });
+      nodes.add(id);
+      const [start, end] = query.terms;
+      for (let term = start; term < end; term++) {
+        const row = drives.terms[term];
+        if (row.source.kind !== 'constant') addEdge(endpoint(row.source.node), id, 'program_input', { kind: 'drive_source', query: i, term, attenuation: row.attenuation }, `source:${row.source.kind}:${row.source.node}`);
+        addEdge(conditionIds[row.condition], id, 'program_predicate', { kind: 'drive_guard', query: i, term, condition: row.condition });
+      }
+      for (const node of queryTargets.get(i) || []) {
+        const target = endpoint(node);
+        addEdge(id, target, 'program_input', { kind: 'drive_result', query: i, node }, `result:${node}`);
+      }
+    });
+  }
+
+  const addProgramInputs = (net, inputRows, type) => {
+    const target = netIds[net];
+    for (const input of inputRows || []) {
+      if (input.source.kind !== 'constant') addEdge(endpoint(input.source.node), target, type,
+        { kind: input.source.kind, condition: input.condition, source: input.source, product: type }, `${input.source.kind}:${input.source.node}:${input.condition}`);
+      const conditionId = `compiled_condition:${input.condition}`;
+      if (index.has(conditionId)) addEdge(conditionId, target, 'program_predicate',
+        { kind: 'compiled condition input', condition: input.condition, product: type }, `${type}:condition:${input.condition}`);
+      const condition = drives?.conditions[input.condition];
+      for (const ref of conditionStateRefs(condition?.test)) addEdge(endpoint(ref), target, 'program_predicate',
+        { kind: condition.kind, condition: input.condition, product: type }, `${type}:${ref}:${input.condition}`);
+      if (condition?.kind === 'wire_emits') addEdge(endpoint(condition.node), target, 'program_predicate',
+        { kind: condition.kind, condition: input.condition, product: type }, `${type}:wire:${condition.node}:${input.condition}`);
+    }
+  };
+  for (const channel of programs.signal_channels || []) addProgramInputs(channel.net, [channel.input], 'program_input');
+  for (const stable of programs.stable_logic || []) addProgramInputs(stable.net, stable.inputs, 'program_input');
+
+  for (const stable of programs.stable_logic || []) {
+    const target = netIds[stable.net];
+    for (const output of stable.outputs) {
+      const destination = sourceNode(output.site, index);
+      if (destination !== target) addEdge(target, endpoint(destination), 'program_output', { kind: 'stable callback candidates', site: output.site, candidates: output.candidates.length }, output.site);
+    }
+  }
+  for (const channel of programs.signal_channels || []) {
+    const target = netIds[channel.net];
+    for (const transition of channel.transitions) for (const op of transition.transcript?.ops || []) {
+      if (op.op !== 'call') continue;
+      addEdge(target, op.route, 'program_output', { kind: 'ordered transcript call', route: op.route, layer: op.layer, transition: { old_input: transition.old_input, root: transition.root } }, `${op.route}:${transition.old_input}:${transition.root}:${op.layer}`);
+    }
+  }
+
+  const cpu = graph.cpu_kernels;
+  if (cpu) cpu.entries.forEach((entry, ordinal) => {
+    const id = `compiled_predicate:${ordinal}`;
+    index.set(id, { id, name: `CPU predicate ${ordinal}`, kind: { kind: 'compiled_predicate' }, program_kind: 'cpu_predicate', predicate_index: ordinal, actor: entry.actor });
+    nodes.add(id);
+    const actor = graph.pistons.find((row) => row.id === entry.actor)?.node;
+    if (actor) addEdge(endpoint(actor), id, 'program_predicate', { kind: 'actor predicate', actor: entry.actor }, entry.actor);
+    for (const field of ['main', 'quasi', 'valid']) {
+      const predicate = entry[field];
+      for (let offset = 0; offset < predicate.read_len; offset++) {
+        const read = cpu.reads[predicate.read_start + offset];
+        const refs = cpuReadRefs(read, index);
+        for (const ref of refs) addEdge(endpoint(ref), id, 'program_predicate', { kind: field, read_index: predicate.read_start + offset, read }, `${field}:${predicate.read_start + offset}:${ref}`);
+      }
+    }
+  });
+
+  for (const row of graph.nodes) if (!wireToNet.has(row.id)) addNode(row.id);
+  const plan = {
+    index, nodes: [...nodes], edges, adjacent, wireToNet, netIds, programs,
+    queryTargets, channels: new Map((programs.signal_channels || []).map((row) => [row.net, row])),
+    stable: new Map((programs.stable_logic || []).map((row) => [row.net, row])),
+    values: new Map((programs.value_regions || []).map((row) => [row.net, row])),
+    eligibility: new Map((programs.transition_eligibility?.nets || []).map((row) => [row.net, row])),
+  };
+  plan.searchIds = [...nodes].filter((id) => index.has(id));
+  plan.searchText = new Map(plan.searchIds.map((id) => {
+    const row = index.get(id);
+    return [id, `${id} ${recordLabel(row)} ${row.name || ''} ${row.actor || ''} ${row.program_kind || ''}`.toLowerCase()];
+  }));
+  return plan;
+}
+
+function conditionStateRefs(test) {
+  if (!test) return [];
+  if (test.kind === 'piston_extended' || test.kind === 'piston_head_present' || test.kind === 'piston_availability') return [test.piston];
+  if (test.kind === 'resource_at') return [test.resource, test.contact];
+  if (test.kind === 'resource_enabled') return [test.resource];
+  return [];
+}
+
+function cpuReadRefs(read, index) {
+  if (read.kind === 'state') return conditionStateRefs(read.test);
+  if (read.kind === 'input' || read.kind === 'strength' || read.kind === 'wire_emission') return [read.node];
+  if (read.kind === 'guard') return [read.guard];
+  if (read.kind === 'source') {
+    const site = index.get(read.site);
+    if (site?.source?.kind === 'component') return [site.source.node];
+    if (site?.source?.kind === 'contact') return [site.source.contact];
+  }
+  return [];
+}
+
 function enabledEdgeTypes() {
   return new Set([...document.querySelectorAll('.edge-filter:checked')].map((input) => input.value));
 }
 
-function selectView(center, overview, edgeTypes, depth) {
+function selectView(center, overview, edgeTypes, depth, availableNodes = activeNodeIds) {
   const nodes = new Set();
   const edges = new Map();
   let truncated = false;
@@ -883,9 +1273,9 @@ function selectView(center, overview, edgeTypes, depth) {
     edges.set(connection.id, connection);
   }
   if (overview) {
-    for (const row of graphData.graph.nodes) {
+    for (const id of availableNodes) {
       if (nodes.size >= MAX_VIEW_NODES) { truncated = true; break; }
-      nodes.add(row.id);
+      nodes.add(id);
     }
     for (const connection of connections.values()) include(connection);
   } else {
@@ -914,6 +1304,10 @@ function selectView(center, overview, edgeTypes, depth) {
 
 function connectionLabel(connection) {
   const record = connection.record;
+  if (connection.type === 'mapping_witness') return `Original graph witness · ${record.original_type} · collapsed through compiled net`;
+  if (connection.type === 'program_input') return `Typed input · ${record.kind}${record.condition == null ? '' : ` · condition ${record.condition}`}`;
+  if (connection.type === 'program_output') return `Possible output boundary · ${record.kind || 'callback'}${record.route ? ` · ${record.route}` : ''}`;
+  if (connection.type === 'program_predicate') return `Compiled predicate input · ${record.kind || 'state read'}`;
   if (connection.type === 'classic_signal') return 'committed at original entry occurrence';
   if (connection.type === 'classic_input') return `main · net −${record.attenuation} · live ingress −${record.source_attenuation}`;
   if (connection.type === 'power_link') {
@@ -928,6 +1322,8 @@ function connectionLabel(connection) {
 }
 
 function recordLabel(row) {
+  if (row.program_kind === 'transport_net') return `Compiled transport net ${row.net_index} · ${row.wire_count} wires`;
+  if (row.program_kind === 'cpu_predicate') return `CPU predicate · ${row.actor}`;
   if (row.kind?.builtin_reset) return 'built-in reset';
   if (row.id.startsWith('site:')) {
     const source = row.source;
@@ -971,9 +1367,9 @@ function option(value, label) {
 function controls(data) {
   const inputs = data.graph.nodes.filter((row) => ['lever', 'button', 'pressure_plate'].includes(category(row)));
   $('inputs').replaceChildren(...inputs.slice(0, 20).map((row) => referenceButton(row.id, `${category(row)} ${row.id}\n(${row.position?.x}, ${row.position?.y}, ${row.position?.z})`)));
-  const kinds = [...new Set(['site', 'route', 'classic_net', ...data.graph.nodes.map(category)])].sort();
+  const kinds = [...new Set(['site', 'route', 'classic_net', 'compiled_net', 'compiled_drive', 'compiled_condition', 'compiled_predicate', ...data.graph.nodes.map(category)])].sort();
   $('node-filters').replaceChildren(...kinds.map((kind) => check(kind, kind.replaceAll('_', ' '), true, 'node-filter')));
-  const edgeTypes = ['power_link', 'wire_relation', 'route_delivery', 'callback_link', 'classic_signal', 'classic_input'];
+  const edgeTypes = ['power_link', 'wire_relation', 'route_delivery', 'callback_link', 'classic_signal', 'classic_input', 'mapping_witness', 'program_input', 'program_output', 'program_predicate'];
   $('edge-filters').replaceChildren(...edgeTypes.map((kind) => check(kind, kind.replaceAll('_', ' '), kind === 'power_link' || kind.startsWith('classic_'), 'edge-filter')));
   document.querySelectorAll('.node-filter').forEach((input) => input.addEventListener('change', applyFilters));
   document.querySelectorAll('.edge-filter').forEach((input) => input.addEventListener('change', () => renderView()));
@@ -1002,25 +1398,31 @@ function controls(data) {
 }
 
 function initGraph(data) {
-  recordIndex = indexRecords(data);
+  physicalIndex = indexRecords(data);
+  recordIndex = physicalIndex;
   graphData = data;
-  const topology = indexConnections(data, recordIndex);
-  connections = topology.edges;
-  neighbors = topology.adjacent;
-  reverseRefs = new Map();
-  for (const [id, row] of recordIndex) for (const ref of new Set(typedIds(row))) {
-    if (ref === id) continue;
-    if (!reverseRefs.has(ref)) reverseRefs.set(ref, []);
-    reverseRefs.get(ref).push(id);
-  }
+  const topology = indexConnections(data, physicalIndex);
+  physicalConnections = topology.edges;
+  physicalNeighbors = topology.adjacent;
+  compiledPlan = makeCompiledView(data, physicalIndex, physicalConnections);
+  const hasPrograms = !!compiledPlan && (compiledPlan.netIds.length > 0 || compiledPlan.nodes.some((id) => id.startsWith('compiled_')));
+  programMode = hasPrograms ? 'compiled' : 'physical';
+  $('program-view').disabled = !compiledPlan;
+  $('program-view').value = programMode;
+  setActiveProgramView();
   controls(data);
+  const preferredEdges = programMode === 'compiled'
+    ? new Set(['mapping_witness', 'program_input', 'program_output', 'program_predicate'])
+    : new Set(['power_link', 'classic_signal', 'classic_input']);
+  document.querySelectorAll('.edge-filter').forEach((input) => { input.checked = preferredEdges.has(input.value); });
   guardStates = new Map();
   selectedId = undefined;
-  viewCenter = data.graph.nodes[0]?.id || data.graph.sites[0]?.id || data.graph.routes?.[0]?.id;
+  viewCenter = activeNodeIds[0];
   const overview = selectView(viewCenter, true, enabledEdgeTypes(), 1);
   $('scope').value = overview.truncated ? 'neighborhood' : 'overview';
   renderView();
   $('summary').textContent = `v${data.version.major}.${data.version.minor} · ${data.stage} · ${data.graph.nodes.length} circuit nodes · ${data.graph.power_links.length} power links`;
+  updateProgramStatus();
   $('drop-hint').hidden = true;
   $('matches').replaceChildren();
   $('dependencies').replaceChildren();
@@ -1028,9 +1430,44 @@ function initGraph(data) {
   $('details').textContent = 'No record selected.';
 }
 
+function setActiveProgramView() {
+  if (programMode === 'compiled' && compiledPlan) {
+    recordIndex = compiledPlan.index; connections = compiledPlan.edges; neighbors = compiledPlan.adjacent;
+    activeNodeIds = compiledPlan.nodes;
+    compiledWireToNet = compiledPlan.wireToNet;
+  } else {
+    programMode = 'physical'; recordIndex = physicalIndex; connections = physicalConnections; neighbors = physicalNeighbors;
+    activeNodeIds = graphData?.graph.nodes.map((row) => row.id) || [];
+    compiledWireToNet = compiledPlan?.wireToNet || new Map();
+  }
+  reverseRefs = new Map();
+  for (const [id, row] of recordIndex) for (const ref of new Set(typedIds(row))) {
+    if (ref === id) continue;
+    if (!reverseRefs.has(ref)) reverseRefs.set(ref, []);
+    reverseRefs.get(ref).push(id);
+  }
+}
+
+function updateProgramStatus() {
+  const status = $('program-status');
+  if (!compiledPlan) {
+    status.textContent = 'Compiled plan detail is unavailable in this export.';
+    return;
+  }
+  const programs = compiledPlan.programs;
+  const transportWires = (graphData.graph.instant_transport || []).reduce((sum, net) => sum + net.wires.length, 0);
+  const mappedWires = compiledPlan.wireToNet.size;
+  const fallback = Math.max(0, (graphData.graph.wire_plans || []).length - mappedWires);
+  const predicates = graphData.graph.cpu_kernels?.entries?.length || 0;
+  const channels = programs.signal_channels?.length || 0;
+  const stable = programs.stable_logic?.length || 0;
+  const eligible = programs.transition_eligibility?.nets?.filter((net) => net.eligible).length || 0;
+  status.textContent = `Plans: ${compiledPlan.netIds.length} transport nets · ${mappedWires}/${transportWires} mapped wires · ${fallback} physical wire fallbacks · ${predicates} CPU predicates · ${channels} channels · ${stable} stable programs · ${eligible} transition-eligible. Mapping edges are original graph witnesses; transition eligibility has no exported learned transcript.`;
+}
+
 function renderView() {
   if (!graphData) return;
-  currentView = selectView(viewCenter, $('scope').value === 'overview', enabledEdgeTypes(), Number($('depth').value));
+  currentView = selectView(viewCenter, $('scope').value === 'overview', enabledEdgeTypes(), Number($('depth').value), activeNodeIds);
   if (cy) cy.destroy();
   cy = cytoscape({
     container: $('graph'), elements: graphElements(currentView), layout: { name: 'preset' },
@@ -1038,6 +1475,9 @@ function renderView() {
     style: [
       { selector: 'node', style: { label: 'data(label)', color: '#e6edf3', 'font-size': 12, 'text-valign': 'center', 'text-wrap': 'wrap', shape: 'round-rectangle', 'background-color': '#285064', width: 115, height: 48, 'border-width': 2, 'border-color': '#8ec6d6' } },
       { selector: 'node[kind = "wire"]', style: { 'background-color': '#632f35', 'border-color': '#e88383', width: 100, height: 44 } },
+      { selector: 'node[kind = "compiled_net"]', style: { 'background-color': '#17495a', 'border-color': '#56d8d1', width: 180, height: 72 } },
+      { selector: 'node[kind = "compiled_drive"], node[kind = "compiled_condition"]', style: { 'background-color': '#3d365f', 'border-color': '#b9a8ff', width: 150, height: 54 } },
+      { selector: 'node[kind = "compiled_predicate"]', style: { 'background-color': '#5b4529', 'border-color': '#e6bd67' } },
       { selector: 'node[kind = "piston"]', style: { shape: 'rectangle', 'background-color': '#5e4b27', 'border-color': '#d3b46e' } },
       { selector: 'node[kind = "contact"]', style: { shape: 'diamond', 'background-color': '#453355', 'border-color': '#b69bd7', width: 130, height: 80 } },
       { selector: 'node[kind = "lever"], node[kind = "button"]', style: { 'background-color': '#26533e', 'border-color': '#7dd5a2' } },
@@ -1046,6 +1486,10 @@ function renderView() {
       { selector: 'edge[type = "wire_relation"]', style: { 'line-color': '#77ae72', 'target-arrow-color': '#77ae72', 'line-style': 'dashed' } },
       { selector: 'edge[type = "route_delivery"]', style: { 'line-color': '#c28b43', 'target-arrow-color': '#c28b43' } },
       { selector: 'edge[type = "callback_link"]', style: { 'line-color': '#ee8fb0', 'target-arrow-color': '#ee8fb0', 'line-style': 'dashed' } },
+      { selector: 'edge[type = "mapping_witness"]', style: { 'line-color': '#64717a', 'target-arrow-color': '#64717a', 'line-style': 'dotted', opacity: 0.65 } },
+      { selector: 'edge[type = "program_input"]', style: { 'line-color': '#5ac5b2', 'target-arrow-color': '#5ac5b2', width: 2 } },
+      { selector: 'edge[type = "program_output"]', style: { 'line-color': '#f1a55b', 'target-arrow-color': '#f1a55b', width: 2 } },
+      { selector: 'edge[type = "program_predicate"]', style: { 'line-color': '#ad9ce8', 'target-arrow-color': '#ad9ce8', 'line-style': 'dashed' } },
       { selector: 'edge.enabled', style: { 'line-color': '#65c799', 'target-arrow-color': '#65c799' } },
       { selector: 'edge.disabled', style: { opacity: 0.15 } },
       { selector: 'edge.unknown', style: { 'line-style': 'dashed' } },
@@ -1144,10 +1588,11 @@ function applyFilters() {
     node.toggleClass('filtered', !visibleNodes.has(node.data('kind')) || (layer !== '' && position?.y !== Number(layer)));
   });
   cy.edges().forEach((edge) => {
-    const state = guardStates.get(connections.get(edge.id()).record.guard);
+    const guard = connections.get(edge.id()).record.guard;
+    const state = guard ? guardStates.get(guard) : undefined;
     edge.toggleClass('enabled', state === true);
     edge.toggleClass('disabled', state === false);
-    edge.toggleClass('unknown', guardStates.size > 0 && (state === null || state === undefined));
+    edge.toggleClass('unknown', !!guard && guardStates.size > 0 && (state === null || state === undefined));
     edge.toggleClass('labels', $('edge-labels').checked);
     edge.toggleClass('filtered', edge.source().hasClass('filtered') || edge.target().hasClass('filtered') || ($('hide-inactive').checked && state === false));
   });
@@ -1193,6 +1638,7 @@ function inspect(id) {
   $('selection-title').textContent = `${id} · ${recordIndex.has(id) ? recordLabel(record) : connections.get(id).type}${position ? ` · (${position.x}, ${position.y}, ${position.z})` : ''}`;
   $('details').textContent = JSON.stringify(record, null, 2);
   $('dependencies').replaceChildren();
+  if (programMode === 'compiled') appendCompiledInspector(id, record);
   const snapshot = graphData.snapshots.find((row) => row.id === $('snapshot').value);
   if (snapshot) {
     const targets = new Set([id, record.kind?.piston].filter(Boolean));
@@ -1226,13 +1672,71 @@ function inspect(id) {
   referenceSection('Referenced by', reverseRefs.get(id) || []);
 }
 
+function appendCompiledInspector(id, record) {
+  const addText = (title, value) => {
+    const heading = document.createElement('h3'); heading.textContent = title;
+    const preview = document.createElement('pre'); preview.className = 'state-preview';
+    preview.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    $('dependencies').append(heading, preview);
+  };
+  let detail = null;
+  if (record.program_kind === 'transport_net') {
+    const net = record.net_index, transport = graphData.graph.instant_transport[net];
+    detail = {
+      explanation: 'Compiled transport net is a collapsed view of these physical wire nodes. Mapping-witness edges show original graph connectivity, not a newly inferred dependency graph.',
+      physical_wires: transport.wires,
+      mapping_witness_counts: record.internal_witnesses,
+      drive_queries: graphData.graph.instant_programs.instant_drives?.wires.filter((row) => compiledPlan.wireToNet.get(row.node) === id) || [],
+      channel: compiledPlan.channels.get(net) || null,
+      stable_logic: compiledPlan.stable.get(net) || null,
+      value_regions: compiledPlan.values.get(net) || null,
+      transition_eligibility: compiledPlan.eligibility.get(net) || null,
+      runtime_learned_transcript: 'Not included in this export. Eligibility is not an executable learned transcript.',
+    };
+    const related = new Set(transport.wires);
+    const driveWireRows = graphData.graph.instant_programs.instant_drives?.wires || [];
+    const queries = new Set(driveWireRows.filter((row) => related.has(row.node) && row.query != null).map((row) => row.query));
+    const drives = graphData.graph.instant_programs.instant_drives;
+    detail.drive_expressions = drives ? [...queries].map((query) => ({ query, expression: drives.queries[query], terms: drives.terms.slice(...drives.queries[query].terms) })) : [];
+    detail.relevant_conditions = drives ? [...new Set(detail.drive_expressions.flatMap((row) => row.terms.map((term) => term.condition)))].map((condition) => ({ condition, expression: drives.conditions[condition] })) : [];
+  } else if (record.program_kind === 'drive_expression') {
+    const query = graphData.graph.instant_programs.instant_drives.queries[record.query_index];
+    const drives = graphData.graph.instant_programs.instant_drives;
+    detail = { query: record.query_index, expression: query, terms: drives.terms.slice(...query.terms).map((term) => ({ ...term, condition_expression: drives.conditions[term.condition] })) };
+  } else if (record.program_kind === 'drive_condition') {
+    detail = graphData.graph.instant_programs.instant_drives.conditions[record.condition_index];
+  } else if (record.program_kind === 'cpu_predicate') {
+    const cpu = graphData.graph.cpu_kernels, entry = cpu.entries[record.predicate_index];
+    detail = { actor: entry.actor, predicates: Object.fromEntries(['main', 'quasi', 'valid'].map((key) => {
+      const p = entry[key];
+      return [key, { ...p, reads: cpu.reads.slice(p.read_start, p.read_start + p.read_len), require_true: cpu.require_true.slice(p.clause_start, p.clause_start + p.clause_len), require_false: cpu.require_false.slice(p.clause_start, p.clause_start + p.clause_len) }];
+    })) };
+  } else if (connections.has(id)) detail = { connection: connections.get(id), warning: connections.get(id).type === 'mapping_witness' ? 'This edge preserves an original physical relation as a witness; it is not a compiled dependency claim.' : undefined };
+
+  if (detail == null) return;
+  const button = document.createElement('button');
+  button.className = 'reference'; button.textContent = 'Expand this compiled record’s full operands';
+  button.addEventListener('click', () => {
+    if (button.dataset.expanded === 'true') return;
+    button.dataset.expanded = 'true';
+    addText('Compiled program detail', detail);
+  });
+  $('dependencies').append(button);
+}
+
 function search() {
   if (!recordIndex) return;
   const query = $('search').value.trim().toLowerCase();
   $('matches').replaceChildren();
   if (!query) return;
-  const exact = recordIndex.has(query) ? [[query, recordIndex.get(query)]] : [];
-  const matches = [...exact, ...[...recordIndex.entries()].filter(([id, row]) => id !== query && `${id} ${JSON.stringify(row)}`.toLowerCase().includes(query))];
+  const mapped = programMode === 'compiled' ? compiledWireToNet.get(query) : null;
+  const exact = mapped ? [[mapped, recordIndex.get(mapped)]] : recordIndex.has(query) ? [[query, recordIndex.get(query)]] : [];
+  let matches;
+  if (programMode === 'compiled' && compiledPlan) {
+    matches = [...exact, ...compiledPlan.searchIds.filter((id) => id !== query && id !== mapped && id !== exact[0]?.[0] && compiledPlan.searchText.get(id).includes(query)).map((id) => [id, recordIndex.get(id)])];
+  } else {
+    matches = [...exact, ...[...recordIndex.entries()].filter(([id, row]) => id !== query && `${id} ${JSON.stringify(row)}`.toLowerCase().includes(query))];
+  }
   const count = document.createElement('p');
   count.className = 'muted'; count.textContent = `${matches.length} results${matches.length > 50 ? ' · showing first 50; refine search' : ''}`;
   $('matches').append(count);
@@ -1240,7 +1744,9 @@ function search() {
 }
 
 function visualRecord(id) {
-  if (connections.has(id) || id.startsWith('node:')) return id;
+  if (connections.has(id) || id.startsWith('compiled_')) return id;
+  if (programMode === 'compiled' && compiledWireToNet.has(id)) return compiledWireToNet.get(id);
+  if (id.startsWith('node:')) return id;
   if (id.startsWith('route:')) return recordIndex.get(id)?.source || id;
   if (id.startsWith('site:')) return sourceNode(id, recordIndex);
   if (id.startsWith('resource:')) return recordIndex.get(recordIndex.get(id)?.contacts[0])?.node;
@@ -1248,11 +1754,12 @@ function visualRecord(id) {
 }
 
 function selectionElements(id) {
-  const ids = id?.startsWith('resource:') ? recordIndex.get(id).contacts.map((contact) => recordIndex.get(contact).node) : [visualRecord(id)];
+  const ids = id?.startsWith('resource:') ? recordIndex.get(id).contacts.map((contact) => visualRecord(recordIndex.get(contact).node)) : [visualRecord(id)];
   return ids.reduce((elements, node) => node ? elements.union(cy.getElementById(node)) : elements, cy.collection());
 }
 
 function focusRecord(id, center = false) {
+  if (programMode === 'compiled' && compiledWireToNet.has(id)) id = compiledWireToNet.get(id);
   selectedId = id;
   const connection = connections.get(id);
   if (connection && !enabledEdgeTypes().has(connection.type)) {
@@ -1304,6 +1811,22 @@ async function readFile(file) {
 }
 
 $('file').addEventListener('change', (event) => readFile(event.target.files[0]));
+$('program-view').addEventListener('change', () => {
+  const previous = viewCenter;
+  programMode = $('program-view').value;
+  setActiveProgramView();
+  const mappedCenter = programMode === 'compiled' ? compiledWireToNet.get(previous) : previous?.startsWith('compiled_net:') ? null : previous;
+  viewCenter = mappedCenter && activeNodeIds.includes(mappedCenter) ? mappedCenter : activeNodeIds[0];
+  selectedId = viewCenter;
+  const enabled = new Set(programMode === 'compiled'
+    ? ['mapping_witness', 'program_input', 'program_output', 'program_predicate']
+    : ['power_link', 'classic_signal', 'classic_input']);
+  document.querySelectorAll('.edge-filter').forEach((input) => { input.checked = enabled.has(input.value); });
+  $('scope').value = 'overview';
+  updateProgramStatus();
+  renderView();
+  if (selectedId) inspect(selectedId);
+});
 $('find').addEventListener('click', search);
 $('search').addEventListener('keydown', (event) => { if (event.key === 'Enter') search(); });
 $('scope').addEventListener('change', () => { viewCenter = selectedId?.startsWith('resource:') ? selectedId : visualRecord(selectedId || viewCenter) || viewCenter; renderView(); });

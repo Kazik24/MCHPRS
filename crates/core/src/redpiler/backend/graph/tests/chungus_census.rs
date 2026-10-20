@@ -197,30 +197,44 @@ fn chungus_bounded_interpreter_graph_differential() {
         .and_then(|value| value.parse::<u32>().ok())
         .unwrap_or(64);
     assert!(ticks > 0);
-    let classic = std::env::var_os("MCHPRS_CHUNGUS_CLASSIC").is_some();
+    let classic_ablation = std::env::var_os("MCHPRS_CHUNGUS_CLASSIC").is_some();
     let weighted = std::env::var_os("MCHPRS_CHUNGUS_UNCHECKED_WEIGHTED").is_some();
-    assert!(!(classic && weighted), "select classic or unchecked weighted, never both");
+    assert!(
+        !(classic_ablation && weighted),
+        "select classic ablation or unchecked weighted, never both"
+    );
     let mut graphs = Vec::new();
     let mut monitors = Vec::new();
     let mut compile_seconds = Vec::new();
     let mut names = vec!["normal_graph_o2"];
-    for enable_classic in [false, true].into_iter().take(if classic { 2 } else { 1 }) {
+    for enable_classic in [false, true].into_iter().take(if classic_ablation { 2 } else { 1 }) {
         let monitor = Arc::new(TaskMonitor::default());
         monitor.set_budget_multiplier(8);
         let options = crate::redpiler::CompilerOptions {
             optimization_level: Some(2),
             budget_multiplier: 8,
-            classic_redstone: enable_classic,
             ..Default::default()
         };
+        let mut pipeline = passes::default_graph_pipeline(&options);
+        pipeline.entries.retain(|entry| {
+            !matches!(&entry.pass, passes::Pass::Build(builder)
+                if builder.name() == "compile-fixed-classic" || !enable_classic && builder.name() == "compile-classic-redstone")
+        });
         let started = Instant::now();
         graphs.push(
-            GraphBackend::compile_without_fixed_classic(&native, bounds, native.scheduler().iter_entries().collect(), &options, monitor.clone())
-                .unwrap(),
+            GraphBackend::compile_with_pipeline(
+                &native,
+                bounds,
+                native.scheduler().iter_entries().collect(),
+                &options,
+                &pipeline,
+                monitor.clone(),
+            )
+            .unwrap(),
         );
         compile_seconds.push(started.elapsed().as_secs_f64());
         println!(
-            "CHUNGUS COMPILED classic={enable_classic} seconds={} inventory={} fixed_tables={:?}",
+            "CHUNGUS COMPILED local_classic_pass={enable_classic} seconds={} inventory={} fixed_tables={:?}",
             compile_seconds.last().unwrap(),
             lowered_inventory(graphs.last().unwrap()),
             monitor
@@ -241,8 +255,8 @@ fn chungus_bounded_interpreter_graph_differential() {
         graphs.push(candidate);
         monitors.push(Arc::new(TaskMonitor::default()));
         names.push("unchecked_weighted_all_fixed");
-    } else if classic {
-        names.push("certified_classic_opt_in");
+    } else if classic_ablation {
+        names.push("local_classic_pass_control");
     }
     let mut projected = (0..graphs.len()).map(|_| load_chungus_world()).collect::<Vec<_>>();
     let positions = graphs[0].program.nodes().iter().filter_map(|node| node.position).collect::<Vec<_>>();
@@ -434,7 +448,7 @@ fn chungus_bounded_interpreter_graph_differential() {
         "checked_actor_positions":positions.len(),"checked_comparator_entities":comparator_positions.len(),"lamps":lamps.len(),"lamp_changed_frames_including_initial":lamp_frames,
         "lamp_trace_sha256":format!("{:x}",lamp_trace.finalize()),"modes":modes,"weighted_work":unchecked.as_ref().map(|program|program.counts()),"weighted_coverage":unchecked.as_ref().map(|program|program.coverage())});
     println!("CHUNGUS DIFFERENTIAL {report}");
-    let suffix = if classic {
+    let suffix = if classic_ablation {
         "-classic"
     } else if weighted {
         "-unchecked-weighted"
@@ -448,7 +462,7 @@ fn chungus_bounded_interpreter_graph_differential() {
     )
     .unwrap();
     assert_eq!(mismatches[0], [0, 0, 0], "normal baseline mismatch; report preserved");
-    if classic {
+    if classic_ablation {
         assert_eq!(mismatches[1], [0, 0, 0], "certified candidate mismatch; report preserved");
         assert_eq!(
             internal_mismatches[1],

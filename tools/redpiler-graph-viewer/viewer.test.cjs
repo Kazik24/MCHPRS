@@ -39,6 +39,7 @@ class Element {
     this.hidden = false;
     this.value = "";
     this.textContent = "";
+    this.dataset = {};
   }
 
   addEventListener(type, listener) {
@@ -352,6 +353,87 @@ test('fixed classic summary tolerates old exports and reports compile or decline
   await load(viewer, graph);
   assert.equal(viewer.elements.get('error').hidden, true);
   assert.match(viewer.elements.get('availability').textContent, /fixed classic: compiled · 12 nodes · 4 wires · 20 route ops · 4096 accounted bytes/);
+});
+
+function compiledFixture() {
+  const graph = adderFixture();
+  const wire = graph.graph.wire_plans[0].node;
+  graph.graph.instant_transport = [{
+    id: 'instant_transport:0', wires: [wire], sites: [], site_wire: [],
+    conditional_inputs: [0], ordered_receivers: false, canonical_repeaters: [],
+  }];
+  graph.graph.instant_programs = {
+    instant_drives: {
+      wires: [{ node: wire, query: 0 }],
+      queries: [{ constant: 0, terms: [0, 1] }],
+      terms: [{ source: { kind: 'output', node: graph.graph.nodes[0].id }, condition: 0, attenuation: 1 }],
+      conditions: [{ kind: 'always' }],
+    },
+    signal_channels: [], stable_logic: [], value_regions: [],
+    transition_eligibility: { semantics: 'eligibility only; runtime-learned transcripts are unavailable', nets: [{ net: 0, eligible: false }] },
+  };
+  return graph;
+}
+
+test('compiled program view collapses mapped wires and expands full typed IR lazily', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = compiledFixture(), wire = graph.graph.wire_plans[0].node;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.elements.get('program-view').value, 'compiled');
+  assert.equal(viewer.cy.hasElementWithId(`compiled_net:0`), true);
+  assert.equal(viewer.cy.hasElementWithId(wire), false);
+  assert.equal(viewer.cy.hasElementWithId('compiled_drive:0'), true);
+  assert.ok(viewer.evaluate('[...connections.values()].some((edge) => edge.type === "mapping_witness")'));
+  assert.match(viewer.elements.get('program-status').textContent, /eligibility.*no exported learned transcript/);
+
+  viewer.evaluate("focusRecord('compiled_net:0')");
+  const expand = viewer.elements.get('dependencies').children.find((child) => child.textContent.startsWith('Expand this compiled'));
+  assert.ok(expand, 'full IR starts collapsed');
+  expand.dispatch('click');
+  const expanded = viewer.elements.get('dependencies').children.find((child) => child.className === 'state-preview');
+  assert.match(expanded.textContent, /physical_wires/);
+  assert.match(expanded.textContent, /drive_expressions/);
+  assert.match(expanded.textContent, /runtime_learned_transcript/);
+
+  viewer.elements.get('program-view').value = 'physical';
+  viewer.elements.get('program-view').dispatch('change');
+  assert.equal(viewer.cy.hasElementWithId(wire), true);
+  assert.equal(viewer.cy.hasElementWithId('compiled_net:0'), false);
+});
+
+test('compiled view rejects malformed local operands and keeps old graph loaded', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const valid = compiledFixture();
+  await load(viewer, valid);
+  const previous = viewer.cy;
+  const malformed = [
+    (g) => { g.graph.instant_programs.instant_drives.queries[0].terms = [0, 2]; },
+    (g) => { g.graph.instant_programs.instant_drives.terms[0].condition = 1; },
+    (g) => { g.graph.instant_programs.transition_eligibility.nets[0] = { net: 0, eligible: true, wire_queries: [{ wire: 1, node: g.graph.wire_plans[0].node, query: 0 }] }; },
+    (g) => { g.graph.instant_transport[0].wires[0] = 'node:999999'; },
+  ];
+  for (const mutate of malformed) {
+    const damaged = structuredClone(valid); mutate(damaged);
+    await load(viewer, damaged);
+    assert.equal(viewer.elements.get('error').hidden, false);
+    assert.equal(viewer.cy, previous);
+  }
+});
+
+test('older graph exports clearly retain the physical-only view', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  delete graph.graph.instant_programs;
+  await load(viewer, graph);
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.elements.get('program-view').disabled, true);
+  assert.equal(viewer.elements.get('program-view').value, 'physical');
+  assert.match(viewer.elements.get('program-status').textContent, /unavailable/);
+  assert.equal(viewer.cy.nodes().length, 152);
 });
 
 function adderFixture() {

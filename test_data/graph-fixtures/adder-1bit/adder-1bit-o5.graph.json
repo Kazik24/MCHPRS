@@ -22,6 +22,10 @@
     "cpu_kernel_execution",
     "instant_boundaries",
     "instant_transport",
+    "instant_drive_expressions",
+    "compiled_signal_channels",
+    "instant_value_regions",
+    "instant_transition_programs",
     "fixed_classic_declined",
     "mixed_classic_queries"
   ],
@@ -26673,7 +26677,65 @@
     ],
     "instant_transport": [
       {
+        "canonical_repeaters": [
+          "node:49",
+          "node:54"
+        ],
+        "conditional_inputs": [
+          0
+        ],
         "id": "instant_transport:0",
+        "ordered_receivers": true,
+        "site_wire": [
+          0,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295
+        ],
+        "sites": [
+          "site:70",
+          "site:164",
+          "site:54",
+          "site:87",
+          "site:165",
+          "site:89",
+          "site:295",
+          "site:185"
+        ],
+        "wires": [
+          "node:50"
+        ]
+      },
+      {
+        "canonical_repeaters": [],
+        "conditional_inputs": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "id": "instant_transport:1",
+        "ordered_receivers": false,
         "site_wire": [
           0,
           1,
@@ -26774,19 +26836,174 @@
           "node:100",
           "node:102"
         ]
+      },
+      {
+        "canonical_repeaters": [],
+        "conditional_inputs": [
+          1048576,
+          0,
+          0,
+          262144,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "id": "instant_transport:2",
+        "ordered_receivers": false,
+        "site_wire": [
+          0,
+          1,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          3,
+          4294967295,
+          4,
+          4294967295,
+          2,
+          4294967295,
+          5,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          6,
+          4294967295,
+          7,
+          8
+        ],
+        "sites": [
+          "site:161",
+          "site:162",
+          "site:159",
+          "site:291",
+          "site:181",
+          "site:183",
+          "site:140",
+          "site:292",
+          "site:271",
+          "site:164",
+          "site:294",
+          "site:86",
+          "site:206",
+          "site:185",
+          "site:337",
+          "site:208",
+          "site:317",
+          "site:295",
+          "site:296",
+          "site:451",
+          "site:354",
+          "site:453",
+          "site:556"
+        ],
+        "wires": [
+          "node:57",
+          "node:58",
+          "node:65",
+          "node:66",
+          "node:70",
+          "node:79",
+          "node:94",
+          "node:95",
+          "node:103"
+        ]
+      },
+      {
+        "canonical_repeaters": [],
+        "conditional_inputs": [
+          2097152,
+          131072
+        ],
+        "id": "instant_transport:3",
+        "ordered_receivers": false,
+        "site_wire": [
+          0,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          4294967295,
+          1,
+          4294967295
+        ],
+        "sites": [
+          "site:167",
+          "site:165",
+          "site:297",
+          "site:187",
+          "site:169",
+          "site:188",
+          "site:298",
+          "site:320",
+          "site:340"
+        ],
+        "wires": [
+          "node:60",
+          "node:73"
+        ]
       }
     ],
     "instant_transport_stats": {
-      "admitted": 1,
-      "conditional_input": 2,
+      "admitted": 4,
+      "conditional_input": 0,
       "corridors": 4,
+      "guarded": true,
       "no_dust_dependency": 0,
       "no_route_or_facts": 0,
       "owner_overlap": 0,
-      "too_small": 1,
+      "too_small": 0,
       "unsafe_input": 0,
       "unsafe_receiver": 0,
       "unsupported": 0
+    },
+    "instant_drive_stats": {
+      "compiled": 32,
+      "declines": {},
+      "fallback": 0,
+      "shared_binary_nets": 1,
+      "shared_binary_wires": 1,
+      "wires": 32,
+      "work": 372
+    },
+    "signal_channel_stats": {
+      "declines": {
+        "multiple independent inputs": 1,
+        "seed and transport inputs differ": 2
+      },
+      "nets": 1,
+      "operations": 44,
+      "transitions": 2,
+      "wires": 1
+    },
+    "instant_value_region_stats": {
+      "admitted": 7,
+      "bytes": 1083,
+      "compact_wire_captures": 32,
+      "conditional_arcs": 4,
+      "declined": 0,
+      "declines": {},
+      "distance_rows": 12,
+      "drive_groups": 12,
+      "nets": 4,
+      "regions": 7,
+      "wires": 32,
+      "work": 878
+    },
+    "instant_transition_program_stats": {
+      "bytes": 192,
+      "declined_nets": 0,
+      "declines": {},
+      "eligible_nets": 4,
+      "eligible_wires": 32,
+      "semantics": "eligibility only; runtime transcript must preserve ordered captures, admissions, calls, and effects",
+      "work": 800
     },
     "fixed_signal_queries": [
       {

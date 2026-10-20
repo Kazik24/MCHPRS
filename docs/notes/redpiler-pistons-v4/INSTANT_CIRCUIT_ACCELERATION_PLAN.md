@@ -162,3 +162,345 @@ at every exposed sampling/commit boundary the same relevant values are read and
 the same dependent output/future effects are produced. Internal queues need not
 be byte-identical if a different representation has that correspondence. The
 memory-only strict/relaxed experiments are useful evidence, not the certificate.
+
+## Stable-input combinational compilation (2026-10-20)
+
+The user clarified the optional `--stable-instant-inputs` contract: external
+inputs stay fixed from the triggering input change through reset. Under that
+contract the target is a combinational function of the input snapshot and
+starting memory, with memory writes, reset and exposed output effects at its
+boundary. The internal physical callback sequence is not the observation
+contract for this mode. This does not freeze internal resource state across
+successive accepted piston requests.
+
+`compile-stable-instant-logic` now derives weighted source expressions from
+the existing fixed-geometry, queue-only transport certificates. Distinct inputs
+need not share a predicate. For a source at distance `d`, the contribution is
+`source.saturating_sub(d)`; equal source/guard pairs share one input slot, and
+parallel paths retain the smallest attenuation. Paths losing fifteen levels
+cannot contribute. These expressions require no inference-time neighborhood
+discovery, wire queues, or relaxation rounds.
+
+The CPU product covers 2,138 nets and 17,426 wires with 8,772 shared typed inputs,
+18,925 terms and 26,780 possible output sites. Execution evaluates the entry
+expression first, samples other inputs lazily, and only evaluates the remaining
+net if the entry changes. Distinct boundary sites retain live admission and
+existing memory/reset commit helpers. An incompatible captured entry takes a
+counted exact fallback before optimized effects. Physical wire values are still
+materialized for remaining graph consumers and interpreter handoff.
+
+The separate `compile-signal-channels` pass keeps exact ordered transitions
+without the stable-input promise. Its complete 10,036-tick CPU run preserved
+every graph state/future boundary and all 768 native RAM/readiness bits, removed
+1,889,156 interior visits, and recorded no channel entry fallback. It covers
+3,699 wires, so it is not whole-circuit replacement.
+
+The stable-input path has passed all forty pinned Adder11 output windows and
+the complete 10,036-tick CPU trace: all 768 RAM bits/readiness, command output,
+final sorted values and sixteen ticks of interpreter continuation. FIFO-local
+event-kernel tests keep their original exact
+future assertions with the separate combinational pass excluded from those
+focused pipelines. The current regression suite has 574 passing tests.
+
+Three production fat-LTO samples with O5 and stable inputs measured 326.77,
+326.07 and 325.06 inference TPS (median 326.07). This is 8.69% above the
+user-accepted 300 TPS baseline; these are not alternating pass-ablation pairs.
+Preparation and World projection are excluded. See
+[the measured report](STABLE_INSTANT_LOGIC_RESULTS.md) for scope and costs.
+
+Both products remain partial: general propagation, physical actor notification
+routes, and state outside their owned nets still execute. The whole-circuit
+goal is open. After measuring this implementation, the remaining work is to
+fold signal expressions into actor predicates and replace internal physical
+notification routes with compiled state dependencies, retaining the complete
+memory/control/reset interface.
+
+### Incremental execution and the next admission extension
+
+Input-to-expression and wire-to-output inverse indices are now implemented.
+The complete native CPU trace passes again; wire-expression evaluations fell
+from 109,252,352 to 31,205,330, while all other execution counts stayed equal.
+Five alternating production pairs measured 320.21 versus 321.27 median TPS;
+the median paired time reduction was 0.62%, with one slower pair. This is not a
+material acceleration. The whole-circuit goal still requires removing the
+2,009,418 remaining general walks and most of the 174,026,524 callbacks.
+
+The measured coverage blocker is actual conditional wire transfer: 113 rejected
+corridors contain 17,736 wires, including one corridor with 13,340 wires. No
+corridor is rejected solely by the blanket geometry check. Another 106 corridors
+and 3,725 wires first fail receiver admission; 2,466 singleton corridors contain
+2,466 wires. The detailed report is
+`target/instant-drives/cpu-transport-rejections-before-guarded.json`.
+
+The next compiler extension should use guarded weighted edges:
+
+1. Lower each transfer slot into a directed source-to-target edge. Direct slots
+   use a true guard. Descent uses `!solid(horizontal)`; Turbo ascent uses
+   `solid(horizontal) && !transparent(horizontal) && !solid(up)`. Reuse typed,
+   ordered contact-variant selection from the drive compiler. Resolve every
+   possible source to a retained wire or an explicit typed carried-wire input;
+   a geometry predicate alone does not establish source identity.
+2. For each contributing driver, propagate guarded reachability for distances
+   zero through fourteen. For distance `d`, OR predecessor reachability AND the
+   edge guard. Merge equal formulas in the canonical Boolean DAG. The resulting
+   wire value is the maximum driver value minus its source/path attenuation,
+   gated by reachability. Positive attenuation bounds cycles without treating
+   memory feedback as combinational logic. Keep explicit work/memory limits;
+   do not publish a partially compiled net when a limit is exceeded.
+3. Intern source and topology predicates, then compile inverse predicate-to-
+   expression dependencies. A changed input or geometry guard should update
+   only affected expressions and output sites, preserving the existing
+   admission/commit cuts. Do not solve every wire in the large corridor for
+   every entry. Internal resource mutations still require fresh predicate
+   samples even when external controls obey the stable-input promise.
+4. Check the entire enlarged corridor for receiver effects and notification
+   obligations. The first rejection witness is not proof that all other
+   restrictions pass. Memory storage/read pistons, writes, reset deadlines and
+   outside observers remain explicit stateful boundaries. In particular,
+   repeater lock updates need a stronger proof than Torch's queue-only update.
+5. Verify guarded topology on small rising/falling, contact-selection and reset
+   cases, then run the complete CPU/native RAM/readiness and continuation check.
+   Report how many original walks/callbacks disappear before repeating production
+   timing. Pure formula minimization alone has not delivered the requested gain.
+
+### Ordered guarded transport implementation
+
+The separate O5 `compile-guarded-instant-transport` pass now extends the
+transport certificate to conditional connections, singleton corridors and
+delayed-device boundaries. It runs before drive/channel/stable-logic
+compilation, replacing the original transport table with a freshly derived
+table. Publication independently rederives the guarded certificate.
+
+Conditional input masks use the original captured horizontal/up geometry;
+source identities must still be fixed member wires. The dense executor keeps
+the native heading, shared first captures, rotating queues, receiver admission
+cuts and FIFO calls. Torch/comparator scheduling and repeater lock changes
+remain at those cuts. A pre-entry guard checks repeater receiver strengths
+against their powered state, since a lock callback can normalize that strength.
+Canonical imports and writes maintain a conservative O(1) admission hint;
+otherwise the net's repeater receivers are checked before optimized effects.
+
+This stage removes general neighborhood discovery from newly admitted wiring.
+It does not yet replace its ordered transport with guarded weighted equations
+or remove its boundary callbacks. The settled stable-logic builder continues
+to decline conditional connections and delayed-device receiver nets. Wider
+admission is therefore a basis for the planned dependency program, not evidence
+that the whole circuit has been replaced. The first complete CPU checks pass:
+39,144 wires are admitted and the sort executes zero general walks, with exact
+state/future equivalence without the stable assumption and native RAM/final
+sort/continuation checks in both modes. Production timing is collected
+separately; see `STABLE_INSTANT_LOGIC_RESULTS.md` for the retained work counts.
+
+### Electrical value regions inside ordered transport
+
+The fresh guarded profile puts 47.17% of inference CPU in dense transport and
+16.18% in stable logic. The full-sort attribution identifies the real hot
+region: transport net 15 executes 68,221,728 visits (71.52% of all dense visits).
+Its 13,340 wires split into **2,150 weak components of possible Turbo power
+transfer**, including conditional edges; median component size is two and the
+largest is 56. Net 76 adds 11,659,899 visits across 79 such components, none
+larger than fifteen. Notification connectivity has grouped many small electrical
+calculations into large transport corridors. These component counts describe
+wire-strength edges; source/state and notification dependencies remain explicit.
+
+Implement a separate `compile-instant-value-regions` product after typed drives:
+
+1. Partition each certified transport net by its direct **and possible
+   conditional** wire-strength edges. Keep the net-local wire IDs and the
+   original notification graph so boundary ordering can still be executed.
+   Do not split transport execution merely because electrical components differ.
+2. Within each region, lower unconditional edges to unit-loss arcs. Group
+   structurally equal typed drive expressions, omitting constant-zero queries.
+   Each group is a logical input rather than another physical source site.
+   Compile a bounded BFS distance row from every drive group and conditional
+   edge target to every region output; distances saturate at fifteen. Store
+   rows contiguously as bytes and intern equal rows. Reuse the existing drive
+   conditions and query IDs rather than rebuilding block/property reads.
+3. Retain conditional arcs as `(source value, target distance row, selector)`.
+   Intern each horizontal/up geometry selector. The value kernel starts from
+   the max of drive amplitudes minus their distance rows, then applies enabled
+   conditional arcs until stable, with at most fifteen rounds because every
+   such arc loses one signal level. This computes a unique max-plus fixed point
+   without walking physical wire neighborhoods. Bound compilation work/memory
+   and decline a complete region before publication when its certificate fails.
+4. Use the value kernel as an exact **interval certificate**, before replacing
+   any ordered boundary effect. An entry must match a previously certified
+   settled profile. Sample current drives/selectors coherently for that walk.
+   If drives and conditional edge changes all move the region's monotone
+   operator in the same direction, every captured/written strength stays between
+   the old and new fixed points. A wire with equal old/new values is therefore
+   invariant throughout the episode. Check the already-written native seed
+   against these bounds; a seed/Turbo equation difference is not automatically
+   safe. Arbitrary/unsettled entries, mixed-direction changes and unproved
+   source/topology effects retain exact transport before any uncertified skip.
+5. Replace certified invariant wire evaluations by the necessary marker effects
+   at the original FIFO cut. Preserve first-capture obligations, visited state,
+   heading/bias and layer suppression; never mark a visit early at enqueue time.
+   Geometry is stable within an admitted walk, but captured repeater locking
+   can still matter to boundary scheduling. Preserve all ordered piston samples,
+   their first-request provenance, and delayed-device calls until each removed
+   operation has its own proof. Later compress marker/capture footprints and
+   compile per-source boundary programs to remove the remaining physical events.
+
+Compiler/value-kernel tests should compare the compiled rows with ordinary
+bounded relaxation on random small directed/conditional graphs, including
+cycles, multiple drives, attenuation and disconnected outputs. Runtime gates
+must cover both polarities, unchanged outputs, dirty neighboring components,
+captured values, mixed changes and invalid profiles. Then repeat exact full CPU
+state/future, native RAM and continuation checks before production timing.
+Keep Nanotick and reversed-request counterexamples as ordering constraints.
+This is a route toward whole-circuit replacement; publishing region metadata
+alone does not satisfy the goal.
+
+The first runtime stage uses a narrower certificate than step 4: on the first
+member capture of a region in each walk, solve its current fixed point and
+require every live member strength to match. No region wire has been captured
+or written yet, and other electrical components cannot change its power inputs.
+The existing transport certificate holds source emissions and geometry stable
+for the episode. Such a region remains unchanged throughout the walk. Cache its
+typed wire observations and skip subsequent value queries, while preserving
+neighborhood discovery, visited/heading state, FIFO markers and boundary calls.
+Classify unmatched or declined regions as exact for the entire walk. Recheck
+all certificates in the next walk; no persistent profile or monotone-transition
+assumption is used in this first stage. The native seed write and root
+propagation remain unconditional, including a seed whose region is now settled.
+Transition intervals and marker removal remain later work. The implementation
+passes focused and full CPU exact/native/continuation checks in both modes.
+Five production pairs regress from 334.31 to 295.48 median TPS, with 12.21%
+more time in the median paired comparison. It removes 32.10 million calculations
+in stable mode but retains all 95.39 million dense visits and solves 9.16 million
+regions. Profile the new runtime before further optimization. The next narrow
+candidate is persistent per-region certificates: reuse unchanged driver/selector
+snapshots and full typed wire values, invalidate only the owning region on a
+member `set_wire`, and guard publication with a region revision. Shared query
+or selector IDs need separate per-region snapshots. This stage does not yet
+provide acceleration or satisfy whole-circuit replacement.
+
+The persistent-certificate and compact-capture rewrite is now implemented and
+passes focused tests, the normal and stable full CPU gates, native RAM and
+interpreted continuation. In stable execution it reduces solves to 2,929,286,
+with 6,234,805 cache hits and 42,603,086 byte captures. It still retains all
+95,393,263 visits and 174,026,524 callbacks. Five clean alternating production
+pairs measure 342.61 TPS for guarded transport versus 305.26 TPS for this
+rewrite, with 12.18% more paired execution time. This is evidence against
+continuing to add classification work without removing events.
+
+The full-sort opt-in census attributes every retained visit to a value region.
+Forty of the hundred hottest regions are single-drive, unconditional regions
+in net 15, totaling 11,127,067 visits. Before splicing a transition program,
+count foreign-region wire notifications and shared capture sites; electrical
+closure alone does not make visited/heading/layer markers private. The current
+`SignalTranscript` represents whole episodes and does not encode the marker
+interface needed to splice an arbitrary subregion safely.
+
+Also measure complete episodes where every visited wire is inert. In such an
+episode only the native seed propagates: all subsequent wire visits perform
+capture/marker work without enqueueing another wave. This may admit a smaller
+whole-episode program containing only required external captures, live
+enqueue-time selections and ordered calls. Its proof must establish inertness
+before optimized effects, preserve the earliest capture of each used external
+site, retain both delayed root delivery layers and alias suppression, and
+decline before effects if any reached wire is not certified. This is a candidate
+for actual visit removal, not an implemented or measured acceleration.
+
+The follow-up census rejects both as sufficient standalone routes. Across the
+full sort, single-drive/unconditional regions account for 62,858,499 visits,
+but none survive both zero foreign mapped-wire slots and zero shared non-wire
+capture sites. Entirely inert episodes account for only 1,231,414 visits
+(1.29%) across 502,423 invocations. Region 90 itself has 31 foreign-wire slots
+and one shared capture site. These are conservative structural dependencies;
+they do not prove every marker is observable in final memory. The next program
+must therefore compose cross-region marker/capture interfaces before minimizing
+them, rather than require each electrical region to be private or settle it
+atomically. Preserve interleaved queue insertion and boundary sample cuts;
+precomputed final strength profiles alone are insufficient. Do not prioritize
+the 1.29% whole-inert-episode shortcut as the main performance pass.
+
+`compile-instant-transition-programs` now specializes the complete transport
+episode, composing the coupled regions before eliminating their interior
+markers. It records first-entry wire strengths, typed drive values and used
+conditional input masks, then guards every replay before effects. Within that
+certificate, the original captures/writes reproduce all internal control, so a
+contiguous `SignalOp` stream can retain only ordered external captures,
+admission, wire writes and calls. External acceptance and pending membership
+remain live. This avoids assuming each electrical region is private, and
+supports arbitrary input combinations through exact fallback on a mismatch.
+Full normal and stable CPU checks pass, including native RAM, sorted output
+and interpreted continuation. It removes 95.00 million visits in normal mode
+and 73.68 million in stable mode (80.02% and 77.23%). See
+`INSTANT_TRANSITION_PROGRAMS.md` for the contract, implementation and evidence.
+
+The first baseline is collected before further minimization. The next concrete
+rewrite is to reuse channel admission minimization: fold only source slots
+whose validated `known` bit is set, remove known-false calls, use unconditional
+sentinels for known-true calls, compact dynamic selection IDs and prune unused
+captures. Further piston-sample fusion must establish equal *live* power
+predicates at the relevant cuts. A learned Boolean is not a valid replacement
+for unguarded external state reads. First qualifying request provenance,
+resource arbitration, reset scheduling and interpreter continuation remain
+correctness obligations. The remaining exact fallback and boundary execution
+still prevent claiming whole-circuit replacement.
+
+The pre-minimization production baseline is now measured: five alternating
+frozen fat-LTO pairs give 327.12 TPS guarded reference and 365.83 TPS transition
+program medians, with 7.80% less time in the median paired comparison. All
+output/checkpoint/semantic-count gates pass; candidate counters also match the
+full stable correctness run. This is a verified gain, but the remaining
+21.72 million visits and 85.16 million effect instructions leave the original
+whole-circuit replacement objective open. Proceed with instruction minimization
+against this frozen baseline before extending semantics or adding wider SIMD.
+
+### Minimized instructions and consumed-wire guards
+
+That first minimization is implemented. Channel and adaptive programs share
+known-admission folding, selection compaction and dead-capture pruning. Adaptive
+entry guards now retain only first-captured powers consumed by transport
+control; boundary predicates remain live at their original cuts. Seven focused
+checks, 609 broader checks and both full CPU/native/continuation gates pass.
+
+Stable fallback visits fall 21.72M -> 10.82M (88.65% removed versus guarded
+transport), misses fall 334,641 -> 160,580, and replay instructions fall
+85.16M -> 79.21M. Five alternating production pairs against the frozen initial
+transition program give 7.09% less median paired execution time. Current host
+medians are 211.29 -> 227.45 TPS; the identical reference executable is slower
+than in the preceding session under background desktop load. Compare within
+the current pairs, not across historical absolute TPS. See
+`INSTANT_TRANSITION_PROGRAMS.md` and `target/instant-transition-minimized/`.
+
+Next collect a fresh inference-only profile. The remaining 79.21M replay
+instructions and 33.49M live piston samples require substantially more
+elimination to meet the whole-circuit goal. A candidate is a typed piston-call
+operation for proved receiver identities, pruning captures that serve only
+generic dispatch while preserving live power/resource/pending sampling and
+request provenance. Do not freeze learned powered values or remove arbitrary
+repeated samples without proving equal live predicates. Full physical-graph
+replacement and new FPU timings remain unfinished.
+
+The new profile is collected and production-gate matched; see
+`INSTANT_TRANSITION_PROFILE.md`. It attributes 44.42% exclusively to remaining
+graph execution outside compiled effects/stable logic/transport entry and exact
+walks. General guard evaluation is 18.96% inclusive across paths. The separate
+`compile-guard-predicates` experiment reuses the existing compact Boolean compiler
+with live/captured context preserved. Full normal/stable CPU correctness passes,
+but five alternating production pairs show 8.38% more inference time; the builder
+is excluded from the default pipeline. See `COMPILED_GUARD_PREDICATES.md`.
+
+The unchanged minimized reference measures 428.70 median / 437.97 best TPS in
+these pairs. Host conditions changed from the preceding session; use paired
+comparisons to attribute gains. The next larger candidate is a compiled route
+effect view that omits ordinary component-shape callbacks with no effect while
+retaining the original rows used by Turbo admission. It must preserve live guard
+sampling, classic-entry ordinal substitution, piston callbacks and error paths.
+No such route-effect pass is implemented yet. The whole-kernel objective remains
+unfinished.
+
+Fresh production FPU evidence now covers the same shared inference code:
+`FPU_CURRENT_INFERENCE.md`. Five rotated random-input rounds measure 387.01 TPS
+native, 1,281.73 TPS O5 and 1,347.51 TPS O5+stable medians. All final physical
+checkpoints, semantic pending work and 16-tick native continuations pass. Raw
+piston allocator IDs are retained for diagnosis and excluded from the semantic
+future comparison, following existing continuation tests. Native output remains
+constant, so this is switching-cost evidence. O5 still executes 19.69M callbacks
+and 8.05M piston samples over initialization, warm-up and the measured vectors;
+stable mode reduces these to 18.80M and 7.51M. These counts identify remaining
+work, not profile percentages or a finished standalone logical circuit.

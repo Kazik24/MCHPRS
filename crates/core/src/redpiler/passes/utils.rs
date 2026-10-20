@@ -265,6 +265,15 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         vector_table_statistics("lowering input", "power links", &graph.power_links, 0),
         vector_table_statistics("lowering input", "sites", &graph.sites, 0),
         vector_table_statistics("lowering input", "guards", &graph.guards, guard_child_bytes(&graph.guards)),
+        vector_table_statistics(
+            "lowering input",
+            "guard predicates",
+            &graph.plans.guard_predicates.by_guard,
+            graph.plans.guard_predicates.predicates.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuPredicate>()
+                + graph.plans.guard_predicates.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
+                + (graph.plans.guard_predicates.require_true.capacity() + graph.plans.guard_predicates.require_false.capacity())
+                    * std::mem::size_of::<u64>(),
+        ),
         vector_table_statistics("lowering input", "wire relations", &graph.wire_relations, 0),
         vector_table_statistics("lowering input", "routes", &graph.routes, 0),
         table_memory_statistics::<crate::redpiler::program_graph::RouteDelivery>("lowering input", "deliveries", delivery_count, delivery_count, 0),
@@ -370,6 +379,15 @@ pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
         ),
         slice_table_statistics("lowering", "sites", program.sites(), 0),
         slice_table_statistics("lowering", "guards", program.guards(), guard_child_bytes(program.guards())),
+        slice_table_statistics(
+            "lowering",
+            "guard predicates",
+            &program.guard_predicate_plans().by_guard,
+            program.guard_predicate_plans().predicates.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuPredicate>()
+                + program.guard_predicate_plans().reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
+                + (program.guard_predicate_plans().require_true.capacity() + program.guard_predicate_plans().require_false.capacity())
+                    * std::mem::size_of::<u64>(),
+        ),
         slice_table_statistics("lowering", "routes", routes, 0),
         table_memory_statistics::<RouteDelivery>("lowering", "deliveries", delivery_count, delivery_count, 0),
         slice_table_statistics("lowering", "wire plans", program.wires(), 0),

@@ -252,6 +252,39 @@ impl CircuitDraft {
             mixed_classic: self.plans.mixed_classic,
             fixed_classic: self.plans.fixed_classic.program,
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
+            instant_drives: self.plans.instant_drives,
+            instant_transition_programs: self
+                .plans
+                .instant_transition_programs
+                .nets
+                .into_iter()
+                .map(|net| net.map(std::sync::Arc::new))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            stable_instant_logic: self
+                .plans
+                .stable_instant_logic
+                .nets
+                .into_iter()
+                .map(|net| net.map(std::sync::Arc::new))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            instant_value_regions: self
+                .plans
+                .instant_value_regions
+                .nets
+                .into_iter()
+                .map(|net| net.map(std::sync::Arc::new))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            signal_channels: self
+                .plans
+                .signal_channels
+                .channels
+                .into_iter()
+                .map(|channel| channel.map(std::sync::Arc::new))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
             instant: InstantProgram {
                 cpu: self.plans.cpu_kernels,
@@ -270,6 +303,7 @@ impl CircuitDraft {
             profiles: self.profiles.into_boxed_slice(),
             profile_blocks,
             guards: self.guards.into_boxed_slice(),
+            guard_predicates: self.plans.guard_predicates,
             contacts: self.contacts.into_boxed_slice(),
             routes: self.routes.into_boxed_slice(),
             turbo_callback_indices: self.plans.turbo_callback_indices.into_boxed_slice(),

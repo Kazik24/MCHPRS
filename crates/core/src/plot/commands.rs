@@ -72,7 +72,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "-O4",
         "-O5",
         "--stable-instant-inputs",
-        "--classic-redstone",
     ]
     .into_iter()
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
@@ -467,6 +466,7 @@ impl Plot {
                 }
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
                 if args.contains(&"--graph") {
+                    let mode = super::scoreboard::optimization_mode_label(&options);
                     let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
                     match crate::redpiler::analysis::graph::prepare_candidate_graph(
                         &self.world,
@@ -478,10 +478,10 @@ impl Plot {
                         Ok(candidate) => {
                             let summary = candidate.summary();
                             self.players[player].send_system_message(&format!(
-                                "Prepared Graph: {} nodes, {} links; no compiler was activated",
+                                "Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated",
                                 summary.nodes, summary.links,
                             ));
-                            for line in monitor.graph_statistics().summary_lines() {
+                            for line in monitor.graph_statistics().chat_summary_lines() {
                                 self.players[player].send_system_message(&line);
                             }
                             debug!(report = %serde_json::to_string(&candidate.report).unwrap(), graph = ?candidate.graph, "Redpiler candidate graph");
@@ -503,14 +503,15 @@ impl Plot {
                         // Stage the same backend as compile, then drop it without
                         // activating it or transferring any interpreter work.
                         let mut compiler = crate::redpiler::Compiler::default();
+                        let mode = super::scoreboard::optimization_mode_label(&options);
                         match compiler.compile(&self.world, self.world.get_corners(), options, ticks, Default::default()) {
                             Ok(()) => {
                                 if let Some(stats) = compiler.stats() {
-                                    for line in stats.summary_lines() {
+                                    for line in stats.chat_summary_lines(&mode) {
                                         self.players[player].send_system_message(&line);
                                     }
                                 }
-                                self.players[player].send_system_message("This plot can compile with these flags.");
+                                self.players[player].send_system_message(&format!("This plot can compile in {mode} mode."));
                             }
                             Err(error) => self.players[player].send_error_message(&format!("Redpiler: {error}")),
                         }
@@ -1987,27 +1988,40 @@ mod security_tests {
             };
             for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
-                let lines = messages("Transformations:");
+                let lines = messages("passes configured:");
+                assert!(lines.len() <= 6, "graph analysis should stay compact: {lines:?}");
                 assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
-                assert!(lines.iter().any(|line| line.starts_with("Graph after required preparation:")));
-                let summary = lines.iter().find(|line| line.starts_with("Transformations:")).unwrap();
-                let counts: Vec<usize> = summary.split_whitespace().filter_map(|part| part.parse().ok()).collect();
+                let summary = lines.iter().find(|line| line.starts_with("Graph:")).unwrap();
+                assert!(summary.contains("passes configured:"));
+                let counts: Vec<usize> = summary
+                    .rsplit_once("passes configured: ")
+                    .unwrap()
+                    .1
+                    .split_whitespace()
+                    .filter_map(|part| part.parse().ok())
+                    .collect();
                 let [enabled, skipped] = counts.as_slice() else {
                     panic!("missing enabled/skipped pass counts: {summary}");
                 };
                 // The pipeline registry tests exact names/order; this UI checks the selected mode.
                 if args.contains(&"--optimize") {
-                    // Local classic nets require their separate opt-in flag.
-                    assert!(*enabled > 0 && *skipped == 1, "{summary}");
+                    assert!(*enabled > 0 && *skipped == 0, "{summary}");
                 } else {
                     assert!(*enabled == 0 && *skipped > 0, "{summary}");
                 }
                 assert!(!plot.redpiler.is_active());
             }
             plot.handle_redpiler_command(0, "analyze", &[]);
-            let lines = messages("This plot can compile with these flags.");
+            let lines = messages("This plot can compile in O0 mode.");
+            assert!(lines.len() <= 8, "compile analysis should stay compact: {lines:?}");
             assert!(lines.iter().any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
-            assert!(lines.iter().any(|line| line.starts_with("Compile:") && line.contains("backend nodes")));
+            assert!(
+                lines
+                    .iter()
+                    .any(|line| line.starts_with("Compiled O0 with Graph in ") && line.contains("backend nodes"))
+            );
+            assert!(lines.iter().any(|line| line.contains("passes configured:")));
+            assert!(!lines.iter().any(|line| line.contains("Graph preparation table estimate")));
             assert!(!plot.redpiler.is_active());
             assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
         }
@@ -2049,7 +2063,6 @@ mod security_tests {
                     "-O4",
                     "-O5",
                     "--stable-instant-inputs",
-                    "--classic-redstone",
                 ],
             ),
             ("/rp analyze --ex", vec!["--export-json"]),

@@ -1,5 +1,6 @@
 //! Rust Graph execution checked against the frozen interpreter RAM trace for BubbleSort.
 #![allow(dead_code)]
+#![recursion_limit = "256"]
 #[path = "support/cpus.rs"]
 mod support;
 
@@ -27,18 +28,16 @@ fn main() -> Result<()> {
     let mut iterations = 3usize;
     let mut ticks = None;
     let mut graph_tier = 3usize;
-    let mut classic_redstone = false;
     let mut stable_instant_inputs = false;
     let mut output = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/cpu-bubblesort.json");
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--bench" => continue,
-            "--classic-redstone" => classic_redstone = true,
             "--stable-instant-inputs" => stable_instant_inputs = true,
             "--help" => {
                 println!(
-                    "cpu_bubblesort [--graph-tier 0..5] [--classic-redstone] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
+                    "cpu_bubblesort [--graph-tier 0..5] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
                 );
                 return Ok(());
             }
@@ -57,7 +56,6 @@ fn main() -> Result<()> {
     }
     ensure!(iterations > 0, "--iterations must be positive");
     ensure!(graph_tier <= 5, "--graph-tier must be in 0..=5");
-    ensure!(!classic_redstone || graph_tier >= 2, "--classic-redstone requires O2 or higher");
     ensure!(!stable_instant_inputs || graph_tier >= 3, "--stable-instant-inputs requires O3 or higher");
     let cpu = support::CPUS.iter().copied().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
     let ticks = ticks.unwrap_or(cpu.active_ticks + 1);
@@ -66,7 +64,7 @@ fn main() -> Result<()> {
     let mut samples = Vec::new();
     let mut reference: Option<Run> = None;
     for iteration in 0..iterations {
-        let run = execute(cpu, ticks, &reference_ram, graph_tier, classic_redstone, stable_instant_inputs)?;
+        let run = execute(cpu, ticks, &reference_ram, graph_tier, stable_instant_inputs)?;
         if let Some(first) = &reference {
             ensure!(run.active_ram == first.active_ram, "per-tick RAM changed between samples");
             ensure!(run.continuation_ram == first.continuation_ram, "continuation RAM changed between samples");
@@ -90,7 +88,7 @@ fn main() -> Result<()> {
         "fixture": "CPU_BubbleSort",
         "schematic_sha256": cpu.sha256,
         "optimization_level": graph_tier,
-        "classic_redstone": classic_redstone,
+        "classic_redstone_auto": graph_tier >= 2,
         "stable_instant_inputs": stable_instant_inputs,
         "ticks": ticks,
         "iterations": iterations,
@@ -105,14 +103,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn execute(
-    cpu: support::Cpu,
-    ticks: u32,
-    reference_ram: &[Vec<Option<u16>>],
-    graph_tier: usize,
-    classic_redstone: bool,
-    stable_instant_inputs: bool,
-) -> Result<Run> {
+fn execute(cpu: support::Cpu, ticks: u32, reference_ram: &[Vec<Option<u16>>], graph_tier: usize, stable_instant_inputs: bool) -> Result<Run> {
     let setup_started = Instant::now();
     let mut world = support::load_cpu(cpu);
     let sign = cpu.origin + BlockPos::new(186, 2, 184);
@@ -132,7 +123,6 @@ fn execute(
             world.get_corners(),
             CompilerOptions {
                 optimization_level: Some(graph_tier),
-                classic_redstone,
                 stable_instant_inputs,
                 budget_multiplier: 8,
                 ..Default::default()
@@ -236,7 +226,23 @@ fn execute(
             "graph_execution_counts": json!({"ticks":execution_counts.ticks,"scheduled_ticks":execution_counts.scheduled_ticks,
                 "callbacks":execution_counts.callbacks,"wire_walks":execution_counts.wire_walks,
                 "instant_transport_invocations":execution_counts.instant_transport_invocations,
-                "instant_transport_wire_visits":execution_counts.instant_transport_wire_visits,"piston_samples":execution_counts.piston_samples,
+                "instant_transport_wire_visits":execution_counts.instant_transport_wire_visits,
+                "instant_value_region_solves":execution_counts.instant_value_region_solves,
+                "instant_value_region_cache_hits":execution_counts.instant_value_region_cache_hits,
+                "instant_transport_compact_captures":execution_counts.instant_transport_compact_captures,
+                "instant_transition_hits":execution_counts.instant_transition_hits,
+                "instant_transition_misses":execution_counts.instant_transition_misses,
+                "instant_transition_programs":execution_counts.instant_transition_programs,
+                "instant_transition_operations":execution_counts.instant_transition_operations,
+                "instant_transition_wire_visits_elided":execution_counts.instant_transition_wire_visits_elided,
+                "instant_value_region_inert_visits":execution_counts.instant_value_region_inert_visits,
+                "signal_channel_invocations":execution_counts.signal_channel_invocations,
+                "signal_channel_fallbacks":execution_counts.signal_channel_fallbacks,
+                "stable_logic_invocations":execution_counts.stable_logic_invocations,
+                "stable_logic_fallbacks":execution_counts.stable_logic_fallbacks,
+                "stable_logic_wire_values":execution_counts.stable_logic_wire_values,
+                "stable_logic_boundary_calls":execution_counts.stable_logic_boundary_calls,
+                "signal_channel_operations":execution_counts.signal_channel_operations,"piston_samples":execution_counts.piston_samples,
                 "piston_actions":execution_counts.piston_actions,"instant_kernel_invocations":execution_counts.instant_kernel_invocations,
                 "classic_net_invocations":execution_counts.classic_net_invocations,
                 "classic_receiver_ops":execution_counts.classic_receiver_ops}),

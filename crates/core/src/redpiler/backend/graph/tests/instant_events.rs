@@ -16,9 +16,10 @@ fn prepare_mode(circuit: &Adder, cpu: bool) -> (LoweredCircuit, LoweredCircuit) 
     };
     let mut graph = passes::rich::prepare(&native, circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
     let mut pipeline = passes::default_graph_pipeline(&options);
+    // Pin FIFO-local kernel behavior independently of the separate combinational contract.
     pipeline
         .entries
-        .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if matches!(builder.name(), "experimental-compile-instant-events" | "experimental-compile-bud-memory-reads" | "optimize-instant-kernels-cpu")));
+        .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if matches!(builder.name(), "experimental-compile-instant-events" | "experimental-compile-bud-memory-reads" | "optimize-instant-kernels-cpu" | "compile-stable-instant-logic")));
     passes::run_graph_pipeline(&mut graph.graph, &options, &graph.entry, &pipeline, &monitor).unwrap();
     let baseline = graph.graph.clone().lower().unwrap();
     passes::compile_bud_memory_reads::CompileBudMemoryReads

@@ -6,13 +6,16 @@ use crate::redpiler::{CompilerOptions, passes};
 
 mod admission;
 mod closed_nets;
+mod drive_census;
 mod instant_events;
 mod kernel_interface;
 mod kernel_proofs;
 mod large_builds;
 mod max_tps;
 mod memory_only;
+mod optimized_viewer;
 mod random_fpu;
+mod stable_logic;
 mod transport;
 mod wire_nodes;
 

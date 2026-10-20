@@ -345,9 +345,9 @@ second simulator or C/LLVM engine is introduced.
 Supported whole circuits contain fixed wires, torches, repeaters (including
 locks), comparators, lamps, hoppers, controls and constants. Contacts, pistons,
 resources, unsupported actors, dynamic geometry/guards and overlapping private
-execution owners decline atomically and retain general execution. The existing
-`--classic-redstone` option additionally enables the local classic builder on the
-unchanged graph. An accepted whole program prevents local net ownership.
+execution owners decline atomically and retain general execution. The local
+classic builder is also selected automatically from O2 on the unchanged graph.
+An accepted whole program prevents local net ownership.
 
 This is complete typed execution, not queue-free weighted collapse. Electrical
 queries remain live at the original operation, wire/gate captures retain their
@@ -395,8 +395,8 @@ rederivation, lowered without another state owner and exported as
 `mixed_classic` with capability `mixed_classic_queries`. This is query partial
 evaluation, not memory recognition or passive-net contraction.
 
-`compile_classic_redstone` runs at O2+ when `--classic-redstone` is selected and
-whole fixed execution has declined.
+`compile_classic_redstone` runs automatically at O2+ when whole fixed execution
+has declined. The former `--classic-redstone` compile option is removed.
 It certifies whole fixed wire regions with one variable ingress and delayed
 torch/unlocked-repeater boundary receivers. Dense lowering replaces original
 owned route occurrences with ordered receiver operations selected by compact
@@ -406,7 +406,7 @@ strengths against ordinary Graph execution before publication. Unsupported
 regions retain general execution. Captured boundaries, contacts, independent
 receiver inputs, reentrant ingress prefixes and overlapping owners decline.
 
-This family remains default-off. The latest ANPU census admits 266 nets / 2,441
+The historical ANPU census admits 266 nets / 2,441
 wires, but runtime guards leave only 670 wires specialized after 5,000 ticks and
 the workload executes just eight compiled entries. No speedup was demonstrated.
 `simple_and_gate.schem` supplies a small positive fixture. Bounds, proofs,

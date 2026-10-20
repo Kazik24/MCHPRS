@@ -129,6 +129,7 @@ fn main() -> Result<()> {
     let mut ticks = 60_000u32;
     let mut flush_every = 0u32;
     let mut optimize = false;
+    let mut stable_instant_inputs = false;
     let mut interpreted = false;
     let mut changing_inputs = false;
     let mut workload = Workload::Random;
@@ -145,6 +146,10 @@ fn main() -> Result<()> {
                 optimize = true;
                 continue;
             }
+            "--stable-instant-inputs" => {
+                stable_instant_inputs = true;
+                continue;
+            }
             "--interpreted" => {
                 interpreted = true;
                 continue;
@@ -159,7 +164,7 @@ fn main() -> Result<()> {
             }
             "--help" => {
                 println!(
-                    "instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic."
+                    "instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--stable-instant-inputs] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero. Stable mode requires --optimize.\n--check-workloads verifies generators without loading a schematic."
                 );
                 return Ok(());
             }
@@ -196,6 +201,7 @@ fn main() -> Result<()> {
     ensure!(ticks >= 50_000 && ticks % 6 == 0, "--ticks must be at least 50000 and divisible by six");
     ensure!(flush_every <= 1, "--flush-every must be zero or one");
     ensure!(!interpreted || !optimize, "--optimize applies only to compiled execution");
+    ensure!(!stable_instant_inputs || optimize, "--stable-instant-inputs requires --optimize");
     ensure!(
         !interpreted || matches!(component.as_str(), "counter_basic" | "pc_counter" | "fpu_divider" | "fpu_legal"),
         "unsupported interpreted component"
@@ -281,6 +287,7 @@ fn main() -> Result<()> {
                         CompilerOptions {
                             optimization_level: if checked_optimize { None } else { Some(0) },
                             budget_multiplier: 8,
+                            stable_instant_inputs: stable_instant_inputs && checked_optimize,
                             ..Default::default()
                         },
                         Vec::new(),
@@ -334,6 +341,7 @@ fn main() -> Result<()> {
                 CompilerOptions {
                     optimization_level: if optimize { None } else { Some(0) },
                     budget_multiplier: 8,
+                    stable_instant_inputs,
                     ..Default::default()
                 },
                 Vec::new(),
@@ -384,7 +392,9 @@ fn main() -> Result<()> {
             sample["instant_piston_cache_stats"] = json!(world.instant_piston_cache().map(|cache| cache.stats()));
             sample["final_checkpoint"] = json!(cpu_support::checkpoint(
                 &world,
-                if component == "pc_counter" {
+                if changing_inputs && component == "fpu_legal" {
+                    64 + ((8 + episodes) * input_every * 2) as u32
+                } else if component == "pc_counter" {
                     4096
                 } else if changing_inputs {
                     (episodes * if component == "fpu_legal" { input_every * 2 } else { 256 }) as u32
@@ -394,10 +404,12 @@ fn main() -> Result<()> {
                 &[]
             ));
             if let Some(frozen) = &frozen {
-                ensure!(
-                    sample["final_checkpoint"] == frozen["samples"][0]["final_checkpoint"],
-                    "native final whole-world checkpoint differs from frozen baseline"
-                );
+                if !(changing_inputs && component == "fpu_legal") {
+                    ensure!(
+                        sample["final_checkpoint"] == frozen["samples"][0]["final_checkpoint"],
+                        "native final whole-world checkpoint differs from frozen baseline"
+                    );
+                }
             }
             if let Some(checkpoint) = &native_final_checkpoint {
                 ensure!(
@@ -413,6 +425,76 @@ fn main() -> Result<()> {
                     reference_traces = Some(traces);
                 }
             }
+        }
+        if changing_inputs && component == "fpu_legal" {
+            let total_ticks = 64 + ((8 + episodes) * input_every * 2) as u32;
+            if let Some(compiler) = compiler.as_ref() {
+                let counts = compiler.graph_execution_counts().context("missing Graph execution counters")?;
+                sample["graph_execution_counts"] = json!({
+                    "ticks":counts.ticks,"scheduled_ticks":counts.scheduled_ticks,"callbacks":counts.callbacks,"wire_walks":counts.wire_walks,
+                    "instant_transport_invocations":counts.instant_transport_invocations,"instant_transport_wire_visits":counts.instant_transport_wire_visits,
+                    "instant_transport_compact_captures":counts.instant_transport_compact_captures,
+                    "instant_transition_hits":counts.instant_transition_hits,"instant_transition_misses":counts.instant_transition_misses,
+                    "instant_transition_programs":counts.instant_transition_programs,"instant_transition_operations":counts.instant_transition_operations,
+                    "instant_transition_wire_visits_elided":counts.instant_transition_wire_visits_elided,
+                    "instant_value_region_solves":counts.instant_value_region_solves,"instant_value_region_cache_hits":counts.instant_value_region_cache_hits,
+                    "instant_value_region_inert_visits":counts.instant_value_region_inert_visits,
+                    "stable_logic_invocations":counts.stable_logic_invocations,"stable_logic_fallbacks":counts.stable_logic_fallbacks,
+                    "stable_logic_wire_values":counts.stable_logic_wire_values,"stable_logic_boundary_calls":counts.stable_logic_boundary_calls,
+                    "signal_channel_invocations":counts.signal_channel_invocations,"signal_channel_fallbacks":counts.signal_channel_fallbacks,
+                    "signal_channel_operations":counts.signal_channel_operations,"instant_kernel_invocations":counts.instant_kernel_invocations,
+                    "piston_samples":counts.piston_samples,"piston_actions":counts.piston_actions,"deferred_publications":counts.deferred_publications
+                });
+                sample["graph_execution_count_scope"] = json!("includes setup, eight warm vectors, and measured vectors");
+            }
+            if let Some(compiler) = compiler.as_mut() {
+                let bounds = world.get_corners();
+                compiler.reset(&mut world, bounds);
+            }
+            let final_checkpoint = json!(cpu_support::checkpoint(&world, total_ticks, &[]));
+            sample["final_checkpoint"] = final_checkpoint.clone();
+            let final_piston_semantics = fpu_piston_semantics(&world)?;
+            sample["piston_semantics"] = final_piston_semantics.clone();
+            if let Some(frozen) = &frozen {
+                check_fpu_checkpoint(
+                    &final_checkpoint,
+                    &frozen["samples"][0]["final_checkpoint"],
+                    "final",
+                    output.as_deref(),
+                    &sample,
+                )?;
+                check_fpu_semantic_pistons(
+                    &final_piston_semantics,
+                    &frozen["samples"][0]["piston_semantics"],
+                    "final",
+                    output.as_deref(),
+                    &sample,
+                )?;
+            }
+            for _ in 0..16 {
+                world.tick_interpreted();
+            }
+            let continuation = json!(cpu_support::checkpoint(&world, total_ticks + 16, &[]));
+            sample["continuation_checkpoint"] = continuation.clone();
+            let continuation_pistons = fpu_piston_semantics(&world)?;
+            sample["continuation_piston_semantics"] = continuation_pistons.clone();
+            if let Some(frozen) = &frozen {
+                check_fpu_checkpoint(
+                    &continuation,
+                    &frozen["samples"][0]["continuation_checkpoint"],
+                    "continuation",
+                    output.as_deref(),
+                    &sample,
+                )?;
+                check_fpu_semantic_pistons(
+                    &continuation_pistons,
+                    &frozen["samples"][0]["continuation_piston_semantics"],
+                    "continuation",
+                    output.as_deref(),
+                    &sample,
+                )?;
+            }
+            sample["native_continuation_ticks"] = json!(16);
         }
         sample["compile_seconds_metadata"] = json!(compile_seconds);
         sample["compile_statistics"] = json!(compiler.as_ref().and_then(Compiler::stats).map(|stats| {
@@ -440,8 +522,9 @@ fn main() -> Result<()> {
     let changing_game_ticks = episodes as u64 * if component == "fpu_legal" { input_every as u64 * 2 } else { 256 };
     let report = json!({
         "schema": 1, "backend": backend, "component": component, "manifest": manifest_path, "schematic_sha256": descriptor["sha256"],
+        "stable_instant_inputs": stable_instant_inputs,
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
-        "flags": if interpreted { None } else { Some(if optimize { "-O" } else { "" }) }, "budget_multiplier": (!interpreted).then_some(8),
+        "flags": if interpreted { None } else { Some(if stable_instant_inputs { "-O --stable-instant-inputs" } else if optimize { "-O" } else { "" }) }, "budget_multiplier": (!interpreted).then_some(8),
         "admitted_means": (!interpreted).then_some("compiler acceptance only; no physical or arithmetic equivalence claim"),
         "scope": if interpreted { "native interpreter; per-tick outputs and final whole-world checkpoint compared with --reference" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
         "measurement_kind": if changing_inputs { if component == "fpu_legal" { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" } } else { match (component.as_str(), interpreted) { ("pc_counter", true) => "interpreted_pc_counter_runtime", ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "logical_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "logical_divider_episodes", _ => "admission_only" } },
@@ -500,6 +583,76 @@ fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     }
     Ok(())
+}
+
+fn check_fpu_checkpoint(actual: &Value, expected: &Value, kind: &str, output: Option<&str>, sample: &Value) -> Result<()> {
+    let fields = ["tick", "blocks", "entities", "scheduler", "chat", "messages", "lit_lamps"];
+    let mismatches: Vec<_> = fields
+        .iter()
+        .filter(|&&field| actual[field] != expected[field])
+        .map(|&field| json!({"field":field,"actual":actual[field],"expected":expected[field]}))
+        .collect();
+    if mismatches.is_empty() {
+        return Ok(());
+    }
+    let diagnostic = json!({
+        "kind":format!("fpu_{kind}_checkpoint_mismatch"),
+        "actual":actual,
+        "expected":expected,
+        "mismatches":mismatches,
+        "raw_piston_digest_differs":actual["pistons"] != expected["pistons"],
+        "graph_execution_counts":sample["graph_execution_counts"],
+        "graph_execution_count_scope":sample["graph_execution_count_scope"],
+        "output_trace_sha256":sample["output_trace_sha256"]
+    });
+    if let Some(output) = output {
+        let path = root().join(output).with_extension("diagnostic.json");
+        std::fs::write(path, serde_json::to_vec_pretty(&diagnostic)?)?;
+    }
+    bail!("FPU {kind} checkpoint mismatch: {}", serde_json::to_string(&diagnostic)?);
+}
+
+fn fpu_piston_semantics(world: &PlotWorld) -> Result<Value> {
+    let state = world.piston_state();
+    ensure!(
+        state.phase == mchprs_world::AdvancePhase::BetweenTicks,
+        "FPU piston comparison is only valid between game ticks"
+    );
+    ensure!(
+        state.movement_work.is_empty() && state.movement_cursor == 0,
+        "FPU piston comparison found in-flight movement phase work"
+    );
+    Ok(json!({
+        "logical_tick":state.logical_tick,
+        "phase":state.phase,
+        "events":state.events,
+        "motions":state.motions.iter().map(|motion| json!({
+            "pos":motion.pos,
+            "progress":motion.progress,
+            "previous_progress":motion.previous_progress,
+            "last_tick":motion.last_tick,
+            "carried_entity":motion.carried_entity
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+fn check_fpu_semantic_pistons(actual: &Value, expected: &Value, kind: &str, output: Option<&str>, sample: &Value) -> Result<()> {
+    if actual == expected {
+        return Ok(());
+    }
+    let diagnostic = json!({
+        "kind":format!("fpu_{kind}_piston_semantics_mismatch"),
+        "actual":actual,
+        "expected":expected,
+        "raw_checkpoint":sample[if kind == "final" { "final_checkpoint" } else { "continuation_checkpoint" }],
+        "graph_execution_counts":sample["graph_execution_counts"],
+        "output_trace_sha256":sample["output_trace_sha256"]
+    });
+    if let Some(output) = output {
+        let path = root().join(output).with_extension(format!("{kind}.pistons.json"));
+        std::fs::write(path, serde_json::to_vec_pretty(&diagnostic)?)?;
+    }
+    bail!("FPU {kind} semantic piston state mismatch: {}", serde_json::to_string(&diagnostic)?);
 }
 
 fn pc_counter(world: &mut PlotWorld, descriptor: &Value, expected: Option<&[Vec<u16>]>) -> Result<Value> {

@@ -261,6 +261,31 @@ pub struct GraphExecutionCounts {
     pub instant_transport_invocations: u64,
     /// Wire visits handled by dense local transport programs.
     pub instant_transport_wire_visits: u64,
+    /// Member-wire captures stored as scalar power instead of general observed block properties.
+    pub instant_transport_compact_captures: u64,
+    /// Exact whole-episode programs replayed after matching every control input.
+    pub instant_transition_hits: u64,
+    pub instant_transition_misses: u64,
+    pub instant_transition_programs: u64,
+    pub instant_transition_operations: u64,
+    pub instant_transition_wire_visits_elided: u64,
+    /// Electrical regions solved to certify unchanged wire values during ordered transport.
+    pub instant_value_region_solves: u64,
+    /// Unchanged per-region input and wire certificates reused without a solve.
+    pub instant_value_region_cache_hits: u64,
+    /// Ordered marker visits whose wire evaluation was replaced by a fixed-point certificate.
+    pub instant_value_region_inert_visits: u64,
+    /// Entries handled by an ordered signal program, including proven no-ops.
+    pub signal_channel_invocations: u64,
+    /// Registered channel entries rejected before any optimized effect.
+    pub signal_channel_fallbacks: u64,
+    /// Straight-line signal operations executed without interior propagation.
+    pub signal_channel_operations: u64,
+    /// Stable-input net evaluations using compiled weighted expressions.
+    pub stable_logic_invocations: u64,
+    pub stable_logic_fallbacks: u64,
+    pub stable_logic_wire_values: u64,
+    pub stable_logic_boundary_calls: u64,
     /// Reduced instant pull waves actually executed after entry and FIFO checks.
     pub instant_kernel_invocations: u64,
     pub classic_net_invocations: u64,
@@ -646,7 +671,6 @@ mod tests {
     fn parse_options() {
         let input = "-iO0 -U";
         let expected_options = CompilerOptions {
-            classic_redstone: false,
             budget_multiplier: 0,
             io_only: true,
             optimization_level: Some(0),
@@ -664,10 +688,17 @@ mod tests {
             for level in 0..=MAX_OPTIMIZATION_LEVEL {
                 let options = CompilerOptions::parse(&format!("{prefix}{level}")).unwrap();
                 assert_eq!(options.optimization_level, Some(level));
+                assert_eq!(options.optimization_label(), format!("O{level}"));
             }
             assert_eq!(CompilerOptions::parse(prefix).unwrap().optimization_level, None);
+            assert_eq!(CompilerOptions::parse(prefix).unwrap().optimization_label(), "O5");
             assert!(CompilerOptions::parse(&format!("{prefix}{}", MAX_OPTIMIZATION_LEVEL + 1)).is_err());
         }
+        assert_eq!(CompilerOptions::parse("--optimize").unwrap().optimization_label(), "O5");
+        assert_eq!(
+            CompilerOptions::parse("--optimize --stable-instant-inputs").unwrap().optimization_label(),
+            "O5 stable"
+        );
     }
 
     #[test]
@@ -681,7 +712,7 @@ mod tests {
 
     #[test]
     fn unknown_flags_fail() {
-        for flags in ["--unknown", "--export", "--export-dot", "-ox", "-"] {
+        for flags in ["--unknown", "--export", "--export-dot", "--classic-redstone", "-ox", "-"] {
             assert!(CompilerOptions::parse(flags).is_err(), "{flags}");
         }
     }

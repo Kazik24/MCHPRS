@@ -2,11 +2,12 @@
 use super::*;
 use crate::redpiler::passes::{PassContext, planning::PlanBuilder};
 
-pub(super) fn local_net_pipeline(options: &crate::redpiler::CompilerOptions) -> passes::PassPipeline {
+pub(super) fn local_net_pipeline(options: &crate::redpiler::CompilerOptions, enable_local_nets: bool) -> passes::PassPipeline {
     let mut pipeline = passes::default_graph_pipeline(options);
-    pipeline
-        .entries
-        .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+    pipeline.entries.retain(|entry| {
+        !matches!(&entry.pass, passes::Pass::Build(builder)
+            if builder.name() == "compile-fixed-classic" || !enable_local_nets && builder.name() == "compile-classic-redstone")
+    });
     pipeline
 }
 
@@ -301,14 +302,20 @@ fn classic_real_fixture_paired_release() {
     let mut general_draft = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
     let mut classic_draft = general_draft.graph.clone();
     let mut compile_times = Vec::new();
-    for (graph, enabled) in [(&mut general_draft.graph, false), (&mut classic_draft, true)] {
+    for (graph, enable_local_nets) in [(&mut general_draft.graph, false), (&mut classic_draft, true)] {
         let options = crate::redpiler::CompilerOptions {
             optimization_level: Some(2),
-            classic_redstone: enabled,
             ..Default::default()
         };
         let started = std::time::Instant::now();
-        passes::run_graph_pipeline(graph, &options, &general_draft.entry, &local_net_pipeline(&options), &monitor).unwrap();
+        passes::run_graph_pipeline(
+            graph,
+            &options,
+            &general_draft.entry,
+            &local_net_pipeline(&options, enable_local_nets),
+            &monitor,
+        )
+        .unwrap();
         compile_times.push(started.elapsed().as_secs_f64());
     }
     assert!(!classic_draft.plans.classic_nets.is_empty(), "real positive fixture must be admitted");
@@ -726,7 +733,6 @@ fn classic_imported_receiver_ticks_cover_powered_pending_states_and_continuation
                 };
                 let classic_options = crate::redpiler::CompilerOptions {
                     optimization_level: Some(2),
-                    classic_redstone: true,
                     ..Default::default()
                 };
                 let mut general =
@@ -736,7 +742,7 @@ fn classic_imported_receiver_ticks_cover_powered_pending_states_and_continuation
                     bounds,
                     ticks,
                     &classic_options,
-                    &local_net_pipeline(&classic_options),
+                    &local_net_pipeline(&classic_options, true),
                     Arc::new(TaskMonitor::default()),
                 )
                 .unwrap();

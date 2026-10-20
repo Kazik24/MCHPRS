@@ -92,7 +92,6 @@ fn bubblesort_kernel_proofs_report_reset_and_ownership_cuts() {
         "cpu-kernel-proof-cuts",
         &json!({
             "fixture": "cpu_bubblesort", "schematic_sha256": cpus::CPUS[2].sha256,
-            "classic_redstone": false,
             "scope": "Static proof attempts only; removed owners remain external Graph devices. No altered reset or ordering assumptions.",
             "reports": reports,
         }),

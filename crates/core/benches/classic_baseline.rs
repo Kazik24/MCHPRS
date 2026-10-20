@@ -110,7 +110,6 @@ fn main() -> Result<()> {
         .unwrap_or(if name == "chungus" { 16_384 } else { 5_000 });
     let iterations = argument("--iterations").unwrap_or("5").parse::<usize>()?;
     let tier = argument("--graph-tier").unwrap_or("2").parse::<usize>()?;
-    let classic_redstone = args.iter().any(|argument| argument == "--classic-redstone");
     ensure!(ticks > 0 && ticks <= u32::MAX - 32 && iterations > 0, "invalid window or sample count");
     ensure!((2..=5).contains(&tier), "baseline supports O2 through O5");
     let git = |args: &[&str]| -> Result<String> {
@@ -120,7 +119,7 @@ fn main() -> Result<()> {
     };
     let mut report = json!({"schema":1,"cpu":name,"ticks":ticks,"iterations":iterations,"optimization_level":tier,
         "profile":if cfg!(debug_assertions) {"dev/debug"}else{"bench/release"},
-        "classic_redstone":classic_redstone,"stable_instant_inputs":false,"budget_multiplier":8,
+        "classic_redstone_auto":tier >= 2,"stable_instant_inputs":false,"budget_multiplier":8,
         "fixture_sha256":hash(&std::fs::read(fixture(name))?),
         "binary_sha256":hash(&std::fs::read(std::env::current_exe()?)?),
         "harness_source_sha256":hash(include_bytes!("classic_baseline.rs")),
@@ -147,7 +146,6 @@ fn main() -> Result<()> {
                 bounds,
                 CompilerOptions {
                     optimization_level: Some(tier),
-                    classic_redstone,
                     budget_multiplier: 8,
                     ..Default::default()
                 },

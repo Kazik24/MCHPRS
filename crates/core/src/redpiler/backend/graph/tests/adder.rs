@@ -8,6 +8,8 @@ mod builtin_reset_tests;
 mod execution_coverage_tests;
 #[path = "fixed_point_adder.rs"]
 mod fixed_point_tests;
+#[path = "guarded_transport.rs"]
+mod guarded_transport_tests;
 #[path = "instant_boundaries.rs"]
 mod instant_boundary_tests;
 #[path = "instant_cells.rs"]
@@ -24,10 +26,10 @@ mod instant_net_counterexample;
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
 mod instant_recognition_tests;
-#[path = "production_tiers.rs"]
-mod production_tier_tests;
 #[path = "instant_transport.rs"]
 mod instant_transport_tests;
+#[path = "production_tiers.rs"]
+mod production_tier_tests;
 #[path = "reset_elision.rs"]
 mod reset_elision_tests;
 #[path = "stable_region.rs"]

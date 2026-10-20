@@ -171,6 +171,7 @@ pub(crate) fn infer_abstract_instant_nets(graph: &CompileGraph, monitor: &crate:
 }
 
 /// Structural closure is a candidate boundary, not proof that final-state settling preserves requests.
+#[cfg(test)]
 pub(crate) fn census_closed_instant_nets(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,

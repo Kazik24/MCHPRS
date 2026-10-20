@@ -9,6 +9,11 @@ pub(crate) enum PlanChange {
     Boundaries,
     Layers,
     FixedSignals,
+    InstantDrives,
+    InstantTransitionPrograms,
+    SignalChannels,
+    StableInstantLogic,
+    InstantValueRegions,
     ClassicNets,
     TurboCallbacks,
     DustPaths,
@@ -18,6 +23,8 @@ pub(crate) enum PlanChange {
     WireCaptureMasks,
     InstantEvents,
     CpuKernels,
+    #[cfg(test)]
+    GuardPredicates,
     BudMemoryReads,
     InstantTransport,
     InstantWireNodes,
@@ -98,6 +105,14 @@ pub(crate) struct ExecutionPlans {
     pub(crate) fixed_classic: FixedClassicPlans,
     /// Exact compiled electrical reads and the separate settled weighted topology witness.
     pub(crate) fixed_signals: FixedSignalPlans,
+    /// Typed no-dust source expressions; unsupported wires retain general queries.
+    pub(crate) instant_drives: InstantDriveProgram,
+    /// Exact episode eligibility maps over certified ordered transport nets.
+    pub(crate) instant_transition_programs: InstantTransitionPrograms,
+    pub(crate) signal_channels: SignalChannels,
+    pub(crate) stable_instant_logic: StableInstantLogic,
+    /// Exact bounded electrical distance rows for transport-net value regions.
+    pub(crate) instant_value_regions: InstantValueRegions,
     /// Whole private wire regions with exact ordered delayed-receiver programs.
     pub(crate) classic_nets: Vec<ClassicNetPlan>,
     /// Empty disables indexing; otherwise entries align with the wire table.
@@ -108,9 +123,11 @@ pub(crate) struct ExecutionPlans {
     pub(crate) instant_events: Vec<InstantKernel>,
     /// Flat pure predicates compiled from event kernels; no mutable values are duplicated.
     pub(crate) cpu_kernels: CpuKernelPlans,
+    /// Flat pure guard predicates, with exact recursive fallback for unsupported roots.
+    pub(crate) guard_predicates: GuardPredicatePlans,
     /// Exact private storage/read pairs; their original state and update work remain owned by Graph.
     pub(crate) bud_memory_reads: Vec<BudMemoryRead>,
-    /// Closed queue-only wire corridors with dense local Turbo bindings.
+    /// Closed wire corridors with dense local Turbo bindings and ordered boundary effects.
     pub(crate) instant_transport: InstantTransport,
     /// Local wire-power certificates, retaining the original ordered walks.
     pub(crate) dust_paths: Vec<DustPathPlan>,
