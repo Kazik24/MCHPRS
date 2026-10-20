@@ -146,6 +146,27 @@ impl GraphBackend {
         captured: Option<&[Option<ObservedSite>]>,
         captured_site: Option<(SiteId, &ObservedSite)>,
     ) -> bool {
+        #[cfg(test)]
+        if self.test_recorder.guard_kind_census_enabled {
+            let kind = match &self.program.guards()[id.index()] {
+                Guard::Always => 0,
+                Guard::State(_) => 1,
+                Guard::Not(_) => 2,
+                Guard::All(_) => 3,
+                Guard::Any(_) => 4,
+                Guard::Site { view, test, .. } => {
+                    let base = if *view == OperandView::Live { 5 } else { 9 };
+                    base + match test {
+                        SiteTest::Solid => 0,
+                        SiteTest::Transparent => 1,
+                        SiteTest::IsWire => 2,
+                        SiteTest::Profile(_) => 3,
+                    }
+                }
+            };
+            let count = &self.test_recorder.guard_kind_census[kind];
+            count.set(count.get() + 1);
+        }
         match &self.program.guards()[id.index()] {
             Guard::Always => true,
             Guard::State(test) => self.state.matches(*test),

@@ -117,3 +117,45 @@ not been relabeled as measurements of the new production tier configuration.
 The 2026-10-20 follow-up has 613 passing broad checks after excluding the slower
 guard-packing experiment. The tier/alias test additionally checks every new O5
 stage for all maximum flags, with and without the stable-input promise.
+
+## Compilation reports and the graph viewer
+
+Completion chat uses a bounded summary: selected mode, total/stage time, graph
+size, configured pass counts, the two longest compilation steps, ownership and
+compiled-plan coverage. Detailed preparation-table dumps remain outside chat.
+Plan coverage overlaps Graph ownership; it does not estimate CPU-time share.
+
+Export the selected production pipeline without activating it:
+
+```text
+/rp analyze --graph --export-json --optimize
+/rp analyze --graph --export-json --optimize --stable-instant-inputs
+```
+
+Open [the offline viewer](../tools/redpiler-graph-viewer/index.html) and choose
+the exported JSON. **Compiled plans** shows transport nets, typed inputs,
+predicates and possible outputs. Select a record and expand its operands to
+inspect exact expressions, dependency tables and ordered channel instructions.
+**Circuit (physical)** shows the original graph. Connections labeled original
+graph witnesses describe physical mappings, rather than a new execution-order
+proof. Runtime-learned transition transcripts are not present in compile-time
+exports; eligibility is labeled separately.
+
+The current FPU example is
+`target/graph-viewer-current/fpu-o5-stable.graph.json`, produced from
+`FPU_MROWW.schem` with O5, stable inputs and an 8x compilation budget. It contains
+70,458 nodes and 850,792 links. The complete compact export is 619.41 MiB,
+including 1,362,796 boundary-port records; instant-program tables occupy about
+19.93 MiB and CPU predicate tables 4.88 MiB. These are JSON sizes, not runtime
+memory estimates. The physical evidence remains available for inspection.
+
+Current verification: 619 broad redpiler checks pass, including option aliases,
+the compact chat report, the O0–O5 export fixtures and malformed compiled-IR
+checks; 46 viewer tests and 33 Python-loader tests also pass. The ignored
+full-FPU export check passes. Edge loaded the complete compact FPU export in
+19.41 seconds, displayed a connected overview and expanded a 21-wire stable
+program without JavaScript errors. The inspected page used about 814 MiB of
+JavaScript heap; this is one observed snapshot, not a peak-memory bound.
+Files over 32 MiB load incrementally; the viewer accepts files up to 2 GiB.
+All four benchmark harnesses compile, and the production server builds with
+release fat LTO. Artifacts and logs are under `target/graph-viewer-current/`.

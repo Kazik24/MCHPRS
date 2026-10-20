@@ -110,6 +110,8 @@ impl GraphBackend {
         scratch.inputs.resize(scratch.inputs.len().max(logic.inputs.len()), 0);
         scratch.input_ready.resize(scratch.input_ready.len().max(logic.inputs.len()), false);
         self.counts.stable_logic_invocations += 1;
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.begin(3, !net.ordered_receivers);
         let result = (|| {
             let root_power = self.stable_logic_expression(&logic, &logic.expressions[root as usize], &mut scratch);
             self.counts.stable_logic_wire_values += 1;
@@ -208,6 +210,8 @@ impl GraphBackend {
             }
             Ok(())
         })();
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.end();
         scratch.deliveries.clear();
         for wire in scratch.changed_wires.drain(..) {
             scratch.changed[wire as usize] = false;

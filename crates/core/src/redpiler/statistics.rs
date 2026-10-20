@@ -430,7 +430,7 @@ mod chat_summary_tests {
         let joined = summary.join("\n");
 
         assert!(summary.len() <= 6, "chat summary unexpectedly grew: {joined}");
-        assert!(joined.contains("Compiled O5 + stable inputs with Graph in 30 ms"));
+        assert!(joined.contains("Compiled O5 + stable inputs with Graph: 30 ms total"));
         assert!(joined.contains("passes configured: 1 on, 1 off."));
         assert!(joined.contains("native fallback 2"));
         assert!(joined.contains("Plans: piston checks"));

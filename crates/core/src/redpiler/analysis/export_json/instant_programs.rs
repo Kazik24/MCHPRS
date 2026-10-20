@@ -9,7 +9,13 @@ pub(super) fn export(graph: &CompileGraph) -> Result<Option<Value>, ExportError>
     let drives = &plans.instant_drives;
     let transport_count = plans.instant_transport.nets.len();
     let invalid = || ExportError::new("instant_programs", "unaligned instant program tables");
-    if drives.by_wire.len() != graph.wires.len()
+    let has_compiled_product = plans.signal_channels.channels.iter().any(Option::is_some)
+        || plans.stable_instant_logic.nets.iter().any(Option::is_some)
+        || plans.instant_value_regions.nets.iter().any(Option::is_some)
+        || !plans.instant_transition_programs.nets.is_empty();
+    if (!drives.by_wire.is_empty() && drives.by_wire.len() != graph.wires.len())
+        || (drives.by_wire.is_empty()
+            && (!drives.queries.is_empty() || !drives.terms.is_empty() || !drives.conditions.is_empty() || has_compiled_product))
         || (!plans.signal_channels.channels.is_empty() && plans.signal_channels.channels.len() != transport_count)
         || (!plans.stable_instant_logic.nets.is_empty() && plans.stable_instant_logic.nets.len() != transport_count)
         || (!plans.instant_value_regions.nets.is_empty() && plans.instant_value_regions.nets.len() != transport_count)
@@ -17,11 +23,13 @@ pub(super) fn export(graph: &CompileGraph) -> Result<Option<Value>, ExportError>
     {
         return Err(invalid());
     }
-    for program in plans.instant_value_regions.nets.iter().flatten() {
+    for (net, program) in plans.instant_value_regions.nets.iter().enumerate() {
+        let Some(program) = program else { continue };
+        let wire_count = plans.instant_transport.nets[net].wires.len();
         // These maps are aligned with the containing transport net. Reject
         // malformed tables instead of silently projecting missing entries as
         // `false` or `null`.
-        if program.compact_wire_captures.len() != program.wire_region.len() || program.wire_region.len() != program.wire_local.len() {
+        if program.compact_wire_captures.len() != wire_count || program.wire_region.len() != wire_count || program.wire_local.len() != wire_count {
             return Err(invalid());
         }
     }
@@ -379,10 +387,10 @@ pub(super) fn validate(
             || stable_terms
                 .iter()
                 .any(|term| index(&term["input"], inputs.len()).is_none() || value_u8(&term["attenuation"]).is_none_or(|value| value >= 15))
-            || !valid_partitioned_index_lists(&stable["input_users"], inputs.len(), input_user_expressions.len(), expressions.len())
+            || !valid_partitioned_index_lists(&stable["input_users"], inputs.len(), input_user_expressions.len())
             || !valid_index_list_values(&stable["input_user_expressions"], expressions.len())
             || !valid_outputs(outputs, wire_count, sites)
-            || !valid_partitioned_index_lists(&stable["wire_outputs"], wire_count, wire_output_indices.len(), outputs.len())
+            || !valid_partitioned_index_lists(&stable["wire_outputs"], wire_count, wire_output_indices.len())
             || !valid_index_list_values(&stable["wire_output_indices"], outputs.len())
         {
             return Err(invalid());
@@ -492,11 +500,18 @@ pub(super) fn validate(
         {
             return Err(invalid());
         }
-        for region in regions {
+        for (region_index, region) in regions.iter().enumerate() {
             let wire_range = region["wires"].as_array().ok_or_else(invalid)?;
             let wire_start = wire_range[0].as_u64().ok_or_else(invalid)? as usize;
             let wire_end = wire_range[1].as_u64().ok_or_else(invalid)? as usize;
             let region_wire_count = wire_end - wire_start;
+            for local in 0..region_wire_count {
+                let transport_wire = region_wires[wire_start + local].as_u64().ok_or_else(invalid)? as usize;
+                let mapped = &wires[transport_wire];
+                if mapped["region"].as_u64() != Some(region_index as u64) || mapped["region_local"].as_u64() != Some(local as u64) {
+                    return Err(invalid());
+                }
+            }
             let group_range = region["drive_groups"].as_array().ok_or_else(invalid)?;
             let group_start = group_range[0].as_u64().ok_or_else(invalid)? as usize;
             let group_end = group_range[1].as_u64().ok_or_else(invalid)? as usize;
@@ -516,7 +531,7 @@ pub(super) fn validate(
         }
     }
 
-    if let Some(eligibility) = programs.get("transition_eligibility") {
+    if let Some(eligibility) = programs.get("transition_eligibility").filter(|value| !value.is_null()) {
         if eligibility["semantics"].as_str() != Some("eligibility only; runtime-learned transcripts are unavailable") {
             return Err(invalid());
         }
@@ -529,14 +544,15 @@ pub(super) fn validate(
                 return Err(invalid());
             }
             if program["eligible"] == true {
-                let wire_count = transport_wire_ids(&transport[net])?.len();
+                let net_wires = transport_wire_ids(&transport[net])?;
+                let wire_count = net_wires.len();
                 let bindings = program["wire_queries"].as_array().ok_or_else(invalid)?;
                 if bindings.len() != wire_count {
                     return Err(invalid());
                 }
                 for (wire, binding) in bindings.iter().enumerate() {
                     if binding["wire"].as_u64() != Some(wire as u64)
-                        || binding["node"].as_str() != Some(transport_wire_ids(&transport[net])?[wire])
+                        || binding["node"].as_str() != Some(net_wires[wire])
                         || binding["node"].as_str().is_none_or(|node| !wire_nodes.contains(node))
                         || index(&binding["query"], queries.len()).is_none()
                     {
@@ -652,14 +668,72 @@ fn matches_net_wires(value: &Value, expected: &[&str]) -> bool {
         .is_some_and(|wires| wires.len() == expected.len() && wires.iter().zip(expected).all(|(wire, expected)| wire.as_str() == Some(*expected)))
 }
 
-fn valid_index_lists(value: &Value, row_count: usize, limit: usize) -> bool {
-    value
-        .as_array()
-        .is_some_and(|rows| rows.len() == row_count && rows.iter().all(|row| valid_index_row(row, limit)))
+fn valid_partitioned_index_lists(value: &Value, row_count: usize, flat_count: usize) -> bool {
+    value.as_array().is_some_and(|rows| {
+        if rows.len() != row_count {
+            return false;
+        }
+        let mut cursor = 0usize;
+        for row in rows {
+            let Some(range) = row.as_array().filter(|range| range.len() == 2) else {
+                return false;
+            };
+            let (Some(start), Some(end)) = (range[0].as_u64(), range[1].as_u64()) else {
+                return false;
+            };
+            if usize::try_from(start).ok() != Some(cursor) || end < start || end > flat_count as u64 || !valid_range(row, flat_count) {
+                return false;
+            }
+            cursor = end as usize;
+        }
+        cursor == flat_count
+    })
 }
 
-fn valid_index_row(row: &Value, limit: usize) -> bool {
-    valid_range(row, limit)
+fn index_lists_match(rows: &Value, flat: &Value, expected: &[Vec<usize>]) -> bool {
+    let (Some(rows), Some(flat)) = (rows.as_array(), flat.as_array()) else {
+        return false;
+    };
+    rows.len() == expected.len()
+        && expected.iter().zip(rows).all(|(expected, range)| {
+            let Some(range) = range.as_array().filter(|range| range.len() == 2) else {
+                return false;
+            };
+            let (Some(start), Some(end)) = (range[0].as_u64(), range[1].as_u64()) else {
+                return false;
+            };
+            let (Ok(start), Ok(end)) = (usize::try_from(start), usize::try_from(end)) else {
+                return false;
+            };
+            end.saturating_sub(start) == expected.len()
+                && flat.get(start..end).is_some_and(|actual| {
+                    actual
+                        .iter()
+                        .zip(expected)
+                        .all(|(actual, expected)| actual.as_u64() == Some(*expected as u64))
+                })
+        })
+}
+
+fn ranges_partition(regions: &[Value], field: &str, total: usize) -> bool {
+    let mut cursor = 0usize;
+    for region in regions {
+        let Some(range) = region[field].as_array().filter(|range| range.len() == 2) else {
+            return false;
+        };
+        let (Some(start), Some(end)) = (range[0].as_u64(), range[1].as_u64()) else {
+            return false;
+        };
+        if usize::try_from(start).ok() != Some(cursor) || end < start || end > total as u64 {
+            return false;
+        }
+        cursor = end as usize;
+    }
+    cursor == total
+}
+
+fn row_len(row: &Value) -> Option<usize> {
+    row["len"].as_u64().and_then(|value| usize::try_from(value).ok())
 }
 
 fn valid_index_list_values(values: &Value, limit: usize) -> bool {
@@ -730,7 +804,18 @@ mod tests {
                 ]
             }],
             "stable_logic":[],
-            "value_regions":[],
+            "transition_eligibility":null,
+            "value_regions":[{
+                "net":0,
+                "wires":[{"node":"node:0","compact_capture":false,"region":0,"region_local":0}],
+                "regions":[{"component":0,"wires":[0,1],"drive_groups":[0,1],"conditional_arcs":[0,0]}],
+                "region_wires":[0],
+                "drive_groups":[{"query":0,"row":0}],
+                "conditional_arcs":[],
+                "selectors":[],
+                "distance_rows":[{"start":0,"len":1}],
+                "distances":[0]
+            }],
         });
         let transport = vec![json!({
             "wires":["node:0"],"sites":["site:0"],"site_wire":[0],"canonical_repeaters":[]
@@ -743,6 +828,14 @@ mod tests {
     fn absent_program_tables_are_valid_for_legacy_exports() {
         let empty = HashSet::new();
         assert!(validate(None, &empty, &empty, &empty, &empty, &empty, &empty, &empty, &[]).is_ok());
+    }
+
+    #[test]
+    fn dependency_ranges_index_the_flat_table_not_the_target_table() {
+        let ranges = json!([[0, 2], [2, 4]]);
+        let values = json!([0, 1, 0, 1]);
+        assert!(valid_partitioned_index_lists(&ranges, 2, 4));
+        assert!(valid_index_list_values(&values, 2));
     }
 
     #[test]
@@ -774,5 +867,37 @@ mod tests {
         programs["instant_drives"]["wires"][0]["node"] = json!("node:0");
         programs["signal_channels"][0]["transitions"][0]["transcript"]["ops"][0]["op"] = json!("unknown");
         assert!(validate(&programs).is_err(), "unknown ordered operation tags must reject the export");
+    }
+
+    #[test]
+    fn rejects_value_arc_sources_outside_the_region_and_mismatched_distance_rows() {
+        let (mut programs, transport, nodes) = valid_graph();
+        let wire_nodes = nodes.clone();
+        let sites = HashSet::from(["site:0".to_owned()]);
+        let routes = HashSet::from(["route:0".to_owned()]);
+        let validate = |programs: &Value| {
+            super::validate(
+                Some(programs),
+                &nodes,
+                &wire_nodes,
+                &sites,
+                &routes,
+                &HashSet::new(),
+                &HashSet::new(),
+                &HashSet::new(),
+                &transport,
+            )
+        };
+        assert!(validate(&programs).is_ok());
+
+        programs["value_regions"][0]["selectors"] = json!([{"horizontal_site":"site:0","ascent_up_site":null}]);
+        programs["value_regions"][0]["conditional_arcs"] = json!([{"source":1,"row":0,"selector":0}]);
+        programs["value_regions"][0]["regions"][0]["conditional_arcs"] = json!([0, 1]);
+        assert!(validate(&programs).is_err(), "arc source must be local to its region");
+
+        programs["value_regions"][0]["conditional_arcs"] = json!([]);
+        programs["value_regions"][0]["regions"][0]["conditional_arcs"] = json!([0, 0]);
+        programs["value_regions"][0]["distance_rows"][0]["len"] = json!(0);
+        assert!(validate(&programs).is_err(), "distance row length must match the containing region");
     }
 }

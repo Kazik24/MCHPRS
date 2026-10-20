@@ -22,6 +22,7 @@
     "cpu_kernel_execution",
     "instant_boundaries",
     "instant_transport",
+    "instant_program_ir",
     "instant_drive_expressions",
     "compiled_signal_channels",
     "instant_value_regions",
@@ -27004,6 +27005,2583 @@
       "eligible_wires": 32,
       "semantics": "eligibility only; runtime transcript must preserve ordered captures, admissions, calls, and effects",
       "work": 800
+    },
+    "instant_programs": {
+      "instant_drives": {
+        "conditions": [
+          {
+            "kind": "always"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "piston_extended",
+              "piston": "piston:2"
+            }
+          },
+          {
+            "child": 1,
+            "kind": "not"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "ready",
+              "kind": "piston_availability",
+              "piston": "piston:2"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "head_pending",
+              "kind": "piston_availability",
+              "piston": "piston:2"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "publishing_head_removal",
+              "kind": "piston_availability",
+              "piston": "piston:2"
+            }
+          },
+          {
+            "children": [
+              3,
+              4,
+              5
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              2,
+              6
+            ],
+            "kind": "all"
+          },
+          {
+            "kind": "never"
+          },
+          {
+            "children": [
+              1,
+              6
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 3,
+            "kind": "not"
+          },
+          {
+            "child": 4,
+            "kind": "not"
+          },
+          {
+            "child": 5,
+            "kind": "not"
+          },
+          {
+            "children": [
+              10,
+              11,
+              12
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              1,
+              13
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending_head_present",
+              "kind": "piston_availability",
+              "piston": "piston:2"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending",
+              "kind": "piston_availability",
+              "piston": "piston:2"
+            }
+          },
+          {
+            "children": [
+              15,
+              16
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              7,
+              9
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              2,
+              13
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              14,
+              19
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              14,
+              17,
+              19
+            ],
+            "kind": "all"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:2",
+              "kind": "resource_at",
+              "resource": "resource:1"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:1"
+            }
+          },
+          {
+            "children": [
+              22,
+              23
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 22,
+            "kind": "not"
+          },
+          {
+            "child": 23,
+            "kind": "not"
+          },
+          {
+            "children": [
+              25,
+              26
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:27",
+              "kind": "resource_at",
+              "resource": "resource:0"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:0"
+            }
+          },
+          {
+            "children": [
+              28,
+              29
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 28,
+            "kind": "not"
+          },
+          {
+            "child": 29,
+            "kind": "not"
+          },
+          {
+            "children": [
+              31,
+              32
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "head_pending",
+              "kind": "piston_availability",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "piston_head_present",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "ready",
+              "kind": "piston_availability",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending_head_present",
+              "kind": "piston_availability",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "children": [
+              36,
+              37
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              35,
+              38
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 34,
+            "kind": "not"
+          },
+          {
+            "children": [
+              35,
+              38,
+              40
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 35,
+            "kind": "not"
+          },
+          {
+            "child": 36,
+            "kind": "not"
+          },
+          {
+            "child": 37,
+            "kind": "not"
+          },
+          {
+            "children": [
+              43,
+              44
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              42,
+              45
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:13",
+              "kind": "resource_at",
+              "resource": "resource:2"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:2"
+            }
+          },
+          {
+            "children": [
+              47,
+              48
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 47,
+            "kind": "not"
+          },
+          {
+            "child": 48,
+            "kind": "not"
+          },
+          {
+            "children": [
+              50,
+              51
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              40,
+              46,
+              52
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              34,
+              39
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              40,
+              46
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              34,
+              39,
+              53
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              34,
+              39,
+              49
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              40,
+              46,
+              57
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              40,
+              46,
+              47,
+              48,
+              57
+            ],
+            "kind": "all"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:21",
+              "kind": "resource_at",
+              "resource": "resource:6"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:6"
+            }
+          },
+          {
+            "children": [
+              60,
+              61
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 60,
+            "kind": "not"
+          },
+          {
+            "child": 61,
+            "kind": "not"
+          },
+          {
+            "children": [
+              63,
+              64
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:5",
+              "kind": "resource_at",
+              "resource": "resource:2"
+            }
+          },
+          {
+            "children": [
+              48,
+              66
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 66,
+            "kind": "not"
+          },
+          {
+            "children": [
+              51,
+              68
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:24",
+              "kind": "resource_at",
+              "resource": "resource:7"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:7"
+            }
+          },
+          {
+            "children": [
+              70,
+              71
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 70,
+            "kind": "not"
+          },
+          {
+            "child": 71,
+            "kind": "not"
+          },
+          {
+            "children": [
+              73,
+              74
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:8",
+              "kind": "resource_at",
+              "resource": "resource:3"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:3"
+            }
+          },
+          {
+            "children": [
+              76,
+              77
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 76,
+            "kind": "not"
+          },
+          {
+            "child": 77,
+            "kind": "not"
+          },
+          {
+            "children": [
+              79,
+              80
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "piston_extended",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "child": 82,
+            "kind": "not"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "publishing_head_removal",
+              "kind": "piston_availability",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "children": [
+              34,
+              36,
+              84
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              83,
+              85
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              82,
+              85
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 84,
+            "kind": "not"
+          },
+          {
+            "children": [
+              40,
+              43,
+              88
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              82,
+              89
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending",
+              "kind": "piston_availability",
+              "piston": "piston:4"
+            }
+          },
+          {
+            "children": [
+              37,
+              91
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              86,
+              87
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              83,
+              89
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              90,
+              94
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              90,
+              92,
+              94
+            ],
+            "kind": "all"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "head_pending",
+              "kind": "piston_availability",
+              "piston": "piston:10"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "piston_head_present",
+              "piston": "piston:10"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "ready",
+              "kind": "piston_availability",
+              "piston": "piston:10"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending_head_present",
+              "kind": "piston_availability",
+              "piston": "piston:10"
+            }
+          },
+          {
+            "children": [
+              99,
+              100
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              98,
+              101
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 97,
+            "kind": "not"
+          },
+          {
+            "children": [
+              98,
+              101,
+              103
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 98,
+            "kind": "not"
+          },
+          {
+            "child": 99,
+            "kind": "not"
+          },
+          {
+            "child": 100,
+            "kind": "not"
+          },
+          {
+            "children": [
+              106,
+              107
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              105,
+              108
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:29",
+              "kind": "resource_at",
+              "resource": "resource:1"
+            }
+          },
+          {
+            "children": [
+              23,
+              110
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 110,
+            "kind": "not"
+          },
+          {
+            "children": [
+              26,
+              112
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              103,
+              109,
+              113
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              97,
+              102
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              103,
+              109
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              97,
+              102,
+              114
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              97,
+              102,
+              111
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              103,
+              109,
+              118
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              23,
+              103,
+              109,
+              110,
+              118
+            ],
+            "kind": "all"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:18",
+              "kind": "resource_at",
+              "resource": "resource:5"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:5"
+            }
+          },
+          {
+            "children": [
+              121,
+              122
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 121,
+            "kind": "not"
+          },
+          {
+            "child": 122,
+            "kind": "not"
+          },
+          {
+            "children": [
+              124,
+              125
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:32",
+              "kind": "resource_at",
+              "resource": "resource:8"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:8"
+            }
+          },
+          {
+            "children": [
+              127,
+              128
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 127,
+            "kind": "not"
+          },
+          {
+            "child": 128,
+            "kind": "not"
+          },
+          {
+            "children": [
+              130,
+              131
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "piston_extended",
+              "piston": "piston:9"
+            }
+          },
+          {
+            "child": 133,
+            "kind": "not"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "ready",
+              "kind": "piston_availability",
+              "piston": "piston:9"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "head_pending",
+              "kind": "piston_availability",
+              "piston": "piston:9"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "publishing_head_removal",
+              "kind": "piston_availability",
+              "piston": "piston:9"
+            }
+          },
+          {
+            "children": [
+              135,
+              136,
+              137
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              134,
+              138
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              133,
+              138
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 135,
+            "kind": "not"
+          },
+          {
+            "child": 136,
+            "kind": "not"
+          },
+          {
+            "child": 137,
+            "kind": "not"
+          },
+          {
+            "children": [
+              141,
+              142,
+              143
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              133,
+              144
+            ],
+            "kind": "any"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending_head_present",
+              "kind": "piston_availability",
+              "piston": "piston:9"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "availability": "base_pending",
+              "kind": "piston_availability",
+              "piston": "piston:9"
+            }
+          },
+          {
+            "children": [
+              146,
+              147
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              139,
+              140
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              134,
+              144
+            ],
+            "kind": "any"
+          },
+          {
+            "children": [
+              145,
+              150
+            ],
+            "kind": "all"
+          },
+          {
+            "children": [
+              145,
+              148,
+              150
+            ],
+            "kind": "all"
+          },
+          {
+            "kind": "state",
+            "test": {
+              "contact": "contact:35",
+              "kind": "resource_at",
+              "resource": "resource:9"
+            }
+          },
+          {
+            "kind": "state",
+            "test": {
+              "kind": "resource_enabled",
+              "resource": "resource:9"
+            }
+          },
+          {
+            "children": [
+              153,
+              154
+            ],
+            "kind": "all"
+          },
+          {
+            "child": 153,
+            "kind": "not"
+          },
+          {
+            "child": 154,
+            "kind": "not"
+          },
+          {
+            "children": [
+              156,
+              157
+            ],
+            "kind": "any"
+          }
+        ],
+        "queries": [
+          {
+            "constant": 0,
+            "terms": [
+              0,
+              1
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              1,
+              2
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              2,
+              3
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              3,
+              4
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              4,
+              4
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              4,
+              5
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              5,
+              5
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              5,
+              5
+            ]
+          },
+          {
+            "constant": 15,
+            "terms": [
+              5,
+              5
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              5,
+              6
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              6,
+              6
+            ]
+          },
+          {
+            "constant": 15,
+            "terms": [
+              6,
+              6
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              6,
+              7
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              7,
+              7
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              7,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              8
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              8,
+              9
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              9,
+              10
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              10,
+              10
+            ]
+          },
+          {
+            "constant": 0,
+            "terms": [
+              10,
+              10
+            ]
+          }
+        ],
+        "terms": [
+          {
+            "attenuation": 0,
+            "condition": 24,
+            "source": {
+              "kind": "output",
+              "node": "node:54"
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 30,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 59,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 67,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 78,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 123,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 129,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 155,
+            "source": {
+              "kind": "constant",
+              "value": 15
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 0,
+            "source": {
+              "kind": "output",
+              "node": "node:104"
+            }
+          },
+          {
+            "attenuation": 0,
+            "condition": 0,
+            "source": {
+              "kind": "output",
+              "node": "node:104"
+            }
+          }
+        ],
+        "wires": [
+          {
+            "node": "node:50",
+            "query": 0
+          },
+          {
+            "node": "node:52",
+            "query": 1
+          },
+          {
+            "node": "node:53",
+            "query": 2
+          },
+          {
+            "node": "node:57",
+            "query": 3
+          },
+          {
+            "node": "node:58",
+            "query": 4
+          },
+          {
+            "node": "node:60",
+            "query": 5
+          },
+          {
+            "node": "node:64",
+            "query": 6
+          },
+          {
+            "node": "node:65",
+            "query": 7
+          },
+          {
+            "node": "node:66",
+            "query": 8
+          },
+          {
+            "node": "node:68",
+            "query": 9
+          },
+          {
+            "node": "node:70",
+            "query": 10
+          },
+          {
+            "node": "node:73",
+            "query": 11
+          },
+          {
+            "node": "node:75",
+            "query": 12
+          },
+          {
+            "node": "node:76",
+            "query": 13
+          },
+          {
+            "node": "node:79",
+            "query": 14
+          },
+          {
+            "node": "node:81",
+            "query": 15
+          },
+          {
+            "node": "node:82",
+            "query": 16
+          },
+          {
+            "node": "node:83",
+            "query": 17
+          },
+          {
+            "node": "node:84",
+            "query": 18
+          },
+          {
+            "node": "node:85",
+            "query": 19
+          },
+          {
+            "node": "node:86",
+            "query": 20
+          },
+          {
+            "node": "node:89",
+            "query": 21
+          },
+          {
+            "node": "node:91",
+            "query": 22
+          },
+          {
+            "node": "node:92",
+            "query": 23
+          },
+          {
+            "node": "node:93",
+            "query": 24
+          },
+          {
+            "node": "node:94",
+            "query": 25
+          },
+          {
+            "node": "node:95",
+            "query": 26
+          },
+          {
+            "node": "node:97",
+            "query": 27
+          },
+          {
+            "node": "node:99",
+            "query": 28
+          },
+          {
+            "node": "node:100",
+            "query": 29
+          },
+          {
+            "node": "node:102",
+            "query": 30
+          },
+          {
+            "node": "node:103",
+            "query": 31
+          }
+        ]
+      },
+      "signal_channels": [
+        {
+          "discriminator": 0,
+          "input": {
+            "condition": 24,
+            "source": {
+              "kind": "output",
+              "node": "node:54"
+            }
+          },
+          "net": 0,
+          "profiles": [
+            [
+              0
+            ],
+            [
+              15
+            ]
+          ],
+          "transitions": [
+            {
+              "old_input": 0,
+              "root": 0,
+              "transcript": {
+                "final_powers": [
+                  15
+                ],
+                "ops": [
+                  {
+                    "op": "set_power",
+                    "power": 15,
+                    "wire": 0
+                  },
+                  {
+                    "op": "capture",
+                    "site": 1
+                  },
+                  {
+                    "op": "capture",
+                    "site": 2
+                  },
+                  {
+                    "op": "capture",
+                    "site": 3
+                  },
+                  {
+                    "op": "capture",
+                    "site": 4
+                  },
+                  {
+                    "op": "capture",
+                    "site": 5
+                  },
+                  {
+                    "op": "capture",
+                    "site": 6
+                  },
+                  {
+                    "op": "capture",
+                    "site": 7
+                  },
+                  {
+                    "op": "select",
+                    "selection": 0,
+                    "slot": 3,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 1,
+                    "slot": 21,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 2,
+                    "slot": 13,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 3,
+                    "slot": 10,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 4,
+                    "slot": 3,
+                    "wire": 0
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 0,
+                    "site": 1
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 6
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 2
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 1,
+                    "site": 7
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 2,
+                    "site": 4
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 3,
+                    "site": 3
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 5
+                  },
+                  {
+                    "layer": 2,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4,
+                    "site": 1
+                  },
+                  {
+                    "layer": 2,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 6
+                  }
+                ],
+                "selections": 5
+              }
+            },
+            {
+              "old_input": 1,
+              "root": 0,
+              "transcript": {
+                "final_powers": [
+                  0
+                ],
+                "ops": [
+                  {
+                    "op": "set_power",
+                    "power": 0,
+                    "wire": 0
+                  },
+                  {
+                    "op": "capture",
+                    "site": 1
+                  },
+                  {
+                    "op": "capture",
+                    "site": 2
+                  },
+                  {
+                    "op": "capture",
+                    "site": 3
+                  },
+                  {
+                    "op": "capture",
+                    "site": 4
+                  },
+                  {
+                    "op": "capture",
+                    "site": 5
+                  },
+                  {
+                    "op": "capture",
+                    "site": 6
+                  },
+                  {
+                    "op": "capture",
+                    "site": 7
+                  },
+                  {
+                    "op": "select",
+                    "selection": 0,
+                    "slot": 3,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 1,
+                    "slot": 21,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 2,
+                    "slot": 13,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 3,
+                    "slot": 10,
+                    "wire": 0
+                  },
+                  {
+                    "op": "select",
+                    "selection": 4,
+                    "slot": 3,
+                    "wire": 0
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 0,
+                    "site": 1
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 6
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 2
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 1,
+                    "site": 7
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 2,
+                    "site": 4
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 3,
+                    "site": 3
+                  },
+                  {
+                    "layer": 1,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 5
+                  },
+                  {
+                    "layer": 2,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4,
+                    "site": 1
+                  },
+                  {
+                    "layer": 2,
+                    "op": "call",
+                    "route": "route:17",
+                    "selection": 4294967295,
+                    "site": 6
+                  }
+                ],
+                "selections": 5
+              }
+            }
+          ],
+          "wires": [
+            "node:50"
+          ]
+        }
+      ],
+      "stable_logic": [],
+      "transition_eligibility": {
+        "nets": [
+          {
+            "eligible": true,
+            "net": 0,
+            "wire_queries": [
+              {
+                "node": "node:50",
+                "query": 0,
+                "wire": 0
+              }
+            ]
+          },
+          {
+            "eligible": true,
+            "net": 1,
+            "wire_queries": [
+              {
+                "node": "node:52",
+                "query": 1,
+                "wire": 0
+              },
+              {
+                "node": "node:53",
+                "query": 2,
+                "wire": 1
+              },
+              {
+                "node": "node:64",
+                "query": 6,
+                "wire": 2
+              },
+              {
+                "node": "node:68",
+                "query": 9,
+                "wire": 3
+              },
+              {
+                "node": "node:75",
+                "query": 12,
+                "wire": 4
+              },
+              {
+                "node": "node:76",
+                "query": 13,
+                "wire": 5
+              },
+              {
+                "node": "node:81",
+                "query": 15,
+                "wire": 6
+              },
+              {
+                "node": "node:82",
+                "query": 16,
+                "wire": 7
+              },
+              {
+                "node": "node:83",
+                "query": 17,
+                "wire": 8
+              },
+              {
+                "node": "node:84",
+                "query": 18,
+                "wire": 9
+              },
+              {
+                "node": "node:85",
+                "query": 19,
+                "wire": 10
+              },
+              {
+                "node": "node:86",
+                "query": 20,
+                "wire": 11
+              },
+              {
+                "node": "node:89",
+                "query": 21,
+                "wire": 12
+              },
+              {
+                "node": "node:91",
+                "query": 22,
+                "wire": 13
+              },
+              {
+                "node": "node:92",
+                "query": 23,
+                "wire": 14
+              },
+              {
+                "node": "node:93",
+                "query": 24,
+                "wire": 15
+              },
+              {
+                "node": "node:97",
+                "query": 27,
+                "wire": 16
+              },
+              {
+                "node": "node:99",
+                "query": 28,
+                "wire": 17
+              },
+              {
+                "node": "node:100",
+                "query": 29,
+                "wire": 18
+              },
+              {
+                "node": "node:102",
+                "query": 30,
+                "wire": 19
+              }
+            ]
+          },
+          {
+            "eligible": true,
+            "net": 2,
+            "wire_queries": [
+              {
+                "node": "node:57",
+                "query": 3,
+                "wire": 0
+              },
+              {
+                "node": "node:58",
+                "query": 4,
+                "wire": 1
+              },
+              {
+                "node": "node:65",
+                "query": 7,
+                "wire": 2
+              },
+              {
+                "node": "node:66",
+                "query": 8,
+                "wire": 3
+              },
+              {
+                "node": "node:70",
+                "query": 10,
+                "wire": 4
+              },
+              {
+                "node": "node:79",
+                "query": 14,
+                "wire": 5
+              },
+              {
+                "node": "node:94",
+                "query": 25,
+                "wire": 6
+              },
+              {
+                "node": "node:95",
+                "query": 26,
+                "wire": 7
+              },
+              {
+                "node": "node:103",
+                "query": 31,
+                "wire": 8
+              }
+            ]
+          },
+          {
+            "eligible": true,
+            "net": 3,
+            "wire_queries": [
+              {
+                "node": "node:60",
+                "query": 5,
+                "wire": 0
+              },
+              {
+                "node": "node:73",
+                "query": 11,
+                "wire": 1
+              }
+            ]
+          }
+        ],
+        "semantics": "eligibility only; runtime-learned transcripts are unavailable"
+      },
+      "value_regions": [
+        {
+          "conditional_arcs": [],
+          "distance_rows": [
+            {
+              "len": 1,
+              "start": 0
+            }
+          ],
+          "distances": [
+            0
+          ],
+          "drive_groups": [
+            {
+              "query": 0,
+              "row": 0
+            }
+          ],
+          "net": 0,
+          "region_wires": [
+            0
+          ],
+          "regions": [
+            {
+              "component": 0,
+              "conditional_arcs": [
+                0,
+                0
+              ],
+              "drive_groups": [
+                0,
+                1
+              ],
+              "wires": [
+                0,
+                1
+              ]
+            }
+          ],
+          "selectors": [],
+          "wires": [
+            {
+              "compact_capture": true,
+              "node": "node:50",
+              "region": 0,
+              "region_local": 0
+            }
+          ]
+        },
+        {
+          "conditional_arcs": [],
+          "distance_rows": [
+            {
+              "len": 2,
+              "start": 0
+            },
+            {
+              "len": 2,
+              "start": 2
+            },
+            {
+              "len": 7,
+              "start": 4
+            },
+            {
+              "len": 7,
+              "start": 11
+            },
+            {
+              "len": 7,
+              "start": 18
+            },
+            {
+              "len": 4,
+              "start": 25
+            }
+          ],
+          "distances": [
+            0,
+            1,
+            1,
+            0,
+            15,
+            0,
+            15,
+            15,
+            1,
+            3,
+            2,
+            2,
+            15,
+            0,
+            1,
+            1,
+            3,
+            2,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            0,
+            3,
+            2,
+            1,
+            0
+          ],
+          "drive_groups": [
+            {
+              "query": 1,
+              "row": 0
+            },
+            {
+              "query": 2,
+              "row": 1
+            },
+            {
+              "query": 9,
+              "row": 2
+            },
+            {
+              "query": 12,
+              "row": 3
+            },
+            {
+              "query": 29,
+              "row": 4
+            },
+            {
+              "query": 28,
+              "row": 5
+            }
+          ],
+          "net": 1,
+          "region_wires": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            14,
+            15,
+            19,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            18,
+            12,
+            13,
+            16,
+            17
+          ],
+          "regions": [
+            {
+              "component": 0,
+              "conditional_arcs": [
+                0,
+                0
+              ],
+              "drive_groups": [
+                0,
+                2
+              ],
+              "wires": [
+                0,
+                2
+              ]
+            },
+            {
+              "component": 1,
+              "conditional_arcs": [
+                0,
+                0
+              ],
+              "drive_groups": [
+                2,
+                4
+              ],
+              "wires": [
+                2,
+                9
+              ]
+            },
+            {
+              "component": 2,
+              "conditional_arcs": [
+                0,
+                0
+              ],
+              "drive_groups": [
+                4,
+                5
+              ],
+              "wires": [
+                9,
+                16
+              ]
+            },
+            {
+              "component": 3,
+              "conditional_arcs": [
+                0,
+                0
+              ],
+              "drive_groups": [
+                5,
+                6
+              ],
+              "wires": [
+                16,
+                20
+              ]
+            }
+          ],
+          "selectors": [],
+          "wires": [
+            {
+              "compact_capture": true,
+              "node": "node:52",
+              "region": 0,
+              "region_local": 0
+            },
+            {
+              "compact_capture": true,
+              "node": "node:53",
+              "region": 0,
+              "region_local": 1
+            },
+            {
+              "compact_capture": true,
+              "node": "node:64",
+              "region": 1,
+              "region_local": 0
+            },
+            {
+              "compact_capture": true,
+              "node": "node:68",
+              "region": 1,
+              "region_local": 1
+            },
+            {
+              "compact_capture": true,
+              "node": "node:75",
+              "region": 1,
+              "region_local": 2
+            },
+            {
+              "compact_capture": true,
+              "node": "node:76",
+              "region": 1,
+              "region_local": 3
+            },
+            {
+              "compact_capture": true,
+              "node": "node:81",
+              "region": 2,
+              "region_local": 0
+            },
+            {
+              "compact_capture": true,
+              "node": "node:82",
+              "region": 2,
+              "region_local": 1
+            },
+            {
+              "compact_capture": true,
+              "node": "node:83",
+              "region": 2,
+              "region_local": 2
+            },
+            {
+              "compact_capture": true,
+              "node": "node:84",
+              "region": 2,
+              "region_local": 3
+            },
+            {
+              "compact_capture": true,
+              "node": "node:85",
+              "region": 2,
+              "region_local": 4
+            },
+            {
+              "compact_capture": true,
+              "node": "node:86",
+              "region": 2,
+              "region_local": 5
+            },
+            {
+              "compact_capture": true,
+              "node": "node:89",
+              "region": 3,
+              "region_local": 0
+            },
+            {
+              "compact_capture": true,
+              "node": "node:91",
+              "region": 3,
+              "region_local": 1
+            },
+            {
+              "compact_capture": true,
+              "node": "node:92",
+              "region": 1,
+              "region_local": 4
+            },
+            {
+              "compact_capture": true,
+              "node": "node:93",
+              "region": 1,
+              "region_local": 5
+            },
+            {
+              "compact_capture": true,
+              "node": "node:97",
+              "region": 3,
+              "region_local": 2
+            },
+            {
+              "compact_capture": true,
+              "node": "node:99",
+              "region": 3,
+              "region_local": 3
+            },
+            {
+              "compact_capture": true,
+              "node": "node:100",
+              "region": 2,
+              "region_local": 6
+            },
+            {
+              "compact_capture": true,
+              "node": "node:102",
+              "region": 1,
+              "region_local": 6
+            }
+          ]
+        },
+        {
+          "conditional_arcs": [
+            {
+              "row": 0,
+              "selector": 0,
+              "source": 3
+            },
+            {
+              "row": 2,
+              "selector": 1,
+              "source": 0
+            }
+          ],
+          "distance_rows": [
+            {
+              "len": 9,
+              "start": 0
+            },
+            {
+              "len": 9,
+              "start": 9
+            },
+            {
+              "len": 9,
+              "start": 18
+            }
+          ],
+          "distances": [
+            0,
+            1,
+            15,
+            15,
+            2,
+            15,
+            3,
+            5,
+            4,
+            15,
+            15,
+            1,
+            15,
+            15,
+            0,
+            1,
+            3,
+            2,
+            15,
+            15,
+            15,
+            0,
+            15,
+            15,
+            15,
+            15,
+            15
+          ],
+          "drive_groups": [
+            {
+              "query": 3,
+              "row": 0
+            },
+            {
+              "query": 14,
+              "row": 1
+            },
+            {
+              "query": 8,
+              "row": 2
+            }
+          ],
+          "net": 2,
+          "region_wires": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "regions": [
+            {
+              "component": 0,
+              "conditional_arcs": [
+                0,
+                2
+              ],
+              "drive_groups": [
+                0,
+                3
+              ],
+              "wires": [
+                0,
+                9
+              ]
+            }
+          ],
+          "selectors": [
+            {
+              "ascent_up_site": "site:292",
+              "horizontal_site": "site:140"
+            },
+            {
+              "ascent_up_site": null,
+              "horizontal_site": "site:292"
+            }
+          ],
+          "wires": [
+            {
+              "compact_capture": true,
+              "node": "node:57",
+              "region": 0,
+              "region_local": 0
+            },
+            {
+              "compact_capture": true,
+              "node": "node:58",
+              "region": 0,
+              "region_local": 1
+            },
+            {
+              "compact_capture": true,
+              "node": "node:65",
+              "region": 0,
+              "region_local": 2
+            },
+            {
+              "compact_capture": true,
+              "node": "node:66",
+              "region": 0,
+              "region_local": 3
+            },
+            {
+              "compact_capture": true,
+              "node": "node:70",
+              "region": 0,
+              "region_local": 4
+            },
+            {
+              "compact_capture": true,
+              "node": "node:79",
+              "region": 0,
+              "region_local": 5
+            },
+            {
+              "compact_capture": true,
+              "node": "node:94",
+              "region": 0,
+              "region_local": 6
+            },
+            {
+              "compact_capture": true,
+              "node": "node:95",
+              "region": 0,
+              "region_local": 7
+            },
+            {
+              "compact_capture": true,
+              "node": "node:103",
+              "region": 0,
+              "region_local": 8
+            }
+          ]
+        },
+        {
+          "conditional_arcs": [
+            {
+              "row": 0,
+              "selector": 0,
+              "source": 1
+            },
+            {
+              "row": 1,
+              "selector": 1,
+              "source": 0
+            }
+          ],
+          "distance_rows": [
+            {
+              "len": 2,
+              "start": 0
+            },
+            {
+              "len": 2,
+              "start": 2
+            }
+          ],
+          "distances": [
+            0,
+            15,
+            15,
+            0
+          ],
+          "drive_groups": [
+            {
+              "query": 5,
+              "row": 0
+            },
+            {
+              "query": 11,
+              "row": 1
+            }
+          ],
+          "net": 3,
+          "region_wires": [
+            0,
+            1
+          ],
+          "regions": [
+            {
+              "component": 0,
+              "conditional_arcs": [
+                0,
+                2
+              ],
+              "drive_groups": [
+                0,
+                2
+              ],
+              "wires": [
+                0,
+                2
+              ]
+            }
+          ],
+          "selectors": [
+            {
+              "ascent_up_site": "site:298",
+              "horizontal_site": "site:188"
+            },
+            {
+              "ascent_up_site": null,
+              "horizontal_site": "site:298"
+            }
+          ],
+          "wires": [
+            {
+              "compact_capture": true,
+              "node": "node:60",
+              "region": 0,
+              "region_local": 0
+            },
+            {
+              "compact_capture": true,
+              "node": "node:73",
+              "region": 0,
+              "region_local": 1
+            }
+          ]
+        }
+      ]
     },
     "fixed_signal_queries": [
       {

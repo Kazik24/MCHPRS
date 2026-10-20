@@ -15,6 +15,14 @@ pub(super) struct Tables {
     pub(super) declines: Vec<Value>,
 }
 
+struct BindingLookups<'a> {
+    guards: HashMap<&'a str, &'a GuardDto>,
+    contacts: HashMap<&'a str, &'a ContactDto>,
+    nodes: HashMap<&'a str, &'a NodeDto>,
+    wire_plans: HashMap<&'a str, &'a WirePlanDto>,
+    routes: HashMap<&'a str, &'a RouteDto>,
+}
+
 pub(super) fn export(graph: &CompileGraph) -> Tables {
     let Some(catalog) = &graph.plans.instant.boundaries else {
         return Tables::default();
@@ -167,7 +175,13 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
             validate_references(row, &ids)?;
         }
     }
-    let nodes: HashMap<_, _> = graph.nodes.iter().map(|node| (node.id.as_str(), node)).collect();
+    let lookups = BindingLookups {
+        guards: graph.guards.iter().map(|row| (row.id.as_str(), row)).collect(),
+        contacts: graph.contacts.iter().map(|row| (row.id.as_str(), row)).collect(),
+        nodes: graph.nodes.iter().map(|row| (row.id.as_str(), row)).collect(),
+        wire_plans: graph.wire_plans.iter().map(|row| (row.node.as_str(), row)).collect(),
+        routes: graph.routes.as_ref().into_iter().flatten().map(|row| (row.id.as_str(), row)).collect(),
+    };
     let mut actors = HashSet::new();
     let mut resources = HashSet::new();
     let mut resets = HashSet::new();
@@ -180,7 +194,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
         }
         for reset in array(cell, "resets")? {
             let reset = insert_owner(reset, "node:", &mut resets)?;
-            if !matches!(nodes[reset].kind, NodeKindDto::Observer { .. }) {
+            if !matches!(lookups.nodes[reset].kind, NodeKindDto::Observer { .. }) {
                 return Err(invalid("cell reset is not an observer"));
             }
         }
@@ -196,7 +210,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
     for corridor in &graph.instant_corridors {
         for wire in array(corridor, "wires")? {
             let wire = insert_owner(wire, "node:", &mut wires)?;
-            if !matches!(nodes[wire].kind, NodeKindDto::Wire { .. }) || classic_wires.contains(wire) {
+            if !matches!(lookups.nodes[wire].kind, NodeKindDto::Wire { .. }) || classic_wires.contains(wire) {
                 return Err(invalid("corridor contains a non-wire or classic-owned wire"));
             }
         }
@@ -223,7 +237,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
         {
             return Err(invalid("port owner or direction is invalid"));
         }
-        validate_binding(&port["binding"], graph)?;
+        validate_binding(&port["binding"], &lookups)?;
     }
     Ok(())
 }
@@ -268,7 +282,7 @@ fn validate_references(value: &Value, ids: &HashSet<&str>) -> Result<(), ExportE
     Ok(())
 }
 
-fn validate_binding(value: &Value, graph: &GraphTablesDto) -> Result<(), ExportError> {
+fn validate_binding(value: &Value, lookups: &BindingLookups<'_>) -> Result<(), ExportError> {
     let reference = |field: &str, prefix: &str| {
         value[field]
             .as_str()
@@ -283,7 +297,7 @@ fn validate_binding(value: &Value, graph: &GraphTablesDto) -> Result<(), ExportE
             reference("relation", "wire_relation:")?;
         }
         Some("callback") => {
-            validate_occurrence(&value["occurrence"], graph)?;
+            validate_occurrence(&value["occurrence"], lookups)?;
         }
         Some("comparator") => {
             reference("plan", "comparator_plan:")?;
@@ -296,11 +310,7 @@ fn validate_binding(value: &Value, graph: &GraphTablesDto) -> Result<(), ExportE
         }
         Some("guard_site" | "guard_state") => {
             let id = reference("guard", "guard:")?;
-            let guard = graph
-                .guards
-                .iter()
-                .find(|guard| guard.id == id)
-                .ok_or_else(|| invalid("missing boundary guard"))?;
+            let guard = lookups.guards.get(id).ok_or_else(|| invalid("missing boundary guard"))?;
             let guard = serde_json::to_value(guard).map_err(|_| invalid("cannot inspect boundary guard"))?;
             let expected_kind = if value["kind"] == "guard_site" { "site" } else { "state" };
             if guard["kind"] != expected_kind || guard["test"] != value["test"] {
@@ -312,38 +322,26 @@ fn validate_binding(value: &Value, graph: &GraphTablesDto) -> Result<(), ExportE
         }
         Some("contact_alternative") => {
             let id = reference("contact", "contact:")?;
-            let contact = graph
-                .contacts
-                .iter()
-                .find(|contact| contact.id == id)
-                .ok_or_else(|| invalid("missing contact alternative"))?;
+            let contact = lookups.contacts.get(id).ok_or_else(|| invalid("missing contact alternative"))?;
             if value["ordinal"].as_u64().is_none_or(|ordinal| ordinal >= contact.variants.len() as u64) {
                 return Err(invalid("contact alternative ordinal is out of range"));
             }
         }
         Some("observer_watch") => {
             let id = reference("observer", "node:")?;
-            let node = graph
-                .nodes
-                .iter()
-                .find(|node| node.id == id)
-                .ok_or_else(|| invalid("missing observer boundary"))?;
+            let node = lookups.nodes.get(id).ok_or_else(|| invalid("missing observer boundary"))?;
             if !matches!(&node.kind,NodeKindDto::Observer{watched,..} if value["site"]==watched.as_str()) {
                 return Err(invalid("observer boundary does not match its watched site"));
             }
         }
         Some("captured_wire" | "wire_neighborhood") => {
             let id = reference("wire", "node:")?;
-            let wire = graph
-                .wire_plans
-                .iter()
-                .find(|wire| wire.node == id)
-                .ok_or_else(|| invalid("boundary wire has no neighborhood"))?;
+            let wire = lookups.wire_plans.get(id).ok_or_else(|| invalid("boundary wire has no neighborhood"))?;
             if !wire.canonical_neighbors.iter().any(|site| value["neighbor"] == site.as_str()) {
                 return Err(invalid("boundary wire neighbor is not canonical"));
             }
             if value["kind"] == "captured_wire" {
-                let delivery = validate_occurrence(&value["occurrence"], graph)?;
+                let delivery = validate_occurrence(&value["occurrence"], lookups)?;
                 if wire.turbo_route.as_deref() != value["occurrence"]["route"].as_str()
                     || delivery.view != "captured"
                     || value["neighbor"] != delivery.target
@@ -355,14 +353,13 @@ fn validate_binding(value: &Value, graph: &GraphTablesDto) -> Result<(), ExportE
         Some("fixed_read") => {
             let id = reference("node", "node:")?;
             reference("site", "site:")?;
-            if !graph.nodes.iter().any(|node| {
-                node.id == id
-                    && matches!(
-                        node.kind,
-                        NodeKindDto::Electrical {
-                            component: ElectricalKindDto::NoteBlock { .. }
-                        }
-                    )
+            if !lookups.nodes.get(id).is_some_and(|node| {
+                matches!(
+                    node.kind,
+                    NodeKindDto::Electrical {
+                        component: ElectricalKindDto::NoteBlock { .. }
+                    }
+                )
             }) {
                 return Err(invalid("fixed read is not owned by a note block"));
             }
@@ -375,13 +372,9 @@ fn validate_binding(value: &Value, graph: &GraphTablesDto) -> Result<(), ExportE
     Ok(())
 }
 
-fn validate_occurrence<'a>(value: &Value, graph: &'a GraphTablesDto) -> Result<&'a RouteDeliveryDto, ExportError> {
+fn validate_occurrence<'a>(value: &Value, lookups: &'a BindingLookups<'_>) -> Result<&'a RouteDeliveryDto, ExportError> {
     let route = value["route"].as_str().ok_or_else(|| invalid("callback occurrence has no route"))?;
-    let route = graph
-        .routes
-        .as_ref()
-        .and_then(|routes| routes.iter().find(|row| row.id == route))
-        .ok_or_else(|| invalid("callback occurrence has no route"))?;
+    let route = lookups.routes.get(route).ok_or_else(|| invalid("callback occurrence has no route"))?;
     let ordinal = value["ordinal"]
         .as_u64()
         .and_then(|ordinal| usize::try_from(ordinal).ok())

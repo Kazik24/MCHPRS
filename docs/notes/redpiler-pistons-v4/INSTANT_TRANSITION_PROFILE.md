@@ -1,5 +1,12 @@
 # Minimized transition inference profile, 2026-10-20
 
+Follow-up: the proposed guard-packing pass was 8.38% slower in five production
+pairs and was excluded. A separate ordinary-route Shape-elision candidate
+removed zero rows from the actual BubbleSort program and was withdrawn; see
+[the admission census and next measurement](ORDINARY_ROUTE_EFFECTS_INVESTIGATION.md).
+The profile below remains evidence of retained costs, rather than proof that
+either rejected representation accelerates them.
+
 The minimized O5 stable-input BubbleSort program now spends substantial time
 outside its remaining exact wire walks. Compile pure boundary guards into the
 existing compact Boolean representation before another broad propagation change.

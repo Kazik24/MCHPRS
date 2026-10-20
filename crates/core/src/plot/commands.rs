@@ -1961,7 +1961,7 @@ mod security_tests {
             let before = [plot.world.get_block(control), plot.world.get_block(output)];
             let mut messages = |last: &str| {
                 let mut messages = Vec::new();
-                // Analysis includes pass and preparation-table rows before its final status.
+                // Read the bounded analysis response through its final status.
                 for _ in 0..256 {
                     let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
                     assert_eq!(id, 0x72, "analysis must send system chat");
@@ -2018,7 +2018,7 @@ mod security_tests {
             assert!(
                 lines
                     .iter()
-                    .any(|line| line.starts_with("Compiled O0 with Graph in ") && line.contains("backend nodes"))
+                    .any(|line| line.starts_with("Compiled O0 with Graph: ") && line.ends_with(" nodes."))
             );
             assert!(lines.iter().any(|line| line.contains("passes configured:")));
             assert!(!lines.iter().any(|line| line.contains("Graph preparation table estimate")));

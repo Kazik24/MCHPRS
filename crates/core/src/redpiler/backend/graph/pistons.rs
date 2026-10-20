@@ -63,9 +63,15 @@ impl GraphBackend {
                 (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
                 (false, true) if self.early_resource_retraction(piston) => mchprs_world::PistonAction::RetractWithoutPull,
                 (false, true) => mchprs_world::PistonAction::Retract,
-                _ => return Ok(()),
+                _ => {
+                    #[cfg(test)]
+                    self.test_recorder.piston_sample_census.sample(piston, None);
+                    return Ok(());
+                }
             }
         };
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.sample(piston, Some(action));
         self.enqueue_piston(PistonRequest { piston, action, source });
         Ok(())
     }

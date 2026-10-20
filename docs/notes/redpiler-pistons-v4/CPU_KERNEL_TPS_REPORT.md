@@ -1,6 +1,22 @@
 # Interpreter and maximum compilation TPS
 
-These frozen measurements precede promotion to the normal production tiers.
+The newer 2026-10-20 production release measurements are:
+
+| Build | Interpreter TPS | Current maximum TPS | Scope |
+|---|---:|---:|---|
+| FPU_MROWW | 387.01 | 1,347.51 | Five rotated rounds; O5 + stable inputs; random switching. |
+| CPU_BUBBLESORT | Not remeasured in this batch | 428.70 | Five reference runs in the rejected guard-packing comparison; complete sort. |
+
+FPU's best single compiled run was 1,638.65 TPS in ordinary O5; its O5 median
+was 1,281.73 TPS. Native FPU output remains constant, so these are switching-cost
+measurements rather than verified arithmetic throughput. See the
+[current FPU methods, state/future checks and raw results](FPU_CURRENT_INFERENCE.md)
+and the [guard-packing comparison](COMPILED_GUARD_PREDICATES.md). The user-accepted
+300 TPS BubbleSort baseline is a separate compiled baseline, not an interpreter
+measurement. Host conditions and timing windows differ from the older table
+below; use paired measurements to attribute a change to an optimization.
+
+The frozen measurements below precede promotion to the normal production tiers.
 Current activation is described in [O1–O5 production levels](../../REDPILER_OPTIMIZATION_LEVELS.md);
 the historical build flags and timing evidence below remain unchanged.
 

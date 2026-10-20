@@ -111,6 +111,8 @@ impl GraphBackend {
         #[cfg(test)]
         let old = *current;
         *current = wire;
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.invalidate();
         self.dirty[node.index()] = true;
         self.invalidate_wire_programs(node);
         #[cfg(test)]

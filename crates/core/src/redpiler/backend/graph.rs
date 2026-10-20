@@ -21,6 +21,9 @@ mod instant;
 #[cfg(test)]
 #[path = "graph/tests/instant_cpu.rs"]
 mod instant_cpu_tests;
+#[cfg(test)]
+#[path = "graph/tests/piston_sample_census.rs"]
+mod piston_sample_census;
 mod instant_kernel;
 mod instant_proxy;
 #[cfg(test)]
@@ -250,6 +253,9 @@ pub(crate) struct TestRecorder {
     memory_cell_activity: Vec<[u64; 2]>,
     /// Optional per-actor Instant attempt outcomes for the active CPU census.
     instant_kernel_activity: Vec<[u64; 7]>,
+    piston_sample_census: piston_sample_census::EpisodeSampleCensus,
+    guard_kind_census_enabled: bool,
+    guard_kind_census: [Cell<u64>; 14],
 }
 
 #[cfg(test)]
@@ -514,11 +520,11 @@ impl GraphBackend {
         options: &crate::redpiler::CompilerOptions,
         monitor: Arc<TaskMonitor>,
     ) -> Result<Self, GraphBackendError> {
-        // Keep research controls on the general executor when O2 enables the whole program.
+        // Keep research controls unowned when O2 enables both classic compilers.
         let mut pipeline = passes::default_graph_pipeline(options);
         pipeline
             .entries
-            .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-fixed-classic"));
+            .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if matches!(builder.name(), "compile-fixed-classic" | "compile-classic-redstone")));
         Self::compile_with_pipeline(world, bounds, ticks, options, &pipeline, monitor)
     }
 
@@ -2075,6 +2081,16 @@ impl GraphBackend {
     #[cfg(test)]
     pub(crate) fn enable_callback_census(&mut self) {
         self.test_recorder.callback_census_enabled = true;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn enable_piston_sample_census(&mut self) {
+        self.test_recorder.piston_sample_census.enable();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn piston_sample_census(&self) -> serde_json::Value {
+        self.test_recorder.piston_sample_census.to_json()
     }
 
     #[cfg(test)]

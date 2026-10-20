@@ -20,7 +20,6 @@ let recordIndex;
 let graphData;
 let connections;
 let neighbors;
-let reverseRefs;
 let selectedId;
 let viewCenter;
 let currentView;
@@ -39,6 +38,8 @@ let programMode = 'physical';
 let activeNodeIds = [];
 const MAX_VIEW_NODES = 400;
 const MAX_VIEW_EDGES = 800;
+const MAX_GRAPH_BYTES = 2 * 1024 * 1024 * 1024;
+const STREAM_GRAPH_BYTES = 32 * 1024 * 1024;
 
 function typedIds(value, found = []) {
   if (typeof value === "string" && /^[a-z_]+:/.test(value)) {
@@ -48,6 +49,190 @@ function typedIds(value, found = []) {
   else if (Array.isArray(value)) value.forEach((child) => typedIds(child, found));
   else if (value && typeof value === "object") Object.values(value).forEach((child) => typedIds(child, found));
   return found;
+}
+
+function visitTypedIds(value, visit) {
+  const pending = [value];
+  while (pending.length) {
+    const current = pending.pop();
+    if (typeof current === 'string' && /^[a-z_]+:/.test(current)) {
+      if (!current.startsWith('snapshot:') && !/^[a-z_]+:(0|[1-9][0-9]*)$/.test(current)) throw Error(`Malformed typed ID: ${current}`);
+      visit(current);
+    } else if (Array.isArray(current)) {
+      for (let i = current.length - 1; i >= 0; i--) pending.push(current[i]);
+    } else if (current && typeof current === 'object') {
+      for (const child of Object.values(current)) pending.push(child);
+    }
+  }
+}
+
+class StreamingJsonParser {
+  constructor(stream) {
+    this.reader = stream.getReader();
+    this.decoder = new TextDecoder();
+    this.buffer = '';
+    this.position = 0;
+    this.finished = false;
+  }
+
+  async fill() {
+    if (this.position < this.buffer.length || this.finished) return;
+    while (this.position >= this.buffer.length && !this.finished) {
+      this.buffer = '';
+      this.position = 0;
+      const chunk = await this.reader.read();
+      if (chunk.done) {
+        this.buffer = this.decoder.decode();
+        this.finished = true;
+      } else this.buffer = this.decoder.decode(chunk.value, { stream: true });
+    }
+  }
+
+  async peek() {
+    await this.fill();
+    return this.buffer[this.position];
+  }
+
+  async take() {
+    const value = await this.peek();
+    if (value !== undefined) this.position++;
+    return value;
+  }
+
+  async whitespace() {
+    while (true) {
+      if (this.position >= this.buffer.length) await this.fill();
+      const ch = this.buffer[this.position];
+      if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') this.position++;
+      else return;
+    }
+  }
+
+  async string() {
+    if (await this.take() !== '"') throw Error('Malformed JSON string.');
+    const parts = ['"'];
+    let start = this.position, escaped = false;
+    while (true) {
+      while (this.position < this.buffer.length) {
+        const ch = this.buffer[this.position++];
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') {
+          parts.push(this.buffer.slice(start, this.position));
+          return JSON.parse(parts.join(''));
+        }
+      }
+      {
+        parts.push(this.buffer.slice(start));
+        await this.fill();
+        start = this.position;
+        if (this.finished && this.position >= this.buffer.length) throw Error('Unterminated JSON string.');
+      }
+    }
+  }
+
+  async composite() {
+    const first = await this.peek();
+    if (first !== '{' && first !== '[') throw Error('Malformed JSON composite.');
+    const closing = [];
+    let inString = false, escaped = false;
+    const parts = [];
+    let start = this.position;
+    while (true) {
+      while (this.position < this.buffer.length) {
+        const ch = this.buffer[this.position++];
+        if (inString) {
+          if (escaped) escaped = false;
+          else if (ch === '\\') escaped = true;
+          else if (ch === '"') inString = false;
+          continue;
+        }
+        if (ch === '"') inString = true;
+        else if (ch === '{') { closing.push('}'); if (closing.length > 512) throw Error('JSON nesting is too deep.'); }
+        else if (ch === '[') { closing.push(']'); if (closing.length > 512) throw Error('JSON nesting is too deep.'); }
+        else if (ch === '}' || ch === ']') {
+          if (closing.pop() !== ch) throw Error('Malformed JSON composite.');
+          if (!closing.length) {
+            parts.push(this.buffer.slice(start, this.position));
+            return JSON.parse(parts.join(''));
+          }
+        }
+      }
+      parts.push(this.buffer.slice(start));
+      await this.fill();
+      start = this.position;
+      if (this.finished && this.position >= this.buffer.length) throw Error('Unterminated JSON composite.');
+    }
+  }
+
+  async value(depth = 0) {
+    if (depth > 512) throw Error('JSON nesting is too deep.');
+    await this.whitespace();
+    const ch = await this.peek();
+    if (ch === '"') return this.string();
+    if (ch === '{') {
+      this.position++;
+      const result = {};
+      await this.whitespace();
+      if (await this.peek() === '}') { this.position++; return result; }
+      while (true) {
+        await this.whitespace();
+        const key = await this.string();
+        await this.whitespace();
+        if (await this.take() !== ':') throw Error('Malformed JSON object.');
+        const value = await this.value(depth + 1);
+        Object.defineProperty(result, key, { value, enumerable: true, configurable: true, writable: true });
+        await this.whitespace();
+        const delimiter = await this.take();
+        if (delimiter === '}') return result;
+        if (delimiter !== ',') throw Error('Malformed JSON object.');
+      }
+    }
+    if (ch === '[') {
+      this.position++;
+      const result = [];
+      await this.whitespace();
+      if (await this.peek() === ']') { this.position++; return result; }
+      while (true) {
+        await this.whitespace();
+        const next = await this.peek();
+        result.push(next === '{' || next === '[' ? await this.composite() : await this.value(depth + 1));
+        await this.whitespace();
+        const delimiter = await this.take();
+        if (delimiter === ']') return result;
+        if (delimiter !== ',') throw Error('Malformed JSON array.');
+      }
+    }
+    const parts = [];
+    let start = this.position;
+    while (true) {
+      while (this.position < this.buffer.length) {
+        const current = this.buffer[this.position];
+        if (current === ',' || current === ']' || current === '}' || current === ' ' || current === '\n' || current === '\r' || current === '\t') break;
+        this.position++;
+      }
+      if (this.position < this.buffer.length || this.finished) {
+        parts.push(this.buffer.slice(start, this.position));
+        const token = parts.join('');
+        if (!token) throw Error('Malformed JSON value.');
+        return JSON.parse(token);
+      }
+      parts.push(this.buffer.slice(start));
+      await this.fill();
+      start = this.position;
+    }
+  }
+
+  async parse() {
+    try {
+      const result = await this.value();
+      await this.whitespace();
+      if (await this.peek() !== undefined) throw Error('Extra content after JSON value.');
+      return result;
+    } finally {
+      this.reader.releaseLock?.();
+    }
+  }
 }
 
 function validateInstantEvents(kernels, ids) {
@@ -141,6 +326,7 @@ function validateCpuKernels(program, ids) {
 function validateInstantPrograms(programs, graph, ids) {
   if (programs == null) return;
   const fail = (where) => { throw Error(`Invalid compiled program: ${where}`); };
+  if (typeof programs !== 'object' || Array.isArray(programs)) fail('table');
   const ref = (value, kind, where) => {
     if (typeof value !== 'string' || !value.startsWith(`${kind}:`) || !ids.has(value)) fail(`${where} reference`);
   };
@@ -170,14 +356,39 @@ function validateInstantPrograms(programs, graph, ids) {
     if (!Array.isArray(wires)) fail(`${where} transport wires`);
     return wires;
   };
+  const partitionRanges = (rows, flatLength, where) => {
+    if (!Array.isArray(rows)) fail(`${where} ranges`);
+    let cursor = 0;
+    for (const row of rows) {
+      const r = range(row, flatLength, where);
+      if (r[0] !== cursor) fail(`${where} partition`);
+      cursor = r[1];
+    }
+    if (cursor !== flatLength) fail(`${where} partition`);
+  };
+  const listsMatch = (ranges, values, expected, where) => {
+    partitionRanges(ranges, values.length, where);
+    let cursor = 0;
+    expected.forEach((list, i) => {
+      const [start, end] = ranges[i];
+      if (end - start !== list.length || list.some((value, j) => values[start + j] !== value)) fail(`${where} dependencies`);
+      cursor = end;
+    });
+    if (cursor !== values.length) fail(`${where} dependencies`);
+  };
 
   const drives = programs.instant_drives;
-  if (drives != null) {
-    if (!Array.isArray(drives.wires) || !Array.isArray(drives.queries) || !Array.isArray(drives.terms) || !Array.isArray(drives.conditions)) fail('drive tables');
+  if (!drives || !Array.isArray(drives.wires) || !Array.isArray(drives.queries) || !Array.isArray(drives.terms) || !Array.isArray(drives.conditions)) fail('drive tables');
+  {
+    const driveWires = new Set();
     for (const row of drives.wires) {
       ref(row?.node, 'node', 'drive wire');
+      if (driveWires.has(row.node)) fail('duplicate drive wire');
+      driveWires.add(row.node);
       if (row.query != null) index(row.query, drives.queries.length, 'drive query');
     }
+    const expectedWires = new Set(graph.nodes.filter((node) => node.kind?.kind === 'wire').map((node) => node.id));
+    if (driveWires.size !== expectedWires.size || [...expectedWires].some((wire) => !driveWires.has(wire))) fail('drive wire coverage');
     for (const [i, query] of drives.queries.entries()) {
       scalar(query?.constant, 15, `drive query ${i}`);
       range(query.terms, drives.terms.length, `drive query ${i}`);
@@ -210,6 +421,8 @@ function validateInstantPrograms(programs, graph, ids) {
     }
   }
 
+  if (!Array.isArray(programs.signal_channels) || !Array.isArray(programs.stable_logic) || !Array.isArray(programs.value_regions)) fail('product tables');
+
   const channels = programs.signal_channels;
   if (channels != null) {
     if (!Array.isArray(channels) || !drives) fail('signal channel table');
@@ -220,11 +433,12 @@ function validateInstantPrograms(programs, graph, ids) {
       if (!Array.isArray(channel.wires) || channel.wires.length !== wires.length || channel.wires.some((id, j) => id !== wires[j])) fail(`signal channel ${i} wire mapping`);
       source(channel.input, drives.conditions.length, `signal channel ${i}`);
       if (!Array.isArray(channel.profiles) || channel.profiles.length !== 2 || channel.profiles.some((row) => !Array.isArray(row) || row.length !== wires.length || row.some((v) => !Number.isInteger(v) || v < 0 || v > 15))) fail(`signal channel ${i} profiles`);
+      if (!Array.isArray(channel.transitions) || wires.length === 0 || channel.transitions.length !== wires.length * 2) fail(`signal channel ${i} transition count`);
       index(channel.discriminator, Math.max(1, wires.length), `signal channel ${i} discriminator`);
-      if (!Array.isArray(channel.transitions)) fail(`signal channel ${i} transitions`);
-      for (const transition of channel.transitions) {
+      for (const [at, transition] of channel.transitions.entries()) {
         scalar(transition?.old_input, 1, `signal channel ${i} transition input`);
         index(transition?.root, wires.length, `signal channel ${i} root`);
+        if (transition.old_input !== Math.floor(at / wires.length) || transition.root !== at % wires.length) fail(`signal channel ${i} transition order`);
         if (transition.transcript == null) continue;
         const transcript = transition.transcript;
         if (!Number.isSafeInteger(transcript.selections) || transcript.selections < 0 || !Array.isArray(transcript.final_powers)
@@ -271,10 +485,22 @@ function validateInstantPrograms(programs, graph, ids) {
       for (const field of ['input_users', 'wire_outputs']) if (!Array.isArray(row[field])) fail(`stable logic ${i} ${field}`);
       if (row.input_users.length !== row.inputs.length || row.wire_outputs.length !== wires.length
         || !Array.isArray(row.input_user_expressions) || !Array.isArray(row.wire_output_indices)) fail(`stable logic ${i} dependency tables`);
-      row.input_users.forEach((r) => range(r, row.input_user_expressions.length, `stable logic ${i} input users`));
-      row.wire_outputs.forEach((r) => range(r, row.wire_output_indices.length, `stable logic ${i} wire outputs`));
       row.input_user_expressions.forEach((v) => index(v, wires.length, `stable logic ${i} expression dependency`));
       row.wire_output_indices.forEach((v) => index(v, row.outputs.length, `stable logic ${i} output dependency`));
+      const expectedInputUsers = row.inputs.map(() => []);
+      row.expressions.forEach((expression, expressionIndex) => {
+        const [start, end] = expression.terms;
+        const seen = new Set();
+        for (let term = start; term < end; term++) seen.add(row.terms[term].input);
+        for (const input of seen) expectedInputUsers[input].push(expressionIndex);
+      });
+      listsMatch(row.input_users, row.input_user_expressions, expectedInputUsers, `stable logic ${i} input users`);
+      const expectedWireOutputs = wires.map(() => []);
+      row.outputs.forEach((output, outputIndex) => {
+        const seen = new Set(output.candidates.map((candidate) => candidate.wire));
+        for (const wire of seen) expectedWireOutputs[wire].push(outputIndex);
+      });
+      listsMatch(row.wire_outputs, row.wire_output_indices, expectedWireOutputs, `stable logic ${i} wire outputs`);
     }
   }
 
@@ -296,15 +522,28 @@ function validateInstantPrograms(programs, graph, ids) {
         }
         else if (wire.region_local !== null) fail(`value region ${i} absent region local`);
       }
-      row.regions.forEach((region) => {
-        for (const field of ['wires', 'drive_groups', 'conditional_arcs']) range(region[field], field === 'wires' ? row.region_wires.length : field === 'drive_groups' ? row.drive_groups.length : row.conditional_arcs.length, `value region ${i} component`);
-      });
+      for (const [field, valuesTable] of [['wires', row.region_wires], ['drive_groups', row.drive_groups], ['conditional_arcs', row.conditional_arcs]]) {
+        partitionRanges(row.regions.map((region) => region[field]), valuesTable.length, `value region ${i} component ${field}`);
+      }
       row.region_wires.forEach((v) => index(v, wires.length, `value region ${i} wire`));
+      for (const [wireIndex, wire] of row.wires.entries()) {
+        if (wire.region === null) continue;
+        const [start, end] = row.regions[wire.region].wires;
+        if (row.region_wires[start + wire.region_local] !== wireIndex || wire.region_local >= end - start) fail(`value region ${i} reverse wire mapping`);
+      }
       for (const group of row.drive_groups) { index(group?.query, drives?.queries.length || 0, `value region ${i} drive query`); index(group.row, row.distance_rows.length, `value region ${i} drive row`); }
-      for (const arc of row.conditional_arcs) { index(arc?.source, wires.length, `value region ${i} arc source`); index(arc.row, row.distance_rows.length, `value region ${i} arc row`); index(arc.selector, row.selectors.length, `value region ${i} selector`); }
+      for (const arc of row.conditional_arcs) { index(arc?.source, row.region_wires.length, `value region ${i} arc source`); index(arc.row, row.distance_rows.length, `value region ${i} arc row`); index(arc.selector, row.selectors.length, `value region ${i} selector`); }
       for (const selector of row.selectors) { ref(selector?.horizontal_site, 'site', `value region ${i} selector`); if (selector.ascent_up_site !== null) ref(selector.ascent_up_site, 'site', `value region ${i} ascent selector`); }
       for (const distance of row.distance_rows) range([distance?.start, distance?.start + distance?.len], row.distances.length, `value region ${i} distance row`);
       row.distances.forEach((v) => scalar(v, 15, `value region ${i} distance`));
+      for (const region of row.regions) {
+        const count = region.wires[1] - region.wires[0];
+        const [groupStart, groupEnd] = region.drive_groups, [arcStart, arcEnd] = region.conditional_arcs;
+        for (const group of row.drive_groups.slice(groupStart, groupEnd)) if (row.distance_rows[group.row].len !== count) fail(`value region ${i} drive row width`);
+        for (const arc of row.conditional_arcs.slice(arcStart, arcEnd)) {
+          if (arc.source >= count || row.distance_rows[arc.row].len !== count) fail(`value region ${i} conditional row width`);
+        }
+      }
     }
   }
 
@@ -315,6 +554,7 @@ function validateInstantPrograms(programs, graph, ids) {
     for (const [i, row] of eligibility.nets.entries()) {
       const wires = netWires(row?.net, `transition eligibility ${i}`);
       if (seen.has(row.net) || typeof row.eligible !== 'boolean') fail(`transition eligibility ${i}`); seen.add(row.net);
+      if (row.net !== i) fail(`transition eligibility ${i} ordering`);
       if (!row.eligible) { if ('wire_queries' in row) fail(`declined transition eligibility ${i}`); continue; }
       if (!Array.isArray(row.wire_queries) || row.wire_queries.length !== wires.length || !drives) fail(`transition eligibility ${i} queries`);
       for (let j = 0; j < row.wire_queries.length; j++) {
@@ -322,6 +562,39 @@ function validateInstantPrograms(programs, graph, ids) {
         ref(query.node, 'node', `transition eligibility ${i}`); if (query.node !== wires[query.wire]) fail(`transition eligibility ${i} wire mapping`);
         index(query.query, drives.queries.length, `transition eligibility ${i} query`);
       }
+    }
+    if (eligibility.nets.length !== (graph.instant_transport || []).length) fail('transition eligibility coverage');
+  }
+}
+
+function validateInstantTransport(nets, graph, ids) {
+  const fail = () => { throw Error('Invalid compiled transport mapping.'); };
+  const nodes = new Map(graph.nodes.map((row) => [row.id, row]));
+  const sites = new Map(graph.sites.map((row) => [row.id, row]));
+  const plans = new Map((graph.wire_plans || []).map((row) => [row.node, row]));
+  const owners = new Set();
+  for (const net of nets || []) {
+    if (!Array.isArray(net.wires) || !Array.isArray(net.sites) || !Array.isArray(net.site_wire)
+      || !Array.isArray(net.conditional_inputs) || !Array.isArray(net.canonical_repeaters)
+      || net.site_wire.length !== net.sites.length || net.conditional_inputs.length !== net.wires.length
+      || typeof net.ordered_receivers !== 'boolean') fail();
+    if (new Set(net.wires).size !== net.wires.length || new Set(net.sites).size !== net.sites.length) fail();
+    for (const wire of net.wires) {
+      if (!plans.has(wire) || owners.has(wire)) fail();
+      owners.add(wire);
+    }
+    for (const [i, siteId] of net.sites.entries()) {
+      if (!ids.has(siteId)) fail();
+      const localWire = net.site_wire[i];
+      if (!Number.isSafeInteger(localWire) || (localWire !== 4294967295 && (localWire < 0 || localWire >= net.wires.length))) fail();
+      if (localWire !== 4294967295) {
+        const source = sites.get(siteId)?.source;
+        if (source?.kind !== 'component' || source.node !== net.wires[localWire]) fail();
+      }
+    }
+    for (const mask of net.conditional_inputs) if (!Number.isSafeInteger(mask) || mask < 0 || mask > 0xffffff) fail();
+    for (const node of net.canonical_repeaters) {
+      if (!nodes.has(node) || nodes.get(node).kind?.component?.type !== 'repeater') fail();
     }
   }
 }
@@ -349,9 +622,10 @@ function validateGraph(data) {
     if (typeof snapshot.id !== "string" || !snapshot.id.startsWith("snapshot:") || ids.has(snapshot.id)) throw Error(`Invalid or duplicate snapshot ID: ${snapshot.id}`);
     ids.add(snapshot.id);
   }
-  for (const ref of typedIds(data)) if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`);
+  visitTypedIds(data, (ref) => { if (!ids.has(ref)) throw Error(`Dangling graph reference: ${ref}`); });
   validateInstantEvents(data.graph.instant_event_kernels || [], ids);
   validateCpuKernels(data.graph.cpu_kernels, ids);
+  validateInstantTransport(data.graph.instant_transport || [], data.graph, ids);
   validateInstantPrograms(data.graph.instant_programs, data.graph, ids);
   const memoryReaders = new Set();
   for (const memory of data.graph.bud_memory_reads || []) {
@@ -1009,10 +1283,14 @@ function sourceNode(siteId, index) {
   return siteId;
 }
 
-function indexConnections(data, index) {
+function indexConnections(data, index, onConnection = null) {
   const edges = new Map();
   const adjacent = new Map();
   const routeOwners = new Map();
+  const classicWireNodes = new Set();
+  for (const net of data.graph.classic_nets || []) {
+    for (const wire of net.wires) classicWireNodes.add(wire.node);
+  }
   function ownRoute(route, node) {
     if (!route) return;
     if (!routeOwners.has(route)) routeOwners.set(route, new Set());
@@ -1024,6 +1302,7 @@ function indexConnections(data, index) {
   }
   function add(id, source, target, type, record) {
     const connection = { id, source, target, type, record };
+    if (onConnection) { onConnection(connection); return; }
     edges.set(id, connection);
     for (const node of new Set([source, target])) {
       if (!adjacent.has(node)) adjacent.set(node, []);
@@ -1031,12 +1310,12 @@ function indexConnections(data, index) {
     }
   }
   for (const link of data.graph.power_links) {
-    if ((data.graph.classic_nets || []).some((net) => net.wires.some((wire) => wire.node === sourceNode(link.from.site, index)) || (link.to.kind === 'input' && net.wires.some((wire) => wire.node === link.to.node)))) continue;
+    if (classicWireNodes.has(sourceNode(link.from.site, index)) || (link.to.kind === 'input' && classicWireNodes.has(link.to.node))) continue;
     const target = link.to.kind === "input" ? link.to.node : sourceNode(link.to.site, index);
     add(link.id, sourceNode(link.from.site, index), target, "power_link", link);
   }
   for (const relation of data.graph.wire_relations) {
-    if ((data.graph.classic_nets || []).some((net) => net.wires.some((wire) => wire.node === relation.from))) continue;
+    if (classicWireNodes.has(relation.from)) continue;
     add(relation.id, relation.from, sourceNode(relation.to, index), "wire_relation", relation);
   }
   for (const route of data.graph.routes || []) {
@@ -1075,10 +1354,10 @@ function connect(adjacency, id, source, target, type, record) {
   return edge;
 }
 
-function makeCompiledView(data, physicalIndex, originalConnections) {
+function makeCompiledView(data, physicalIndex, originalConnections = null) {
   const graph = data.graph, programs = graph.instant_programs;
   if (!programs) return null;
-  const index = new Map(physicalIndex), nodes = new Set(), wireToNet = new Map(), netIds = [];
+  const index = physicalIndex, nodes = new Set(), wireToNet = new Map(), netIds = [];
   let edgeOrdinal = 0;
   const edges = new Map(), adjacent = new Map(), edgeBySignature = new Map();
   const addNode = (id) => { if (index.has(id)) nodes.add(id); };
@@ -1093,7 +1372,6 @@ function makeCompiledView(data, physicalIndex, originalConnections) {
     }
     const id = `compiled_edge:${edgeOrdinal++}`;
     const edge = connect(adjacent, id, source, target, type, { ...record, count: record.count || 1 });
-    edge.signature = signature;
     edges.set(id, edge);
     edgeBySignature.set(signature, edge);
     nodes.add(source); nodes.add(target);
@@ -1112,26 +1390,30 @@ function makeCompiledView(data, physicalIndex, originalConnections) {
   const endpoint = (id) => wireToNet.get(id) || id;
   const internalWitnesses = new Map();
   const witnessCounts = new Map();
-  for (const connection of originalConnections.values()) {
+  const addMappingWitness = (connection) => {
     const source = endpoint(connection.source), target = endpoint(connection.target);
     if (source === target && wireToNet.has(connection.source) && wireToNet.has(connection.target)) {
       const net = Number(source.slice('compiled_net:'.length));
       const stats = internalWitnesses.get(net) || {};
       stats[connection.type] = (stats[connection.type] || 0) + 1;
       internalWitnesses.set(net, stats);
-      continue;
+      return;
     }
     const signature = `${connection.type}\0${source}\0${target}`;
     const aggregate = witnessCounts.get(signature) || { count: 0, examples: [] };
     aggregate.count++;
     if (aggregate.examples.length < 4) aggregate.examples.push(connection.id);
     witnessCounts.set(signature, aggregate);
-  }
+  };
+  if (originalConnections) for (const connection of originalConnections.values()) addMappingWitness(connection);
+  else indexConnections(data, physicalIndex, addMappingWitness);
   for (const [signature, aggregate] of witnessCounts) {
     const [original_type, source, target] = signature.split('\0');
     addEdge(source, target, 'mapping_witness', { kind: 'original graph mapping witness', original_type, ...aggregate }, original_type);
   }
   for (const [net, witnesses] of internalWitnesses) index.get(netIds[net]).internal_witnesses = witnesses;
+  witnessCounts.clear();
+  internalWitnesses.clear();
 
   const drives = programs.instant_drives;
   const queryTargets = new Map();
@@ -1202,11 +1484,12 @@ function makeCompiledView(data, physicalIndex, originalConnections) {
   }
 
   const cpu = graph.cpu_kernels;
+  const pistonNodes = new Map(graph.pistons.map((row) => [row.id, row.node]));
   if (cpu) cpu.entries.forEach((entry, ordinal) => {
     const id = `compiled_predicate:${ordinal}`;
     index.set(id, { id, name: `CPU predicate ${ordinal}`, kind: { kind: 'compiled_predicate' }, program_kind: 'cpu_predicate', predicate_index: ordinal, actor: entry.actor });
     nodes.add(id);
-    const actor = graph.pistons.find((row) => row.id === entry.actor)?.node;
+    const actor = pistonNodes.get(entry.actor);
     if (actor) addEdge(endpoint(actor), id, 'program_predicate', { kind: 'actor predicate', actor: entry.actor }, entry.actor);
     for (const field of ['main', 'quasi', 'valid']) {
       const predicate = entry[field];
@@ -1226,11 +1509,8 @@ function makeCompiledView(data, physicalIndex, originalConnections) {
     values: new Map((programs.value_regions || []).map((row) => [row.net, row])),
     eligibility: new Map((programs.transition_eligibility?.nets || []).map((row) => [row.net, row])),
   };
-  plan.searchIds = [...nodes].filter((id) => index.has(id));
-  plan.searchText = new Map(plan.searchIds.map((id) => {
-    const row = index.get(id);
-    return [id, `${id} ${recordLabel(row)} ${row.name || ''} ${row.actor || ''} ${row.program_kind || ''}`.toLowerCase()];
-  }));
+  edgeBySignature.clear();
+  plan.searchIds = plan.nodes;
   return plan;
 }
 
@@ -1273,11 +1553,11 @@ function selectView(center, overview, edgeTypes, depth, availableNodes = activeN
     edges.set(connection.id, connection);
   }
   if (overview) {
+    for (const connection of connections.values()) include(connection);
     for (const id of availableNodes) {
       if (nodes.size >= MAX_VIEW_NODES) { truncated = true; break; }
       nodes.add(id);
     }
-    for (const connection of connections.values()) include(connection);
   } else {
     const selectedConnection = connections.get(center);
     if (selectedConnection) include(selectedConnection);
@@ -1401,11 +1681,15 @@ function initGraph(data) {
   physicalIndex = indexRecords(data);
   recordIndex = physicalIndex;
   graphData = data;
-  const topology = indexConnections(data, physicalIndex);
-  physicalConnections = topology.edges;
-  physicalNeighbors = topology.adjacent;
-  compiledPlan = makeCompiledView(data, physicalIndex, physicalConnections);
+  physicalConnections = null;
+  physicalNeighbors = null;
+  compiledPlan = makeCompiledView(data, physicalIndex);
   const hasPrograms = !!compiledPlan && (compiledPlan.netIds.length > 0 || compiledPlan.nodes.some((id) => id.startsWith('compiled_')));
+  if (!hasPrograms) {
+    const topology = indexConnections(data, physicalIndex);
+    physicalConnections = topology.edges;
+    physicalNeighbors = topology.adjacent;
+  }
   programMode = hasPrograms ? 'compiled' : 'physical';
   $('program-view').disabled = !compiledPlan;
   $('program-view').value = programMode;
@@ -1432,19 +1716,20 @@ function initGraph(data) {
 
 function setActiveProgramView() {
   if (programMode === 'compiled' && compiledPlan) {
+    physicalConnections = null;
+    physicalNeighbors = null;
     recordIndex = compiledPlan.index; connections = compiledPlan.edges; neighbors = compiledPlan.adjacent;
     activeNodeIds = compiledPlan.nodes;
     compiledWireToNet = compiledPlan.wireToNet;
   } else {
+    if (!physicalConnections) {
+      const topology = indexConnections(graphData, physicalIndex);
+      physicalConnections = topology.edges;
+      physicalNeighbors = topology.adjacent;
+    }
     programMode = 'physical'; recordIndex = physicalIndex; connections = physicalConnections; neighbors = physicalNeighbors;
     activeNodeIds = graphData?.graph.nodes.map((row) => row.id) || [];
     compiledWireToNet = compiledPlan?.wireToNet || new Map();
-  }
-  reverseRefs = new Map();
-  for (const [id, row] of recordIndex) for (const ref of new Set(typedIds(row))) {
-    if (ref === id) continue;
-    if (!reverseRefs.has(ref)) reverseRefs.set(ref, []);
-    reverseRefs.get(ref).push(id);
   }
 }
 
@@ -1623,11 +1908,24 @@ function referenceButton(id, label = id) {
   return button;
 }
 
-function referenceSection(title, ids, label) {
+function referenceSection(title, ids, label, total = ids.length, more = null) {
   if (!ids.length) return;
-  const heading = document.createElement('h3'); heading.textContent = `${title} (${ids.length})`;
+  const heading = document.createElement('h3'); heading.textContent = `${title} (${total})`;
   const list = document.createElement('div'); list.className = 'reference-list';
   list.append(...ids.map((id) => referenceButton(id, label ? label(id) : `${id} · ${recordLabel(recordIndex.get(id))}`)));
+  if (more && ids.length < total) {
+    const button = document.createElement('button'); button.textContent = `Show next ${Math.min(100, total - ids.length)} of ${total - ids.length} remaining`;
+    let loaded = ids.length;
+    button.addEventListener('click', () => {
+      const page = more(loaded);
+      list.append(document.createTextNode(`Showing ${Math.min(total, page.offset + page.ids.length)} of ${total}.`));
+      list.append(...page.ids.map((id) => referenceButton(id, `${id} · ${recordLabel(recordIndex.get(id))}`)));
+      loaded += page.ids.length;
+      if (loaded >= total) button.remove();
+      else button.textContent = `Show next ${Math.min(100, total - loaded)} of ${total - loaded} remaining`;
+    });
+    list.append(button);
+  }
   $('dependencies').append(heading, list);
 }
 
@@ -1669,7 +1967,24 @@ function inspect(id) {
   referenceSection('Incoming', adjacent.filter((edge) => edge.target === id).map((edge) => edge.id), describeEdge);
   referenceSection('Outgoing', adjacent.filter((edge) => edge.source === id).map((edge) => edge.id), describeEdge);
   referenceSection('References', [...new Set(typedIds(record))].filter((ref) => ref !== id && recordIndex.has(ref)));
-  referenceSection('Referenced by', reverseRefs.get(id) || []);
+  const reverse = reverseReferences(id, 0);
+  referenceSection('Referenced by', reverse.ids, null, reverse.total, (offset) => reverseReferences(id, offset));
+}
+
+function reverseReferences(target, offset, limit = 100) {
+  const ids = [];
+  if (target.startsWith('compiled_')) return { target, ids, total: 0, offset };
+  let total = 0;
+  for (const [id, row] of recordIndex) {
+    if (id === target) continue;
+    let found = false;
+    visitTypedIds(row, (ref) => { if (ref === target) found = true; });
+    if (found) {
+      if (total >= offset && ids.length < limit) ids.push(id);
+      total++;
+    }
+  }
+  return { target, ids, total, offset };
 }
 
 function appendCompiledInspector(id, record) {
@@ -1730,17 +2045,32 @@ function search() {
   $('matches').replaceChildren();
   if (!query) return;
   const mapped = programMode === 'compiled' ? compiledWireToNet.get(query) : null;
-  const exact = mapped ? [[mapped, recordIndex.get(mapped)]] : recordIndex.has(query) ? [[query, recordIndex.get(query)]] : [];
-  let matches;
+  const exact = mapped ? [[mapped, recordIndex.get(mapped)]]
+    : recordIndex.has(query) && !(programMode === 'physical' && query.startsWith('compiled_')) ? [[query, recordIndex.get(query)]] : [];
+  let matches = [...exact], total = exact.length;
   if (programMode === 'compiled' && compiledPlan) {
-    matches = [...exact, ...compiledPlan.searchIds.filter((id) => id !== query && id !== mapped && id !== exact[0]?.[0] && compiledPlan.searchText.get(id).includes(query)).map((id) => [id, recordIndex.get(id)])];
+    for (const id of compiledPlan.searchIds) {
+      if (id === query || id === mapped || id === exact[0]?.[0]) continue;
+      const row = recordIndex.get(id);
+      const text = `${id} ${recordLabel(row)} ${row.name || ''} ${row.actor || ''} ${row.program_kind || ''}`.toLowerCase();
+      if (text.includes(query)) {
+        total++;
+        if (matches.length < 50) matches.push([id, row]);
+      }
+    }
   } else {
-    matches = [...exact, ...[...recordIndex.entries()].filter(([id, row]) => id !== query && `${id} ${JSON.stringify(row)}`.toLowerCase().includes(query))];
+    for (const [id, row] of recordIndex) {
+      if (id.startsWith('compiled_') || id === query) continue;
+      if (`${id} ${JSON.stringify(row)}`.toLowerCase().includes(query)) {
+        total++;
+        if (matches.length < 50) matches.push([id, row]);
+      }
+    }
   }
   const count = document.createElement('p');
-  count.className = 'muted'; count.textContent = `${matches.length} results${matches.length > 50 ? ' · showing first 50; refine search' : ''}`;
+  count.className = 'muted'; count.textContent = `${total} results${total > 50 ? ' · showing first 50; refine search' : ''}`;
   $('matches').append(count);
-  for (const [id, row] of matches.slice(0, 50)) $('matches').append(referenceButton(id, `${id} · ${recordLabel(row)}`));
+  for (const [id, row] of matches) $('matches').append(referenceButton(id, `${id} · ${recordLabel(row)}`));
 }
 
 function visualRecord(id) {
@@ -1801,8 +2131,13 @@ async function readFile(file) {
   if (!file) return;
   $('error').hidden = true;
   try {
-    if (file.size > 64 * 1024 * 1024) throw Error('Graph file exceeds the 64 MiB limit.');
-    const data = validateGraph(JSON.parse(await file.text()));
+    if (file.size > MAX_GRAPH_BYTES) throw Error('Graph file exceeds the 2 GiB limit.');
+    let parsed;
+    if (file.size > STREAM_GRAPH_BYTES) {
+      if (typeof file.stream !== 'function') throw Error('This browser cannot stream large graph files.');
+      parsed = await new StreamingJsonParser(file.stream()).parse();
+    } else parsed = JSON.parse(await file.text());
+    const data = validateGraph(parsed);
     initGraph(data);
   } catch (error) {
     $('error').textContent = error.message || String(error);
@@ -1816,7 +2151,8 @@ $('program-view').addEventListener('change', () => {
   programMode = $('program-view').value;
   setActiveProgramView();
   const mappedCenter = programMode === 'compiled' ? compiledWireToNet.get(previous) : previous?.startsWith('compiled_net:') ? null : previous;
-  viewCenter = mappedCenter && activeNodeIds.includes(mappedCenter) ? mappedCenter : activeNodeIds[0];
+  viewCenter = mappedCenter && activeNodeIds.includes(mappedCenter) ? mappedCenter
+    : activeNodeIds.includes(previous) ? previous : activeNodeIds[0];
   selectedId = viewCenter;
   const enabled = new Set(programMode === 'compiled'
     ? ['mapping_witness', 'program_input', 'program_output', 'program_predicate']

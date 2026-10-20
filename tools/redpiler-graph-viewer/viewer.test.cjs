@@ -79,7 +79,7 @@ function makeViewer() {
     },
   };
   let cytoscapeOptions;
-  const context = vm.createContext({ document, setTimeout, clearTimeout });
+  const context = vm.createContext({ document, setTimeout, clearTimeout, TextDecoder, TextEncoder });
   vm.runInContext(fs.readFileSync(path.join(__dirname, 'vendor/cytoscape.min.js'), 'utf8'), context);
   const realCytoscape = context.cytoscape;
   let cy;
@@ -296,6 +296,23 @@ for (const count of [1, 20_001]) {
   });
 }
 
+test('overview admits connected endpoints before filling the node budget', () => {
+  const viewer = makeViewer();
+  const view = viewer.evaluate(`(() => {
+    activeNodeIds = Array.from({length: 450}, (_, i) => 'node:' + i);
+    recordIndex = new Map(activeNodeIds.map(id => [id, {id, kind:{kind:'wire'}}]));
+    connections = new Map([['edge:late', {id:'edge:late', source:'node:420', target:'node:421', type:'program_input'}]]);
+    neighbors = new Map();
+    const result = selectView(null, true, new Set(['program_input']), 1, activeNodeIds);
+    return {nodes:Array.from(result.nodes), edges:Array.from(result.edges, edge => edge.id)};
+  })()`);
+  assert.ok(view.nodes.includes('node:420'));
+  assert.ok(view.nodes.includes('node:421'));
+  assert.deepEqual(Array.from(view.edges), ['edge:late']);
+  assert.ok(view.nodes.length <= 400);
+  assert.ok(view.edges.length <= 800);
+});
+
 test("a high-degree fixture keeps the layout bounded and every edge endpoint present", async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());
@@ -358,18 +375,30 @@ test('fixed classic summary tolerates old exports and reports compile or decline
 function compiledFixture() {
   const graph = adderFixture();
   const wire = graph.graph.wire_plans[0].node;
+  const wireSite = graph.graph.sites.find((site) => site.source.kind === 'component' && site.source.node === wire).id;
   graph.graph.instant_transport = [{
-    id: 'instant_transport:0', wires: [wire], sites: [], site_wire: [],
+    id: 'instant_transport:0', wires: [wire], sites: [wireSite], site_wire: [0],
     conditional_inputs: [0], ordered_receivers: false, canonical_repeaters: [],
   }];
   graph.graph.instant_programs = {
     instant_drives: {
-      wires: [{ node: wire, query: 0 }],
+      wires: graph.graph.nodes.filter((node) => node.kind?.kind === 'wire').map((node) => ({ node: node.id, query: node.id === wire ? 0 : null })),
       queries: [{ constant: 0, terms: [0, 1] }],
       terms: [{ source: { kind: 'output', node: graph.graph.nodes[0].id }, condition: 0, attenuation: 1 }],
       conditions: [{ kind: 'always' }],
     },
-    signal_channels: [], stable_logic: [], value_regions: [],
+    signal_channels: [{ net: 0, wires: [wire], input: { source: { kind: 'output', node: graph.graph.nodes[0].id }, condition: 0 },
+      profiles: [[0], [15]], discriminator: 0,
+      transitions: [{ old_input: 0, root: 0, transcript: null }, { old_input: 1, root: 0, transcript: null }] }],
+    stable_logic: [{ net: 0, wires: [wire], expressions: [{ constant: 0, terms: [0, 1] }],
+      inputs: [{ source: { kind: 'output', node: graph.graph.nodes[0].id }, condition: 0 }],
+      terms: [{ input: 0, attenuation: 1 }], input_users: [[0, 1]], input_user_expressions: [0],
+      outputs: [{ site: wireSite, candidates: [{ wire: 0, slot: 0, admission: true }] }],
+      wire_outputs: [[0, 1]], wire_output_indices: [0] }],
+    value_regions: [{ net: 0, wires: [{ node: wire, compact_capture: true, region: 0, region_local: 0 }],
+      regions: [{ component: 0, wires: [0, 1], drive_groups: [0, 1], conditional_arcs: [0, 1] }],
+      region_wires: [0], drive_groups: [{ query: 0, row: 0 }], conditional_arcs: [{ source: 0, row: 1, selector: 0 }],
+      selectors: [{ horizontal_site: wireSite, ascent_up_site: null }], distance_rows: [{ start: 0, len: 1 }, { start: 1, len: 1 }], distances: [0, 0] }],
     transition_eligibility: { semantics: 'eligibility only; runtime-learned transcripts are unavailable', nets: [{ net: 0, eligible: false }] },
   };
   return graph;
@@ -412,6 +441,10 @@ test('compiled view rejects malformed local operands and keeps old graph loaded'
   const malformed = [
     (g) => { g.graph.instant_programs.instant_drives.queries[0].terms = [0, 2]; },
     (g) => { g.graph.instant_programs.instant_drives.terms[0].condition = 1; },
+    (g) => { g.graph.instant_programs.signal_channels[0].transitions[1].root = 1; },
+    (g) => { g.graph.instant_programs.stable_logic[0].input_users = [[0, 0]]; },
+    (g) => { g.graph.instant_programs.value_regions[0].conditional_arcs[0].source = 1; },
+    (g) => { g.graph.instant_programs.value_regions[0].distance_rows[0].len = 2; },
     (g) => { g.graph.instant_programs.transition_eligibility.nets[0] = { net: 0, eligible: true, wire_queries: [{ wire: 1, node: g.graph.wire_plans[0].node, query: 0 }] }; },
     (g) => { g.graph.instant_transport[0].wires[0] = 'node:999999'; },
   ];
@@ -467,6 +500,58 @@ test('adder overview includes all components and power links; inspection keeps t
   assert.match(viewer.elements.get('details').textContent, new RegExp(guard));
   viewer.evaluate(`focusRecord("${guard}")`);
   assert.match(viewer.elements.get('details').textContent, new RegExp(`"id": "${guard}"`));
+});
+
+test('large graph files stream across UTF-8, escape, token and row boundaries', async (t) => {
+  const viewer = makeViewer();
+  t.after(() => viewer.cy?.destroy());
+  const graph = adderFixture();
+  graph.stage = 'FPU 🌍 with \\"quoted\\" text';
+  const bytes = new TextEncoder().encode(JSON.stringify(graph, null, 2));
+  let reads = 0;
+  const file = {
+    size: 33 * 1024 * 1024,
+    text() { throw new Error('large files must not use File.text()'); },
+    stream() {
+      let offset = 0;
+      return { getReader() { return { async read() {
+        reads++;
+        if (offset >= bytes.length) return { done: true };
+        const end = Math.min(offset + 7, bytes.length);
+        const value = bytes.slice(offset, end); offset = end;
+        return { done: false, value };
+      } }; } };
+    },
+  };
+  await viewer.elements.get('file').dispatch('change', { target: { files: [file] } });
+  assert.equal(viewer.elements.get('error').hidden, true, viewer.elements.get('error').textContent);
+  assert.equal(viewer.cy.nodes().length, 152);
+  assert.ok(reads > 10);
+  assert.equal(viewer.evaluate('graphData.stage'), graph.stage);
+});
+
+test('streaming JSON rejects truncation and trailing content safely', async () => {
+  const viewer = makeViewer();
+  const parse = (text) => viewer.evaluate(`(async () => await new StreamingJsonParser({getReader(){let done=false;return {async read(){if(done)return {done:true};done=true;return {done:false,value:new TextEncoder().encode(${JSON.stringify(text)})}}}}}).parse())()`);
+  await assert.rejects(parse('{"a":[1,2]} trailing'));
+  await assert.rejects(parse('{"a":[1,2]'));
+  const proto = await parse('{"__proto__":{"polluted":true}}');
+  assert.equal(Object.prototype.hasOwnProperty.call(proto, '__proto__'), true);
+  assert.equal(Object.getPrototypeOf(proto).polluted, undefined);
+});
+
+test('referenced-by details page through every result without duplicates', () => {
+  const viewer = makeViewer();
+  viewer.evaluate(`recordIndex = new Map([
+    ['node:0', { source: 'guard:0' }], ['node:1', { source: 'guard:0' }],
+    ['node:2', { source: 'guard:0' }], ['node:3', { source: 'guard:0' }]
+  ])`);
+  const first = viewer.evaluate(`reverseReferences('guard:0', 0, 2)`);
+  const second = viewer.evaluate(`reverseReferences('guard:0', 2, 2)`);
+  assert.deepEqual(Array.from(first.ids), ['node:0', 'node:1']);
+  assert.deepEqual(Array.from(second.ids), ['node:2', 'node:3']);
+  assert.equal(first.total, 4);
+  assert.equal(second.total, 4);
 });
 
 test('following a filtered wire relation reveals it and both endpoints', async (t) => {

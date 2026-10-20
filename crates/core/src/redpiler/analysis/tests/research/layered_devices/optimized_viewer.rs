@@ -10,6 +10,7 @@ fn export_current_fpu_o5_graph_for_viewer() {
     let mut options = CompilerOptions::parse("--optimize --stable-instant-inputs").unwrap();
     options.budget_multiplier = 8;
     let monitor = std::sync::Arc::new(TaskMonitor::default());
+    println!("Preparing FPU O5 + stable-input programs...");
     let candidate = crate::redpiler::analysis::graph::prepare_candidate_graph(
         &world,
         bounds,
@@ -20,7 +21,9 @@ fn export_current_fpu_o5_graph_for_viewer() {
     .unwrap();
     assert!(!candidate.graph.plans.cpu_kernels.entries.is_empty());
     assert!(!candidate.graph.plans.stable_instant_logic.nets.is_empty());
+    println!("Exporting validated FPU inspection tables...");
     let export = crate::redpiler::analysis::export_json::from_graph(&candidate.report, &candidate.graph).unwrap();
+    println!("Serializing FPU graph JSON...");
     let bytes = serde_json::to_vec(&export).unwrap();
     let directory = root().join("target/graph-viewer-current");
     std::fs::create_dir_all(&directory).unwrap();

@@ -184,7 +184,11 @@ impl GraphBackend {
         scratch.drives.resize(scratch.drives.len().max(net.wires.len()), u8::MAX);
         scratch.drives[root as usize] = drive;
         scratch.sampled.push(root);
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.begin(0, !net.ordered_receivers);
         let result = self.execute_transport::<false>(&net, root, &mut scratch, None);
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.end();
         if let Some(recording) = scratch.learning.take()
             && result.is_ok()
         {
@@ -742,7 +746,12 @@ impl TransportReference {
 
 impl GraphBackend {
     pub(super) fn run_signal_transcript(&mut self, net: &TransportNet, transcript: &SignalTranscript) -> Result<(), GraphExecutionError> {
-        self.run_signal_operations(net, &transcript.ops, transcript.selections)
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.begin(2, !net.ordered_receivers);
+        let result = self.run_signal_operations(net, &transcript.ops, transcript.selections);
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.end();
+        result
     }
 
     pub(super) fn run_signal_operations(&mut self, net: &TransportNet, ops: &[SignalOp], selections: u32) -> Result<(), GraphExecutionError> {

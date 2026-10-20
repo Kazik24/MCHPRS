@@ -238,7 +238,12 @@ impl GraphBackend {
         self.counts.instant_transition_hits += 1;
         self.counts.instant_transition_operations += program.ops.len() as u64;
         self.counts.instant_transition_wire_visits_elided += program.visits;
-        self.run_signal_operations(net, &program.ops, program.selections)
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.begin(1, !net.ordered_receivers);
+        let result = self.run_signal_operations(net, &program.ops, program.selections);
+        #[cfg(test)]
+        self.test_recorder.piston_sample_census.end();
+        result
     }
 }
 
