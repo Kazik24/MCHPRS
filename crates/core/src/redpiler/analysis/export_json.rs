@@ -135,6 +135,10 @@ struct GraphTablesDto {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_boundary_ports: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    instant_transport: Vec<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instant_transport_stats: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_declines: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     classic_nets: Vec<serde_json::Value>,
@@ -1117,6 +1121,33 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         instant_cells: boundaries.cells,
         instant_corridors: boundaries.corridors,
         instant_boundary_ports: boundaries.ports,
+        instant_transport: source
+            .plans
+            .instant_transport
+            .nets
+            .iter()
+            .enumerate()
+            .map(|(index, net)| {
+                serde_json::json!({
+                    "id": typed_id("instant_transport", index),
+                    "wires": net.wires.iter().map(|wire| typed_id("node", wire.node.index())).collect::<Vec<_>>(),
+                    "sites": net.sites.iter().map(|site| typed_id("site", site.index())).collect::<Vec<_>>(),
+                    "site_wire": net.site_wire,
+                })
+            })
+            .collect(),
+        instant_transport_stats: Some(serde_json::json!({
+            "corridors": source.plans.instant_transport.stats.corridors,
+            "admitted": source.plans.instant_transport.stats.admitted,
+            "too_small": source.plans.instant_transport.stats.too_small,
+            "owner_overlap": source.plans.instant_transport.stats.owner_overlap,
+            "no_route_or_facts": source.plans.instant_transport.stats.no_route_or_facts,
+            "conditional_input": source.plans.instant_transport.stats.conditional_input,
+            "no_dust_dependency": source.plans.instant_transport.stats.no_dust_dependency,
+            "unsafe_receiver": source.plans.instant_transport.stats.unsafe_receiver,
+            "unsafe_input": source.plans.instant_transport.stats.unsafe_input,
+            "unsupported": source.plans.instant_transport.stats.unsupported,
+        })),
         instant_declines: boundaries.declines,
         classic_nets: classic::export(source),
         fixed_signal_queries: fixed_signals::export(source),
@@ -1489,6 +1520,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     }
     if source.plans.instant.boundaries.is_some() {
         capabilities.push("instant_boundaries");
+    }
+    if !source.plans.instant_transport.nets.is_empty() {
+        capabilities.push("instant_transport");
     }
     if source.plans.instant.layers.is_some() {
         capabilities.push("instant_layers");

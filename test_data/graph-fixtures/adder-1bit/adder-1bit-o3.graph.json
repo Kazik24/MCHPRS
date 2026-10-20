@@ -38,6 +38,18 @@
     }
   },
   "graph": {
+    "instant_transport_stats": {
+      "admitted": 0,
+      "conditional_input": 0,
+      "corridors": 0,
+      "no_dust_dependency": 0,
+      "no_route_or_facts": 0,
+      "owner_overlap": 0,
+      "too_small": 0,
+      "unsafe_input": 0,
+      "unsafe_receiver": 0,
+      "unsupported": 0
+    },
     "fixed_signal_queries": [
       {
         "id": "fixed_signal:0",

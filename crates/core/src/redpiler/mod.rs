@@ -257,6 +257,10 @@ pub enum BackendKind {
 pub struct GraphExecutionCounts {
     /// Closed single-wire transfers executed without a Turbo walk.
     pub instant_wire_node_invocations: u64,
+    /// Dense queue-preserving local Turbo transport invocations.
+    pub instant_transport_invocations: u64,
+    /// Wire visits handled by dense local transport programs.
+    pub instant_transport_wire_visits: u64,
     /// Reduced instant pull waves actually executed after entry and FIFO checks.
     pub instant_kernel_invocations: u64,
     pub classic_net_invocations: u64,

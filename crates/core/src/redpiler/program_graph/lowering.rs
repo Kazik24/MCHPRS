@@ -220,6 +220,17 @@ impl CircuitDraft {
             }
         }
 
+        let mut transport_wire_by_node = if self.plans.instant_transport.nets.is_empty() {
+            Vec::new()
+        } else {
+            vec![None; nodes.len()]
+        };
+        for (net_index, net) in self.plans.instant_transport.nets.iter().enumerate() {
+            for (wire_index, wire) in net.wires.iter().enumerate() {
+                transport_wire_by_node[wire.node.index()] = Some((net_index as u32, wire_index as u32));
+            }
+        }
+
         let mut bud_read_by_node = if self.plans.bud_memory_reads.is_empty() {
             Vec::new()
         } else {
@@ -268,6 +279,15 @@ impl CircuitDraft {
             wires: self.wires.into_boxed_slice(),
             dust_paths: self.plans.dust_paths.into_boxed_slice(),
             dust_path_by_wire: dust_path_by_wire.into_boxed_slice(),
+            instant_transport: self
+                .plans
+                .instant_transport
+                .nets
+                .into_iter()
+                .map(std::sync::Arc::new)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            transport_wire_by_node: transport_wire_by_node.into_boxed_slice(),
             sites: self.sites.into_boxed_slice(),
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),

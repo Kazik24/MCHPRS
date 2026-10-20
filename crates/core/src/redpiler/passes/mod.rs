@@ -15,6 +15,7 @@ pub(crate) mod compile_instant_events;
 pub(crate) mod compile_instant_layers;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
+pub(crate) mod compile_instant_transport;
 pub(crate) mod compile_instant_wire_nodes;
 pub(crate) mod compile_mixed_classic;
 pub(crate) mod compile_wire_callbacks;
@@ -384,6 +385,10 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             enabled: true,
         });
     }
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_instant_transport::CompileInstantTransport),
+        enabled: level >= 5,
+    });
     #[cfg(feature = "unsafe-turbo-fixed-point")]
     let pipeline = {
         let mut pipeline = pipeline;

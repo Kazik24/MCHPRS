@@ -7,11 +7,13 @@ use crate::redpiler::{CompilerOptions, passes};
 mod admission;
 mod closed_nets;
 mod instant_events;
+mod kernel_interface;
 mod kernel_proofs;
 mod large_builds;
 mod max_tps;
 mod memory_only;
 mod random_fpu;
+mod transport;
 mod wire_nodes;
 
 #[test]

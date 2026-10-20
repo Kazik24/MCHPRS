@@ -31,6 +31,11 @@ impl CircuitDraft {
         change: PlanChange,
         monitor: &crate::redpiler::TaskMonitor,
     ) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
+        // Until every transport dependency has a narrower typed revision, any new
+        // plan publication must prove an installed transport against current inputs.
+        if !self.plans.instant_transport.nets.is_empty() {
+            self.validate_instant_transport(monitor)?;
+        }
         match change {
             PlanChange::CpuKernels => {
                 self.validate_cpu_kernels(monitor)?;
@@ -63,6 +68,7 @@ impl CircuitDraft {
                 self.validate_instant_wire_nodes(monitor)?;
                 Ok(None)
             }
+            PlanChange::InstantTransport => Ok(None),
             PlanChange::Layers => self.validate_instant_layers(monitor),
             PlanChange::Boundaries => {
                 // Boundary publication also removes old proxies, affecting fixed ownership.
@@ -142,6 +148,7 @@ impl CircuitDraft {
         self.validate_cpu_kernels(monitor)?;
         self.validate_bud_memory_reads(monitor)?;
         self.validate_instant_wire_nodes(monitor)?;
+        self.validate_instant_transport(monitor)?;
         self.validate_abstract_instant_nets(monitor)?;
         self.validate_instant_regions()?;
         self.validate_fixed_signals(monitor)?;
@@ -396,6 +403,23 @@ impl CircuitDraft {
                     index,
                 });
             }
+        }
+        Ok(())
+    }
+
+    fn validate_instant_transport(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.instant_transport.nets.is_empty() {
+            return Ok(());
+        }
+        let expected = instant_transport::infer(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "instant transport",
+            index: 0,
+        })?;
+        if self.plans.instant_transport != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "instant transport",
+                index: 0,
+            });
         }
         Ok(())
     }

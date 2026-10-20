@@ -26,6 +26,8 @@ mod instant_proxy_tests;
 mod instant_recognition_tests;
 #[path = "production_tiers.rs"]
 mod production_tier_tests;
+#[path = "instant_transport.rs"]
+mod instant_transport_tests;
 #[path = "reset_elision.rs"]
 mod reset_elision_tests;
 #[path = "stable_region.rs"]

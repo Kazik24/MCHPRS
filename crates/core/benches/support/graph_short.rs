@@ -23,6 +23,8 @@ use std::{
 const NAMES: [&str; 4] = ["cpu_bubblesort", "anpu_pong", "fpu_divider", "counter_basic"];
 const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     instant_wire_node_invocations: 0,
+    instant_transport_invocations: 0,
+    instant_transport_wire_visits: 0,
     instant_kernel_invocations: 0,
     classic_net_invocations: 0,
     classic_receiver_ops: 0,
@@ -296,7 +298,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"instant_wire_node_invocations":value.instant_wire_node_invocations,"instant_kernel_invocations":value.instant_kernel_invocations,"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
+    json!({"instant_wire_node_invocations":value.instant_wire_node_invocations,"instant_transport_invocations":value.instant_transport_invocations,"instant_transport_wire_visits":value.instant_transport_wire_visits,"instant_kernel_invocations":value.instant_kernel_invocations,"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
         "ticks":value.ticks,"scheduled_ticks":value.scheduled_ticks,"callbacks":value.callbacks,
         "wire_walks":value.wire_walks,"dust_path_power_samples_elided":value.dust_path_power_samples_elided,
         "piston_samples":value.piston_samples,"piston_actions":value.piston_actions,"deferred_publications":value.deferred_publications})
@@ -305,6 +307,8 @@ fn counts(value: GraphExecutionCounts) -> Value {
 fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> Value {
     counts(GraphExecutionCounts {
         instant_wire_node_invocations: after.instant_wire_node_invocations - before.instant_wire_node_invocations,
+        instant_transport_invocations: after.instant_transport_invocations - before.instant_transport_invocations,
+        instant_transport_wire_visits: after.instant_transport_wire_visits - before.instant_transport_wire_visits,
         instant_kernel_invocations: after.instant_kernel_invocations - before.instant_kernel_invocations,
         classic_net_invocations: after.classic_net_invocations - before.classic_net_invocations,
         classic_receiver_ops: after.classic_receiver_ops - before.classic_receiver_ops,

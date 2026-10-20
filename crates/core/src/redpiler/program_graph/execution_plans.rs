@@ -19,6 +19,7 @@ pub(crate) enum PlanChange {
     InstantEvents,
     CpuKernels,
     BudMemoryReads,
+    InstantTransport,
     InstantWireNodes,
     AbstractInstantNets,
     WireCallbacks,
@@ -109,6 +110,8 @@ pub(crate) struct ExecutionPlans {
     pub(crate) cpu_kernels: CpuKernelPlans,
     /// Exact private storage/read pairs; their original state and update work remain owned by Graph.
     pub(crate) bud_memory_reads: Vec<BudMemoryRead>,
+    /// Closed queue-only wire corridors with dense local Turbo bindings.
+    pub(crate) instant_transport: InstantTransport,
     /// Local wire-power certificates, retaining the original ordered walks.
     pub(crate) dust_paths: Vec<DustPathPlan>,
     /// Ownership boundaries and their dependent instant programs.

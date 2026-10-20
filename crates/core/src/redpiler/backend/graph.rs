@@ -33,6 +33,7 @@ mod power;
 mod projection;
 mod reset;
 mod sites;
+mod transport;
 #[cfg(test)]
 #[path = "graph/tests/unchecked_classic_anpu.rs"]
 mod unchecked_classic_anpu;
@@ -317,6 +318,8 @@ pub(crate) struct GraphBackend {
     component_sites: Vec<Option<SiteId>>,
     /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
     wire_walks: Vec<WireWalk>,
+    /// Closed transport programs reuse private scratch between propagation episodes.
+    transport_scratch: Vec<transport::TransportScratch>,
     classic_proof: Option<classic::ProofRecorder>,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
@@ -665,6 +668,7 @@ impl GraphBackend {
             positions,
             component_sites,
             wire_walks: Vec::new(),
+            transport_scratch: Vec::new(),
             classic_proof: None,
             fixed_classic,
             fixed_classic_scratch: Vec::new(),

@@ -193,6 +193,12 @@ impl GraphBackend {
         if let Some(transfer) = plan.execution.instant_node {
             return self.deliver_instant_wire_node(&plan, transfer);
         }
+        if self.classic_proof.is_none()
+            && !super::fixed_point::enabled()
+            && let Some((net, wire)) = self.program.transport_wire(node)
+        {
+            return self.run_instant_transport(net, wire, sample.block_power);
+        }
         self.counts.wire_walks += 1;
         self.evaluate_turbo_wire(node)
     }
@@ -442,6 +448,19 @@ impl GraphBackend {
             maximum = maximum.max(self.neighbor_power_no_dust(plan, slot, face, observed));
         }
         Some(maximum)
+    }
+
+    /// Queue-only transport keeps all no-dust inputs stable throughout this episode.
+    pub(super) fn transport_block_power(&self, node: NodeId) -> u8 {
+        let plan = self.wire_plan(node);
+        self.mixed_classic_block_power(plan, None).unwrap_or_else(|| {
+            BlockFace::values()
+                .into_iter()
+                .zip([3, 2, 4, 5, 1, 0])
+                .map(|(face, slot)| self.neighbor_power_no_dust(plan, slot, face, None))
+                .max()
+                .unwrap_or(0)
+        })
     }
 
     fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) -> usize {
@@ -752,7 +771,7 @@ impl GraphBackend {
         self.dispatch_turbo_nonwire(site, &observed, walk.layer, Some(queued.route))
     }
 
-    fn record_turbo_delivery(&mut self, _site: SiteId, _receiver: CallbackReceiver, _layer: u32) {
+    pub(super) fn record_turbo_delivery(&mut self, _site: SiteId, _receiver: CallbackReceiver, _layer: u32) {
         self.counts.callbacks += 1;
         // Dust-to-dust steps stay inside the walk; native dispatches only the rest.
         #[cfg(test)]

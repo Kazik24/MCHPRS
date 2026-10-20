@@ -583,6 +583,7 @@ mod tests {
             (4, "experimental-compile-bud-memory-reads"),
             (4, "experimental-compile-instant-events"),
             (5, "optimize-instant-kernels-cpu"),
+            (5, "compile-instant-transport"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {

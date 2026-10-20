@@ -4,7 +4,7 @@ use crate::redpiler::passes::planning::PlanBuilder;
 use random_fpu::Operation;
 
 // BubbleSort's frozen RAM decoder defines all four physical memory banks.
-fn memory_probes(graph: &CompileGraph, name: &str) -> Vec<(PistonId, BlockPos)> {
+pub(super) fn memory_probes(graph: &CompileGraph, name: &str) -> Vec<(PistonId, BlockPos)> {
     let positions: Vec<_> = if name == "cpu_bubblesort" {
         [7, 17, 27, 37]
             .into_iter()
@@ -45,7 +45,7 @@ fn memory_probes(graph: &CompileGraph, name: &str) -> Vec<(PistonId, BlockPos)> 
         .collect()
 }
 
-fn native_storage_bit(world: &PlotWorld, position: BlockPos) -> Option<bool> {
+pub(super) fn native_storage_bit(world: &PlotWorld, position: BlockPos) -> Option<bool> {
     match world.get_block(position) {
         Block::Piston { piston } => Some(!piston.extended),
         Block::MovingPiston { .. } => None,
@@ -53,7 +53,7 @@ fn native_storage_bit(world: &PlotWorld, position: BlockPos) -> Option<bool> {
     }
 }
 
-fn graph_storage_bit(backend: &GraphBackend, actor: PistonId) -> Option<bool> {
+pub(super) fn graph_storage_bit(backend: &GraphBackend, actor: PistonId) -> Option<bool> {
     let state = backend.circuit_state().pistons[actor.index()];
     (!state.availability.base_pending()).then_some(!state.extended)
 }

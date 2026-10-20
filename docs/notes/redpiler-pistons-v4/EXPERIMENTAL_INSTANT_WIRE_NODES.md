@@ -191,3 +191,69 @@ The research executor still discovers topology, allocates net scratch, and
 uses general source queries at runtime. The next performance experiment should
 compile fixed topology and weighted source-to-receiver transfers into the kernel
 and eliminate that work. Fewer walks alone have not delivered a speedup here.
+
+## Typed piston graph and relaxed-boundary follow-up
+
+The test-only `outside_electrical_consumer` relaxation was measured before replaying
+large histories. It admits 720 additional BubbleSort multi-wire nets (1,440 wires),
+raising the census from 1,408 / 19,362 to 2,128 / 20,802. FPU remains 1,006 / 10,918
+and Counter 4 / 685, so those devices do not need redundant relaxed replays. The
+relaxation still rejects nets with outside signal sources, unrecognized piston
+receivers, classic consumers, missing instant receivers, reset ownership, or wire
+execution ownership. This relaxed mode exists only in tests; the default census and
+production builder remain strict.
+
+The independently labeled `test_data/instant-pistons-io/fixtures/counter_basic.json`
+probe checks all 16 storage pistons found by the BUD memory-read compiler, rather
+than treating ordinary piston candidates as memory. Over the frozen 126-tick input
+history, five cells were active and native storage changed 32 times. Strict and
+relaxed candidates both matched every baseline bit and availability sample. Under
+relaxation, the 685 admitted wires reduced callback count 99,862 -> 43,630 and wire
+walks 1,374 -> 405 in this short diagnostic, but elapsed executor time increased
+from 12.81 ms to 17.99 ms; this is not a speedup claim or a paired benchmark. The
+first unrelated disabled-resource location difference remains at tick 44.
+
+The pinned `NANOTICK_EXAMPLE.schem` graph export is
+`target/instant-wire-nodes/piston-graph/nanotick-example.json`; its SHA-256 matches
+`test_data/instant-pistons/fixtures/nanotick_example.json`. After O5 preparation,
+the existing typed catalog preserves five separate piston actors/five resources,
+35 piston callback routes, three wire corridors (3, 4, and 1 wire), and 552 typed
+boundary ports. The strict and relaxed censuses each admit two multi-wire nets / seven
+wires. The four-rotation native regression
+`supplied_nanotick_counterexample_activates_consumer_before_inhibit_arrives` passes:
+the downstream piston retracts at operation 4 and the inhibitor arrives at operation
+5, so any compiled graph must preserve that native transient rather than impose the
+schematic author's intended inhibit-first result. The graph export is an inventory,
+not an alternate executor or a proof of full interface completeness.
+
+The executable local boundary already present in the graph pipeline is the isolated
+single-wire `experimental-compile-instant-wire-nodes` pass. It substitutes ordered
+receiver-slot deliveries for one dust node's traversal while retaining each piston
+as an independent stateful actor, resource, request source, and reset dependency.
+Its native-continuation/reset test and shared-source/inhibited-fanout test pass. The
+pass declines non-isolated dust, outside consumers, lamps/classic loads, other dust,
+and unrecognized receivers; it does not flatten the unequal NANOTICK chains into a
+settled Boolean. This is the bounded direct-edge lowering supported by the present
+tests; the wider multi-wire net pass still uses runtime settlement and has not shown
+a diagnostic time improvement.
+
+Raw follow-up artifacts are `target/instant-wire-nodes/memory-only/admission-delta.json`,
+`counter.json`, `counter_relaxed_electrical_consumers.json`, and
+`target/instant-wire-nodes/piston-graph/nanotick-example.json`.
+
+The relaxed full-history replay then completed because BubbleSort had a nonzero
+admission delta. Across all 10,036 ticks, all 768 documented RAM bits matched the
+unchanged O5 baseline (including 512 matching unavailable samples); 64 cells were
+active and there were 512 native transitions. Native, baseline, and candidate final
+output banks were each sorted 0..15. Relative to the strict candidate, the relaxed
+candidate recorded 28,800 more instant-wire-node invocations (2,263,198 vs
+2,234,398) and 14,400 fewer general wire walks (1,919,335 vs 1,933,735). Callbacks,
+piston samples/actions, scheduled ticks, and deferred publications were identical
+between the two candidates. These aggregate counters show a real execution delta;
+they do not identify which of the additional 720 nets were invoked. Against the
+unchanged baseline, relaxed walks were 1,919,335 vs 3,882,011 and callbacks were
+165,996,351 vs 204,031,794. The single relaxed diagnostic run took 51.698 s vs
+47.536 s baseline (+8.75%); it is not an alternating release benchmark and does not
+show a runtime speedup. Relaxed FPU and Counter replays also passed, but their
+admission delta was zero and their strict histories already provide the useful
+contract coverage.

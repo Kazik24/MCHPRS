@@ -1,8 +1,8 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, GraphBuildError, InstantProxy, InstantRegion, InstantResetPlan, PlanChange, SiteId, TurboCallbackIndex,
-    WireCallbackSelection, WireQueryFacts,
+    CompileGraph, DustPathPlan, GraphBuildError, InstantProxy, InstantRegion, InstantResetPlan, InstantTransport, PlanChange, SiteId,
+    TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -52,6 +52,7 @@ pub(crate) enum PlanOutput {
     InstantEvents(Vec<crate::redpiler::program_graph::InstantKernel>),
     CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
     BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
+    InstantTransport(InstantTransport),
     InstantWireNodes(Vec<Option<crate::redpiler::program_graph::InstantWireNode>>),
     WireCallbacks(Vec<Option<WireCallbackSelection>>),
     AbstractInstantNets(Vec<bool>),
@@ -91,6 +92,7 @@ impl PlanOutput {
             }
             Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
             Self::BudMemoryReads(reads) => graph.plans.bud_memory_reads = reads,
+            Self::InstantTransport(plan) => graph.plans.instant_transport = plan,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
             Self::WireQueries(facts) => {
                 for (wire, facts) in graph.wires.iter_mut().zip(facts) {
@@ -158,6 +160,7 @@ impl PlanOutput {
             Self::InstantEvents(_) => PlanChange::InstantEvents,
             Self::CpuKernels(_) => PlanChange::CpuKernels,
             Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
+            Self::InstantTransport(_) => PlanChange::InstantTransport,
             Self::InstantWireNodes(_) => PlanChange::InstantWireNodes,
             Self::AbstractInstantNets(_) => PlanChange::AbstractInstantNets,
             Self::WireCallbacks(_) => PlanChange::WireCallbacks,

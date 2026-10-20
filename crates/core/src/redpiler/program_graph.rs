@@ -33,6 +33,7 @@ mod instant_cells;
 mod instant_layers;
 mod instant_program;
 mod instant_regions;
+mod instant_transport;
 mod wire_callback_selection;
 mod wire_captures;
 mod wire_query_facts;
@@ -62,6 +63,8 @@ pub(crate) use fixed_classic::*;
 mod mixed_classic;
 pub(crate) use instant_layers::*;
 pub(crate) use instant_program::*;
+pub(crate) use instant_transport::infer as infer_instant_transport;
+pub(crate) use instant_transport::*;
 pub(crate) use mixed_classic::*;
 pub(crate) use wire_query_facts::WireQueryFacts;
 
@@ -908,6 +911,10 @@ pub(crate) struct CircuitProgram {
     dust_paths: Box<[DustPathPlan]>,
     /// This binds each original wire plan to its optional dust-path certificate.
     dust_path_by_wire: Box<[Option<DustPathId>]>,
+    /// Dense queue-preserving executors for admitted local Turbo corridors.
+    instant_transport: Box<[std::sync::Arc<TransportNet>]>,
+    /// Direct original-wire to transport local-ID lookup.
+    transport_wire_by_node: Box<[Option<(u32, u32)>]>,
     sites: Box<[SiteSpec]>,
     pistons: Box<[PistonSpec]>,
     resources: Box<[ResourceSpec]>,
@@ -928,6 +935,13 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn instant_transport_net(&self, net: u32) -> &std::sync::Arc<TransportNet> {
+        &self.instant_transport[net as usize]
+    }
+
+    pub(crate) fn transport_wire(&self, node: NodeId) -> Option<(u32, u32)> {
+        self.transport_wire_by_node.get(node.index()).copied().flatten()
+    }
     #[cfg(test)]
     pub(crate) fn bud_memory_reads(&self) -> &[BudMemoryRead] {
         &self.bud_memory_reads

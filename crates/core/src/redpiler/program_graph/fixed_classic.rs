@@ -872,6 +872,7 @@ mod tests {
             }
         }
     }
+
     #[test]
     fn fixed_classic_draft_compilation_honors_cancellation() {
         let graph = graph();
