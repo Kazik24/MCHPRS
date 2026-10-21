@@ -3,7 +3,6 @@
 //! Rewrites change the graph and discard old plans. Builders read the graph and
 //! add execution plans for supported cases. The runner checks the input and each
 //! enabled pass's result before lowering. See the [redpiler overview](crate::redpiler).
-pub(crate) mod abstract_instant_nets;
 pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_bud_memory_reads;
 pub(crate) mod compile_builtin_resets;
@@ -39,8 +38,6 @@ pub(crate) mod planning;
 pub(crate) mod prune_inert_callbacks;
 pub(crate) mod prune_unhandled_updates;
 pub(crate) mod rich;
-#[cfg(any(test, feature = "unsafe-turbo-fixed-point"))]
-mod settle_dust_networks;
 pub(crate) mod simplify_guards;
 pub(crate) mod simplify_instant_resets;
 pub(crate) mod simplify_state_guards;
@@ -385,12 +382,6 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         pass,
         enabled: level >= minimum_level,
     }));
-    if cfg!(feature = "unsafe-abstract-instant-nets") && level >= 4 && options.stable_instant_inputs {
-        pipeline.entries.push(PassEntry {
-            pass: Pass::build(abstract_instant_nets::AbstractInstantNets),
-            enabled: true,
-        });
-    }
     pipeline.entries.push(PassEntry {
         pass: Pass::build(compile_instant_transport::CompileInstantTransport),
         enabled: level >= 5,
@@ -433,15 +424,6 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         pass: Pass::build(compile_cpu_power_queries::CompileCpuPowerQueries),
         enabled: level >= 6,
     });
-    #[cfg(feature = "unsafe-turbo-fixed-point")]
-    let pipeline = {
-        let mut pipeline = pipeline;
-        pipeline.entries.push(PassEntry {
-            pass: Pass::rewrite(settle_dust_networks::SettleDustNetworks),
-            enabled: true,
-        });
-        pipeline
-    };
     pipeline
 }
 
@@ -533,7 +515,6 @@ mod tests {
             }
             assert_eq!(enabled.contains(&"compile-instant-layers"), level >= 6 && options.stable_instant_inputs);
             assert!(!enabled.contains(&"compile-guard-predicates"));
-            #[cfg(not(any(feature = "unsafe-abstract-instant-nets", feature = "unsafe-turbo-fixed-point")))]
             assert!(
                 enabled
                     .iter()
@@ -607,21 +588,6 @@ mod tests {
             cancel: false,
             calls,
         }
-    }
-
-    #[test]
-    fn diagnostic_guard_predicates_validate_before_publication() {
-        use crate::redpiler::program_graph::{Guard, GuardPredicatePlans};
-        let mut graph = graph_for_passes();
-        graph.guards.push(Guard::Always);
-        let plans = GuardPredicatePlans::compile(&graph, &TaskMonitor::default()).unwrap();
-        let mut malformed = plans.clone();
-        malformed.require_true.push(0);
-        assert!(planning::PlanOutput::GuardPredicates(malformed).publish(&mut graph).is_err());
-        assert_eq!(graph.plans.guard_predicates, GuardPredicatePlans::default());
-        let change = planning::PlanOutput::GuardPredicates(plans.clone()).publish(&mut graph).unwrap();
-        graph.validate_plan_change(change, &TaskMonitor::default()).unwrap();
-        assert_eq!(graph.plans.guard_predicates, plans);
     }
 
     fn graph_for_passes() -> CompileGraph {

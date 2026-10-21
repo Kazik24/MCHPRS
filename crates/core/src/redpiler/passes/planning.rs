@@ -1,7 +1,5 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
-#[cfg(test)]
-use crate::redpiler::program_graph::GuardPredicatePlans;
 use crate::redpiler::program_graph::{
     CompileGraph, CpuPowerQueryPlans, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan,
     InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection,
@@ -59,13 +57,10 @@ pub(crate) enum PlanOutput {
     InstantEvents(Vec<crate::redpiler::program_graph::InstantKernel>),
     CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
     CpuPowerQueries(CpuPowerQueryPlans),
-    #[cfg(test)]
-    GuardPredicates(GuardPredicatePlans),
     BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
     InstantTransport(InstantTransport),
     InstantWireNodes(Vec<Option<crate::redpiler::program_graph::InstantWireNode>>),
     WireCallbacks(Vec<Option<WireCallbackSelection>>),
-    AbstractInstantNets(Vec<bool>),
     WireHops(Vec<Option<SiteId>>),
     InstantResets(Vec<(usize, InstantResetPlan)>),
     Regions(Vec<InstantRegion>),
@@ -112,8 +107,6 @@ impl PlanOutput {
             }
             Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
             Self::CpuPowerQueries(plans) => graph.plans.cpu_power_queries = plans,
-            #[cfg(test)]
-            Self::GuardPredicates(plans) => graph.plans.guard_predicates = plans,
             Self::BudMemoryReads(reads) => {
                 graph.plans.bud_memory_reads = reads;
                 graph.plans.settled_circuit = None;
@@ -123,11 +116,6 @@ impl PlanOutput {
             Self::WireQueries(facts) => {
                 for (wire, facts) in graph.wires.iter_mut().zip(facts) {
                     wire.execution.query_facts = facts;
-                }
-            }
-            Self::AbstractInstantNets(masks) => {
-                for (wire, enabled) in graph.wires.iter_mut().zip(masks) {
-                    wire.execution.abstract_instant_net = enabled;
                 }
             }
             Self::InstantWireNodes(nodes) => {
@@ -196,12 +184,9 @@ impl PlanOutput {
             Self::InstantEvents(_) => PlanChange::InstantEvents,
             Self::CpuKernels(_) => PlanChange::CpuKernels,
             Self::CpuPowerQueries(_) => PlanChange::CpuPowerQueries,
-            #[cfg(test)]
-            Self::GuardPredicates(_) => PlanChange::GuardPredicates,
             Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
             Self::InstantTransport(_) => PlanChange::InstantTransport,
             Self::InstantWireNodes(_) => PlanChange::InstantWireNodes,
-            Self::AbstractInstantNets(_) => PlanChange::AbstractInstantNets,
             Self::WireCallbacks(_) => PlanChange::WireCallbacks,
             Self::WireHops(_) => PlanChange::WireHops,
             Self::InstantResets(_) => PlanChange::InstantResets,
@@ -274,23 +259,6 @@ impl PlanOutput {
                 });
             }
         }
-        #[cfg(test)]
-        if let Self::GuardPredicates(plans) = self {
-            if plans.require_true.len() != plans.require_false.len()
-                || plans.by_guard.len() != 0 && plans.by_guard.len() != graph.guards.len()
-                || plans.stats.compiled != plans.predicates.len()
-                || plans.stats.compiled != plans.by_guard.iter().filter(|&&entry| entry != u32::MAX).count()
-                || plans
-                    .by_guard
-                    .iter()
-                    .any(|&entry| entry != u32::MAX && entry as usize >= plans.predicates.len())
-            {
-                return Err(GraphBuildError::InvalidInstantRegion {
-                    table: "guard predicate shape",
-                    index: 0,
-                });
-            }
-        }
         if let Self::WireCaptures(rows) = self {
             if !rows.is_empty() && rows.len() != graph.sites.len() {
                 return Err(GraphBuildError::StateTableLength {
@@ -306,7 +274,6 @@ impl PlanOutput {
             Self::WireShapes(rows) => Some(("wire shapes", rows.len())),
             Self::WireCaptureMasks(rows) => Some(("wire capture masks", rows.len())),
             Self::InstantWireNodes(rows) => Some(("instant wire nodes", rows.len())),
-            Self::AbstractInstantNets(rows) => Some(("abstract instant nets", rows.len())),
             Self::WireCallbacks(rows) => Some(("wire callback selection", rows.len())),
             Self::WireHops(rows) => Some(("wire hop roots", rows.len())),
             Self::TurboCallbacks(rows) if !rows.is_empty() => Some(("Turbo callback indices", rows.len())),

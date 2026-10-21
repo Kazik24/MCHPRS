@@ -66,7 +66,6 @@ fn validate(ticks: usize) {
     assert_eq!(memories.len(), 768);
     let mut reference = prepared.graph.clone();
     reference.plans.stable_instant_logic = Default::default();
-    reference.plans.guard_predicates = Default::default();
     let (program, _) = reference.lower_with_monitor(&monitor).unwrap();
     // Import the same scheduled work and logical clock in both executions.
     let lowered = prepared.lower(&monitor).unwrap();

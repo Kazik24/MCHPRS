@@ -105,16 +105,10 @@ protocol. They are archived diagnostics, not evidence of completed FPU work.
 The replacement schematic must be measured with the trigger held OFF and the
 far dust bank observed; fresh arithmetic throughput remains unverified.
 
-The old `experimental-instant-events`, `experimental-instant-wire-nodes` and
-`experimental-cpu-kernels` Cargo names remain accepted as compatibility features;
-they no longer change pass selection. Existing diagnostic pass IDs retain their
-names for tooling compatibility. Production behavior is determined by O0–O6,
-including builds using `--no-default-features`.
-
-The known incorrect `unsafe-abstract-instant-nets` and `unsafe-turbo-fixed-point`
-experiments remain excluded from normal tiers. The older whole-wave layer
-algorithm remains available to explicit research tests; production selects the
-FIFO-local event family instead.
+The empty experimental Cargo feature aliases and the incorrect abstract-net and
+fixed-point experiments have been removed. Production pass selection is controlled
+by O0–O6 and the explicit stable-input option. Historical experiment results below
+refer to older snapshots.
 
 Tests cover the complete tier/ordering matrix, actual O4/O5 compilation without
 input promises, rapidly changing controls through unfinished reset work,

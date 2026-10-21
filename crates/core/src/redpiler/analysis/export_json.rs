@@ -66,33 +66,6 @@ impl fmt::Display for ExportError {
 
 impl std::error::Error for ExportError {}
 
-fn validate_guard_predicate_stats(graph: &GraphTablesDto) -> Result<(), ExportError> {
-    let Some(stats) = &graph.guard_predicate_stats else {
-        return Ok(());
-    };
-    let invalid = || ExportError::new("guard_predicate_stats", "invalid compiled guard predicate statistics");
-    if stats["method"] != "live_captured_bitmask_dnf" {
-        return Err(invalid());
-    }
-    let guards = stats["guards"].as_array().ok_or_else(invalid)?;
-    let known: HashSet<_> = graph.guards.iter().map(|guard| guard.id.as_str()).collect();
-    let mut seen = HashSet::new();
-    for id in guards {
-        let id = id.as_str().ok_or_else(invalid)?;
-        if !id.starts_with("guard:") || !known.contains(id) || !seen.insert(id) {
-            return Err(invalid());
-        }
-    }
-    if stats["compiled"].as_u64() != Some(guards.len() as u64)
-        || ["fallback", "reads", "clauses", "work", "bytes"]
-            .iter()
-            .any(|key| stats[*key].as_u64().is_none())
-    {
-        return Err(invalid());
-    }
-    Ok(())
-}
-
 /// Counts the graph records shown in the command's success message.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ExportCounts {
@@ -148,8 +121,6 @@ struct GraphTablesDto {
     cpu_kernels: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cpu_power_queries: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    guard_predicate_stats: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_event_kernels: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -550,8 +521,6 @@ struct WirePlanDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     instant_node: Option<crate::redpiler::program_graph::InstantWireNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    abstract_instant_net: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     instant_reset: Option<InstantResetDto>,
     /// This selects compiled hop execution using the existing canonical neighbors.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -755,7 +724,6 @@ impl GraphExport {
         instant_layers::validate(&self.graph)?;
         instant_events::validate(&self.graph)?;
         cpu_kernels::validate(&self.graph)?;
-        validate_guard_predicate_stats(&self.graph)?;
         let nodes = unique_ids("node", self.graph.nodes.iter().map(|item| item.id.as_str()))?;
         let profiles = unique_ids("profile", self.graph.profiles.iter().map(|item| item.id.as_str()))?;
         let sites = unique_ids("site", self.graph.sites.iter().map(|item| item.id.as_str()))?;
@@ -1181,24 +1149,6 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         instant_event_kernels: instant_events::export(source),
         cpu_kernels: cpu_kernels::export(source),
         cpu_power_queries: cpu_kernels::export_power_queries(source),
-        guard_predicate_stats: (source.plans.guard_predicates.stats.compiled > 0).then(|| {
-            serde_json::json!({
-                "method": "live_captured_bitmask_dnf",
-                "compiled": source.plans.guard_predicates.stats.compiled,
-                "fallback": source.plans.guard_predicates.stats.fallback,
-                "reads": source.plans.guard_predicates.stats.reads,
-                "clauses": source.plans.guard_predicates.stats.clauses,
-                "work": source.plans.guard_predicates.stats.work,
-                "bytes": source.plans.guard_predicates.stats.bytes,
-                "guards": source.plans.guard_predicates.by_guard.iter().enumerate()
-                    .filter_map(|(index, _)| {
-                        crate::redpiler::program_graph::GuardId::try_from_index(index)
-                            .filter(|&guard| source.plans.guard_predicates.predicate(guard).is_some())
-                            .map(|_| typed_id("guard", index))
-                    })
-                    .collect::<Vec<_>>(),
-            })
-        }),
         bud_memory_reads: instant_events::export_memory_reads(source),
         instant_layer_declines: layers.declines,
         instant_cells: boundaries.cells,
@@ -1412,7 +1362,6 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
                 query_facts: item.execution.query_facts,
                 callback_selection: item.execution.callback_selection,
                 instant_node: item.execution.instant_node,
-                abstract_instant_net: item.execution.abstract_instant_net.then_some(true),
                 hop_root: item.execution.hop_root.map(|site| typed_id("site", site.index())),
                 instant_reset: item.execution.instant_reset.map(|plan| InstantResetDto {
                     piston: typed_id("piston", plan.piston.index()),
@@ -1662,9 +1611,6 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.cpu_power_queries.entries.is_empty() {
         capabilities.push("compiled_piston_power_queries");
     }
-    if source.plans.guard_predicates.stats.compiled > 0 {
-        capabilities.push("compiled_guard_predicates");
-    }
     if !source.plans.instant.regions.is_empty() {
         capabilities.push("instant_regions");
     }
@@ -1697,9 +1643,6 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     }
     if !source.plans.instant.proxies.is_empty() {
         capabilities.push("instant_proxies");
-    }
-    if source.wires.iter().any(|wire| wire.execution.abstract_instant_net) {
-        capabilities.push("unsafe_abstract_instant_nets");
     }
     if source.wires.iter().any(|wire| wire.execution.instant_node.is_some()) {
         capabilities.push("instant_wire_nodes");
@@ -2246,7 +2189,6 @@ mod wire_query_fact_validation_tests {
             query_facts: None,
             callback_selection: None,
             instant_node: None,
-            abstract_instant_net: None,
             instant_reset: None,
             hop_root: None,
         };

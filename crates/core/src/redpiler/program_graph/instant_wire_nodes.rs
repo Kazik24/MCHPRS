@@ -2,24 +2,6 @@
 use super::*;
 use rustc_hash::FxHashSet;
 
-#[cfg(test)]
-thread_local! {
-    static RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-#[cfg(test)]
-pub(crate) fn with_relaxed_instant_net_electrical_boundaries<R>(work: impl FnOnce() -> R) -> R {
-    struct Restore(bool);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES.set(self.0);
-        }
-    }
-    let previous = RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES.replace(true);
-    let _restore = Restore(previous);
-    work()
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct InstantWireNode {
     /// Canonical receiver slots; execution retains each receiver's first qualifying sample.
@@ -132,42 +114,17 @@ fn closed_net_power(
     true
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 pub(crate) struct ClosedInstantNet {
-    pub(crate) corridor: u32,
     pub(crate) wires: usize,
-    pub(crate) actors: Vec<PistonId>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub(crate) struct ClosedInstantNetCensus {
     pub(crate) closed: Vec<ClosedInstantNet>,
     pub(crate) declines: std::collections::BTreeMap<&'static str, (usize, usize)>,
-}
-
-pub(crate) fn infer_abstract_instant_nets(graph: &CompileGraph, monitor: &crate::redpiler::TaskMonitor) -> Result<Vec<bool>, String> {
-    if monitor.cancelled() {
-        return Err("cancelled before abstract net discovery".into());
-    }
-    let mut masks = vec![false; graph.wires.len()];
-    let Some(catalog) = &graph.plans.instant.boundaries else {
-        return Ok(masks);
-    };
-    #[cfg(test)]
-    let relax_electrical_boundaries = RELAX_INSTANT_NET_ELECTRICAL_BOUNDARIES.get();
-    #[cfg(not(test))]
-    let relax_electrical_boundaries = false;
-    let census = census_instant_nets(graph, catalog, monitor, relax_electrical_boundaries)?;
-    for net in census.closed.iter().filter(|net| net.wires > 1) {
-        debug_assert!(!net.actors.is_empty());
-        for &node in &catalog.corridors[net.corridor as usize].wires {
-            let CircuitNodeKind::Wire(index) = graph.nodes[node.index()].kind else {
-                unreachable!()
-            };
-            masks[index] = true;
-        }
-    }
-    Ok(masks)
 }
 
 /// Structural closure is a candidate boundary, not proof that final-state settling preserves requests.
@@ -180,6 +137,7 @@ pub(crate) fn census_closed_instant_nets(
     census_instant_nets(graph, catalog, monitor, false)
 }
 
+#[cfg(test)]
 pub(crate) fn census_instant_nets(
     graph: &CompileGraph,
     catalog: &BoundaryCatalog,
@@ -217,7 +175,7 @@ pub(crate) fn census_instant_nets(
     }
     let owned = owned_wires(graph);
     let mut census = ClosedInstantNetCensus::default();
-    for (id, corridor) in catalog.corridors.iter().enumerate() {
+    for corridor in &catalog.corridors {
         if monitor.cancelled() {
             return Err("cancelled while checking closed instant nets".into());
         }
@@ -291,13 +249,7 @@ pub(crate) fn census_instant_nets(
             entry.0 += 1;
             entry.1 += members.len();
         } else {
-            let mut actors: Vec<_> = readers.into_iter().collect();
-            actors.sort_unstable();
-            census.closed.push(ClosedInstantNet {
-                corridor: id as u32,
-                wires: members.len(),
-                actors,
-            });
+            census.closed.push(ClosedInstantNet { wires: members.len() });
         }
     }
     Ok(census)
@@ -325,6 +277,7 @@ fn owned_wires(graph: &CompileGraph) -> FxHashSet<NodeId> {
         .collect()
 }
 
+#[cfg(test)]
 fn closed_instant_sources(
     graph: &CompileGraph,
     node: NodeId,

@@ -189,18 +189,12 @@ impl GraphBackend {
                 return program.run(self, node, captured, unchecked_sampled_old);
             }
             self.counts.wire_walks += 1;
-            return super::fixed_point::with_mode(false, || self.evaluate_turbo_wire(node));
-        }
-        #[cfg(any(test, feature = "unsafe-abstract-instant-nets"))]
-        if plan.execution.abstract_instant_net {
-            self.counts.instant_wire_node_invocations += 1;
-            return self.evaluate_fixed_point_wire(node);
+            return self.evaluate_turbo_wire(node);
         }
         if let Some(transfer) = plan.execution.instant_node {
             return self.deliver_instant_wire_node(&plan, transfer);
         }
         if self.classic_proof.is_none()
-            && !super::fixed_point::enabled()
             && let Some((net, wire)) = self.program.transport_wire(node)
             && self.transport_entry_admitted(net)
         {
@@ -679,14 +673,11 @@ impl GraphBackend {
     #[cfg(test)]
     pub(super) fn run_wire_tape_reference(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         self.counts.wire_walks += 1;
-        super::fixed_point::with_mode(false, || self.evaluate_turbo_wire(node))
+        self.evaluate_turbo_wire(node)
     }
 
     #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        if super::fixed_point::enabled() {
-            return self.evaluate_fixed_point_wire(node);
-        }
         if let Some(instant) = self.wire_plan(node).execution.instant_reset {
             let plan = self.wire_plan(node).clone();
             return self.evaluate_instant_output(&plan, instant);

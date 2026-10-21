@@ -77,7 +77,6 @@ impl CircuitDraft {
             if wire.turbo_route.is_some_and(|route| instant_route_by_route[route.index()].is_some()) {
                 wire.execution.callback_selection = None;
                 wire.execution.instant_node = None;
-                wire.execution.abstract_instant_net = false;
             }
         }
         if !self.wires.is_empty()
@@ -321,7 +320,6 @@ impl CircuitDraft {
             profiles: self.profiles.into_boxed_slice(),
             profile_blocks,
             guards: self.guards.into_boxed_slice(),
-            guard_predicates: self.plans.guard_predicates,
             contacts: self.contacts.into_boxed_slice(),
             routes: self.routes.into_boxed_slice(),
             turbo_callback_indices: self.plans.turbo_callback_indices.into_boxed_slice(),

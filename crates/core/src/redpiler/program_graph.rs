@@ -48,17 +48,11 @@ mod wire_callback_selection;
 mod wire_captures;
 mod wire_query_facts;
 mod wire_shapes;
-pub(crate) use cpu_kernels::GuardPredicatePlans;
 pub(crate) use cpu_kernels::{CpuKernelEntry, CpuKernelPlans, CpuPowerQueryEntry, CpuPowerQueryPlans, CpuPredicate, CpuRead};
 mod bud_memory_reads;
 pub(crate) use bud_memory_reads::{BudMemoryRead, infer_bud_memory_reads};
 pub(crate) use wire_captures::WireCapture;
 mod instant_wire_nodes;
-#[cfg(test)]
-pub(crate) use instant_wire_nodes::ClosedInstantNetCensus;
-pub(crate) use instant_wire_nodes::infer_abstract_instant_nets;
-#[cfg(test)]
-pub(crate) use instant_wire_nodes::with_relaxed_instant_net_electrical_boundaries;
 pub(crate) use instant_wire_nodes::{InstantWireNode, infer_instant_wire_nodes};
 #[cfg(test)]
 pub(crate) use instant_wire_nodes::{census_closed_instant_nets, census_instant_nets};
@@ -934,8 +928,6 @@ pub(crate) struct CircuitProgram {
     profiles: Box<[Profile]>,
     profile_blocks: Box<[Block]>,
     guards: Box<[Guard]>,
-    /// Packed pure guards preserve the original live/captured sampling context.
-    guard_predicates: GuardPredicatePlans,
     contacts: Box<[ContactSpec]>,
     routes: Box<[Route]>,
     /// This maps each wire plan to ordered slices in its Turbo delivery route.
@@ -1097,22 +1089,6 @@ impl CircuitProgram {
         &self.instant.cpu
     }
 
-    pub(crate) fn guard_predicate(&self, guard: GuardId) -> Option<CpuPredicate> {
-        self.guard_predicates.predicate(guard)
-    }
-
-    pub(crate) fn evaluate_guard_predicate(
-        &self,
-        predicate: CpuPredicate,
-        read: impl FnMut(CpuRead) -> bool,
-        matches: cpu_kernels::ClauseMatcher,
-    ) -> bool {
-        self.guard_predicates.evaluate(predicate, read, matches)
-    }
-
-    pub(crate) fn guard_predicate_plans(&self) -> &GuardPredicatePlans {
-        &self.guard_predicates
-    }
     #[cfg(test)]
     pub(crate) fn with_general_cpu_predicates(mut self) -> Self {
         for entry in &mut self.instant.cpu.entries {
@@ -1240,13 +1216,6 @@ impl CircuitProgram {
 
     pub(crate) fn wires(&self) -> &[WirePlan] {
         &self.wires
-    }
-
-    #[cfg(test)]
-    pub(crate) fn retain_abstract_instant_wires(&mut self, keep: &rustc_hash::FxHashSet<NodeId>) {
-        for wire in &mut self.wires {
-            wire.execution.abstract_instant_net &= keep.contains(&wire.node);
-        }
     }
 
     pub(crate) fn turbo_callback_index(&self, wire_index: usize) -> Option<&TurboCallbackIndex> {

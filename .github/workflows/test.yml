@@ -30,7 +30,7 @@ jobs:
       - name: Check workspace
         run: cargo check --workspace --locked
       - name: Basic library tests
-        run: cargo test --locked --lib -p mchprs_blocks -p mchprs_utils -p redpiler_graph
+        run: cargo test --locked --lib -p mchprs_blocks -p mchprs_utils
       - name: Plot and interpreter regression tests
         run: >-
           cargo test --locked -p mchprs_core --lib --

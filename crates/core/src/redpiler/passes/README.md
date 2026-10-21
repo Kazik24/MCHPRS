@@ -4,7 +4,7 @@ Normal production builds include every certified pass. See the
 [O1–O5 tier table](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md).
 O4 selects live-input FIFO event kernels, capture elimination, BUD reads, closed
 single-wire transfers and certified classic nets; O5 adds CPU packing and delayed
-update coalescing. Old experimental feature names are compatibility aliases.
+update coalescing. The old experimental Cargo feature aliases have been removed.
 
 Read this before implementing or reviewing a pass. These rules apply to every new optimization, including experimental passes. They describe how to work on the shared graph; they do not authorize implementing additional projects beyond the assigned task.
 
@@ -305,25 +305,15 @@ The final report must state:
 
 Default enablement requires reviewed correctness evidence and measured benefit. Unsupported proof cases must retain the general graph; no Native/Direct fallback, TODO execution branch, guessed output, or broader unsupported circuit rejection may substitute for a proof.
 
-## Experimental unordered dust settling
+## Retired unordered dust experiments
 
-O3's separate `--stable-instant-inputs` option promises stable external inputs from the activating falling edge until reset, and composes admitted instant groups through connecting dust and variable-input fanout. Internal derived signals still change. Its ordered proxy preserves shared/reset memory; it does **not** enable unordered settling. Read [the contract, autonomous execution target and real-output counterexample](../../../../../docs/notes/redpiler-pistons-v4/STABLE_INSTANT_REGION_CONTRACT.md) before deleting internal work or changing the boundary.
+The unsafe fixed-point and abstract-net implementations have been removed.
+Final-state settling cannot replace ordered callbacks and piston requests.
+Historical counterexamples remain documented in
+[the stable-region contract](../../../../../docs/notes/redpiler-pistons-v4/STABLE_INSTANT_REGION_CONTRACT.md)
+and [the boundary experiment](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md).
 
-`settle_dust_networks.rs` is deliberately **not** a correctness-preserving pass. Build core with `--features unsafe-turbo-fixed-point` to append it after the selected normal pipeline. The experimental runtime replaces ordered Turbo walks with final-state settling and one notification per boundary site. Seed writes and shape callbacks remain. Boundary routes remain available, while ordered-walk specializations are invalidated. This is off by default and is not an optimization tier; never enable it in a production server.
-
-```text
-cargo bench -p mchprs_core --bench cpus --features unsafe-turbo-fixed-point --locked -- --cpu cpu_bubblesort --graph-short --graph-tier 3 --iterations 1 --output target/cpu-dust-fixed-point.json
-```
-
-The solver discovers electrical wire neighbors, samples external power once, then builds local attenuation edges. It performs up to fifteen synchronous relaxation rounds in zero-initialized temporary strength arrays, publishing only final values. With fixed non-dust sources and one-level wire attenuation, four-bit power cannot travel beyond fourteen wire edges. Only final changed wires and the triggering root notify boundary sites, once each. It drops intermediate values, duplicate notifications and native order. Nested boundary callbacks can start another solve after the current one has settled.
-
-The harness records interpreter mismatches in `fixed_point_comparisons` instead of enforcing parity in this build. A successful exit does **not** mean correctness. Ordinary builds retain strict comparisons. A stalled circuit is not a speedup. Tests check retained routes, structural validation and lowering, plus long-line rise/decay from every stale strength. Dynamic-contact histories, BUD behavior and instant circuits are not certified.
-
-shortcut: the experiment rediscovers neighborhoods and samples general electrical inputs, compile compact guarded attenuation edges only after measuring useful coverage and proving the boundary contract.
-
-Investigation results and the proposed ordered-boundary certification are in [DUST_FIXED_POINT_INVESTIGATION.md](../../../../../docs/notes/redpiler-pistons-v4/DUST_FIXED_POINT_INVESTIGATION.md). The repaired CPU episode matches sampled RAM but not complete future work; the ADDER1BIT FIFO counterexample prevents general enablement.
-
-### Compiled wire transfer expressions
+## Compiled wire transfer expressions
 
 The existing `specialize-wire-queries` pass also compiles each wire's maximum-of-wire-strengths expression into `query_facts.transfer`. `seed` and `turbo` each contain a `direct` canonical-slot mask and a `conditional` diagonal-slot mask. Constant geometry folds step conditions; contacts remain dynamic where their selection matters. A slot is omitted only when every supported occupant is a non-wire or its geometry condition is false. Potential wire profiles and typed wire receivers both prevent that omission. The graph validator re-infers the whole certificate after every enabled pass.
 
@@ -519,15 +509,3 @@ Every possible contact receiver and conducted power consumer must stay inside
 the admitted boundary; mixed consumers, other dust and overlapping private
 owners decline. This is local execution and needs no whole-kernel queue claim.
 See [scope, evidence and the multi-wire limit](../../../../../docs/notes/redpiler-pistons-v4/EXPERIMENTAL_INSTANT_WIRE_NODES.md).
-
-
-### Closed instant-net hypothesis test
-
-`abstract_instant_nets.rs` is a separate builder selected only by the
-`unsafe-abstract-instant-nets` Cargo feature at O4+ with stable inputs. It marks
-structurally closed multi-wire corridors, retaining mixed/classic nets and other
-execution owners. The existing final-state solver executes those marks.
-Closure validation does not certify request or reset FIFO equivalence. The mode
-is deliberately excluded from normal tiers; diagnostic success must not be
-reported as native correctness or useful throughput. See the
-[boundary investigation and counterexamples](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md).

@@ -23,6 +23,8 @@ pub(crate) struct Report {
     pub(crate) quasi_matches: u64,
     pub(crate) main_mismatches: u64,
     pub(crate) quasi_mismatches: u64,
+    pub(crate) combined_matches: u64,
+    pub(crate) combined_mismatches: u64,
     pub(crate) evaluation_errors: u64,
     pub(crate) last_error: Option<String>,
     pub(crate) records: Vec<Record>,
@@ -63,6 +65,8 @@ impl Probe {
                 quasi_matches: 0,
                 main_mismatches: 0,
                 quasi_mismatches: 0,
+                combined_matches: 0,
+                combined_mismatches: 0,
                 evaluation_errors: 0,
                 last_error: None,
                 records: Vec::new(),
@@ -100,6 +104,10 @@ impl Probe {
         self.report.quasi_matches += u64::from(candidate_quasi == (actual_quasi > 0));
         self.report.main_mismatches += u64::from(candidate_main != (actual_main > 0));
         self.report.quasi_mismatches += u64::from(candidate_quasi != (actual_quasi > 0));
+        let candidate_powered = candidate_main || candidate_quasi;
+        let actual_powered = actual_main > 0 || actual_quasi > 0;
+        self.report.combined_matches += u64::from(candidate_powered == actual_powered);
+        self.report.combined_mismatches += u64::from(candidate_powered != actual_powered);
         if self.report.records.len() < MAX_RECORDS {
             self.report.records.push(Record {
                 tick: backend.future.clock.logical_tick,

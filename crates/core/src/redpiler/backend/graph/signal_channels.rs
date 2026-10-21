@@ -3,7 +3,7 @@ use super::*;
 
 impl GraphBackend {
     pub(super) fn try_signal_channel(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<bool, GraphExecutionError> {
-        if self.classic_proof.is_some() || super::fixed_point::enabled() {
+        if self.classic_proof.is_some() {
             return Ok(false);
         }
         #[cfg(test)]

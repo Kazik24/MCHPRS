@@ -692,7 +692,6 @@ function validateGraph(data) {
       const root = sites.get(wire.hop_root);
       if (root?.source?.kind !== "component" || root.source.node !== wire.node) throw Error(`${wire.id} hop root must bind its component.`);
     }
-    if (wire.abstract_instant_net != null && typeof wire.abstract_instant_net !== "boolean") throw Error(`${wire.id} has invalid abstract instant-net flag.`);
     const node = wire.instant_node;
     if (node != null && (typeof node !== "object" || Array.isArray(node) || !Number.isInteger(node.receivers)
       || node.receivers <= 0 || node.receivers > 0xffffff)) throw Error(`${wire.id} has invalid instant wire node mask.`);

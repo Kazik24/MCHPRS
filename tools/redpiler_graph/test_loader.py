@@ -670,16 +670,6 @@ class DustPathLoaderTests(unittest.TestCase):
             with self.subTest(mutation=mutation), self.assertRaises(GraphFormatError):
                 self.load_data(damaged)
 
-    def test_abstract_instant_net_flag_is_explicit_and_typed(self):
-        data = self.instant_boundary_document()
-        wire = data["graph"]["wire_plans"][0]
-        wire["abstract_instant_net"] = True
-        self.load_data(data)
-        for flag in (1, 0, "true", {}):
-            wire["abstract_instant_net"] = flag
-            with self.assertRaises(GraphFormatError):
-                self.load_data(data)
-
     def test_instant_wire_node_masks_are_optional_and_bounded(self):
         data = self.instant_boundary_document()
         wire = data["graph"]["wire_plans"][0]

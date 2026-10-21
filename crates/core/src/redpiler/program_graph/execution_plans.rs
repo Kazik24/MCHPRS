@@ -25,12 +25,9 @@ pub(crate) enum PlanChange {
     InstantEvents,
     CpuKernels,
     CpuPowerQueries,
-    #[cfg(test)]
-    GuardPredicates,
     BudMemoryReads,
     InstantTransport,
     InstantWireNodes,
-    AbstractInstantNets,
     WireCallbacks,
     WireHops,
     InstantResets,
@@ -52,8 +49,6 @@ pub(crate) struct WireExecutionPlan {
     pub(crate) mutable_captures: Option<u32>,
     /// Experimental closed single-wire signal transfer.
     pub(crate) instant_node: Option<InstantWireNode>,
-    /// Unsafe experiment: closure is checked; request-order equivalence is not.
-    pub(crate) abstract_instant_net: bool,
     /// Exact fixed admission; dynamic slots keep their original guard search.
     pub(crate) callback_selection: Option<WireCallbackSelection>,
     /// Checked fixed geometry removes repeated property resolution without caching power.
@@ -129,8 +124,6 @@ pub(crate) struct ExecutionPlans {
     pub(crate) cpu_kernels: CpuKernelPlans,
     /// Live Main/Quasi predicates for exact O6 piston power queries.
     pub(crate) cpu_power_queries: CpuPowerQueryPlans,
-    /// Flat pure guard predicates, with exact recursive fallback for unsupported roots.
-    pub(crate) guard_predicates: GuardPredicatePlans,
     /// Exact private storage/read pairs; their original state and update work remain owned by Graph.
     pub(crate) bud_memory_reads: Vec<BudMemoryRead>,
     /// Closed wire corridors with dense local Turbo bindings and ordered boundary effects.

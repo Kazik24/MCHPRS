@@ -130,17 +130,6 @@ impl GraphBackend {
             Some(Guard::State(test)) => return self.state.matches(*test),
             _ => {}
         }
-        if let Some(predicate) = self.program.guard_predicate(id) {
-            return self.program.evaluate_guard_predicate(
-                predicate,
-                |read| match read {
-                    // Raw recursion is essential: unsupported site atoms may name their own guard.
-                    CpuRead::Guard(guard) => self.guard_matches_using(guard, captured, captured_site),
-                    other => self.cpu_read(other),
-                },
-                self.instant_kernel.clause_matcher,
-            );
-        }
         self.guard_matches_using(id, captured, captured_site)
     }
 

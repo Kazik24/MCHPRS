@@ -756,45 +756,6 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 results.push(result);
             }
             let native = results.iter().find(|result| result["executor"] == "interpreter").unwrap();
-            if cfg!(feature = "unsafe-turbo-fixed-point") {
-                // Keep failures as evidence; this build deliberately discards transient propagation.
-                let comparisons: Vec<_> = results
-                    .iter()
-                    .filter(|result| result["executor"] != "interpreter")
-                    .map(|result| {
-                        let mut mismatches: Vec<String> = ["initial", "trace", "chat", "continuation", "reset_future", "continuation_future"]
-                            .into_iter()
-                            .filter(|field| result[*field] != native[*field])
-                            .map(str::to_owned)
-                            .collect();
-                        // Use the same projected contract as normal comparisons: the native
-                        // piston inspection hash includes physical state absent from Graph.
-                        for checkpoint in ["reset_checkpoint", "continuation_checkpoint"] {
-                            for field in ["blocks", "entities", "chat"] {
-                                if result[checkpoint][field] != native[checkpoint][field] {
-                                    mismatches.push(format!("{checkpoint}.{field}"));
-                                }
-                            }
-                        }
-                        let first_trace_difference = result["trace"]
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .zip(native["trace"].as_array().unwrap())
-                            .position(|(a, b)| a != b);
-                        println!("{name}: EXPERIMENTAL fixed-point mismatches: {mismatches:?}");
-                        json!({"executor":result["executor"],"sample":sample+1,"mismatched_fields":mismatches,
-                            "first_trace_difference":first_trace_difference})
-                    })
-                    .collect();
-                workload["unsafe_fixed_point"] = json!(true);
-                if workload["fixed_point_comparisons"].is_null() {
-                    workload["fixed_point_comparisons"] = json!([]);
-                }
-                workload["fixed_point_comparisons"].as_array_mut().unwrap().extend(comparisons);
-                workload["samples"].as_array_mut().unwrap().extend(results);
-                continue;
-            }
             for result in &results {
                 for field in ["initial", "trace", "chat", "continuation", "reset_future", "continuation_future"] {
                     ensure!(

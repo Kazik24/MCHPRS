@@ -1,6 +1,6 @@
 use super::*;
 use crate::redpiler::analysis::AnalysisLimits;
-use crate::redpiler::program_graph::{Guard, GuardId, GuardPredicatePlans, OperandView, ProfileId, SiteTest};
+use crate::redpiler::program_graph::{Guard, GuardId, OperandView, ProfileId, SiteTest};
 
 fn old_captured_profile_test(
     backend: &GraphBackend,
@@ -41,7 +41,6 @@ fn captured_profile_guards_match_the_resolver_snapshot() {
     }
     let not_guard = GuardId::try_from_index(graph.guards.len()).unwrap();
     graph.guards.push(Guard::Not(cases[0].2));
-    graph.plans.guard_predicates = GuardPredicatePlans::compile(&graph, &monitor).unwrap();
     let (program, state) = graph.lower().unwrap();
     let mut backend = GraphBackend::new(program, state, 0).unwrap();
     let captures = (0..backend.program.sites().len())

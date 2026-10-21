@@ -4,7 +4,7 @@ use crate::redpiler::power_rules::{emits_strong, emits_weak};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[cfg(test)]
 #[path = "unchecked_chungus_tick512.rs"]
@@ -386,10 +386,6 @@ impl UncheckedProgram {
         program
     }
 
-    fn compile(backend: &GraphBackend) -> Self {
-        Self::compile_mode(backend, std::env::var_os("MCHPRS_UNCHECKED_ANPU_HYBRID").is_some())
-    }
-
     fn compile_mode(backend: &GraphBackend, hybrid: bool) -> Self {
         assert!(backend.program.classic().nets.is_empty());
         let wires = backend.program.wires().iter().map(|wire| wire.node).collect::<Vec<_>>();
@@ -401,7 +397,7 @@ impl UncheckedProgram {
             .iter()
             .map(|&node| {
                 backend
-                    .fixed_point_wire_neighbors(node)
+                    .diagnostic_wire_neighbors(node)
                     .into_iter()
                     .map(|node| indices[node.index()])
                     .collect::<Vec<_>>()
@@ -750,7 +746,7 @@ impl UncheckedProgram {
         let mut cursor = 0;
         while cursor < wires.len() {
             let mut from = Vec::new();
-            for node in backend.fixed_point_wire_neighbors(wires[cursor]) {
+            for node in backend.diagnostic_wire_neighbors(wires[cursor]) {
                 let index = *indices.entry(node).or_insert_with(|| {
                     let index = wires.len();
                     wires.push(node);
@@ -797,7 +793,7 @@ impl UncheckedProgram {
             if weighted != live {
                 let plan = backend.wire_plan(node).clone();
                 let block = backend.seed_power_general(&plan).block_power;
-                differences.push(json!({"node":node.index(),"position":backend.program.nodes()[node.index()].position,"kind":format!("{:?}",backend.program.nodes()[node.index()].kind),"old":backend.wire_state(node).power,"weighted":weighted,"live_fixed_point":live,"live_block_power":block,"live_incoming":backend.fixed_point_wire_neighbors(node).iter().map(|node|json!({"node":node.index(),"position":backend.program.nodes()[node.index()].position,"power":backend.wire_state(*node).power})).collect::<Vec<_>>(),"frozen_incoming":net.incoming[index].iter().map(|&index|json!({"node":net.wires[index].index(),"position":backend.program.nodes()[net.wires[index].index()].position})).collect::<Vec<_>>(),"terms":net.terms[index].iter().map(|&(source,weight)|json!({"source":format!("{:?}",net.sources[source]),"source_node":match net.sources[source] {Source::Node(node)|Source::LiveBlockPower(node)=>json!({"position":backend.program.nodes()[node.index()].position,"kind":format!("{:?}",backend.program.nodes()[node.index()].kind)})},"value":sources[source],"attenuation":weight})).collect::<Vec<_>>(),"neighbors":plan.canonical_neighbors.iter().map(|&site|json!({"site":site.index(),"source":format!("{:?}",backend.program.sites()[site.index()].source),"resolved":format!("{:?}",backend.resolve_site(site,None))})).collect::<Vec<_>>()}));
+                differences.push(json!({"node":node.index(),"position":backend.program.nodes()[node.index()].position,"kind":format!("{:?}",backend.program.nodes()[node.index()].kind),"old":backend.wire_state(node).power,"weighted":weighted,"live_fixed_point":live,"live_block_power":block,"live_incoming":backend.diagnostic_wire_neighbors(node).iter().map(|node|json!({"node":node.index(),"position":backend.program.nodes()[node.index()].position,"power":backend.wire_state(*node).power})).collect::<Vec<_>>(),"frozen_incoming":net.incoming[index].iter().map(|&index|json!({"node":net.wires[index].index(),"position":backend.program.nodes()[net.wires[index].index()].position})).collect::<Vec<_>>(),"terms":net.terms[index].iter().map(|&(source,weight)|json!({"source":format!("{:?}",net.sources[source]),"source_node":match net.sources[source] {Source::Node(node)|Source::LiveBlockPower(node)=>json!({"position":backend.program.nodes()[node.index()].position,"kind":format!("{:?}",backend.program.nodes()[node.index()].kind)})},"value":sources[source],"attenuation":weight})).collect::<Vec<_>>(),"neighbors":plan.canonical_neighbors.iter().map(|&site|json!({"site":site.index(),"source":format!("{:?}",backend.program.sites()[site.index()].source),"resolved":format!("{:?}",backend.resolve_site(site,None))})).collect::<Vec<_>>()}));
             }
         }
         for (&node, &index) in &indices {
@@ -827,7 +823,9 @@ impl UncheckedProgram {
     pub(super) fn counts(&self) -> serde_json::Value {
         json!({"net_invocations":self.calls.load(Ordering::Relaxed),"source_samples":self.source_samples.load(Ordering::Relaxed),"weighted_terms":self.weighted_terms.load(Ordering::Relaxed),"final_wire_writes":self.final_writes.load(Ordering::Relaxed),"boundary_callbacks":self.boundary_calls.load(Ordering::Relaxed),"changed_wires_outside_directed_root_closure":self.unreachable_changed.load(Ordering::Relaxed)})
     }
+}
 
+impl UncheckedProgram {
     pub(super) fn coverage(&self) -> serde_json::Value {
         json!({"compiled_nets":self.nets.iter().filter(|net|self.handles(net.wires[0])).count(),"compiled_wires":self.nets.iter().filter(|net|self.handles(net.wires[0])).map(|net|net.wires.len()).sum::<usize>(),"preservation":self.preservation,"nets":self.nets.len(),"wires":self.nets.iter().map(|net|net.wires.len()).sum::<usize>(),"zero_source_nets":self.nets.iter().filter(|net|net.sources.is_empty()).count(),"single_source_nets":self.nets.iter().filter(|net|net.sources.len()==1).count(),"multi_source_nets":self.nets.iter().filter(|net|net.sources.len()>1).count(),"largest_net":self.nets.iter().map(|net|net.wires.len()).max(),"source_terms":self.nets.iter().flat_map(|net|&net.terms).map(Vec::len).sum::<usize>(),"live_contact_block_samples":self.nets.iter().flat_map(|net|&net.sources).filter(|source| matches!(source,Source::LiveBlockPower(_))).count(),"declines":{},"topology":"initial resolved dust geometry frozen; external node strengths, contact block-power queries and boundary selection live","boundary":"v4 ordinary seed entry, root-closure writes only; root-first directed BFS, live callback selection, deduplicated snapshots before dispatch; no transient/order proof"})
     }
@@ -940,247 +938,6 @@ fn unchecked_hybrid_preserves_whole_contact_region_but_keeps_remote_fixed_line()
         assert!(program.handles(backend.positions[&BlockPos::new(x, 20, 10)]));
     }
     assert_eq!(program.preservation["preserved_wires"], 3);
-}
-
-fn counts(backend: &GraphBackend) -> serde_json::Value {
-    let counts = backend.execution_counts();
-    json!({"ticks":counts.ticks,"callbacks":counts.callbacks,"wire_walks":counts.wire_walks,"scheduled_ticks":counts.scheduled_ticks,"piston_samples":counts.piston_samples,"piston_actions":counts.piston_actions})
-}
-
-#[test]
-#[ignore = "UNSAFE full-ANPU weighted-collapse performance/output experiment; never production admission"]
-fn unchecked_classic_anpu_benchmark() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let cpu = cpus::CPUS[1];
-    let world = cpus::load_cpu(cpu);
-    let clip = crate::plot::worldedit::load_schematic(std::fs::File::open(root.join("test_data").join(cpu.schematic)).unwrap()).unwrap();
-    let bounds = (
-        cpu.origin,
-        cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
-    );
-    let options = crate::redpiler::CompilerOptions {
-        optimization_level: Some(2),
-        budget_multiplier: 8,
-        ..Default::default()
-    };
-    let template = GraphBackend::compile_without_fixed_classic(
-        &world,
-        bounds,
-        world.scheduler().iter_entries().collect(),
-        &options,
-        Arc::new(TaskMonitor::default()),
-    )
-    .unwrap();
-    let program = template.program.clone();
-    if std::env::var_os("MCHPRS_UNCHECKED_ANPU_DIAGNOSTIC").is_some() {
-        let source = &program.nodes()[13961];
-        println!("ENTRY WITNESS source13961 position{:?} kind{:?}", source.position, source.kind);
-    }
-    let state = template.state.clone();
-    let tape_mode = std::env::var_os("MCHPRS_UNCHECKED_ANPU_TAPES").is_some();
-    let compile_started = Instant::now();
-    let unchecked = Arc::new(UncheckedProgram::compile(&template));
-    let compiled_seconds = compile_started.elapsed().as_secs_f64();
-    let coverage = if tape_mode {
-        let mut probe = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
-        TapeProgram::attach(&mut probe).coverage()
-    } else {
-        unchecked.coverage()
-    };
-    assert_eq!(coverage["wires"], program.wires().len());
-    assert_eq!(program.wires().len(), 34_781, "pinned ANPU wire inventory");
-    drop(template);
-    drop(world);
-    let frames: Vec<cpus::ScreenFrame> =
-        serde_json::from_slice(&std::fs::read(root.join("test_data/cpu-references/anpu_screen.json")).unwrap()).unwrap();
-    let ticks = std::env::var("MCHPRS_UNCHECKED_ANPU_TICKS")
-        .ok()
-        .and_then(|value| value.parse::<u32>().ok())
-        .unwrap_or(400);
-    let samples = std::env::var("MCHPRS_UNCHECKED_ANPU_SAMPLES")
-        .ok()
-        .and_then(|value| value.parse::<usize>().ok())
-        .unwrap_or(3);
-    assert!(ticks > 0 && samples > 0);
-    let mut reports = Vec::new();
-    println!("UNSAFE ANPU coverage {coverage}; compiled {compiled_seconds:.6}s; {ticks} ticks x {samples} samples");
-    for sample in 0..samples {
-        let mut backends = (0..3)
-            .map(|_| GraphBackend::new(program.clone(), state.clone(), 0).unwrap())
-            .collect::<Vec<_>>();
-        let experiment = Arc::new(UncheckedProgram::compile(&backends[2]));
-        let tapes = if tape_mode {
-            Some(TapeProgram::attach(&mut backends[2]))
-        } else {
-            backends[2].test_recorder.unchecked_classic = Some(experiment.clone());
-            None
-        };
-        let mut worlds = (0..3).map(|_| cpus::load_cpu(cpu)).collect::<Vec<_>>();
-        let mut execution = [Duration::ZERO; 3];
-        let mut projection = [Duration::ZERO; 3];
-        let mut activation = [Duration::ZERO; 3];
-        let mut first_state = [const { None }; 3];
-        let mut first_future = [None; 3];
-        let mut first_screen = [const { None }; 3];
-        let mut screen_mismatch_ticks = [0u32; 3];
-        let mut state_mismatch_ticks = [0u32; 3];
-        let mut future_mismatch_ticks = [0u32; 3];
-        let mut scheduler_mismatch_ticks = [0u32; 3];
-        let mut scheduler_multiset_mismatch_ticks = [0u32; 3];
-        let mut pending_mismatch_ticks = [0u32; 3];
-        let mut first_scheduler = [None; 3];
-        let mut first_scheduler_witness = [const { None }; 3];
-        let mut first_scheduler_multiset = [None; 3];
-        let mut first_pending = [None; 3];
-        let mut other_future_mismatch_ticks = [0u32; 3];
-        let mut first_other_future = [None; 3];
-        let mut changed_frames = [0u32; 3];
-        let mut previous = [String::new(), String::new(), String::new()];
-        let mut hashes = [0xcbf29ce484222325u64; 3];
-        for index in 0..3 {
-            let started = Instant::now();
-            fixed_point::with_mode(index == 1, || backends[index].use_block(cpu.origin + cpu.start)).unwrap();
-            activation[index] = started.elapsed();
-        }
-        for tick in 0..=ticks {
-            if tick > 0 {
-                let order = if sample % 2 == 0 { [0, 1, 2] } else { [2, 1, 0] };
-                for index in order {
-                    let started = Instant::now();
-                    fixed_point::with_mode(index == 1, || backends[index].tick()).unwrap();
-                    execution[index] += started.elapsed();
-                }
-            }
-            let expected = &frames.iter().rev().find(|frame| frame.tick <= tick).unwrap().pixels;
-            for index in 0..3 {
-                let started = Instant::now();
-                backends[index].flush(&mut worlds[index], false);
-                projection[index] += started.elapsed();
-                let screen = cpus::screen(&worlds[index]);
-                if screen != *expected {
-                    screen_mismatch_ticks[index] += 1;
-                    if first_screen[index].is_none() {
-                        let pixel = screen.bytes().zip(expected.bytes()).position(|(a, b)| a != b).unwrap();
-                        first_screen[index] = Some(
-                            json!({"tick":tick,"pixel":pixel,"position":[148,97-pixel/32,46+pixel%32],"actual":screen.as_bytes()[pixel] as char,"expected":expected.as_bytes()[pixel] as char}),
-                        );
-                    }
-                }
-                if previous[index] != screen {
-                    changed_frames[index] += 1;
-                }
-                for byte in screen.bytes() {
-                    hashes[index] = (hashes[index] ^ u64::from(byte)).wrapping_mul(0x100000001b3);
-                }
-                previous[index] = screen;
-                if index != 0 {
-                    if backends[index].state != backends[0].state {
-                        state_mismatch_ticks[index] += 1;
-                        if first_state[index].is_none() {
-                            let component = backends[index]
-                                .state
-                                .components
-                                .iter()
-                                .zip(&backends[0].state.components)
-                                .position(|(a, b)| a != b);
-                            first_state[index] =
-                                Some(json!({"tick":tick,"component":component,"position":component.and_then(|node|program.nodes()[node].position)}));
-                        }
-                    }
-                    let mut actual_scheduler = backends[index].scheduled_ticks();
-                    let mut expected_scheduler = backends[0].scheduled_ticks();
-                    let scheduler_differs = actual_scheduler != expected_scheduler;
-                    let pending_differs = backends[index].future.pending != backends[0].future.pending;
-                    let other_future = |backend: &GraphBackend| {
-                        format!(
-                            "{:?}|{:?}|{:?}",
-                            backend.future.clock, backend.future.piston_requests, backend.future.deferred_pistons
-                        )
-                    };
-                    let other_future_differs = other_future(&backends[index]) != other_future(&backends[0]);
-                    if other_future_differs {
-                        other_future_mismatch_ticks[index] += 1;
-                        first_other_future[index].get_or_insert(tick);
-                    }
-                    if scheduler_differs {
-                        scheduler_mismatch_ticks[index] += 1;
-                        if first_scheduler[index].is_none() {
-                            let ordinal = actual_scheduler
-                                .iter()
-                                .zip(&expected_scheduler)
-                                .position(|(a, b)| a != b)
-                                .unwrap_or(actual_scheduler.len().min(expected_scheduler.len()));
-                            let window = |entries: &[TickEntry]| {
-                                entries[ordinal.saturating_sub(1)..(ordinal + 3).min(entries.len())]
-                                    .iter()
-                                    .map(|entry| format!("{entry:?}"))
-                                    .collect::<Vec<_>>()
-                            };
-                            first_scheduler_witness[index] = Some(
-                                json!({"tick":tick,"ordinal":ordinal,"normal":window(&expected_scheduler),"experimental":window(&actual_scheduler)}),
-                            );
-                        }
-                        first_scheduler[index].get_or_insert(tick);
-                        actual_scheduler.sort_by_cached_key(|entry| format!("{entry:?}"));
-                        expected_scheduler.sort_by_cached_key(|entry| format!("{entry:?}"));
-                        if actual_scheduler != expected_scheduler {
-                            scheduler_multiset_mismatch_ticks[index] += 1;
-                            first_scheduler_multiset[index].get_or_insert(tick);
-                        }
-                    }
-                    if pending_differs {
-                        pending_mismatch_ticks[index] += 1;
-                        first_pending[index].get_or_insert(tick);
-                    }
-                    if scheduler_differs || pending_differs || other_future_differs {
-                        future_mismatch_ticks[index] += 1;
-                        if first_future[index].is_none() {
-                            first_future[index] = Some(tick);
-                        }
-                    }
-                }
-            }
-        }
-        let names = [
-            "normal_graph_o2",
-            "dynamic_fixed_point_unsafe",
-            if tape_mode {
-                "guarded_ordered_tapes_experimental"
-            } else {
-                "compiled_weighted_unsafe"
-            },
-        ];
-        assert_eq!(screen_mismatch_ticks[0], 0, "normal Graph must match the frozen screen at every tick");
-        assert!(backends[0].counts.callbacks > 0 && backends[0].counts.wire_walks > 0);
-        if let Some(tapes) = &tapes {
-            assert!(tapes.counts()["misses"].as_u64().unwrap() > 0);
-        } else {
-            assert!(experiment.calls.load(Ordering::Relaxed) > 0, "unchecked hook must actually execute");
-        }
-        if std::env::var_os("MCHPRS_UNCHECKED_ANPU_HYBRID").is_some() {
-            assert!(backends[2].counts.wire_walks > 0, "hybrid must execute preserved general wire work");
-        }
-        let modes = (0..3).map(|index| json!({"mode":names[index],"activation_seconds":activation[index].as_secs_f64(),"execution_seconds":execution[index].as_secs_f64(),"projection_seconds":projection[index].as_secs_f64(),"counts":counts(&backends[index]),"screen_mismatch_ticks":screen_mismatch_ticks[index],"first_screen_mismatch":first_screen[index],"state_mismatch_ticks":state_mismatch_ticks[index],"first_state_mismatch":first_state[index],"future_mismatch_ticks":future_mismatch_ticks[index],"first_future_mismatch":first_future[index],"changed_frames_including_initial":changed_frames[index],"screen_trace_fnv1a64":format!("{:016x}",hashes[index])})).collect::<Vec<_>>();
-        let mut modes = modes;
-        for (index, mode) in modes.iter_mut().enumerate() {
-            mode["scheduler_mismatch_ticks"] = json!(scheduler_mismatch_ticks[index]);
-            mode["first_scheduler_mismatch"] = json!(first_scheduler[index]);
-            mode["first_scheduler_witness"] = json!(first_scheduler_witness[index]);
-            mode["scheduler_multiset_mismatch_ticks"] = json!(scheduler_multiset_mismatch_ticks[index]);
-            mode["first_scheduler_multiset_mismatch"] = json!(first_scheduler_multiset[index]);
-            mode["pending_mismatch_ticks"] = json!(pending_mismatch_ticks[index]);
-            mode["first_pending_mismatch"] = json!(first_pending[index]);
-            mode["piston_deferred_clock_mismatch_ticks"] = json!(other_future_mismatch_ticks[index]);
-            mode["first_piston_deferred_clock_mismatch"] = json!(first_other_future[index]);
-        }
-        let row = json!({"sample":sample,"modes":modes,"compiled_work":tapes.as_ref().map_or_else(||experiment.counts(), |tapes|tapes.counts())});
-        println!("UNSAFE ANPU sample {row}");
-        reports.push(row);
-    }
-    let report = json!({"experiment":if tape_mode {"v5 complete native Turbo episode tape cache with live boundary handlers and initial-state guards, experimental"} else {"UNSAFE v4 seed-admitted weighted hybrid with complete potential-region preservation, not certified classic mask runtime"},"timing_protocol":"tick-interleaved modes, alternating first/last per sample; state/future/screen checks and projection outside execution timers; cache-perturbed exploratory timing","profile":if cfg!(debug_assertions){"debug"}else{"release"},"schematic_sha256":cpu.sha256,"ticks":ticks,"samples":samples,"coverage":coverage,"compile_seconds":compiled_seconds,"reports":reports});
-    let destination = root.join(format!("target/unchecked-classic-anpu-{ticks}.json"));
-    std::fs::write(&destination, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
-    println!("UNSAFE ANPU result {}", destination.display());
 }
 
 // Research cache: replay one complete native Turbo episode, never a final-state collapse.
@@ -1345,15 +1102,12 @@ struct TapeCache {
 
 pub(super) struct TapeProgram {
     core: Vec<bool>,
-    coverage: serde_json::Value,
     cache: std::sync::Mutex<TapeCache>,
     recording_active: std::sync::atomic::AtomicBool,
 }
 impl TapeProgram {
     pub(super) fn attach(backend: &mut GraphBackend) -> Arc<Self> {
         let mut core = vec![false; backend.program.nodes().len()];
-        let mut reasons = BTreeMap::<&str, usize>::new();
-        let mut impossible = 0;
         for plan in backend.program.wires() {
             let mut why = BTreeSet::new();
             if plan
@@ -1382,7 +1136,6 @@ impl TapeProgram {
                     let captured = (delivery.view == OperandView::Captured).then_some((delivery.target, &observed));
                     match tape_static_guard(backend, delivery.guard, captured) {
                         Some(false) => {
-                            impossible += 1;
                             continue;
                         }
                         None => {
@@ -1398,26 +1151,14 @@ impl TapeProgram {
                 }
             }
             core[plan.node.index()] = !why.is_empty();
-            for reason in why {
-                *reasons.entry(reason).or_default() += 1;
-            }
         }
-        let direct = backend.program.wires().iter().filter(|plan| core[plan.node.index()]).count();
-        let coverage = json!({"wires":backend.program.wires().len(), "direct_core_wires":direct,
-            "structurally_eligible_wires":backend.program.wires().len()-direct,"propagated_region_rejection_wires":0,
-            "direct_reasons_overlapping":reasons,"statically_impossible_deliveries":impossible,
-            "variants_per_root_limit":8,"retained_byte_limit":33554432,"ops_per_episode_limit":65536,"memory_accounting":"boxed tape ops and guards plus EpisodeTape/Arc payload; fixed core/index and BTreeMap allocation overhead excluded","cache_policy":"8 variants/root; seal recording after first admitted episode exceeding remaining payload budget; retain guards for removed captures"});
         let program = Arc::new(Self {
             core,
-            coverage,
             cache: Default::default(),
             recording_active: false.into(),
         });
         backend.test_recorder.wire_tapes = Some(program.clone());
         program
-    }
-    pub(super) fn coverage(&self) -> serde_json::Value {
-        self.coverage.clone()
     }
     pub(super) fn counts(&self) -> serde_json::Value {
         let cache = self.cache.lock().unwrap();
@@ -1586,7 +1327,7 @@ impl TapeProgram {
         };
         if let Some(tape) = tape {
             let mut captures = Vec::new();
-            let result = super::fixed_point::with_mode(false, || {
+            let result = (|| {
                 for op in &tape.ops {
                     match *op {
                         TapeOp::Capture(site) => captures.push(backend.observe_site(site).expect("fixed tape capture")),
@@ -1595,7 +1336,7 @@ impl TapeProgram {
                     }
                 }
                 Ok(())
-            });
+            })();
             let mut cache = self.cache.lock().unwrap();
             cache.replaying = false;
             cache.private_callbacks_elided += tape.private_callbacks;
@@ -1770,4 +1511,36 @@ fn unchecked_tape_unchanged_seed_does_not_publish_undelivered_source() {
     assert_eq!(tapes.counts()["misses"], 0);
     assert_eq!(tapes.counts()["hits"], 0);
     assert!(backend.program.wires().iter().all(|plan| backend.wire_state(plan.node).power == 0));
+}
+
+impl GraphBackend {
+    fn diagnostic_wire_neighbors(&self, node: NodeId) -> Vec<NodeId> {
+        let plan = self.wire_plan(node);
+        let view = |index| {
+            self.resolve_site_view(plan.canonical_neighbors[index], None)
+                .expect("validated wire neighborhood")
+        };
+        let up_solid = view(3).solid;
+        let mut indices = vec![0, 1, 2, 3, 4, 5];
+        // Match seed_power_general's ascent and descent rules, not Turbo's notification radius.
+        for (side, above, below) in [(4, 20, 17), (5, 21, 18), (1, 13, 12), (0, 8, 7)] {
+            let neighbor = view(side);
+            if !up_solid && !neighbor.transparent {
+                indices.push(above);
+            }
+            if !neighbor.solid {
+                indices.push(below);
+            }
+        }
+        indices
+            .into_iter()
+            .filter_map(|index| match view(index).block {
+                Block::RedstoneWire { .. } => match self.program.sites()[plan.canonical_neighbors[index].index()].source {
+                    SiteSource::Component(node) => Some(node),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
 }

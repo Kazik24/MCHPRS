@@ -77,7 +77,7 @@ impl GraphBackend {
     }
 
     pub(super) fn try_stable_instant_logic(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<bool, GraphExecutionError> {
-        if self.classic_proof.is_some() || super::fixed_point::enabled() {
+        if self.classic_proof.is_some() {
             return Ok(false);
         }
         #[cfg(test)]
@@ -90,9 +90,6 @@ impl GraphBackend {
         let Some(logic) = self.program.stable_logic_net(net_index).cloned() else {
             return Ok(false);
         };
-        if self.wire_plan(node).execution.abstract_instant_net {
-            return Ok(false);
-        }
         if let Some(observed) = captured
             && let ObservedProperties::Wire(wire) = observed.properties
             && wire != self.wire_state(node)

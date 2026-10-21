@@ -49,8 +49,7 @@ fn prepare_cpu_reference(
     let memories = memory_only::memory_probes(&prepared.graph, "cpu_bubblesort");
     assert_eq!(memories.len(), 768);
     if stable_inputs {
-        let mut baseline = prepared.graph.clone();
-        baseline.plans.guard_predicates = Default::default();
+        let baseline = prepared.graph.clone();
         let (reference, _) = baseline.lower_with_monitor(&monitor).unwrap();
         let lowered = prepared.lower(&monitor).unwrap();
         return (lowered, reference, memories);
@@ -63,7 +62,6 @@ fn prepare_cpu_reference(
         baseline.plans.instant_transition_programs = Default::default();
     }
     baseline.plans.signal_channels = Default::default();
-    baseline.plans.guard_predicates = Default::default();
     let (baseline, _) = baseline.lower_with_monitor(&monitor).unwrap();
     (prepared.lower(&monitor).unwrap(), baseline, memories)
 }

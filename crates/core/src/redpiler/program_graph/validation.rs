@@ -52,11 +52,6 @@ impl CircuitDraft {
                 self.validate_cpu_power_queries(monitor)?;
                 Ok(None)
             }
-            #[cfg(test)]
-            PlanChange::GuardPredicates => {
-                self.validate_guard_predicates(monitor)?;
-                Ok(None)
-            }
             PlanChange::BudMemoryReads => {
                 self.validate_bud_memory_reads(monitor)?;
                 self.validate_instant_events(monitor)?;
@@ -74,10 +69,6 @@ impl CircuitDraft {
             }
             PlanChange::WireCaptureMasks => {
                 self.validate_wire_capture_masks(monitor)?;
-                Ok(None)
-            }
-            PlanChange::AbstractInstantNets => {
-                self.validate_abstract_instant_nets(monitor)?;
                 Ok(None)
             }
             PlanChange::InstantWireNodes => {
@@ -179,7 +170,6 @@ impl CircuitDraft {
         self.validate_instant_events(monitor)?;
         self.validate_cpu_kernels(monitor)?;
         self.validate_cpu_power_queries(monitor)?;
-        self.validate_guard_predicates(monitor)?;
         self.validate_bud_memory_reads(monitor)?;
         self.validate_instant_wire_nodes(monitor)?;
         self.validate_instant_transport(monitor)?;
@@ -188,7 +178,6 @@ impl CircuitDraft {
         self.validate_stable_instant_logic(monitor)?;
         self.validate_instant_value_regions(monitor)?;
         self.validate_instant_transition_programs(monitor)?;
-        self.validate_abstract_instant_nets(monitor)?;
         self.validate_instant_regions()?;
         self.validate_fixed_signals(monitor)?;
         validate_classic(self, monitor)?;
@@ -241,23 +230,6 @@ impl CircuitDraft {
         if self.plans.cpu_power_queries != expected {
             return Err(GraphBuildError::InvalidInstantRegion {
                 table: "CPU power queries",
-                index: 0,
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_guard_predicates(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
-        if self.plans.guard_predicates == GuardPredicatePlans::default() {
-            return Ok(());
-        }
-        let expected = GuardPredicatePlans::compile(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
-            table: "guard predicates",
-            index: 0,
-        })?;
-        if self.plans.guard_predicates != expected {
-            return Err(GraphBuildError::InvalidInstantRegion {
-                table: "guard predicates",
                 index: 0,
             });
         }
@@ -458,25 +430,6 @@ impl CircuitDraft {
             }
         }
         self.validate_instant_resets()?;
-        Ok(())
-    }
-
-    fn validate_abstract_instant_nets(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
-        if !self.wires.iter().any(|wire| wire.execution.abstract_instant_net) {
-            return Ok(());
-        }
-        let expected = infer_abstract_instant_nets(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
-            table: "abstract instant nets",
-            index: 0,
-        })?;
-        for (index, (wire, allowed)) in self.wires.iter().zip(expected).enumerate() {
-            if wire.execution.abstract_instant_net && !allowed {
-                return Err(GraphBuildError::InvalidInstantRegion {
-                    table: "abstract instant nets",
-                    index,
-                });
-            }
-        }
         Ok(())
     }
 

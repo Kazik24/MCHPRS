@@ -3,7 +3,7 @@ use super::instant_cpu_tests::cpus;
 use super::*;
 use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary;
-use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary_with_retained_resources;
+use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary_cut_feedback;
 use crate::world::World;
 use std::sync::Arc;
 
@@ -232,7 +232,7 @@ fn o6_event_boundary_actor_roots_report_cold_extraction() {
     }
 }
 
-fn run_live_acceptance_probe(cpu: cpus::Cpu, position: BlockPos, retained: &[ResourceId], ticks: u32, label: &str) {
+fn run_live_acceptance_probe(cpu: cpus::Cpu, position: BlockPos, ticks: u32, label: &str) {
     let (cpu, mut world, prepared) = prepare_o6_cpu(cpu);
     if cpu.name == "anpu_pong" {
         world.disable_command_output_limits_for_replay();
@@ -254,16 +254,34 @@ fn run_live_acceptance_probe(cpu: cpus::Cpu, position: BlockPos, retained: &[Res
     ];
     let monitor = Arc::new(TaskMonitor::default());
     monitor.set_budget_multiplier(8);
-    let circuit = match compile_event_boundary_with_retained_resources(&prepared.graph, &targets, retained, &monitor) {
-        Ok(circuit) => circuit,
-        Err(error) => {
-            eprintln!("{} {label}: event-boundary compilation declined: {error}", cpu.name);
-            return;
-        }
+    let (circuit, cut_resources, cut_owners) = match compile_event_boundary_cut_feedback(&prepared.graph, &targets, &monitor) {
+        Ok(result) => result,
+        Err(error) => panic!("{} {label}: expected event-boundary feedback compilation to succeed: {error}", cpu.name),
     };
+    let resource_rows = cut_resources
+        .iter()
+        .map(|resource| {
+            let current = prepared.graph.initial_resources[resource.index()];
+            let contacts = prepared.graph.resources[resource.index()]
+                .contacts
+                .iter()
+                .map(|&contact| (contact, prepared.graph.contacts[contact.index()].position))
+                .collect::<Vec<_>>();
+            (*resource, current, contacts)
+        })
+        .collect::<Vec<_>>();
+    let owner_rows = cut_owners
+        .iter()
+        .map(|owner| {
+            let piston = prepared.graph.pistons[owner.index()];
+            (*owner, piston.position, prepared.graph.initial_pistons[owner.index()])
+        })
+        .collect::<Vec<_>>();
     eprintln!(
-        "{} {label}: actor={actor:?} retained={retained:?} inputs={} sources={:?} expressions={} outputs={:?} declines={:?}",
+        "{} {label}: actor={actor:?} cut_resources={} resource_rows={resource_rows:?} cut_owners={} owner_rows={owner_rows:?} inputs={} sources={:?} expressions={} outputs={:?} declines={:?}",
         cpu.name,
+        cut_resources.len(),
+        cut_owners.len(),
         circuit.program.inputs.len(),
         circuit.program.inputs.iter().map(|input| input.source).collect::<Vec<_>>(),
         circuit.program.expressions.len(),
@@ -286,15 +304,27 @@ fn run_live_acceptance_probe(cpu: cpus::Cpu, position: BlockPos, retained: &[Res
     }
     let report = backend.take_accepted_boundary_probe().expect("probe remains installed");
     eprintln!(
-        "{} {label}: accepted={} Main match/mismatch={}/{} Quasi match/mismatch={}/{} eval_errors={} last_error={:?}",
+        "{} {label}: accepted={} Main match/mismatch={}/{} Quasi match/mismatch={}/{} Combined-OR match/mismatch={}/{} eval_errors={} last_error={:?}",
         cpu.name,
         report.total_accepted,
         report.main_matches,
         report.main_mismatches,
         report.quasi_matches,
         report.quasi_mismatches,
+        report.combined_matches,
+        report.combined_mismatches,
         report.evaluation_errors,
         report.last_error,
+    );
+    assert!(
+        report.total_accepted > 0,
+        "{} {label}: selected actor had no accepted actions in {ticks} ticks",
+        cpu.name
+    );
+    assert_eq!(
+        report.evaluation_errors, 0,
+        "{} {label}: event-boundary input evaluation failed: {:?}",
+        cpu.name, report.last_error
     );
     for (index, record) in report.records.iter().enumerate() {
         eprintln!(
@@ -310,20 +340,19 @@ fn run_live_acceptance_probe(cpu: cpus::Cpu, position: BlockPos, retained: &[Res
             record.inputs,
         );
     }
+    assert_eq!(
+        report.combined_mismatches, 0,
+        "{} {label}: Main||Quasi power differs at an accepted cut; first records are printed above",
+        cpu.name,
+    );
 }
 
 #[test]
 #[ignore = "research: compare retained-source Main/Quasi equations at live accepted piston cuts"]
 fn o6_selected_event_boundary_queries_report_live_acceptance_cuts() {
     let anpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "anpu_pong").unwrap();
-    run_live_acceptance_probe(anpu, BlockPos::new(125, 53, 123), &[], 1_000, "ANPU upper writer");
+    run_live_acceptance_probe(anpu, BlockPos::new(125, 53, 123), 1_000, "ANPU upper writer");
 
     let bubblesort = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
-    run_live_acceptance_probe(
-        bubblesort,
-        BlockPos::new(177, 45, 64),
-        &[ResourceId::new(1060)],
-        1_000,
-        "BubbleSort RAM actor resource 1060",
-    );
+    run_live_acceptance_probe(bubblesort, BlockPos::new(177, 45, 64), 1_000, "BubbleSort RAM actor");
 }

@@ -273,15 +273,6 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
                 + (graph.plans.cpu_power_queries.packed.require_true.capacity() + graph.plans.cpu_power_queries.packed.require_false.capacity())
                     * std::mem::size_of::<u64>(),
         ),
-        vector_table_statistics(
-            "lowering input",
-            "guard predicates",
-            &graph.plans.guard_predicates.by_guard,
-            graph.plans.guard_predicates.predicates.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuPredicate>()
-                + graph.plans.guard_predicates.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
-                + (graph.plans.guard_predicates.require_true.capacity() + graph.plans.guard_predicates.require_false.capacity())
-                    * std::mem::size_of::<u64>(),
-        ),
         vector_table_statistics("lowering input", "wire relations", &graph.wire_relations, 0),
         vector_table_statistics("lowering input", "routes", &graph.routes, 0),
         table_memory_statistics::<crate::redpiler::program_graph::RouteDelivery>("lowering input", "deliveries", delivery_count, delivery_count, 0),
@@ -393,15 +384,6 @@ pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
             &program.cpu_power_queries().entries,
             program.cpu_power_queries().packed.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
                 + (program.cpu_power_queries().packed.require_true.capacity() + program.cpu_power_queries().packed.require_false.capacity())
-                    * std::mem::size_of::<u64>(),
-        ),
-        slice_table_statistics(
-            "lowering",
-            "guard predicates",
-            &program.guard_predicate_plans().by_guard,
-            program.guard_predicate_plans().predicates.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuPredicate>()
-                + program.guard_predicate_plans().reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
-                + (program.guard_predicate_plans().require_true.capacity() + program.guard_predicate_plans().require_false.capacity())
                     * std::mem::size_of::<u64>(),
         ),
         slice_table_statistics("lowering", "routes", routes, 0),

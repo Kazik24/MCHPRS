@@ -53,10 +53,6 @@ fn native_operation(world: &mut PlotWorld, operation: Operation) {
 #[test]
 #[ignore = "five alternating interpreter/max pairs for five devices, including full BubbleSort"]
 fn maximum_pipeline_interpreter_tps_for_all_requested_builds() {
-    assert!(
-        !cfg!(feature = "unsafe-abstract-instant-nets") && !cfg!(feature = "unsafe-turbo-fixed-point"),
-        "known incorrect experiments cannot enter the maximum-correctness comparison"
-    );
     let directory = root().join("target/cpu-kernels");
     std::fs::create_dir_all(&directory).unwrap();
     let mut reports = Vec::new();

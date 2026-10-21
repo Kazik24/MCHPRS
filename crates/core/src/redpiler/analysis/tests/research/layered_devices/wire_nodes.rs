@@ -59,7 +59,7 @@ fn paired_measurement(experiment: Experiment) {
         let mut pipeline = passes::default_graph_pipeline(&options);
         pipeline
             .entries
-            .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if matches!(builder.name(), "experimental-compile-instant-wire-nodes" | "unsafe-abstract-instant-nets" | "experimental-compile-instant-events" | "experimental-compile-bud-memory-reads" | "experimental-minimize-wire-captures") || captures && builder.name() == "compile-wire-captures"));
+            .retain(|entry| !matches!(&entry.pass, passes::Pass::Build(builder) if matches!(builder.name(), "experimental-compile-instant-wire-nodes" | "experimental-compile-instant-events" | "experimental-compile-bud-memory-reads" | "experimental-minimize-wire-captures") || captures && builder.name() == "compile-wire-captures"));
         for entry in &mut pipeline.entries {
             if matches!(&entry.pass, passes::Pass::Build(builder) if builder.name() == "compile-instant-layers") {
                 entry.enabled = true;

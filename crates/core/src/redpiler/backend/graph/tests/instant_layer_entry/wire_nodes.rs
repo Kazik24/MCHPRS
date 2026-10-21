@@ -293,55 +293,11 @@ fn closed_multi_wire_boundary_accepts_instant_chain_and_rejects_classic_fanout()
         if classic {
             world.set_block(BlockPos::new(12, 20, 9), Block::RedstoneLamp { lit: false });
         }
-        let mut graph = prepare(&world).graph;
+        let graph = prepare(&world).graph;
         let catalog = infer_boundaries(&graph, &TaskMonitor::default()).unwrap();
         let census = census_closed_instant_nets(&graph, &catalog, &TaskMonitor::default()).unwrap();
         assert_eq!(census.closed.iter().filter(|net| net.wires > 1).count(), usize::from(!classic));
-        graph.plans.instant.boundaries = Some(catalog);
-        let masks = infer_abstract_instant_nets(&graph, &TaskMonitor::default()).unwrap();
-        assert_eq!(masks.iter().filter(|&&mask| mask).count(), if classic { 0 } else { 2 });
     }
-}
-
-#[test]
-fn abstract_net_keeps_a_wire_route_as_the_request_origin() {
-    let mut world = wire_controlled_cell_world();
-    let first = CONTROL.offset(BlockFace::West);
-    let source = first.offset(BlockFace::West);
-    world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
-    world.set_block(source, world.get_block(first));
-    world.set_block(
-        first,
-        Block::RedstoneWire {
-            wire: RedstoneWire::new(
-                RedstoneWireSide::Side,
-                RedstoneWireSide::Side,
-                RedstoneWireSide::Side,
-                RedstoneWireSide::Side,
-                15,
-            ),
-        },
-    );
-    let Block::RedstoneWire { mut wire } = world.get_block(CONTROL) else {
-        unreachable!()
-    };
-    wire.power = 14;
-    world.set_block(CONTROL, Block::RedstoneWire { wire });
-    let mut prepared = prepare(&world);
-    let monitor = TaskMonitor::default();
-    prepared.graph.plans.instant.boundaries = Some(infer_boundaries(&prepared.graph, &monitor).unwrap());
-    let options = Default::default();
-    let context = passes::PassContext::new(&monitor, &options, &prepared.entry);
-    passes::abstract_instant_nets::AbstractInstantNets
-        .run(&mut prepared.graph, &context)
-        .unwrap();
-    assert_eq!(prepared.graph.wires.iter().filter(|wire| wire.execution.abstract_instant_net).count(), 2);
-    let (program, state) = prepared.graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
-    backend.use_block(source).unwrap();
-    let request = backend.future.piston_requests.front().unwrap();
-    let route = request.source.expect("a compiled signal port must retain an original route witness");
-    assert!(backend.program.wires().iter().any(|wire| wire.turbo_route == Some(route)));
 }
 
 #[test]

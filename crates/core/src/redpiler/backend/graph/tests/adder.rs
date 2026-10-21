@@ -6,8 +6,6 @@ mod boundary_contract_tests;
 mod builtin_reset_tests;
 #[path = "execution_coverage.rs"]
 mod execution_coverage_tests;
-#[path = "fixed_point_adder.rs"]
-mod fixed_point_tests;
 #[path = "guarded_transport.rs"]
 mod guarded_transport_tests;
 #[path = "instant_boundaries.rs"]
@@ -20,14 +18,14 @@ mod instant_contract_tests;
 mod instant_event_tests;
 #[path = "instant_layers.rs"]
 mod instant_layer_tests;
-#[path = "instant_net_counterexample.rs"]
-mod instant_net_counterexample;
 #[path = "instant_proxy.rs"]
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
 mod instant_recognition_tests;
 #[path = "instant_transport.rs"]
 mod instant_transport_tests;
+#[path = "ordered_wire.rs"]
+mod ordered_wire_tests;
 #[path = "production_tiers.rs"]
 mod production_tier_tests;
 #[path = "reset_elision.rs"]

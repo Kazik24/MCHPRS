@@ -1319,21 +1319,6 @@ test('wire capture operations are optional and typed', async (t) => {
   }
 });
 
-test('abstract instant net flags are explicit and typed', async (t) => {
-  const viewer = makeViewer();
-  t.after(() => viewer.cy?.destroy());
-  const graph = adderFixture();
-  const wire = graph.graph.wire_plans[0];
-  wire.abstract_instant_net = true;
-  await load(viewer, graph);
-  assert.equal(viewer.elements.get('error').hidden, true);
-  for (const value of [0, 1, 'true', {}]) {
-    wire.abstract_instant_net = value;
-    await load(viewer, graph);
-    assert.equal(viewer.elements.get('error').hidden, false);
-  }
-});
-
 test('mutable capture masks require 24 bits and a compiled root', async (t) => {
   const viewer = makeViewer();
   t.after(() => viewer.cy?.destroy());

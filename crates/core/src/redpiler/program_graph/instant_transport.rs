@@ -131,7 +131,7 @@ fn infer_mode(graph: &CompileGraph, monitor: &crate::redpiler::TaskMonitor, guar
         excluded_wires.extend(proxy.routes.iter().map(|route| graph.routes[route.route.index()].source));
     }
     for wire in &graph.wires {
-        if wire.execution.instant_reset.is_some() || wire.execution.instant_node.is_some() || wire.execution.abstract_instant_net {
+        if wire.execution.instant_reset.is_some() || wire.execution.instant_node.is_some() {
             excluded_wires.insert(wire.node);
         }
     }
@@ -630,7 +630,7 @@ impl CompileGraph {
             excluded_wires.extend(proxy.routes.iter().map(|route| self.routes[route.route.index()].source));
         }
         for wire in &self.wires {
-            if wire.execution.instant_reset.is_some() || wire.execution.instant_node.is_some() || wire.execution.abstract_instant_net {
+            if wire.execution.instant_reset.is_some() || wire.execution.instant_node.is_some() {
                 excluded_wires.insert(wire.node);
             }
         }

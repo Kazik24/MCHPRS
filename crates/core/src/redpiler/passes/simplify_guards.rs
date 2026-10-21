@@ -603,7 +603,6 @@ mod tests {
                 .copied()
                 .filter(|(_, name)| level.is_some_and(|level| level < 4) || !matches!(*name, "identify-instant-regions" | "compile-instant-proxies"))
                 .collect();
-            #[cfg(not(feature = "unsafe-turbo-fixed-point"))]
             assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);

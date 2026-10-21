@@ -21,10 +21,6 @@ mod drives;
 #[path = "graph/tests/event_boundary_probes.rs"]
 mod event_boundary_probes;
 mod fixed_classic;
-mod fixed_point;
-#[cfg(test)]
-#[path = "graph/tests/fixed_point_cpu.rs"]
-mod fixed_point_cpu_tests;
 mod instant;
 #[cfg(test)]
 #[path = "graph/tests/instant_cpu.rs"]
@@ -2293,10 +2289,6 @@ mod instant_reset_tests;
 #[cfg(test)]
 #[path = "graph/tests/wire_callbacks.rs"]
 mod wire_callback_tests;
-
-#[cfg(test)]
-#[path = "graph/tests/guard_predicates.rs"]
-mod guard_predicate_tests;
 
 #[cfg(test)]
 #[path = "graph/tests/fixed_classic_edges.rs"]

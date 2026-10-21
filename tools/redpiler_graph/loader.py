@@ -430,8 +430,6 @@ def _validate(data: Any) -> dict[str, dict[str, dict[str, Any]]]:
             ref("site", root, identifier)
             if records["site"][root].get("source") != {"kind": "component", "node": wire["node"]}:
                 raise GraphFormatError(f"{identifier} hop root must bind its component")
-        if wire.get("abstract_instant_net") is not None and type(wire["abstract_instant_net"]) is not bool:
-            raise GraphFormatError(f"{identifier} has invalid abstract instant-net flag")
         node = wire.get("instant_node")
         if node is not None:
             node = _object(node, f"{identifier}.instant_node")

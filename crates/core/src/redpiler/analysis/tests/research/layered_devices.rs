@@ -5,7 +5,6 @@ use crate::redpiler::program_graph::*;
 use crate::redpiler::{CompilerOptions, passes};
 
 mod admission;
-mod closed_nets;
 mod drive_census;
 mod instant_events;
 mod kernel_interface;
