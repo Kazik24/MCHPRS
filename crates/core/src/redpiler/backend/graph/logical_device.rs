@@ -27,8 +27,10 @@ impl GraphBackend {
     pub(super) fn install_logical_device(&mut self) -> Result<(), String> {
         let Some(circuit) = self.program.settled_circuit() else { return Ok(()) };
         let Some(timing) = &circuit.timing else { return Ok(()) };
-        if !self.future.pending.is_empty() {
-            return Err("logical device requires a stationary compilation entry".into());
+        if !self.future.pending.is_empty() || !self.future.piston_requests.is_empty() || !self.future.deferred_pistons.is_empty() {
+            // A settled kernel is an optional fast path. Preserve the ordinary Graph executor
+            // whenever entry work needs its scheduler or shared piston queues.
+            return Ok(());
         }
         let clock = LogicalClock::new(&self.program, &self.state, timing)?;
         let inputs = circuit

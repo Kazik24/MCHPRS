@@ -1,5 +1,5 @@
 use super::*;
-use crate::plot::client_test_utils::{decode_blocks, read_ack, read_blocks};
+use crate::plot::client_test_utils::{decode_blocks, read_ack};
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::packets::serverbound::*;
@@ -562,14 +562,18 @@ fn actual_placement_and_break_handlers_publish_edits_in_screen_mode() {
         assert!(ids.contains(&0x4d), "other viewers also need the placement delta");
         assert!(blocks.contains(&(placed, Block::Sandstone {}.get_id())));
         assert_eq!(ids.last(), Some(&0x04));
-        assert_eq!(read_blocks(&mut viewer_peer, compressed), [(placed, Block::Sandstone {}.get_id())]);
+        drop(mchprs_network::BlockActionAcknowledgement::new(&plot.players[1].client, 1));
+        let (_, viewer_blocks) = episode(&mut viewer_peer, compressed, 1);
+        assert_eq!(viewer_blocks, [(placed, Block::Sandstone {}.get_id())]);
 
         plot.handle_player_digging(digging(placed, 0, 2), 0);
         assert_eq!(plot.world.get_block(placed), Block::Air);
         let (ids, blocks) = episode(&mut peer, compressed, 2);
         assert!(ids.contains(&0x4d));
         assert!(blocks.contains(&(placed, Block::Air.get_id())));
-        assert_eq!(read_blocks(&mut viewer_peer, compressed), [(placed, Block::Air.get_id())]);
+        drop(mchprs_network::BlockActionAcknowledgement::new(&plot.players[1].client, 2));
+        let (_, viewer_blocks) = episode(&mut viewer_peer, compressed, 2);
+        assert_eq!(viewer_blocks, [(placed, Block::Air.get_id())]);
         assert!(plot.world.screen_only());
     }
 }

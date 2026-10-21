@@ -304,6 +304,12 @@ pub struct GraphExecutionCounts {
     pub piston_actions: u64,
     /// Piston-driven block changes waiting for publication to the world.
     pub deferred_publications: u64,
+    /// Logical BUD samples represented without running the owner's piston callback.
+    pub logical_bud_samples: u64,
+    /// Accepted logical BUD state transitions; these do not count as physical piston actions.
+    pub logical_bud_accepts: u64,
+    /// Logical BUD delayed state publications processed at Graph's deferred phase.
+    pub logical_bud_publications: u64,
 }
 
 #[derive(Default)]

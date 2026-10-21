@@ -1,6 +1,6 @@
 # O6 logical circuit compiler and runtime plan
 
-Status: proposed implementation scope, 2026-10-21. This replaces the earlier
+Status: implementation in progress, 2026-10-21. This replaces the earlier
 physical transport and stable-input implementation plan at this path. Existing
 O0-O5 optimizations remain supported. Implementation progress belongs in
 [TODO.md](../../../TODO.md); measurements and their limits remain in
@@ -21,6 +21,11 @@ is irrelevant under the accepted O6 contract.
 An update event is distinct from a value change. A BUD may sample unchanged QC
 power on an update. Conversely, a QC value change alone need not write memory.
 Keep ordering only where it can affect a retained state read/write or output.
+An instant can fire once before its reset and remains retracted in that interval
+(user clarification, 2026-10-21). Feedback therefore needs reset-scoped fired
+state, rather than unrestricted algebraic reevaluation. Bind rearming to each
+actor's proven reset event; merging actors into one reset frame requires evidence
+that their reset and next-computation cuts coincide.
 Do not require identical internal callback counts, queues, revision numbers or
 physical snapshots. Required delays and temporarily unreadable memory may be
 logical state/events rather than moving blocks.
@@ -41,11 +46,26 @@ before implementing it. Partial coverage is not whole-device compilation.
   at 4.24M whole-loop game TPS. Its clock recognizer is a narrow family.
 - The FPU computation-frame kernel is experimental; its measured calculation
   rate does not establish production game TPS or a publication adapter.
-- BubbleSort's selected RAM-query worklist diagnostic traverses 36,116 typed
-  source nodes and 44,237 edges with no unsupported-source errors. Recursive
-  extraction previously stopped after 256 sources. A 114-node structural cycle
-  remains in the diagnostic, which does not propagate constants between source
-  equations. That cycle does not establish additional persistent memory.
+- Production settled extraction now uses source equations, global constant
+  propagation and output liveness. Tests cover a 513-equation chain, a cycle
+  removed by constants, dead feedback and an explicit live-feedback decline.
+  Local electrical tracing and repeater inlining retain separate safety limits.
+- BubbleSort's selected RAM-query inventory traverses 36,116 typed sources and
+  44,237 edges. Extraction gets past the old 256-source recursive limit, but a
+  113-edge cycle survives global constant propagation. The full containing
+  component has 3,146 payload signals and 4,295 edges, including 144 negative
+  edges. It is a reset-scoped one-shot network, not 113 inferred RAM registers.
+  The test-only one-shot compiler now handles the selected RAM Main/QC cone:
+  9,308 instant uses, 7,248 resources, 24,937 inputs and 84,404 Boolean expressions,
+  with no declines. Normal BubbleSort execution still uses Graph.
+- Ordinary single-owner BUD discovery and logical sample/accept/publication
+  dispatch are implemented independently of the strict memory-reader pattern.
+  Rilax busy-phase and same-level-update differential checks pass. ANPU activates
+  967 owners and matches 5,000 screen/state ticks plus all 1,552 ordered BUD update
+  ticks, with 2,090 logical accepted transitions/publications. BubbleSort matches
+  all 10,036 frozen RAM ticks and 32 interpreter continuation ticks. This slice
+  retains callback occurrences at the Graph boundary and does not establish
+  whole-device event contraction or a speedup.
 - The older candidate audit inventories 15,200 computation actors and 768
   external RAM pistons. Its thousands of physical crossing edges describe that
   partition, not the final logical boundary or a requirement to retain them.

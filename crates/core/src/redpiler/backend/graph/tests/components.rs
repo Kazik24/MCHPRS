@@ -2815,6 +2815,31 @@ fn opposing_shared_pistons() -> (PlotWorld, PlotWorld, [BlockPos; 2], [BlockPos;
 }
 
 #[test]
+fn projection_skips_matching_blocks_but_updates_comparator_entities() {
+    let mut inner = analog_dust_world();
+    let mut backend = recording_graph(&inner, vec![]);
+    let node = backend.positions[&LEVER_POS];
+    let ComponentState::Electrical(state) = &mut backend.state.components[node.index()] else {
+        panic!("expected comparator")
+    };
+    state.output_strength = 7;
+    inner.set_block(LEVER_POS, backend.node_block(node));
+    inner.set_block_entity(LEVER_POS, BlockEntity::Comparator { output_strength: 15 });
+    let mut world = CountingContactWorld {
+        inner,
+        contacts: [LEVER_POS].into_iter().collect(),
+        contact_writes: 0,
+    };
+    backend.dirty[node.index()] = true;
+    backend.flush(&mut world, false);
+    assert_eq!(world.contact_writes, 0);
+    assert!(matches!(
+        world.get_block_entity(LEVER_POS),
+        Some(BlockEntity::Comparator { output_strength: 7 })
+    ));
+}
+
+#[test]
 fn dirty_contact_projection_matches_full_future_and_preserves_pending_work() {
     let (_, graph_world, bases, _, _) = opposing_shared_pistons();
     let mut backend = GraphBackend::compile(&graph_world, BOUNDS, vec![], Arc::default()).unwrap();
@@ -2827,11 +2852,11 @@ fn dirty_contact_projection_matches_full_future_and_preserves_pending_work() {
 
     backend.flush(&mut world, false);
     assert_contact_projection_matches_full(&backend, &world, false, "initial");
-    assert!(world.contact_writes > 0, "initial projection must write contact cells");
-
     world.contact_writes = 0;
+    backend.full_contact_projection = true;
     backend.flush(&mut world, false);
     assert_eq!(world.contact_writes, 0, "a no-op full flush must not rewrite contacts");
+    backend.full_contact_projection = false;
 
     let first = piston_id_at(&backend, bases[0]);
     let second = piston_id_at(&backend, bases[1]);

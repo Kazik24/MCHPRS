@@ -37,6 +37,7 @@ fn circuit(program: ReducedLayerProgram, outputs: Vec<SettledOutput>) -> Settled
     SettledCircuit {
         program,
         outputs: outputs.into_boxed_slice(),
+        firing: None,
         retained_effects: Box::new([]),
         declines: Box::new([]),
         timing: None,

@@ -14,6 +14,7 @@ pub(crate) use controller::controller_support;
 mod cpus;
 #[cfg(test)]
 mod divider;
+mod equations;
 #[cfg(test)]
 mod fpu;
 #[cfg(test)]
@@ -21,8 +22,6 @@ mod fpu_computation_tests;
 #[cfg(test)]
 mod fpu_kernel_bench;
 mod settled;
-#[cfg(test)]
-mod source_graph;
 pub(crate) mod timing;
 #[cfg(test)]
 pub(crate) use settled::compile_computation;
@@ -33,6 +32,8 @@ pub(crate) use settled::compile_event_boundary_cut_feedback;
 #[cfg(test)]
 pub(crate) use settled::compile_event_boundary_with_retained_resources;
 #[cfg(test)]
+pub(crate) use settled::compile_one_shot_boundary;
+#[cfg(test)]
 pub(crate) use settled::compile_public_boundary;
 #[cfg(test)]
 pub(crate) use settled::diagnostic_all_phase_raw_query;
@@ -40,9 +41,9 @@ pub(crate) use settled::diagnostic_all_phase_raw_query;
 pub(crate) use settled::diagnostic_computation_failures;
 #[cfg(test)]
 pub(crate) use settled::diagnostic_query;
-pub(crate) use settled::{compile_device, compile_settled};
 #[cfg(test)]
-pub(crate) use source_graph::diagnostic_source_dependency_graph;
+pub(crate) use settled::diagnostic_source_cycle_edges;
+pub(crate) use settled::{compile_device, compile_settled};
 #[cfg(test)]
 mod adders11;
 #[cfg(test)]
@@ -74,22 +75,34 @@ struct Equations<'a> {
     retain_classic: bool,
     /// When set, a recognized payload-location backedge becomes an explicit state input.
     feedback_resources: bool,
+    /// Cut recognized instant-cell payload feedback with source-derived fired inputs.
+    #[cfg(test)]
+    one_shot_firing: bool,
+    /// Fired-state inputs allocated for actors that own a requested feedback resource.
+    #[cfg(test)]
+    fired_inputs: FxHashMap<PistonId, LayerInputId>,
+    /// Shared source resources whose feedback was represented by owner fired inputs.
+    #[cfg(test)]
+    firing_resources: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
+    /// Prevalidated common-Far contracts built from one sticky-owner index.
+    #[cfg(test)]
+    one_shot_contracts: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
     /// Diagnostic-only mode: retain otherwise unknown payload locations as leaves so one
     /// traversal can report every blocker. Executable compilation never enables this.
     diagnostic_unknown_resources: bool,
     /// Typed first resource-location cycle seen by an event-boundary diagnostic build.
     #[cfg(test)]
     resource_cycle_witness: Option<(ResourceId, ContactId)>,
+    /// Full typed cycle found by the production post-propagation equation analysis.
+    #[cfg(test)]
+    source_cycle_witness: Vec<LayerInputSource>,
+    /// All post-propagation internal edges in the SCC containing that witness.
+    #[cfg(test)]
+    source_scc_edges: Vec<(LayerInputSource, LayerInputSource)>,
     /// Diagnostic-only source equation worklist mode; each dependency is a typed leaf.
-    #[cfg(test)]
     defer_sources: bool,
-    #[cfg(test)]
     deferred_parent: Option<LayerInputSource>,
-    #[cfg(test)]
     deferred_roots: FxHashSet<LayerInputSource>,
-    #[cfg(test)]
-    deferred_edges: FxHashSet<(LayerInputSource, LayerInputSource)>,
-    #[cfg(test)]
     deferred_children: FxHashMap<LayerInputSource, FxHashSet<LayerInputSource>>,
     feedback_state_sources: Vec<(ResourceId, ContactId)>,
 }
@@ -102,6 +115,21 @@ impl<'a> Equations<'a> {
         for resource in catalog.cells.iter().flat_map(|cell| cell.resources.iter()) {
             *resource_cell_counts.entry(resource.resource).or_default() += 1;
         }
+        let cells: FxHashMap<_, _> = catalog
+            .cells
+            .iter()
+            .flat_map(|cell| {
+                cell.resources
+                    .iter()
+                    .map(|resource| (resource.resource, (resource.source, resource.owners.to_vec())))
+            })
+            .collect();
+        let unique_cell_resources: FxHashSet<_> = resource_cell_counts
+            .into_iter()
+            .filter_map(|(resource, count)| (count == 1).then_some(resource))
+            .collect();
+        #[cfg(test)]
+        let one_shot_contracts = common_far_contracts(graph, &cells, &unique_cell_resources);
         Ok(Self {
             graph,
             power: index_power(graph),
@@ -116,19 +144,8 @@ impl<'a> Equations<'a> {
                 .iter()
                 .flat_map(|cell| cell.uses.iter().filter_map(|use_| use_.reset.observer()))
                 .collect(),
-            cells: catalog
-                .cells
-                .iter()
-                .flat_map(|cell| {
-                    cell.resources
-                        .iter()
-                        .map(|resource| (resource.resource, (resource.source, resource.owners.to_vec())))
-                })
-                .collect(),
-            unique_cell_resources: resource_cell_counts
-                .into_iter()
-                .filter_map(|(resource, count)| (count == 1).then_some(resource))
-                .collect(),
+            cells,
+            unique_cell_resources,
             disabled_destinations,
             actors: catalog.cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect(),
             registers: graph.plans.bud_memory_reads.iter().map(|read| (read.resource, *read)).collect(),
@@ -154,18 +171,24 @@ impl<'a> Equations<'a> {
             pending_repeaters: FxHashSet::default(),
             retain_classic: false,
             feedback_resources: false,
+            #[cfg(test)]
+            one_shot_firing: false,
+            #[cfg(test)]
+            fired_inputs: FxHashMap::default(),
+            #[cfg(test)]
+            firing_resources: FxHashMap::default(),
+            #[cfg(test)]
+            one_shot_contracts,
             diagnostic_unknown_resources: false,
             #[cfg(test)]
             resource_cycle_witness: None,
             #[cfg(test)]
+            source_cycle_witness: Vec::new(),
+            #[cfg(test)]
+            source_scc_edges: Vec::new(),
             defer_sources: false,
-            #[cfg(test)]
             deferred_parent: None,
-            #[cfg(test)]
             deferred_roots: FxHashSet::default(),
-            #[cfg(test)]
-            deferred_edges: FxHashSet::default(),
-            #[cfg(test)]
             deferred_children: FxHashMap::default(),
             feedback_state_sources: Vec::new(),
         })
@@ -221,9 +244,73 @@ impl<'a> Equations<'a> {
         self.reduced.input_expr(input)
     }
 
-    fn source(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
+    #[cfg(test)]
+    fn fired_leaf(&mut self, actor: PistonId) -> Result<LayerExprId, ConstructionError> {
+        let source = LayerInputSource::InstantFired { actor };
+        let input = self.reduced.input(source, LayerInputRole::RequestSample)?;
+        self.fired_inputs.insert(actor, input);
+        self.reduced.input_expr(input)
+    }
+
+    #[cfg(test)]
+    fn one_shot_source_presence(&mut self, resource: ResourceId) -> Result<Option<LayerExprId>, ConstructionError> {
+        if !self.one_shot_firing {
+            return Ok(None);
+        }
+        let Some((source, owners)) = self.one_shot_contracts.get(&resource).cloned() else {
+            return Ok(None);
+        };
+        let fired = owners.iter().map(|&actor| self.fired_leaf(actor)).collect::<Result<Vec<_>, _>>()?;
+        let any_fired = self.reduced.any(fired)?;
+        let present = self.reduced.not(any_fired)?;
+        self.firing_resources.insert(resource, (source, owners));
+        Ok(Some(present))
+    }
+
+    fn one_shot_live_destination(&self, resource: ResourceId, contact: ContactId) -> bool {
         #[cfg(test)]
+        {
+            self.one_shot_firing
+                && self.one_shot_contracts.contains_key(&resource)
+                && self.graph.resources[resource.index()].contacts.contains(&contact)
+        }
+        #[cfg(not(test))]
+        {
+            let _ = (resource, contact);
+            false
+        }
+    }
+
+    fn source(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
         if self.defer_sources {
+            if let Some(node) = self.inline_repeaters.then(|| self.repeater_source_node(source)).flatten() {
+                if self.stateful_repeaters.contains(&node) {
+                    return self.binary_source_leaf(source);
+                }
+                if self.pending_repeaters.contains(&node) {
+                    self.stateful_repeaters.extend(self.pending_repeaters.iter().copied());
+                    self.stateful_repeaters.insert(node);
+                    return self.binary_source_leaf(source);
+                }
+                // Repeater equations are currently expanded as a special case while
+                // discovering source templates. Keep this recursion explicitly
+                // bounded; ordinary source dependencies are still lowered by the
+                // iterative worklist, and an unusually deep repeater chain declines
+                // to the exact graph path instead of risking stack exhaustion.
+                const MAX_INLINE_REPEATER_DEPTH: usize = 128;
+                if self.pending_repeaters.len() >= MAX_INLINE_REPEATER_DEPTH {
+                    return Err("logical repeater equation exceeds its inline depth bound".into());
+                }
+                self.pending_repeaters.insert(node);
+                let result = self.input_power(node, InputPort::Main);
+                self.pending_repeaters.remove(&node);
+                let value = result?;
+                return if self.stateful_repeaters.contains(&node) {
+                    self.binary_source_leaf(source)
+                } else {
+                    Ok(value)
+                };
+            }
             if let Some(parent) = self.deferred_parent {
                 self.deferred_children.entry(parent).or_default().insert(source);
             } else {
@@ -568,6 +655,13 @@ impl<'a> Equations<'a> {
                 }
             }
             LayerInputSource::State(StateTest::ResourceEnabled(resource)) => {
+                #[cfg(test)]
+                if self.one_shot_firing {
+                    // Only canonical far-side ResourceAt values are represented by
+                    // owner fired bits. Keep enablement live as an exact Graph phase
+                    // input, including for private destinations and register lanes.
+                    return self.leaf(source);
+                }
                 if !self.cells.contains_key(&resource) && !self.registers.contains_key(&resource) {
                     return if self.retain_classic || self.diagnostic_unknown_resources {
                         self.leaf(source)
@@ -596,8 +690,17 @@ impl<'a> Equations<'a> {
                     }
                 } else if let Some((origin, actors)) = self.cells.get(&resource).cloned() {
                     if origin == contact {
+                        #[cfg(test)]
+                        if let Some(present) = self.one_shot_source_presence(resource)? {
+                            return Ok(present);
+                        }
                         let values = actors.into_iter().map(|actor| self.powered(actor)).collect::<Result<Vec<_>, _>>()?;
                         self.reduced.all(values)?
+                    } else if self.one_shot_live_destination(resource, contact) {
+                        // The logical source occupancy is the fired-bit contract;
+                        // preserve any moved destination as an exact live Graph state
+                        // input rather than inventing a destination transfer.
+                        self.leaf(source)?
                     } else if self.feedback_resources
                         && self.feedback_resource_contract(resource).is_some()
                         && self.graph.resources[resource.index()].contacts.contains(&contact)
@@ -714,6 +817,61 @@ impl<'a> Equations<'a> {
         };
         Ok(value)
     }
+}
+
+#[cfg(test)]
+fn common_far_contracts(
+    graph: &CompileGraph,
+    cells: &FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
+    unique_resources: &FxHashSet<ResourceId>,
+) -> FxHashMap<ResourceId, (ContactId, Vec<PistonId>)> {
+    let mut sticky_far_owners = FxHashMap::<ContactId, Vec<PistonId>>::default();
+    for (index, piston) in graph.pistons.iter().enumerate() {
+        if piston.sticky {
+            if let PistonLane::SingleResource { far } = piston.lane {
+                sticky_far_owners.entry(far).or_default().push(PistonId::new(index as u32));
+            }
+        }
+    }
+
+    let mut contracts = FxHashMap::default();
+    for (&resource, &(canonical, ref owners)) in cells {
+        if !unique_resources.contains(&resource) || !(1..=5).contains(&owners.len()) {
+            continue;
+        }
+        let Some(spec) = graph.resources.get(resource.index()) else {
+            continue;
+        };
+        let owner_set: FxHashSet<_> = owners.iter().copied().collect();
+        if owner_set.len() != owners.len() || !spec.contacts.contains(&canonical) {
+            continue;
+        }
+        let mut indexed = sticky_far_owners.get(&canonical).cloned().unwrap_or_default();
+        indexed.sort_unstable();
+        let mut declared = owner_set.iter().copied().collect::<Vec<_>>();
+        declared.sort_unstable();
+        if indexed != declared {
+            continue;
+        }
+        let mut covered = FxHashSet::default();
+        covered.insert(canonical);
+        let mut valid = true;
+        for &owner in owners {
+            let Some(piston) = graph.pistons.get(owner.index()) else {
+                valid = false;
+                break;
+            };
+            if !piston.sticky || piston.lane != (PistonLane::SingleResource { far: canonical }) || !spec.contacts.contains(&piston.near) {
+                valid = false;
+                break;
+            }
+            covered.insert(piston.near);
+        }
+        if valid && spec.contacts.iter().all(|contact| covered.contains(contact)) {
+            contracts.insert(resource, (canonical, owners.clone()));
+        }
+    }
+    contracts
 }
 
 /// A contract proves that an accepted pull disables the payload at Near until

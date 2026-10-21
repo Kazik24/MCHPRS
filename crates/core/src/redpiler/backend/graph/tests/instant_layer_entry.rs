@@ -273,6 +273,7 @@ fn entry_input(input: LayerInput, backend: &GraphBackend) -> bool {
             backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
         }
         LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => state_predicate(backend, test),
+        LayerInputSource::InstantFired { .. } => panic!("legacy instant-entry fixture has no logical firing latch"),
     }
 }
 

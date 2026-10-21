@@ -1,5 +1,108 @@
 # Settled inference: COUNTER and divider
 
+## O6 ordinary BUD slice, 2026-10-21
+
+O6 now discovers stationary, exclusive two-contact redstone-payload BUD owners
+without requiring the strict upper-storage/lower-reader pattern. Logical owners
+use Graph's request FIFO, acceptance recheck and two-tick publication deadline;
+their accepted transitions bypass physical extend/retract handlers. Consequential
+boundary callback occurrences remain. This is an event/state integration slice,
+not a whole-device kernel or an established speedup.
+
+Rilax matches physical state, scheduled work, request/deferred queues and accepted
+traces through busy input changes and same-level updates. Full BubbleSort matches
+10,036 frozen RAM ticks and 32 interpreter continuation ticks. ANPU matches all
+5,000 checked screen/state ticks, 14 frames and 1,552 ordered BUD update ticks.
+ANPU activates all 967 compiled ordinary owners, with 22,938 logical samples,
+2,090 accepted transitions and 2,090 publications; 304,647 physical samples and
+8,592 physical actions still execute elsewhere.
+
+The new equation compiler passes deep-chain and global-constant feedback tests.
+ANPU exceeds its optional settled-proof budget and explicitly falls back to
+Graph, retaining the ordinary logical BUD path. BubbleSort's selected RAM query
+retains a 113-cell cycle after constant propagation. Every recorded cycle edge
+has positive polarity; that witness does not prove a reset fixed-point policy
+or classify every edge of its enclosing component.
+
+Artifacts: `target/logical-inference/o6-logical-bud-author-regressions.log`,
+`o6-logical-bud-anpu-regression.log` and `o6-bubblesort-feedback-edges.log`.
+No release TPS was measured for this slice.
+
+## Reset-scoped firing prototype, 2026-10-21
+
+The full component containing the 113-edge BubbleSort witness has 3,146 payload
+signals and 4,295 dependencies: 4,151 positive and 144 negative. It therefore
+cannot be treated as a purely positive algebraic loop. The user clarified that
+each instant fires once and remains retracted until its reset. The prototype
+keeps that per-actor fired state and represents canonical shared-source presence
+as `!OR(fired owners)`, retaining live reset/enablement phase inputs.
+
+The selected RAM actor's Main/QC cone compiles with 9,308 instant uses, 7,248
+resources, 24,937 inputs and 84,404 Boolean expressions. Its 9,310 outputs are the
+two selected power values and 9,308 power-eligibility predicates; the latter are
+not accepted actions. There are no declines. This helper is test-only and Graph
+still owns production acceptance/reset events.
+
+The source-selected observer-reset timeline agrees between native execution and
+O5 Graph: accepted pull at tick 8, observer ON at 10, accepted extension at 11,
+observer OFF at 12, canonical payload publication at 13, next accepted pull at 20.
+The latch cannot rearm at observer OFF before the matching publication succeeds.
+These are measured cuts for the selected cell, not a global reset period.
+
+Reset publication has two observable cuts: Graph enables the restored Far
+resource and synchronously dispatches its callbacks before publishing the actor
+as Ready and restoring its head. Piston callbacks sample immediately and enqueue
+their requests. A fired latch cleared only after the deferred handler therefore
+cannot, by itself, describe source presence at every BUD sampling cut. Shared
+owners also have distinct reset witnesses, including mixed Payload/Observer
+resets. The test-only all-owner probe now measures selected RAM Main/QC values
+at these native cuts; its coverage assertions are not a parity proof. General
+O6 activation remains gated on resolving these boundary observations.
+
+The first 1,000-tick diagnostic starts with all 9,308 owners Ready/extended and
+all 7,248 sources canonical/enabled. It tracks 123,855 accepted retractions and
+122,645 reset completions with zero evaluation errors. The selected RAM actor
+has only six sampling cuts and no accepted transitions; Main and Quasi match
+at all six. This is limited coverage, not whole-RAM or whole-CPU equivalence.
+Artifact: `target/logical-inference/o6-bubblesort-one-shot-runtime.log`.
+
+The source census contains 7,153 Observer, 2,121 Payload and 34
+InputRestoration reset witnesses; 2,053 of the 7,248 resources are shared.
+There are 34 reset resource/contact witnesses outside the actor's own
+canonical-source binding. Resource identity equality is therefore not a valid
+general reset test.
+Artifact: `target/logical-inference/o6-bubblesort-reset-contracts.log`.
+The rebuilt nonignored Redpiler suite passes 675 tests with zero failures
+(84 research tests ignored); the native observer reset timeline also passes.
+
+Broadening the query roots to all 950 discovered ordinary BUD owners compiles
+12,952 firing uses and 9,968 source resources. Across 1,000 native BubbleSort
+ticks the probe checks 6,368 samples and 647 accepted ordinary actions: all 7,015
+Main, Quasi and combined-power comparisons match. It tracks 151,442 accepted
+instant retractions and 149,408 reset completions without evaluation errors.
+The kernel is observational here: native execution still supplies firing/reset
+events, so this establishes neither independent execution nor a speedup.
+Artifact: `target/logical-inference/o6-bubblesort-all-bud-one-shot-runtime.log`.
+
+The complete 10,036-tick BubbleSort probe also passes every frozen RAM snapshot
+and all 65,952 Main/Quasi/combined-power cuts (60,296 samples plus 5,656 accepted
+ordinary BUD actions). It tracks 1,486,917 accepted instant retractions and
+1,479,007 resets with no evaluation errors. Native Graph still drives the
+events; this is complete-sort boundary-query parity, not independent execution.
+Artifact: `target/logical-inference/o6-bubblesort-full-one-shot-runtime.log`.
+
+ANPU extraction produces 1,934 BUD power outputs from 140 SourceAbove inputs and
+267 expressions, with no firing uses or declines. The test adapter now supports
+this acyclic case. Its 1,000-tick probe covers 8,453 samples and 841 accepted
+ordinary actions: Quasi matches all 9,294 cuts, but Main and combined power have
+150 mismatches. The first are actor 2872 at tick 278 and actor 2863 at tick 282,
+both in scheduled-tick samples (candidate Main false versus positive native
+strength). This parity gate fails; no ANPU independent-execution claim follows.
+Artifact: `target/logical-inference/o6-anpu-one-shot-runtime.log`.
+
+Artifacts: `o6-bubblesort-feedback-scc.log`, `o6-bubblesort-one-shot-compile.log`
+and `o6-observer-reset-timeline.log` under `target/logical-inference/`.
+
 ## Execution model
 
 `SettledMachine` holds the current register bits and samples only external

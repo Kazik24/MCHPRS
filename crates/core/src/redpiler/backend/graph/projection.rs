@@ -108,7 +108,7 @@ impl GraphBackend {
     }
 
     /// Presentation only: writes current graph state and drains effects. It
-    /// reads no World state, so suppressed display cannot alter execution.
+    /// Existing World block IDs only suppress redundant writes; execution stays graph-owned.
     pub(crate) fn flush<W: World>(&mut self, world: &mut W, io_only: bool) {
         for index in 0..self.dirty.len() {
             let node = NodeId::try_from_index(index).unwrap();
@@ -178,7 +178,9 @@ impl GraphBackend {
             Block::MovingPiston { .. } => Block::Air,
             block => block,
         };
-        world.set_block(position, block);
+        if world.get_block_raw(position) != block.get_id() {
+            world.set_block(position, block);
+        }
     }
 
     fn refresh_contact_projection(&mut self) {
@@ -213,7 +215,10 @@ impl GraphBackend {
         if !self.owns_cell(node) {
             return;
         }
-        world.set_block(position, self.node_block(node));
+        let block = self.node_block(node);
+        if world.get_block_raw(position) != block.get_id() {
+            world.set_block(position, block);
+        }
         if matches!(spec.kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
             world.set_block_entity(
                 position,

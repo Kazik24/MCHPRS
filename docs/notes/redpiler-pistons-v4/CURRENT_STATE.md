@@ -8,6 +8,26 @@ contract. O6 live Main/QC compilation is verified for BubbleSort and ANPU, but
 their physical action/event machinery still runs. COUNTER has a qualified
 logical path; general state/event extraction, activation and handoff remain work.
 See [current verification and measurements](SETTLED_RUNTIME_VERIFICATION.md).
+Source extraction now uses bounded equations, global constant propagation and
+output liveness. The selected BubbleSort RAM query has a 113-edge cycle inside a
+3,146-signal component with 4,295 dependencies and 144 negative edges. Under the
+user's once-per-reset firing contract, the test-only compiler represents its
+feedback with fired bits. The selected Main/QC cone compiles to 9,308 instant
+uses, 7,248 resources and 84,404 Boolean expressions, with no declines. Production
+firing/reset dispatch and event contraction remain to be integrated.
+The broader one-shot query prototype now covers 950 ordinary BUD owners and
+matches 65,952 Main/Quasi sampling/acceptance cuts through the complete
+10,036-tick BubbleSort RAM trace. It still receives native firing/reset events.
+The analogous ANPU prototype has no firing uses and reads 140 SourceAbove
+leaves; its 1,000-tick check finds 150 Main-input mismatches (Quasi matches).
+That new prototype is not production-ready; the earlier packed-query and
+ordinary-BUD regressions below refer to the existing production paths.
+Ordinary single-owner BUD discovery and sample/accept/publication dispatch are
+implemented. Rilax's busy-input and same-level-update differential passes.
+ANPU activates 967 owners and preserves all 5,000 checked screen/state ticks and
+1,552 ordered BUD update ticks, exercising 2,090 logical transitions/publications.
+BubbleSort preserves all 10,036 frozen RAM ticks and 32 interpreter continuation
+ticks. Whole-device callback contraction and new release TPS remain unverified.
 The sections below retain earlier configurations and historical measurements;
 their physical transport roadmaps do not override the current O6 plan.
 

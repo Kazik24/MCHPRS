@@ -582,6 +582,7 @@ mod tests {
             (4, "experimental-minimize-wire-captures"),
             (4, "experimental-compile-bud-memory-reads"),
             (4, "experimental-compile-instant-events"),
+            (6, "compile-logical-bud-owners"),
             (5, "optimize-instant-kernels-cpu"),
             (5, "compile-instant-transport"),
             (5, "compile-guarded-instant-transport"),

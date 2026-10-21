@@ -20,6 +20,7 @@ mod compile_instant_transition_programs;
 pub(crate) mod compile_instant_transport;
 mod compile_instant_value_regions;
 pub(crate) mod compile_instant_wire_nodes;
+pub(crate) mod compile_logical_bud_owners;
 pub(crate) mod compile_mixed_classic;
 mod compile_settled_circuit;
 mod compile_signal_channels;
@@ -376,6 +377,7 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (4, Pass::build(minimize_wire_captures::MinimizeWireCaptures)),
         (4, Pass::build(compile_bud_memory_reads::CompileBudMemoryReads)),
         (4, Pass::build(compile_instant_events::CompileInstantEvents)),
+        (6, Pass::build(compile_logical_bud_owners::CompileLogicalBudOwners)),
         (5, Pass::build(optimize_instant_kernels_cpu::OptimizeInstantKernelsCpu)),
     ];
     pipeline.entries.extend(kernels.into_iter().map(|(minimum_level, pass)| PassEntry {
@@ -500,6 +502,7 @@ mod tests {
                 ("experimental-minimize-wire-captures", 4),
                 ("experimental-compile-bud-memory-reads", 4),
                 ("experimental-compile-instant-events", 4),
+                ("compile-logical-bud-owners", 6),
                 ("optimize-instant-kernels-cpu", 5),
                 ("compile-instant-transport", 5),
                 ("compile-guarded-instant-transport", 5),

@@ -111,6 +111,10 @@ fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
             "kind":"state",
             "test":serde_json::to_value(state_test_dto(test)).expect("state test DTO serialization is infallible"),
         }),
+        LayerInputSource::InstantFired { actor } => json!({
+            "kind":"instant_fired",
+            "actor":typed_id("piston", actor.index()),
+        }),
     }
 }
 

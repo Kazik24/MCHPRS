@@ -58,6 +58,7 @@ pub(crate) enum PlanOutput {
     CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
     CpuPowerQueries(CpuPowerQueryPlans),
     BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
+    LogicalBudOwners(Vec<crate::redpiler::program_graph::LogicalBudOwnerPlan>),
     InstantTransport(InstantTransport),
     InstantWireNodes(Vec<Option<crate::redpiler::program_graph::InstantWireNode>>),
     WireCallbacks(Vec<Option<WireCallbackSelection>>),
@@ -81,10 +82,12 @@ impl PlanOutput {
                 graph.plans.instant.regions.clear();
                 graph.plans.instant.proxies.clear();
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_bud_owners.clear();
             }
             Self::Layers(layers) => {
                 graph.plans.instant.layers = Some(layers);
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_bud_owners.clear();
             }
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
             Self::InstantDrives(plans) => graph.plans.instant_drives = plans,
@@ -104,6 +107,7 @@ impl PlanOutput {
             Self::InstantEvents(kernels) => {
                 graph.plans.instant_events = kernels;
                 graph.plans.cpu_kernels = Default::default();
+                graph.plans.logical_bud_owners.clear();
             }
             Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
             Self::CpuPowerQueries(plans) => graph.plans.cpu_power_queries = plans,
@@ -111,6 +115,7 @@ impl PlanOutput {
                 graph.plans.bud_memory_reads = reads;
                 graph.plans.settled_circuit = None;
             }
+            Self::LogicalBudOwners(owners) => graph.plans.logical_bud_owners = owners,
             Self::InstantTransport(plan) => graph.plans.instant_transport = plan,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
             Self::WireQueries(facts) => {
@@ -152,6 +157,7 @@ impl PlanOutput {
                 graph.plans.instant.regions = regions;
                 graph.plans.instant.proxies.clear();
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_bud_owners.clear();
             }
             Self::Proxies(proxies) => {
                 graph.plans.instant.proxies = proxies;
@@ -185,6 +191,7 @@ impl PlanOutput {
             Self::CpuKernels(_) => PlanChange::CpuKernels,
             Self::CpuPowerQueries(_) => PlanChange::CpuPowerQueries,
             Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
+            Self::LogicalBudOwners(_) => PlanChange::LogicalBudOwners,
             Self::InstantTransport(_) => PlanChange::InstantTransport,
             Self::InstantWireNodes(_) => PlanChange::InstantWireNodes,
             Self::WireCallbacks(_) => PlanChange::WireCallbacks,

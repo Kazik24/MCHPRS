@@ -568,3 +568,64 @@ fn o6_counter_off_phase_cuts_match_native_and_restart() {
         "COUNTER O6 OFF-phase differential mismatches recorded at {diagnostic_path:?}"
     );
 }
+
+#[test]
+fn o6_counter_falls_back_to_graph_when_an_imported_tick_is_pending() {
+    use crate::redpiler::analysis::AnalysisLimits;
+    use crate::redpiler::passes;
+    use crate::redpiler::program_graph::{CircuitNodeKind, ImportedTick, NodeId};
+    use mchprs_world::TickPriority;
+
+    let (world, bounds) = super::adder_tests::counter_world();
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.set_budget_multiplier(8);
+    let ticks = world.scheduler().iter_entries().collect();
+    let mut prepared = passes::rich::prepare(&world, bounds, ticks, &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let mut lowered = prepared.lower(&monitor).unwrap();
+    assert!(
+        lowered.program.settled_circuit().and_then(|circuit| circuit.timing.as_ref()).is_some(),
+        "COUNTER must qualify for the timing-backed device path before imported work is added"
+    );
+    let (index, repeater) = lowered
+        .program
+        .nodes()
+        .iter()
+        .enumerate()
+        .find(|(_, node)| {
+            matches!(
+                &node.kind,
+                CircuitNodeKind::Electrical(crate::redpiler::components::NodeType::Repeater { .. })
+            )
+        })
+        .expect("COUNTER has a repeater for a valid imported scheduler entry");
+    let position = repeater.position.unwrap();
+    let block = repeater.block.unwrap();
+    let registry_type = block.registry_id();
+    lowered.imported_ticks.push(ImportedTick {
+        target: Some(NodeId::new(index as u32)),
+        position,
+        block_type: Some(registry_type),
+        delay: 1,
+        priority: TickPriority::Normal,
+        current_registry_type: Some(registry_type),
+    });
+
+    let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
+    assert!(backend.logical_device.is_none(), "entry work must select the ordinary Graph path");
+    assert!(!backend.future.pending.is_empty());
+    backend.tick().unwrap();
+    assert!(backend.counts.scheduled_ticks > 0, "the imported repeater tick ran in Graph");
+}

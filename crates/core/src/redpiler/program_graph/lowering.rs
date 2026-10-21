@@ -40,6 +40,10 @@ impl CircuitDraft {
         for (index, entry) in self.plans.cpu_kernels.entries.iter().enumerate() {
             cpu_by_actor[entry.actor.index()] = index as u32;
         }
+        let mut logical_bud_owner_by_actor = vec![None; self.pistons.len()];
+        for (index, owner) in self.plans.logical_bud_owners.iter().enumerate() {
+            logical_bud_owner_by_actor[owner.actor.index()] = Some(index as u32);
+        }
         for (index, kernel) in kernels.iter().enumerate() {
             match &kernel.program {
                 KernelProgram::PullWave { pulls, .. } => {
@@ -309,6 +313,8 @@ impl CircuitDraft {
                 kernels: kernels.into_boxed_slice(),
                 kernel_by_actor: kernel_by_actor.into_boxed_slice(),
                 proxies: self.plans.instant.proxies.into_boxed_slice(),
+                logical_bud_owners: self.plans.logical_bud_owners.into_boxed_slice(),
+                logical_bud_owner_by_actor: logical_bud_owner_by_actor.into_boxed_slice(),
                 private_resource_owners: private_resource_owners.into_boxed_slice(),
                 route_by_route: instant_route_by_route.into_boxed_slice(),
             },

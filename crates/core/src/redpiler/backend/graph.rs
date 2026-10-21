@@ -20,13 +20,21 @@ mod drives;
 #[cfg(test)]
 #[path = "graph/tests/event_boundary_probes.rs"]
 mod event_boundary_probes;
+#[cfg(test)]
+mod firing_probe;
 mod fixed_classic;
 mod instant;
 #[cfg(test)]
 #[path = "graph/tests/instant_cpu.rs"]
 mod instant_cpu_tests;
+#[cfg(test)]
+#[path = "graph/tests/instant_firing_reset.rs"]
+mod instant_firing_reset_tests;
 mod instant_kernel;
 mod instant_proxy;
+#[cfg(test)]
+#[path = "graph/tests/logical_bud_runtime.rs"]
+mod logical_bud_runtime_tests;
 mod logical_clock;
 mod logical_device;
 #[cfg(test)]
@@ -257,6 +265,8 @@ pub(crate) struct TestRecorder {
     native_piston_trace: Vec<crate::redstone::piston::trace::Entry>,
     /// Cold reduced Main/Quasi evaluator sampled before accepted actor mutation.
     accepted_boundary_probe: Option<accepted_boundary_probe::Probe>,
+    /// Test-only one-shot evaluator sampled at selected native actor/reset cuts.
+    logical_firing_probe: Option<firing_probe::Probe>,
     /// Optional callback attribution; updated only by test builds and never changes trace order.
     callback_census: CallbackCensus,
     /// Opt-in per-value-region execution attribution for ignored research runs only.
@@ -434,6 +444,11 @@ pub(crate) struct GraphBackend {
     /// This holds reusable wave scratch and the current synchronous route replacement.
     instant_kernel: instant_kernel::KernelExecution,
     logical_device: Option<logical_device::LogicalDevice>,
+    /// O6 logical BUD owners index immutable transition plans by physical piston ID.
+    /// Their values, revisions and deferred deadlines remain in the shared CircuitState/GraphFuture.
+    logical_bud_owner_by_actor: Vec<Option<usize>>,
+    /// Original callback occurrences that sample active logical BUD owners.
+    logical_bud_samples_by_route: Vec<Option<Box<[Option<PistonId>]>>>,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -801,6 +816,41 @@ impl GraphBackend {
         let projected_resources = state.resources.to_vec();
         let fixed_classic = program.fixed_classic().cloned();
         let instant_kernel = instant_kernel::KernelExecution::new(&program);
+        let mut logical_bud_owner_by_actor = vec![None; program.pistons().len()];
+        let mut logical_bud_samples_by_route: Vec<Option<Box<[Option<PistonId>]>>> =
+            std::iter::repeat_with(|| None).take(program.routes().len()).collect();
+        let instant_kernel_routes: FxHashSet<_> = program
+            .instant_kernels()
+            .iter()
+            .flat_map(|kernel| kernel.routes.iter().map(|route| route.route))
+            .collect();
+        for (index, owner) in program.logical_bud_owners().iter().enumerate() {
+            let piston_state = state.pistons.get(owner.actor.index());
+            let resource_state = state.resources.get(owner.resource.index());
+            let matches_entry = piston_state.is_some_and(|current| {
+                current.extended == owner.initial_piston.extended
+                    && current.head_present == owner.initial_piston.head_present
+                    && current.availability == owner.initial_piston.availability
+            }) && resource_state
+                .is_some_and(|current| current.at == owner.initial_resource.at && current.enabled == owner.initial_resource.enabled);
+            // The older pull-wave route replacement cannot preserve an individual occurrence
+            // handoff to a logical owner. Keep that actor physical when the route programs overlap.
+            let route_conflict = owner
+                .sample_routes
+                .iter()
+                .any(|occurrence| instant_kernel_routes.contains(&occurrence.route) || program.instant_route_binding(occurrence.route).is_some());
+            if matches_entry && !route_conflict {
+                logical_bud_owner_by_actor[owner.actor.index()] = Some(index);
+                for &occurrence in owner.sample_routes.iter() {
+                    let samples = &mut logical_bud_samples_by_route[occurrence.route.index()];
+                    let ordinals =
+                        samples.get_or_insert_with(|| vec![None; program.routes()[occurrence.route.index()].deliveries.len()].into_boxed_slice());
+                    if let Some(actor) = ordinals.get_mut(occurrence.ordinal as usize) {
+                        *actor = Some(owner.actor);
+                    }
+                }
+            }
+        }
         let canonical_transport_repeaters = program.nodes().iter().zip(state.components.iter()).all(|(node, state)| {
             !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
                 || matches!(state, ComponentState::Electrical(value) if value.output_strength == 15 * u8::from(value.powered))
@@ -822,6 +872,8 @@ impl GraphBackend {
             fixed_classic_scratch: Vec::new(),
             instant_kernel,
             logical_device: None,
+            logical_bud_owner_by_actor,
+            logical_bud_samples_by_route,
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
@@ -1887,12 +1939,14 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        if let Some(kernel) = self.instant_kernel.active.clone()
+        let has_logical_sample = self.logical_bud_samples_by_route.get(route.index()).is_some_and(Option::is_some);
+        if !has_logical_sample
+            && let Some(kernel) = self.instant_kernel.active.clone()
             && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
         {
             return self.deliver_kernel_route(&kernel.routes[index]);
         }
-        if let Some(binding) = self.program.instant_route_binding(route) {
+        if !has_logical_sample && let Some(binding) = self.program.instant_route_binding(route) {
             return self.deliver_instant_route(route, binding, captured);
         }
         let delivery_count = self.program.routes()[route.index()].deliveries.len();
@@ -1909,7 +1963,91 @@ impl GraphBackend {
                 }
             }
             let delivery = self.program.routes()[route.index()].deliveries[index];
-            self.deliver_callback(route, delivery, captured)?;
+            self.deliver_callback(
+                route,
+                delivery,
+                captured,
+                Some(RouteOccurrence {
+                    route,
+                    ordinal: index as u32,
+                }),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Deliver one original callback occurrence bound to a logical BUD transition cut.
+    /// Direct self-samples pass back through the owner sampler; external deliveries stay Graph-owned.
+    pub(super) fn deliver_logical_bud_occurrence(&mut self, actor: PistonId, occurrence: RouteOccurrence) -> Result<(), GraphExecutionError> {
+        if self.program.logical_bud_owner(actor).is_none() {
+            return Ok(());
+        }
+        let Some(delivery) = self
+            .program
+            .routes()
+            .get(occurrence.route.index())
+            .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
+            .copied()
+        else {
+            return Err(GraphExecutionError::UnsupportedComponent {
+                position: Some(self.program.pistons()[actor.index()].position),
+                kind: "invalid logical BUD route occurrence",
+            });
+        };
+        let classic_range = self.program.classic().route_ranges.get(occurrence.route.index()).cloned().unwrap_or(0..0);
+        if let Some(binding) = self
+            .program
+            .classic()
+            .route_entries
+            .get(classic_range)
+            .unwrap_or(&[])
+            .iter()
+            .find(|binding| binding.ordinal == occurrence.ordinal)
+            .copied()
+            && self.run_classic_entry(binding.entry as usize)
+        {
+            return Ok(());
+        }
+        self.deliver_callback(occurrence.route, delivery, None, Some(occurrence))
+    }
+
+    /// Replay the retained boundary rows for a transition cut in their compiled order.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn deliver_logical_bud_cut(
+        &mut self,
+        actor: PistonId,
+        cut: LogicalBudEventCut,
+        resource_moved: bool,
+        interrupted_head: bool,
+        restore_matching_extension: bool,
+        pulled_resource: bool,
+        actor_revision_current: bool,
+        resource_revision_current: bool,
+    ) -> Result<(), GraphExecutionError> {
+        let event_count = self.program.logical_bud_owner(actor).map_or(0, |plan| plan.transition.events.len());
+        for index in 0..event_count {
+            let event = self
+                .program
+                .logical_bud_owner(actor)
+                .and_then(|plan| plan.transition.events.get(index))
+                .copied();
+            let Some(event) = event else { break };
+            if event.cut != cut {
+                continue;
+            }
+            let should_deliver = match event.condition {
+                LogicalBudEventCondition::Always => true,
+                LogicalBudEventCondition::ResourceMoved => resource_moved,
+                LogicalBudEventCondition::InterruptedHead => interrupted_head,
+                LogicalBudEventCondition::NotInterruptedHead => !interrupted_head,
+                LogicalBudEventCondition::RestoreMatchingExtension => restore_matching_extension,
+                LogicalBudEventCondition::PulledResource => pulled_resource,
+                LogicalBudEventCondition::ActorRevisionCurrent => actor_revision_current,
+                LogicalBudEventCondition::ResourceRevisionCurrent => resource_revision_current,
+            };
+            if should_deliver {
+                self.deliver_logical_bud_occurrence(actor, event.occurrence)?;
+            }
         }
         Ok(())
     }
@@ -1922,6 +2060,7 @@ impl GraphBackend {
         route: RouteId,
         delivery: RouteDelivery,
         captured: Option<&[Option<ObservedSite>]>,
+        occurrence: Option<RouteOccurrence>,
     ) -> Result<(), GraphExecutionError> {
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled
@@ -1952,6 +2091,24 @@ impl GraphBackend {
         let Some(receiver) = receiver else {
             return Ok(());
         };
+        let logical_sample = occurrence
+            .and_then(|occurrence| {
+                self.logical_bud_samples_by_route
+                    .get(occurrence.route.index())?
+                    .as_ref()?
+                    .get(occurrence.ordinal as usize)
+            })
+            .copied()
+            .flatten()
+            .filter(|&actor| match receiver {
+                CallbackReceiver::PistonBase(id) | CallbackReceiver::PistonHead(id) => id == actor,
+                CallbackReceiver::Component(node) => self.program.pistons()[actor.index()].node == node,
+                CallbackReceiver::Contact(_) => false,
+            });
+        if let Some(actor) = logical_sample {
+            self.sample_piston_from(actor, route)?;
+            return Ok(());
+        }
         self.counts.callbacks += 1;
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled {
@@ -2103,6 +2260,12 @@ impl GraphBackend {
     #[cfg(test)]
     pub(crate) fn native_piston_trace(&self) -> &[crate::redstone::piston::trace::Entry] {
         &self.test_recorder.native_piston_trace
+    }
+
+    #[cfg(test)]
+    pub(crate) fn disable_logical_bud_owners_for_test(&mut self) {
+        self.logical_bud_owner_by_actor.fill(None);
+        self.logical_bud_samples_by_route.fill(None);
     }
 
     #[cfg(test)]

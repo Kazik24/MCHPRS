@@ -77,6 +77,7 @@ pub fn main(args: &[String]) -> Result<()> {
         let mut core_world = world(cpu);
         let mut core = compile(&core_world, level)?;
         let conn = connection(true)?;
+        conn.peer.set_read_timeout(Some(Duration::from_secs_f64(seconds + 5.0)))?;
         let sender = PlayerPacketSender::new(&conn.player);
         let player = benchmark::player(conn.player);
         let mut plot = benchmark::with_client(live_world, player, mchprs_save_data::plot_data::Tps::Unlimited);
@@ -175,6 +176,7 @@ pub fn main(args: &[String]) -> Result<()> {
         samples.push(report);
     }
     let report = json!({"schema": 1, "cpu": name, "tier": level, "clients": 1, "compressed": true,
+        "config": std::env::var_os("MCHPRS_CONFIG").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from("Config.toml")),
         "scope": "production plot updates and incremental TCP delivery; excludes login, initial chunks and Minecraft rendering",
         "samples": samples});
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

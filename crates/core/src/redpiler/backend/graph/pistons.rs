@@ -45,12 +45,18 @@ impl GraphBackend {
             return Ok(());
         }
         let action = {
-            self.counts.piston_samples += 1;
+            if self.logical_bud_owner_by_actor.get(piston.index()).is_some_and(Option::is_some) {
+                self.counts.logical_bud_samples += 1;
+            } else {
+                self.counts.piston_samples += 1;
+            }
             #[cfg(test)]
             if let Some(activity) = self.test_recorder.memory_cell_activity.get_mut(piston.index()) {
                 activity[0] += 1;
             }
             let powered = self.piston_powered(piston);
+            #[cfg(test)]
+            self.record_logical_firing_sample(piston);
             #[cfg(test)]
             if self.test_recording {
                 self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
@@ -175,6 +181,23 @@ impl GraphBackend {
         });
         #[cfg(test)]
         self.record_accepted_boundary_probe(request, accepted);
+        #[cfg(test)]
+        self.record_logical_firing_accept(request, accepted);
+        if self.logical_bud_owner_by_actor.get(request.piston.index()).is_some_and(Option::is_some) {
+            if accepted {
+                self.apply_logical_bud_action(request)?;
+                self.counts.logical_bud_accepts += 1;
+                self.publish_piston_action(request, state.extended);
+                #[cfg(test)]
+                if self.test_recording {
+                    self.test_recorder.observed_operations.push(GraphObservedOperation::Accepted {
+                        actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                        action: request.action,
+                    });
+                }
+            }
+            return Ok(());
+        }
         match request.action {
             mchprs_world::PistonAction::Extend if accepted => {
                 #[cfg(test)]
@@ -210,12 +233,182 @@ impl GraphBackend {
         Ok(())
     }
 
+    fn apply_logical_bud_action(&mut self, request: PistonRequest) -> Result<(), GraphExecutionError> {
+        let actor = request.piston;
+        let spec = self.program.pistons()[actor.index()];
+        match request.action {
+            mchprs_world::PistonAction::Extend => {
+                let resource = self.piston_resource_at(actor, spec.near);
+                let revision = {
+                    let state = &mut self.state.pistons[actor.index()];
+                    state.revision = state.revision.wrapping_add(1);
+                    state.availability = PistonAvailability::HeadPending;
+                    state.head_present = true;
+                    state.revision
+                };
+                let deferred_resource = match (resource, spec.lane) {
+                    (Some(resource), PistonLane::SingleResource { far }) => {
+                        self.set_resource_contact(resource, far, false)
+                            .map(|(resource, revision)| DeferredResourceEvent {
+                                resource,
+                                revision,
+                                contact: far,
+                            })
+                    }
+                    _ => None,
+                };
+                self.future.deferred_pistons.push_back(DeferredPistonEvent {
+                    piston: actor,
+                    revision,
+                    resource: deferred_resource,
+                    due_tick: self.future.clock.logical_tick + self.logical_bud_delay(actor),
+                    extending: true,
+                });
+                let resource_moved = deferred_resource.is_some();
+                self.deliver_logical_bud_cut(
+                    actor,
+                    LogicalBudEventCut::ExtendFarShape,
+                    resource_moved,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                )?;
+                self.deliver_logical_bud_cut(
+                    actor,
+                    LogicalBudEventCut::ExtendNearAfterTransfer,
+                    resource_moved,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                )?;
+                self.state.pistons[actor.index()].extended = true;
+                self.deliver_logical_bud_cut(actor, LogicalBudEventCut::ExtendBase, resource_moved, false, false, false, false, false)?;
+            }
+            mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull => {
+                let without_pull = request.action == mchprs_world::PistonAction::RetractWithoutPull;
+                let resource_at_far = match spec.lane {
+                    PistonLane::SingleResource { far } => self.piston_resource_at(actor, far),
+                    PistonLane::Empty => None,
+                };
+                let matching_extension = match (resource_at_far, spec.lane) {
+                    (Some(resource), PistonLane::SingleResource { far }) => self.pending_resource_extension(resource, far, spec.facing).is_some(),
+                    _ => false,
+                };
+                let resource_enabled = resource_at_far.is_some_and(|resource| self.state.resources[resource.index()].enabled);
+                let restore_far = matching_extension;
+                let pull_resource = !without_pull && resource_enabled;
+                let interrupted_head = self.state.pistons[actor.index()].availability == PistonAvailability::HeadPending;
+                let revision = {
+                    let state = &mut self.state.pistons[actor.index()];
+                    state.revision = state.revision.wrapping_add(1);
+                    state.availability = if interrupted_head {
+                        PistonAvailability::PublishingHeadRemoval
+                    } else {
+                        PistonAvailability::BasePendingHeadPresent
+                    };
+                    state.revision
+                };
+                if interrupted_head {
+                    self.deliver_logical_bud_cut(actor, LogicalBudEventCut::RetractNearBeforeBase, false, true, false, false, false, false)?;
+                    self.state.pistons[actor.index()].head_present = false;
+                    self.state.pistons[actor.index()].availability = PistonAvailability::BasePending;
+                    self.deliver_logical_bud_cut(actor, LogicalBudEventCut::RetractBaseAfterNear, false, true, false, false, false, false)?;
+                } else {
+                    self.deliver_logical_bud_cut(
+                        actor,
+                        LogicalBudEventCut::RetractBaseBeforeTransfer,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                        false,
+                    )?;
+                    self.state.pistons[actor.index()].availability = PistonAvailability::BasePending;
+                    self.state.pistons[actor.index()].head_present = false;
+                }
+                let restored_far = if restore_far {
+                    let resource = resource_at_far.expect("matching extension requires a far resource");
+                    let PistonLane::SingleResource { far } = spec.lane else { unreachable!() };
+                    self.set_resource_contact(resource, far, true)
+                } else {
+                    None
+                };
+                if restored_far.is_some() {
+                    self.deliver_logical_bud_cut(
+                        actor,
+                        LogicalBudEventCut::RetractResourceRestoredFar,
+                        false,
+                        interrupted_head,
+                        true,
+                        false,
+                        false,
+                        false,
+                    )?;
+                }
+                let resource = match (pull_resource, resource_at_far, spec.lane) {
+                    (true, Some(resource), PistonLane::SingleResource { .. }) => self.set_resource_contact(resource, spec.near, false),
+                    _ => None,
+                };
+                if !without_pull && resource.is_some() {
+                    self.deliver_logical_bud_cut(
+                        actor,
+                        LogicalBudEventCut::RetractFarPulled,
+                        true,
+                        interrupted_head,
+                        false,
+                        true,
+                        false,
+                        false,
+                    )?;
+                }
+                self.deliver_logical_bud_cut(
+                    actor,
+                    LogicalBudEventCut::RetractNearAfterTransfer,
+                    false,
+                    interrupted_head,
+                    false,
+                    resource.is_some(),
+                    false,
+                    false,
+                )?;
+                let deferred_resource = resource.map(|(resource, revision)| DeferredResourceEvent {
+                    resource,
+                    revision,
+                    contact: spec.near,
+                });
+                self.future.deferred_pistons.push_back(DeferredPistonEvent {
+                    piston: actor,
+                    revision,
+                    resource: deferred_resource,
+                    due_tick: self.future.clock.logical_tick + self.logical_bud_delay(actor),
+                    extending: false,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn logical_bud_delay(&self, actor: PistonId) -> u64 {
+        self.program
+            .logical_bud_owner(actor)
+            .map_or(2, |plan| u64::from(plan.transition.publication_delay_ticks))
+    }
+
     pub(super) fn accepted(&mut self, request: PistonRequest, extended: bool) {
         self.counts.piston_actions += 1;
         #[cfg(test)]
         if let Some(activity) = self.test_recorder.memory_cell_activity.get_mut(request.piston.index()) {
             activity[1] += 1;
         }
+        self.publish_piston_action(request, extended);
+    }
+
+    fn publish_piston_action(&mut self, request: PistonRequest, extended: bool) {
         let spec = self.program.pistons()[request.piston.index()];
         #[cfg(test)]
         if self.test_recording {
@@ -553,6 +746,12 @@ impl GraphBackend {
     }
 
     pub(super) fn apply_deferred_event(&mut self, event: DeferredPistonEvent) -> Result<(), GraphExecutionError> {
+        if self.logical_bud_owner_by_actor.get(event.piston.index()).is_some_and(Option::is_some) {
+            self.apply_logical_bud_deferred_event(event)?;
+            #[cfg(test)]
+            self.record_logical_firing_reset(event);
+            return Ok(());
+        }
         let state = self.state.pistons[event.piston.index()];
         let spec = self.program.pistons()[event.piston.index()];
         let actor_valid = state.revision == event.revision;
@@ -582,7 +781,65 @@ impl GraphBackend {
         }
         #[cfg(test)]
         graph_test_trace!(self, format!("piston restored {:?} revision={}", event.piston, event.revision));
+        #[cfg(test)]
+        self.record_logical_firing_reset(event);
         Ok(())
+    }
+
+    fn apply_logical_bud_deferred_event(&mut self, event: DeferredPistonEvent) -> Result<(), GraphExecutionError> {
+        let spec = self.program.pistons()[event.piston.index()];
+        let actor_revision_current = self.state.pistons[event.piston.index()].revision == event.revision;
+        self.counts.deferred_publications += 1;
+        self.counts.logical_bud_publications += 1;
+        if event.extending {
+            let resource_revision_current = self.apply_logical_bud_resource(event, spec, LogicalBudEventCut::DeferredResourceFar)?;
+            if actor_revision_current {
+                let actor = &mut self.state.pistons[event.piston.index()];
+                actor.availability = PistonAvailability::Ready;
+                actor.head_present = true;
+                self.deliver_logical_bud_cut(
+                    event.piston,
+                    LogicalBudEventCut::DeferredHead,
+                    false,
+                    false,
+                    false,
+                    false,
+                    true,
+                    resource_revision_current,
+                )?;
+            }
+        } else {
+            if actor_revision_current {
+                let actor = &mut self.state.pistons[event.piston.index()];
+                actor.extended = false;
+                actor.head_present = false;
+                actor.availability = PistonAvailability::Ready;
+                self.deliver_logical_bud_cut(event.piston, LogicalBudEventCut::DeferredBase, false, false, false, false, true, false)?;
+            }
+            self.apply_logical_bud_resource(event, spec, LogicalBudEventCut::DeferredResourceNear)?;
+        }
+        Ok(())
+    }
+
+    fn apply_logical_bud_resource(
+        &mut self,
+        event: DeferredPistonEvent,
+        _spec: PistonSpec,
+        cut: LogicalBudEventCut,
+    ) -> Result<bool, GraphExecutionError> {
+        let Some(resource_event) = event.resource else { return Ok(false) };
+        let current = self.state.resources[resource_event.resource.index()];
+        let valid = current.revision == resource_event.revision
+            && current.at == resource_event.contact
+            && !current.enabled
+            && self.resource_contact_available(resource_event.resource, resource_event.contact, None);
+        if !valid {
+            return Ok(false);
+        }
+        self.set_resource_contact(resource_event.resource, resource_event.contact, true)
+            .expect("validated disabled logical resource must become enabled");
+        self.deliver_logical_bud_cut(event.piston, cut, false, false, false, false, false, true)?;
+        Ok(true)
     }
 
     fn apply_deferred_resource(&mut self, event: DeferredPistonEvent, spec: PistonSpec) -> Result<(), GraphExecutionError> {

@@ -117,6 +117,8 @@ pub(crate) enum LayerInputSource {
     },
     /// This reads the exact live or captured graph state predicate at the declared phase.
     State(StateTest),
+    /// This reads whether the actor has already fired in its current source-derived reset epoch.
+    InstantFired { actor: PistonId },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

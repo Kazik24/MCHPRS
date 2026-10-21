@@ -5,6 +5,8 @@ use super::*;
 pub(crate) struct SettledCircuit {
     pub(crate) program: ReducedLayerProgram,
     pub(crate) outputs: Box<[SettledOutput]>,
+    /// Optional one-shot firing/reset bindings over roots in this same program.
+    pub(crate) firing: Option<LogicalFiringPlan>,
     /// These observations/effects still require a boundary adapter; they are never discarded as resets.
     pub(crate) retained_effects: Box<[BoundaryPort]>,
     /// Unsupported roots retain ordinary execution instead of acquiring invented logical state.
@@ -17,6 +19,8 @@ pub(crate) struct SettledCircuit {
 pub(crate) enum SettledTarget {
     Power(PowerTarget),
     Register(BudMemoryRead),
+    /// This is `!fired && Main == 0 && Quasi == 0`, not a route, request, or accepted action.
+    InstantPowerEligible(PistonId),
     /// A recognized two-contact payload whose stationary source occupancy is logical state.
     #[cfg(test)]
     ResourceState {
@@ -51,6 +55,7 @@ impl SettledCircuit {
                 return Err("settled circuit has an invalid output binding".into());
             }
         }
+        self.validate_firing_binding()?;
         Ok(())
     }
 }

@@ -25,7 +25,7 @@ impl SettledMachine {
                 SettledTarget::Register(read) => (read.resource, read.source),
                 #[cfg(test)]
                 SettledTarget::ResourceState { resource, source } => (resource, source),
-                SettledTarget::Power(_) => continue,
+                SettledTarget::Power(_) | SettledTarget::InstantPowerEligible(_) => continue,
             };
             if output.kind != SettledValueKind::Bool {
                 return Err("logical register output must be Boolean".into());
@@ -143,6 +143,7 @@ mod tests {
                 roots: Box::new([(LayerRoot::Output(0), LayerExprId(1)), (LayerRoot::Output(1), LayerExprId(0))]),
             },
             outputs: outputs.into_boxed_slice(),
+            firing: None,
             retained_effects: Box::new([]),
             declines: Box::new([]),
             timing: None,

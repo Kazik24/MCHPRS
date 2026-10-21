@@ -268,6 +268,7 @@ mod tests {
                 roots: Box::new([(LayerRoot::Output(0), LayerExprId(0))]),
             },
             outputs: outputs.into_boxed_slice(),
+            firing: None,
             retained_effects: Box::new([]),
             declines: Box::new([]),
             timing: None,

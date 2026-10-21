@@ -57,6 +57,10 @@ impl CircuitDraft {
                 self.validate_instant_events(monitor)?;
                 Ok(None)
             }
+            PlanChange::LogicalBudOwners => {
+                self.validate_logical_bud_owners(monitor)?;
+                Ok(None)
+            }
             PlanChange::InstantEvents => {
                 self.validate_instant_events(monitor)?;
                 self.validate_cpu_kernels(monitor)?;
@@ -171,6 +175,7 @@ impl CircuitDraft {
         self.validate_cpu_kernels(monitor)?;
         self.validate_cpu_power_queries(monitor)?;
         self.validate_bud_memory_reads(monitor)?;
+        self.validate_logical_bud_owners(monitor)?;
         self.validate_instant_wire_nodes(monitor)?;
         self.validate_instant_transport(monitor)?;
         self.validate_instant_drives(monitor)?;
@@ -196,6 +201,23 @@ impl CircuitDraft {
         if self.plans.bud_memory_reads != expected {
             return Err(GraphBuildError::InvalidInstantRegion {
                 table: "BUD memory reads",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_logical_bud_owners(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.logical_bud_owners.is_empty() {
+            return Ok(());
+        }
+        let expected = compile_logical_bud_owners(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "logical BUD owner plan",
+            index: 0,
+        })?;
+        if self.plans.logical_bud_owners != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "logical BUD owner plan",
                 index: 0,
             });
         }

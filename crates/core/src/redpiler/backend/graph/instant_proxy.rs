@@ -15,7 +15,7 @@ impl GraphBackend {
             // Copy one instruction before dispatch; a nested walk may reenter this route.
             let step = self.program.instant_proxies()[proxy_index].routes[route_index].steps[index];
             match step.kind {
-                InstantStepKind::Dispatch => self.deliver_callback(route, step.delivery, captured)?,
+                InstantStepKind::Dispatch => self.deliver_callback(route, step.delivery, captured, None)?,
                 InstantStepKind::Sample(actor) => {
                     if self.guard_matches(step.delivery.guard, captured) {
                         #[cfg(test)]

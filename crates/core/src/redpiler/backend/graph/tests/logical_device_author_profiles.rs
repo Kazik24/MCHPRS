@@ -49,7 +49,23 @@ fn assert_full_cpu_power_coverage(backend: &GraphBackend, cpu: cpus::Cpu) {
     );
 }
 
-fn ram_word_snapshot(world: &PlotWorld, cpu: cpus::Cpu) -> Vec<Option<u16>> {
+fn report_logical_bud_coverage(backend: &GraphBackend, cpu: cpus::Cpu, stage: &str) {
+    let active = backend.logical_bud_owner_by_actor.iter().filter(|owner| owner.is_some()).count();
+    let counts = backend.execution_counts();
+    println!(
+        "{} O6 logical BUD {stage}: compiled owners={}, runtime-active owners={}, logical samples={}, accepts={}, publications={}, physical samples={}, physical actions={}",
+        cpu.name,
+        backend.program.logical_bud_owners().len(),
+        active,
+        counts.logical_bud_samples,
+        counts.logical_bud_accepts,
+        counts.logical_bud_publications,
+        counts.piston_samples,
+        counts.piston_actions,
+    );
+}
+
+pub(super) fn ram_word_snapshot(world: &PlotWorld, cpu: cpus::Cpu) -> Vec<Option<u16>> {
     if cpu.name != "cpu_bubblesort" {
         return Vec::new();
     }
@@ -67,7 +83,7 @@ fn ram_word_snapshot(world: &PlotWorld, cpu: cpus::Cpu) -> Vec<Option<u16>> {
         .collect()
 }
 
-fn expand_ram(cpu: cpus::Cpu, ticks: u32) -> Vec<Vec<Option<u16>>> {
+pub(super) fn expand_ram(cpu: cpus::Cpu, ticks: u32) -> Vec<Vec<Option<u16>>> {
     let transitions = cpus::reference(cpu).ram_trace;
     assert_eq!(transitions.first().map(|row| row.0), Some(0));
     let mut expanded = Vec::with_capacity(ticks as usize + 1);
@@ -127,6 +143,7 @@ fn bubblesort_o6_power_queries_match_every_frozen_ram_tick_and_handoff() {
 
     let mut backend = compile_o6(&world);
     assert_full_cpu_power_coverage(&backend, cpu);
+    report_logical_bud_coverage(&backend, cpu, "before activity");
     backend.set_test_recording(true);
     let ticks = cpu.active_ticks + 1;
     let expected = expand_ram(cpu, ticks + 32);
@@ -146,6 +163,7 @@ fn bubblesort_o6_power_queries_match_every_frozen_ram_tick_and_handoff() {
         }
     }
     let counts = backend.execution_counts();
+    report_logical_bud_coverage(&backend, cpu, "after activity");
     assert!(
         counts.piston_samples > 0 && counts.piston_actions > 0,
         "BubbleSort exercised piston power queries"
@@ -175,6 +193,7 @@ fn anpu_o6_power_queries_match_all_frozen_screen_frames() {
     world.disable_command_output_limits_for_replay();
     let mut backend = compile_o6(&world);
     assert_full_cpu_power_coverage(&backend, cpu);
+    report_logical_bud_coverage(&backend, cpu, "before activity");
     backend.set_test_recording(true);
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references");
@@ -228,6 +247,7 @@ fn anpu_o6_power_queries_match_all_frozen_screen_frames() {
     }
     assert_eq!(actual, expected, "all O6 screen transition frames");
     assert_eq!(bud_index, expected_bud.len(), "all frozen ANPU BUD update ticks were compared");
+    report_logical_bud_coverage(&backend, cpu, "after activity");
 
     println!(
         "anpu_pong O6 matched {} screen frames and {} ordered BUD update ticks through {} ticks",

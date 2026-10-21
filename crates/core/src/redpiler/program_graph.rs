@@ -32,6 +32,9 @@ mod instant_boundaries;
 mod instant_cells;
 mod instant_layers;
 mod instant_program;
+mod logical_bud_events;
+mod logical_firing;
+pub(crate) use logical_bud_events::*;
 mod settled_circuit;
 mod settled_timing;
 pub(crate) use settled_timing::*;
@@ -73,6 +76,7 @@ mod signal_transitions;
 pub(crate) use instant_boundaries::*;
 pub(crate) use instant_cells::*;
 pub(crate) use instant_regions::*;
+pub(crate) use logical_firing::*;
 pub(crate) use signal_channels::*;
 pub(crate) use signal_transitions::{SignalOp, SignalTranscript, minimize_signal_operations};
 mod fixed_classic;
@@ -896,6 +900,10 @@ struct InstantProgram {
     kernel_by_actor: Box<[Option<(u32, u32)>]>,
     /// These private-cell programs reuse the existing actor, resource, and clock state.
     proxies: Box<[InstantProxy]>,
+    /// Complete ordinary movable-payload BUD owners with original callback provenance.
+    logical_bud_owners: Box<[LogicalBudOwnerPlan]>,
+    /// Dense actor-to-owner binding; MAX entries are not admitted.
+    logical_bud_owner_by_actor: Box<[Option<u32>]>,
     /// This certifies that no foreign base, head, or resource can reach a private payload's contacts.
     private_resource_owners: Box<[Option<PistonId>]>,
     /// This binds a route directly to its proxy and ordered instruction sequence.
@@ -966,6 +974,15 @@ pub(crate) struct CircuitProgram {
 impl CircuitProgram {
     pub(crate) fn settled_circuit(&self) -> Option<&SettledCircuit> {
         self.settled_circuit.as_ref()
+    }
+
+    pub(crate) fn logical_bud_owners(&self) -> &[LogicalBudOwnerPlan] {
+        &self.instant.logical_bud_owners
+    }
+
+    pub(crate) fn logical_bud_owner(&self, actor: PistonId) -> Option<&LogicalBudOwnerPlan> {
+        let index = self.instant.logical_bud_owner_by_actor.get(actor.index()).copied().flatten()?;
+        self.instant.logical_bud_owners.get(index as usize)
     }
     pub(crate) fn instant_transition_net(&self, net: u32) -> Option<&std::sync::Arc<InstantTransitionNet>> {
         self.instant_transition_programs.get(net as usize)?.as_ref()

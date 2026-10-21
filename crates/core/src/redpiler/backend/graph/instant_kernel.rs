@@ -90,6 +90,9 @@ impl GraphBackend {
     }
 
     pub(super) fn run_instant_kernel(&mut self, request: PistonRequest) -> Result<bool, GraphExecutionError> {
+        if self.logical_bud_owner_by_actor.get(request.piston.index()).is_some_and(Option::is_some) {
+            return Ok(false);
+        }
         if request.action != mchprs_world::PistonAction::Retract || self.instant_kernel.active.is_some() {
             return Ok(false);
         }
@@ -311,7 +314,7 @@ impl GraphBackend {
             self.set_wire(node, wire);
         }
         for &delivery in &route.deliveries {
-            self.deliver_callback(route.route, delivery, None)?;
+            self.deliver_callback(route.route, delivery, None, None)?;
         }
         Ok(())
     }

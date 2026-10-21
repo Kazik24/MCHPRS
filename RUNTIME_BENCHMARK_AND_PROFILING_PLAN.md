@@ -5,8 +5,13 @@
 Use the production-profile plot loop when investigating in-game TPS:
 
 ```text
+$env:MCHPRS_CONFIG = (Resolve-Path .\Config.toml).Path
 cargo bench --locked -p mchprs_core --bench cpus --features plot-bench -- --plot-client --cpu cpu_bubblesort --graph-tier 5 --seconds 3 --iterations 3 --output target/plot-client.json
 ```
+
+The configuration line is PowerShell syntax. Select an absolute `MCHPRS_CONFIG`
+path explicitly: Cargo runs this executable in the core crate directory, whose
+default `Config.toml` may have a different visual send rate from the server.
 
 This mode runs `Plot::update` with one compressed loopback TCP client. It includes
 tick batching, timing monitoring, graph projection, visual collection, player and
@@ -33,6 +38,27 @@ two reports over the same active interval to locate the cost on a real client.
 The `plot-bench` feature exposes only the in-memory benchmark adapter. It does
 not enable Rust test recorders in Redpiler. Packet regression tests reuse the
 same constructor.
+
+### BubbleSort pilot, 2026-10-21
+
+The server configuration selected O5, one compressed client, full block visuals
+and a 5 Hz send cap. Three candidate windows spent 97.2–97.5% of plot-update
+wall time in engine execution, 2.15–2.28% in projection, and 0.36–0.46% in visual
+collection plus enqueueing. Final delivery took 2.7–5.3 ms; there were no send
+failures. All samples matched engine work, world state and future after handoff,
+and the decoded client's final received block states.
+
+The projection change skips block-storage writes when the current block ID
+already matches. Comparator and command-block entities still update independently.
+Focused tests cover this distinction and full/dirty contact projection.
+
+These are pilot stage measurements, not a controlled speedup claim. Concurrent
+build activity affected the session, and wall-clock windows reach different tick
+counts between samples. Each core comparison uses its sample's exact tick count.
+Frozen binaries, their hashes and the raw reports are under
+`target/plot-client/`; `comparison.json` records the limitations. Validation used
+an isolated snapshot of `9bd2b70e` plus the projection change while O6 edits were
+in progress in the shared worktree.
 
 Use the existing `cpus` harness. Benchmark only active ticking; preparation, compilation, stimulus, publication, reads, and continuation checks remain outside its timed windows. Use paired unprofiled runs to establish speed changes and Samply to find expensive call stacks. Do not add a custom runtime profiling suite.
 

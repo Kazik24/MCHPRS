@@ -469,6 +469,7 @@ fn settled_counter_machine_matches_native_stable_word_through_byte_carry() {
         .filter_map(|output| match output.target {
             SettledTarget::Register(read) => Some((resource_bits[&read.resource], output.roots[0])),
             SettledTarget::Power(_) => None,
+            SettledTarget::InstantPowerEligible(_) => None,
             SettledTarget::ResourceState { .. } => None,
         })
         .collect();

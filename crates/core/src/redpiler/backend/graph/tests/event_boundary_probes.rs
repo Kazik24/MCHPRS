@@ -1,10 +1,12 @@
 //! Cold extraction probes for retaining feedback repeaters at event boundaries.
 use super::instant_cpu_tests::cpus;
+use super::logical_device_author_profile_tests::{expand_ram, ram_word_snapshot};
 use super::*;
 use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary;
 use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary_cut_feedback;
-use crate::redpiler::analysis::instant::layers::logical::diagnostic_source_dependency_graph;
+use crate::redpiler::analysis::instant::layers::logical::compile_one_shot_boundary;
+use crate::redpiler::analysis::instant::layers::logical::diagnostic_source_cycle_edges;
 use crate::world::World;
 use std::sync::Arc;
 
@@ -363,8 +365,8 @@ fn o6_selected_event_boundary_queries_report_live_acceptance_cuts_bubblesort() {
 }
 
 #[test]
-#[ignore = "research: bounded typed dependency inventory for a BubbleSort RAM actor Main/Quasi query"]
-fn o6_bubblesort_ram_query_reports_typed_source_dependency_graph() {
+#[ignore = "research: post-propagation feedback edges for a BubbleSort RAM actor Main/Quasi query"]
+fn o6_bubblesort_ram_query_reports_postpropagated_feedback_edges() {
     let cpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
     let (_, _world, prepared) = prepare_o6_cpu(cpu);
     let actor = prepared
@@ -384,8 +386,232 @@ fn o6_bubblesort_ram_query_reports_typed_source_dependency_graph() {
     ];
     let monitor = TaskMonitor::default();
     monitor.set_budget_multiplier(8);
-    let report = diagnostic_source_dependency_graph(&prepared.graph, &targets, &monitor)
-        .unwrap_or_else(|error| panic!("BubbleSort source-dependency diagnostic failed: {error}"));
-    assert!(!report.trim().is_empty(), "source-dependency inventory must contain typed results");
+    let report = diagnostic_source_cycle_edges(&prepared.graph, &targets, &monitor)
+        .unwrap_or_else(|error| panic!("BubbleSort post-propagation cycle diagnostic failed: {error}"));
+    assert!(!report.trim().is_empty(), "post-propagation cycle diagnostic must contain a result");
     eprintln!("cpu_bubblesort actor={actor:?} targets={targets:?}\n{report}");
+}
+
+#[test]
+#[ignore = "research: compile one-shot Main/Quasi eligibility roots and typed fired-state cuts for BubbleSort RAM actor"]
+fn o6_bubblesort_ram_query_compiles_one_shot_firing_boundary() {
+    let cpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
+    let (_, _world, prepared) = prepare_o6_cpu(cpu);
+    let actor = prepared
+        .graph
+        .pistons
+        .iter()
+        .position(|piston| piston.position == BlockPos::new(177, 45, 64))
+        .map(|index| PistonId::new(index as u32))
+        .expect("selected BubbleSort RAM actor must exist");
+    let node = prepared.graph.pistons[actor.index()].node;
+    let targets = [
+        PowerTarget::Input { node, port: InputPort::Main },
+        PowerTarget::Input {
+            node,
+            port: InputPort::Quasi,
+        },
+    ];
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    match compile_one_shot_boundary(&prepared.graph, &targets, &prepared.graph.plans.bud_memory_reads, &monitor) {
+        Ok(circuit) => {
+            let fired_inputs = circuit
+                .program
+                .inputs
+                .iter()
+                .filter(|input| matches!(input.source, LayerInputSource::InstantFired { .. }))
+                .count();
+            let eligibility_outputs = circuit
+                .outputs
+                .iter()
+                .filter(|output| matches!(output.target, SettledTarget::InstantPowerEligible(_)))
+                .count();
+            eprintln!(
+                "cpu_bubblesort one-shot RAM actor={actor:?} outputs={} inputs={} expressions={} firing_uses={} firing_resources={} fired_inputs={} eligibility_outputs={} retained_effects={} declines={}",
+                circuit.outputs.len(),
+                circuit.program.inputs.len(),
+                circuit.program.expressions.len(),
+                circuit.firing.as_ref().map_or(0, |plan| plan.uses.len()),
+                circuit.firing.as_ref().map_or(0, |plan| plan.resources.len()),
+                fired_inputs,
+                eligibility_outputs,
+                circuit.retained_effects.len(),
+                circuit.declines.len(),
+            );
+            circuit
+                .validate()
+                .expect("one-shot boundary compiler must emit a self-consistent artifact");
+        }
+        Err(error) => eprintln!("cpu_bubblesort one-shot RAM actor={actor:?} targets={targets:?} compilation declined: {error}"),
+    }
+}
+
+#[test]
+#[ignore = "research: compare one-shot Main/Quasi equations and fired-state reset cuts at live BubbleSort RAM actions"]
+fn o6_bubblesort_ram_one_shot_boundary_reports_native_cuts() {
+    let cpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
+    run_broad_one_shot_probe(cpu, Some(BlockPos::new(177, 45, 64)), 1_000, false, false);
+}
+
+#[test]
+#[ignore = "research: full BubbleSort native one-shot boundary parity and frozen RAM trajectory"]
+fn o6_bubblesort_full_one_shot_boundary_matches_native_ram_trace() {
+    let cpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
+    run_broad_one_shot_probe(cpu, Some(BlockPos::new(177, 45, 64)), cpu.active_ticks + 1, true, true);
+}
+
+#[test]
+#[ignore = "research: source-discovered ANPU ordinary BUD owner one-shot boundary parity"]
+fn o6_anpu_one_shot_boundary_matches_native_samples() {
+    let cpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "anpu_pong").unwrap();
+    run_broad_one_shot_probe(cpu, None, 1_000, false, true);
+}
+
+fn run_broad_one_shot_probe(cpu: cpus::Cpu, primary_position: Option<BlockPos>, ticks: u32, verify_ram: bool, require_parity: bool) {
+    let (_, mut world, prepared) = prepare_o6_cpu(cpu);
+    if cpu.name == "anpu_pong" {
+        world.disable_command_output_limits_for_replay();
+    }
+    let actor = if let Some(position) = primary_position {
+        prepared
+            .graph
+            .pistons
+            .iter()
+            .position(|piston| piston.position == position)
+            .map(|index| PistonId::new(index as u32))
+            .expect("selected primary BUD actor must exist")
+    } else {
+        prepared
+            .graph
+            .plans
+            .logical_bud_owners
+            .first()
+            .map(|owner| owner.actor)
+            .expect("source-discovered ordinary BUD owner set must be nonempty")
+    };
+    let mut actors: Vec<_> = prepared.graph.plans.logical_bud_owners.iter().map(|owner| owner.actor).collect();
+    actors.sort_unstable();
+    actors.dedup();
+    assert!(
+        actors.contains(&actor),
+        "selected RAM actor must be in the discovered ordinary BUD owner set"
+    );
+    let targets: Vec<_> = actors
+        .iter()
+        .flat_map(|&actor| {
+            let node = prepared.graph.pistons[actor.index()].node;
+            [
+                PowerTarget::Input { node, port: InputPort::Main },
+                PowerTarget::Input {
+                    node,
+                    port: InputPort::Quasi,
+                },
+            ]
+        })
+        .collect();
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let circuit = compile_one_shot_boundary(&prepared.graph, &targets, &prepared.graph.plans.bud_memory_reads, &monitor)
+        .unwrap_or_else(|error| panic!("{} one-shot boundary extraction failed: {error}", cpu.name));
+    circuit.validate().expect("one-shot candidate must validate before sampling");
+    eprintln!(
+        "{} one-shot candidate shape: queried_owners={} targets={} inputs={} expressions={} outputs={} firing_uses={} firing_resources={} retained_effects={} declines={}",
+        cpu.name,
+        actors.len(),
+        targets.len(),
+        circuit.program.inputs.len(),
+        circuit.program.expressions.len(),
+        circuit.outputs.len(),
+        circuit.firing.as_ref().map_or(0, |plan| plan.uses.len()),
+        circuit.firing.as_ref().map_or(0, |plan| plan.resources.len()),
+        circuit.retained_effects.len(),
+        circuit.declines.len(),
+    );
+    let has_firing_plan = circuit.firing.is_some();
+    let mut backend = GraphBackend::from_lowered(prepared.lower(&monitor).unwrap(), &monitor).unwrap();
+    backend
+        .install_logical_firing_probe(actor, circuit)
+        .unwrap_or_else(|error| panic!("{} cannot install logical firing probe: {error}", cpu.name));
+    let expected_ram = verify_ram.then(|| expand_ram(cpu, ticks));
+    if let Some(expected) = &expected_ram {
+        assert_eq!(ram_word_snapshot(&world, cpu), expected[0], "initial frozen RAM");
+    }
+    backend.use_block(cpu.origin + cpu.start).unwrap();
+    for tick in 1..=ticks {
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        if let Some(expected) = &expected_ram {
+            assert_eq!(
+                ram_word_snapshot(&world, cpu),
+                expected[tick as usize],
+                "BubbleSort RAM at native tick {tick}"
+            );
+        }
+        if tick % 1_000 == 0 {
+            eprintln!("{} logical firing probe: traced {tick}/{ticks} ticks", cpu.name);
+        }
+    }
+    let report = backend.take_logical_firing_probe().expect("logical firing probe remains installed");
+    eprintln!("{} one-shot entry: {}", cpu.name, report.initial_state);
+    assert_eq!(report.actor, actor, "firing probe report belongs to the selected actor");
+    eprintln!("{} one-shot source summary: {}", cpu.name, report.source_summary);
+    let first_mismatches = report
+        .records
+        .iter()
+        .filter(|record| record.candidate_main != (record.actual_main > 0) || record.candidate_quasi != (record.actual_quasi > 0))
+        .take(8)
+        .map(|record| {
+            format!(
+                "actor={:?} tick={} phase={} cut={} fired={} Main={}/{} Quasi={}/{} evidence={}",
+                record.actor,
+                record.tick,
+                record.phase,
+                record.cut,
+                record.fired,
+                record.candidate_main,
+                record.actual_main,
+                record.candidate_quasi,
+                record.actual_quasi,
+                record.mismatch_evidence,
+            )
+        })
+        .collect::<Vec<_>>();
+    eprintln!(
+        "{} actor={actor:?} broad one-shot counters: queried_actors={} firing_actor_accepts={} query_samples={} queried_actor_accepts={} reset_publications={} main_match/mismatch={}/{} quasi_match/mismatch={}/{} combined_match/mismatch={}/{} input_errors={} last_error={:?} initial_state={} first_mismatches={first_mismatches:?}",
+        cpu.name,
+        report.queried_actors,
+        report.total_accepted,
+        report.samples,
+        report.selected_accepts,
+        report.reset_publications,
+        report.main_matches,
+        report.main_mismatches,
+        report.quasi_matches,
+        report.quasi_mismatches,
+        report.combined_matches,
+        report.combined_mismatches,
+        report.evaluation_errors,
+        report.last_error,
+        report.initial_state,
+    );
+    assert_eq!(report.queried_actors, actors.len(), "probe must cover all selected ordinary BUD owners");
+    assert!(report.samples > 0, "queried ordinary BUD owners must produce native input samples");
+    assert!(report.selected_accepts > 0, "queried ordinary BUD owners must accept native actions");
+    if has_firing_plan {
+        assert!(report.total_accepted > 0, "one-shot firing owners must accept actions in the native run");
+        assert!(
+            report.reset_publications > 0,
+            "at least one firing owner must publish a valid reset/rearm cut"
+        );
+    }
+    assert_eq!(report.evaluation_errors, 0, "one-shot input sampling failed: {:?}", report.last_error);
+    if require_parity {
+        assert_eq!(
+            report.main_mismatches + report.quasi_mismatches + report.combined_mismatches,
+            0,
+            "{} one-shot Main/Quasi parity failed; first bounded mismatches={first_mismatches:?}",
+            cpu.name,
+        );
+    }
 }

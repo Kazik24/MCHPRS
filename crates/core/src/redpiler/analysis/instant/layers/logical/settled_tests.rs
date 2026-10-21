@@ -84,6 +84,7 @@ fn counter_control_inputs(graph: &CompileGraph, circuit: &SettledCircuit, contro
         .filter_map(|output| match output.target {
             SettledTarget::Register(read) => Some(read),
             SettledTarget::Power(_) => None,
+            SettledTarget::InstantPowerEligible(_) => None,
             SettledTarget::ResourceState { .. } => None,
         })
         .collect::<Vec<_>>();
@@ -1035,6 +1036,167 @@ fn event_boundary_cut_keeps_selected_cell_writer_and_resource_as_live_graph_stat
         "retained event-boundary cell cut: resource={resource:?} source={source:?} graph_owners={retained_owners:?} inputs={:?}",
         circuit.program.inputs.iter().map(|input| input.source).collect::<Vec<_>>(),
     );
+}
+
+#[test]
+fn one_shot_boundary_emits_fired_cut_and_keeps_reset_observers_live() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/fixtures/counter_basic.json");
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+    let world = cpus::load_manifest(&manifest).unwrap();
+    let monitor = TaskMonitor::default();
+    let graph = prepared_o6(&world, world.get_corners(), &monitor);
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    let (resource, (source, owners)) = equations
+        .one_shot_contracts
+        .iter()
+        .next()
+        .map(|(&resource, contract)| (resource, contract.clone()))
+        .expect("counter fixture has a recognized shared-Far cell resource");
+
+    equations.one_shot_firing = true;
+    let presence = equations.one_shot_source_presence(resource).unwrap().unwrap();
+    let fired_sources = equation_inputs(&equations.reduced, presence);
+    let expected_fired: FxHashSet<_> = owners.iter().map(|&actor| LayerInputSource::InstantFired { actor }).collect();
+    assert_eq!(
+        fired_sources, expected_fired,
+        "shared source presence depends only on its owners' fired bits"
+    );
+    match equations.reduced.expression(presence).unwrap() {
+        LayerExpr::Not(child) => match equations.reduced.expression(*child).unwrap() {
+            LayerExpr::Input(input) if owners.len() == 1 => {
+                assert_eq!(
+                    equations.reduced.inputs[input.0 as usize].source,
+                    LayerInputSource::InstantFired { actor: owners[0] }
+                );
+            }
+            LayerExpr::Any(children) => {
+                assert_eq!(children.len(), owners.len());
+            }
+            expression => panic!("shared source presence must negate an owner-fired disjunction, got {expression:?}"),
+        },
+        expression => panic!("shared source presence must be the complement of fired owners, got {expression:?}"),
+    }
+
+    let observer = catalog
+        .cells
+        .iter()
+        .flat_map(|cell| cell.uses.iter())
+        .find_map(|use_| use_.reset.observer())
+        .expect("fixture use has a classified private reset observer");
+    let site = graph
+        .sites
+        .iter()
+        .position(|site| site.source == SiteSource::Component(observer))
+        .map(|index| SiteId::new(index as u32))
+        .expect("private reset observer has an output site");
+    equations.retain_classic = true;
+    equations.resets.clear();
+    let observer_root = equations
+        .source_value(LayerInputSource::SourceAbove {
+            site,
+            port: PowerPort::Output,
+            threshold: 0,
+        })
+        .unwrap();
+    assert!(matches!(equations.reduced.expression(observer_root).unwrap(), LayerExpr::Input(_)));
+
+    let target = graph
+        .power_links
+        .iter()
+        .find_map(|link| {
+            (graph.sites[link.from.index()].source == SiteSource::Contact(source))
+                .then_some(link.to)
+                .and_then(|target| matches!(target, PowerTarget::Input { .. }).then_some(target))
+        })
+        .unwrap_or(PowerTarget::Input {
+            node: graph.pistons[owners[0].index()].node,
+            port: InputPort::Main,
+        });
+    let circuit = compile_one_shot_boundary(&graph, &[target], &[], &monitor).unwrap();
+    let firing = circuit.firing.as_ref().expect("requested cell feedback has a firing plan");
+    assert!(
+        circuit
+            .retained_effects
+            .iter()
+            .all(|port| { port.direction == BoundaryDirection::Output && catalog.ports.contains(port) }),
+        "retained one-shot effects must be exact externally visible catalog outputs"
+    );
+    let retained_effect_set: FxHashSet<_> = circuit.retained_effects.iter().copied().collect();
+    for output in catalog
+        .ports
+        .iter()
+        .filter(|port| port.direction == BoundaryDirection::Output && matches!(port.kind, BoundaryPortKind::Callback { .. }))
+    {
+        let BoundaryPortKind::Callback { occurrence } = output.kind else {
+            unreachable!()
+        };
+        if catalog.ports.iter().any(|input| {
+            input.direction == BoundaryDirection::Input
+                && input.kind == (BoundaryPortKind::Callback { occurrence })
+                && matches!(input.owner, BoundaryOwner::Corridor(_))
+        }) {
+            assert!(
+                !retained_effect_set.contains(output),
+                "callback rows consumed by an owned wire corridor must not escape as public effects"
+            );
+        }
+    }
+    let resource = firing
+        .resources
+        .iter()
+        .find(|row| row.resource == resource)
+        .expect("source feedback row is retained");
+    let firing_owners: FxHashSet<_> = resource.owners.iter().map(|&owner| firing.uses[owner as usize].actor).collect();
+    assert_eq!(firing_owners, owners.iter().copied().collect());
+    assert!(
+        circuit.program.inputs.iter().all(|input| {
+            !matches!(input.source, LayerInputSource::State(StateTest::ResourceAt { resource: input_resource, contact })
+                if input_resource == resource.resource && contact == source)
+        }),
+        "the canonical feedback source must be replaced by fired-state inputs, not a live graph resource read"
+    );
+    for use_ in firing.uses.iter() {
+        let catalog_use = catalog
+            .cells
+            .iter()
+            .flat_map(|cell| cell.uses.iter())
+            .find(|catalog_use| catalog_use.actor == use_.actor)
+            .expect("firing actor has one source catalog cell use");
+        assert_eq!(
+            use_.effect, catalog_use.retraction,
+            "cold action binding must reuse the catalog's exact accepted-retraction/deferred-wake effect"
+        );
+        assert_eq!(
+            circuit.program.inputs[use_.fired_input.0 as usize].source,
+            LayerInputSource::InstantFired { actor: use_.actor }
+        );
+        assert_eq!(
+            circuit.outputs[use_.power_eligible_output as usize].target,
+            SettledTarget::InstantPowerEligible(use_.actor)
+        );
+        let mut pending = vec![circuit.outputs[use_.power_eligible_output as usize].roots[0]];
+        let mut visited = FxHashSet::default();
+        let mut sources = FxHashSet::default();
+        while let Some(root) = pending.pop() {
+            if !visited.insert(root) {
+                continue;
+            }
+            match &circuit.program.expressions[root.0 as usize] {
+                LayerExpr::Constant(_) => {}
+                LayerExpr::Input(input) => {
+                    sources.insert(circuit.program.inputs[input.0 as usize].source);
+                }
+                LayerExpr::Not(child) => pending.push(*child),
+                LayerExpr::All(children) | LayerExpr::Any(children) => pending.extend(children.iter().copied()),
+            }
+        }
+        assert!(
+            sources.contains(&LayerInputSource::InstantFired { actor: use_.actor }),
+            "power eligibility for {:?} must depend on its explicit fired input",
+            use_.actor
+        );
+    }
 }
 
 #[test]

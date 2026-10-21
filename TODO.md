@@ -39,9 +39,27 @@ O0–O5 retain the existing execution contract. No additional flag or input-case
 - [ ] Bind BubbleSort's 768 RAM bits as explicit logical state and compile its
   output/next-state dependency cone. Preserve BUD update/write events even when
   their signal values are unchanged. Verify the full sort and interpreter handoff.
-- [ ] Replace recursive source expansion with a bounded dependency worklist;
-  simplify feedback before choosing state cuts, then lower consequential BUD
-  samples, writes and delayed publication without internal physical callbacks.
+- [x] Replace recursive source expansion with a bounded source-equation worklist,
+  global constant propagation and output liveness; validate deep acyclic graphs,
+  constant-pruned cycles and explicit unresolved-feedback declines. Local query
+  and repeater inlining limits remain separately diagnosed.
+- [x] Trace the full BubbleSort feedback component: 3,146 payload signals,
+  4,295 dependencies, including 144 negative edges. The 113-edge witness was
+  only one cycle. Use the accepted once-per-reset firing contract, not an
+  arbitrary Boolean fixed point or inferred persistent RAM registers.
+- [x] Compile the selected BubbleSort RAM Main/QC cone to a one-shot prototype:
+  9,308 instant uses, 7,248 resources, 24,937 inputs and 84,404 Boolean expressions,
+  with zero declines. Keep reset pulses and publication phase inputs live.
+- [ ] Connect the one-shot prototype to native acceptance/reset cuts, then select
+  it automatically in O6 and contract internal events. The prototype is currently
+  test-only; its power-eligibility outputs do not replace FIFO acceptance.
+- [x] Discover ordinary single-owner BUDs independently of strict reader pairs;
+  lower sample, acceptance and two-tick publication cuts into O6 event bindings.
+  Rilax matches physical state, pending events and accepted traces through busy
+  input changes and same-level updates. ANPU activates 967 owners and matches
+  all 5,000 screen/state ticks and 1,552 ordered BUD update ticks with 2,090
+  logical accepted transitions/publications. This still retains Graph callbacks
+  at the boundary; it is not whole-device event contraction or a speedup claim.
 - [ ] Execute a small ordinary BUD slice with zero internal physical work;
   preserve update-triggered writes, acceptance rechecks and observable tick timing.
 - [ ] Compile ANPU with the same logical state/event executor; validate all

@@ -6,6 +6,7 @@ use std::time::Instant;
 
 mod cpu_bubblesort_bud;
 mod layered_devices;
+mod logical_bud_owners;
 mod notification_routes;
 mod pc_counter_contract;
 mod rilax_bud;
