@@ -9,7 +9,7 @@ pub(crate) struct SettledCircuit {
     pub(crate) retained_effects: Box<[BoundaryPort]>,
     /// Unsupported roots retain ordinary execution instead of acquiring invented logical state.
     pub(crate) declines: Box<[String]>,
-    /// The small physical timing island retained by the stable-device contract.
+    /// Source topology used to qualify the logical clock family at activation.
     pub(crate) timing: Option<SettledTimingIsland>,
 }
 
@@ -17,6 +17,12 @@ pub(crate) struct SettledCircuit {
 pub(crate) enum SettledTarget {
     Power(PowerTarget),
     Register(BudMemoryRead),
+    /// A recognized two-contact payload whose stationary source occupancy is logical state.
+    #[cfg(test)]
+    ResourceState {
+        resource: ResourceId,
+        source: ContactId,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,9 +55,6 @@ impl SettledCircuit {
     }
 }
 
-// shortcut: the compiler publishes this executable artifact without replacing Graph;
-// activate it after clock publication and interpreter reconstruction have an adapter.
-#[cfg_attr(not(test), expect(dead_code, reason = "Settled execution awaits its physical boundary adapter."))]
 #[derive(Debug)]
 pub(crate) struct SettledEvaluation {
     values: LogicalValues,
@@ -59,7 +62,6 @@ pub(crate) struct SettledEvaluation {
     results: Box<[u8]>,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "Settled execution awaits its physical boundary adapter."))]
 impl SettledEvaluation {
     pub(crate) fn new(circuit: &SettledCircuit) -> Result<Self, String> {
         circuit.validate()?;

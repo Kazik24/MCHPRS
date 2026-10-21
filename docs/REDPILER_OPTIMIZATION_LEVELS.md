@@ -12,7 +12,7 @@ The same levels apply to `/rp analyze` and its graph export.
 | O3 | Local piston and reset specialization, built-in reset clocks, compiled wire shapes/capture recipes, private instant regions and proxies. |
 | O4 | Instant boundary discovery, closed single-wire transfers, passive capture elimination, private BUD reads and connected FIFO-local event kernels. |
 | O5 | Equivalent delayed-update coalescing; flat CPU predicates; dense and guarded instant transport; typed drives; minimized exact transition programs; value regions and ordered signal channels. Stable power-expression programs additionally require `--stable-instant-inputs`. |
-| O6 | Reduced shared Boolean equations with strength-sensitive boundary roots, proposed register writes and retained outside effects. With `--stable-instant-inputs`, certified finite pull waves execute through the incremental DAG evaluator and replace their internal computation routes. Whole-device clock/reset removal still needs its publication and handoff adapter. |
+| O6 | Experimental logical device execution for the recognized clock/BUD family: a shared Boolean DAG, logical clock phases, register commits and stable output writes, without internal physical updates. This activates automatically. Other circuits retain general execution; `--stable-instant-inputs` additionally enables finite pull waves. |
 
 Higher tiers retain lower-tier rules. O4 event kernels replace the O3
 region/proxy builders, avoiding duplicate ownership and unnecessary compilation.
@@ -40,8 +40,14 @@ request provenance and FIFO ownership; an unproven entry executes ordinary
 Graph acceptance. Each wave keeps current input/expression values and propagates
 changes through the shared DAG, without storing input combinations. Commits
 still use Graph's state, outside callbacks and deferred work, so interpreter
-handoff uses the existing projection. This does not yet activate the autonomous
-whole-device `SettledMachine` or remove the COUNTER/FPU controller and reset work.
+handoff uses the existing projection for those finite waves.
+
+O6 separately recognizes the COUNTER clock/BUD family and executes its data
+path through `SettledMachine` and a small logical clock. It assumes stable
+observable results and normal controls; internal glitches, reset notifications
+and visual piston activity may disappear. No extra flag is required. This is
+an experiment: its interpreter handoff is not yet validated. FPU feedback
+classification and whole-device execution remain unfinished.
 
 Classic-redstone compilation is automatic from O2. After whole-fixed execution
 declines, the local classic pass certifies each candidate region independently.

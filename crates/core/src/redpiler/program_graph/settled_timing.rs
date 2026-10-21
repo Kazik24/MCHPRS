@@ -1,20 +1,41 @@
-//! Source-derived metadata for a small physical timing island.
+//! Source-derived description of a small logical clock controller.
 use super::*;
 
-/// Physical clock-control nodes retained while a settled logical circuit advances its registers.
-///
-/// This describes topology only. Runtime activation still has to preserve the controller's
-/// event scheduling and certify a stable boundary before committing logical outputs.
+/// Static controller state needed by the pure logical clock kernel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SettledTimingIsland {
-    /// The empty-lane piston whose base observer participates in its Quasi input.
     pub(crate) clock: PistonId,
-    /// Piston actors whose resource or pose state drives the clock power cone.
     pub(crate) actors: Box<[PistonId]>,
-    /// Power-cone nodes and base observers retained for physical event delivery.
     pub(crate) nodes: Box<[NodeId]>,
-    /// The unique external lever found in the recursively traced power cone.
     pub(crate) trigger: NodeId,
-    /// Observer nodes watching a retained actor base, including the clock output observers.
-    pub(crate) observers: Box<[NodeId]>,
+    pub(crate) actor_specs: Box<[ClockActorSpec]>,
+    pub(crate) node_specs: Box<[ClockNodeSpec]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ClockActorSpec {
+    pub(crate) piston: PistonId,
+    pub(crate) node: NodeId,
+    pub(crate) base: ContactId,
+    pub(crate) near: ContactId,
+    pub(crate) far: ContactId,
+    pub(crate) lane: PistonLane,
+    pub(crate) resource: Option<ResourceId>,
+    pub(crate) sticky: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ClockNodeSpec {
+    pub(crate) node: NodeId,
+    pub(crate) kind: ClockNodeKind,
+    pub(crate) watched_contact: Option<ContactId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClockNodeKind {
+    Lever,
+    Torch,
+    Repeater,
+    Observer,
+    BuiltinReset,
 }

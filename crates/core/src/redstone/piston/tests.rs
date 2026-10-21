@@ -545,9 +545,14 @@ fn normal_retraction_uses_moving_source_at_base() {
     let pos = base();
     start(&mut world, pos, BlockFacing::East, Block::Stone {});
     settle(&mut world);
-    world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
-    crate::redstone::update(world.get_block(pos), &mut world, pos, None);
-    world.picotick_advance(1);
+    let entries = super::trace::capture_detailed(&[pos], || {
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
+        crate::redstone::update(world.get_block(pos), &mut world, pos, None);
+        world.picotick_advance(1);
+    });
+    let applied = entries.iter().find(|entry| entry.stage == super::trace::Stage::Applied).unwrap();
+    assert_eq!(applied.extended, None);
+    assert!(matches!(Block::from_id(applied.base), Block::MovingPiston { .. }));
     println!("RETRACT_SOURCE base={:?} entity={:?}", world.get_block(pos), world.get_block_entity(pos));
     assert!(matches!(world.get_block(pos), Block::MovingPiston { .. }));
     assert!(matches!(world.get_block_entity(pos), Some(BlockEntity::MovingPiston(e)) if !e.extending && e.source));
@@ -917,13 +922,27 @@ fn canceled_event_rechecks_power_and_is_deduplicated() {
             piston: piston(BlockFacing::East, true, false),
         },
     );
-    world.set_block(pos.offset(BlockFace::Bottom), Block::RedstoneBlock {});
-    for _ in 0..5 {
-        crate::redstone::update(world.get_block(pos), &mut world, pos, None);
-    }
-    assert_eq!(world.piston_state().events.len(), 1);
-    world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
-    world.picotick_advance(1);
+    let entries = super::trace::capture_detailed(&[pos], || {
+        world.set_block(pos.offset(BlockFace::Bottom), Block::RedstoneBlock {});
+        for _ in 0..5 {
+            crate::redstone::update(world.get_block(pos), &mut world, pos, None);
+        }
+        assert_eq!(world.piston_state().events.len(), 1);
+        world.set_block(pos.offset(BlockFace::Bottom), Block::Air);
+        world.picotick_advance(1);
+    });
+    use super::trace::Stage;
+    assert_eq!(entries.iter().filter(|entry| entry.stage == Stage::Request).count(), 5);
+    assert!(
+        entries
+            .iter()
+            .filter(|entry| entry.stage == Stage::Sample)
+            .all(|entry| entry.main && entry.powered)
+    );
+    let accepts: Vec<_> = entries.iter().filter(|entry| entry.stage == Stage::Accept).collect();
+    assert_eq!(accepts.len(), 1);
+    assert!(!accepts[0].main && !accepts[0].quasi && !accepts[0].powered);
+    assert!(!entries.iter().any(|entry| entry.stage == Stage::Applied));
     assert!(!extended(&world, pos));
     assert!(world.piston_state().motions.is_empty());
 }

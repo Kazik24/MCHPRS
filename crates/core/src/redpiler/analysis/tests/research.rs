@@ -4,9 +4,11 @@ use crate::redstone::piston::trace;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+mod cpu_bubblesort_bud;
 mod layered_devices;
 mod notification_routes;
 mod pc_counter_contract;
+mod rilax_bud;
 
 #[path = "../../../../benches/support/cpus.rs"]
 #[allow(dead_code)]

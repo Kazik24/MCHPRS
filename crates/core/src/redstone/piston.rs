@@ -100,6 +100,8 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
         facing,
         action,
     };
+    #[cfg(test)]
+    trace::detail(world, pos, trace::Stage::Request, Some(event), extending);
     world.enqueue_piston_event(event);
 }
 
@@ -118,6 +120,8 @@ pub(crate) fn execute_event(world: &mut impl World, event: PistonEvent) {
         return;
     }
     let power = should_piston_extend(world, piston.facing, event.pos);
+    #[cfg(test)]
+    trace::detail(world, event.pos, trace::Stage::Accept, Some(event), power);
     match event.action {
         PistonAction::Extend if power && !piston.extended => {
             if !extend(world, piston, event.pos) {

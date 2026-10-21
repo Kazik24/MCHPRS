@@ -16,13 +16,23 @@ mod cpus;
 mod divider;
 #[cfg(test)]
 mod fpu;
+#[cfg(test)]
+mod fpu_computation_tests;
+#[cfg(test)]
+mod fpu_kernel_bench;
 mod settled;
 pub(crate) mod timing;
 #[cfg(test)]
+pub(crate) use settled::compile_computation;
+#[cfg(test)]
+pub(crate) use settled::compile_public_boundary;
+#[cfg(test)]
 pub(crate) use settled::diagnostic_all_phase_raw_query;
 #[cfg(test)]
+pub(crate) use settled::diagnostic_computation_failures;
+#[cfg(test)]
 pub(crate) use settled::diagnostic_query;
-pub(crate) use settled::{compile_device, compile_public_boundary, compile_settled};
+pub(crate) use settled::{compile_device, compile_settled};
 #[cfg(test)]
 mod adders11;
 #[cfg(test)]
@@ -36,6 +46,8 @@ struct Equations<'a> {
     wires: FxHashSet<NodeId>,
     resets: FxHashSet<NodeId>,
     cells: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
+    /// Only these payloads have a recognized bounded owner set and canonical source.
+    unique_cell_resources: FxHashSet<ResourceId>,
     /// Near contacts held disabled by an admitted delayed token-transfer restoration.
     disabled_destinations: FxHashSet<(ResourceId, ContactId)>,
     actors: FxHashSet<PistonId>,
@@ -43,18 +55,29 @@ struct Equations<'a> {
     inline_repeaters: bool,
     stateful_repeaters: FxHashSet<NodeId>,
     raw: LayerBuilder<'a>,
+    signal_memo: signals::SignalMemo,
     reduced: LayerBuilder<'a>,
     expanded: FxHashMap<LayerExprId, LayerExprId>,
     sources: FxHashMap<LayerInputSource, LayerExprId>,
     pending: FxHashSet<LayerInputSource>,
     pending_repeaters: FxHashSet<NodeId>,
     retain_classic: bool,
+    /// When set, a recognized payload-location backedge becomes an explicit state input.
+    feedback_resources: bool,
+    /// Diagnostic-only mode: retain otherwise unknown payload locations as leaves so one
+    /// traversal can report every blocker. Executable compilation never enables this.
+    diagnostic_unknown_resources: bool,
+    feedback_state_sources: Vec<(ResourceId, ContactId)>,
 }
 
 impl<'a> Equations<'a> {
     fn new(graph: &'a CompileGraph, monitor: &'a TaskMonitor) -> Result<Self, ConstructionError> {
         let catalog = graph.plans.instant.boundaries.as_ref().ok_or("missing cell boundaries")?;
         let disabled_destinations = disabled_destinations(graph, catalog);
+        let mut resource_cell_counts = FxHashMap::<ResourceId, usize>::default();
+        for resource in catalog.cells.iter().flat_map(|cell| cell.resources.iter()) {
+            *resource_cell_counts.entry(resource.resource).or_default() += 1;
+        }
         Ok(Self {
             graph,
             power: index_power(graph),
@@ -78,6 +101,10 @@ impl<'a> Equations<'a> {
                         .map(|resource| (resource.resource, (resource.source, resource.owners.to_vec())))
                 })
                 .collect(),
+            unique_cell_resources: resource_cell_counts
+                .into_iter()
+                .filter_map(|(resource, count)| (count == 1).then_some(resource))
+                .collect(),
             disabled_destinations,
             actors: catalog.cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect(),
             registers: graph.plans.bud_memory_reads.iter().map(|read| (read.resource, *read)).collect(),
@@ -95,12 +122,16 @@ impl<'a> Equations<'a> {
                 })
                 .collect(),
             raw: LayerBuilder::new(monitor)?,
+            signal_memo: signals::SignalMemo::default(),
             reduced: LayerBuilder::new(monitor)?,
             expanded: FxHashMap::default(),
             sources: FxHashMap::default(),
             pending: FxHashSet::default(),
             pending_repeaters: FxHashSet::default(),
             retain_classic: false,
+            feedback_resources: false,
+            diagnostic_unknown_resources: false,
+            feedback_state_sources: Vec::new(),
         })
     }
 
@@ -111,9 +142,14 @@ impl<'a> Equations<'a> {
     fn query(&mut self, target: PowerTarget, threshold: u8) -> Result<LayerExprId, ConstructionError> {
         let state = FxHashMap::default();
         let mut tracer = signals::SignalTracer::new(self.graph, &self.power, &self.wires, &state, LayerInputRole::RequestSample)
-            .with_disabled_destinations(&self.disabled_destinations);
-        let raw = tracer.query(target, threshold, &mut self.raw)?;
-        self.expand(raw)
+            .with_disabled_destinations(&self.disabled_destinations)
+            .with_memo(std::mem::take(&mut self.signal_memo));
+        if self.feedback_resources {
+            tracer = tracer.with_stable_wire_modes();
+        }
+        let raw = tracer.query(target, threshold, &mut self.raw);
+        self.signal_memo = tracer.into_memo();
+        self.expand(raw?)
     }
 
     fn powered(&mut self, actor: PistonId) -> Result<LayerExprId, ConstructionError> {
@@ -155,6 +191,11 @@ impl<'a> Equations<'a> {
         }
         let repeater = self.inline_repeaters.then(|| self.repeater_source_node(source)).flatten();
         if self.pending.contains(&source) || repeater.is_some_and(|node| self.pending_repeaters.contains(&node)) {
+            if self.feedback_resources {
+                if let Some(value) = self.feedback_resource_leaf(source)? {
+                    return Ok(value);
+                }
+            }
             if self.inline_repeaters {
                 self.stateful_repeaters.extend(self.pending_repeaters.iter().copied());
                 self.stateful_repeaters.extend(repeater);
@@ -199,6 +240,80 @@ impl<'a> Equations<'a> {
         Ok(value)
     }
 
+    fn feedback_resource_leaf(&mut self, source: LayerInputSource) -> Result<Option<LayerExprId>, ConstructionError> {
+        let LayerInputSource::State(StateTest::ResourceAt { resource, contact }) = source else {
+            return Ok(None);
+        };
+        let Some((canonical, _owners)) = self.feedback_resource_contract(resource) else {
+            return Ok(None);
+        };
+        let spec = &self.graph.resources[resource.index()];
+        if !spec.contacts.contains(&contact) {
+            return Ok(None);
+        }
+        if contact != canonical {
+            // The candidate tracks only whether the payload remains at common Far.
+            // It deliberately does not invent which Near receives a pulled token.
+            return Ok(Some(self.reduced.constant(false)?));
+        }
+        if !self.feedback_state_sources.contains(&(resource, canonical)) {
+            self.feedback_state_sources.push((resource, canonical));
+        }
+        let state = self.leaf(LayerInputSource::State(StateTest::ResourceAt {
+            resource,
+            contact: canonical,
+        }))?;
+        Ok(Some(state))
+    }
+
+    pub(super) fn feedback_resource_contract(&self, resource: ResourceId) -> Option<(ContactId, Vec<PistonId>)> {
+        if !self.unique_cell_resources.contains(&resource) {
+            return None;
+        }
+        let (canonical, owners) = self.cells.get(&resource)?;
+        if !(1..=5).contains(&owners.len()) {
+            return None;
+        }
+        let spec = self.graph.resources.get(resource.index())?;
+        if !spec.contacts.contains(canonical) {
+            return None;
+        }
+        let owner_set: FxHashSet<_> = owners.iter().copied().collect();
+        if owner_set.len() != owners.len()
+            || self.graph.pistons.iter().enumerate().any(|(index, piston)| {
+                matches!(piston.lane, PistonLane::SingleResource { far } if far == *canonical)
+                    && piston.sticky
+                    && !owner_set.contains(&PistonId::new(index as u32))
+            })
+        {
+            return None;
+        }
+        let mut covered = FxHashSet::default();
+        covered.insert(*canonical);
+        for &owner in owners {
+            let piston = self.graph.pistons.get(owner.index())?;
+            if !piston.sticky || piston.lane != (PistonLane::SingleResource { far: *canonical }) || !spec.contacts.contains(&piston.near) {
+                return None;
+            }
+            covered.insert(piston.near);
+        }
+        spec.contacts
+            .iter()
+            .all(|contact| covered.contains(contact))
+            .then(|| (*canonical, owners.clone()))
+    }
+
+    #[cfg(test)]
+    pub(super) fn shared_far_presence(&mut self, owners: &[PistonId]) -> Result<LayerExprId, ConstructionError> {
+        let powered = owners.iter().map(|&owner| self.powered(owner)).collect::<Result<Vec<_>, _>>()?;
+        self.shared_far_presence_from(powered)
+    }
+
+    #[cfg(test)]
+    fn shared_far_presence_from(&mut self, powered: Vec<LayerExprId>) -> Result<LayerExprId, ConstructionError> {
+        self.reduced.all(powered)
+    }
+
     fn repeater_source_node(&self, source: LayerInputSource) -> Option<NodeId> {
         let LayerInputSource::SourceAbove { site, .. } = source else {
             return None;
@@ -224,6 +339,113 @@ impl<'a> Equations<'a> {
         })
     }
 
+    fn guard_equation(&mut self, guard: GuardId) -> Result<LayerExprId, ConstructionError> {
+        let state = FxHashMap::default();
+        let mut tracer = signals::SignalTracer::new(self.graph, &self.power, &self.wires, &state, LayerInputRole::RequestSample)
+            .with_disabled_destinations(&self.disabled_destinations)
+            .with_memo(std::mem::take(&mut self.signal_memo));
+        if self.feedback_resources {
+            tracer = tracer.with_stable_wire_modes();
+        }
+        let raw = tracer.guard(guard, &mut self.raw);
+        self.signal_memo = tracer.into_memo();
+        let raw = raw?;
+        self.expand(raw)
+    }
+
+    fn input_above(&mut self, node: NodeId, port: InputPort, threshold: u8) -> Result<LayerExprId, ConstructionError> {
+        if threshold >= 15 {
+            self.reduced.constant(false)
+        } else {
+            self.query(PowerTarget::Input { node, port }, threshold)
+        }
+    }
+
+    fn comparator_output_above(
+        &mut self,
+        node: NodeId,
+        mode: mchprs_blocks::blocks::ComparatorMode,
+        output_threshold: u8,
+        literal_input: Option<u8>,
+    ) -> Result<LayerExprId, ConstructionError> {
+        if output_threshold >= 15 {
+            return self.reduced.constant(false);
+        }
+        let main_above = if let Some(strength) = literal_input {
+            self.reduced.constant(strength > output_threshold)?
+        } else {
+            self.input_above(node, InputPort::Main, output_threshold)?
+        };
+        let mut clauses = vec![main_above];
+        for side_level in 1..=15u8 {
+            let side_at_least = self.input_above(node, InputPort::Side, side_level - 1)?;
+            let main_sufficient = match mode {
+                mchprs_blocks::blocks::ComparatorMode::Compare => {
+                    if let Some(strength) = literal_input {
+                        self.reduced.constant(strength >= side_level)?
+                    } else {
+                        self.input_above(node, InputPort::Main, side_level - 1)?
+                    }
+                }
+                mchprs_blocks::blocks::ComparatorMode::Subtract => {
+                    let required = u16::from(output_threshold) + u16::from(side_level);
+                    if required >= 15 {
+                        self.reduced.constant(false)?
+                    } else if let Some(strength) = literal_input {
+                        self.reduced.constant(u16::from(strength) > required)?
+                    } else {
+                        self.input_above(node, InputPort::Main, required as u8)?
+                    }
+                }
+            };
+            let side_too_high = self.reduced.not(side_at_least)?;
+            clauses.push(self.reduced.any([side_too_high, main_sufficient])?);
+        }
+        self.reduced.all(clauses)
+    }
+
+    fn comparator_source(&mut self, node: NodeId, threshold: u8) -> Result<LayerExprId, ConstructionError> {
+        let mode = match self.graph.nodes[node.index()].kind {
+            CircuitNodeKind::Electrical(NodeType::Comparator { mode, .. }) => mode,
+            _ => return Err("logical comparator equation requested for a non-comparator".into()),
+        };
+        let plan = self
+            .graph
+            .comparator_inputs
+            .iter()
+            .find(|plan| plan.node == node)
+            .copied()
+            .ok_or_else(|| format!("comparator {node:?} has no input plan"))?;
+
+        if let Some(source) = plan.direct_override {
+            return match source {
+                ComparatorOverride::Literal(strength) => self.comparator_output_above(node, mode, threshold, Some(strength)),
+                ComparatorOverride::LiveComponentOutput(_) => Err("logical comparator has an unsupported live direct override".into()),
+            };
+        }
+        let rear_output = self.comparator_output_above(node, mode, threshold, None)?;
+        let Some((_, override_source, guard)) = plan.far_override else {
+            return Ok(rear_output);
+        };
+        let override_strength = match override_source {
+            ComparatorOverride::Literal(strength) => strength,
+            ComparatorOverride::LiveComponentOutput(_) => return Err("logical comparator has an unsupported live far override".into()),
+        };
+        let rear_meets_override_threshold = if plan.far_threshold == 0 {
+            self.reduced.constant(true)?
+        } else {
+            self.input_above(node, InputPort::Main, plan.far_threshold - 1)?
+        };
+        let guard = self.guard_equation(guard)?;
+        let below_override_threshold = self.reduced.not(rear_meets_override_threshold)?;
+        let override_active = self.reduced.all([below_override_threshold, guard])?;
+        let rear_active = self.reduced.not(override_active)?;
+        let override_output = self.comparator_output_above(node, mode, threshold, Some(override_strength))?;
+        let rear_value = self.reduced.all([rear_active, rear_output])?;
+        let override_value = self.reduced.all([override_active, override_output])?;
+        self.reduced.any([rear_value, override_value])
+    }
+
     fn source_value(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
         let value = match source {
             LayerInputSource::State(StateTest::PistonAvailability { piston, is }) => {
@@ -235,7 +457,7 @@ impl<'a> Equations<'a> {
             }
             LayerInputSource::State(StateTest::ResourceEnabled(resource)) => {
                 if !self.cells.contains_key(&resource) && !self.registers.contains_key(&resource) {
-                    return if self.retain_classic {
+                    return if self.retain_classic || self.diagnostic_unknown_resources {
                         self.leaf(source)
                     } else {
                         Err(format!("unclassified logical resource {resource:?}").into())
@@ -264,14 +486,21 @@ impl<'a> Equations<'a> {
                     if origin == contact {
                         let values = actors.into_iter().map(|actor| self.powered(actor)).collect::<Result<Vec<_>, _>>()?;
                         self.reduced.all(values)?
+                    } else if self.feedback_resources
+                        && self.feedback_resource_contract(resource).is_some()
+                        && self.graph.resources[resource.index()].contacts.contains(&contact)
+                    {
+                        self.reduced.constant(false)?
                     } else {
                         if self.retain_classic {
-                            return Err("logical cell destination requires an explicit transfer equation".into());
+                            return Err(
+                                format!("logical cell destination requires an explicit transfer equation: {resource:?} at {contact:?}").into(),
+                            );
                         }
                         self.reduced.constant(false)?
                     }
                 } else {
-                    return if self.retain_classic {
+                    return if (self.retain_classic && !self.feedback_resources) || self.diagnostic_unknown_resources {
                         self.leaf(source)
                     } else {
                         Err(format!("unclassified logical resource {resource:?}").into())
@@ -335,6 +564,11 @@ impl<'a> Equations<'a> {
                     } else {
                         self.input_power(node, InputPort::Main)?
                     }
+                } else if self.feedback_resources && matches!(kind, CircuitNodeKind::Electrical(NodeType::Torch)) {
+                    let main = self.input_power(node, InputPort::Main)?;
+                    self.reduced.not(main)?
+                } else if self.feedback_resources && matches!(kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
+                    self.comparator_source(node, threshold)?
                 } else if can_sample_binary_source {
                     // Direction was checked by SignalTracer before it emitted this
                     // boundary. These source classes emit only 0 or 15, so all

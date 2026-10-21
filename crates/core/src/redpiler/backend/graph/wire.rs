@@ -149,13 +149,10 @@ impl GraphBackend {
     /// Read a notified wire's inputs and start a wire walk if its power changes.
     /// Input power is live, even when the receiver's wire properties were captured earlier.
     pub(super) fn evaluate_seed(&mut self, node: NodeId, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
-        if !self.logical_node_allowed(node) {
-            return Ok(());
-        }
         if self.fixed_classic.is_some() {
             return self.fixed_classic_seed(node, captured);
         }
-        if self.logical_device.is_none() && (self.try_stable_instant_logic(node, captured)? || self.try_signal_channel(node, captured)?) {
+        if self.try_stable_instant_logic(node, captured)? || self.try_signal_channel(node, captured)? {
             return Ok(());
         }
         let mut wire = captured
@@ -199,13 +196,10 @@ impl GraphBackend {
             self.counts.instant_wire_node_invocations += 1;
             return self.evaluate_fixed_point_wire(node);
         }
-        if self.logical_device.is_none()
-            && let Some(transfer) = plan.execution.instant_node
-        {
+        if let Some(transfer) = plan.execution.instant_node {
             return self.deliver_instant_wire_node(&plan, transfer);
         }
         if self.classic_proof.is_none()
-            && self.logical_device.is_none()
             && !super::fixed_point::enabled()
             && let Some((net, wire)) = self.program.transport_wire(node)
             && self.transport_entry_admitted(net)
@@ -586,17 +580,6 @@ impl GraphBackend {
         target: SiteId,
         observed: Option<&ObservedSite>,
     ) -> bool {
-        if self.logical_device.is_some() {
-            let receiver = observed
-                .and_then(|observed| observed.receiver)
-                .or_else(|| match self.program.sites()[target.index()].source {
-                    SiteSource::Component(node) => Some(CallbackReceiver::Component(node)),
-                    _ => None,
-                });
-            if receiver.is_none_or(|receiver| !self.logical_receiver_allowed(receiver)) {
-                return false;
-            }
-        }
         if let Some(plan) = self.program.wires()[wire_index].execution.callback_selection
             && plan.known & (1 << slot) != 0
         {
@@ -704,9 +687,7 @@ impl GraphBackend {
         if super::fixed_point::enabled() {
             return self.evaluate_fixed_point_wire(node);
         }
-        if self.logical_device.is_none()
-            && let Some(instant) = self.wire_plan(node).execution.instant_reset
-        {
+        if let Some(instant) = self.wire_plan(node).execution.instant_reset {
             let plan = self.wire_plan(node).clone();
             return self.evaluate_instant_output(&plan, instant);
         }
@@ -853,9 +834,6 @@ impl GraphBackend {
         let Some(receiver) = observed.receiver else {
             return Ok(());
         };
-        if !self.logical_receiver_allowed(receiver) {
-            return Ok(());
-        }
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled {
             self.record_callback_candidate(receiver);

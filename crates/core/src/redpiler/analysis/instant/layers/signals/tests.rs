@@ -121,6 +121,69 @@ fn corridor_thresholds_match_all_strengths_losses_and_positive_loss_cycles() {
 }
 
 #[test]
+fn completed_signal_memo_reuses_queries_without_changing_roots() {
+    let monitor = TaskMonitor::default();
+    let (graph, internal) = line(8, false);
+    let power = index_power(&graph);
+    let state = FxHashMap::default();
+
+    let mut memo_builder = LayerBuilder::new(&monitor).unwrap();
+    let mut memo = SignalMemo::default();
+    let mut memo_roots = Vec::new();
+    let mut memo_work = Vec::new();
+    for _ in 0..2 {
+        let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample).with_memo(memo);
+        memo_roots.push(tracer.query(target(8), 0, &mut memo_builder).unwrap());
+        memo = tracer.into_memo();
+        memo_work.push(memo_builder.budget.work);
+    }
+
+    let mut fresh_builder = LayerBuilder::new(&monitor).unwrap();
+    let mut fresh_roots = Vec::new();
+    let mut fresh_work = Vec::new();
+    for _ in 0..2 {
+        let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample);
+        fresh_roots.push(tracer.query(target(8), 0, &mut fresh_builder).unwrap());
+        fresh_work.push(fresh_builder.budget.work);
+    }
+
+    assert_eq!(memo_roots[0], memo_roots[1]);
+    assert_eq!(memo_roots, fresh_roots);
+    assert!(memo_work[1] - memo_work[0] < fresh_work[1] - fresh_work[0]);
+}
+
+#[test]
+fn failed_query_does_not_export_visiting_entries_in_signal_memo() {
+    let monitor = TaskMonitor::default();
+    let (mut graph, internal) = line(0, false);
+    graph.power_links = vec![PowerLink {
+        from: SiteId::new(0),
+        from_port: PowerPort::Conducted { include_dust: true },
+        to: PowerTarget::Conductor {
+            site: SiteId::new(0),
+            include_dust: true,
+        },
+        ..link(0, 0, 0, 0)
+    }];
+    let power = index_power(&graph);
+    let state = FxHashMap::default();
+    let query = PowerTarget::Conductor {
+        site: SiteId::new(0),
+        include_dust: true,
+    };
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample);
+    assert!(tracer.query(query, 0, &mut builder).is_err());
+
+    let memo = tracer.into_memo();
+    assert!(memo.targets.is_empty());
+    assert!(memo.sources.is_empty());
+
+    let mut retry = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample).with_memo(memo);
+    assert!(matches!(retry.query(query, 0, &mut builder), Err(ConstructionError::Invalid(message)) if message.contains("zero-loss")));
+}
+
+#[test]
 fn disabled_transfer_is_used_only_for_positive_all_guard_atoms() {
     let monitor = TaskMonitor::default();
     let (mut graph, internal) = line(1, false);
@@ -398,5 +461,64 @@ fn symbolic_wire_directions_match_native_regulation_in_all_local_shape_combinati
                 }
             }
         }
+    }
+}
+
+#[test]
+fn stable_wire_mode_honors_saved_dot_and_cross_without_weakening_legacy_queries() {
+    use mchprs_blocks::blocks::RedstoneWireSide;
+
+    let cross = RedstoneWire::new(
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        15,
+    );
+    for (saved, east_connection, expected) in [
+        (RedstoneWire::default(), false, false),
+        (RedstoneWire::default(), true, true),
+        (cross, false, true),
+    ] {
+        let monitor = TaskMonitor::default();
+        let (mut graph, _) = line(0, false);
+        graph.nodes[0].kind = CircuitNodeKind::Wire(0);
+        graph.nodes[0].state = ComponentState::Wire(saved);
+        graph.profiles = vec![profile(Block::Air, ProfileElectrical::None); 24];
+        if east_connection {
+            graph.profiles[1] = profile(Block::RedstoneBlock, ProfileElectrical::RedstoneSource);
+        }
+        graph.sites = (0..24)
+            .map(|index| SiteSpec {
+                position: BlockPos::new(index, 20, 0),
+                source: SiteSource::Constant(ProfileId::new(index as u32)),
+                source_strength: 0,
+            })
+            .collect();
+        graph.wires.push(WirePlan {
+            node: NodeId::new(0),
+            canonical_neighbors: std::array::from_fn(|index| SiteId::new(index as u32)),
+            shape_route: None,
+            turbo_route: None,
+            execution: Default::default(),
+        });
+        let power = index_power(&graph);
+        let internal = FxHashSet::default();
+        let state = FxHashMap::default();
+        let mut legacy_builder = LayerBuilder::new(&monitor).unwrap();
+        let legacy = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample).wire_emits(
+            NodeId::new(0),
+            PowerPort::Weak(BlockFace::West),
+            &mut legacy_builder,
+        );
+        if crate::redstone::wire::is_dot(saved) {
+            assert!(matches!(legacy, Err(ConstructionError::Invalid(message)) if message.contains("dot/cross")));
+        }
+        let mut stable_builder = LayerBuilder::new(&monitor).unwrap();
+        let root = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample)
+            .with_stable_wire_modes()
+            .wire_emits(NodeId::new(0), PowerPort::Weak(BlockFace::West), &mut stable_builder)
+            .unwrap();
+        assert_eq!(evaluate(&stable_builder, root, |_| unreachable!()), expected);
     }
 }

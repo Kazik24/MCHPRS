@@ -82,6 +82,39 @@ fn retained_budget_failure_does_not_publish_an_input_or_hide_malformed_expressio
     assert!(matches!(builder.not(LayerExprId(u32::MAX)), Err(ConstructionError::Invalid(_))));
 }
 
+#[test]
+fn shared_boolean_operands_are_charged_only_when_retained() {
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let roots: Vec<_> = (0..2)
+        .map(|index| {
+            let input = builder
+                .input(
+                    LayerInputSource::State(StateTest::PistonExtended(PistonId::new(index))),
+                    LayerInputRole::RequestSample,
+                )
+                .unwrap();
+            builder.input_expr(input).unwrap()
+        })
+        .collect();
+    let before = builder.budget.bytes;
+    let root = builder.all(roots.iter().copied()).unwrap();
+    let retained = builder.budget.bytes;
+    assert_eq!(
+        retained - before,
+        std::mem::size_of::<LayerExpr>() + 4 * std::mem::size_of::<LayerExprId>()
+    );
+    for _ in 0..16 {
+        assert_eq!(builder.all(roots.iter().rev().copied()).unwrap(), root);
+        assert_eq!(builder.budget.bytes, retained);
+    }
+    builder.budget.bytes = MAX_LAYER_BYTES;
+    assert_eq!(builder.all(roots.iter().copied()).unwrap(), root);
+    let expressions = builder.expressions.len();
+    assert_eq!(builder.any(roots), Err(ConstructionError::BudgetExceeded));
+    assert_eq!(builder.expressions.len(), expressions);
+}
+
 fn power_link(attenuation: u8) -> PowerLink {
     PowerLink {
         from: SiteId::new(0),

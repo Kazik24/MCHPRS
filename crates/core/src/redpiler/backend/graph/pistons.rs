@@ -38,9 +38,6 @@ impl GraphBackend {
     }
 
     fn sample_piston_inner(&mut self, piston: PistonId, source: Option<RouteId>) -> Result<(), GraphExecutionError> {
-        if !self.logical_actor_allowed(piston) {
-            return Ok(());
-        }
         #[cfg(test)]
         let spec = self.program.pistons()[piston.index()];
         let state = self.state.pistons[piston.index()];
@@ -173,7 +170,6 @@ impl GraphBackend {
                 graph_test_trace!(self, format!("piston accept {:?} {:?}", request.piston, request.action));
                 self.extend_connections(request.piston)?;
                 self.accepted(request, state.extended);
-                self.logical_clock_action(request)?;
                 #[cfg(test)]
                 if self.test_recording {
                     self.test_recorder.observed_operations.push(GraphObservedOperation::Accepted {
@@ -187,7 +183,6 @@ impl GraphBackend {
                 graph_test_trace!(self, format!("piston accept {:?} {:?}", request.piston, request.action));
                 self.retract_connections(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)?;
                 self.accepted(request, state.extended);
-                self.logical_clock_action(request)?;
                 #[cfg(test)]
                 if self.test_recording {
                     self.test_recorder.observed_operations.push(GraphObservedOperation::Accepted {

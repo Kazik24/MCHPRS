@@ -9,19 +9,25 @@ pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
     let Ok(timing) = super::timing::infer(graph, monitor) else {
         return Ok(plan);
     };
-    let targets = plan
-        .outputs
-        .iter()
-        .filter_map(|output| match output.target {
-            SettledTarget::Power(target @ PowerTarget::Input { node, port: InputPort::Main })
-                if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
-                    && !timing.nodes.contains(&node) =>
+    let mut targets = Vec::new();
+    for output in &plan.outputs {
+        let SettledTarget::Power(target) = output.target else {
+            continue;
+        };
+        match target {
+            PowerTarget::Input { node, .. } if timing.nodes.contains(&node) => {}
+            PowerTarget::Input { node, port: InputPort::Main }
+                if matches!(
+                    graph.nodes[node.index()].kind,
+                    CircuitNodeKind::Electrical(NodeType::Repeater { .. } | NodeType::Lamp)
+                ) =>
             {
-                Some(target)
+                targets.push(target)
             }
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+            // An unsupported public consumer must not disappear from the device boundary.
+            _ => return Ok(plan),
+        }
+    }
     if targets.is_empty() {
         return Ok(plan);
     }
@@ -233,6 +239,251 @@ pub(crate) fn compile_public_boundary(
     };
     circuit.validate()?;
     Ok(circuit)
+}
+
+/// Compile requested stable outputs with explicit state bits for recognized
+/// shared-Far payload feedback. Unlike BUD registers, these are ordinary
+/// cell resources whose current source location closes a combinational cycle.
+#[cfg(test)]
+pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
+    check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+    if power_targets.is_empty() {
+        return Err("logical computation requires at least one public output".into());
+    }
+    let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
+    equations.retain_classic = true;
+    equations.inline_repeaters = true;
+    equations.feedback_resources = true;
+    assume_computation_frame_observers_off(&mut equations);
+    // This test-only extractor deliberately asks whether the local stationary lane
+    // is enough to form a candidate state equation. It does not grant production
+    // lifecycle/reset admission to the inferred owner.
+    for (index, resource) in graph.resources.iter().enumerate() {
+        let id = ResourceId::new(index as u32);
+        if equations.cells.contains_key(&id) {
+            continue;
+        }
+        if let Ok(Some((canonical, owners))) = infer_raw_resource_lane(&resource.contacts, &graph.pistons) {
+            install_candidate_resource_lane(&mut equations, id, canonical, owners);
+        }
+    }
+
+    let mut outputs = Vec::with_capacity(power_targets.len());
+    let mut seen_power = FxHashSet::default();
+    for &target in power_targets {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        if !seen_power.insert(target) {
+            return Err(format!("duplicate logical computation output {target:?}"));
+        }
+        // The first threshold is the public Boolean level; it preserves 0 vs
+        // any powered output while avoiding fifteen redundant strength roots.
+        let root = equations
+            .query(target, 0)
+            .map_err(|error| format!("logical computation output {target:?}: {error:?}"))?;
+        outputs.push(SettledOutput {
+            target: SettledTarget::Power(target),
+            kind: SettledValueKind::Bool,
+            roots: Box::new([root]),
+        });
+    }
+
+    // Next-state equations can expose additional feedback resources. Walk this
+    // growing set until every discovered state has exactly one update root.
+    let mut state_index = 0;
+    while state_index < equations.feedback_state_sources.len() {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        let (resource, source) = equations.feedback_state_sources[state_index];
+        state_index += 1;
+        let (canonical, owners) = equations
+            .feedback_resource_contract(resource)
+            .ok_or_else(|| format!("feedback resource {resource:?} lacks a bounded shared-Far state contract"))?;
+        if canonical != source {
+            return Err(format!("feedback resource {resource:?} state source is not its canonical Far contact"));
+        }
+        // shortcut: the candidate model retains only common-Far presence. It
+        // treats any pulling owner as removing that shared source, regardless
+        // of which Near contact wins the physical destination selection.
+        let next_state = equations
+            .shared_far_presence(&owners)
+            .map_err(|error| format!("feedback resource {resource:?} update: {error:?}"))?;
+        outputs.push(SettledOutput {
+            target: SettledTarget::ResourceState { resource, source },
+            kind: SettledValueKind::Bool,
+            roots: Box::new([next_state]),
+        });
+    }
+
+    let roots = outputs
+        .iter()
+        .flat_map(|output| output.roots.iter().copied())
+        .enumerate()
+        .map(|(index, root)| (LayerRoot::Output(index), root))
+        .collect();
+    let program = reduction::reduce_roots(&equations.reduced.inputs, &equations.reduced.expressions, roots, monitor)?;
+    let mut mapped = program.roots.iter();
+    for output in &mut outputs {
+        for root in &mut output.roots {
+            *root = mapped.next().ok_or("missing logical computation root")?.1;
+        }
+    }
+    let circuit = SettledCircuit {
+        program,
+        outputs: outputs.into_boxed_slice(),
+        retained_effects: Box::new([]),
+        declines: Box::new([]),
+        timing: None,
+    };
+    circuit.validate()?;
+    Ok(circuit)
+}
+
+#[cfg(test)]
+pub(super) fn assume_computation_frame_observers_off(equations: &mut Equations<'_>) {
+    // shortcut: assumes settled observer pulses; lower their events before admitting timed observer roots.
+    for (index, node) in equations.graph.nodes.iter().enumerate() {
+        if matches!(
+            node.kind,
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
+        ) {
+            equations.resets.insert(NodeId::new(index as u32));
+        }
+    }
+}
+
+/// Candidate-only lane inference for equation research. The caller must not use this
+/// as a production cell/reset certificate.
+#[cfg(test)]
+pub(super) fn infer_raw_resource_lane(contacts: &[ContactId], pistons: &[PistonSpec]) -> Result<Option<(ContactId, Vec<PistonId>)>, String> {
+    if contacts.len() < 2 || contacts.iter().copied().collect::<FxHashSet<_>>().len() != contacts.len() {
+        return Ok(None);
+    }
+    let mut owners = Vec::new();
+    let mut canonical = None;
+    let mut covered = FxHashSet::default();
+    for (index, piston) in pistons.iter().enumerate() {
+        let PistonLane::SingleResource { far } = piston.lane else {
+            continue;
+        };
+        if !contacts.contains(&far) || !piston.sticky {
+            continue;
+        }
+        if !contacts.contains(&piston.near) || piston.near == far {
+            return Ok(None);
+        }
+        if canonical.is_some_and(|previous| previous != far) {
+            return Err("resource lane owners disagree on the canonical Far contact".into());
+        }
+        canonical = Some(far);
+        owners.push(PistonId::new(index as u32));
+        covered.insert(piston.near);
+        covered.insert(far);
+    }
+    if !(1..=5).contains(&owners.len()) || contacts.iter().any(|contact| !covered.contains(contact)) {
+        return Ok(None);
+    }
+    Ok(canonical.map(|canonical| (canonical, owners)))
+}
+
+/// Install a local lane only in the test candidate compiler. `shortcut:` this assumes
+/// inferred payload lanes are resettable computation cells during a data frame; native
+/// trajectory validation must confirm that frame separately from observable tick timing.
+#[cfg(test)]
+pub(super) fn install_candidate_resource_lane(equations: &mut Equations<'_>, resource: ResourceId, canonical: ContactId, owners: Vec<PistonId>) {
+    let contacts = &equations.graph.resources[resource.index()].contacts;
+    if (1..=5).contains(&owners.len()) && contacts.contains(&canonical) {
+        equations.unique_cell_resources.insert(resource);
+    }
+    equations.cells.insert(resource, (canonical, owners.clone()));
+    for actor in owners {
+        equations.actors.insert(actor);
+        let piston = equations.graph.pistons[actor.index()];
+        equations.disabled_destinations.insert((resource, piston.near));
+        for (index, node) in equations.graph.nodes.iter().enumerate() {
+            let watched = match node.kind {
+                CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } => watched,
+                _ => continue,
+            };
+            if matches!(equations.graph.sites.get(watched.index()).map(|site| site.source), Some(SiteSource::Contact(contact)) if contact == piston.base)
+            {
+                equations.resets.insert(NodeId::new(index as u32));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) struct ComputationDiagnostic {
+    pub(crate) failures: Vec<String>,
+    pub(crate) unresolved_resources: Vec<ResourceId>,
+    pub(crate) raw_expressions: usize,
+    pub(crate) raw_inputs: usize,
+    pub(crate) raw_work: usize,
+    pub(crate) raw_bytes: usize,
+    pub(crate) reduced_expressions: usize,
+    pub(crate) reduced_inputs: usize,
+    pub(crate) reduced_work: usize,
+    pub(crate) reduced_bytes: usize,
+}
+
+#[cfg(test)]
+pub(crate) fn diagnostic_computation_failures(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    monitor: &TaskMonitor,
+) -> Result<ComputationDiagnostic, String> {
+    let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
+    equations.retain_classic = true;
+    equations.inline_repeaters = true;
+    equations.feedback_resources = true;
+    equations.diagnostic_unknown_resources = true;
+    let mut failures = Vec::new();
+    for &target in power_targets {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        if let Err(error) = equations.query(target, 0) {
+            failures.push(format!("output {target:?}: {error:?}"));
+        }
+    }
+    let mut state_index = 0;
+    while state_index < equations.feedback_state_sources.len() {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        let (resource, source) = equations.feedback_state_sources[state_index];
+        state_index += 1;
+        match equations.feedback_resource_contract(resource) {
+            Some((canonical, owners)) if canonical == source => {
+                if let Err(error) = equations.shared_far_presence(&owners) {
+                    failures.push(format!("resource state {resource:?} at {source:?}: {error:?}"));
+                }
+            }
+            _ => failures.push(format!("resource state {resource:?} at {source:?}: no bounded shared-Far cell contract")),
+        }
+    }
+    let unresolved_resources = equations
+        .reduced
+        .inputs
+        .iter()
+        .filter_map(|input| match input.source {
+            LayerInputSource::State(StateTest::ResourceAt { resource, .. } | StateTest::ResourceEnabled(resource))
+                if !equations.cells.contains_key(&resource) && !equations.registers.contains_key(&resource) =>
+            {
+                Some(resource)
+            }
+            _ => None,
+        })
+        .collect::<FxHashSet<_>>()
+        .into_iter()
+        .collect();
+    Ok(ComputationDiagnostic {
+        failures,
+        unresolved_resources,
+        raw_expressions: equations.raw.expressions.len(),
+        raw_inputs: equations.raw.inputs.len(),
+        raw_work: equations.raw.budget.work,
+        raw_bytes: equations.raw.budget.bytes,
+        reduced_expressions: equations.reduced.expressions.len(),
+        reduced_inputs: equations.reduced.inputs.len(),
+        reduced_work: equations.reduced.budget.work,
+        reduced_bytes: equations.reduced.budget.bytes,
+    })
 }
 
 fn power_value_kind(graph: &CompileGraph, target: PowerTarget) -> SettledValueKind {

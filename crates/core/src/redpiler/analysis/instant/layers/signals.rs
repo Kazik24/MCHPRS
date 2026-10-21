@@ -7,7 +7,19 @@ use super::*;
 use crate::redpiler::power_rules;
 use mchprs_blocks::BlockDirection;
 use mchprs_blocks::blocks::Block;
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+/// Completed corridor equations that can be reused by another tracer over the
+/// same immutable graph, query context, and `LayerBuilder` arena.
+///
+/// Pending recursion markers are intentionally excluded: an interrupted or
+/// failed query must never make a later tracer believe that a query completed.
+#[derive(Default)]
+pub(super) struct SignalMemo {
+    sources: FxHashMap<(SiteId, PowerPort, u8), LayerExprId>,
+    targets: FxHashMap<(PowerTarget, u8), LayerExprId>,
+    guards: FxHashMap<GuardId, LayerExprId>,
+}
 
 pub(super) struct SignalTracer<'a> {
     /// These immutable directional contributions already encode conducted and dust channels.
@@ -21,6 +33,9 @@ pub(super) struct SignalTracer<'a> {
     /// These transferred payloads are disabled at Near during the accepted retraction
     /// until their delayed restoration; only positive All-guard conjunctions may use it.
     disabled_destinations: Option<&'a FxHashSet<(ResourceId, ContactId)>>,
+    /// Stable logical extraction may trust saved dot/cross modes while deriving other sides
+    /// from the current physical geometry. Legacy tracer callers keep the original decline.
+    stable_wire_modes: bool,
     /// This fixes the semantic sampling cut of any remaining outside read.
     role: LayerInputRole,
     /// These source/threshold roots share repeated electrical subqueries at this prefix.
@@ -50,6 +65,7 @@ impl<'a> SignalTracer<'a> {
             state,
             role,
             disabled_destinations: None,
+            stable_wire_modes: false,
             sources: FxHashMap::default(),
             targets: FxHashMap::default(),
             visiting: FxHashSet::default(),
@@ -62,6 +78,31 @@ impl<'a> SignalTracer<'a> {
     pub(super) fn with_disabled_destinations(mut self, destinations: &'a FxHashSet<(ResourceId, ContactId)>) -> Self {
         self.disabled_destinations = Some(destinations);
         self
+    }
+
+    /// Use the saved dot/cross mode only for stable logical-query extraction.
+    pub(super) fn with_stable_wire_modes(mut self) -> Self {
+        self.stable_wire_modes = true;
+        self
+    }
+
+    /// Reuse completed equations in the same builder arena and exact query context.
+    /// The caller must not reuse the memo across graphs, input/state maps, modes,
+    /// roles, or builders because cached roots are arena-local.
+    pub(super) fn with_memo(mut self, memo: SignalMemo) -> Self {
+        self.sources = memo.sources;
+        self.targets = memo.targets;
+        self.guards = memo.guards;
+        self
+    }
+
+    /// Return completed equations only; all in-progress recursion markers are dropped.
+    pub(super) fn into_memo(self) -> SignalMemo {
+        SignalMemo {
+            sources: self.sources,
+            targets: self.targets,
+            guards: self.guards,
+        }
     }
 
     /// Exact wire nodes encountered among this tracer's input and conductor targets.
@@ -306,12 +347,17 @@ impl<'a> SignalTracer<'a> {
         let CircuitNodeKind::Wire(index) = self.graph.nodes[node.index()].kind else {
             return Err("corridor owns a non-wire component".into());
         };
-        // A saved dot is an explicit mode. Its lateral emission cannot be inferred from power alone.
-        if let ComponentState::Wire(saved) = self.graph.nodes[node.index()].state {
-            if crate::redstone::wire::is_dot(saved) {
-                return Err("directional corridor output depends on dot/cross state".into());
+        // Legacy extraction declines a saved dot; stable extraction derives its actual sides
+        // from fixed geometry but keeps the dot's no-fallback mode.
+        let saved_dot = match self.graph.nodes[node.index()].state {
+            ComponentState::Wire(saved) if crate::redstone::wire::is_dot(saved) => {
+                if !self.stable_wire_modes {
+                    return Err("directional corridor output depends on dot/cross state".into());
+                }
+                true
             }
-        }
+            _ => false,
+        };
         let neighbors = self.graph.wires[index].canonical_neighbors;
         let above_solid = self.site_test(neighbors[3], SiteTest::Solid, builder)?;
         let headroom = builder.not(above_solid)?;
@@ -342,6 +388,9 @@ impl<'a> SignalTracer<'a> {
             BlockDirection::East => (2, [0, 1]),
             BlockDirection::West => (3, [0, 1]),
         };
+        if saved_dot {
+            return Ok(connected[side]);
+        }
         let first = builder.not(connected[perpendicular[0]])?;
         let second = builder.not(connected[perpendicular[1]])?;
         let complete_axis = builder.all([first, second])?;

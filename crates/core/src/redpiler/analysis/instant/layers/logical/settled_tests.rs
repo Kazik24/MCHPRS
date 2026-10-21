@@ -84,6 +84,7 @@ fn counter_control_inputs(graph: &CompileGraph, circuit: &SettledCircuit, contro
         .filter_map(|output| match output.target {
             SettledTarget::Register(read) => Some(read),
             SettledTarget::Power(_) => None,
+            SettledTarget::ResourceState { .. } => None,
         })
         .collect::<Vec<_>>();
     register_slots.sort_unstable_by_key(|read| graph.pistons[read.storage.index()].position.z);
@@ -345,6 +346,37 @@ fn settled_boundary_keeps_external_observers_but_drops_internal_reset_callbacks(
     );
     let graph = prepared_o6(&world, world.get_corners(), &monitor);
     let circuit = compile_settled(&graph, &monitor).unwrap();
+    let observer_node = graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(observer_pos))
+        .map(|index| NodeId::new(index as u32))
+        .unwrap();
+    let observer_site = graph
+        .sites
+        .iter()
+        .position(|site| site.source == SiteSource::Component(observer_node))
+        .map(|index| SiteId::new(index as u32))
+        .unwrap();
+    let observer_source = LayerInputSource::SourceAbove {
+        site: observer_site,
+        port: PowerPort::Output,
+        threshold: 0,
+    };
+    let mut ordinary = Equations::new(&graph, &monitor).unwrap();
+    ordinary.retain_classic = true;
+    // Exercise an observer without an existing private-reset classification.
+    ordinary.resets.remove(&observer_node);
+    let ordinary_root = ordinary.source_value(observer_source).unwrap();
+    assert!(matches!(ordinary.reduced.expression(ordinary_root).unwrap(), LayerExpr::Input(_)));
+
+    let mut computation = Equations::new(&graph, &monitor).unwrap();
+    computation.retain_classic = true;
+    computation.resets.remove(&observer_node);
+    super::settled::assume_computation_frame_observers_off(&mut computation);
+    let computation_root = computation.source_value(observer_source).unwrap();
+    assert_eq!(computation.reduced.expression(computation_root).unwrap(), &LayerExpr::Constant(false));
+
     let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
     let mut owned: FxHashSet<_> = catalog.corridors.iter().flat_map(|corridor| corridor.wires.iter().copied()).collect();
     owned.extend(
@@ -530,7 +562,11 @@ fn settled_boundary_keeps_external_observers_but_drops_internal_reset_callbacks(
         "state guards consumed only by owned cells are internal logical dependencies"
     );
 
-    let (program, _) = graph.clone().lower_with_monitor(&monitor).unwrap();
+    // This part checks relocation of the cold diagnostic effect frontier. O6's
+    // separate device artifact intentionally slices it down to stable value roots.
+    let mut diagnostic_graph = graph.clone();
+    diagnostic_graph.plans.settled_circuit = Some(circuit.clone());
+    let (program, _) = diagnostic_graph.lower_with_monitor(&monitor).unwrap();
     let lowered = program.settled_circuit().unwrap();
     assert_eq!(lowered.retained_effects.len(), circuit.retained_effects.len());
     let mut power_effects = 0;
@@ -823,4 +859,417 @@ fn external_capture_keeps_contact_alternatives_only_while_the_wire_is_outside() 
         &FxHashSet::default(),
         &no_capture,
     ));
+}
+
+#[test]
+fn computation_feedback_leaf_uses_far_contact_as_canonical_state() {
+    let monitor = TaskMonitor::default();
+    let world = tiny_world();
+    let mut graph = prepared_o6(&world, (BlockPos::new(1, 1, 1), BlockPos::new(3, 3, 3)), &monitor);
+    let near = ContactId::new(graph.contacts.len() as u32);
+    let far = ContactId::new(near.index() as u32 + 1);
+    let resource = ResourceId::new(graph.resources.len() as u32);
+    let position = BlockPos::new(0, 0, 0);
+    for _ in [near, far] {
+        graph.contacts.push(ContactSpec {
+            node: NodeId::new(0),
+            position,
+            variants: Box::new([]),
+        });
+    }
+    graph.resources.push(ResourceSpec {
+        material: ProfileId::new(0),
+        contacts: Box::new([near, far]),
+    });
+    let owner = PistonId::new(graph.pistons.len() as u32);
+    graph.pistons.push(PistonSpec {
+        node: NodeId::new(0),
+        position,
+        facing: BlockFace::Bottom,
+        sticky: true,
+        base: ContactId::new(graph.contacts.len() as u32),
+        near,
+        far,
+        lane: PistonLane::SingleResource { far },
+        routes: PistonRoutes {
+            base_changed: RouteId::new(0),
+            near_changed: RouteId::new(0),
+            far_changed: None,
+            far_shape_changed: None,
+            base_restored: RouteId::new(0),
+            head_restored: RouteId::new(0),
+            resource_restored_near: None,
+            resource_restored_far: None,
+        },
+    });
+
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    equations.cells.insert(resource, (far, vec![owner]));
+    equations.unique_cell_resources.insert(resource);
+
+    let far_root = equations
+        .feedback_resource_leaf(LayerInputSource::State(StateTest::ResourceAt { resource, contact: far }))
+        .unwrap()
+        .unwrap();
+    let state_input = match equations.reduced.expression(far_root).unwrap() {
+        LayerExpr::Input(input) => *input,
+        expression => panic!("canonical Far feedback must be a direct state input, got {expression:?}"),
+    };
+    assert_eq!(
+        equations.reduced.inputs[state_input.0 as usize].source,
+        LayerInputSource::State(StateTest::ResourceAt { resource, contact: far })
+    );
+
+    let near_root = equations
+        .feedback_resource_leaf(LayerInputSource::State(StateTest::ResourceAt { resource, contact: near }))
+        .unwrap()
+        .unwrap();
+    assert_eq!(equations.reduced.expression(near_root).unwrap(), &LayerExpr::Constant(false));
+
+    let near_source = LayerInputSource::State(StateTest::ResourceAt { resource, contact: near });
+    equations.retain_classic = true;
+    assert!(
+        equations.source_value(near_source).is_err(),
+        "legacy extraction must retain the explicit transfer requirement"
+    );
+    equations
+        .sources
+        .insert(LayerInputSource::State(StateTest::ResourceAt { resource, contact: far }), far_root);
+    equations.feedback_resources = true;
+    assert_eq!(
+        equations.source_value(near_source).unwrap(),
+        near_root,
+        "the candidate tracks common-Far presence and ignores destination selection"
+    );
+
+    assert!(
+        equations
+            .feedback_resource_leaf(LayerInputSource::State(StateTest::ResourceAt {
+                resource,
+                contact: ContactId::new(far.index() as u32 + 1),
+            }))
+            .unwrap()
+            .is_none()
+    );
+    equations.cells.insert(resource, (far, vec![owner, owner]));
+    assert!(
+        equations
+            .feedback_resource_leaf(LayerInputSource::State(StateTest::ResourceAt { resource, contact: near }))
+            .unwrap()
+            .is_none()
+    );
+
+    assert!(
+        compile_computation(&graph, &[], &monitor).is_err(),
+        "empty public output sets must not produce a computation"
+    );
+}
+
+#[test]
+fn shared_far_feedback_presence_requires_every_owner_to_be_powered() {
+    let monitor = TaskMonitor::default();
+    let world = tiny_world();
+    let graph = prepared_o6(&world, (BlockPos::new(1, 1, 1), BlockPos::new(3, 3, 3)), &monitor);
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    let owner_a = equations
+        .reduced
+        .input(
+            LayerInputSource::State(StateTest::ResourceEnabled(ResourceId::new(0))),
+            LayerInputRole::RequestSample,
+        )
+        .unwrap();
+    let owner_b = equations
+        .reduced
+        .input(
+            LayerInputSource::State(StateTest::ResourceEnabled(ResourceId::new(1))),
+            LayerInputRole::RequestSample,
+        )
+        .unwrap();
+    let power_a = equations.reduced.input_expr(owner_a).unwrap();
+    let power_b = equations.reduced.input_expr(owner_b).unwrap();
+    let root = equations.shared_far_presence_from(vec![power_a, power_b]).unwrap();
+
+    for (owners_powered, expected_common_far) in [([true, true], true), ([false, true], false), ([true, false], false)] {
+        assert_eq!(
+            evaluate_logical_expression(&equations.reduced, root, &owners_powered),
+            expected_common_far,
+            "owner power {owners_powered:?} must produce common-Far presence {expected_common_far}"
+        );
+    }
+}
+
+#[test]
+fn raw_resource_lane_inference_accepts_shared_far_with_multiple_near_contacts() {
+    let near = ContactId::new(10);
+    let far = ContactId::new(11);
+    let lane = |id, near, far, sticky| PistonSpec {
+        node: NodeId::new(id),
+        position: BlockPos::new(0, 0, id as i32),
+        facing: BlockFace::Bottom,
+        sticky,
+        base: ContactId::new(id + 20),
+        near,
+        far,
+        lane: PistonLane::SingleResource { far },
+        routes: PistonRoutes {
+            base_changed: RouteId::new(0),
+            near_changed: RouteId::new(0),
+            far_changed: None,
+            far_shape_changed: None,
+            base_restored: RouteId::new(0),
+            head_restored: RouteId::new(0),
+            resource_restored_near: None,
+            resource_restored_far: None,
+        },
+    };
+
+    let inferred = super::settled::infer_raw_resource_lane(&[near, far], &[lane(0, near, far, true)]).unwrap();
+    assert_eq!(inferred, Some((far, vec![PistonId::new(0)])));
+    assert_eq!(
+        super::settled::infer_raw_resource_lane(&[near, far], &[lane(0, far, near, true)]).unwrap(),
+        Some((near, vec![PistonId::new(0)])),
+    );
+    assert!(
+        super::settled::infer_raw_resource_lane(&[near, far], &[lane(0, near, far, false)])
+            .unwrap()
+            .is_none()
+    );
+    assert!(super::settled::infer_raw_resource_lane(&[near, far], &[lane(0, near, far, true), lane(1, far, near, true)]).is_err());
+
+    let near_b = ContactId::new(12);
+    let shared = super::settled::infer_raw_resource_lane(&[near, near_b, far], &[lane(0, near, far, true), lane(1, near_b, far, true)]).unwrap();
+    assert_eq!(shared, Some((far, vec![PistonId::new(0), PistonId::new(1)])));
+    assert!(
+        super::settled::infer_raw_resource_lane(
+            &[near, near_b, far, ContactId::new(13)],
+            &[lane(0, near, far, true), lane(1, near_b, far, true)],
+        )
+        .unwrap()
+        .is_none()
+    );
+
+    let monitor = TaskMonitor::default();
+    let world = tiny_world();
+    let mut graph = prepared_o6(&world, (BlockPos::new(1, 1, 1), BlockPos::new(3, 3, 3)), &monitor);
+    let candidate_near = ContactId::new(graph.contacts.len() as u32);
+    let candidate_far = ContactId::new(candidate_near.index() as u32 + 1);
+    let resource = ResourceId::new(graph.resources.len() as u32);
+    let candidate_near_b = ContactId::new(candidate_far.index() as u32 + 1);
+    for _ in [candidate_near, candidate_far, candidate_near_b] {
+        graph.contacts.push(ContactSpec {
+            node: NodeId::new(0),
+            position: BlockPos::new(0, 0, 0),
+            variants: Box::new([]),
+        });
+    }
+    graph.resources.push(ResourceSpec {
+        material: ProfileId::new(0),
+        contacts: Box::new([candidate_near, candidate_far, candidate_near_b]),
+    });
+    let actor_index = graph.pistons.len() as u32;
+    let actor = PistonId::new(actor_index);
+    graph.pistons.push(lane(actor_index, candidate_near, candidate_far, true));
+    let actor_b = PistonId::new(actor_index + 1);
+    graph.pistons.push(lane(actor_index + 1, candidate_near_b, candidate_far, true));
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    super::settled::install_candidate_resource_lane(&mut equations, resource, candidate_far, vec![actor, actor_b]);
+    assert_eq!(
+        equations.feedback_resource_contract(resource),
+        Some((candidate_far, vec![actor, actor_b]))
+    );
+    assert!(equations.disabled_destinations.contains(&(resource, candidate_near)));
+    assert!(equations.disabled_destinations.contains(&(resource, candidate_near_b)));
+    assert!(
+        equations
+            .feedback_resource_leaf(LayerInputSource::State(StateTest::ResourceAt {
+                resource,
+                contact: candidate_far
+            }))
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        equations
+            .feedback_resource_leaf(LayerInputSource::State(StateTest::ResourceAt {
+                resource,
+                contact: candidate_near
+            }))
+            .unwrap()
+            .map(|root| equations.reduced.expression(root).unwrap().clone()),
+        Some(LayerExpr::Constant(false)),
+        "shared-Far feedback tracks a single canonical presence bit, not a winning destination"
+    );
+}
+
+#[test]
+fn candidate_torch_rule_is_boolean_inverse_of_main_input() {
+    for main_powered in [false, true] {
+        let torch_strength = if main_powered { 0 } else { 15 };
+        for threshold in 0..=15 {
+            assert_eq!(torch_strength > threshold, !main_powered && threshold < 15);
+        }
+    }
+}
+
+#[test]
+fn candidate_comparator_threshold_equations_match_primitive_strength_rule() {
+    let mut world = tiny_world();
+    let source = BlockPos::new(4, 2, 4);
+    let target = BlockPos::new(6, 2, 4);
+    for position in [source, target] {
+        world.set_block(position + BlockPos::new(0, -1, 0), Block::Stone {});
+        world.set_block(
+            position,
+            Block::RedstoneComparator {
+                comparator: RedstoneComparator::new(BlockDirection::West, ComparatorMode::Compare, false),
+            },
+        );
+    }
+    let monitor = TaskMonitor::default();
+    let mut graph = prepared_o6(&world, (source + BlockPos::new(-1, -1, -1), target + BlockPos::new(1, 2, 1)), &monitor);
+    let source_node = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(source)).unwrap() as u32);
+    let target_node = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(target)).unwrap() as u32);
+    let source_site = SiteId::new(
+        graph
+            .sites
+            .iter()
+            .position(|site| site.source == SiteSource::Component(source_node))
+            .expect("source comparator has an output site") as u32,
+    );
+    let always = GuardId::new(graph.guards.iter().position(|guard| *guard == Guard::Always).unwrap() as u32);
+    graph.power_links.retain(|link| {
+        link.to
+            != PowerTarget::Input {
+                node: target_node,
+                port: InputPort::Side,
+            }
+    });
+    graph.power_links.push(PowerLink {
+        from: source_site,
+        from_port: PowerPort::Output,
+        to: PowerTarget::Input {
+            node: target_node,
+            port: InputPort::Side,
+        },
+        face: BlockFace::West,
+        attenuation: 0,
+        guard: always,
+    });
+
+    for mode in [ComparatorMode::Compare, ComparatorMode::Subtract] {
+        let mut equations = Equations::new(&graph, &monitor).unwrap();
+        equations.retain_classic = true;
+        let mut roots = Vec::new();
+        for main in 0..=15u8 {
+            roots.push(
+                (0..=15u8)
+                    .map(|threshold| equations.comparator_output_above(target_node, mode, threshold, Some(main)).unwrap())
+                    .collect::<Vec<_>>(),
+            );
+        }
+        for main in 0..=15u8 {
+            for side in 0..=15u8 {
+                let values = equations
+                    .reduced
+                    .inputs
+                    .iter()
+                    .map(|input| match input.source {
+                        LayerInputSource::SourceAbove { site, threshold, .. } if site == source_site => side > threshold,
+                        _ => false,
+                    })
+                    .collect::<Vec<_>>();
+                let strength = crate::redpiler::power_rules::comparator_output_strength(main, side, mode);
+                for (threshold, &root) in roots[main as usize].iter().enumerate() {
+                    assert_eq!(
+                        evaluate_logical_expression(&equations.reduced, root, &values),
+                        strength > threshold as u8,
+                        "mode={mode:?} main={main} side={side} threshold={threshold}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn candidate_torch_source_inlines_the_main_input_inverse() {
+    let mut world = tiny_world();
+    let lever_pos = BlockPos::new(4, 2, 4);
+    let torch_pos = BlockPos::new(5, 2, 4);
+    world.set_block(lever_pos, Block::Lever { lever: Default::default() });
+    world.set_block(torch_pos, Block::RedstoneTorch { lit: true });
+    let monitor = TaskMonitor::default();
+    let mut graph = prepared_o6(&world, (BlockPos::new(1, 1, 1), BlockPos::new(8, 4, 8)), &monitor);
+    let lever_node = graph.nodes.iter().position(|node| node.position == Some(lever_pos)).unwrap();
+    let torch_node = graph.nodes.iter().position(|node| node.position == Some(torch_pos)).unwrap();
+    let lever_node = NodeId::new(lever_node as u32);
+    let torch_node = NodeId::new(torch_node as u32);
+    let site_for = |graph: &mut CompileGraph, node| {
+        graph
+            .sites
+            .iter()
+            .position(|site| site.source == SiteSource::Component(node))
+            .map(|index| SiteId::new(index as u32))
+            .unwrap_or_else(|| {
+                let id = SiteId::new(graph.sites.len() as u32);
+                graph.sites.push(SiteSpec {
+                    position: graph.nodes[node.index()].position.unwrap(),
+                    source: SiteSource::Component(node),
+                    source_strength: 0,
+                });
+                id
+            })
+    };
+    let lever_site = site_for(&mut graph, lever_node);
+    let torch_site = site_for(&mut graph, torch_node);
+    graph.power_links.push(PowerLink {
+        from: lever_site,
+        from_port: PowerPort::Output,
+        to: PowerTarget::Input {
+            node: torch_node,
+            port: InputPort::Main,
+        },
+        face: BlockFace::Top,
+        attenuation: 0,
+        guard: GuardId::new(0),
+    });
+
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    equations.retain_classic = true;
+    equations.feedback_resources = true;
+    let root = equations
+        .source(LayerInputSource::SourceAbove {
+            site: torch_site,
+            port: PowerPort::Output,
+            threshold: 0,
+        })
+        .unwrap();
+    let input = equations
+        .reduced
+        .inputs
+        .iter()
+        .position(|input| {
+            input.source
+                == (LayerInputSource::SourceAbove {
+                    site: lever_site,
+                    port: PowerPort::Output,
+                    threshold: 0,
+                })
+        })
+        .expect("torch main query should depend on the lever boundary") as u32;
+    for powered in [false, true] {
+        let mut values = vec![false; equations.reduced.inputs.len()];
+        values[input as usize] = powered;
+        assert_eq!(evaluate_logical_expression(&equations.reduced, root, &values), !powered);
+    }
+}
+
+fn evaluate_logical_expression(builder: &LayerBuilder<'_>, root: LayerExprId, inputs: &[bool]) -> bool {
+    match builder.expression(root).unwrap() {
+        LayerExpr::Constant(value) => *value,
+        LayerExpr::Input(input) => inputs[input.0 as usize],
+        LayerExpr::Not(child) => !evaluate_logical_expression(builder, *child, inputs),
+        LayerExpr::All(children) => children.iter().all(|&child| evaluate_logical_expression(builder, child, inputs)),
+        LayerExpr::Any(children) => children.iter().any(|&child| evaluate_logical_expression(builder, child, inputs)),
+    }
 }

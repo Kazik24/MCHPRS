@@ -23,7 +23,11 @@ mod instant;
 mod instant_cpu_tests;
 mod instant_kernel;
 mod instant_proxy;
+mod logical_clock;
 mod logical_device;
+#[cfg(test)]
+#[path = "graph/tests/logical_device_counter.rs"]
+mod logical_device_counter_tests;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
@@ -1011,6 +1015,14 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
+        if self.logical_device.is_some() {
+            let result = self.tick_logical_device();
+            if let Some(host) = host.as_mut() {
+                host.publish_logical_tick(self.future.clock.logical_tick);
+            }
+            self.latch_error(&result);
+            return result;
+        }
         if host.is_none()
             && let Some(position) = self.command_host_preflight_position()
         {
@@ -1156,7 +1168,7 @@ impl GraphBackend {
         match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Electrical(NodeType::Lever) => {
                 let powered = !self.node_state(node).powered;
-                self.set_node(node, powered, u8::from(powered) * 15, None, true)?;
+                self.set_node(node, powered, u8::from(powered) * 15, None, self.logical_device.is_none())?;
             }
             CircuitNodeKind::Electrical(NodeType::Button) => {
                 if !self.node_state(node).powered {
@@ -1240,9 +1252,6 @@ impl GraphBackend {
     /// Handle a notification using live or captured receiver state.
     /// The component may change immediately or schedule a tick.
     fn update_component(&mut self, node: NodeId, kind: DeliveryKind, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
-        if !self.logical_node_allowed(node) {
-            return Ok(());
-        }
         if self.classic_proof.is_some()
             && matches!(kind, DeliveryKind::Update { .. })
             && !matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
@@ -1931,9 +1940,6 @@ impl GraphBackend {
         let Some(receiver) = receiver else {
             return Ok(());
         };
-        if !self.logical_receiver_allowed(receiver) {
-            return Ok(());
-        }
         self.counts.callbacks += 1;
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled {

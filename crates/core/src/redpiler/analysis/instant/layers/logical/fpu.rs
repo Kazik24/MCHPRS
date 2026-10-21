@@ -45,6 +45,139 @@ fn report_fpu_logical_output_equations() {
         equations.reduced.inputs.len(),
     );
 
+    // These are state leaves rejected by the first output pass. Dump their physical
+    // ownership and transfer contracts so we can decide whether each is a real latch
+    // or merely a reset/callback artifact before adding it to a logical state model.
+    for resource in [0u32, 2, 6, 9, 13, 16, 20, 23, 27, 31, 4970] {
+        let resource = ResourceId::new(resource);
+        let spec = &graph.resources[resource.index()];
+        println!("FPU feedback resource {resource:?}: material={:?}", spec.material);
+        let touching_actors = graph
+            .pistons
+            .iter()
+            .enumerate()
+            .filter_map(|(index, piston)| {
+                spec.contacts
+                    .iter()
+                    .any(|contact| [piston.base, piston.near, piston.far].contains(contact))
+                    .then_some(PistonId::new(index as u32))
+            })
+            .collect::<FxHashSet<_>>();
+        let associated_declines = catalog
+            .declines
+            .iter()
+            .filter(|decline| decline.actors.iter().any(|actor| touching_actors.contains(actor)))
+            .collect::<Vec<_>>();
+        let mut group_actors = touching_actors.clone();
+        for decline in &associated_declines {
+            group_actors.extend(decline.actors.iter().copied());
+            println!("  associated cell decline: {decline:#?}");
+        }
+        if resource == ResourceId::new(4970) {
+            for actor in group_actors {
+                let piston = &graph.pistons[actor.index()];
+                let missing_reset = associated_declines.iter().any(|decline| {
+                    matches!(decline.reason, crate::redpiler::program_graph::CellDeclineReason::UnrecognizedActor(missing) if missing == actor)
+                });
+                println!(
+                    "  group actor {actor:?}@{:?}: facing={:?} sticky={} base={:?} near={:?} far={:?} lane={:?} recognized_reset_witness={}",
+                    piston.position,
+                    piston.facing,
+                    piston.sticky,
+                    piston.base,
+                    piston.near,
+                    piston.far,
+                    piston.lane,
+                    if missing_reset { "missing" } else { "not identified by group decline" },
+                );
+                for link in graph
+                    .power_links
+                    .iter()
+                    .filter(|link| matches!(link.to, PowerTarget::Input { node, .. } if node == piston.node))
+                {
+                    let source = &graph.sites[link.from.index()];
+                    let port = match link.to {
+                        PowerTarget::Input { port, .. } => port,
+                        _ => unreachable!(),
+                    };
+                    println!(
+                        "    input {port:?} <- {:?}@{:?} source_port={:?} attenuation={}",
+                        source.source, source.position, link.from_port, link.attenuation,
+                    );
+                }
+                let contacts = [piston.base, piston.near, piston.far];
+                let observers = graph
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, node)| {
+                        let watched = match node.kind {
+                            CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } => watched,
+                            _ => return None,
+                        };
+                        let Some(SiteSource::Contact(contact)) = graph.sites.get(watched.index()).map(|site| site.source) else {
+                            return None;
+                        };
+                        contacts
+                            .contains(&contact)
+                            .then_some((NodeId::new(index as u32), node.position, contact, &node.kind))
+                    })
+                    .collect::<Vec<_>>();
+                println!("    observers watching actor contacts (reset candidates): {observers:#?}");
+            }
+        }
+        for (cell_index, cell) in catalog.cells.iter().enumerate() {
+            for pin in cell.resources.iter().filter(|pin| pin.resource == resource) {
+                println!(
+                    "  cell {cell_index} resource contract: source={:?} owners={:?} present_pin={:?} absent_pin={:?} pins={:#?}",
+                    pin.source, pin.owners, pin.present, pin.absent, cell.pins,
+                );
+                for use_ in cell.uses.iter().filter(|use_| pin.owners.contains(&use_.actor)) {
+                    let actor = graph.pistons[use_.actor.index()];
+                    println!(
+                        "    use actor={:?}@{:?} {:?} powered={:?} requested={:?} valid={:?} reset={:#?} retraction={:#?}",
+                        use_.actor, actor.position, actor.facing, use_.powered, use_.requested, use_.valid, use_.reset, use_.retraction,
+                    );
+                    if let CellReset::Observer { node, wake } = &use_.reset {
+                        let observer = &graph.nodes[node.index()];
+                        println!(
+                            "      reset observer {node:?}@{:?} kind={:?} state={:?} wake={wake:#?}",
+                            observer.position, observer.kind, observer.state,
+                        );
+                    }
+                }
+            }
+        }
+        for &contact in &spec.contacts {
+            let contact_spec = &graph.contacts[contact.index()];
+            let node = &graph.nodes[contact_spec.node.index()];
+            println!(
+                "  contact {contact:?} at {:?}, node {:?} {:?}, variants={:?}",
+                contact_spec.position, contact_spec.node, node.kind, contact_spec.variants,
+            );
+            for (actor_index, piston) in graph
+                .pistons
+                .iter()
+                .enumerate()
+                .filter(|(_, piston)| piston.base == contact || piston.near == contact || piston.far == contact)
+            {
+                let actor = PistonId::new(actor_index as u32);
+                let owner = catalog
+                    .cells
+                    .iter()
+                    .enumerate()
+                    .find_map(|(cell_index, cell)| cell.resources.iter().find(|pin| pin.resource == resource).map(|pin| (cell_index, pin)));
+                println!(
+                    "    piston {actor:?} at {:?} {:?} lane={:?} resource_cell={:?}",
+                    piston.position,
+                    piston.facing,
+                    piston.lane,
+                    owner.map(|(cell, pin)| (cell, pin.source, pin.owners.clone())),
+                );
+            }
+        }
+    }
+
     let mut equations = equations;
     let mut all_leaves = FxHashSet::default();
     let mut failures = BTreeMap::<String, Vec<String>>::new();
@@ -52,6 +185,7 @@ fn report_fpu_logical_output_equations() {
         .as_array()
         .expect("manifest final dust output positions");
     let mut admitted = 0;
+    let mut public_targets = Vec::new();
     let mut reduced_roots = Vec::new();
     for raw_position in output_positions {
         let position = origin + cpus::manifest_position(raw_position);
@@ -70,6 +204,10 @@ fn report_fpu_logical_output_equations() {
                 .push(format!("{position:?} {node_id:?} {:?}", node.kind));
             continue;
         }
+        public_targets.push(PowerTarget::Input {
+            node: node_id,
+            port: InputPort::Main,
+        });
         // A dust output's strength is its wire-node Main input. Conducted power
         // at the wire's site is a different query and loses the wire's own drive.
         match equations.input_power(node_id, InputPort::Main) {
@@ -107,6 +245,136 @@ fn report_fpu_logical_output_equations() {
     );
     println!("FPU final dust unique input leaf kinds/dependencies: {leaf_kinds:#?}");
     println!("FPU unresolved resource/component causes: {failures:#?}");
+    match timing::infer(graph, &monitor) {
+        Ok(timing) => println!(
+            "FPU inferred timing island: clock={:?} trigger={:?} actors={:#?} nodes={:#?}",
+            timing.clock, timing.trigger, timing.actor_specs, timing.node_specs,
+        ),
+        Err(error) => println!("FPU timing-island inference declined: {error}"),
+    }
+    match diagnostic_computation_failures(graph, &public_targets, &monitor) {
+        Err(error) => println!("FPU compact diagnostic failed: {error}"),
+        Ok(diagnostic) => {
+            println!(
+                "FPU diagnostic builders: raw=(expr {}, inputs {}, work {}, bytes {}), reduced=(expr {}, inputs {}, work {}, bytes {})",
+                diagnostic.raw_expressions,
+                diagnostic.raw_inputs,
+                diagnostic.raw_work,
+                diagnostic.raw_bytes,
+                diagnostic.reduced_expressions,
+                diagnostic.reduced_inputs,
+                diagnostic.reduced_work,
+                diagnostic.reduced_bytes,
+            );
+            println!("FPU compact computation blockers: {:#?}", diagnostic.failures);
+            println!("FPU unresolved logical resource leaves: {:#?}", diagnostic.unresolved_resources);
+            for resource in diagnostic.unresolved_resources {
+                dump_unresolved_resource(graph, catalog, resource);
+            }
+            match compile_computation(graph, &public_targets, &monitor) {
+                Ok(circuit) => {
+                    let state = circuit
+                        .outputs
+                        .iter()
+                        .filter(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+                        .count();
+                    println!(
+                        "FPU compact logical computation: inputs={} expressions={} outputs={} public={} resource_states={} retained_effects={} declines={}",
+                        circuit.program.inputs.len(),
+                        circuit.program.expressions.len(),
+                        circuit.outputs.len(),
+                        public_targets.len(),
+                        state,
+                        circuit.retained_effects.len(),
+                        circuit.declines.len(),
+                    );
+                    println!(
+                        "FPU compact inputs: {:#?}",
+                        circuit.program.inputs.iter().map(|input| input.source).collect::<Vec<_>>()
+                    );
+                    println!(
+                        "FPU compact state targets: {:#?}",
+                        circuit
+                            .outputs
+                            .iter()
+                            .filter_map(|output| match output.target {
+                                SettledTarget::ResourceState { resource, source } => Some((resource, source)),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                    );
+                }
+                Err(error) => println!("FPU compact logical computation declined: {error}"),
+            }
+        }
+    }
+}
+
+fn dump_unresolved_resource(graph: &CompileGraph, catalog: &BoundaryCatalog, resource: ResourceId) {
+    let Some(spec) = graph.resources.get(resource.index()) else {
+        println!("FPU unresolved resource {resource:?} is missing from the graph");
+        return;
+    };
+    println!("FPU newly discovered unresolved resource {resource:?}: material={:?}", spec.material);
+    for &contact in &spec.contacts {
+        let contact_spec = &graph.contacts[contact.index()];
+        println!("  contact {contact:?}@{:?}: {:?}", contact_spec.position, contact_spec.variants);
+    }
+    let touching = graph
+        .pistons
+        .iter()
+        .enumerate()
+        .filter_map(|(index, piston)| {
+            spec.contacts
+                .iter()
+                .any(|contact| [piston.base, piston.near, piston.far].contains(contact))
+                .then_some((PistonId::new(index as u32), piston))
+        })
+        .collect::<Vec<_>>();
+    for (actor, piston) in &touching {
+        println!("  touching owner {actor:?}: {piston:#?}");
+    }
+    for cell in catalog
+        .cells
+        .iter()
+        .enumerate()
+        .filter(|(_, cell)| cell.resources.iter().any(|pin| pin.resource == resource))
+    {
+        println!("  recognized cell: {cell:#?}");
+    }
+    let actors = touching.iter().map(|(actor, _)| *actor).collect::<FxHashSet<_>>();
+    for decline in catalog
+        .declines
+        .iter()
+        .filter(|decline| decline.actors.iter().any(|actor| actors.contains(actor)))
+    {
+        println!("  associated cell decline: {decline:#?}");
+        if matches!(decline.reason, crate::redpiler::program_graph::CellDeclineReason::UnrecognizedActor(_)) {
+            println!(
+                "  reset witness: none admitted; cell discovery requires a recognized reset provenance or delayed payload-restoration witness for every actor"
+            );
+        }
+    }
+    for (node_index, node) in graph.nodes.iter().enumerate() {
+        let watched_contact = match node.kind {
+            CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } => {
+                graph.sites.get(watched.index()).and_then(|site| match site.source {
+                    SiteSource::Contact(contact) if spec.contacts.contains(&contact) => Some(contact),
+                    _ => None,
+                })
+            }
+            _ => None,
+        };
+        if let Some(contact) = watched_contact {
+            println!(
+                "  possible reset observer {:?}@{:?} watches resource contact {contact:?}; kind={:?} state={:?}",
+                NodeId::new(node_index as u32),
+                node.position,
+                node.kind,
+                node.state,
+            );
+        }
+    }
 }
 
 #[test]

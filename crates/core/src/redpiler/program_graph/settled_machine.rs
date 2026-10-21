@@ -2,9 +2,6 @@
 use super::*;
 
 /// The caller owns clock cadence, output publication and retained outside effects.
-// shortcut: physical execution still owns the clock and handoff; activate this
-// machine in Graph only after those boundary contracts have been validated.
-#[cfg_attr(not(test), expect(dead_code, reason = "Graph clock and publication adapter is not installed yet."))]
 #[derive(Debug)]
 pub(crate) struct SettledMachine {
     evaluation: SettledEvaluation,
@@ -14,7 +11,6 @@ pub(crate) struct SettledMachine {
     register_writes: Box<[(usize, usize)]>,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "Graph clock and publication adapter is not installed yet."))]
 impl SettledMachine {
     pub(crate) fn new(circuit: &SettledCircuit, initial_inputs: &[bool]) -> Result<Self, String> {
         if initial_inputs.len() != circuit.program.inputs.len() {
@@ -25,13 +21,17 @@ impl SettledMachine {
         }
         let mut registers = FxHashMap::default();
         for (index, output) in circuit.outputs.iter().enumerate() {
-            if let SettledTarget::Register(read) = output.target {
-                if output.kind != SettledValueKind::Bool {
-                    return Err("logical register output must be Boolean".into());
-                }
-                if registers.insert(read.resource, (read.source, index)).is_some() {
-                    return Err("logical register has multiple next-state writes".into());
-                }
+            let (resource, source) = match output.target {
+                SettledTarget::Register(read) => (read.resource, read.source),
+                #[cfg(test)]
+                SettledTarget::ResourceState { resource, source } => (resource, source),
+                SettledTarget::Power(_) => continue,
+            };
+            if output.kind != SettledValueKind::Bool {
+                return Err("logical register output must be Boolean".into());
+            }
+            if registers.insert(resource, (source, index)).is_some() {
+                return Err("logical register has multiple next-state writes".into());
             }
         }
         let mut external_inputs = Vec::new();
@@ -88,6 +88,7 @@ impl SettledMachine {
         self.evaluation.outputs()
     }
 
+    #[cfg(test)]
     pub(crate) fn input_values(&self) -> &[bool] {
         &self.inputs
     }
@@ -163,6 +164,26 @@ mod tests {
         }
         assert!(machine.step(&[false]).is_err());
         assert_eq!(machine.input_values(), &[true, false], "invalid samples must not mutate register state");
+    }
+
+    #[test]
+    fn resource_feedback_commits_simultaneously_and_rejects_aliased_writes() {
+        let mut circuit = swap_registers();
+        for output in &mut circuit.outputs {
+            let SettledTarget::Register(read) = output.target else { unreachable!() };
+            output.target = SettledTarget::ResourceState {
+                resource: read.resource,
+                source: read.source,
+            };
+        }
+        let mut machine = SettledMachine::new(&circuit, &[true, false]).unwrap();
+        assert!(machine.external_inputs().is_empty());
+        machine.step(&[]).unwrap();
+        assert_eq!(machine.input_values(), &[false, true]);
+        machine.step(&[]).unwrap();
+        assert_eq!(machine.input_values(), &[true, false]);
+        circuit.outputs[1].target = swap_registers().outputs[0].target;
+        assert!(SettledMachine::new(&circuit, &[true, false]).is_err());
     }
 
     #[test]

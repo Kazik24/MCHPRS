@@ -137,7 +137,7 @@ fn capture_anpu_bud_reference_to_new_file() {
 }
 
 #[test]
-fn anpu_cannot_bypass_compiled_graph_admission() {
+fn anpu_graph_compilation_preserves_native_world_and_queued_work() {
     use crate::redpiler::analysis::{self, AnalysisLimits};
     use crate::redpiler::{Compiler, CompilerOptions};
 
@@ -153,23 +153,23 @@ fn anpu_cannot_bypass_compiled_graph_admission() {
             "admission_issues": report.issues.len(),
         })
     );
-    for budget_multiplier in [1, 2, 4, 8] {
-        for flags in ["", "--optimize", "--io-only", "--optimize --io-only"] {
-            let mut compiler = Compiler::default();
-            let mut options = CompilerOptions::parse(flags).unwrap();
-            options.budget_multiplier = budget_multiplier;
-            let error = compiler
-                .compile(&world, world.get_corners(), options, ticks.clone(), Default::default())
-                .unwrap_err();
-            println!("ANPU admission budget={budget_multiplier}, flags={flags:?}: {error}");
-            assert!(!compiler.is_active());
-            assert!(compiler.current_flags().is_none());
-            assert_eq!(
-                cpus::checkpoint(&world, 0, &[]),
-                before,
-                "failed admission must preserve physical state and queued work; budget={budget_multiplier}, flags={flags}"
-            );
-        }
-    }
+    assert_eq!(report.issues.len(), 0, "the current ANPU graph is fully admitted");
+    assert!(!report.pistons.is_empty());
+    let mut compiler = Compiler::default();
+    let options = CompilerOptions::parse("").unwrap();
+    compiler
+        .compile(&world, world.get_corners(), options, ticks.clone(), Default::default())
+        .unwrap();
+    assert!(compiler.is_active());
+    assert!(compiler.current_flags().is_some());
+    assert_eq!(compiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
+    assert_eq!(compiler.stats().map(|stats| stats.backend), Some(crate::redpiler::BackendKind::Graph));
+    assert!(compiler.graph_execution_counts().is_some());
+    assert_eq!(cpus::checkpoint(&world, 0, &[]), before, "compilation must preserve physical state");
+    assert_eq!(
+        world.scheduler().iter_entries().collect::<Vec<_>>(),
+        ticks,
+        "compilation must preserve queued work"
+    );
     assert!(CompilerOptions::parse("--piston-events").is_err());
 }

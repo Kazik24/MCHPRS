@@ -191,3 +191,228 @@ checking with `cargo check --workspace --all-targets --locked`, formatting and
 `target/logical-inference/production-integration-redpiler-tests-final.log`,
 `production-integration-workspace-check-final.log` and
 `production-integration-test-build-final.log` in the same directory.
+## O6 logical-only COUNTER experiment
+
+The O6 pass now automatically compiles the recognized clock/BUD family to
+selected stable output roots and register next-state roots. The executor uses
+`SettledMachine`, its cached dependency values, and a small logical phase machine
+for the qualified two-piston/torch/observer controller. Primitive delays are
+explicit; no complete input/state cases, learned clock period, or physical
+callback transcript is stored. There is no extra compilation flag.
+
+This is the deliberately restricted valid-device experiment: internal glitches,
+visual piston activity, reset notifications and physical update ordering are
+not part of its contract. Only logical BUD state and stable output publication
+are updated. The cold geometry remains available for projection; the kernel
+runs no internal wire, route, piston-action or scheduled-component executor.
+The recognized clock family and normal stationary startup are assumptions,
+not a proof for arbitrary redstone clocks.
+
+The minimal test extracts one real BUD register and its matching output query
+from the COUNTER fixture. Its two-root kernel matches the native circuit across
+260 computations/publications. The actual automatic O6 test checks all sixteen
+register bits and public output bits across 260 computations, through the byte
+carry, then normal OFF and restart. It asserts zero physical callbacks, wire
+walks, piston samples, piston actions, deferred publications and scheduled ticks.
+This is stable-boundary validation; internal-state equality is intentionally
+not required.
+
+Interpreter reconstruction remains unfinished for this path. FPU and BubbleSort
+still use the general backend; the experiment does not yet provide logical-only
+execution for them. FPU topology inspection identifies uniquely owned feedback
+payloads, but no production feedback-state model has been activated.
+Release verification: three 60,000-game-tick runs match the frozen native
+publication checkpoints. The median tick-timer rate is 5,117,707 game TPS.
+A sustained three-sample run of 6,000,000 game ticks per sample measures
+4,966,290 game TPS by tick timers and **4,243,471 game TPS** by the complete
+benchmark loop wall clock, including timer/checkpoint/publication overhead.
+Loading, compilation and warmup are excluded in both measures. No builds,
+tests or other benchmark jobs ran concurrently with these measurements.
+
+Each sustained sample executes 1,000,000 logical computations and 86,664,560
+Boolean expression operations. Physical callbacks, wire walks, piston samples,
+piston actions, deferred publications and scheduled component ticks are all
+zero. All 30,003 sampled publication words across the three long runs match the
+counter oracle, including repeated 16-bit wraps. The short run uses the frozen
+native reference; the long run uses the counter arithmetic oracle, not a new
+six-million-tick native replay. The counter equations and normal native clock
+cadence have separate differential/symbolic validation as described above.
+
+The experiment exceeds the 1,000,000 game-TPS COUNTER target on this workload.
+It does not establish FPU throughput or interpreter handoff correctness.
+All 653 Redpiler tests pass (78 ignored), workspace/all-target checking is
+warning-free, and formatting/diff checks pass. The native full-device regression
+also covers normal stop and restart; internal physics is intentionally absent.
+
+Evidence under `target/logical-inference/`:
+`bench-counter-logical-only.json`, `bench-counter-logical-only-long.json`,
+`logical-only-counter-validation.json`, `logical-only-provenance.json`,
+`logical-only-final-redpiler-tests.log`, `logical-only-final-workspace-check.log`
+and `logical-only-final-release-build.log`. The frozen benchmark executable is
+`logical-only-instant.exe`.
+
+## FPU observable-tick contract
+
+The held-OFF native FPU reference (`fpu-held-off-native.json`) has 504 output-word
+changes across 2,016 adjacent game-tick comparisons within its 32 input holds.
+It repeatedly publishes the computed word and `0xffff` while the inputs remain
+unchanged. Matching just the final word of an input hold is insufficient to
+establish valid-result publication timing. The agreed contract permits transient
+glitches to disappear: a raw tick difference is diagnostic, rather than proof of
+incorrect execution. Valid publication ticks and required BUD write events must
+be identified from event state and preserved; `0xffff` alone cannot classify a
+tick as a reset glitch because it can also be a legitimate output word.
+
+The current experimental extractor represents shared-Far feedback payloads with
+one explicit Boolean state bit and simultaneous next-state writes. Up to five
+owners can pull one payload; the pull condition is OR of owner pull requests
+(equivalently, source presence is AND of owners staying powered). The winning
+owner and private destination choice are discarded by the O6 model. This
+is a candidate equation representation, not evidence that advancing every
+feedback bit once per game tick matches native operation. Activation remains
+unchanged until a differential trace establishes the required event timing.
+BubbleSort additionally requires explicit BUD write/update events: an unchanged
+signal value alone does not establish that no memory update is needed.
+
+The first closed FPU extraction declines at `ResourceId(4970)`. Its two-contact
+payload is in a group containing actors 7101 and 7638; the catalog rejects the
+group because actor 7638 lacks an admitted reset witness. The COUNTER timing
+recognizer also finds no qualifying empty-lane clock in this FPU. Neither a
+Boolean value substituted for that resource nor a copied six-tick schedule has
+been activated. Broader support diagnostics are test-only, and the native trace
+comparison requires a closed input/state dependency set before execution.
+
+The broader support census reaches 115 unresolved resource leaves before the
+expression builder exhausts its budget. It requires a larger Windows test
+thread stack (`RUST_MIN_STACK=33554432`); the default stack overflowed during
+the diagnostic expansion. This census is not a completed FPU kernel or an
+output-equivalence result. The next candidate extractor can infer local
+shared-source lane equations without catalog reset admission, but remains
+test-only and subject to the native differential checks.
+
+Shared graph-query memoization now survives successive logical power queries
+within the same immutable compilation context and expression arena. It stores
+completed equations only, discarding pending recursion markers after errors.
+The builder also charges retained operand storage at interning time, so repeated
+equivalent Boolean expressions do not consume the retained-memory budget again.
+Neither change stores input-value combinations or a native callback transcript.
+
+## BUD event investigation
+
+The BUD read descriptor is not a general logical memory executor. Ordinary
+pistons still own requests, acceptance, motion and resource publication. Native
+updates sample Main/QC power before requesting an action, and execution rechecks
+live power before accepting it. A separate test-only detailed recorder now
+captures these cuts without changing the frozen Sample/Applied trace format.
+Request entries precede queue deduplication; Accept entries are attempts, and
+only Applied establishes success.
+
+The COUNTER probe covers six OFF phases. Matched native request/acceptance power
+is unchanged in these windows. All six drained storage states match O6, and
+running/restarted outputs match at valid publication cuts relative to each start.
+Absolute tick modulo six is not a valid restart oracle. A real gap remains:
+native output clears to zero while stopped and remains there through the
+24-tick drain, while O6 retains its last published word. The ignored differential
+records this discrepancy before failing; runtime semantics have not been changed
+pending discussion. Running throughput measurements above do not establish
+correct stopped-output behavior.
+
+ANPU has 896 fixture-labeled lower readers with upper storage topology witnesses,
+but the current O5 BUD read recognizer covers zero of them. The focused probe
+records raw native events for an active pair even at zero recognition coverage;
+selection from topology is explicitly distinguished from admitted recognition.
+BubbleSort's 768 RAM observation positions likewise do not by themselves identify
+storage ownership. Its focused native probe follows the frozen load/reset/start
+protocol and traces one observed bit through active tick 98, plus the candidate
+upper piston and nearby updates. A changed-word checkpoint is not proof of the
+first physical transition when other bits make the whole word unavailable.
+
+Evidence: `target/anpu-bud-recognizer-native-trace.json`,
+`target/logical-inference/counter-bud-off-phases.json`,
+`target/logical-inference/counter-o6-off-phase-differential.json`, and
+`target/logical-inference/cpu-bubblesort-first-ram-transition.json`.
+These are focused diagnostics, not whole-device logical equivalence proofs.
+
+The Rilax one-cell probe confirms the same upper-storage/lower-reader topology
+seen in ANPU: a downward sticky storage piston owns one two-contact redstone-block
+resource, and the reader four blocks below has one unattenuated Quasi contribution
+from that resource's Far contact. Fixture labels differ: Rilax observes upper
+storage positions, while ANPU's labels select lower readers. That label difference
+does not establish different memory semantics. Rilax's ordinary storage actors are
+intentionally outside instant-cell admission.
+
+Native Rilax tests establish sampling on both write-enable edges, unchanged-data
+samples, latched reads, short-pulse filtering, read publication at tick 10 and
+release clearing at tick 12 for the declared protocol. The focused replay writes
+bit zero, observes seven ordinary updater retractions, and clears the read output
+on release. Evidence: `target/rilax-bud-single-cell-detail.json`. Ten Rilax
+regressions and the additional ignored detailed probe pass. The original fixture
+has a documented missing decoder torch at address 1; existing tests keep it as a
+negative case and separately test a derived repaired world. The binary is unchanged.
+
+Current verification also passes all 44 native piston regressions and warning-free
+workspace/all-target checking. A broader core test attempt reports failures outside
+these changes (including client packet expectations), so no whole-suite green
+claim is made. The known O6 stopped-output diagnostic remains failing as described
+above; generic logical memory execution is not implemented by these probes.
+
+## FPU settled observer experiment
+
+Under the user's fully instant FPU contract, the test-only computation extractor
+now folds observer/reset outputs OFF before reduction. This removes all 353
+undeclared observer inputs: the candidate closes with 22,193 expressions, 53
+control predicates and 15 feedback candidates. Ordinary settled extraction still
+retains its existing observer/effect behavior. Ten settled extraction regressions
+pass, and workspace/all-target checking and formatting pass without warnings.
+
+The native diagnostic now executes 2,048 ticks across warmup and 16 held-input
+vectors. Fresh-frame evaluation initializes canonical Far state and converges in
+one to four logical passes in these cases, producing the same candidate words as
+carried feedback. This is within-computation iteration, not a demonstrated need
+for persistent cross-computation memory. Candidate words occur in the final
+native hold window for 15 vectors, but multiple native plateaus prevent interpreting
+that alone as valid publication equivalence. For vector 0, candidate `0x8446`
+never appears in the final 24 native ticks, which alternate `0x8000` and `0x8800`
+with `0xffff` pulses. Reset-frame initialization does not resolve that discrepancy.
+The raw mismatch count includes allowed transients and is diagnostic only.
+
+Evidence: `target/logical-inference/fpu-computation-frame-trace.json` and
+`fpu-observer-fold-native-probe.log` in that directory. The probe's successful test
+status establishes dependency closure and trace completion, not output parity.
+No logical FPU throughput or production activation is claimed.
+
+## Provisional FPU kernel throughput
+
+The now-closed candidate can be benchmarked independently of native execution.
+On a Ryzen 9 5950X, the normal release profile with fat LTO measures the following
+medians across three samples of 4,096 changing operand pairs per selector:
+
+| Raw selector mask | Calculations/s | Microseconds/calculation | Mean logical passes | Distinct output words |
+| --- | ---: | ---: | ---: | ---: |
+| 000 | 33,050 | 30.26 | 1.00 | 1,238 |
+| 001 | 15,055 | 66.42 | 2.90 | 3,650 |
+| 010 | 19,697 | 50.77 | 4.00 | 3,030 |
+| 011 | 10,846 | 92.20 | 3.89 | 3,913 |
+| 100 | 19,548 | 51.16 | 4.00 | 2,349 |
+| 101 | 11,062 | 90.40 | 3.88 | 3,912 |
+| 110 | 9,337 | 107.10 | 3.84 | 3,531 |
+| 111 | 460,748 | 2.17 | 1.00 | 1 |
+
+These masks index the manifest selector controls; they are not certified numeric
+opcode names. Pattern 111 has one constant output and is excluded from the
+9,337–33,050 calculations/s range. Every timed calculation applies pre-generated
+input values, resets temporary feedback to canonical Far, evaluates the actual
+incremental Boolean graph until fixed point, and collects output/checksum data.
+Graph/evaluator allocation and stimulus generation are outside timing. The cache
+holds only current expression values, not whole input/result cases. All 98,304
+timed calculations converge; an untimed 16-vector differential also verifies the
+reusable evaluator matches the existing experimental SettledMachine.
+
+Cold setup measures fixture load 154.6 ms, graph preparation/passes 6,978.3 ms,
+and logical extraction 701.5 ms. The Rust release binary build is separate and
+excluded. No other builds/tests/benchmarks ran during measurement. Evidence is
+`target/logical-inference/fpu-kernel-benchmark.json` and its `.log` companion.
+
+This establishes provisional kernel throughput only. The known native value
+discrepancy remains, and the candidate is not installed as a production FPU device.
+No conversion to game TPS is made without a validated publication adapter/cadence.

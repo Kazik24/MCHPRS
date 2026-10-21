@@ -154,21 +154,58 @@ pub(crate) fn infer(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Settl
     let trigger = *triggers.iter().next().unwrap();
     let mut actors: Vec<_> = actors.into_iter().collect();
     let mut nodes: Vec<_> = nodes.into_iter().chain(wires.iter().copied()).collect();
-    let mut observers: Vec<_> = nodes
-        .iter()
-        .filter_map(|&node| matches!(&graph.nodes[node.index()].kind, CircuitNodeKind::Observer { .. }).then_some(node))
-        .collect();
     actors.sort_unstable();
     nodes.sort_unstable();
     nodes.dedup();
-    observers.sort_unstable();
-    observers.dedup();
+    let actor_specs = actors
+        .iter()
+        .map(|&piston| {
+            let spec = graph.pistons[piston.index()];
+            ClockActorSpec {
+                piston,
+                node: spec.node,
+                base: spec.base,
+                near: spec.near,
+                far: spec.far,
+                lane: spec.lane,
+                resource: match spec.lane {
+                    PistonLane::SingleResource { far } => graph
+                        .resources
+                        .iter()
+                        .enumerate()
+                        .find_map(|(index, resource)| resource.contacts.contains(&far).then_some(ResourceId::new(index as u32))),
+                    PistonLane::Empty => None,
+                },
+                sticky: spec.sticky,
+            }
+        })
+        .collect::<Vec<_>>();
+    let node_specs = nodes
+        .iter()
+        .filter_map(|&node| {
+            let spec = &graph.nodes[node.index()];
+            let (kind, watched) = match spec.kind {
+                CircuitNodeKind::Electrical(NodeType::Lever) => (ClockNodeKind::Lever, None),
+                CircuitNodeKind::Electrical(NodeType::Torch) => (ClockNodeKind::Torch, None),
+                CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => (ClockNodeKind::Repeater, None),
+                CircuitNodeKind::Observer { watched, .. } => (ClockNodeKind::Observer, Some(watched)),
+                CircuitNodeKind::BuiltinReset { watched, .. } => (ClockNodeKind::BuiltinReset, Some(watched)),
+                _ => return None,
+            };
+            let watched_contact = watched.and_then(|site| match graph.sites[site.index()].source {
+                SiteSource::Contact(contact) => Some(contact),
+                _ => None,
+            });
+            Some(ClockNodeSpec { node, kind, watched_contact })
+        })
+        .collect::<Vec<_>>();
     Ok(SettledTimingIsland {
         clock,
         actors: actors.into_boxed_slice(),
         nodes: nodes.into_boxed_slice(),
         trigger,
-        observers: observers.into_boxed_slice(),
+        actor_specs: actor_specs.into_boxed_slice(),
+        node_specs: node_specs.into_boxed_slice(),
     })
 }
 

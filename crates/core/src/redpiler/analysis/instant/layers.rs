@@ -1336,11 +1336,6 @@ impl<'a> LayerBuilder<'a> {
         if operands.len() == 1 {
             return Ok(operands[0]);
         }
-        let payload = operands
-            .len()
-            .checked_mul(std::mem::size_of::<LayerExprId>())
-            .ok_or("layer expression operand size overflow")?;
-        self.budget.retain(payload)?;
         let operands = operands.into_boxed_slice();
         self.intern(if all { LayerExpr::All(operands) } else { LayerExpr::Any(operands) })
     }
@@ -1366,7 +1361,8 @@ impl<'a> LayerBuilder<'a> {
             return Ok(id);
         }
         let operand_bytes = match &expression {
-            LayerExpr::All(values) | LayerExpr::Any(values) => values.len().checked_mul(std::mem::size_of::<LayerExprId>()),
+            // Both the expression table and the interning key retain these operands.
+            LayerExpr::All(values) | LayerExpr::Any(values) => values.len().checked_mul(2 * std::mem::size_of::<LayerExprId>()),
             _ => Some(0),
         }
         .ok_or("layer expression size overflow")?;
