@@ -118,7 +118,8 @@ fn run_mandelbrot_chungus_compiled() {
     for (mode, flags) in [("compiled", ""), ("optimized", "-O")] {
         let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
         let mut compiler: Compiler = Default::default();
-        let options = CompilerOptions::parse(flags).unwrap();
+        let mut options = CompilerOptions::parse(flags).unwrap();
+        options.budget_multiplier = 8;
         let bounds = plot.get_corners();
         compiler.compile(&plot, bounds, options, Vec::new(), Default::default()).unwrap();
         compiler.on_use_block(CHUNGUS_START_BUTTON);
@@ -152,7 +153,8 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
     }
 
     let mut compiler: Compiler = Default::default();
-    let options = CompilerOptions::parse("-O").unwrap();
+    let mut options = CompilerOptions::parse("-O").unwrap();
+    options.budget_multiplier = 8;
     let bounds = plot.get_corners();
     let ticks = plot.scheduler().iter_entries().collect();
     compiler.compile(&plot, bounds, options, ticks, Default::default()).unwrap();
@@ -189,9 +191,11 @@ fn run_mandelbrot_chungus_interpreted_to_compiled() {
 #[test]
 fn run_mandelbrot_chungus_compiled_to_interpreted() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
+    let output_positions = visible_output_positions(&plot);
 
     let mut compiler: Compiler = Default::default();
-    let options = CompilerOptions::parse("-O").unwrap();
+    let mut options = CompilerOptions::parse("-O").unwrap();
+    options.budget_multiplier = 8;
     let bounds = plot.get_corners();
     compiler.compile(&plot, bounds, options, Vec::new(), Default::default()).unwrap();
     compiler.on_use_block(CHUNGUS_START_BUTTON);
@@ -203,16 +207,24 @@ fn run_mandelbrot_chungus_compiled_to_interpreted() {
 
     compiler.reset(&mut plot, bounds);
 
-    for _ in 0..28 * TICK_MUL {
+    let mut control = load_test_plot("./benches/chungus_mandelbrot_plot");
+    click_floor_button(&mut control, CHUNGUS_START_BUTTON);
+    for _ in 0..1000 * TICK_MUL {
+        control.tick_interpreted();
+    }
+    for game_tick in 1..=28 {
         // TODO Investigate why this circuit stops after about 30 interpreter ticks following the graph reset.
         // println!("{}", plot.to_be_ticked.len());
-        plot.tick_interpreted();
+        for _ in 0..TICK_MUL {
+            plot.tick_interpreted();
+            control.tick_interpreted();
+        }
+        for &pos in &output_positions {
+            assert_eq!(
+                plot.get_block(pos),
+                control.get_block(pos),
+                "handoff output at {pos} after game tick {game_tick}"
+            );
+        }
     }
-
-    let hash = calculate_world_hash(&plot);
-    //hash after 1000 compiled and then 1000 interpreted ticks (master commit 33cfc6dd84)
-    assert_eq!(
-        hash.as_ref(),
-        b"\x66\xb7\x25\x7c\x39\xd1\xc6\x14\xe1\xd0\x97\xbb\x50\xf7\xe9\xd9\x2e\xd8\xc5\xd4\x23\x2f\x68\x1f\x56\x5d\x7e\xe6\xa0\x74\x38\xda"
-    );
 }

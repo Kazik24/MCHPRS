@@ -370,14 +370,13 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             .entries
             .retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
     }
-    // FIFO-local entries sample live inputs; stable logic checks its explicit promise separately.
+    // FIFO-local entries sample live inputs; stable logic follows the effective input contract.
     let kernels = [
         (4, Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries)),
         (4, Pass::build(compile_instant_wire_nodes::CompileInstantWireNodes)),
         (4, Pass::build(minimize_wire_captures::MinimizeWireCaptures)),
         (4, Pass::build(compile_bud_memory_reads::CompileBudMemoryReads)),
         (4, Pass::build(compile_instant_events::CompileInstantEvents)),
-        (6, Pass::build(compile_logical_bud_owners::CompileLogicalBudOwners)),
         (5, Pass::build(optimize_instant_kernels_cpu::OptimizeInstantKernelsCpu)),
     ];
     pipeline.entries.extend(kernels.into_iter().map(|(minimum_level, pass)| PassEntry {
@@ -412,12 +411,16 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         pass: Pass::build(compile_stable_instant_logic::CompileStableInstantLogic),
         enabled: level >= 5,
     });
-    if level >= 6 && options.stable_instant_inputs {
+    if level >= 6 && options.assumes_stable_instant_inputs() {
         pipeline.entries.push(PassEntry {
             pass: Pass::build(compile_instant_layers::CompileInstantLayers),
             enabled: true,
         });
     }
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_logical_bud_owners::CompileLogicalBudOwners),
+        enabled: level >= 6,
+    });
     pipeline.entries.push(PassEntry {
         pass: Pass::build(compile_settled_circuit::CompileSettledCircuit),
         enabled: level >= 6,
@@ -490,7 +493,9 @@ mod tests {
         ] {
             let options = CompilerOptions::parse(flags).unwrap();
             let level = options.optimization_level.unwrap_or(crate::redpiler::MAX_OPTIMIZATION_LEVEL);
-            assert_eq!(options.stable_instant_inputs, flags.contains("--stable-instant-inputs"));
+            let explicit_stable = flags.contains("--stable-instant-inputs");
+            assert_eq!(options.stable_instant_inputs, explicit_stable);
+            assert_eq!(options.assumes_stable_instant_inputs(), explicit_stable || level >= 6, "{flags}");
             let pipeline = default_graph_pipeline(&options);
             let enabled: Vec<_> = pipeline.entries.iter().filter(|p| p.enabled).map(|p| p.pass.name()).collect();
             for (name, minimum) in [
@@ -516,7 +521,10 @@ mod tests {
             ] {
                 assert_eq!(enabled.contains(&name), level >= minimum, "{flags}: {name}");
             }
-            assert_eq!(enabled.contains(&"compile-instant-layers"), level >= 6 && options.stable_instant_inputs);
+            assert_eq!(
+                enabled.contains(&"compile-instant-layers"),
+                level >= 6 && options.assumes_stable_instant_inputs()
+            );
             assert!(!enabled.contains(&"compile-guard-predicates"));
             assert!(
                 enabled

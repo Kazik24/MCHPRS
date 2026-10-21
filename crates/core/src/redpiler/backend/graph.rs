@@ -44,6 +44,9 @@ mod logical_device_author_profile_tests;
 #[path = "graph/tests/logical_device_counter.rs"]
 mod logical_device_counter_tests;
 #[cfg(test)]
+#[path = "graph/tests/logical_device_frame.rs"]
+mod logical_device_frame_tests;
+#[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
 #[cfg(test)]
@@ -1237,7 +1240,7 @@ impl GraphBackend {
             CircuitNodeKind::Electrical(NodeType::Button) => {
                 if !self.node_state(node).powered {
                     self.schedule(node, 10, TickPriority::Normal);
-                    self.set_node(node, true, 15, None, true)?;
+                    self.set_node(node, true, 15, None, self.logical_device.is_none())?;
                 }
             }
             _ => {}
@@ -1262,7 +1265,7 @@ impl GraphBackend {
             self.program.nodes()[node.index()].kind,
             CircuitNodeKind::Electrical(NodeType::PressurePlate)
         ) {
-            self.set_node(node, powered, u8::from(powered) * 15, None, true)?;
+            self.set_node(node, powered, u8::from(powered) * 15, None, self.logical_device.is_none())?;
         }
         Ok(())
     }

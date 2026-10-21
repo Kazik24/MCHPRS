@@ -12,7 +12,7 @@ The same levels apply to `/rp analyze` and its graph export.
 | O3 | Local piston and reset specialization, built-in reset clocks, compiled wire shapes/capture recipes, private instant regions and proxies. |
 | O4 | Instant boundary discovery, closed single-wire transfers, passive capture elimination, private BUD reads and connected FIFO-local event kernels. |
 | O5 | Equivalent delayed-update coalescing; flat CPU predicates; dense and guarded instant transport; typed drives; minimized exact transition programs; value regions and ordered signal channels. Stable power-expression programs additionally require `--stable-instant-inputs`. |
-| O6 | Experimental logical device execution for the recognized clock/BUD family: a shared Boolean DAG, logical clock phases, register commits and stable output writes, without internal physical updates. This activates automatically. Other circuits retain general execution; `--stable-instant-inputs` additionally enables finite pull waves. |
+| O6 | Experimental logical device execution for the recognized clock/BUD family: a shared Boolean DAG, logical clock phases, register commits and stable output writes, without internal physical updates. Stable instant inputs and certified finite pull waves are enabled automatically. Other circuits retain general execution. |
 
 Higher tiers retain lower-tier rules. O4 event kernels replace the O3
 region/proxy builders, avoiding duplicate ownership and unnecessary compilation.
@@ -25,12 +25,18 @@ They preserve original requests, clocks, reset transitions, contact selection an
 deferred revisions. Their single-wire transfers retain ordered receiver delivery;
 they do not contract arbitrary multi-wire nets to equilibrium.
 
-The stable-input assumption remains explicit:
+O6 assumes external inputs remain stable through each instant region's reset.
+Instant results must remain visible in the triggering game tick, with the original
+reset/retrigger cycle and required BUD updates. Lower tiers opt in explicitly:
 
 - `--stable-instant-inputs` explicitly promises stable external inputs through
   reset. It enables the older O3 composed-region mode and O5 stable power-expression
-  programs. At O6 it also enables certified finite pull-wave compilation. O5 without this flag retains exact ordered transport/replay and live
+  programs. At O6 the flag is redundant. O5 without this flag retains exact ordered transport/replay and live
   input sampling.
+
+Qualified O6 computation frames omit `tellraw` chat diagnostics, including the
+FPU's divide-by-zero, infinity and NaN messages. Other command types retain
+general execution. This experimental shortcut does not change lower tiers.
 
 O6 pull waves take precedence over overlapping per-cell and CPU handlers only
 after source validation. A single-actor wave with no owned wire corridor keeps
@@ -46,8 +52,12 @@ O6 separately recognizes the COUNTER clock/BUD family and executes its data
 path through `SettledMachine` and a small logical clock. It assumes stable
 observable results and normal controls; internal glitches, reset notifications
 and visual piston activity may disappear. No extra flag is required. This is
-an experiment: its interpreter handoff is not yet validated. FPU feedback
-classification and whole-device execution remain unfinished.
+an experiment: its interpreter handoff is not yet validated. A second qualified
+clock family runs FPU computation frames, publishing on the falling edge every
+six game ticks. Current production measurements reach 40,165 game TPS with
+changing inputs; see the linked FPU report for scope and correctness limits.
+The FPU clock must be stopped and reset when compiling: trigger ON, compile
+`-O6`, then trigger OFF. Active queued work retains general execution.
 
 O6 also compiles live Main/Quasi power queries for ordinary pistons, verified
 on BubbleSort and ANPU. Those queries retain physical event execution and do
@@ -58,8 +68,8 @@ its new state/event executor is not yet implemented.
 Classic-redstone compilation is automatic from O2. After whole-fixed execution
 declines, the local classic pass certifies each candidate region independently.
 Unsuitable regions keep general Graph execution; no `--classic-redstone` switch
-is needed or accepted. The explicit stable-input promise remains separate from
-optimization level: topology may prove dependencies irrelevant in some cases,
+is needed or accepted. Below O6 the stable-input promise remains explicit:
+topology may prove dependencies irrelevant in some cases,
 but uncertain dependencies and their possible pending effects must be retained.
 
 CPU matching selects AVX2 once when the CPU/OS supports it; other machines use
@@ -69,12 +79,12 @@ scalar word operations. No architecture-specific build flag is required.
 
 ```text
 /rp compile --optimize
-/rp compile --optimize --stable-instant-inputs
 ```
 
 `--optimize`, `-O`, `-o` and `-O6` select the same current maximum pipeline.
-The first command supports changing inputs. Use the second only when external
-inputs remain stable through the computation/reset interval. The flag does not
+External inputs must remain stable through each instant computation/reset
+interval. Use O5 without the stable-input flag for unrestricted changes through
+reset. The flag does not
 increase compilation budgets; the server controls those through player rank.
 
 The O5 instant stages run in this build order after boundary/event compilation:
@@ -88,7 +98,7 @@ The O5 instant stages run in this build order after boundary/event compilation:
 | `compile-instant-transition-programs` | Eligibility for bounded adaptive exact episodes, minimized into contiguous Capture/Select/SetPower/Call instructions. |
 | `compile-instant-value-regions` | Bounded electrical-distance and source-region tables for certified nets. |
 | `compile-signal-channels` | Exact ordered transition programs for supported channels. |
-| `compile-stable-instant-logic` | Shared max/attenuation expressions for certified stable-input nets; installs no program without the explicit promise. |
+| `compile-stable-instant-logic` | Shared max/attenuation expressions for certified stable-input nets; requires the explicit promise at O5, implicit at O6. |
 
 This is compilation order, not runtime precedence. Runtime checks stable logic
 and signal channels before transport; transport can replay a guarded learned
@@ -109,7 +119,8 @@ and [production FPU measurements](notes/redpiler-pistons-v4/FPU_CURRENT_INFERENC
 Earlier FPU measurements used the auxiliary output bank and a different trigger
 protocol. They are archived diagnostics, not evidence of completed FPU work.
 The replacement schematic must be measured with the trigger held OFF and the
-far dust bank observed; fresh arithmetic throughput remains unverified.
+far dust bank observed. The current O6 frame measurements and validation limits
+are recorded at the top of the linked FPU report.
 
 The empty experimental Cargo feature aliases and the incorrect abstract-net and
 fixed-point experiments have been removed. Production pass selection is controlled

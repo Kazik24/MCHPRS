@@ -6,8 +6,8 @@ const MAX_TIMING_ACTORS: usize = 128;
 const MAX_TIMING_NODES: usize = 512;
 const MAX_TIMING_INPUTS: usize = 1024;
 
-/// Find the unique empty-lane piston whose base observer feeds its Quasi input,
-/// then recursively trace only raw power and state dependencies.
+/// Find the unique empty- or single-resource-lane piston whose base observer feeds
+/// its Quasi input, then recursively trace only raw power and state dependencies.
 ///
 /// Callback closure is deliberately excluded: the runtime keeps callback delivery
 /// within this returned physical island and ignores internal datapath reset callbacks.
@@ -227,17 +227,28 @@ fn find_clock(
         if monitor.cancelled() {
             return Err("cancelled while identifying the timing piston".into());
         }
-        if piston.lane != PistonLane::Empty {
+        // Preserve the existing BUD counter's empty-lane selector. The direct
+        // single-resource clock family is only considered for no-BUD frames.
+        if graph.plans.bud_memory_reads.is_empty() != matches!(piston.lane, PistonLane::SingleResource { .. }) {
             continue;
         }
+        let actor = PistonId::new(index as u32);
         let base_observers: Vec<_> = observers_by_base
             .get(&piston.base)
             .into_iter()
             .flatten()
-            .filter(|observer| matches!(&graph.nodes[observer.index()].kind, CircuitNodeKind::Observer { .. }))
+            .filter(|observer| {
+                matches!(
+                    &graph.nodes[observer.index()].kind,
+                    CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }
+                )
+            })
             .copied()
             .collect();
         if base_observers.is_empty() {
+            continue;
+        }
+        if graph.plans.bud_memory_reads.is_empty() && !direct_lever_main(graph, power, actor, monitor)? {
             continue;
         }
         // Conducted power is represented by intermediate conductor targets, so inspecting
@@ -249,32 +260,163 @@ fn find_clock(
             node: piston.node,
             port: InputPort::Quasi,
         };
-        let root = tracer
-            .query(target, 0, &mut builder)
-            .map_err(|error| format!("trace candidate clock Quasi {target:?}: {error:?}"))?;
-        let leaves = expression_inputs(&builder, root, monitor)?;
-        let quasi_sources: FxHashSet<_> = leaves
-            .into_iter()
-            .filter_map(|leaf| match leaf {
+        let root = match tracer.query(target, 0, &mut builder) {
+            Ok(root) => root,
+            Err(error) if unsupported_candidate_error(&error) => continue,
+            Err(error) => return Err(format!("trace candidate clock Quasi {target:?}: {error:?}")),
+        };
+        let leaves = expression_inputs(&builder, root, monitor).map_err(|error| format!("read candidate clock Quasi support {target:?}: {error}"))?;
+        let mut quasi_sources = FxHashSet::default();
+        let mut local_quasi_only = true;
+        for leaf in leaves {
+            match leaf {
                 LayerInputSource::SourceAbove { site, .. } => match graph.sites[site.index()].source {
-                    SiteSource::Component(node) => Some(node),
-                    SiteSource::Contact(_) | SiteSource::Constant(_) => None,
+                    SiteSource::Component(node) if base_observers.contains(&node) => {
+                        quasi_sources.insert(node);
+                    }
+                    SiteSource::Contact(_) | SiteSource::Constant(_) => {}
+                    SiteSource::Component(_) => local_quasi_only = false,
                 },
-                _ => None,
-            })
-            .collect();
-        let quasi_is_observed = base_observers.iter().any(|observer| quasi_sources.contains(observer));
+                LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } if owns_clock_state(graph, actor, test) => {}
+                _ => local_quasi_only = false,
+            }
+        }
+        let quasi_is_observed = local_quasi_only && base_observers.iter().any(|observer| quasi_sources.contains(observer));
         if quasi_is_observed {
             candidates.push(PistonId::new(index as u32));
         }
     }
     if candidates.len() != 1 {
         return Err(format!(
-            "found {} empty-lane clock pistons whose base observer feeds Quasi: {candidates:?}",
+            "found {} clock pistons whose base observer feeds Quasi: {candidates:?}",
             candidates.len()
         ));
     }
     Ok(candidates[0])
+}
+
+#[cfg(test)]
+pub(super) fn diagnostic_candidate_support(graph: &CompileGraph, clock: PistonId, monitor: &TaskMonitor) -> Result<String, String> {
+    let spec = graph.pistons.get(clock.index()).ok_or_else(|| format!("missing candidate {clock:?}"))?;
+    let power = index_power(graph);
+    let internal_wires: FxHashSet<_> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| matches!(&node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32)))
+        .collect();
+    let state = FxHashMap::default();
+    let mut report = format!(
+        "candidate={clock:?} spec={spec:?} direct_lever_main={:?}",
+        direct_lever_main(graph, &power, clock, monitor)
+    );
+    for port in [InputPort::Main, InputPort::Quasi] {
+        let mut tracer = signals::SignalTracer::new(graph, &power, &internal_wires, &state, LayerInputRole::RequestSample);
+        let mut builder = LayerBuilder::new(monitor).map_err(|error| format!("construct diagnostic expression arena: {error:?}"))?;
+        let target = PowerTarget::Input { node: spec.node, port };
+        match tracer.query(target, 0, &mut builder) {
+            Ok(root) => {
+                let mut leaves = expression_inputs(&builder, root, monitor)?
+                    .into_iter()
+                    .map(|leaf| format!("{leaf:?}"))
+                    .collect::<Vec<_>>();
+                leaves.sort();
+                report.push_str(&format!("\n{port:?} root={root:?} leaves={leaves:#?}"));
+            }
+            Err(error) => report.push_str(&format!("\n{port:?} error={error:?}")),
+        }
+    }
+    Ok(report)
+}
+
+/// The direct-resource clock family is admitted only when Main has one external
+/// lever source plus state owned by that same piston/resource. This inexpensive
+/// typed check rejects datapath self-reset pistons before inspecting their Quasi cone.
+fn direct_lever_main(graph: &CompileGraph, power: &PowerIndex, clock: PistonId, monitor: &TaskMonitor) -> Result<bool, String> {
+    let spec = graph
+        .pistons
+        .get(clock.index())
+        .ok_or_else(|| format!("missing candidate clock {clock:?}"))?;
+    if !spec.sticky || !matches!(spec.lane, PistonLane::SingleResource { .. }) {
+        return Ok(false);
+    }
+    let internal_wires: FxHashSet<_> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| matches!(&node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32)))
+        .collect();
+    let state = FxHashMap::default();
+    let mut tracer = signals::SignalTracer::new(graph, power, &internal_wires, &state, LayerInputRole::RequestSample);
+    let mut builder = LayerBuilder::new(monitor).map_err(|error| format!("construct direct-clock Main selector: {error:?}"))?;
+    let target = PowerTarget::Input {
+        node: spec.node,
+        port: InputPort::Main,
+    };
+    let root = match tracer.query(target, 0, &mut builder) {
+        Ok(root) => root,
+        Err(error) if unsupported_candidate_error(&error) => return Ok(false),
+        Err(error) => return Err(format!("trace direct-clock Main {target:?}: {error:?}")),
+    };
+    let leaves = expression_inputs(&builder, root, monitor)?;
+    let mut triggers = FxHashSet::default();
+    for leaf in leaves {
+        match leaf {
+            LayerInputSource::SourceAbove {
+                site,
+                port: PowerPort::Output | PowerPort::Strong(_) | PowerPort::Weak(_),
+                threshold: 0,
+            } => {
+                let Some(SiteSource::Component(node)) = graph.sites.get(site.index()).map(|site| site.source) else {
+                    return Ok(false);
+                };
+                if !matches!(
+                    graph.nodes.get(node.index()).map(|node| &node.kind),
+                    Some(CircuitNodeKind::Electrical(NodeType::Lever))
+                ) {
+                    return Ok(false);
+                }
+                triggers.insert(node);
+            }
+            LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } if owns_clock_state(graph, clock, test) => {}
+            _ => return Ok(false),
+        }
+    }
+    Ok(triggers.len() == 1)
+}
+
+fn owns_clock_state(graph: &CompileGraph, clock: PistonId, test: StateTest) -> bool {
+    match test {
+        StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. } => {
+            actor == clock
+        }
+        StateTest::ResourceAt { resource, contact } => {
+            clock_resource(graph, clock) == Some(resource) && graph.resources[resource.index()].contacts.contains(&contact)
+        }
+        StateTest::ResourceEnabled(resource) => clock_resource(graph, clock) == Some(resource),
+    }
+}
+
+fn clock_resource(graph: &CompileGraph, clock: PistonId) -> Option<ResourceId> {
+    let PistonLane::SingleResource { far } = graph.pistons.get(clock.index())?.lane else {
+        return None;
+    };
+    let mut resources = graph
+        .resources
+        .iter()
+        .enumerate()
+        .filter_map(|(index, resource)| resource.contacts.contains(&far).then_some(ResourceId::new(index as u32)));
+    let resource = resources.next()?;
+    resources.next().is_none().then_some(resource)
+}
+
+fn unsupported_candidate_error(error: &ConstructionError) -> bool {
+    matches!(
+        error,
+        ConstructionError::Invalid(reason)
+            if reason.contains("electrically active contact component")
+                || reason.contains("zero-loss conductor cycle")
+    )
 }
 
 fn observers_by_base(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<FxHashMap<ContactId, Vec<NodeId>>, String> {

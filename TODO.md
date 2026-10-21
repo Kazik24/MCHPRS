@@ -7,6 +7,8 @@ normal clock cadence, controls and persistent memory. Public values must match a
 valid observable publication ticks. Transient glitches may disappear between
 valid results. Internal previews, wire propagation and reset notifications may
 disappear when they do not change required outputs or memory effects.
+Instant response remains instant: publish within the triggering game tick,
+preserve the circuit's reset/retrigger cycle, and add no settling or batch delay.
 Retain logical write/update events separately from value changes: BUD memory can
 react to an update even when its input level stays the same.
 Preserve signal strength at ports whose outside consumers depend on it; use
@@ -29,7 +31,7 @@ O0–O5 retain the existing execution contract. No additional flag or input-case
   zero pattern while O6 retains its last publication. The stored count is not
   reset; all six OFF cuts retain matching stored state and valid restart results.
   The user accepts this idle readout difference for now; it does not block FPU.
-- [ ] Resolve FPU feedback into logical state/reset equations and fixed boundary
+- [x] Resolve FPU feedback into logical state/reset equations and fixed boundary
   geometry. Compile the 35 input bits and 16 far-side output bits into a kernel.
 - [ ] Validate changing FPU outputs with the trigger held OFF against native runs
   at valid result-publication ticks. Diagnose raw tick differences separately;
@@ -93,8 +95,19 @@ O0–O5 retain the existing execution contract. No additional flag or input-case
   logical state/event operations after discussing newly found semantic blockers.
 - [ ] Profile the resulting logical kernels; specialize or JIT only demonstrated
   expensive expression patterns, without storing whole input/state combinations.
-- [ ] Measure production release game TPS: COUNTER >=1,000,000 and FPU >=1,000.
+- [x] Release gate: measure production O6 game TPS: COUNTER >=4,000,000 and
+  FPU >=10,000. BubbleSort throughput does not block this release.
   Report whole-device rates separately from isolated kernel evaluations.
+- [x] Install the FPU computation kernel in production O6 with graph-derived
+  input/output bindings and observable publication cadence. The test-only kernel
+  benchmark does not satisfy the release gate; discuss unresolved timing or
+  boundary semantics before choosing an adapter.
+  FPU clock contract: a six-game-tick period (three redstone ticks), with the
+  result visible in the same game tick as the falling clock edge. Kernel
+  evaluation must add no publication delay; the trigger lever remains OFF.
+  The FPU may contain a faulty/non-instant piston. Correlate the oscillating
+  output with native piston events before treating the whole build as instant;
+  preserve valid instant regions independently of that suspected defect.
 
 Current experiment: the one-BUD/one-output kernel and automatic O6 COUNTER
 logical execution match native running cuts across 260 increments and tested
@@ -104,7 +117,16 @@ warning-free before the new focused BUD probes.
 Three sustained six-million-game-tick runs measure 4.24M game TPS including
 benchmark-loop overhead (4.97M tick-timer TPS), with zero physical update work.
 This meets the COUNTER speed target for the tested normal clock family.
-Handoff and FPU/BubbleSort whole-device execution remain unfinished.
+Interpreter handoff and BubbleSort whole-device logical execution remain unfinished.
+FPU production O6 frames now measure 40,165 game TPS median (38,664–42,461;
+three runs of 4,096 changing input sets, including projection and sampling),
+starting at trigger activation after compilation without warm-up, with zero
+physical datapath updates. Fresh COUNTER runs measure 4.65M execution-timer TPS
+and approximately 4.00M including benchmark recording overhead.
+The 16 accepted benchmark vectors match
+on the first game tick and through each six-game-tick cycle. Qualified frames
+omit `tellraw` diagnostics as approved; native parity on oscillating cases and
+full interpreter reconstruction remain outside this validation.
 The test-only FPU computation-frame extractor now folds observer/reset outputs
 OFF before reduction, following the fully instant frame contract. The 353
 undeclared observer inputs disappear: the closed candidate has 22,193 expressions,

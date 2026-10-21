@@ -3,7 +3,7 @@ members = ["crates/proc_macros"]
 
 [package]
 name = "mroww"
-version = "0.4.1"
+version = "0.6.0"
 authors = ["kazik24", "lord225"]
 edition = "2024"
 description = "MROWW â€” Minecraft Redstone o Wysokiej WydajnoĹ›ci. A multithreaded redstone server based on MCHPRS."

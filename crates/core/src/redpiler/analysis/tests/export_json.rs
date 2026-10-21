@@ -226,7 +226,10 @@ fn callback_preparation_stops_reading_after_cancellation() {
 fn adder_1bit_fixture_matches_graph_json() {
     for level in 0..=5 {
         let bytes = adder_1bit_export(Some(level));
-        let expected = std::fs::read(adder_1bit_export_path(level)).unwrap();
+        let expected = std::fs::read_to_string(adder_1bit_export_path(level))
+            .unwrap()
+            .replace("\r\n", "\n")
+            .into_bytes();
         assert!(
             bytes == expected,
             "ADDER_1BIT O{level} export differs from its checked-in fixture; inspect the change before running write_adder_1bit_graph_json_fixtures"
@@ -256,7 +259,20 @@ fn adder_1bit_fixture_matches_graph_json() {
         assert!(document["trace"].is_null());
     }
     let mut o6: Value = serde_json::from_slice(&adder_1bit_export(Some(6))).unwrap();
-    let o5: Value = serde_json::from_slice(&adder_1bit_export(Some(5))).unwrap();
+    let world = geometry_io_fixture("ADDER_1BIT.schem");
+    let stable_o5 = CompilerOptions {
+        optimization_level: Some(5),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    let o5: Value = serde_json::from_slice(&exported_with_options(&world, &stable_o5).to_bytes().unwrap()).unwrap();
+    let graph = o6["graph"].as_object_mut().unwrap();
+    let layer_regions = graph.remove("instant_layer_regions").unwrap_or_else(|| Value::Array(Vec::new()));
+    let layer_declines = graph.remove("instant_layer_declines").unwrap_or_else(|| Value::Array(Vec::new()));
+    assert!(
+        !layer_regions.as_array().unwrap().is_empty() || !layer_declines.as_array().unwrap().is_empty(),
+        "O6 exports its instant-layer coverage"
+    );
     let power_queries = o6["graph"].as_object_mut().unwrap().remove("cpu_power_queries").unwrap();
     assert_eq!(
         power_queries["entries"].as_array().unwrap().len(),
@@ -265,8 +281,8 @@ fn adder_1bit_fixture_matches_graph_json() {
     o6["capabilities"]
         .as_array_mut()
         .unwrap()
-        .retain(|capability| capability != "compiled_piston_power_queries");
-    assert_eq!(o6, o5, "O6 adds live power predicates without rewriting the O5 graph");
+        .retain(|capability| capability != "compiled_piston_power_queries" && capability != "instant_layers");
+    assert_eq!(o6, o5, "O6 plans layers and live power queries without rewriting the stable O5 graph");
     assert_eq!(adder_1bit_export(None), adder_1bit_export(Some(crate::redpiler::MAX_OPTIMIZATION_LEVEL)));
 }
 

@@ -3,8 +3,44 @@
 The schematic was replaced on 2026-10-20 from the author's server save
 `FPU_MROWW_20_10_2026.schem` (SHA-256
 `90035d2285c964f92150ee74686465150680e005c672fb39287e7a59b9f6bf1a`).
-The measurements below describe the previous schematic. A fresh native reference
-is required before comparing the replacement with compiled execution.
+## Production O6 computation frames, 2026-10-21
+
+The replacement now runs through the normal production Compiler at O6, without
+an extra stable-input flag. Its graph-derived frame has 68 inputs, 22,228 shared
+expressions, 25 strength outputs and 15 feedback bits. It uses the existing dirty
+expression evaluator and logical clock, with no physical datapath updates.
+
+Activation requires a stationary extended clock with no queued physical work.
+For this FPU, turn the green trigger ON, allow reset to finish, compile with
+`-O6`, then leave the trigger OFF. Compilation during an active cycle retains
+normal Graph execution instead of discarding pending updates.
+
+On Ryzen 9 5950X, three optimized runs of 4,096 changing input sets measured
+38,664, 40,165 and 42,461 game TPS (median **40,165**). Each input set stays fixed
+for six game ticks, with the trigger OFF. Timing includes input controls, normal
+`tick_with_world`, per-frame projection and output sampling. Timing starts before
+the first trigger activation after compilation, with no warm-up. Each run executes
+4,096 calculations and 24,576 game ticks, with zero physical callbacks, wire
+walks, piston samples/actions or deferred publications. Compilation takes
+25.1–28.3 seconds at the harness's 8x compilation budget and is excluded from
+inference timing; server compilation budgets are controlled by player rank.
+
+Reproduce with:
+
+```sh
+cargo bench -p mchprs_core --bench instant -- --component fpu_legal --tier 6 --device-frame --episodes 4096 --iterations 3 --seed 28192451288813 --output target/logical-inference/release-fpu-startup-device.json
+```
+
+The ignored `fpu_production_device_matches_benchmark_frames_at_clock_edges` test
+checks all 16 accepted benchmark vectors against independently selected output
+roots, including exact wire strengths, immediate first-tick publication and every
+tick through reset.
+This validates the production adapter against the accepted computation model;
+it does not establish native arithmetic parity for the previously accepted
+oscillating vectors. Qualified O6 frames omit the three `tellraw` diagnostics.
+Full internal geometry and interpreter reconstruction remain experimental.
+
+The measurements below describe the previous schematic and physical executor.
 
 ## Workload and checks
 

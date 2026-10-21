@@ -20,6 +20,14 @@ enum Phase {
     ObserverOff(u64),
     Ready(u64),
     QueuedAction(u64),
+    StickyRetract(u64),
+    StickyExtend(u64),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClockKind {
+    TorchObserver,
+    StickyObserver,
 }
 
 /// Clock boundaries consumed by the logical data machine.
@@ -33,8 +41,11 @@ pub(crate) struct ClockStep {
 /// Small source-qualified clock phase machine. It owns no physical graph or route state.
 #[derive(Debug)]
 pub(crate) struct LogicalClock {
+    kind: ClockKind,
     trigger_node: NodeId,
-    torch_node: NodeId,
+    torch_node: Option<NodeId>,
+    clock_piston: PistonId,
+    clock_extended: bool,
     pulse_nodes: Box<[NodeId]>,
     last_trigger: bool,
     torch_powered: bool,
@@ -45,23 +56,23 @@ pub(crate) struct LogicalClock {
 }
 
 impl LogicalClock {
-    // shortcut: only this stationary clock family is modeled; extend after native cadence tests.
-    /// Admit only the empty clock piston plus one sticky resource-phase actor, one torch and one lever.
+    /// Admit the existing two-actor torch controller or one sticky base-observer clock actor.
     pub(crate) fn new(_program: &CircuitProgram, state: &CircuitState, island: &SettledTimingIsland) -> Result<Self, String> {
-        if island.actors.len() != 2 {
-            return Err("logical clock requires exactly two timing pistons".into());
-        }
         let clock = island
             .actor_specs
             .iter()
             .find(|actor| actor.piston == island.clock)
             .ok_or("clock piston spec is missing")?;
-        if clock.lane != PistonLane::Empty {
-            return Err("logical clock piston must have an empty lane".into());
-        }
-        let phase_actors = island.actor_specs.iter().filter(|actor| actor.piston != island.clock).collect::<Vec<_>>();
-        if phase_actors.len() != 1 || !phase_actors[0].sticky || !matches!(phase_actors[0].lane, PistonLane::SingleResource { .. }) {
-            return Err("logical clock requires one sticky single-resource phase actor".into());
+        let sticky_observer_clock = island.actors.len() == 1 && clock.sticky && matches!(clock.lane, PistonLane::SingleResource { .. });
+        let torch_observer_clock = island.actors.len() == 2
+            && clock.lane == PistonLane::Empty
+            && island
+                .actor_specs
+                .iter()
+                .filter(|actor| actor.piston != island.clock)
+                .any(|actor| actor.sticky && matches!(actor.lane, PistonLane::SingleResource { .. }));
+        if !sticky_observer_clock && !torch_observer_clock {
+            return Err("logical clock is outside the qualified observer families".into());
         }
         let torches = island
             .node_specs
@@ -73,8 +84,11 @@ impl LogicalClock {
             .iter()
             .filter(|node| node.kind == ClockNodeKind::Lever)
             .collect::<Vec<_>>();
-        if torches.len() != 1 || levers.len() != 1 || levers[0].node != island.trigger {
-            return Err("logical clock requires one source lever and one torch".into());
+        if levers.len() != 1 || levers[0].node != island.trigger {
+            return Err("logical clock requires one source lever".into());
+        }
+        if (sticky_observer_clock && !torches.is_empty()) || (torch_observer_clock && torches.len() != 1) {
+            return Err("logical clock has an unsupported torch topology".into());
         }
         let clock_state = state.pistons.get(island.clock.index()).ok_or("clock piston state is missing")?;
         if !clock_state.extended || !clock_state.head_present || clock_state.availability != PistonAvailability::Ready {
@@ -103,24 +117,49 @@ impl LogicalClock {
                 ClockNodeKind::Repeater => return Err("logical clock does not admit repeaters".into()),
             }
         }
-        if torch_powered == last_trigger {
+        if torch_observer_clock && torch_powered == last_trigger {
             return Err("logical clock torch and lever are not in the recognized stable phase".into());
         }
+        if sticky_observer_clock {
+            let base_observers = island.node_specs.iter().filter(|node| {
+                matches!(node.kind, ClockNodeKind::Observer | ClockNodeKind::BuiltinReset) && node.watched_contact == Some(clock.base)
+            });
+            if base_observers.count() != 1 {
+                return Err("sticky logical clock requires one observer watching its base".into());
+            }
+            if island.node_specs.iter().any(|node| node.kind == ClockNodeKind::Repeater) {
+                return Err("sticky logical clock does not admit repeaters".into());
+            }
+        }
         Ok(Self {
+            kind: if sticky_observer_clock {
+                ClockKind::StickyObserver
+            } else {
+                ClockKind::TorchObserver
+            },
             trigger_node: island.trigger,
-            torch_node: torches[0].node,
+            torch_node: torches.first().map(|node| node.node),
+            clock_piston: island.clock,
+            clock_extended: clock_state.extended,
             pulse_nodes: pulse_nodes.into_boxed_slice(),
             last_trigger,
             torch_powered,
             pulse_on: false,
             pending_torch: None,
-            phase: Phase::Idle,
+            phase: if sticky_observer_clock && !last_trigger {
+                Phase::StickyRetract(1)
+            } else {
+                Phase::Idle
+            },
             tick: 0,
         })
     }
 
     /// Apply the sampled lever level and advance one game tick of the source-derived phase machine.
     pub(crate) fn advance(&mut self, trigger: bool) -> Result<ClockStep, &'static str> {
+        if self.kind == ClockKind::StickyObserver {
+            return self.advance_sticky_observer(trigger);
+        }
         if trigger != self.last_trigger {
             self.last_trigger = trigger;
             let desired_torch = !trigger;
@@ -146,13 +185,47 @@ impl LogicalClock {
     pub(crate) fn source_value(&self, node: NodeId) -> Option<bool> {
         if node == self.trigger_node {
             Some(self.last_trigger)
-        } else if node == self.torch_node {
+        } else if Some(node) == self.torch_node {
             Some(self.torch_powered)
         } else if self.pulse_nodes.contains(&node) {
             Some(self.pulse_on)
         } else {
             None
         }
+    }
+
+    pub(crate) fn state_value(&self, test: StateTest) -> Option<bool> {
+        match test {
+            StateTest::PistonExtended(piston) | StateTest::PistonHeadPresent(piston) if piston == self.clock_piston => Some(self.clock_extended),
+            _ => None,
+        }
+    }
+
+    fn advance_sticky_observer(&mut self, trigger: bool) -> Result<ClockStep, &'static str> {
+        self.tick = self.tick.checked_add(1).ok_or("logical clock tick overflow")?;
+        if trigger != self.last_trigger {
+            self.last_trigger = trigger;
+            self.pulse_on = false;
+            self.phase = if trigger { Phase::Idle } else { Phase::StickyRetract(self.tick) };
+        }
+        let mut result = ClockStep::default();
+        self.phase = match self.phase {
+            Phase::StickyRetract(due) if due <= self.tick && !self.last_trigger => {
+                self.clock_extended = false;
+                self.pulse_on = false;
+                result.compute = true;
+                result.publish = true;
+                result.commit = true;
+                Phase::StickyExtend(self.tick + ACTION_DEFERRAL_TICKS + OBSERVER_SCHEDULE_TICKS)
+            }
+            Phase::StickyExtend(due) if due <= self.tick && !self.last_trigger => {
+                self.clock_extended = true;
+                self.pulse_on = true;
+                Phase::StickyRetract(self.tick + ACTION_DEFERRAL_TICKS + OBSERVER_SCHEDULE_TICKS)
+            }
+            phase => phase,
+        };
+        Ok(result)
     }
 
     fn begin_cycle(&mut self, result: &mut ClockStep) {
@@ -187,5 +260,52 @@ impl LogicalClock {
             }
             phase => phase,
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sticky_clock() -> LogicalClock {
+        LogicalClock {
+            kind: ClockKind::StickyObserver,
+            trigger_node: NodeId::new(0),
+            torch_node: None,
+            clock_piston: PistonId::new(0),
+            clock_extended: true,
+            pulse_nodes: Box::new([NodeId::new(1)]),
+            last_trigger: false,
+            torch_powered: false,
+            pulse_on: false,
+            pending_torch: None,
+            phase: Phase::StickyRetract(1),
+            tick: 0,
+        }
+    }
+
+    #[test]
+    fn sticky_observer_clock_publishes_on_each_retraction_edge_and_stops_with_lever() {
+        let mut clock = sticky_clock();
+        let mut edges = Vec::new();
+        for tick in 1..=13 {
+            let step = clock.advance(false).unwrap();
+            if step.compute {
+                assert!(step.publish && step.commit);
+                edges.push(tick);
+            }
+            assert_eq!(clock.source_value(NodeId::new(1)), Some(matches!(tick, 4 | 5 | 6 | 10 | 11 | 12)));
+        }
+        assert_eq!(edges, [1, 7, 13]);
+
+        for _ in 0..8 {
+            let step = clock.advance(true).unwrap();
+            assert!(!step.compute && !step.publish && !step.commit);
+        }
+        let step = clock.advance(false).unwrap();
+        assert!(
+            step.compute && step.publish && step.commit,
+            "the falling lever edge publishes on the same tick"
+        );
     }
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::plot::client_sync_tests::fixture;
+use mchprs_blocks::BlockColorVariant;
 use mchprs_blocks::blocks::RedstoneWire;
 use mchprs_network::packets::PacketDecoderExt;
 use mchprs_network::packets::serverbound::{SPlayerDigging, SUseItem};
@@ -710,7 +711,12 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
     assert!(plot.use_wire_tool(0, 0, 0.0, pitch));
     for z in start.z..=end.z {
         assert!(matches!(plot.world.get_block(BlockPos::new(32, 8, z)), Block::RedstoneWire { .. }));
-        assert_eq!(plot.world.get_block(BlockPos::new(32, 7, z)), Block::Sandstone {});
+        assert_eq!(
+            plot.world.get_block(BlockPos::new(32, 7, z)),
+            Block::Wool {
+                color: BlockColorVariant::White
+            }
+        );
     }
     assert_eq!(plot.players[0].worldedit_undo.len(), 1);
     assert_eq!(plot.players[0].redstone_tools.wire.as_ref().unwrap().start, Some(end));
@@ -741,7 +747,12 @@ fn live_aim_worker_and_preview_build_a_line_on_the_generated_floor() {
             assert!(worldedit::execute_command(&mut plot, 0, "/undo", &mut Vec::new()));
             for z in start.z..=end.z {
                 assert_eq!(plot.world.get_block(BlockPos::new(32, 8, z)), Block::Air {});
-                assert_eq!(plot.world.get_block(BlockPos::new(32, 7, z)), Block::Sandstone {});
+                assert_eq!(
+                    plot.world.get_block(BlockPos::new(32, 7, z)),
+                    Block::Wool {
+                        color: BlockColorVariant::White
+                    }
+                );
             }
             return;
         }

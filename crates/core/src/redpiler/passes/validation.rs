@@ -39,7 +39,7 @@ impl PreparedInstant {
                     .boundaries
                     .as_ref()
                     .ok_or("instant layers require the boundary catalog")?;
-                if !context.options.stable_instant_inputs {
+                if !context.options.assumes_stable_instant_inputs() {
                     return Err("instant layers require the declared stable-input contract".into());
                 }
                 let (plan, analysis) = crate::redpiler::analysis::instant::layers::compile_layers_with_context(graph, catalog, context.monitor)?;

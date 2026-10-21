@@ -582,7 +582,6 @@ mod tests {
             (4, "experimental-minimize-wire-captures"),
             (4, "experimental-compile-bud-memory-reads"),
             (4, "experimental-compile-instant-events"),
-            (6, "compile-logical-bud-owners"),
             (5, "optimize-instant-kernels-cpu"),
             (5, "compile-instant-transport"),
             (5, "compile-guarded-instant-transport"),
@@ -591,6 +590,8 @@ mod tests {
             (5, "compile-instant-value-regions"),
             (5, "compile-signal-channels"),
             (5, "compile-stable-instant-logic"),
+            (6, "compile-instant-layers"),
+            (6, "compile-logical-bud-owners"),
             (6, "compile-settled-circuit"),
             (6, "compile-cpu-power-queries"),
         ];
@@ -602,7 +603,10 @@ mod tests {
             let expected: Vec<_> = expected
                 .iter()
                 .copied()
-                .filter(|(_, name)| level.is_some_and(|level| level < 4) || !matches!(*name, "identify-instant-regions" | "compile-instant-proxies"))
+                .filter(|(_, name)| {
+                    !(*name == "compile-instant-layers" && level.is_some_and(|level| level < 6))
+                        && (level.is_some_and(|level| level < 4) || !matches!(*name, "identify-instant-regions" | "compile-instant-proxies"))
+                })
                 .collect();
             assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {

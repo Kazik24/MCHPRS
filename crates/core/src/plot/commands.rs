@@ -1551,6 +1551,20 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
     if redbox {
         root_children.retain(|&id| !matches!(nodes[id as usize].name, Some("teleport" | "tp")));
     } else {
+        let tp = nodes.len() as i32;
+        let player = tp + 1;
+        let position = tp + 2;
+        nodes.push(Node::literal("tp", Box::leak(vec![player, position].into_boxed_slice())));
+        nodes.push(
+            Node::argument("player", Parser::String(0), &[])
+                .executable()
+                .suggestions("minecraft:ask_server"),
+        );
+        nodes.push(Node::argument("position", Parser::Vec3, &[]).executable());
+        let teleport = nodes.len() as i32;
+        nodes.push(Node::redirect("teleport", tp));
+        root_children.extend([tp, teleport]);
+
         let warp = nodes.len() as i32;
         let warp_name = warp + 1;
         nodes.push(Node::literal("warp", Box::leak(vec![warp_name].into_boxed_slice())).executable());
@@ -1646,6 +1660,7 @@ mod security_tests {
     fn error_coordinate_teleport_centers_the_head_and_highlights_the_exact_block() {
         use mchprs_network::packets::PacketDecoderExt;
         use mchprs_network::test_support::read_frame;
+        use std::io::Read;
 
         for (crouching, small) in [(false, false), (true, false), (false, true), (true, true)] {
             let (mut plot, mut peer) = super::super::client_sync_tests::fixture(false);
@@ -1678,12 +1693,14 @@ mod security_tests {
             let before = plot.players[0].pos;
             plot.handle_command(0, "/tp", vec!["33.5", "21.5", "35.5"]);
             if crate::redbox::enabled() {
-                assert_eq!(plot.players[0].pos.y, before.y);
+                assert_eq!(plot.players[0].pos, before);
                 assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
             } else {
-                assert_eq!(plot.players[0].pos.y, 21.5);
-                assert_ne!(read_frame(&mut peer, false).unwrap().0, 0x72);
+                assert_eq!(plot.players[0].pos, PlayerPos::new(33.5, 21.5, 35.5));
+                assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
+                assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x41);
             }
+            let position_after_teleport = plot.players[0].pos;
 
             for args in [
                 vec!["invalid", "21.5", "35.5", "--highlight"],
@@ -1696,8 +1713,10 @@ mod security_tests {
             ] {
                 assert!(!plot.handle_command(0, "/tp", args));
                 assert_eq!(read_frame(&mut peer, false).unwrap().0, 0x72);
-                assert_eq!(plot.players[0].pos.y, before.y);
+                assert_eq!(plot.players[0].pos, position_after_teleport);
             }
+            peer.set_nonblocking(true).unwrap();
+            assert_eq!(peer.read(&mut [0]).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
         }
         assert_eq!(
             native_command_permission("/tp", &["33.5", "21.5", "35.5", "--highlight"]).as_deref(),
@@ -1751,9 +1770,20 @@ mod security_tests {
     #[test]
     fn teleport_autocomplete_suggests_player_names_without_selectors() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes[1].children, &[3, 2]);
-        assert!(matches!(nodes[3].parser, Some(Parser::String(0))));
-        assert_eq!(nodes[3].suggestions_type, Some("minecraft:ask_server"));
+        let tp = nodes[0]
+            .children
+            .iter()
+            .map(|&id| &nodes[id as usize])
+            .find(|node| node.name == Some("tp"));
+        if crate::redbox::enabled() {
+            assert!(tp.is_none());
+        } else {
+            let tp = tp.unwrap();
+            let player = &nodes[tp.children[0] as usize];
+            assert!(matches!(player.parser, Some(Parser::String(0))));
+            assert_eq!(player.suggestions_type, Some("minecraft:ask_server"));
+            assert!(matches!(nodes[tp.children[1] as usize].parser, Some(Parser::Vec3)));
+        }
         let names = ["Zoe", "Alice", "Alex"];
         for (text, expected) in [
             ("/tp ", vec!["Alex", "Alice", "Zoe"]),
@@ -1821,7 +1851,7 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), if crate::redbox::enabled() { 189 } else { 193 });
+        assert_eq!(nodes.len(), if crate::redbox::enabled() { 186 } else { 190 });
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());

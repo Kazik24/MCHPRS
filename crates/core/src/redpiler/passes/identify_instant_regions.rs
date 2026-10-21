@@ -18,7 +18,7 @@ impl PlanBuilder for IdentifyInstantRegions {
     }
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         use crate::redpiler::analysis::instant_regions::{infer_regions, infer_stable_regions};
-        let regions = if context.options.stable_instant_inputs {
+        let regions = if context.options.assumes_stable_instant_inputs() {
             infer_stable_regions(graph, context.monitor)?
         } else {
             infer_regions(graph, context.monitor)?

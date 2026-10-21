@@ -705,6 +705,9 @@ mod tests {
             assert!(CompilerOptions::parse(&format!("{prefix}{}", MAX_OPTIMIZATION_LEVEL + 1)).is_err());
         }
         assert_eq!(CompilerOptions::parse("--optimize").unwrap().optimization_label(), "O6");
+        assert!(!CompilerOptions::parse("-O5").unwrap().assumes_stable_instant_inputs());
+        assert!(CompilerOptions::parse("-O6").unwrap().assumes_stable_instant_inputs());
+        assert!(CompilerOptions::parse("--optimize").unwrap().assumes_stable_instant_inputs());
         assert_eq!(
             CompilerOptions::parse("--optimize --stable-instant-inputs").unwrap().optimization_label(),
             "O6 stable"

@@ -24,7 +24,7 @@ impl PlanBuilder for CompileInstantLayers {
             .boundaries
             .as_ref()
             .ok_or("instant layers require the boundary catalog")?;
-        if !context.options.stable_instant_inputs {
+        if !context.options.assumes_stable_instant_inputs() {
             return Err("instant layers require the declared stable-input contract".into());
         }
         let layers = match context.instant_layers() {

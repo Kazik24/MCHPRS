@@ -13,7 +13,7 @@ impl PlanBuilder for CompileStableInstantLogic {
     }
 
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
-        if !context.options.stable_instant_inputs {
+        if !context.options.assumes_stable_instant_inputs() {
             return Ok(PlanOutput::StableInstantLogic(Default::default()));
         }
         let plan = infer_stable_instant_logic(graph, context.monitor)?;

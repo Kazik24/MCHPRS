@@ -609,6 +609,7 @@ fn is_semantic_unsupported(message: &str) -> bool {
         || message == "logical repeater equation exceeds its inline depth bound"
         || message == "logical comparator has an unsupported live direct override"
         || message == "logical comparator has an unsupported live far override"
+        || message == "directional corridor output depends on dot/cross state"
 }
 
 #[cfg(test)]
@@ -810,6 +811,7 @@ mod tests {
         ));
         assert!(is_semantic_unsupported("logical comparator has an unsupported live direct override"));
         assert!(is_semantic_unsupported("unsupported logical source NodeId(7): SomeElectricalKind"));
+        assert!(is_semantic_unsupported("directional corridor output depends on dot/cross state"));
         assert!(!is_semantic_unsupported("logical expression references a missing input"));
         assert!(!is_semantic_unsupported("logical input is not a component"));
         assert!(!is_semantic_unsupported("logical resource ID is invalid"));
