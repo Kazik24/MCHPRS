@@ -267,6 +267,14 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
         vector_table_statistics("lowering input", "guards", &graph.guards, guard_child_bytes(&graph.guards)),
         vector_table_statistics(
             "lowering input",
+            "piston power queries",
+            &graph.plans.cpu_power_queries.entries,
+            graph.plans.cpu_power_queries.packed.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
+                + (graph.plans.cpu_power_queries.packed.require_true.capacity() + graph.plans.cpu_power_queries.packed.require_false.capacity())
+                    * std::mem::size_of::<u64>(),
+        ),
+        vector_table_statistics(
+            "lowering input",
             "guard predicates",
             &graph.plans.guard_predicates.by_guard,
             graph.plans.guard_predicates.predicates.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuPredicate>()
@@ -379,6 +387,14 @@ pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
         ),
         slice_table_statistics("lowering", "sites", program.sites(), 0),
         slice_table_statistics("lowering", "guards", program.guards(), guard_child_bytes(program.guards())),
+        slice_table_statistics(
+            "lowering",
+            "piston power queries",
+            &program.cpu_power_queries().entries,
+            program.cpu_power_queries().packed.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
+                + (program.cpu_power_queries().packed.require_true.capacity() + program.cpu_power_queries().packed.require_false.capacity())
+                    * std::mem::size_of::<u64>(),
+        ),
         slice_table_statistics(
             "lowering",
             "guard predicates",

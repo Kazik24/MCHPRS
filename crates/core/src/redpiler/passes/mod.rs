@@ -8,6 +8,7 @@ pub(crate) mod coalesce_delayed_updates;
 pub(crate) mod compile_bud_memory_reads;
 pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
+mod compile_cpu_power_queries;
 pub(crate) mod compile_fixed_classic;
 mod compile_fixed_signals;
 mod compile_guarded_instant_transport;
@@ -426,6 +427,10 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
     }
     pipeline.entries.push(PassEntry {
         pass: Pass::build(compile_settled_circuit::CompileSettledCircuit),
+        enabled: level >= 6,
+    });
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_cpu_power_queries::CompileCpuPowerQueries),
         enabled: level >= 6,
     });
     #[cfg(feature = "unsafe-turbo-fixed-point")]

@@ -25,6 +25,12 @@ pub(crate) mod timing;
 #[cfg(test)]
 pub(crate) use settled::compile_computation;
 #[cfg(test)]
+pub(crate) use settled::compile_event_boundary;
+#[cfg(test)]
+pub(crate) use settled::compile_event_boundary_cut_feedback;
+#[cfg(test)]
+pub(crate) use settled::compile_event_boundary_with_retained_resources;
+#[cfg(test)]
 pub(crate) use settled::compile_public_boundary;
 #[cfg(test)]
 pub(crate) use settled::diagnostic_all_phase_raw_query;
@@ -67,6 +73,9 @@ struct Equations<'a> {
     /// Diagnostic-only mode: retain otherwise unknown payload locations as leaves so one
     /// traversal can report every blocker. Executable compilation never enables this.
     diagnostic_unknown_resources: bool,
+    /// Typed first resource-location cycle seen by an event-boundary diagnostic build.
+    #[cfg(test)]
+    resource_cycle_witness: Option<(ResourceId, ContactId)>,
     feedback_state_sources: Vec<(ResourceId, ContactId)>,
 }
 
@@ -131,6 +140,8 @@ impl<'a> Equations<'a> {
             retain_classic: false,
             feedback_resources: false,
             diagnostic_unknown_resources: false,
+            #[cfg(test)]
+            resource_cycle_witness: None,
             feedback_state_sources: Vec::new(),
         })
     }
@@ -191,10 +202,19 @@ impl<'a> Equations<'a> {
         }
         let repeater = self.inline_repeaters.then(|| self.repeater_source_node(source)).flatten();
         if self.pending.contains(&source) || repeater.is_some_and(|node| self.pending_repeaters.contains(&node)) {
+            #[cfg(test)]
+            if let LayerInputSource::State(StateTest::ResourceAt { resource, contact }) = source {
+                self.resource_cycle_witness.get_or_insert((resource, contact));
+            }
             if self.feedback_resources {
                 if let Some(value) = self.feedback_resource_leaf(source)? {
                     return Ok(value);
                 }
+            }
+            if self.retain_classic
+                && matches!(source, LayerInputSource::State(StateTest::ResourceAt { resource, .. }) if !self.cells.contains_key(&resource))
+            {
+                return self.leaf(source);
             }
             if self.inline_repeaters {
                 self.stateful_repeaters.extend(self.pending_repeaters.iter().copied());
@@ -238,6 +258,64 @@ impl<'a> Equations<'a> {
         };
         self.sources.insert(source, value);
         Ok(value)
+    }
+
+    /// Retain the catalog-cell closure touching selected resources or actors in Graph.
+    /// Their original callbacks remain the only authority that advances those resources.
+    fn retain_cells_touching(
+        &mut self,
+        selected_resources: &[ResourceId],
+        selected_actors: &[PistonId],
+    ) -> Result<(Vec<ResourceId>, Vec<PistonId>), ConstructionError> {
+        let catalog = self.graph.plans.instant.boundaries.as_ref().ok_or("missing cell boundaries")?;
+        let mut resources: FxHashSet<_> = selected_resources.iter().copied().collect();
+        let mut actors: FxHashSet<_> = selected_actors.iter().copied().collect();
+        let mut retained_cells = FxHashSet::default();
+
+        loop {
+            let mut changed = false;
+            for (index, cell) in catalog.cells.iter().enumerate() {
+                if retained_cells.contains(&index)
+                    || (!cell.resources.iter().any(|resource| resources.contains(&resource.resource))
+                        && !cell.uses.iter().any(|use_| actors.contains(&use_.actor)))
+                {
+                    continue;
+                }
+                changed |= retained_cells.insert(index);
+                actors.extend(cell.uses.iter().map(|use_| use_.actor));
+                resources.extend(cell.resources.iter().map(|resource| resource.resource));
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        let mut retained_resets = FxHashSet::default();
+        for index in retained_cells {
+            let cell = &catalog.cells[index];
+            for use_ in &cell.uses {
+                if let Some(reset) = use_.reset.observer() {
+                    retained_resets.insert(reset);
+                }
+            }
+        }
+        for resource in &resources {
+            self.cells.remove(resource);
+            self.unique_cell_resources.remove(resource);
+        }
+        for actor in &actors {
+            self.actors.remove(actor);
+        }
+        for reset in retained_resets {
+            self.resets.remove(&reset);
+        }
+        self.disabled_destinations.retain(|(resource, _)| !resources.contains(resource));
+
+        let mut resources: Vec<_> = resources.into_iter().collect();
+        resources.sort_unstable();
+        let mut actors: Vec<_> = actors.into_iter().collect();
+        actors.sort_unstable();
+        Ok((resources, actors))
     }
 
     fn feedback_resource_leaf(&mut self, source: LayerInputSource) -> Result<Option<LayerExprId>, ConstructionError> {

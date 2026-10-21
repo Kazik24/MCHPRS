@@ -74,6 +74,146 @@ pub(crate) struct CpuKernelPlans {
     pub(crate) require_false: Vec<u64>,
 }
 
+/// Live Main/Quasi piston power predicates. These never contain action or acceptance rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CpuPowerQueryEntry {
+    pub(crate) actor: PistonId,
+    pub(crate) main: CpuPredicate,
+    pub(crate) quasi: CpuPredicate,
+}
+
+/// Independently compiled power queries for the O6 exact-query path.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(crate) struct CpuPowerQueryPlans {
+    pub(crate) entries: Vec<CpuPowerQueryEntry>,
+    /// Shared mask evaluator; its event-entry list remains empty in this plan.
+    pub(crate) packed: CpuKernelPlans,
+}
+
+impl CpuPowerQueryPlans {
+    /// Compile bounded live predicates for every piston. Any unsupported root becomes an exact
+    /// original-input read; exceeding the global budget leaves remaining actors on the fallback.
+    pub(crate) fn compile(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Self, String> {
+        if monitor.cancelled() {
+            return Err("cancelled before piston power-query compilation".into());
+        }
+        let mut incoming: FxHashMap<_, Vec<_>> = FxHashMap::default();
+        for &link in &graph.power_links {
+            if monitor.cancelled() {
+                return Err("cancelled while indexing piston power-query inputs".into());
+            }
+            incoming.entry(link.to).or_default().push(link);
+        }
+        let mut result = Self::default();
+        let mut total_work = 0usize;
+        let max_bytes = crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES / 8;
+        let bud_readers: rustc_hash::FxHashSet<_> = graph.plans.bud_memory_reads.iter().map(|read| read.reader).collect();
+        let classic_main_receivers: rustc_hash::FxHashSet<_> = graph
+            .plans
+            .classic_nets
+            .iter()
+            .flat_map(|net| net.inputs.iter().map(|input| input.receiver))
+            .collect();
+
+        for (index, piston) in graph.pistons.iter().enumerate() {
+            if monitor.cancelled() {
+                return Err("cancelled while compiling piston power queries".into());
+            }
+            if total_work >= 8_000_000 {
+                break;
+            }
+            let actor = PistonId::new(index as u32);
+            let node = piston.node;
+            let has_classic_main = classic_main_receivers.contains(&node);
+            let packed_checkpoint = (result.packed.reads.len(), result.packed.require_true.len());
+            let result_checkpoint = result.entries.len();
+            let make = |work_limit| Builder {
+                graph,
+                incoming: &incoming,
+                monitor,
+                reads: Vec::new(),
+                ids: FxHashMap::default(),
+                guards: FxHashMap::default(),
+                work: 0,
+                work_limit,
+                captured_site_reads: false,
+            };
+            let mut roots = [CpuPredicate::default(); 2];
+            for (slot, port) in [InputPort::Main, InputPort::Quasi].into_iter().enumerate() {
+                let force_input = (port == InputPort::Main && has_classic_main)
+                    || graph.plans.fixed_classic.program.is_some()
+                    || (port == InputPort::Quasi && bud_readers.contains(&actor));
+                let remaining = 8_000_000usize.saturating_sub(total_work);
+                let mut builder = make(MAX_WORK.min(remaining));
+                let candidate = if force_input {
+                    Err(())
+                } else {
+                    builder.query(PowerTarget::Input { node, port }, 0, 0)
+                };
+                total_work = total_work.saturating_add(builder.work);
+                let (reads, clauses) = match candidate {
+                    Ok(clauses) => (builder.reads, clauses),
+                    Err(()) => {
+                        let remaining = 8_000_000usize.saturating_sub(total_work);
+                        if remaining == 0 {
+                            result.packed.reads.truncate(packed_checkpoint.0);
+                            result.packed.require_true.truncate(packed_checkpoint.1);
+                            result.packed.require_false.truncate(packed_checkpoint.1);
+                            result.entries.truncate(result_checkpoint);
+                            return Ok(result);
+                        }
+                        let mut fallback = make(MAX_WORK.min(remaining));
+                        let clauses = fallback
+                            .atom(CpuRead::Input { node, port }, false)
+                            .map_err(|_| "failed to build exact piston-input fallback")?;
+                        total_work = total_work.saturating_add(fallback.work);
+                        (fallback.reads, clauses)
+                    }
+                };
+                roots[slot] = result.packed.append(reads, clauses)?;
+                let bytes = result.packed.reads.len() * std::mem::size_of::<CpuRead>()
+                    + result.packed.require_true.len() * 16
+                    + (result.entries.len() + 1) * std::mem::size_of::<CpuPowerQueryEntry>();
+                if bytes > max_bytes || total_work > 8_000_000 {
+                    result.packed.reads.truncate(packed_checkpoint.0);
+                    result.packed.require_true.truncate(packed_checkpoint.1);
+                    result.packed.require_false.truncate(packed_checkpoint.1);
+                    result.entries.truncate(result_checkpoint);
+                    return Ok(result);
+                }
+            }
+            result.entries.push(CpuPowerQueryEntry {
+                actor,
+                main: roots[0],
+                quasi: roots[1],
+            });
+        }
+        Ok(result)
+    }
+
+    pub(crate) fn entry(&self, actor: PistonId) -> Option<CpuPowerQueryEntry> {
+        self.entries.get(actor.index()).copied().filter(|entry| entry.actor == actor)
+    }
+
+    pub(crate) fn input_fallback_entries(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| {
+                [entry.main, entry.quasi].iter().any(|predicate| {
+                    let start = predicate.read_start as usize;
+                    self.packed.reads[start..start + predicate.read_len as usize]
+                        .iter()
+                        .any(|read| matches!(read, CpuRead::Input { .. }))
+                })
+            })
+            .count()
+    }
+
+    pub(crate) fn evaluate(&self, predicate: CpuPredicate, read: impl FnMut(CpuRead) -> bool, matches: ClauseMatcher) -> bool {
+        self.packed.evaluate(predicate, read, matches)
+    }
+}
+
 type Clause = (u64, u64);
 type Dnf = Vec<Clause>;
 

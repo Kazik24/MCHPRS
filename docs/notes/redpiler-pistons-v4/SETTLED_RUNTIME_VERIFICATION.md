@@ -413,6 +413,72 @@ and logical extraction 701.5 ms. The Rust release binary build is separate and
 excluded. No other builds/tests/benchmarks ran during measurement. Evidence is
 `target/logical-inference/fpu-kernel-benchmark.json` and its `.log` companion.
 
-This establishes provisional kernel throughput only. The known native value
-discrepancy remains, and the candidate is not installed as a production FPU device.
+This establishes provisional kernel throughput only. The user now explicitly
+accepts the nonstable native case and the reported candidate value difference for
+this experiment; it no longer blocks FPU work. The candidate is not yet installed
+as a production FPU device.
 No conversion to game TPS is made without a validated publication adapter/cadence.
+
+The exact 16 input vectors are exported to
+`target/logical-inference/fpu-input-vectors.csv` and `.json`; the JSON includes the
+first vector's per-lever positions/states, fixture hash and replay protocol.
+The first vector is raw mask `0x4D6035310`: light-blue bank `0x5310`, red bank
+`0xD603`, selector levers of weights 4/2/1 OFF/OFF/ON, green trigger held OFF.
+Masks index manifest lever order; they are not numerically certified IEEE words.
+
+## O6 live power compilation for BubbleSort and ANPU
+
+O6 now compiles Main and Quasi piston power into flat Boolean predicates for
+ordinary memory actors as well as admitted instant actors. The pass reuses the
+existing bounded predicate compiler and mask evaluator; it does not enumerate
+input combinations or memoize whole circuit cases. Every request and acceptance
+reads current component/resource state. Classic Main overlays and recognized BUD
+Quasi shortcuts retain exact per-port input reads where needed. Scheduling,
+unchanged-value notifications, resource ownership and publication remain on Graph.
+
+The full fixture regressions verify:
+
+- BubbleSort: 16,561 of 16,561 actors, 57,893 packed reads, zero whole-input
+  fallback reads; all 10,036 frozen native RAM ticks and 32 interpreter ticks
+  after materializing Graph state and queued work.
+- ANPU: 2,898 of 2,898 actors, 6,288 packed reads, zero whole-input fallback
+  reads; all screen pixels through 5,000 ticks, exactly 14 transition frames,
+  and all 1,552 frozen ordered BUD update rows. BUD comparisons include sample
+  and accepted-action counts plus SHA-256 of the original native-format entries,
+  including tick, phase, position, sampled power and event identity.
+- Ordinary Rilax memory: each Main/Quasi root agrees with recursive reads under
+  changing live state; a write-enable pulse preserves complete state, scheduler,
+  pending requests, deferred work and ordered operations against a backend with
+  the new power plan disabled.
+
+The normal O4/O5/O6 changing-input and interpreter-handoff regression, COUNTER's
+stable publication regression, packed-mask evaluator checks and export binding
+validation also pass. The large CPU replays remain explicitly ignored tests;
+run `cargo test -p mchprs_core --lib power_quer -- --include-ignored --nocapture --test-threads=1`.
+
+This is production compilation of live piston power logic, not whole-device
+contraction: physical wire propagation and timed memory events still execute.
+The qualified COUNTER clock replacement and FPU computation-frame assumptions
+are not used to replace either sequential CPU's event timing.
+
+Release measurements on the same Ryzen 9 5950X use three fresh runs per tier:
+
+| Build / measured window | O5 median game TPS | O6 median game TPS |
+| --- | ---: | ---: |
+| BubbleSort / complete 10,036 ticks | 294 | 309 |
+| ANPU / first 400 active ticks | 1,595 | 1,720 |
+
+These time `tick_with_world` calls only; loading, compilation, display flushing,
+output probes and handoff checks are excluded. No other builds/tests/benchmarks
+ran during measurement. O5/O6 active, reset and continuation checkpoints match;
+BubbleSort RAM hashes and ANPU's restored future queues also match. BubbleSort
+O6 sample times are 28.940, 32.476 and 33.582 seconds, versus O5's 33.190, 34.120
+and 35.630 seconds, so the modest median difference overlaps sample variation.
+Median cold compilation is 15.883 seconds for BubbleSort and 8.690 for ANPU at O6.
+
+The full O6 sort still performs 93,365,384 callbacks, 35,415,396 piston samples,
+3,295,083 actions and 11,143,303 compiled transport wire visits. General wire
+walks are already zero. Further contraction must target event/reset fanout and
+physical actions; compiling more power reads alone will not provide COUNTER-like
+throughput. Evidence: `target/logical-inference/bubblesort-o{5,6}-power-*.json`
+and `anpu-o{5,6}-power-*.json`.

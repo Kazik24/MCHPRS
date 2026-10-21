@@ -966,6 +966,78 @@ fn computation_feedback_leaf_uses_far_contact_as_canonical_state() {
 }
 
 #[test]
+fn event_boundary_cut_keeps_selected_cell_writer_and_resource_as_live_graph_state() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/fixtures/counter_basic.json");
+    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
+    let world = cpus::load_manifest(&manifest).unwrap();
+    let monitor = TaskMonitor::default();
+    let graph = prepared_o6(&world, world.get_corners(), &monitor);
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let (resource, source, owners) = catalog
+        .cells
+        .iter()
+        .find_map(|cell| {
+            let resource = cell.resources.first()?;
+            Some((
+                resource.resource,
+                resource.source,
+                cell.uses.iter().map(|use_| use_.actor).collect::<Vec<_>>(),
+            ))
+        })
+        .expect("fixture has at least one recognized cell resource");
+    let cell_resets: Vec<_> = catalog
+        .cells
+        .iter()
+        .filter(|cell| cell.resources.iter().any(|candidate| candidate.resource == resource))
+        .flat_map(|cell| cell.uses.iter().filter_map(|use_| use_.reset.observer()))
+        .collect();
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    equations.retain_classic = true;
+    assert!(equations.cells.contains_key(&resource));
+    assert!(owners.iter().all(|owner| equations.actors.contains(owner)));
+
+    let (retained_resources, retained_owners) = equations.retain_cells_touching(&[resource], &[]).unwrap();
+    assert!(retained_resources.contains(&resource));
+    assert!(owners.iter().all(|owner| retained_owners.contains(owner)));
+    assert!(!equations.cells.contains_key(&resource));
+    assert!(owners.iter().all(|owner| !equations.actors.contains(owner)));
+    assert!(cell_resets.iter().all(|reset| !equations.resets.contains(reset)));
+    assert!(equations.disabled_destinations.iter().all(|(candidate, _)| *candidate != resource));
+    let state_source = LayerInputSource::State(StateTest::ResourceAt { resource, contact: source });
+    let state_root = equations.source_value(state_source).unwrap();
+    let LayerExpr::Input(input) = equations.reduced.expression(state_root).unwrap() else {
+        panic!("retained resource must be sampled as a live Graph-owned state input")
+    };
+    assert_eq!(equations.reduced.inputs[input.0 as usize].source, state_source);
+
+    let target = graph.power_links.iter().find_map(|link| {
+        (graph.sites[link.from.index()].source == SiteSource::Contact(source))
+            .then_some(link.to)
+            .and_then(|target| matches!(target, PowerTarget::Input { .. }).then_some(target))
+    });
+    let owner_target = PowerTarget::Input {
+        node: graph.pistons[owners[0].index()].node,
+        port: InputPort::Main,
+    };
+    let target = target.unwrap_or(owner_target);
+    let circuit = super::compile_event_boundary_with_retained_resources(&graph, &[target], &[resource], &monitor)
+        .expect("event-boundary query compiles with the recursive writer state retained");
+    if graph
+        .power_links
+        .iter()
+        .any(|link| graph.sites[link.from.index()].source == SiteSource::Contact(source) && link.to == target)
+    {
+        assert!(circuit.program.inputs.iter().any(|input| input.source == state_source));
+    } else {
+        assert_eq!(circuit.outputs.len(), 1, "fallback target still produces a valid root");
+    }
+    println!(
+        "retained event-boundary cell cut: resource={resource:?} source={source:?} graph_owners={retained_owners:?} inputs={:?}",
+        circuit.program.inputs.iter().map(|input| input.source).collect::<Vec<_>>(),
+    );
+}
+
+#[test]
 fn shared_far_feedback_presence_requires_every_owner_to_be_powered() {
     let monitor = TaskMonitor::default();
     let world = tiny_world();

@@ -6,12 +6,20 @@
 //! the interpreter. See the [redpiler overview](crate::redpiler).
 
 #[cfg(test)]
+pub(crate) mod accepted_boundary_probe;
+#[cfg(test)]
 #[path = "graph/tests/chungus_census.rs"]
 mod chungus_census;
 pub(crate) mod classic;
 mod coverage;
 mod cpu_kernels;
+#[cfg(test)]
+#[path = "graph/tests/cpu_power_queries.rs"]
+mod cpu_power_query_tests;
 mod drives;
+#[cfg(test)]
+#[path = "graph/tests/event_boundary_probes.rs"]
+mod event_boundary_probes;
 mod fixed_classic;
 mod fixed_point;
 #[cfg(test)]
@@ -25,6 +33,9 @@ mod instant_kernel;
 mod instant_proxy;
 mod logical_clock;
 mod logical_device;
+#[cfg(test)]
+#[path = "graph/tests/logical_device_author_profiles.rs"]
+mod logical_device_author_profile_tests;
 #[cfg(test)]
 #[path = "graph/tests/logical_device_counter.rs"]
 mod logical_device_counter_tests;
@@ -246,6 +257,10 @@ pub(crate) struct TestRecorder {
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     comparator_updates: Vec<BlockPos>,
     observed_operations: Vec<GraphObservedOperation>,
+    /// Native-format sample/applied trace at the same live request and acceptance cuts.
+    native_piston_trace: Vec<crate::redstone::piston::trace::Entry>,
+    /// Cold reduced Main/Quasi evaluator sampled before accepted actor mutation.
+    accepted_boundary_probe: Option<accepted_boundary_probe::Probe>,
     /// Optional callback attribution; updated only by test builds and never changes trace order.
     callback_census: CallbackCensus,
     /// Opt-in per-value-region execution attribution for ignored research runs only.
@@ -335,6 +350,7 @@ impl TestRecorder {
         self.callback_order.clear();
         self.comparator_updates.clear();
         self.observed_operations.clear();
+        self.native_piston_trace.clear();
         self.callback_census = CallbackCensus::default();
         for rows in &mut self.value_region_census.by_net {
             rows.fill(ValueRegionExecutionRow::default());
@@ -2086,6 +2102,25 @@ impl GraphBackend {
     #[cfg(test)]
     pub(crate) fn clear_test_traces(&mut self) {
         self.test_recorder.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn native_piston_trace(&self) -> &[crate::redstone::piston::trace::Entry] {
+        &self.test_recorder.native_piston_trace
+    }
+
+    #[cfg(test)]
+    pub(crate) fn install_accepted_boundary_probe(&mut self, actor: PistonId, circuit: SettledCircuit) -> Result<(), String> {
+        self.test_recorder.accepted_boundary_probe = Some(accepted_boundary_probe::Probe::new(actor, &self.program, circuit)?);
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_accepted_boundary_probe(&mut self) -> Option<accepted_boundary_probe::Report> {
+        self.test_recorder
+            .accepted_boundary_probe
+            .take()
+            .map(accepted_boundary_probe::Probe::into_report)
     }
 
     #[cfg(test)]

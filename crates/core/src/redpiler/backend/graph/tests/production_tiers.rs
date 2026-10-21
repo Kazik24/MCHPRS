@@ -23,6 +23,10 @@ fn production_kernels_preserve_unstable_input_histories_and_native_handoff() {
             .unwrap();
             assert_eq!(prepared.graph.plans.instant_events.len(), 1);
             assert_eq!(prepared.graph.plans.cpu_kernels.entries.is_empty(), level == 4);
+            assert_eq!(prepared.graph.plans.cpu_power_queries.entries.is_empty(), level < 6);
+            if level == 6 {
+                assert_eq!(prepared.graph.plans.cpu_power_queries.entries.len(), prepared.graph.pistons.len());
+            }
             let mut candidate = GraphBackend::from_lowered(prepared.lower(&monitor).unwrap(), &monitor).unwrap();
             candidate.set_test_recording(true);
             let controls: Vec<_> = circuit

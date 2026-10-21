@@ -48,6 +48,10 @@ impl CircuitDraft {
                 self.validate_cpu_kernels(monitor)?;
                 Ok(None)
             }
+            PlanChange::CpuPowerQueries => {
+                self.validate_cpu_power_queries(monitor)?;
+                Ok(None)
+            }
             #[cfg(test)]
             PlanChange::GuardPredicates => {
                 self.validate_guard_predicates(monitor)?;
@@ -174,6 +178,7 @@ impl CircuitDraft {
         self.validate_wire_capture_masks(monitor)?;
         self.validate_instant_events(monitor)?;
         self.validate_cpu_kernels(monitor)?;
+        self.validate_cpu_power_queries(monitor)?;
         self.validate_guard_predicates(monitor)?;
         self.validate_bud_memory_reads(monitor)?;
         self.validate_instant_wire_nodes(monitor)?;
@@ -219,6 +224,23 @@ impl CircuitDraft {
         if self.plans.cpu_kernels != expected {
             return Err(GraphBuildError::InvalidInstantRegion {
                 table: "CPU kernels",
+                index: 0,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_cpu_power_queries(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        if self.plans.cpu_power_queries == CpuPowerQueryPlans::default() {
+            return Ok(());
+        }
+        let expected = CpuPowerQueryPlans::compile(self, monitor).map_err(|_| GraphBuildError::InvalidInstantRegion {
+            table: "CPU power queries",
+            index: 0,
+        })?;
+        if self.plans.cpu_power_queries != expected {
+            return Err(GraphBuildError::InvalidInstantRegion {
+                table: "CPU power queries",
                 index: 0,
             });
         }

@@ -49,7 +49,7 @@ mod wire_captures;
 mod wire_query_facts;
 mod wire_shapes;
 pub(crate) use cpu_kernels::GuardPredicatePlans;
-pub(crate) use cpu_kernels::{CpuKernelEntry, CpuKernelPlans, CpuPredicate, CpuRead};
+pub(crate) use cpu_kernels::{CpuKernelEntry, CpuKernelPlans, CpuPowerQueryEntry, CpuPowerQueryPlans, CpuPredicate, CpuRead};
 mod bud_memory_reads;
 pub(crate) use bud_memory_reads::{BudMemoryRead, infer_bud_memory_reads};
 pub(crate) use wire_captures::WireCapture;
@@ -894,6 +894,8 @@ struct InstantProgram {
     cpu: CpuKernelPlans,
     /// Direct hot entry lookup; empty disables packing, MAX marks an uncovered actor.
     cpu_by_actor: Box<[u32]>,
+    /// Separate live power-only predicates; these never own instant action acceptance.
+    cpu_power_queries: CpuPowerQueryPlans,
     /// These reduced pull waves replace covered computation while retaining ordinary reset work.
     kernels: Box<[std::sync::Arc<InstantKernel>]>,
     /// This maps each eligible first request to its immutable wave program.
@@ -1075,6 +1077,20 @@ impl CircuitProgram {
     pub(crate) fn cpu_kernel_entry(&self, actor: PistonId) -> Option<CpuKernelEntry> {
         let index = *self.instant.cpu_by_actor.get(actor.index())?;
         (index != u32::MAX).then(|| self.instant.cpu.entries[index as usize])
+    }
+
+    pub(crate) fn cpu_power_query_entry(&self, actor: PistonId) -> Option<CpuPowerQueryEntry> {
+        self.instant.cpu_power_queries.entry(actor)
+    }
+
+    pub(crate) fn cpu_power_queries(&self) -> &CpuPowerQueryPlans {
+        &self.instant.cpu_power_queries
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_general_cpu_power_queries(mut self) -> Self {
+        self.instant.cpu_power_queries = CpuPowerQueryPlans::default();
+        self
     }
 
     pub(crate) fn cpu_kernels(&self) -> &CpuKernelPlans {

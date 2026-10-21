@@ -37,6 +37,16 @@ O0–O5 retain the existing execution contract. No additional flag or input-case
 - [ ] Bind BubbleSort's 768 RAM bits as explicit logical state and compile its
   output/next-state dependency cone. Preserve BUD update/write events even when
   their signal values are unchanged. Verify the full sort and interpreter handoff.
+- [x] Compile live Main/QC power predicates for every O6 piston actor in
+  BubbleSort and ANPU, including ordinary memory. Keep request/acceptance cuts,
+  scheduler order and same-value BUD notifications. Verify all 10,036 BubbleSort
+  RAM ticks and handoff, and ANPU's screen and ordered BUD trace through 5,000 ticks.
+  This replaces power-query traversal; whole-device wire/event contraction is
+  separate work and must not be reported as complete from predicate coverage.
+  Verified 16,561/16,561 BubbleSort actors (57,893 packed reads) and 2,898/2,898
+  ANPU actors (6,288 reads), with zero whole-input fallback reads. BubbleSort
+  matches every frozen RAM tick through 10,036 plus 32 interpreter handoff ticks;
+  ANPU matches 14 screen frames and 1,552 ordered BUD update ticks through 5,000.
 - [ ] Compare BUD trigger, QC sample and publication semantics in COUNTER,
   CPU_BUBBLESORT and ANPU before choosing the generic logical BUD operation.
   Source audits distinguish 16 coordinated COUNTER bits, 896 ANPU lower readers
@@ -75,9 +85,12 @@ undeclared observer inputs disappear: the closed candidate has 22,193 expression
 converges in one to four logical passes for all 16 held-input vectors and agrees
 with the carried-feedback candidate. One vector still produces candidate 0x8446
 while the native tail alternates 0x8000/0x8800 plus reset-like 0xffff pulses.
-Other holds can also have multiple plateaus, so matching one native sample is not
-publication-timing proof. Trace the differing output cone before changing the
-logical model further. A closed dependency set is not yet a validated kernel.
+Other holds can also have multiple plateaus. The user explicitly accepts this
+nonstable native behavior and the reported candidate difference for now; it does
+not block FPU work. Preserve the exact vectors for reproduction rather than
+requiring native parity on this case. Publication timing and production device
+integration still need validation. Reproduction: `target/logical-inference/fpu-input-vectors.json`
+and `.csv` (all 16 vectors, raw lever order and first-case positions).
 
 Provisional release FPU kernel benchmark (Ryzen 9 5950X): three samples of
 4,096 changing operands per raw selector pattern measure median 9,337–33,050

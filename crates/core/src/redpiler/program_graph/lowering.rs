@@ -306,6 +306,7 @@ impl CircuitDraft {
             instant: InstantProgram {
                 cpu: self.plans.cpu_kernels,
                 cpu_by_actor: cpu_by_actor.into_boxed_slice(),
+                cpu_power_queries: self.plans.cpu_power_queries,
                 kernels: kernels.into_boxed_slice(),
                 kernel_by_actor: kernel_by_actor.into_boxed_slice(),
                 proxies: self.plans.instant.proxies.into_boxed_slice(),

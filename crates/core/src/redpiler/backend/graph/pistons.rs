@@ -58,6 +58,15 @@ impl GraphBackend {
                     extended: state.extended,
                     powered,
                 });
+                self.test_recorder.native_piston_trace.push(crate::redstone::piston::trace::Entry {
+                    tick: self.future.clock.logical_tick,
+                    phase: native_trace_phase(self.future.clock.phase),
+                    operation: crate::redstone::piston::trace::Operation::Sample {
+                        pos: self.program.nodes()[spec.node.index()].position.unwrap(),
+                        extended: state.extended,
+                        powered,
+                    },
+                });
             }
             match (powered, state.extended) {
                 (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
@@ -164,6 +173,8 @@ impl GraphBackend {
                 }
             }
         });
+        #[cfg(test)]
+        self.record_accepted_boundary_probe(request, accepted);
         match request.action {
             mchprs_world::PistonAction::Extend if accepted => {
                 #[cfg(test)]
@@ -206,6 +217,19 @@ impl GraphBackend {
             activity[1] += 1;
         }
         let spec = self.program.pistons()[request.piston.index()];
+        #[cfg(test)]
+        if self.test_recording {
+            self.test_recorder.native_piston_trace.push(crate::redstone::piston::trace::Entry {
+                tick: self.future.clock.logical_tick,
+                phase: native_trace_phase(self.future.clock.phase),
+                operation: crate::redstone::piston::trace::Operation::Applied(mchprs_world::PistonEvent {
+                    pos: spec.position,
+                    sticky: spec.sticky,
+                    facing: spec.facing,
+                    action: request.action,
+                }),
+            });
+        }
         self.effects.push(PresentationEffect::BlockAction {
             position: self.position(spec.node),
             action: BlockAction::Piston {
@@ -591,5 +615,15 @@ impl GraphBackend {
             self.deliver_route(route, None)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+fn native_trace_phase(phase: super::GraphPhase) -> mchprs_world::AdvancePhase {
+    match phase {
+        super::GraphPhase::BetweenTicks => mchprs_world::AdvancePhase::BetweenTicks,
+        super::GraphPhase::ScheduledTicks => mchprs_world::AdvancePhase::ScheduledTicks,
+        super::GraphPhase::PistonActions => mchprs_world::AdvancePhase::PistonEvents,
+        super::GraphPhase::DeferredConnections => mchprs_world::AdvancePhase::MovingEntities,
     }
 }

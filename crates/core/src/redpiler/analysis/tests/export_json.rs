@@ -255,8 +255,18 @@ fn adder_1bit_fixture_matches_graph_json() {
         );
         assert!(document["trace"].is_null());
     }
-    // O6 adds runtime specialization without changing the exported graph passes.
-    assert_eq!(adder_1bit_export(Some(6)), adder_1bit_export(Some(5)));
+    let mut o6: Value = serde_json::from_slice(&adder_1bit_export(Some(6))).unwrap();
+    let o5: Value = serde_json::from_slice(&adder_1bit_export(Some(5))).unwrap();
+    let power_queries = o6["graph"].as_object_mut().unwrap().remove("cpu_power_queries").unwrap();
+    assert_eq!(
+        power_queries["entries"].as_array().unwrap().len(),
+        o6["graph"]["pistons"].as_array().unwrap().len()
+    );
+    o6["capabilities"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|capability| capability != "compiled_piston_power_queries");
+    assert_eq!(o6, o5, "O6 adds live power predicates without rewriting the O5 graph");
     assert_eq!(adder_1bit_export(None), adder_1bit_export(Some(crate::redpiler::MAX_OPTIMIZATION_LEVEL)));
 }
 

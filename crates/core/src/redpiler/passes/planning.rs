@@ -3,8 +3,9 @@ use super::PassContext;
 #[cfg(test)]
 use crate::redpiler::program_graph::GuardPredicatePlans;
 use crate::redpiler::program_graph::{
-    CompileGraph, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan, InstantTransitionPrograms,
-    InstantTransport, InstantValueRegions, PlanChange, SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
+    CompileGraph, CpuPowerQueryPlans, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan,
+    InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection,
+    WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -57,6 +58,7 @@ pub(crate) enum PlanOutput {
     WireCaptureMasks(Vec<u32>),
     InstantEvents(Vec<crate::redpiler::program_graph::InstantKernel>),
     CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
+    CpuPowerQueries(CpuPowerQueryPlans),
     #[cfg(test)]
     GuardPredicates(GuardPredicatePlans),
     BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
@@ -109,6 +111,7 @@ impl PlanOutput {
                 graph.plans.cpu_kernels = Default::default();
             }
             Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
+            Self::CpuPowerQueries(plans) => graph.plans.cpu_power_queries = plans,
             #[cfg(test)]
             Self::GuardPredicates(plans) => graph.plans.guard_predicates = plans,
             Self::BudMemoryReads(reads) => {
@@ -192,6 +195,7 @@ impl PlanOutput {
             Self::WireCaptureMasks(_) => PlanChange::WireCaptureMasks,
             Self::InstantEvents(_) => PlanChange::InstantEvents,
             Self::CpuKernels(_) => PlanChange::CpuKernels,
+            Self::CpuPowerQueries(_) => PlanChange::CpuPowerQueries,
             #[cfg(test)]
             Self::GuardPredicates(_) => PlanChange::GuardPredicates,
             Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
@@ -258,6 +262,14 @@ impl PlanOutput {
             if plans.require_true.len() != plans.require_false.len() || plans.entries.len() > graph.pistons.len() {
                 return Err(GraphBuildError::InvalidInstantRegion {
                     table: "CPU kernel shape",
+                    index: 0,
+                });
+            }
+        }
+        if let Self::CpuPowerQueries(plans) = self {
+            if plans.entries.len() > graph.pistons.len() || plans.packed.require_true.len() != plans.packed.require_false.len() {
+                return Err(GraphBuildError::InvalidInstantRegion {
+                    table: "CPU power query shape",
                     index: 0,
                 });
             }

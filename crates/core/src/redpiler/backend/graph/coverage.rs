@@ -40,7 +40,12 @@ impl GraphBackend {
                 .iter()
                 .filter(|node| matches!(node.kind, CircuitNodeKind::BuiltinReset { .. }))
                 .count(),
-            compiled_cpu_piston_predicates: self.program.cpu_kernels().entries.len(),
+            compiled_cpu_piston_predicates: (0..self.program.pistons().len())
+                .filter(|&index| {
+                    let actor = PistonId::new(index as u32);
+                    self.program.cpu_power_query_entry(actor).is_some() || self.program.cpu_kernel_entry(actor).is_some()
+                })
+                .count(),
             compiled_transport_wires: self
                 .program
                 .wires()

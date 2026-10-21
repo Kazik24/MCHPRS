@@ -1,6 +1,6 @@
 //! Lossless inspection of the flat CPU program, including masks above JavaScript's integer range.
 use super::*;
-use crate::redpiler::program_graph::{CpuPredicate, CpuRead};
+use crate::redpiler::program_graph::{CpuKernelPlans, CpuPredicate, CpuRead};
 use serde_json::{Value, json};
 
 fn predicate(p: CpuPredicate) -> Value {
@@ -12,9 +12,28 @@ pub(super) fn export(graph: &CompileGraph) -> Option<Value> {
     if plans.entries.is_empty() {
         return None;
     }
-    Some(json!({
+    Some(export_program(plans, plans.entries.iter().map(|e| json!({"actor":typed_id("piston",e.actor.index()),"main":predicate(e.main),"quasi":predicate(e.quasi),"valid":predicate(e.valid)})).collect()))
+}
+
+pub(super) fn export_power_queries(graph: &CompileGraph) -> Option<Value> {
+    let plans = &graph.plans.cpu_power_queries;
+    if plans.entries.is_empty() {
+        return None;
+    }
+    Some(export_program(
+        &plans.packed,
+        plans
+            .entries
+            .iter()
+            .map(|e| json!({"actor":typed_id("piston",e.actor.index()),"main":predicate(e.main),"quasi":predicate(e.quasi)}))
+            .collect(),
+    ))
+}
+
+fn export_program(plans: &CpuKernelPlans, entries: Vec<Value>) -> Value {
+    json!({
         "method":"live_bitmask_dnf","effects":"original_graph_fifo",
-        "entries":plans.entries.iter().map(|e| json!({"actor":typed_id("piston",e.actor.index()),"main":predicate(e.main),"quasi":predicate(e.quasi),"valid":predicate(e.valid)})).collect::<Vec<_>>(),
+        "entries":entries,
         "reads":plans.reads.iter().map(|r| match *r {
             CpuRead::State(test)=>json!({"kind":"state","test":super::instant_layers::state_test_dto(test)}),
             CpuRead::Strength{node,threshold}=>json!({"kind":"strength","node":typed_id("node",node.index()),"threshold":threshold}),
@@ -29,11 +48,16 @@ pub(super) fn export(graph: &CompileGraph) -> Option<Value> {
         }).collect::<Vec<_>>(),
         "require_true":plans.require_true.iter().map(|m|format!("{m:016x}")).collect::<Vec<_>>(),
         "require_false":plans.require_false.iter().map(|m|format!("{m:016x}")).collect::<Vec<_>>(),
-    }))
+    })
 }
 
 pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
-    let Some(program) = &graph.cpu_kernels else {
+    validate_program(graph, graph.cpu_kernels.as_ref(), true)?;
+    validate_program(graph, graph.cpu_power_queries.as_ref(), false)
+}
+
+fn validate_program(graph: &GraphTablesDto, program: Option<&Value>, action_kernel: bool) -> Result<(), ExportError> {
+    let Some(program) = program else {
         return Ok(());
     };
     let invalid = || ExportError::new("cpu_kernels", "invalid packed CPU kernel program");
@@ -119,10 +143,15 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
     for entry in program["entries"].as_array().ok_or_else(invalid)? {
         reference(&entry["actor"], "piston:")?;
         let actor = entry["actor"].as_str().unwrap();
-        if !owned.insert(actor) || !event_actors.contains(actor) {
+        if !owned.insert(actor) || action_kernel && !event_actors.contains(actor) {
             return Err(invalid());
         }
-        for key in ["main", "quasi", "valid"] {
+        let keys: &[&str] = if action_kernel {
+            &["main", "quasi", "valid"]
+        } else {
+            &["main", "quasi"]
+        };
+        for &key in keys {
             let p = &entry[key];
             let number = |field: &str| p[field].as_u64().ok_or_else(invalid);
             let r = number("read_start")?;

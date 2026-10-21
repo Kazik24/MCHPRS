@@ -161,14 +161,123 @@ pub(crate) fn compile_public_boundary(
     register_reads: &[BudMemoryRead],
     monitor: &TaskMonitor,
 ) -> Result<SettledCircuit, String> {
+    compile_boundary(graph, power_targets, register_reads, true, &[], monitor)
+}
+
+/// Diagnostic counterpart to `compile_public_boundary` that leaves repeaters
+/// as state leaves, matching an event boundary rather than a settled frame.
+#[cfg(test)]
+pub(crate) fn compile_event_boundary(graph: &CompileGraph, power_targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
+    compile_boundary(graph, power_targets, &[], false, &[], monitor)
+}
+
+/// Diagnostic event-boundary extraction that leaves selected catalog-cell writers
+/// in Graph and treats their resource feedback as a live state input.
+#[cfg(test)]
+pub(crate) fn compile_event_boundary_with_retained_resources(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    retained_resources: &[ResourceId],
+    monitor: &TaskMonitor,
+) -> Result<SettledCircuit, String> {
+    compile_boundary(graph, power_targets, &[], false, retained_resources, monitor)
+}
+
+/// Diagnostic extraction that retains each catalog-cell resource responsible for a
+/// typed ResourceAt recursion witness. The resource writer and its callbacks remain
+/// authoritative in Graph; no logical next-state update is synthesized here.
+#[cfg(test)]
+pub(crate) fn compile_event_boundary_cut_feedback(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    monitor: &TaskMonitor,
+) -> Result<(SettledCircuit, Vec<ResourceId>, Vec<PistonId>), String> {
+    const MAX_CUT_RESOURCES: usize = 64;
+    if power_targets.is_empty() {
+        return Err("event-boundary feedback extraction requires a public power target".into());
+    }
+
+    let mut retained_resources = FxHashSet::default();
+    let mut retained_owners = FxHashSet::default();
+    for _ in 0..=MAX_CUT_RESOURCES {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
+        equations.retain_classic = true;
+        equations.inline_repeaters = false;
+        if !retained_resources.is_empty() || !retained_owners.is_empty() {
+            let resources: Vec<_> = retained_resources.iter().copied().collect();
+            let owners: Vec<_> = retained_owners.iter().copied().collect();
+            let (resources, owners) = equations
+                .retain_cells_touching(&resources, &owners)
+                .map_err(|error| format!("retaining cell state in Graph: {error:?}"))?;
+            retained_resources.extend(resources);
+            retained_owners.extend(owners);
+        }
+
+        match compile_boundary_equations(graph, power_targets, &[], &mut equations, monitor) {
+            Ok(circuit) => {
+                let mut resources: Vec<_> = retained_resources.into_iter().collect();
+                resources.sort_unstable();
+                let mut owners: Vec<_> = retained_owners.into_iter().collect();
+                owners.sort_unstable();
+                return Ok((circuit, resources, owners));
+            }
+            Err(error) => {
+                let Some((resource, _contact)) = equations.resource_cycle_witness else {
+                    return Err(error);
+                };
+                if !equations.cells.contains_key(&resource) || retained_resources.contains(&resource) {
+                    return Err(error);
+                }
+                let (resources, owners) = equations
+                    .retain_cells_touching(&[resource], &[])
+                    .map_err(|cut_error| format!("retaining feedback resource {resource:?}: {cut_error:?}"))?;
+                if resources.is_empty() || !resources.contains(&resource) {
+                    return Err(format!("feedback resource {resource:?} did not select a catalog cell: {error}"));
+                }
+                retained_resources.extend(resources);
+                retained_owners.extend(owners);
+                if retained_resources.len() > MAX_CUT_RESOURCES {
+                    return Err(format!("event-boundary feedback cut exceeded {MAX_CUT_RESOURCES} resources: {error}"));
+                }
+            }
+        }
+    }
+    Err(format!("event-boundary feedback cut exceeded {MAX_CUT_RESOURCES} iterations"))
+}
+
+fn compile_boundary(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    register_reads: &[BudMemoryRead],
+    inline_repeaters: bool,
+    retained_resources: &[ResourceId],
+    monitor: &TaskMonitor,
+) -> Result<SettledCircuit, String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
     if power_targets.is_empty() && register_reads.is_empty() {
         return Err("public-boundary compilation requires at least one requested root".into());
     }
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
     equations.retain_classic = true;
-    equations.inline_repeaters = true;
+    equations.inline_repeaters = inline_repeaters;
+    if !retained_resources.is_empty() {
+        equations
+            .retain_cells_touching(retained_resources, &[])
+            .map_err(|error| format!("retaining cell state in Graph: {error:?}"))?;
+    }
 
+    compile_boundary_equations(graph, power_targets, register_reads, &mut equations, monitor)
+}
+
+fn compile_boundary_equations(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    register_reads: &[BudMemoryRead],
+    equations: &mut Equations<'_>,
+    monitor: &TaskMonitor,
+) -> Result<SettledCircuit, String> {
+    check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
     let mut outputs = Vec::with_capacity(power_targets.len() + register_reads.len());
     let mut seen_power = FxHashSet::default();
     for &target in power_targets {

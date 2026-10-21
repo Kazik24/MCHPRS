@@ -24,6 +24,7 @@ pub(crate) enum PlanChange {
     WireCaptureMasks,
     InstantEvents,
     CpuKernels,
+    CpuPowerQueries,
     #[cfg(test)]
     GuardPredicates,
     BudMemoryReads,
@@ -126,6 +127,8 @@ pub(crate) struct ExecutionPlans {
     pub(crate) instant_events: Vec<InstantKernel>,
     /// Flat pure predicates compiled from event kernels; no mutable values are duplicated.
     pub(crate) cpu_kernels: CpuKernelPlans,
+    /// Live Main/Quasi predicates for exact O6 piston power queries.
+    pub(crate) cpu_power_queries: CpuPowerQueryPlans,
     /// Flat pure guard predicates, with exact recursive fallback for unsupported roots.
     pub(crate) guard_predicates: GuardPredicatePlans,
     /// Exact private storage/read pairs; their original state and update work remain owned by Graph.

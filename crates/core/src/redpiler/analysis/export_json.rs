@@ -147,6 +147,8 @@ struct GraphTablesDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     cpu_kernels: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    cpu_power_queries: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     guard_predicate_stats: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     instant_event_kernels: Vec<serde_json::Value>,
@@ -1178,6 +1180,7 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
         instant_layer_regions: layers.regions,
         instant_event_kernels: instant_events::export(source),
         cpu_kernels: cpu_kernels::export(source),
+        cpu_power_queries: cpu_kernels::export_power_queries(source),
         guard_predicate_stats: (source.plans.guard_predicates.stats.compiled > 0).then(|| {
             serde_json::json!({
                 "method": "live_captured_bitmask_dnf",
@@ -1656,6 +1659,9 @@ pub(crate) fn from_graph(report: &AnalysisReport, source: &CompileGraph) -> Resu
     if !source.plans.cpu_kernels.entries.is_empty() {
         capabilities.push("cpu_kernel_execution");
     }
+    if !source.plans.cpu_power_queries.entries.is_empty() {
+        capabilities.push("compiled_piston_power_queries");
+    }
     if source.plans.guard_predicates.stats.compiled > 0 {
         capabilities.push("compiled_guard_predicates");
     }
@@ -2078,6 +2084,26 @@ fn validate_wire_query_facts(facts: Option<&WireQueryFacts>) -> Result<(), Expor
 #[cfg(test)]
 mod wire_query_fact_validation_tests {
     use super::*;
+
+    #[test]
+    fn o6_power_query_export_validates_actor_and_predicate_bindings() {
+        let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+        let options = CompilerOptions {
+            optimization_level: Some(6),
+            ..Default::default()
+        };
+        let mut export = prepare(&world, bounds, &[], &options, &TaskMonitor::default(), AnalysisLimits::default()).unwrap();
+        assert!(export.capabilities.contains(&"compiled_piston_power_queries"));
+        export.validate().unwrap();
+        let saved = export.graph.cpu_power_queries.clone();
+        export.graph.cpu_power_queries.as_mut().unwrap()["entries"][0]["actor"] = serde_json::json!("piston:999999");
+        assert!(export.validate().is_err());
+        export.graph.cpu_power_queries = saved.clone();
+        export.graph.cpu_power_queries.as_mut().unwrap()["entries"][0]["main"]["read_len"] = serde_json::json!(65);
+        assert!(export.validate().is_err());
+        export.graph.cpu_power_queries = saved;
+        export.validate().unwrap();
+    }
 
     #[test]
     fn compiled_hop_exports_validate_the_wire_root_binding() {
