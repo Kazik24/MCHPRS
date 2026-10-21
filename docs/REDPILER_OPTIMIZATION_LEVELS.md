@@ -49,6 +49,12 @@ and visual piston activity may disappear. No extra flag is required. This is
 an experiment: its interpreter handoff is not yet validated. FPU feedback
 classification and whole-device execution remain unfinished.
 
+O6 also compiles live Main/Quasi power queries for ordinary pistons, verified
+on BubbleSort and ANPU. Those queries retain physical event execution and do
+not establish whole-device logical compilation. The proposed generalization
+is scoped in the [logical compiler plan](notes/redpiler-pistons-v4/INSTANT_CIRCUIT_ACCELERATION_PLAN.md);
+its new state/event executor is not yet implemented.
+
 Classic-redstone compilation is automatic from O2. After whole-fixed execution
 declines, the local classic pass certifies each candidate region independently.
 Unsuitable regions keep general Graph execution; no `--classic-redstone` switch

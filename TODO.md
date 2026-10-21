@@ -1,5 +1,7 @@
 # O6 logical device execution
 
+Implementation scope and gates: [logical compiler plan](docs/notes/redpiler-pistons-v4/INSTANT_CIRCUIT_ACCELERATION_PLAN.md).
+
 O6 automatically uses the valid-device contract. Preserve stable public outputs,
 normal clock cadence, controls and persistent memory. Public values must match at
 valid observable publication ticks. Transient glitches may disappear between
@@ -37,6 +39,13 @@ O0–O5 retain the existing execution contract. No additional flag or input-case
 - [ ] Bind BubbleSort's 768 RAM bits as explicit logical state and compile its
   output/next-state dependency cone. Preserve BUD update/write events even when
   their signal values are unchanged. Verify the full sort and interpreter handoff.
+- [ ] Replace recursive source expansion with a bounded dependency worklist;
+  simplify feedback before choosing state cuts, then lower consequential BUD
+  samples, writes and delayed publication without internal physical callbacks.
+- [ ] Execute a small ordinary BUD slice with zero internal physical work;
+  preserve update-triggered writes, acceptance rechecks and observable tick timing.
+- [ ] Compile ANPU with the same logical state/event executor; validate all
+  5,000 screen/state ticks, consequential BUD transactions and native continuation.
 - [x] Compile live Main/QC power predicates for every O6 piston actor in
   BubbleSort and ANPU, including ordinary memory. Keep request/acceptance cuts,
   scheduler order and same-value BUD notifications. Verify all 10,036 BubbleSort

@@ -1,5 +1,39 @@
 # Redpiler runtime benchmarking and profiling
 
+## Plot and connected-client measurements
+
+Use the production-profile plot loop when investigating in-game TPS:
+
+```text
+cargo bench --locked -p mchprs_core --bench cpus --features plot-bench -- --plot-client --cpu cpu_bubblesort --graph-tier 5 --seconds 3 --iterations 3 --output target/plot-client.json
+```
+
+This mode runs `Plot::update` with one compressed loopback TCP client. It includes
+tick batching, timing monitoring, graph projection, visual collection, player and
+sidebar updates, packet queueing, compression and socket delivery. The receiver
+decodes incremental block updates and checks its final received states. An ordered
+end marker waits for delivery, including any packet already removed from the queue
+by the writer. Login, initial chunk loading and Minecraft rendering are outside
+this measurement. `--screen-only` selects the existing screen presentation mode.
+
+Each sample replays the same number of ticks through the core and checks matching
+engine work, projected world state and pending future after interpreter handoff.
+Setup, compilation and these checks are outside the measured intervals. Samples
+must finish within the fixture's active window; shorten `--seconds` if necessary.
+The JSON reports plot TPS, core TPS, final delivery latency, stage durations and
+network totals. Writer encoding/compression/write durations overlap plot work;
+do not add them to the plot duration. Core and plot runs occur sequentially, so
+repeat samples and use stage durations before attributing small differences.
+
+In game, `/tps timings` reports engine execution, graph projection, total plot
+updates, visual collection and enqueue time. Network counters cover the current
+connections' lifetimes; plot counters cover the loaded plot's lifetime. Compare
+two reports over the same active interval to locate the cost on a real client.
+
+The `plot-bench` feature exposes only the in-memory benchmark adapter. It does
+not enable Rust test recorders in Redpiler. Packet regression tests reuse the
+same constructor.
+
 Use the existing `cpus` harness. Benchmark only active ticking; preparation, compilation, stimulus, publication, reads, and continuation checks remain outside its timed windows. Use paired unprofiled runs to establish speed changes and Samply to find expensive call stacks. Do not add a custom runtime profiling suite.
 
 ## Unprofiled comparison

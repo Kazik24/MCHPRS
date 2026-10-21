@@ -21,6 +21,8 @@ mod fpu_computation_tests;
 #[cfg(test)]
 mod fpu_kernel_bench;
 mod settled;
+#[cfg(test)]
+mod source_graph;
 pub(crate) mod timing;
 #[cfg(test)]
 pub(crate) use settled::compile_computation;
@@ -39,6 +41,8 @@ pub(crate) use settled::diagnostic_computation_failures;
 #[cfg(test)]
 pub(crate) use settled::diagnostic_query;
 pub(crate) use settled::{compile_device, compile_settled};
+#[cfg(test)]
+pub(crate) use source_graph::diagnostic_source_dependency_graph;
 #[cfg(test)]
 mod adders11;
 #[cfg(test)]
@@ -76,6 +80,17 @@ struct Equations<'a> {
     /// Typed first resource-location cycle seen by an event-boundary diagnostic build.
     #[cfg(test)]
     resource_cycle_witness: Option<(ResourceId, ContactId)>,
+    /// Diagnostic-only source equation worklist mode; each dependency is a typed leaf.
+    #[cfg(test)]
+    defer_sources: bool,
+    #[cfg(test)]
+    deferred_parent: Option<LayerInputSource>,
+    #[cfg(test)]
+    deferred_roots: FxHashSet<LayerInputSource>,
+    #[cfg(test)]
+    deferred_edges: FxHashSet<(LayerInputSource, LayerInputSource)>,
+    #[cfg(test)]
+    deferred_children: FxHashMap<LayerInputSource, FxHashSet<LayerInputSource>>,
     feedback_state_sources: Vec<(ResourceId, ContactId)>,
 }
 
@@ -142,6 +157,16 @@ impl<'a> Equations<'a> {
             diagnostic_unknown_resources: false,
             #[cfg(test)]
             resource_cycle_witness: None,
+            #[cfg(test)]
+            defer_sources: false,
+            #[cfg(test)]
+            deferred_parent: None,
+            #[cfg(test)]
+            deferred_roots: FxHashSet::default(),
+            #[cfg(test)]
+            deferred_edges: FxHashSet::default(),
+            #[cfg(test)]
+            deferred_children: FxHashMap::default(),
             feedback_state_sources: Vec::new(),
         })
     }
@@ -197,6 +222,15 @@ impl<'a> Equations<'a> {
     }
 
     fn source(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
+        #[cfg(test)]
+        if self.defer_sources {
+            if let Some(parent) = self.deferred_parent {
+                self.deferred_children.entry(parent).or_default().insert(source);
+            } else {
+                self.deferred_roots.insert(source);
+            }
+            return self.leaf(source);
+        }
         if let Some(&value) = self.sources.get(&source) {
             return Ok(value);
         }

@@ -6,6 +6,7 @@ edition = "2024"
 
 [features]
 graph-trace = []
+plot-bench = ["mchprs_network/test-support"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

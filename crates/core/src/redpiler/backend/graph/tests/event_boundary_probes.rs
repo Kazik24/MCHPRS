@@ -4,6 +4,7 @@ use super::*;
 use crate::redpiler::CompilerOptions;
 use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary;
 use crate::redpiler::analysis::instant::layers::logical::compile_event_boundary_cut_feedback;
+use crate::redpiler::analysis::instant::layers::logical::diagnostic_source_dependency_graph;
 use crate::world::World;
 use std::sync::Arc;
 
@@ -348,11 +349,43 @@ fn run_live_acceptance_probe(cpu: cpus::Cpu, position: BlockPos, ticks: u32, lab
 }
 
 #[test]
-#[ignore = "research: compare retained-source Main/Quasi equations at live accepted piston cuts"]
-fn o6_selected_event_boundary_queries_report_live_acceptance_cuts() {
+#[ignore = "research: compare retained-source Main/Quasi equations at live ANPU accepted piston cuts"]
+fn o6_selected_event_boundary_queries_report_live_acceptance_cuts_anpu() {
     let anpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "anpu_pong").unwrap();
     run_live_acceptance_probe(anpu, BlockPos::new(125, 53, 123), 1_000, "ANPU upper writer");
+}
 
+#[test]
+#[ignore = "research: compare retained-source Main/Quasi equations at live BubbleSort accepted piston cuts"]
+fn o6_selected_event_boundary_queries_report_live_acceptance_cuts_bubblesort() {
     let bubblesort = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
     run_live_acceptance_probe(bubblesort, BlockPos::new(177, 45, 64), 1_000, "BubbleSort RAM actor");
+}
+
+#[test]
+#[ignore = "research: bounded typed dependency inventory for a BubbleSort RAM actor Main/Quasi query"]
+fn o6_bubblesort_ram_query_reports_typed_source_dependency_graph() {
+    let cpu = *cpus::CPUS.iter().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
+    let (_, _world, prepared) = prepare_o6_cpu(cpu);
+    let actor = prepared
+        .graph
+        .pistons
+        .iter()
+        .position(|piston| piston.position == BlockPos::new(177, 45, 64))
+        .map(|index| PistonId::new(index as u32))
+        .expect("selected BubbleSort RAM actor must exist");
+    let node = prepared.graph.pistons[actor.index()].node;
+    let targets = [
+        PowerTarget::Input { node, port: InputPort::Main },
+        PowerTarget::Input {
+            node,
+            port: InputPort::Quasi,
+        },
+    ];
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let report = diagnostic_source_dependency_graph(&prepared.graph, &targets, &monitor)
+        .unwrap_or_else(|error| panic!("BubbleSort source-dependency diagnostic failed: {error}"));
+    assert!(!report.trim().is_empty(), "source-dependency inventory must contain typed results");
+    eprintln!("cpu_bubblesort actor={actor:?} targets={targets:?}\n{report}");
 }

@@ -1,506 +1,259 @@
-# Executable instant-circuit kernels
+# O6 logical circuit compiler and runtime plan
 
-## First gate: CPU_BUBBLESORT interface
+Status: proposed implementation scope, 2026-10-21. This replaces the earlier
+physical transport and stable-input implementation plan at this path. Existing
+O0-O5 optimizations remain supported. Implementation progress belongs in
+[TODO.md](../../../TODO.md); measurements and their limits remain in
+[SETTLED_RUNTIME_VERIFICATION.md](SETTLED_RUNTIME_VERIFICATION.md) and
+[STABLE_INSTANT_LOGIC_RESULTS.md](STABLE_INSTANT_LOGIC_RESULTS.md).
 
-The 2026-10-20 source-graph audit finds one connected computation candidate:
-15,200 instant actors, 41,353 wires, and an explicit physical perimeter. All
-768 documented RAM cells have both read and write/notification references.
-All 53 controls (52 buttons and one lever), including Start, are retained.
-The merged perimeter contains every one of the 56,153 crossing power links
-and 19,615 crossing callback occurrences; the audit finds zero omissions.
+## Execution contract
 
-All 16,561 physical pistons and 13,118 resources remain represented. The
-1,361 ordinary pistons include external memory/state machinery, whose effects
-must be represented in the new kernel interface rather than discarded.
-There are 41,354 physical wires in total; any wire outside the computation
-candidate remains explicitly inventoried as peripheral transport.
+Target: O6 automatically compiles valid builds to a reduced logical representation.
+Preserve stable observable outputs at their original game ticks, controls,
+persistent state, consequential BUD samples/writes, and required notification
+and publication timing. Internal glitches, previews, propagation, piston pose
+and reset geometry may disappear. Preserve strength wherever a consumer needs
+it; otherwise infer Boolean signals from their uses. Shared payloads with up to
+five admitted pull owners use one pulled/unpulled value; the winning direction
+is irrelevant under the accepted O6 contract.
 
-This establishes a connected compilation candidate and retained source
-dependencies, **not** an already accelerated executable. The current event
-kernel owns zero wires. Its perimeter is not yet installed as a standalone
-runtime interface, and memory transactions and scheduler effects are still
-implicit in physical-node execution. The implementation below must close
-those gaps.
+An update event is distinct from a value change. A BUD may sample unchanged QC
+power on an update. Conversely, a QC value change alone need not write memory.
+Keep ordering only where it can affect a retained state read/write or output.
+Do not require identical internal callback counts, queues, revision numbers or
+physical snapshots. Required delays and temporarily unreadable memory may be
+logical state/events rather than moving blocks.
 
-Reproduction: ignored test
-`kernel_interface::bubblesort_kernel_interface_is_complete_in_source_graph`.
-Artifact: `target/instant-kernel-interface/cpu-bubblesort-interface.json`.
-The artifact enumerates RAM cells, controls, peripheral nodes, typed perimeter
-counts, resources, and crossing-edge checks against the source graph.
+No new user flag, input-combination enumeration, whole-state case cache, or
+per-build name/coordinate special case. Unknown semantics retain an explicit
+fallback and a concrete diagnostic; discuss a newly required semantic assumption
+before implementing it. Partial coverage is not whole-device compilation.
 
-## Contract
+## Starting point
 
-Replace each admitted physical instant region with one executable stateful
-graph, with original piston/resource identities and a complete typed interface.
-Its inference must not need the original World or a physical block-neighborhood
-walk. Keep logical state transitions and the causal relationships that affect
-memory or exposed outputs. A connected group or renamed call into Turbo is
-not this implementation.
+- `LayerExpr`, `ReducedLayerProgram`, reduction and `LogicalValues` already give
+  shared Boolean expressions and incremental evaluation of changed dependencies.
+  Keep the existing fifteen-threshold strength representation where required.
+- O6 compiles live Main/QC queries for every BubbleSort and ANPU piston. This
+  work is complete, but native action/reset/event execution still runs.
+- COUNTER has a qualified logical executor with zero physical work, measured
+  at 4.24M whole-loop game TPS. Its clock recognizer is a narrow family.
+- The FPU computation-frame kernel is experimental; its measured calculation
+  rate does not establish production game TPS or a publication adapter.
+- BubbleSort's selected RAM-query worklist diagnostic traverses 36,116 typed
+  source nodes and 44,237 edges with no unsupported-source errors. Recursive
+  extraction previously stopped after 256 sources. A 114-node structural cycle
+  remains in the diagnostic, which does not propagate constants between source
+  equations. That cycle does not establish additional persistent memory.
+- The older candidate audit inventories 15,200 computation actors and 768
+  external RAM pistons. Its thousands of physical crossing edges describe that
+  partition, not the final logical boundary or a requirement to retain them.
 
-Inputs include control actions and levels, clock advancement, memory/state
-reads and readiness, external power/update events, and imported pending work.
-Outputs include signal levels and falling events, delivered memory-write
-samples/requests and accepted writes, reset/tick requests, deferred publications,
-and exposed component effects. A level and its update notification are distinct.
-The boundary must preserve route provenance, input sampling cuts, priorities,
-deadlines, revision checks, and the ordering of dependent effects.
+## One compiled product, two linked parts
 
-The new graph retains each piston as a stateful node, including both storage
-and read pistons. Memory cannot be replaced by an unqualified Boolean bit while
-its availability or in-flight writes matter. Stateful boundary primitives may
-reuse existing piston/scheduler commit helpers; interior transport must execute
-the new compiled representation.
+```text
+validated source graph
+    -> typed source equations + state/event dependencies
+    -> global simplification, state boundaries, cycle classification
+    -> reduced value DAG + logical state/events + boundary/projection bindings
+    -> checked lowering and exclusive ownership
+    -> existing tick/phase dispatcher + incremental evaluator
+```
 
-## Algorithm
+Extend the existing settled-plan path instead of adding a parallel compiler or
+another device simulator. The executable product needs:
 
-1. **Bind the complete region and interface.** Start from the validated
-   BoundaryCatalog and merged RegionPartition/perimeter. Bind every owned
-   actor, resource, contact selector, wire corridor, entry, and outside effect.
-   Audit the interface against the original power/callback rows and stateful
-   peripherals. No unexplained missing edge or state owner is admissible.
+1. The existing reduced value DAG, with typed control, state and boundary inputs.
+2. Dense retained state slots and event bindings: sample a BUD, validate/commit a
+   write, schedule a required delay/publication, and publish an outside effect.
+3. An ownership table and cold source mapping for diagnostics, activation and
+   interpreter reconstruction. Physical identities need not be hot state.
 
-2. **Build two linked graphs.** A pure value graph describes power/guard
-   expressions with attenuation and contact selection. An ordered event graph
-   describes update delivery, piston sampling/acceptance, resource writes,
-   reset, and future publication. The same value on two events does not make
-   the events interchangeable. Keep original IDs in cold provenance tables;
-   use dense local IDs in the executable arrays.
+Keep Graph's game clock, phase ordering and scheduling interfaces as the single
+scheduler. Logical events target retained state and boundary operations, not
+all original internal pistons. A closed kernel must execute without calling
+`extend_connections`, `retract_connections`, Turbo or physical reset handlers
+for its internals. External classic redstone may remain on Graph through typed
+ports. Preserve a fast empty-phase path so generic scheduling does not erase
+COUNTER's achieved throughput.
 
-3. **Compile transport between piston nodes.** Trace fixed geometry once at
-   compilation. Replace interior dust visits and passive block callbacks with
-   transport programs whose leaves read typed live inputs and whose outputs
-   deliver ordered receiver samples. Precompute reachability/attenuation where
-   valid. A maximum-of-weighted-sources equation computes a settled value only;
-   it is not, by itself, a replacement for update delivery or intermediate
-   threshold crossings.
+Within each phase, logical and Graph events must share the relevant sequence/FIFO
+order, unless their cross-owner effects are shown to commute. Draining a separate
+logical queue before or after an entire physical action batch is insufficient.
 
-   For the first exact specialization, use bounded fixed-geometry corridors
-   with queue-only receivers and a small source/entry-state family. Compile
-   the exact reference transition into a compact event transducer: an entry
-   guard, retained transport state, pure value operations, ordered sampling
-   cuts, and next state. Preserve first-discovery observations and the first
-   qualifying request/source route. Conditional entries must be checked before
-   any optimized effect. Unsupported entries retain an explicit counted
-   fallback; a region with such runtime fallback is not reported as fully
-   replaced.
+## Implementation slices and completion gates
 
-   A reference transition may be symbolically specialized or exhaustively
-   compiled over a bounded finite family. Bound compile time, retained states,
-   and memory; never assume that testing one driver vector certifies others.
-   Inputs outside the certificate must fail entry before mutation. Any removed
-   interior state needed for fallback or projection must be materialized from
-   the transducer state, not read from a stale shadow circuit.
+### 1. Produce scalable equations and classify feedback
 
-4. **Execute causal events on the compiled graph.** An input activates its
-   compiled entry. Follow precompiled dependency/transport edges, enqueue
-   target piston work, and commit through the original stateful semantics.
-   FIFO successors remain behind already queued peers where that order matters.
-   A chain must not run recursively to completion ahead of a sibling chain.
-   No universal simultaneous-layer rule is assumed: shared resources and
-   acceptance reads retain their explicit dependencies and arbitration.
-   Graph construction is cold; runtime does not rediscover physical layers.
+Refactor `logical.rs` source expansion into one-level typed equation templates
+and an explicit worklist. Retain `SignalTracer` for local electrical queries,
+its memoization and `LayerBuilder` simplification. Do not promote the diagnostic
+string/report format to a production artifact. Use bounded work, graph size and
+memory rather than the 256-source recursive substitution limit. The tracer's
+separate local query/guard limits remain distinct diagnostics.
 
-5. **Minimize only under the transition contract.** Fold constants, remove
-   proven passive work, hash-cons pure expressions at the same sampling cut,
-   remove dead reads/edges, and fuse equivalent typed reads. Do not remove a
-   piston/buffer merely because its settled Boolean value is an identity;
-   it can contribute a causal step. Do not merge observations across a write
-   or capture boundary. An event may be removed only if its reads, effects,
-   and generated pending work are redundant under the certificate.
+Propagate constants across templates to a fixed point, fold aliases and gates,
+remove dead branches, and slice from actual value/state/event roots. Then find
+strongly connected components and topologically lower the acyclic parts. Known
+state reads terminate combinational traversal. Classify remaining feedback as
+removable reset/control work, an explicit state transition with an established
+update contract, or unresolved. A cycle alone never creates a register; the
+current automatic retained-resource cut is a diagnostic, not that contract.
+Only invariant constants may propagate; snapshot values are runtime inputs/state.
+Demand only the thresholds each consumer needs, keeping full strength at the
+ports where it matters rather than carrying it through every internal gate.
 
-6. **Pack for CPU execution.** Store opcodes, operands, successor ranges,
-   state slots, guards, and output bindings in contiguous arrays. Reuse local
-   scratch with nested-invocation isolation. Avoid hot-path block reconstruction,
-   physical-neighbor discovery, hash maps, allocation, and indirect dispatch
-   per dust block. Start with efficient scalar operations; add SIMD only to
-   measured batches of independent operations, preserving event dependencies.
+Gate: >256-deep acyclic examples compile; cross-equation constants eliminate
+otherwise apparent cycles; real state remains state; unresolved cycles give a
+bounded source/owner witness. Revisit the actual BubbleSort cycle after global
+simplification and record the resulting classification before runtime elision.
+Include `A = B && C; B = A; C = false`: the apparent cycle must disappear after
+substitution, while a nonconstant unresolved cycle must remain a decline.
 
-7. **Keep entry, exit, and fallback honest.** Import control, piston/resource,
-   and pending state. Export interface effects and continuation state. Keep
-   original physical projection cold and separate from inference. Count every
-   general transport fallback and expose the uncovered region; installed
-   kernel count is not a coverage or performance claim.
+### 2. Compile ordinary state and consequential events
 
-## Why this preserves NANOTICK_EXAMPLE
+Discover state candidates from resource owners, readers/writers, Main/QC links,
+callback occurrences, observer/reset provenance and delayed effects. The strict
+upper-storage/lower-reader `BudMemoryRead` optimization remains useful evidence
+but cannot be the admission requirement for ordinary memory. Production must
+not use the fixtures' RAM coordinate lists to recognize state.
 
-The pinned supplied example has five piston actors. Its measured first-wave
-order is `delay-1, ordinary, delay-2, downstream, inhibit`: the ordinary branch
-queues downstream before delay-2 queues inhibit. Downstream therefore retracts
-before the inhibitor becomes effective. The replacement must reproduce that
-behavior, including reset/reuse; it must not repair the designer's race by
-running the entire delayed branch first or evaluating only settled Boolean
-values. Keep the unequal actor chains and their activation/acceptance edges.
+For each retained cell, bind its readable value, accepted writes, update
+triggers, and any visibility/ready phase that a later retained sample can read.
+Retain generation/cancellation state only as needed for scheduled effects.
+Represent required clocks, repeater/observer delays and reset rearming as small
+logical state/event operations; do not assume one global clock or period.
+Private reset notifications disappear when their only job is preparing the
+next logical computation and any retained rearming, sample, due-time or ordering
+effect has a logical replacement. Do not globally fold all observers OFF as in
+the FPU-only experiment.
 
-## Implementation and acceptance order
+Compile request sampling, acceptance-time rechecks and delayed publication as
+separate cuts where a relevant intervening change is possible. Fuse them only
+when the retained dependency graph permits it. Collapse internal event chains
+and redundant deliveries to their consequential boundary events. Backward
+slicing must include events that cause writes even when signal values stay
+unchanged. Do not keep millions of callbacks under new opcode names.
 
-1. Add a **separate pass**, typed plan output, independent validation, lowering,
-   runtime, interface export, coverage and operation counters. Reuse current
-   state/scheduler owners. Keep it experimental until its certificates pass.
-2. Deliver an executable small region first, with actual dust traversal removed:
-   single-wire controls, NANOTICK_EXAMPLE, ADDER1BIT and its prepared-0-1-1
-   ordering counterexample. Cover rotations, rising/falling inputs, shared
-   resources, interrupted/reset entries, and native continuation.
-3. Grow through ADDER11 and Counter, including Counter's sixteen labeled BUD
-   cells. Preserve whole input/output histories, not only final settled bits.
-4. Lower BubbleSort's one candidate with the audited full interface. Report
-   exactly which transport is compiled, which state and effects remain, and
-   whether any general walks/callbacks still execute. Validate its entire
-   10,036-tick four-bank RAM trace, availability, final sort, external controls,
-   reset/pending work and continuation. Extend input histories before promotion.
-5. Validate FPU_MROWW with the green-wool trigger and seeded random histories.
-   Do not claim arithmetic equivalence from a native output bank that stays
-   0xffff, or call ordinary-piston probes a certified FPU memory map.
-6. Measure fresh alternating production-release pairs after correctness passes.
-   Compare interpreter, current correct maximum compilation, and the new pass
-   on identical inputs. Report inference TPS separately from preparation and
-   projection; target a material BubbleSort gain (at least 10% lower median
-   inference time), and explain work removed. A slower prototype or uncovered
-   whole region is unfinished, even if it groups into one kernel.
+Gate: every retained reader, writer, trigger and publication has one typed
+binding; each removed internal effect is either dead to these roots or replaced
+by a logical consequence. Rilax establishes ordinary memory behavior, including
+same-value updates, enable edges, latched reads and delayed availability.
 
-Each transport certificate must give a state mapping and a transition argument:
-at every exposed sampling/commit boundary the same relevant values are read and
-the same dependent output/future effects are produced. Internal queues need not
-be byte-identical if a different representation has that correspondence. The
-memory-only strict/relaxed experiments are useful evidence, not the certificate.
+### 3. Execute one complete BUD slice without physical internals
 
-## Stable-input combinational compilation (2026-10-20)
+Extend `SettledCircuit`/its existing plan ownership with the state/event tables;
+use `SettledEvaluation` and `LogicalValues` for values. Extend the existing
+`LogicalDevice` integration at Graph's tick/phase cuts. `SettledMachine::step`
+currently writes every register simultaneously; it is not a generic CPU tick.
+Add event-selected commits and preserve simultaneous groups only where the
+source contract establishes them.
 
-The user clarified the optional `--stable-instant-inputs` contract: external
-inputs stay fixed from the triggering input change through reset. Under that
-contract the target is a combinational function of the input snapshot and
-starting memory, with memory writes, reset and exposed output effects at its
-boundary. The internal physical callback sequence is not the observation
-contract for this mode. This does not freeze internal resource state across
-successive accepted piston requests.
+A state/input change marks dependent expressions dirty. Evaluate them before a
+retained sample or publication needs them. An update can execute even when the
+dirty value frontier is empty. Preallocate runtime storage; use dense IDs and
+arrays in the hot path. Keep physical projection and source descriptions cold.
 
-`compile-stable-instant-logic` now derives weighted source expressions from
-the existing fixed-geometry, queue-only transport certificates. Distinct inputs
-need not share a predicate. For a source at distance `d`, the contribution is
-`source.saturating_sub(d)`; equal source/guard pairs share one input slot, and
-parallel paths retain the smallest attenuation. Paths losing fifteen levels
-cannot contribute. These expressions require no inference-time neighborhood
-discovery, wire queues, or relaxation rounds.
+Gate: a small Rilax/one-BUD circuit preserves observable tick history, meaningful
+writes and output strength while executing zero internal physical callbacks,
+wire visits, piston actions and reset publications. Exercise canceled requests,
+changes between request and acceptance, repeated updates, pending writes and
+same-tick competing events. Compare rejected as well as accepted actions during
+shadow validation; accepted-only probes can miss spurious writes.
+Zero callbacks includes owned route delivery, not just the piston commit calls;
+required external deliveries still execute at their logical boundary cuts.
 
-The CPU product covers 2,138 nets and 17,426 wires with 8,772 shared typed inputs,
-18,925 terms and 26,780 possible output sites. Execution evaluates the entry
-expression first, samples other inputs lazily, and only evaluates the remaining
-net if the entry changes. Distinct boundary sites retain live admission and
-existing memory/reset commit helpers. An incompatible captured entry takes a
-counted exact fallback before optimized effects. Physical wire values are still
-materialized for remaining graph consumers and interpreter handoff.
+### 4. Install the complete BubbleSort kernel
 
-The separate `compile-signal-channels` pass keeps exact ordered transitions
-without the stable-input promise. Its complete 10,036-tick CPU run preserved
-every graph state/future boundary and all 768 native RAM/readiness bits, removed
-1,889,156 interior visits, and recorded no channel entry fallback. It covers
-3,699 wires, so it is not whole-circuit replacement.
+Compile all required RAM/state and control dependencies, then merge the
+computation and event regions so physical cell boundaries cease to be runtime
+interfaces. Ordinary retained state is part of the logical program, not an
+excuse to keep every storage piston physical. Retain only actual outside ports.
+Do not re-enable the old stable-input flag path as the automatic O6 solution.
 
-The stable-input path has passed all forty pinned Adder11 output windows and
-the complete 10,036-tick CPU trace: all 768 RAM bits/readiness, command output,
-final sorted values and sixteen ticks of interpreter continuation. FIFO-local
-event-kernel tests keep their original exact
-future assertions with the separate combinational pass excluded from those
-focused pipelines. The current regression suite has 574 passing tests.
+Assign exactly one owner to every actor/resource/route effect: Graph or logical.
+A removed internal callback cannot also run through legacy event, packed-query
+or transport paths. Compile/entry failure before activation leaves the complete
+unsupported ownership region on Graph. After a logical effect commits, do not
+fall back by replaying that action physically.
 
-Three production fat-LTO samples with O5 and stable inputs measured 326.77,
-326.07 and 325.06 inference TPS (median 326.07). This is 8.69% above the
-user-accepted 300 TPS baseline; these are not alternating pass-ablation pairs.
-Preparation and World projection are excluded. See
-[the measured report](STABLE_INSTANT_LOGIC_RESULTS.md) for scope and costs.
+Gate: all 10,036 native BubbleSort RAM ticks, final sorting, required external
+outputs and controls agree; internal physical work for the claimed core is
+zero. Start/stop/reset and changing controls also pass. Power-query coverage
+alone cannot satisfy this gate. Complete event coverage is required before
+calling the whole build compiled.
 
-Both products remain partial: general propagation, physical actor notification
-routes, and state outside their owned nets still execute. The whole-circuit
-goal is open. After measuring this implementation, the remaining work is to
-fold signal expressions into actor predicates and replace internal physical
-notification routes with compiled state dependencies, retaining the complete
-memory/control/reset interface.
+### 5. Close activation, continuation and generality
 
-### Incremental execution and the next admission extension
+Adopt current state rather than schematic defaults. Import retained pending
+work and deadlines with their existing game tick/phase, or continue Graph until
+a supported adoption cut; checking or waiting must be automatic and reported.
+Discard pending private work only when its logical consequences are represented.
+Snapshot validation and activation remain atomic.
 
-Input-to-expression and wire-to-output inverse indices are now implemented.
-The complete native CPU trace passes again; wire-expression evaluations fell
-from 109,252,352 to 31,205,330, while all other execution counts stayed equal.
-Five alternating production pairs measured 320.21 versus 321.27 median TPS;
-the median paired time reduction was 0.62%, with one slower pair. This is not a
-material acceleration. The whole-circuit goal still requires removing the
-2,009,418 remaining general walks and most of the 174,026,524 callbacks.
+Project public outputs at the original cadence. For interpreter handoff,
+materialize compatible state and pending retained effects at a supported cut;
+if reconstruction requires settling, advance the authoritative logical program
+to that cut before switching. Never resume from a stale physical shadow.
+Test handoff at supported busy phases as well as quiescent checkpoints.
+The atomic handoff includes public electrical levels/strengths, retained state,
+pending external callbacks/source ticks, deadlines and cancellation generations.
+Every queued effect transfers once; already delivered effects must not replay.
 
-The measured coverage blocker is actual conditional wire transfer: 113 rejected
-corridors contain 17,736 wires, including one corridor with 13,340 wires. No
-corridor is rejected solely by the blanket geometry check. Another 106 corridors
-and 3,725 wires first fail receiver admission; 2,466 singleton corridors contain
-2,466 wires. The detailed report is
-`target/instant-drives/cpu-transport-rejections-before-guarded.json`.
+Run ANPU with the same compiler/runtime: 5,000 ticks of state and screen
+behavior, all 14 changed screen frames, meaningful BUD transaction timing and
+native continuation. Reuse the frozen 1,552-row BUD trace as a reference, but
+separate consequential transactions from redundant samples before comparing
+an intentionally reduced executor. Preserve the old exact trace tests for the
+unchanged physical/query path. Validate ADDERS11BIT, parseable TEST_ samples,
+COUNTER and a divider as cross-build checks; keep the previously accepted
+unsupported samples explicit. Apply the same core to FPU's publication adapter
+and validate outputs at the required original publication ticks. Keep the
+documented user-accepted native glitch/result exceptions explicit; a frame-only
+calculation result does not establish publication correctness or production TPS.
 
-The next compiler extension should use guarded weighted edges:
+Gate: automatic O6 activation, no double execution, observable continuation and
+O0-O5 regressions pass. Retire the narrow standalone clock bypass only when the
+generic path preserves COUNTER behavior and its speed target.
 
-1. Lower each transfer slot into a directed source-to-target edge. Direct slots
-   use a true guard. Descent uses `!solid(horizontal)`; Turbo ascent uses
-   `solid(horizontal) && !transparent(horizontal) && !solid(up)`. Reuse typed,
-   ordered contact-variant selection from the drive compiler. Resolve every
-   possible source to a retained wire or an explicit typed carried-wire input;
-   a geometry predicate alone does not establish source identity.
-2. For each contributing driver, propagate guarded reachability for distances
-   zero through fourteen. For distance `d`, OR predecessor reachability AND the
-   edge guard. Merge equal formulas in the canonical Boolean DAG. The resulting
-   wire value is the maximum driver value minus its source/path attenuation,
-   gated by reachability. Positive attenuation bounds cycles without treating
-   memory feedback as combinational logic. Keep explicit work/memory limits;
-   do not publish a partially compiled net when a limit is exceeded.
-3. Intern source and topology predicates, then compile inverse predicate-to-
-   expression dependencies. A changed input or geometry guard should update
-   only affected expressions and output sites, preserving the existing
-   admission/commit cuts. Do not solve every wire in the large corridor for
-   every entry. Internal resource mutations still require fresh predicate
-   samples even when external controls obey the stable-input promise.
-4. Check the entire enlarged corridor for receiver effects and notification
-   obligations. The first rejection witness is not proof that all other
-   restrictions pass. Memory storage/read pistons, writes, reset deadlines and
-   outside observers remain explicit stateful boundaries. In particular,
-   repeater lock updates need a stronger proof than Torch's queue-only update.
-5. Verify guarded topology on small rising/falling, contact-selection and reset
-   cases, then run the complete CPU/native RAM/readiness and continuation check.
-   Report how many original walks/callbacks disappear before repeating production
-   timing. Pure formula minimization alone has not delivered the requested gain.
+### 6. Measure and remove superseded paths
 
-### Ordered guarded transport implementation
+Run serialized release benchmarks on the same inputs and active-tick windows.
+Report whole-device game TPS, compile/adoption/projection costs and logical
+expression/event work separately. Count remaining physical callbacks, samples,
+actions, transport visits and fallbacks by ownership. No speed claim follows
+from a cold netlist or a kernel-only evaluation rate.
 
-The separate O5 `compile-guarded-instant-transport` pass now extends the
-transport certificate to conditional connections, singleton corridors and
-delayed-device boundaries. It runs before drive/channel/stable-logic
-compilation, replacing the original transport table with a freshly derived
-table. Publication independently rederives the guarded certificate.
+Keep the existing COUNTER >=1MTPS and production FPU >=1kTPS targets. BubbleSort
+and ANPU require measured whole-device improvement and complete claimed-core
+elision; no CPU TPS target has yet been specified. Profile the closed kernel
+before considering JIT, SIMD or additional caching. Retain live power plans and
+O0-O5 transport as useful fallback code; retire duplicate experimental O6
+execution paths and probes superseded by permanent regressions.
 
-Conditional input masks use the original captured horizontal/up geometry;
-source identities must still be fixed member wires. The dense executor keeps
-the native heading, shared first captures, rotating queues, receiver admission
-cuts and FIFO calls. Torch/comparator scheduling and repeater lock changes
-remain at those cuts. A pre-entry guard checks repeater receiver strengths
-against their powered state, since a lock callback can normalize that strength.
-Canonical imports and writes maintain a conservative O(1) admission hint;
-otherwise the net's repeater receivers are checked before optimized effects.
+## Code scope and review ownership
 
-This stage removes general neighborhood discovery from newly admitted wiring.
-It does not yet replace its ordered transport with guarded weighted equations
-or remove its boundary callbacks. The settled stable-logic builder continues
-to decline conditional connections and delayed-device receiver nets. Wider
-admission is therefore a basis for the planned dependency program, not evidence
-that the whole circuit has been replaced. The first complete CPU checks pass:
-39,144 wires are admitted and the sort executes zero general walks, with exact
-state/future equivalence without the stable assumption and native RAM/final
-sort/continuation checks in both modes. Production timing is collected
-separately; see `STABLE_INSTANT_LOGIC_RESULTS.md` for the retained work counts.
+| Area | Required change |
+| --- | --- |
+| `analysis/instant/layers/logical.rs`, `logical/settled.rs` | Iterative equations, global simplification, state/event roots and closed-region admission |
+| `analysis/instant/layers` and `program_graph/bud_memory_reads.rs` | Reuse typed boundary/reset evidence; discover general retained state and event dependencies |
+| `program_graph/settled_*`, `logical_values.rs` | Extend the existing checked plan with state/event bindings and selected commits; reuse incremental inference |
+| `passes/compile_settled_circuit.rs`, `planning.rs`, validation and execution-plan dependencies | Automatic O6 publication, source/ownership checks and invalidation of affected products |
+| `program_graph/lowering.rs`, `backend/graph/logical_device.rs`, scheduler and piston dispatch seams | Dense instructions, exclusive event dispatch, activation, output projection and handoff |
+| Coverage/export, `tools/redpiler_graph/loader.py`, tests and optimization-level documentation | Validate new references, distinguish candidate/lowered/activated/fallback coverage and expose retained work |
 
-### Electrical value regions inside ordered transport
+Use the existing validated-product ownership flow; build once and check the
+relevant source dependencies rather than repeatedly recompiling every plan.
+Structural checks must reject invalid roots, writers, event targets, time/order
+bindings and ownership conflicts. Native/interpreter differentials validate
+semantics; repeating the same compiler is not an independent semantic proof.
+Export only the bindings/counters needed to assess this work; a viewer redesign
+and a new pass framework are outside scope.
 
-The fresh guarded profile puts 47.17% of inference CPU in dense transport and
-16.18% in stable logic. The full-sort attribution identifies the real hot
-region: transport net 15 executes 68,221,728 visits (71.52% of all dense visits).
-Its 13,340 wires split into **2,150 weak components of possible Turbo power
-transfer**, including conditional edges; median component size is two and the
-largest is 56. Net 76 adds 11,659,899 visits across 79 such components, none
-larger than fifteen. Notification connectivity has grouped many small electrical
-calculations into large transport corridors. These component counts describe
-wire-strength edges; source/state and notification dependencies remain explicit.
-
-Implement a separate `compile-instant-value-regions` product after typed drives:
-
-1. Partition each certified transport net by its direct **and possible
-   conditional** wire-strength edges. Keep the net-local wire IDs and the
-   original notification graph so boundary ordering can still be executed.
-   Do not split transport execution merely because electrical components differ.
-2. Within each region, lower unconditional edges to unit-loss arcs. Group
-   structurally equal typed drive expressions, omitting constant-zero queries.
-   Each group is a logical input rather than another physical source site.
-   Compile a bounded BFS distance row from every drive group and conditional
-   edge target to every region output; distances saturate at fifteen. Store
-   rows contiguously as bytes and intern equal rows. Reuse the existing drive
-   conditions and query IDs rather than rebuilding block/property reads.
-3. Retain conditional arcs as `(source value, target distance row, selector)`.
-   Intern each horizontal/up geometry selector. The value kernel starts from
-   the max of drive amplitudes minus their distance rows, then applies enabled
-   conditional arcs until stable, with at most fifteen rounds because every
-   such arc loses one signal level. This computes a unique max-plus fixed point
-   without walking physical wire neighborhoods. Bound compilation work/memory
-   and decline a complete region before publication when its certificate fails.
-4. Use the value kernel as an exact **interval certificate**, before replacing
-   any ordered boundary effect. An entry must match a previously certified
-   settled profile. Sample current drives/selectors coherently for that walk.
-   If drives and conditional edge changes all move the region's monotone
-   operator in the same direction, every captured/written strength stays between
-   the old and new fixed points. A wire with equal old/new values is therefore
-   invariant throughout the episode. Check the already-written native seed
-   against these bounds; a seed/Turbo equation difference is not automatically
-   safe. Arbitrary/unsettled entries, mixed-direction changes and unproved
-   source/topology effects retain exact transport before any uncertified skip.
-5. Replace certified invariant wire evaluations by the necessary marker effects
-   at the original FIFO cut. Preserve first-capture obligations, visited state,
-   heading/bias and layer suppression; never mark a visit early at enqueue time.
-   Geometry is stable within an admitted walk, but captured repeater locking
-   can still matter to boundary scheduling. Preserve all ordered piston samples,
-   their first-request provenance, and delayed-device calls until each removed
-   operation has its own proof. Later compress marker/capture footprints and
-   compile per-source boundary programs to remove the remaining physical events.
-
-Compiler/value-kernel tests should compare the compiled rows with ordinary
-bounded relaxation on random small directed/conditional graphs, including
-cycles, multiple drives, attenuation and disconnected outputs. Runtime gates
-must cover both polarities, unchanged outputs, dirty neighboring components,
-captured values, mixed changes and invalid profiles. Then repeat exact full CPU
-state/future, native RAM and continuation checks before production timing.
-Keep Nanotick and reversed-request counterexamples as ordering constraints.
-This is a route toward whole-circuit replacement; publishing region metadata
-alone does not satisfy the goal.
-
-The first runtime stage uses a narrower certificate than step 4: on the first
-member capture of a region in each walk, solve its current fixed point and
-require every live member strength to match. No region wire has been captured
-or written yet, and other electrical components cannot change its power inputs.
-The existing transport certificate holds source emissions and geometry stable
-for the episode. Such a region remains unchanged throughout the walk. Cache its
-typed wire observations and skip subsequent value queries, while preserving
-neighborhood discovery, visited/heading state, FIFO markers and boundary calls.
-Classify unmatched or declined regions as exact for the entire walk. Recheck
-all certificates in the next walk; no persistent profile or monotone-transition
-assumption is used in this first stage. The native seed write and root
-propagation remain unconditional, including a seed whose region is now settled.
-Transition intervals and marker removal remain later work. The implementation
-passes focused and full CPU exact/native/continuation checks in both modes.
-Five production pairs regress from 334.31 to 295.48 median TPS, with 12.21%
-more time in the median paired comparison. It removes 32.10 million calculations
-in stable mode but retains all 95.39 million dense visits and solves 9.16 million
-regions. Profile the new runtime before further optimization. The next narrow
-candidate is persistent per-region certificates: reuse unchanged driver/selector
-snapshots and full typed wire values, invalidate only the owning region on a
-member `set_wire`, and guard publication with a region revision. Shared query
-or selector IDs need separate per-region snapshots. This stage does not yet
-provide acceleration or satisfy whole-circuit replacement.
-
-The persistent-certificate and compact-capture rewrite is now implemented and
-passes focused tests, the normal and stable full CPU gates, native RAM and
-interpreted continuation. In stable execution it reduces solves to 2,929,286,
-with 6,234,805 cache hits and 42,603,086 byte captures. It still retains all
-95,393,263 visits and 174,026,524 callbacks. Five clean alternating production
-pairs measure 342.61 TPS for guarded transport versus 305.26 TPS for this
-rewrite, with 12.18% more paired execution time. This is evidence against
-continuing to add classification work without removing events.
-
-The full-sort opt-in census attributes every retained visit to a value region.
-Forty of the hundred hottest regions are single-drive, unconditional regions
-in net 15, totaling 11,127,067 visits. Before splicing a transition program,
-count foreign-region wire notifications and shared capture sites; electrical
-closure alone does not make visited/heading/layer markers private. The current
-`SignalTranscript` represents whole episodes and does not encode the marker
-interface needed to splice an arbitrary subregion safely.
-
-Also measure complete episodes where every visited wire is inert. In such an
-episode only the native seed propagates: all subsequent wire visits perform
-capture/marker work without enqueueing another wave. This may admit a smaller
-whole-episode program containing only required external captures, live
-enqueue-time selections and ordered calls. Its proof must establish inertness
-before optimized effects, preserve the earliest capture of each used external
-site, retain both delayed root delivery layers and alias suppression, and
-decline before effects if any reached wire is not certified. This is a candidate
-for actual visit removal, not an implemented or measured acceleration.
-
-The follow-up census rejects both as sufficient standalone routes. Across the
-full sort, single-drive/unconditional regions account for 62,858,499 visits,
-but none survive both zero foreign mapped-wire slots and zero shared non-wire
-capture sites. Entirely inert episodes account for only 1,231,414 visits
-(1.29%) across 502,423 invocations. Region 90 itself has 31 foreign-wire slots
-and one shared capture site. These are conservative structural dependencies;
-they do not prove every marker is observable in final memory. The next program
-must therefore compose cross-region marker/capture interfaces before minimizing
-them, rather than require each electrical region to be private or settle it
-atomically. Preserve interleaved queue insertion and boundary sample cuts;
-precomputed final strength profiles alone are insufficient. Do not prioritize
-the 1.29% whole-inert-episode shortcut as the main performance pass.
-
-`compile-instant-transition-programs` now specializes the complete transport
-episode, composing the coupled regions before eliminating their interior
-markers. It records first-entry wire strengths, typed drive values and used
-conditional input masks, then guards every replay before effects. Within that
-certificate, the original captures/writes reproduce all internal control, so a
-contiguous `SignalOp` stream can retain only ordered external captures,
-admission, wire writes and calls. External acceptance and pending membership
-remain live. This avoids assuming each electrical region is private, and
-supports arbitrary input combinations through exact fallback on a mismatch.
-Full normal and stable CPU checks pass, including native RAM, sorted output
-and interpreted continuation. It removes 95.00 million visits in normal mode
-and 73.68 million in stable mode (80.02% and 77.23%). See
-`INSTANT_TRANSITION_PROGRAMS.md` for the contract, implementation and evidence.
-
-The first baseline is collected before further minimization. The next concrete
-rewrite is to reuse channel admission minimization: fold only source slots
-whose validated `known` bit is set, remove known-false calls, use unconditional
-sentinels for known-true calls, compact dynamic selection IDs and prune unused
-captures. Further piston-sample fusion must establish equal *live* power
-predicates at the relevant cuts. A learned Boolean is not a valid replacement
-for unguarded external state reads. First qualifying request provenance,
-resource arbitration, reset scheduling and interpreter continuation remain
-correctness obligations. The remaining exact fallback and boundary execution
-still prevent claiming whole-circuit replacement.
-
-The pre-minimization production baseline is now measured: five alternating
-frozen fat-LTO pairs give 327.12 TPS guarded reference and 365.83 TPS transition
-program medians, with 7.80% less time in the median paired comparison. All
-output/checkpoint/semantic-count gates pass; candidate counters also match the
-full stable correctness run. This is a verified gain, but the remaining
-21.72 million visits and 85.16 million effect instructions leave the original
-whole-circuit replacement objective open. Proceed with instruction minimization
-against this frozen baseline before extending semantics or adding wider SIMD.
-
-### Minimized instructions and consumed-wire guards
-
-That first minimization is implemented. Channel and adaptive programs share
-known-admission folding, selection compaction and dead-capture pruning. Adaptive
-entry guards now retain only first-captured powers consumed by transport
-control; boundary predicates remain live at their original cuts. Seven focused
-checks, 609 broader checks and both full CPU/native/continuation gates pass.
-
-Stable fallback visits fall 21.72M -> 10.82M (88.65% removed versus guarded
-transport), misses fall 334,641 -> 160,580, and replay instructions fall
-85.16M -> 79.21M. Five alternating production pairs against the frozen initial
-transition program give 7.09% less median paired execution time. Current host
-medians are 211.29 -> 227.45 TPS; the identical reference executable is slower
-than in the preceding session under background desktop load. Compare within
-the current pairs, not across historical absolute TPS. See
-`INSTANT_TRANSITION_PROGRAMS.md` and `target/instant-transition-minimized/`.
-
-Next collect a fresh inference-only profile. The remaining 79.21M replay
-instructions and 33.49M live piston samples require substantially more
-elimination to meet the whole-circuit goal. A candidate is a typed piston-call
-operation for proved receiver identities, pruning captures that serve only
-generic dispatch while preserving live power/resource/pending sampling and
-request provenance. Do not freeze learned powered values or remove arbitrary
-repeated samples without proving equal live predicates. Full physical-graph
-replacement and new FPU timings remain unfinished.
-
-The new profile is collected and production-gate matched; see
-`INSTANT_TRANSITION_PROFILE.md`. It attributes 44.42% exclusively to remaining
-graph execution outside compiled effects/stable logic/transport entry and exact
-walks. General guard evaluation is 18.96% inclusive across paths. The separate
-`compile-guard-predicates` experiment reuses the existing compact Boolean compiler
-with live/captured context preserved. Full normal/stable CPU correctness passes,
-but five alternating production pairs show 8.38% more inference time; the builder
-is excluded from the default pipeline. See `COMPILED_GUARD_PREDICATES.md`.
-
-The unchanged minimized reference measures 428.70 median / 437.97 best TPS in
-these pairs. Host conditions changed from the preceding session; use paired
-comparisons to attribute gains. The next larger candidate is a compiled route
-effect view that omits ordinary component-shape callbacks with no effect while
-retaining the original rows used by Turbo admission. It must preserve live guard
-sampling, classic-entry ordinal substitution, piston callbacks and error paths.
-No such route-effect pass is implemented yet. The whole-kernel objective remains
-unfinished.
-
-Fresh production FPU evidence now covers the same shared inference code:
-`FPU_CURRENT_INFERENCE.md`. Five rotated random-input rounds measure 387.01 TPS
-native, 1,281.73 TPS O5 and 1,347.51 TPS O5+stable medians. All final physical
-checkpoints, semantic pending work and 16-tick native continuations pass. Raw
-piston allocator IDs are retained for diagnosis and excluded from the semantic
-future comparison, following existing continuation tests. Native output remains
-constant, so this is switching-cost evidence. O5 still executes 19.69M callbacks
-and 8.05M piston samples over initialization, warm-up and the measured vectors;
-stable mode reduces these to 18.80M and 7.51M. These counts identify remaining
-work, not profile percentages or a finished standalone logical circuit.
+Luna agents can implement equation analysis, event/state discovery and fixture
+validation as separate assignments. Root reviews the semantic boundary and
+integration. Serialize shared Cargo work and all performance runs; use separate
+build directories only when concurrency is actually useful. No tests are
+required merely for editing this plan; each implementation slice has the gates
+above and must leave its relevant regressions passing.

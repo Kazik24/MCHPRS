@@ -25,42 +25,7 @@ pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
     );
     world.set_block(BlockPos::new(32, 20, 32), Block::Sandstone {});
     world.set_screen_only(true);
-    world.packet_senders.push(PlayerPacketSender::new(&player.client));
-    let (message_sender, _) = std::sync::mpsc::channel();
-    let (_, priv_message_receiver) = std::sync::mpsc::channel();
-    let plot = Plot {
-        transient_test_fixture: true,
-        world,
-        players: vec![player],
-        redpiler: Default::default(),
-        compilation: None,
-        message_receiver: bus::Bus::new(4).add_rx(),
-        message_sender,
-        priv_message_receiver,
-        locked_players: Default::default(),
-        tps: Tps::Limited(0),
-        world_send_rate: WorldSendRate(20),
-        piston_animation: Default::default(),
-        last_update_time: Instant::now(),
-        lag_time: Duration::ZERO,
-        last_nspt: None,
-        timings: TimingsMonitor::new(Tps::Limited(0)),
-        last_player_time: Instant::now(),
-        last_world_send_time: Instant::now(),
-        sleep_time: Duration::ZERO,
-        running: false,
-        always_running: false,
-        auto_redpiler: false,
-        owner: Some(1),
-        async_rt: Plot::create_async_rt(),
-        scoreboard: Default::default(),
-        last_sidebar_update: Instant::now(),
-        last_redbox_state: Instant::now(),
-        neighbor_views: Default::default(),
-        neighbor_source: None,
-        git: Default::default(),
-        wire_cursor: 0,
-    };
+    let plot = super::benchmark::with_client(world, player, Tps::Limited(0));
     (plot, conn.peer)
 }
 

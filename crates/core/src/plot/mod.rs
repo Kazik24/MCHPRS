@@ -1,4 +1,7 @@
 use crate::messages;
+#[cfg(any(test, feature = "plot-bench"))]
+#[doc(hidden)]
+pub mod benchmark;
 mod block_light;
 #[cfg(test)]
 mod client_sync_tests;
@@ -83,7 +86,7 @@ pub const PLOT_SECTIONS: usize = 16;
 pub const PLOT_BLOCK_HEIGHT: i32 = PLOT_SECTIONS as i32 * 16;
 
 pub struct Plot {
-    #[cfg(test)]
+    #[cfg(any(test, feature = "plot-bench"))]
     transient_test_fixture: bool,
     // TODO Route plot-specific world packets through the active plot when a player enters it.
     pub world: PlotWorld,
@@ -169,6 +172,8 @@ struct UpdateStats {
     sections: u64,
     records: u64,
     simulation: Duration,
+    projection: Duration,
+    plot: Duration,
     simulated_ticks: u64,
 }
 
@@ -939,6 +944,9 @@ impl Plot {
         messages::plot_update_timings(
             p.simulated_ticks,
             p.simulation.as_secs_f64(),
+            p.simulation.saturating_sub(p.projection).as_secs_f64(),
+            p.projection.as_secs_f64(),
+            p.plot.as_secs_f64(),
             p.flushes,
             p.sections,
             p.records,
@@ -1672,6 +1680,7 @@ impl Plot {
     }
 
     fn update(&mut self) {
+        let update_started = Instant::now();
         self.update_git();
         self.handle_messages();
         self.update_render_mode();
@@ -1737,7 +1746,9 @@ impl Plot {
                     }
                 }
                 if self.redpiler.is_active() {
+                    let projection_started = Instant::now();
                     self.redpiler.flush(&mut self.world);
+                    self.world.update_stats.projection += projection_started.elapsed();
                 }
                 if let Some(duration) = tick_duration {
                     self.lag_time = self.lag_time.saturating_sub(duration * ticks_completed);
@@ -1818,6 +1829,7 @@ impl Plot {
         self.remove_dc_players();
         self.remove_oob_players();
         self.update_neighbor_views();
+        self.world.update_stats.plot += update_started.elapsed();
     }
 
     fn create_async_rt() -> Runtime {
@@ -1931,7 +1943,7 @@ impl Plot {
         let world_send_rate = plot_data.world_send_rate;
         world.set_screen_only(database::get_screen_only(x, z));
         Plot {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "plot-bench"))]
             transient_test_fixture: false,
             last_player_time: Instant::now(),
             last_update_time: Instant::now(),
@@ -2059,7 +2071,7 @@ impl Drop for Plot {
         self.cancel_redpiler_compilation();
         // Packet-handler tests own an in-memory world, with no persistent saves
         // or server thread to receive crash-recovery messages.
-        #[cfg(test)]
+        #[cfg(any(test, feature = "plot-bench"))]
         if self.transient_test_fixture {
             return;
         }

@@ -31,16 +31,18 @@ The instant-layer path already has useful ingredients: explicit boundary
 inputs and roles in `LayerInputSource`, hash-consable Boolean `LayerExpr`
 nodes, backward slicing in `ReducedLayerProgram`, and allocation-free
 topological evaluation. A general combinational compiler can reuse these
-rather than infer a counter-specific word. Add signal-strength operations to
-the same DAG (input strength, max, attenuation, threshold/predicate, and
-component transfer), and compile only closed acyclic slices between explicit
-state boundaries. Cycles or ambiguous ownership should fall back to the
-existing graph executor.
+rather than infer a counter-specific word. Initially reuse the current Boolean
+threshold representation for strength-sensitive ports. Build source equations
+iteratively and propagate constants globally before classifying cycles at
+explicit state boundaries. Unresolved cycles or ambiguous ownership retain
+the existing graph executor.
 
 The sequential boundary retains genuine logical memory, required clocks, and
 observable notifications and strength. Private piston pose, propagation, reset
 geometry, and FIFO bookkeeping can disappear when their consequences are fully
 internal. Model one computation as outputs and proposed next state, with a
 separate adapter for the limited outside effects and interpreter reconstruction.
-The current compiler publishes that executable DAG; world activation remains
-separate work, rather than a claim that a cold artifact already improves TPS.
+The compiler publishes reduced value artifacts; activation currently covers a
+qualified COUNTER family. Generic BUD event execution and whole CPU activation
+remain work. The current scope and gates are in the
+[logical compiler plan](INSTANT_CIRCUIT_ACCELERATION_PLAN.md).

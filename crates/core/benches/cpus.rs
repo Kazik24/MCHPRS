@@ -6,8 +6,18 @@ mod cpu_support;
 use cpu_support::*;
 #[path = "support/graph_short.rs"]
 mod graph_short;
+#[cfg(feature = "plot-bench")]
+#[path = "support/plot_client.rs"]
+mod plot_client;
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--plot-client") {
+        #[cfg(feature = "plot-bench")]
+        plot_client::main(&args).unwrap();
+        #[cfg(not(feature = "plot-bench"))]
+        panic!("--plot-client requires --features plot-bench");
+        return;
+    }
     let short_graph = args.iter().any(|arg| arg == "--graph-short" || arg == "--admission-smoke");
     if short_graph {
         graph_short::main().unwrap();

@@ -334,8 +334,9 @@ weak components of direct plus possible conditional Turbo strength edges;
 they do not erase source/state dependencies or notification ordering. The top
 two nets account for **83.74% of dense visits**. This supports compiling small
 electrical value regions within the existing ordered event envelope, rather
-than solving one 13,340-wire state space. The next pass and its interval/ordering
-certificate are specified in `INSTANT_CIRCUIT_ACCELERATION_PLAN.md`.
+than solving one 13,340-wire state space. This motivated the value-region pass
+described below. The current [O6 logical compiler plan](INSTANT_CIRCUIT_ACCELERATION_PLAN.md)
+supersedes that physical transport roadmap under the newer observation contract.
 
 Attribution artifacts: `target/guarded-transport/callback-census.json`,
 `callback-census-summary.json` and `callback-census.log`. Instrumentation is

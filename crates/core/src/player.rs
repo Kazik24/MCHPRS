@@ -359,7 +359,7 @@ impl Player {
         }
         .encode()
     }
-    #[cfg(test)]
+    #[cfg(any(test, feature = "plot-bench"))]
     pub(crate) fn test_player(client: PlayerConn) -> Self {
         Self::from_data(Default::default(), 1, "SyncTest".into(), client)
     }

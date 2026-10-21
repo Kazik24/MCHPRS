@@ -1,5 +1,16 @@
 # Redpiler current state
 
+## O6 update, 2026-10-21
+
+The current [logical compiler plan](INSTANT_CIRCUIT_ACCELERATION_PLAN.md) scopes
+automatic Boolean/state/event execution under the stable observable-output
+contract. O6 live Main/QC compilation is verified for BubbleSort and ANPU, but
+their physical action/event machinery still runs. COUNTER has a qualified
+logical path; general state/event extraction, activation and handoff remain work.
+See [current verification and measurements](SETTLED_RUNTIME_VERIFICATION.md).
+The sections below retain earlier configurations and historical measurements;
+their physical transport roadmaps do not override the current O6 plan.
+
 The [fresh packed-kernel ETW profile](CPU_FPU_PACKED_KERNEL_PROFILE.md) measures
 current production O5: propagation owns 68.2% of BubbleSort and 63.8% of FPU
 inference samples. Capture and general route/contact guards remain the largest

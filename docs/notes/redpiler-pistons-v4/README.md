@@ -7,16 +7,20 @@ For the current compilation cleanup and the ten-second target, use the
 [compilation simplification plan](COMPILATION_SIMPLIFICATION_PLAN.md). It separates
 implemented improvements from the next proposed validation and ownership changes.
 
-Graph and the O2/O3/O5 optimizations work today. The layered instant compiler has tested
-analysis and reduced expressions, but no live kernel replacement. Recognition, a reduced
-compiler artifact and executed replacement are different coverage claims.
+Graph and the O2-O5 optimizations work today. O6 has live piston power plans and a
+qualified COUNTER logical executor. Whole BubbleSort, ANPU and FPU logical execution
+remains unfinished. Recognition, reduced artifacts and executed replacement are
+different coverage claims.
 
 ## Current proposal
 
-The [layered instant compiler plan](layered-instant-compiler/README.md) is the current
-implementation proposal from 2026-10-18. It includes architecture, algorithms, representation
-shapes, eight reviewable implementation steps and a removal/replacement/reuse map.
-It is partially implemented as test-only analysis; live execution is not enabled.
+Use the [O6 logical compiler plan](INSTANT_CIRCUIT_ACCELERATION_PLAN.md), updated
+2026-10-21: iterative equations, global simplification, retained state/BUD events,
+exclusive logical execution and validation gates. It replaces the earlier
+physical transport proposal under the current observable-output contract.
+
+The [earlier layered plan](layered-instant-compiler/README.md) remains design history
+and a source of reusable boundary/effect analysis, not the current O6 scope.
 
 Keep all edge cases and evidence in [INSTANT_COMPILER_EDGE_CASES.md](INSTANT_COMPILER_EDGE_CASES.md).
 The authoritative physical semantics remain [PISTON_MODEL.md](../../PISTON_MODEL.md),
