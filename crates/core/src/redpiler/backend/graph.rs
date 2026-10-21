@@ -21,21 +21,26 @@ mod instant;
 #[cfg(test)]
 #[path = "graph/tests/instant_cpu.rs"]
 mod instant_cpu_tests;
-#[cfg(test)]
-#[path = "graph/tests/piston_sample_census.rs"]
-mod piston_sample_census;
 mod instant_kernel;
 mod instant_proxy;
+mod logical_device;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
 #[cfg(test)]
 #[path = "graph/tests/mixed_classic.rs"]
 mod mixed_classic_tests;
+#[cfg(test)]
+#[path = "graph/tests/piston_sample_census.rs"]
+mod piston_sample_census;
 mod pistons;
 mod power;
 mod projection;
 mod reset;
+mod settled_inputs;
+#[cfg(test)]
+#[path = "graph/tests/settled_timing.rs"]
+mod settled_timing;
 mod signal_channels;
 mod sites;
 mod stable_instant_logic;
@@ -412,6 +417,7 @@ pub(crate) struct GraphBackend {
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
     /// This holds reusable wave scratch and the current synchronous route replacement.
     instant_kernel: instant_kernel::KernelExecution,
+    logical_device: Option<logical_device::LogicalDevice>,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -553,6 +559,10 @@ impl GraphBackend {
         Self::validate_supported(&lowered.program)?;
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
         backend.import_ticks(lowered.imported_ticks)?;
+        backend.install_logical_device().map_err(|_| GraphBackendError::UnsupportedComponent {
+            position: None,
+            kind: "logical device input or stationary entry contract",
+        })?;
         let initial_command_ticks: Vec<_> = backend
             .program
             .command_blocks()
@@ -795,6 +805,7 @@ impl GraphBackend {
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
             instant_kernel,
+            logical_device: None,
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
@@ -1229,6 +1240,9 @@ impl GraphBackend {
     /// Handle a notification using live or captured receiver state.
     /// The component may change immediately or schedule a tick.
     fn update_component(&mut self, node: NodeId, kind: DeliveryKind, captured: Option<&ObservedSite>) -> Result<(), GraphExecutionError> {
+        if !self.logical_node_allowed(node) {
+            return Ok(());
+        }
         if self.classic_proof.is_some()
             && matches!(kind, DeliveryKind::Update { .. })
             && !matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
@@ -1917,6 +1931,9 @@ impl GraphBackend {
         let Some(receiver) = receiver else {
             return Ok(());
         };
+        if !self.logical_receiver_allowed(receiver) {
+            return Ok(());
+        }
         self.counts.callbacks += 1;
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled {

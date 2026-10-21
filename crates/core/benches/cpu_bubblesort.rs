@@ -37,7 +37,7 @@ fn main() -> Result<()> {
             "--stable-instant-inputs" => stable_instant_inputs = true,
             "--help" => {
                 println!(
-                    "cpu_bubblesort [--graph-tier 0..5] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
+                    "cpu_bubblesort [--graph-tier 0..6] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
                 );
                 return Ok(());
             }
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
         }
     }
     ensure!(iterations > 0, "--iterations must be positive");
-    ensure!(graph_tier <= 5, "--graph-tier must be in 0..=5");
+    ensure!(graph_tier <= 6, "--graph-tier must be in 0..=6");
     ensure!(!stable_instant_inputs || graph_tier >= 3, "--stable-instant-inputs requires O3 or higher");
     let cpu = support::CPUS.iter().copied().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
     let ticks = ticks.unwrap_or(cpu.active_ticks + 1);
@@ -244,7 +244,7 @@ fn execute(cpu: support::Cpu, ticks: u32, reference_ram: &[Vec<Option<u16>>], gr
                 "stable_logic_boundary_calls":execution_counts.stable_logic_boundary_calls,
                 "signal_channel_operations":execution_counts.signal_channel_operations,"piston_samples":execution_counts.piston_samples,
                 "piston_actions":execution_counts.piston_actions,"instant_kernel_invocations":execution_counts.instant_kernel_invocations,
-                "classic_net_invocations":execution_counts.classic_net_invocations,
+                "logical_kernel_evaluations":execution_counts.logical_kernel_evaluations,"logical_kernel_operations":execution_counts.logical_kernel_operations,"classic_net_invocations":execution_counts.classic_net_invocations,
                 "classic_receiver_ops":execution_counts.classic_receiver_ops}),
         }),
         active_ram,

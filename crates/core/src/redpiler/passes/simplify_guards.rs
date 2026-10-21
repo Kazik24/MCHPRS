@@ -590,8 +590,9 @@ mod tests {
             (5, "compile-instant-value-regions"),
             (5, "compile-signal-channels"),
             (5, "compile-stable-instant-logic"),
+            (6, "compile-settled-circuit"),
         ];
-        for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), None] {
+        for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {
                 optimization_level: level,
                 ..Default::default()

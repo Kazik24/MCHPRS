@@ -8,6 +8,7 @@ pub(crate) enum PlanChange {
     FixedClassic,
     Boundaries,
     Layers,
+    SettledCircuit,
     FixedSignals,
     InstantDrives,
     InstantTransitionPrograms,
@@ -113,6 +114,8 @@ pub(crate) struct ExecutionPlans {
     pub(crate) stable_instant_logic: StableInstantLogic,
     /// Exact bounded electrical distance rows for transport-net value regions.
     pub(crate) instant_value_regions: InstantValueRegions,
+    /// Cold whole-circuit logical compiler artifact; the physical graph remains the executor.
+    pub(crate) settled_circuit: Option<SettledCircuit>,
     /// Whole private wire regions with exact ordered delayed-receiver programs.
     pub(crate) classic_nets: Vec<ClassicNetPlan>,
     /// Empty disables indexing; otherwise entries align with the wire table.

@@ -81,7 +81,6 @@ fn compiled_guards_preserve_full_single_site_and_missing_capture_contexts() {
         backend.guard_matches(negated_capture, None),
         "a missing captured site remains false before negation"
     );
-
     backend.state.pistons[piston.index()].extended = true;
     assert!(!backend.guard_matches(compound, Some(&captures)));
 }

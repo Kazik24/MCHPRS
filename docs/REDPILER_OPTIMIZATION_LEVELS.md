@@ -1,8 +1,8 @@
 # Production Redpiler optimization levels
 
 Supported production passes are included in ordinary builds. Select a tier
-with `/rp compile -O1` through `/rp compile -O5`. `-O`, `-o` and `--optimize`
-select O5. Compilation without an optimization flag still selects O0.
+with `/rp compile -O1` through `/rp compile -O6`. `-O`, `-o` and `--optimize`
+select O6. Compilation without an optimization flag still selects O0.
 The same levels apply to `/rp analyze` and its graph export.
 
 | Tier | Added work |
@@ -12,6 +12,7 @@ The same levels apply to `/rp analyze` and its graph export.
 | O3 | Local piston and reset specialization, built-in reset clocks, compiled wire shapes/capture recipes, private instant regions and proxies. |
 | O4 | Instant boundary discovery, closed single-wire transfers, passive capture elimination, private BUD reads and connected FIFO-local event kernels. |
 | O5 | Equivalent delayed-update coalescing; flat CPU predicates; dense and guarded instant transport; typed drives; minimized exact transition programs; value regions and ordered signal channels. Stable power-expression programs additionally require `--stable-instant-inputs`. |
+| O6 | Reduced shared Boolean equations with strength-sensitive boundary roots, proposed register writes and retained outside effects. With `--stable-instant-inputs`, certified finite pull waves execute through the incremental DAG evaluator and replace their internal computation routes. Whole-device clock/reset removal still needs its publication and handoff adapter. |
 
 Higher tiers retain lower-tier rules. O4 event kernels replace the O3
 region/proxy builders, avoiding duplicate ownership and unnecessary compilation.
@@ -28,8 +29,19 @@ The stable-input assumption remains explicit:
 
 - `--stable-instant-inputs` explicitly promises stable external inputs through
   reset. It enables the older O3 composed-region mode and O5 stable power-expression
-  programs. O5 without this flag retains exact ordered transport/replay and live
+  programs. At O6 it also enables certified finite pull-wave compilation. O5 without this flag retains exact ordered transport/replay and live
   input sampling.
+
+O6 pull waves take precedence over overlapping per-cell and CPU handlers only
+after source validation. A single-actor wave with no owned wire corridor keeps
+the existing event/CPU path when it removes no additional work. Runtime checks
+retain stationary entry, wire levels,
+request provenance and FIFO ownership; an unproven entry executes ordinary
+Graph acceptance. Each wave keeps current input/expression values and propagates
+changes through the shared DAG, without storing input combinations. Commits
+still use Graph's state, outside callbacks and deferred work, so interpreter
+handoff uses the existing projection. This does not yet activate the autonomous
+whole-device `SettledMachine` or remove the COUNTER/FPU controller and reset work.
 
 Classic-redstone compilation is automatic from O2. After whole-fixed execution
 declines, the local classic pass certifies each candidate region independently.
@@ -48,7 +60,7 @@ scalar word operations. No architecture-specific build flag is required.
 /rp compile --optimize --stable-instant-inputs
 ```
 
-`--optimize`, `-O`, `-o` and `-O5` select the same current maximum pipeline.
+`--optimize`, `-O`, `-o` and `-O6` select the same current maximum pipeline.
 The first command supports changing inputs. Use the second only when external
 inputs remain stable through the computation/reset interval. The flag does not
 increase compilation budgets; the server controls those through player rank.
@@ -82,14 +94,15 @@ Methods, algorithms and fresh results are documented in
 [exact transition programs](notes/redpiler-pistons-v4/INSTANT_TRANSITION_PROGRAMS.md),
 [the inference profile](notes/redpiler-pistons-v4/INSTANT_TRANSITION_PROFILE.md),
 and [production FPU measurements](notes/redpiler-pistons-v4/FPU_CURRENT_INFERENCE.md).
-The FPU random-input medians are 387.01 TPS interpreted, 1,281.73 TPS O5 and
-1,347.51 TPS O5+stable, with physical-state, semantic-future and continuation
-checks. These are switching-cost measurements; native output remains constant.
+Earlier FPU measurements used the auxiliary output bank and a different trigger
+protocol. They are archived diagnostics, not evidence of completed FPU work.
+The replacement schematic must be measured with the trigger held OFF and the
+far dust bank observed; fresh arithmetic throughput remains unverified.
 
 The old `experimental-instant-events`, `experimental-instant-wire-nodes` and
 `experimental-cpu-kernels` Cargo names remain accepted as compatibility features;
 they no longer change pass selection. Existing diagnostic pass IDs retain their
-names for tooling compatibility. Production behavior is determined by O0–O5,
+names for tooling compatibility. Production behavior is determined by O0–O6,
 including builds using `--no-default-features`.
 
 The known incorrect `unsafe-abstract-instant-nets` and `unsafe-turbo-fixed-point`

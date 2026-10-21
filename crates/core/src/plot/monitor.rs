@@ -88,6 +88,17 @@ impl TimingsMonitor {
     }
 
     pub fn generate_report(&self) -> Option<TimingsReport> {
+        let unlimited = self.data.tps.unlimited.load(Ordering::Relaxed);
+        let target = self.data.tps.tps.load(Ordering::Relaxed);
+        if !self.data.ticking.load(Ordering::Relaxed) || (!unlimited && target == 0) {
+            // Idle ticks are skipped, so old active samples do not describe the current rate.
+            let rate = if unlimited { f32::INFINITY } else { target as f32 };
+            return Some(TimingsReport {
+                two_s: rate,
+                ten_s: rate,
+                one_m: rate,
+            });
+        }
         let records = self.data.timings_record.lock().unwrap();
         if records.is_empty() {
             return None;
@@ -209,6 +220,7 @@ mod tests {
     #[test]
     fn high_tick_rate_reports_do_not_overflow() {
         let mut monitor = TimingsMonitor::new(Tps::Unlimited);
+        monitor.set_ticking(true);
         monitor
             .data
             .timings_record
@@ -218,6 +230,39 @@ mod tests {
         let report = monitor.generate_report().unwrap();
         assert!(report.one_m.is_finite());
         assert_eq!(report.one_m, u32::MAX as f32 * 2.0);
+        monitor.stop();
+    }
+
+    #[test]
+    fn idle_reports_current_limit_instead_of_stale_active_samples() {
+        let mut monitor = TimingsMonitor::new(Tps::Limited(1000));
+        monitor.set_ticking(true);
+        monitor.data.timings_record.lock().unwrap().extend([20; MAX_SAMPLES]);
+        assert_eq!(monitor.generate_report().unwrap().two_s, 40.0);
+
+        monitor.set_ticking(false);
+        let report = monitor.generate_report().unwrap();
+        assert_eq!((report.two_s, report.ten_s, report.one_m), (1000.0, 1000.0, 1000.0));
+
+        monitor.set_tps(Tps::Limited(2000));
+        assert_eq!(monitor.generate_report().unwrap().two_s, 2000.0);
+        monitor.set_tps(Tps::Unlimited);
+        let report = monitor.generate_report().unwrap();
+        assert_eq!((report.two_s, report.ten_s, report.one_m), (f32::INFINITY, f32::INFINITY, f32::INFINITY));
+
+        monitor.set_tps(Tps::Limited(0));
+        monitor.set_ticking(true);
+        let report = monitor.generate_report().unwrap();
+        assert_eq!((report.two_s, report.ten_s, report.one_m), (0.0, 0.0, 0.0));
+        monitor.stop();
+    }
+
+    #[test]
+    fn idle_reports_limit_before_any_ticks_but_active_reports_need_samples() {
+        let mut monitor = TimingsMonitor::new(Tps::Limited(20));
+        assert_eq!(monitor.generate_report().unwrap().two_s, 20.0);
+        monitor.set_ticking(true);
+        assert!(monitor.generate_report().is_none());
         monitor.stop();
     }
 }

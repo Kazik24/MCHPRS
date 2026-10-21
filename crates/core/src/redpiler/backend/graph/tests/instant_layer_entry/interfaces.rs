@@ -31,6 +31,117 @@ fn compile_world(world: &PlotWorld) -> GraphBackend {
     GraphBackend::new(program, state, 0).unwrap()
 }
 
+fn compile_o6_world(world: &PlotWorld, incremental: bool, required_pull_actors: usize) -> GraphBackend {
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let mut prepared = passes::rich::prepare(world, BOUNDS, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let options = crate::redpiler::CompilerOptions {
+        optimization_level: Some(6),
+        stable_instant_inputs: true,
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    assert!(
+        prepared.graph.plans.instant.layers.is_some(),
+        "O6 stable compilation should install a layer plan"
+    );
+    assert!(prepared.graph.plans.settled_circuit.is_some(), "O6 should install its logical marker");
+    let layer_summary = prepared
+        .graph
+        .plans
+        .instant
+        .layers
+        .as_ref()
+        .map(|plan| format!("regions={} declines={:?}", plan.regions.len(), plan.declines));
+    let (program, state) = prepared.graph.lower().unwrap();
+    let kernel_summary: Vec<_> = program
+        .instant_kernels()
+        .iter()
+        .map(|kernel| match &kernel.program {
+            KernelProgram::PullWave { program, .. } => format!("PullWave({} expr)", program.expressions.len()),
+            KernelProgram::Events(entries) => format!("Events({} entries)", entries.len()),
+        })
+        .collect();
+    assert!(
+        if required_pull_actors == 0 {
+            true
+        } else {
+            program
+                .instant_kernels()
+                .iter()
+                .any(|kernel| matches!(&kernel.program, KernelProgram::PullWave { .. }) && kernel.actors.len() >= required_pull_actors)
+        },
+        "O6 kernel profitability/admission mismatch; layer_plan={layer_summary:?}, kernels={kernel_summary:?}"
+    );
+    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    if !incremental {
+        // Keep the identical O6 artifact and ownership; disable only its test cache.
+        backend.disable_incremental_values();
+    }
+    backend
+}
+
+fn assert_backend_state_equal(left: &GraphBackend, right: &GraphBackend, label: &str) {
+    assert_eq!(left.state, right.state, "{label}: component/piston/resource states");
+    assert_eq!(left.future.pending, right.future.pending, "{label}: pending memberships");
+    assert_eq!(left.future.pending_nodes, right.future.pending_nodes, "{label}: pending node counts");
+    assert_eq!(left.future.piston_requests, right.future.piston_requests, "{label}: piston FIFO");
+    assert_eq!(
+        left.future.deferred_pistons, right.future.deferred_pistons,
+        "{label}: deferred piston work"
+    );
+    let scheduled = |backend: &GraphBackend| {
+        backend
+            .future
+            .scheduler
+            .iter()
+            .map(|(tick, delay, priority)| (*tick, delay, priority))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(scheduled(left), scheduled(right), "{label}: scheduler entries and priorities");
+    assert_eq!(
+        (
+            left.future.clock.logical_tick,
+            left.future.clock.phase,
+            left.future.clock.scheduled_advanced
+        ),
+        (
+            right.future.clock.logical_tick,
+            right.future.clock.phase,
+            right.future.clock.scheduled_advanced
+        ),
+        "{label}: graph tick phase"
+    );
+}
+
+fn paired_ticks(
+    logical: &mut GraphBackend,
+    exact: &mut GraphBackend,
+    native: &mut PlotWorld,
+    logical_world: &mut PlotWorld,
+    exact_world: &mut PlotWorld,
+    positions: &[BlockPos],
+    count: usize,
+    label: &str,
+) {
+    for tick in 0..count {
+        logical.tick().unwrap();
+        exact.tick().unwrap();
+        native.tick_interpreted();
+        assert_backend_state_equal(logical, exact, &format!("{label} tick {tick}"));
+        check_boundary(logical, native, logical_world, positions, &format!("{label} logical tick {tick}")).unwrap();
+        check_boundary(exact, native, exact_world, positions, &format!("{label} exact tick {tick}")).unwrap();
+    }
+}
+
 fn check_ticks(backend: &mut GraphBackend, native: &mut PlotWorld, projected: &mut PlotWorld, label: &str) {
     let positions: Vec<_> = backend.program.sites().iter().map(|site| site.position).collect();
     for tick in 0..24 {
@@ -75,6 +186,277 @@ fn captured_wire_request_executes_a_kernel_and_rechecks_restored_power() {
         }
         check_ticks(&mut backend, &mut native, &mut world, "captured request");
         assert!(backend.execution_counts().instant_kernel_invocations > 0);
+    }
+}
+
+#[test]
+fn o6_unproven_request_origin_uses_exact_acceptance() {
+    let initial = chain_world(true);
+    let mut logical = compile_o6_world(&initial, true, 2);
+    let mut exact = compile_o6_world(&initial, false, 2);
+    let mut native = chain_world(true);
+    let mut logical_world = chain_world(true);
+    let mut exact_world = chain_world(true);
+    let positions: Vec<_> = logical.program.sites().iter().map(|site| site.position).collect();
+    let source = CONTROL;
+    turn_off(&mut logical, &mut native, source);
+    exact.use_block(source).unwrap();
+    // Imported/direct samples have no certified route provenance.
+    logical.future.piston_requests.front_mut().unwrap().source = None;
+    exact.future.piston_requests.front_mut().unwrap().source = None;
+    paired_ticks(
+        &mut logical,
+        &mut exact,
+        &mut native,
+        &mut logical_world,
+        &mut exact_world,
+        &positions,
+        24,
+        "uncertified origin",
+    );
+    assert_eq!(logical.execution_counts().logical_kernel_evaluations, 0);
+    assert!(logical.execution_counts().piston_actions > 0);
+}
+
+#[test]
+fn o6_singleton_private_cell_keeps_exact_event_or_cpu_path() {
+    let initial = direct_cell_world();
+    let mut logical = compile_o6_world(&initial, true, 0);
+    assert!(
+        logical
+            .program
+            .instant_kernels()
+            .iter()
+            .all(|kernel| !matches!(&kernel.program, KernelProgram::PullWave { .. }))
+    );
+    assert!(
+        logical
+            .program
+            .instant_kernels()
+            .iter()
+            .any(|kernel| matches!(&kernel.program, KernelProgram::Events(_)))
+            || logical
+                .program
+                .pistons()
+                .iter()
+                .enumerate()
+                .any(|(index, _)| { logical.program.cpu_kernel_entry(PistonId::new(index as u32)).is_some() }),
+        "the singleton private cell remains on its exact event/CPU path"
+    );
+    let mut native = direct_cell_world();
+    let mut projected = direct_cell_world();
+    turn_off(&mut logical, &mut native, CONTROL);
+    check_ticks(&mut logical, &mut native, &mut projected, "O6 singleton exact path");
+    assert_eq!(logical.execution_counts().logical_kernel_evaluations, 0);
+    assert!(logical.execution_counts().piston_actions > 0);
+}
+
+#[test]
+fn o6_incremental_pull_wave_matches_exact_native_and_reset_continuation() {
+    let source = CONTROL;
+    let initial = chain_world(true);
+    let mut logical = compile_o6_world(&initial, true, 2);
+    let mut exact = compile_o6_world(&initial, false, 2);
+    assert!(logical.program.settled_circuit().is_some());
+    assert!(exact.program.settled_circuit().is_some());
+
+    let positions: Vec<_> = logical.program.sites().iter().map(|site| site.position).collect();
+    let mut native = chain_world(true);
+    let mut logical_world = chain_world(true);
+    let mut exact_world = chain_world(true);
+
+    // Queue a direct boundary-triggered pull, then restore source power before entry.
+    turn_off(&mut logical, &mut native, source);
+    exact.use_block(source).unwrap();
+    assert!(!logical.future.piston_requests.is_empty());
+    logical.use_block(source).unwrap();
+    exact.use_block(source).unwrap();
+    native_step(
+        &mut native,
+        Step::SetLever {
+            position: source,
+            powered: true,
+        },
+    );
+    assert_eq!(logical.future.piston_requests, exact.future.piston_requests);
+
+    let first_logical = logical.future.piston_requests.pop_front().unwrap();
+    let first_exact = exact.future.piston_requests.pop_front().unwrap();
+    assert_eq!(first_logical, first_exact);
+    let state_before_attempt = logical.state.clone();
+    let future_before_attempt = (
+        logical.future.pending.clone(),
+        logical.future.pending_nodes.clone(),
+        logical.future.piston_requests.clone(),
+        logical.future.deferred_pistons.clone(),
+        logical
+            .future
+            .scheduler
+            .iter()
+            .map(|(tick, delay, priority)| (*tick, delay, priority))
+            .collect::<Vec<_>>(),
+        (
+            logical.future.clock.logical_tick,
+            logical.future.clock.phase,
+            logical.future.clock.scheduled_advanced,
+        ),
+    );
+    let actions_before_attempt = logical.execution_counts().piston_actions;
+    let operations_before = logical.execution_counts().logical_kernel_operations;
+    let logical_handled = logical.run_instant_kernel(first_logical).unwrap();
+    let exact_handled = exact.run_instant_kernel(first_exact).unwrap();
+    assert_eq!(logical_handled, exact_handled, "logical and exact PullWave handling result");
+    assert_eq!(
+        logical.state, state_before_attempt,
+        "restored source power causes no component/piston/resource changes"
+    );
+    assert_eq!(
+        (
+            logical.future.pending.clone(),
+            logical.future.pending_nodes.clone(),
+            logical.future.piston_requests.clone(),
+            logical.future.deferred_pistons.clone(),
+            logical
+                .future
+                .scheduler
+                .iter()
+                .map(|(tick, delay, priority)| (*tick, delay, priority))
+                .collect::<Vec<_>>(),
+            (
+                logical.future.clock.logical_tick,
+                logical.future.clock.phase,
+                logical.future.clock.scheduled_advanced,
+            ),
+        ),
+        future_before_attempt,
+        "restored source power causes no scheduled work"
+    );
+    assert_eq!(
+        logical.execution_counts().piston_actions,
+        actions_before_attempt,
+        "restored source power accepts no piston action"
+    );
+    assert_backend_state_equal(&logical, &exact, "first restored-power veto");
+    let operations_after_first = logical.execution_counts().logical_kernel_operations;
+    assert!(logical.execution_counts().logical_kernel_evaluations > 0);
+    let logical_repeat_handled = logical.run_instant_kernel(first_logical).unwrap();
+    let exact_repeat_handled = exact.run_instant_kernel(first_exact).unwrap();
+    assert_eq!(logical_repeat_handled, exact_repeat_handled, "repeated logical and exact handling result");
+    assert_eq!(logical.state, state_before_attempt, "repeated restored-power entry remains a no-op");
+    assert_eq!(
+        (
+            logical.future.pending.clone(),
+            logical.future.pending_nodes.clone(),
+            logical.future.piston_requests.clone(),
+            logical.future.deferred_pistons.clone(),
+            logical
+                .future
+                .scheduler
+                .iter()
+                .map(|(tick, delay, priority)| (*tick, delay, priority))
+                .collect::<Vec<_>>(),
+            (
+                logical.future.clock.logical_tick,
+                logical.future.clock.phase,
+                logical.future.clock.scheduled_advanced,
+            ),
+        ),
+        future_before_attempt,
+        "repeated restored-power entry schedules no work"
+    );
+    assert_eq!(logical.execution_counts().piston_actions, actions_before_attempt);
+    assert_eq!(
+        logical.execution_counts().logical_kernel_operations,
+        operations_after_first,
+        "an identical stationary entry changes no cached expression values"
+    );
+    assert!(operations_after_first >= operations_before);
+    assert_backend_state_equal(&logical, &exact, "repeated restored-power veto");
+    logical.future.piston_requests.push_front(first_logical);
+    exact.future.piston_requests.push_front(first_exact);
+
+    paired_ticks(
+        &mut logical,
+        &mut exact,
+        &mut native,
+        &mut logical_world,
+        &mut exact_world,
+        &positions,
+        24,
+        "restored-power veto",
+    );
+
+    // Run two changing-input pull cycles through the same O6 PullWave evaluator.
+    for cycle in 0..2 {
+        turn_off(&mut logical, &mut native, source);
+        exact.use_block(source).unwrap();
+        paired_ticks(
+            &mut logical,
+            &mut exact,
+            &mut native,
+            &mut logical_world,
+            &mut exact_world,
+            &positions,
+            24,
+            &format!("logical pull cycle {cycle}"),
+        );
+
+        logical.use_block(source).unwrap();
+        exact.use_block(source).unwrap();
+        native_step(
+            &mut native,
+            Step::SetLever {
+                position: source,
+                powered: true,
+            },
+        );
+        paired_ticks(
+            &mut logical,
+            &mut exact,
+            &mut native,
+            &mut logical_world,
+            &mut exact_world,
+            &positions,
+            24,
+            &format!("logical restore cycle {cycle}"),
+        );
+    }
+    assert!(logical.execution_counts().logical_kernel_evaluations > 1);
+    assert!(logical.execution_counts().logical_kernel_operations > 0);
+    assert!(logical.execution_counts().instant_kernel_invocations >= 2);
+    assert_eq!(exact.execution_counts().logical_kernel_evaluations, 0);
+    assert_backend_state_equal(&logical, &exact, "before interpreter handoff");
+
+    logical.reset(&mut logical_world);
+    exact.reset(&mut exact_world);
+    for &position in &positions {
+        assert_eq!(
+            logical_world.get_block(position),
+            exact_world.get_block(position),
+            "handoff block at {position:?}"
+        );
+        assert_eq!(
+            logical_world.get_block(position),
+            native.get_block(position),
+            "native handoff block at {position:?}"
+        );
+    }
+    for tick in 0..12 {
+        logical_world.tick_interpreted();
+        exact_world.tick_interpreted();
+        native.tick_interpreted();
+        for &position in &positions {
+            assert_eq!(
+                logical_world.get_block(position),
+                exact_world.get_block(position),
+                "continuation tick {tick} at {position:?}"
+            );
+            assert_eq!(
+                logical_world.get_block(position),
+                native.get_block(position),
+                "native continuation tick {tick} at {position:?}"
+            );
+        }
     }
 }
 

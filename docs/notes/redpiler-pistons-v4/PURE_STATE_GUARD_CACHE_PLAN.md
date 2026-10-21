@@ -1,0 +1,5 @@
+# Pure state-guard cache experiment
+
+The pure-state guard cache was removed from production. A release comparison measured O6 with the cache at **10,619 TPS** over three alternating runs, versus **12,309 TPS** for O5. O6 without the cache measured **12,050 TPS** over three runs, but those runs were not alternating, so they do not isolate the cache's cost. The available sample does not justify enabling the cache by default and does not establish a general O6 regression.
+
+The experiment cached one derived Boolean per certified compound guard made only of `Always`, `State`, `Not`, `All` and `Any`. It kept the original guard DAG as the miss evaluator and invalidated affected ancestors before piston/resource mutations, with full invalidation on rollback. Cache-specific runtime code and tests have been removed. The captured-profile shortcut in `sites.rs` is separate and remains in production.

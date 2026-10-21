@@ -7,16 +7,26 @@ pub(super) struct KernelExecution {
     pub(super) clause_matcher: crate::redpiler::program_graph::cpu_kernels::ClauseMatcher,
     /// These Boolean slots are allocated once for the largest admitted expression program.
     scratch: Vec<bool>,
+    /// O6 reuses incremental values for each admitted pull-wave expression DAG.
+    pull_wave_values: Vec<Option<PullWaveValues>>,
+    pull_wave_by_actor: Box<[Option<usize>]>,
     /// This replaces only synchronous computation routes while a wave is committing.
     pub(super) active: Option<Arc<InstantKernel>>,
     /// This actor is inside its synchronous commit, before the next queued action runs.
     committing: Option<PistonId>,
 }
 
+struct PullWaveValues {
+    evaluator: LogicalValues,
+    inputs: Vec<bool>,
+}
+
 impl Default for KernelExecution {
     fn default() -> Self {
         Self {
             scratch: Vec::new(),
+            pull_wave_values: Vec::new(),
+            pull_wave_by_actor: Box::new([]),
             active: None,
             committing: None,
             clause_matcher: crate::redpiler::program_graph::cpu_kernels::clause_matcher(),
@@ -35,14 +45,50 @@ impl KernelExecution {
             })
             .max()
             .unwrap_or(0);
+        let settled_enabled = program.settled_circuit().is_some();
+        let mut pull_wave_values = Vec::new();
+        let mut pull_wave_by_actor = if settled_enabled {
+            vec![None; program.pistons().len()]
+        } else {
+            Vec::new()
+        };
+        for kernel in program.instant_kernels().iter().filter(|_| settled_enabled) {
+            let cache_index = pull_wave_values.len();
+            let values = match &kernel.program {
+                KernelProgram::PullWave { program, .. } => LogicalValues::new(program).ok().map(|evaluator| PullWaveValues {
+                    inputs: vec![false; program.inputs.len()],
+                    evaluator,
+                }),
+                _ => None,
+            };
+            if values.is_some() {
+                for actor in kernel.actors.iter() {
+                    pull_wave_by_actor[actor.index()] = Some(cache_index);
+                }
+            }
+            pull_wave_values.push(values);
+        }
         Self {
             scratch: vec![false; size],
+            pull_wave_values,
+            pull_wave_by_actor: pull_wave_by_actor.into_boxed_slice(),
             ..Self::default()
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn disable_incremental_values(&mut self) {
+        self.pull_wave_values.iter_mut().for_each(|values| *values = None);
+        self.pull_wave_by_actor.fill(None);
     }
 }
 
 impl GraphBackend {
+    #[cfg(test)]
+    pub(super) fn disable_incremental_values(&mut self) {
+        self.instant_kernel.disable_incremental_values();
+    }
+
     pub(super) fn run_instant_kernel(&mut self, request: PistonRequest) -> Result<bool, GraphExecutionError> {
         if request.action != mchprs_world::PistonAction::Retract || self.instant_kernel.active.is_some() {
             return Ok(false);
@@ -77,12 +123,38 @@ impl GraphBackend {
             self.record_kernel_attempt(request.piston, 3);
             return Ok(false);
         }
+        let cache_index = self.instant_kernel.pull_wave_by_actor.get(request.piston.index()).copied().flatten();
+        let mut cached = cache_index.and_then(|index| self.instant_kernel.pull_wave_values[index].take());
         let mut scratch = std::mem::take(&mut self.instant_kernel.scratch);
-        let evaluated = program.evaluate(&mut scratch, |input| self.kernel_input(input, entry, request));
-        let eligible = evaluated.is_ok() && scratch[stationary.0 as usize] && self.kernel_owns_queue(&kernel, pulls, &scratch, request);
+        let logical_evaluation = if let Some(values) = cached.as_mut() {
+            for (slot, &input) in values.inputs.iter_mut().zip(program.inputs.iter()) {
+                *slot = self.kernel_input(input, entry, request);
+            }
+            self.counts.logical_kernel_evaluations += 1;
+            Some(values.evaluator.evaluate(&values.inputs))
+        } else {
+            None
+        };
+        let evaluated = match logical_evaluation {
+            Some(Ok(operations)) => {
+                self.counts.logical_kernel_operations += operations as u64;
+                Ok(())
+            }
+            Some(Err(_)) => {
+                // A malformed cached program must never suppress the exact kernel.
+                cached = None;
+                program.evaluate(&mut scratch, |input| self.kernel_input(input, entry, request))
+            }
+            None => program.evaluate(&mut scratch, |input| self.kernel_input(input, entry, request)),
+        };
+        let values = cached.as_ref().map_or(scratch.as_slice(), |values| values.evaluator.values());
+        let eligible = evaluated.is_ok() && values[stationary.0 as usize] && self.kernel_owns_queue(&kernel, pulls, values, request);
         if !eligible {
             #[cfg(test)]
-            self.record_kernel_attempt(request.piston, if evaluated.is_err() || !scratch[stationary.0 as usize] { 4 } else { 5 });
+            self.record_kernel_attempt(request.piston, if evaluated.is_err() || !values[stationary.0 as usize] { 4 } else { 5 });
+            if let Some(index) = cache_index {
+                self.instant_kernel.pull_wave_values[index] = cached;
+            }
             self.instant_kernel.scratch = scratch;
             return Ok(false);
         }
@@ -91,8 +163,11 @@ impl GraphBackend {
             self.future.piston_requests.clear();
         }
         self.instant_kernel.active = Some(kernel.clone());
-        let result = self.commit_kernel_pulls(pulls, &scratch, entry);
+        let result = self.commit_kernel_pulls(pulls, values, entry);
         self.instant_kernel.active = None;
+        if let Some(index) = cache_index {
+            self.instant_kernel.pull_wave_values[index] = cached;
+        }
         self.instant_kernel.scratch = scratch;
         result?;
         self.counts.instant_kernel_invocations += 1;
@@ -250,11 +325,9 @@ impl GraphBackend {
                         request.piston == actor && request.action == mchprs_world::PistonAction::Retract && request.source == Some(entry)
                     })
             }
-            LayerInputSource::SourceAbove { site, port, threshold } => self.site_power(site, port) > threshold,
-            LayerInputSource::PowerContribution { link, .. } | LayerInputSource::LocalResetOutput { link, .. } => {
-                self.guard_matches(link.guard, None) && self.site_power(link.from, link.from_port) > link.attenuation
-            }
-            LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => self.state.matches(test),
+            source => self
+                .sample_settled_input(source)
+                .expect("non-event kernel inputs are statically supported"),
         }
     }
 }

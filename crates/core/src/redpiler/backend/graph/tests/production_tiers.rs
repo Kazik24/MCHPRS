@@ -1,10 +1,10 @@
-//! Normal O4/O5 kernels retain live inputs even when controls change through reset.
+//! Normal O4–O6 kernels retain live inputs even when controls change through reset.
 use super::*;
 use crate::redpiler::CompilerOptions;
 
 #[test]
 fn production_kernels_preserve_unstable_input_histories_and_native_handoff() {
-    for level in [4, 5] {
+    for level in [4, 5, 6] {
         for id in ["adder_1bit", "adder_11bits"] {
             let circuit = load_adder(id, ORIGIN, None);
             let mut native = circuit.build();

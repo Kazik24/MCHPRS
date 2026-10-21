@@ -1,5 +1,9 @@
 # Ordinary-route Shape elimination: rejected after the real CPU census
 
+Follow-up: the [runtime sampling census](PISTON_SAMPLE_REUSE_CENSUS.md) is now
+complete. Conservative per-episode reuse covers 1.75% of all piston samples;
+the next candidate targets captured-profile checks rather than a sampling cache.
+
 The 2026-10-20 candidate compiled ordinary route delivery ordinals separately
 from the original rows used by Turbo. It omitted explicit Component Shape
 notifications to non-wire nodes, retaining wire shapes, piston base/head

@@ -32,8 +32,18 @@ mod instant_boundaries;
 mod instant_cells;
 mod instant_layers;
 mod instant_program;
+mod settled_circuit;
+mod settled_timing;
+pub(crate) use settled_timing::*;
+#[cfg(test)]
+mod settled_registers;
+pub(crate) use settled_circuit::*;
+pub(crate) mod settled_machine;
+#[cfg(test)]
+pub(crate) use settled_machine::SettledMachine;
 mod instant_regions;
 mod instant_transport;
+mod logical_values;
 mod wire_callback_selection;
 mod wire_captures;
 mod wire_query_facts;
@@ -79,6 +89,7 @@ pub(crate) use instant_program::*;
 pub(crate) use instant_transport::infer as infer_instant_transport;
 pub(crate) use instant_transport::infer_guarded as infer_guarded_instant_transport;
 pub(crate) use instant_transport::*;
+pub(crate) use logical_values::LogicalValues;
 pub(crate) use mixed_classic::*;
 pub(crate) use wire_query_facts::{WireInputs, WireQueryFacts};
 
@@ -898,6 +909,7 @@ struct InstantProgram {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
+    settled_circuit: Option<SettledCircuit>,
     /// Fixed electrical reads inside otherwise general mixed-circuit execution.
     mixed_classic: MixedClassicProgram,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
@@ -958,6 +970,9 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    pub(crate) fn settled_circuit(&self) -> Option<&SettledCircuit> {
+        self.settled_circuit.as_ref()
+    }
     pub(crate) fn instant_transition_net(&self, net: u32) -> Option<&std::sync::Arc<InstantTransitionNet>> {
         self.instant_transition_programs.get(net as usize)?.as_ref()
     }

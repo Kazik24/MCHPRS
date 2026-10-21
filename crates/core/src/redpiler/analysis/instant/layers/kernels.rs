@@ -22,6 +22,38 @@ pub(crate) fn lower_with_context(
 ) -> Result<Vec<Arc<InstantKernel>>, String> {
     let mut kernels = lower_pull_waves(graph, monitor, context)?;
     if !graph.plans.instant_events.is_empty() {
+        if graph.plans.settled_circuit.is_some() {
+            let event_actors: FxHashSet<_> = graph
+                .plans
+                .instant_events
+                .iter()
+                .flat_map(|kernel| kernel.actors.iter().copied())
+                .collect();
+            // An event kernel already provides the cheaper exact path for a one-actor
+            // wave that owns no wire corridor. Keep PullWaves where they contract
+            // multiple actors or eliminate owned wire propagation.
+            kernels.retain(|kernel| {
+                let KernelProgram::PullWave { .. } = &kernel.program else {
+                    return true;
+                };
+                kernel.actors.len() != 1 || !kernel.wires.is_empty() || !event_actors.contains(&kernel.actors[0])
+            });
+            let owned: FxHashSet<_> = kernels.iter().flat_map(|kernel| kernel.actors.iter().copied()).collect();
+            for kernel in &graph.plans.instant_events {
+                let KernelProgram::Events(entries) = &kernel.program else {
+                    return Err("instant event table contains a non-event kernel".into());
+                };
+                let remaining: Vec<_> = entries.iter().filter(|entry| !owned.contains(&entry.actor)).cloned().collect();
+                if remaining.is_empty() {
+                    continue;
+                }
+                let mut fallback = kernel.clone();
+                fallback.actors = remaining.iter().map(|entry| entry.actor).collect();
+                fallback.program = KernelProgram::Events(remaining.into_boxed_slice());
+                kernels.push(Arc::new(fallback));
+            }
+            return Ok(kernels);
+        }
         let actors: FxHashSet<_> = graph
             .plans
             .instant_events

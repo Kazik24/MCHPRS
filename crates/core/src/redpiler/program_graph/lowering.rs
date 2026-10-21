@@ -45,6 +45,9 @@ impl CircuitDraft {
                 KernelProgram::PullWave { pulls, .. } => {
                     for pull in pulls.iter().filter(|pull| pull.external) {
                         kernel_by_actor[pull.actor.index()] = Some((index as u32, 0));
+                        if self.plans.settled_circuit.is_some() && !cpu_by_actor.is_empty() {
+                            cpu_by_actor[pull.actor.index()] = u32::MAX;
+                        }
                     }
                 }
                 KernelProgram::Events(entries) => {
@@ -99,6 +102,19 @@ impl CircuitDraft {
             })
             .collect::<Vec<_>>();
 
+        if let Some(settled) = &mut self.plans.settled_circuit {
+            let mut order: Vec<_> = (0..self.power_links.len()).collect();
+            order.sort_by_key(|&index| self.power_links[index].to);
+            let mut remap = vec![0; order.len()];
+            for (new, old) in order.into_iter().enumerate() {
+                remap[old] = new as u32;
+            }
+            for effect in &mut settled.retained_effects {
+                if let BoundaryPortKind::Power { link } = &mut effect.kind {
+                    *link = remap[*link as usize];
+                }
+            }
+        }
         self.power_links.sort_by_key(|link| link.to);
         let mut power_inputs: FxHashMap<PowerTarget, Range<usize>> = FxHashMap::default();
         for (index, link) in self.power_links.iter().enumerate() {
@@ -249,6 +265,7 @@ impl CircuitDraft {
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
+            settled_circuit: self.plans.settled_circuit,
             mixed_classic: self.plans.mixed_classic,
             fixed_classic: self.plans.fixed_classic.program,
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),

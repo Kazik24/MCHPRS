@@ -97,7 +97,7 @@ pub(super) fn run() -> Result<()> {
     let mut samples = Vec::new();
     let mut times = [Vec::new(), Vec::new()];
     for pair in 0..iterations + 4 {
-        for tier in if pair % 2 == 0 { [3, 4] } else { [4, 3] } {
+        for tier in if pair % 2 == 0 { [5, 6] } else { [6, 5] } {
             let mut world = world();
             let mut compiler = Compiler::default();
             compiler.compile(
@@ -117,25 +117,23 @@ pub(super) fn run() -> Result<()> {
             compiler.tick()?;
             let seconds = started.elapsed().as_secs_f64();
             let work = compiler.graph_execution_counts().unwrap();
-            ensure!(
-                work.instant_kernel_invocations == u64::from(tier == 4),
-                "unexpected execution owner at O{tier}"
-            );
-            ensure!(tier != 4 || work.wire_walks == 0, "covered computation still ran Turbo");
+            ensure!(tier != 6 || work.logical_kernel_evaluations > 0, "O6 did not execute the incremental DAG");
+            ensure!(tier != 6 || work.wire_walks == 0, "covered computation still ran Turbo");
+            ensure!(tier != 5 || work.logical_kernel_evaluations == 0, "O5 unexpectedly used the O6 evaluator");
             compiler.reset(&mut world, BOUNDS);
             let observed = cpu_support::checkpoint(&world, 1, &[]);
             if let Some(expected) = &expected {
-                ensure!(&observed == expected, "O{tier} state/future differs from O3 control");
+                ensure!(&observed == expected, "O{tier} state/future differs from O5 control");
             } else {
-                ensure!(tier == 3, "O3 must establish the first control checkpoint");
+                ensure!(tier == 5, "O5 must establish the first control checkpoint");
                 expected = Some(observed);
             }
             if pair >= 4 {
-                times[tier - 3].push(seconds);
+                times[tier - 5].push(seconds);
                 samples.push(
                     json!({"pair":pair-4,"tier":tier,"tick_seconds":seconds,"kernel_invocations":work.instant_kernel_invocations,
                     "callbacks":work.callbacks,"wire_walks":work.wire_walks,"piston_samples":work.piston_samples,"piston_actions":work.piston_actions,
-                    "kernel_nodes":coverage.instant_kernel_nodes}),
+                    "kernel_nodes":coverage.instant_kernel_nodes,"logical_evaluations":work.logical_kernel_evaluations,"logical_operations":work.logical_kernel_operations}),
                 );
             }
         }
@@ -154,13 +152,13 @@ pub(super) fn run() -> Result<()> {
     let baseline = median(&times[0]);
     let kernel = median(&times[1]);
     let report = json!({"workload":"private-two-cell-wave","profile":if cfg!(debug_assertions) {"debug"} else {"release"},
-        "timing":"one tick only; four warmup pairs; alternating O3/O4; fresh world/compiler; compilation, stimulus, reset and O3 checkpoint validation excluded",
+        "timing":"one tick only; four warmup pairs; alternating O5/O6 stable; fresh world/compiler; compilation, stimulus, reset and O5 checkpoint validation excluded",
         "scope":"computation wave only; recurring reset is not timed","baseline_median_seconds":baseline,"kernel_median_seconds":kernel,
         "speedup":baseline/kernel,"samples":samples});
     let path = super::root().join("target/instant-kernel-wave.json");
     std::fs::write(&path, serde_json::to_vec_pretty(&report)?)?;
     println!(
-        "O3 {baseline:.9}s -> O4 kernel {kernel:.9}s; {:.3}x; O3 state/future matched all pairs; report {}",
+        "O5 {baseline:.9}s -> O6 kernel {kernel:.9}s; {:.3}x; O5 state/future matched all pairs; report {}",
         baseline / kernel,
         path.display()
     );

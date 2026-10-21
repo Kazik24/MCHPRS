@@ -111,7 +111,9 @@ impl GraphBackend {
         scratch.input_ready.resize(scratch.input_ready.len().max(logic.inputs.len()), false);
         self.counts.stable_logic_invocations += 1;
         #[cfg(test)]
-        self.test_recorder.piston_sample_census.begin(3, !net.ordered_receivers);
+        self.test_recorder
+            .piston_sample_census
+            .begin(piston_sample_census::STABLE, !net.ordered_receivers);
         let result = (|| {
             let root_power = self.stable_logic_expression(&logic, &logic.expressions[root as usize], &mut scratch);
             self.counts.stable_logic_wire_values += 1;

@@ -1,5 +1,9 @@
 use super::*;
 
+#[cfg(test)]
+#[path = "sites/tests/captured_profile_guards.rs"]
+mod tests;
+
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedSite {
     pub(super) profile: Option<ProfileId>,
@@ -173,11 +177,16 @@ impl GraphBackend {
             Guard::Site { site, view, test } => {
                 let resolved = match view {
                     OperandView::Live => self.resolve_site(*site, None),
-                    OperandView::Captured => captured_site
-                        .filter(|(captured_id, _)| captured_id == site)
-                        .map(|(_, observed)| observed)
-                        .or_else(|| captured.and_then(|sites| sites.get(site.index())).and_then(Option::as_ref))
-                        .and_then(|observed| self.resolve_observed_site(observed)),
+                    OperandView::Captured => {
+                        let observed = captured_site
+                            .filter(|(captured_id, _)| captured_id == site)
+                            .map(|(_, observed)| observed)
+                            .or_else(|| captured.and_then(|sites| sites.get(site.index())).and_then(Option::as_ref));
+                        if let SiteTest::Profile(profile) = test {
+                            return observed.is_some_and(|observed| observed.profile == Some(*profile));
+                        }
+                        observed.and_then(|observed| self.resolve_observed_site(observed))
+                    }
                 };
                 let Some(resolved) = resolved else {
                     return false;

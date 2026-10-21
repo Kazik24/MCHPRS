@@ -1,0 +1,383 @@
+//! Source-derived support for a retained physical clock-control island.
+use super::*;
+use crate::redpiler::program_graph::SettledTimingIsland;
+
+const MAX_TIMING_ACTORS: usize = 128;
+const MAX_TIMING_NODES: usize = 512;
+const MAX_TIMING_INPUTS: usize = 1024;
+
+/// Find the unique empty-lane piston whose base observer feeds its Quasi input,
+/// then recursively trace only raw power and state dependencies.
+///
+/// Callback closure is deliberately excluded: the runtime keeps callback delivery
+/// within this returned physical island and ignores internal datapath reset callbacks.
+pub(crate) fn infer(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledTimingIsland, String> {
+    let observers_by_base = observers_by_base(graph, monitor)?;
+    let power = index_power(graph);
+    let clock = find_clock(graph, &power, &observers_by_base, monitor)?;
+    let bud_resources: FxHashSet<_> = graph.plans.bud_memory_reads.iter().map(|read| read.resource).collect();
+    let bud_actors: FxHashSet<_> = graph.plans.bud_memory_reads.iter().map(|read| read.storage).collect();
+
+    let mut actors = FxHashSet::default();
+    let mut nodes = FxHashSet::default();
+    let mut wires = FxHashSet::default();
+    let mut triggers = FxHashSet::default();
+    let mut pending_actors = vec![clock];
+    let mut pending_nodes = Vec::<NodeId>::new();
+    let mut pending_inputs = Vec::<PowerTarget>::new();
+    let mut seen_inputs = FxHashSet::default();
+
+    let internal_wires: FxHashSet<_> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| matches!(&node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32)))
+        .collect();
+    let state = FxHashMap::default();
+    let mut tracer = signals::SignalTracer::new(graph, &power, &internal_wires, &state, LayerInputRole::RequestSample);
+    let mut raw = LayerBuilder::new(monitor).map_err(|error| format!("construct timing expression arena: {error:?}"))?;
+
+    while !pending_actors.is_empty() || !pending_nodes.is_empty() || !pending_inputs.is_empty() {
+        if monitor.cancelled() {
+            return Err("cancelled while deriving timing-island support".into());
+        }
+        while let Some(actor) = pending_actors.pop() {
+            if !actors.insert(actor) {
+                continue;
+            }
+            if actors.len() > MAX_TIMING_ACTORS {
+                return Err(format!("timing island exceeds {MAX_TIMING_ACTORS} piston actors"));
+            }
+            if bud_actors.contains(&actor) {
+                return Err(format!("clock power depends on BUD storage actor {actor:?}"));
+            }
+            let spec = graph
+                .pistons
+                .get(actor.index())
+                .ok_or_else(|| format!("timing island references missing piston {actor:?}"))?;
+            nodes.insert(spec.node);
+            pending_inputs.push(PowerTarget::Input {
+                node: spec.node,
+                port: InputPort::Main,
+            });
+            pending_inputs.push(PowerTarget::Input {
+                node: spec.node,
+                port: InputPort::Quasi,
+            });
+            if let Some(observers) = observers_by_base.get(&spec.base) {
+                pending_nodes.extend(observers.iter().copied());
+            }
+        }
+
+        while let Some(node) = pending_nodes.pop() {
+            if !nodes.insert(node) {
+                continue;
+            }
+            if nodes.len() > MAX_TIMING_NODES {
+                return Err(format!("timing island exceeds {MAX_TIMING_NODES} graph nodes"));
+            }
+            match &graph
+                .nodes
+                .get(node.index())
+                .ok_or_else(|| format!("timing island references missing node {node:?}"))?
+                .kind
+            {
+                CircuitNodeKind::Piston(actor) => pending_actors.push(*actor),
+                CircuitNodeKind::Wire(_) => {
+                    wires.insert(node);
+                    pending_inputs.push(PowerTarget::Input { node, port: InputPort::Main });
+                }
+                // Contact-state predicates are surfaced as symbolic StateTest leaves. A bare
+                // contact node has no independent power output or timing state to retain.
+                CircuitNodeKind::Contact(_) => {}
+                CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } => {
+                    add_site_owners(graph, *watched, &mut pending_actors, &mut pending_nodes)?;
+                }
+                CircuitNodeKind::Electrical(kind) => match kind {
+                    NodeType::Lever => {
+                        triggers.insert(node);
+                    }
+                    NodeType::Torch | NodeType::Repeater { .. } => {
+                        for port in [InputPort::Main, InputPort::Side, InputPort::Quasi] {
+                            pending_inputs.push(PowerTarget::Input { node, port });
+                        }
+                    }
+                    other => return Err(format!("timing power cone reaches unsupported component {other:?} at {node:?}")),
+                },
+            }
+        }
+
+        while let Some(input) = pending_inputs.pop() {
+            if !seen_inputs.insert(input) {
+                continue;
+            }
+            if seen_inputs.len() > MAX_TIMING_INPUTS {
+                return Err(format!("timing island exceeds {MAX_TIMING_INPUTS} power targets"));
+            }
+            let root = tracer
+                .query(input, 0, &mut raw)
+                .map_err(|error| format!("trace timing input {input:?}: {error:?}"))?;
+            // SignalTracer memoizes wire Main targets and conductor sites while expanding
+            // dust and wire paths. Keep the exact wire actors in the retained physical island.
+            let queried_wires = tracer.queried_wire_nodes();
+            wires.extend(queried_wires.iter().copied());
+            pending_nodes.extend(queried_wires);
+            for source in expression_inputs(&raw, root, monitor)? {
+                match source {
+                    LayerInputSource::SourceAbove { site, .. } => match graph
+                        .sites
+                        .get(site.index())
+                        .ok_or_else(|| format!("timing source references missing site {site:?}"))?
+                        .source
+                    {
+                        SiteSource::Component(node) => pending_nodes.push(node),
+                        // Any moving-resource dependency appears as an explicit ResourceAt or
+                        // ResourceEnabled guard in the same expression and is handled above.
+                        SiteSource::Contact(_) => {}
+                        SiteSource::Constant(_) => {}
+                    },
+                    LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => {
+                        process_state(graph, test, &bud_resources, &bud_actors, &mut pending_actors)?;
+                    }
+                    other => return Err(format!("timing power query produced unsupported source {other:?}")),
+                }
+            }
+        }
+    }
+
+    if triggers.len() != 1 {
+        return Err(format!(
+            "timing power cone has {} external levers; expected exactly one trigger: {triggers:?}",
+            triggers.len()
+        ));
+    }
+    let trigger = *triggers.iter().next().unwrap();
+    let mut actors: Vec<_> = actors.into_iter().collect();
+    let mut nodes: Vec<_> = nodes.into_iter().chain(wires.iter().copied()).collect();
+    let mut observers: Vec<_> = nodes
+        .iter()
+        .filter_map(|&node| matches!(&graph.nodes[node.index()].kind, CircuitNodeKind::Observer { .. }).then_some(node))
+        .collect();
+    actors.sort_unstable();
+    nodes.sort_unstable();
+    nodes.dedup();
+    observers.sort_unstable();
+    observers.dedup();
+    Ok(SettledTimingIsland {
+        clock,
+        actors: actors.into_boxed_slice(),
+        nodes: nodes.into_boxed_slice(),
+        trigger,
+        observers: observers.into_boxed_slice(),
+    })
+}
+
+fn find_clock(
+    graph: &CompileGraph,
+    power: &PowerIndex,
+    observers_by_base: &FxHashMap<ContactId, Vec<NodeId>>,
+    monitor: &TaskMonitor,
+) -> Result<PistonId, String> {
+    let mut candidates = Vec::new();
+    let internal_wires: FxHashSet<_> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| matches!(&node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32)))
+        .collect();
+    let state = FxHashMap::default();
+    for (index, piston) in graph.pistons.iter().enumerate() {
+        if monitor.cancelled() {
+            return Err("cancelled while identifying the timing piston".into());
+        }
+        if piston.lane != PistonLane::Empty {
+            continue;
+        }
+        let base_observers: Vec<_> = observers_by_base
+            .get(&piston.base)
+            .into_iter()
+            .flatten()
+            .filter(|observer| matches!(&graph.nodes[observer.index()].kind, CircuitNodeKind::Observer { .. }))
+            .copied()
+            .collect();
+        if base_observers.is_empty() {
+            continue;
+        }
+        // Conducted power is represented by intermediate conductor targets, so inspecting
+        // only direct links misses observers behind a solid block. Resolve the actual Quasi
+        // Boolean support and require this base observer to occur among its component leaves.
+        let mut tracer = signals::SignalTracer::new(graph, power, &internal_wires, &state, LayerInputRole::RequestSample);
+        let mut builder = LayerBuilder::new(monitor).map_err(|error| format!("construct clock selector expression arena: {error:?}"))?;
+        let target = PowerTarget::Input {
+            node: piston.node,
+            port: InputPort::Quasi,
+        };
+        let root = tracer
+            .query(target, 0, &mut builder)
+            .map_err(|error| format!("trace candidate clock Quasi {target:?}: {error:?}"))?;
+        let leaves = expression_inputs(&builder, root, monitor)?;
+        let quasi_sources: FxHashSet<_> = leaves
+            .into_iter()
+            .filter_map(|leaf| match leaf {
+                LayerInputSource::SourceAbove { site, .. } => match graph.sites[site.index()].source {
+                    SiteSource::Component(node) => Some(node),
+                    SiteSource::Contact(_) | SiteSource::Constant(_) => None,
+                },
+                _ => None,
+            })
+            .collect();
+        let quasi_is_observed = base_observers.iter().any(|observer| quasi_sources.contains(observer));
+        if quasi_is_observed {
+            candidates.push(PistonId::new(index as u32));
+        }
+    }
+    if candidates.len() != 1 {
+        return Err(format!(
+            "found {} empty-lane clock pistons whose base observer feeds Quasi: {candidates:?}",
+            candidates.len()
+        ));
+    }
+    Ok(candidates[0])
+}
+
+fn observers_by_base(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<FxHashMap<ContactId, Vec<NodeId>>, String> {
+    let mut observers = FxHashMap::<ContactId, Vec<NodeId>>::default();
+    for (index, node) in graph.nodes.iter().enumerate() {
+        if monitor.cancelled() {
+            return Err("cancelled while indexing timing observers".into());
+        }
+        let (CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. }) = &node.kind else {
+            continue;
+        };
+        if let SiteSource::Contact(contact) = graph.sites[watched.index()].source {
+            observers.entry(contact).or_default().push(NodeId::new(index as u32));
+        }
+    }
+    Ok(observers)
+}
+
+fn process_state(
+    graph: &CompileGraph,
+    test: StateTest,
+    bud_resources: &FxHashSet<ResourceId>,
+    bud_actors: &FxHashSet<PistonId>,
+    pending_actors: &mut Vec<PistonId>,
+) -> Result<(), String> {
+    match test {
+        StateTest::ResourceAt { resource, contact } => {
+            if bud_resources.contains(&resource) {
+                return Err(format!("clock power reads BUD register {resource:?} at {contact:?}"));
+            }
+            let spec = graph
+                .resources
+                .get(resource.index())
+                .ok_or_else(|| format!("timing power references missing resource {resource:?}"))?;
+            if !spec.contacts.contains(&contact) {
+                return Err(format!("timing power reads resource {resource:?} at non-member contact {contact:?}"));
+            }
+            enqueue_resource_owner(graph, resource, bud_actors, pending_actors)?;
+        }
+        StateTest::ResourceEnabled(resource) => {
+            if bud_resources.contains(&resource) {
+                return Err(format!("clock power reads BUD register enabled state {resource:?}"));
+            }
+            graph
+                .resources
+                .get(resource.index())
+                .ok_or_else(|| format!("timing power references missing resource {resource:?}"))?;
+            enqueue_resource_owner(graph, resource, bud_actors, pending_actors)?;
+        }
+        StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. } => {
+            if bud_actors.contains(&actor) {
+                return Err(format!("clock power reads BUD storage piston state {actor:?}"));
+            }
+            pending_actors.push(actor);
+        }
+    }
+    Ok(())
+}
+
+fn enqueue_resource_owner(
+    graph: &CompileGraph,
+    resource: ResourceId,
+    bud_actors: &FxHashSet<PistonId>,
+    pending_actors: &mut Vec<PistonId>,
+) -> Result<(), String> {
+    let contacts = &graph.resources[resource.index()].contacts;
+    let owners: Vec<_> = graph
+        .pistons
+        .iter()
+        .enumerate()
+        .filter_map(|(index, piston)| match piston.lane {
+            PistonLane::SingleResource { far } if contacts.contains(&far) => Some(PistonId::new(index as u32)),
+            _ => None,
+        })
+        .collect();
+    let owner = (owners.len() == 1).then(|| owners[0]);
+    let Some(owner) = owner else {
+        return Err(format!("resource {resource:?} has no unique timing-island piston owner"));
+    };
+    if bud_actors.contains(&owner) {
+        return Err(format!("clock power resource {resource:?} is carried by BUD storage actor {owner:?}"));
+    }
+    pending_actors.push(owner);
+    Ok(())
+}
+
+fn add_site_owners(graph: &CompileGraph, site: SiteId, pending_actors: &mut Vec<PistonId>, pending_nodes: &mut Vec<NodeId>) -> Result<(), String> {
+    let site = graph
+        .sites
+        .get(site.index())
+        .ok_or_else(|| format!("timing observer references missing site {site:?}"))?;
+    match site.source {
+        SiteSource::Component(node) => pending_nodes.push(node),
+        SiteSource::Contact(contact) => {
+            let owners: Vec<_> = graph
+                .pistons
+                .iter()
+                .enumerate()
+                .filter_map(|(index, piston)| (piston.base == contact).then_some(PistonId::new(index as u32)))
+                .collect();
+            if owners.len() != 1 {
+                return Err(format!(
+                    "timing observer watches contact {contact:?} with {} piston-base owners",
+                    owners.len()
+                ));
+            }
+            pending_actors.push(owners[0]);
+        }
+        SiteSource::Constant(_) => {}
+    }
+    Ok(())
+}
+
+fn expression_inputs(builder: &LayerBuilder<'_>, root: LayerExprId, monitor: &TaskMonitor) -> Result<FxHashSet<LayerInputSource>, String> {
+    let mut pending = vec![root];
+    let mut seen = FxHashSet::default();
+    let mut inputs = FxHashSet::default();
+    while let Some(id) = pending.pop() {
+        if monitor.cancelled() {
+            return Err("cancelled while reading timing expression support".into());
+        }
+        if !seen.insert(id) {
+            continue;
+        }
+        match builder
+            .expressions
+            .get(id.0 as usize)
+            .ok_or_else(|| format!("timing expression {id:?} is missing"))?
+        {
+            LayerExpr::Constant(_) => {}
+            LayerExpr::Input(input) => {
+                let row = builder
+                    .inputs
+                    .get(input.0 as usize)
+                    .ok_or_else(|| format!("timing input {input:?} is missing"))?;
+                inputs.insert(row.source);
+            }
+            LayerExpr::Not(child) => pending.push(*child),
+            LayerExpr::All(children) | LayerExpr::Any(children) => pending.extend(children.iter().copied()),
+        }
+    }
+    Ok(inputs)
+}

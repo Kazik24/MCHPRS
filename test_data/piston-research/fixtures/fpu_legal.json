@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "fixture": "test_data/piston-research/FPU_MROWW.schem",
-  "sha256": "88dc95cd6e048561a4fc2fe8f53dbecbc81e8adfda108eb27ba8e12966c0a5dc",
+  "sha256": "90035d2285c964f92150ee74686465150680e005c672fb39287e7a59b9f6bf1a",
   "dimensions": [
     171,
     43,
@@ -9,8 +9,8 @@
   ],
   "loader_offset": [
     6,
-    37,
-    75
+    36,
+    74
   ],
   "observations": {
     "output": [
@@ -643,11 +643,12 @@
         92
       ]
     ],
-    "output_repeaters_scope": "Author identifies the far-end repeater bank as the FPU output: sixteen existing repeaters at local x=109,y=30,z=33..93. Numerical interpretation is not certified; auxiliary converted output dust remains under observations.output.",
-    "trigger_scope": "Author identifies the lever attached to green wool as the control held OFF during input changes; the other saved lever remains OFF."
+    "output_scope": "Observe the sixteen far-side dust outputs at local x=170,y=5,z=32..92. Numerical interpretation remains uncertified.",
+    "output_repeaters_scope": "Auxiliary post-adder repeater bank at local x=109,y=30,z=33..93; retained for structural diagnostics, not the full-FPU benchmark output.",
+    "trigger_scope": "Hold the lever attached to green wool OFF throughout computation; do not toggle it ON between input vectors."
   },
   "unresolved": {
     "operand_bit_order": "Not numerically certified; levers are interleaved, not two adjacent 16-lever banks",
-    "final_ports": "Final ports are dust; benchmark attaches sixteen native repeater consumers east of this bank."
+    "final_ports": "Far-side dust outputs are observed directly; no consumer blocks are added."
   }
 }

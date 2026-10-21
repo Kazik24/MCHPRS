@@ -224,7 +224,7 @@ fn callback_preparation_stops_reading_after_cancellation() {
 
 #[test]
 fn adder_1bit_fixture_matches_graph_json() {
-    for level in 0..=crate::redpiler::MAX_OPTIMIZATION_LEVEL {
+    for level in 0..=5 {
         let bytes = adder_1bit_export(Some(level));
         let expected = std::fs::read(adder_1bit_export_path(level)).unwrap();
         assert!(
@@ -255,6 +255,8 @@ fn adder_1bit_fixture_matches_graph_json() {
         );
         assert!(document["trace"].is_null());
     }
+    // O6 adds runtime specialization without changing the exported graph passes.
+    assert_eq!(adder_1bit_export(Some(6)), adder_1bit_export(Some(5)));
     assert_eq!(adder_1bit_export(None), adder_1bit_export(Some(crate::redpiler::MAX_OPTIMIZATION_LEVEL)));
 }
 
@@ -330,10 +332,10 @@ fn stable_o4_adder_export_reports_selected_kernels_and_retained_observations() {
 }
 
 #[test]
-#[ignore = "regenerates the checked-in ADDER_1BIT graph JSON fixtures for every optimization level"]
+#[ignore = "regenerates the checked-in ADDER_1BIT graph JSON fixtures through O5; O6 shares O5 graph passes"]
 fn write_adder_1bit_graph_json_fixtures() {
     std::fs::create_dir_all(adder_1bit_export_path(0).parent().unwrap()).unwrap();
-    for level in 0..=crate::redpiler::MAX_OPTIMIZATION_LEVEL {
+    for level in 0..=5 {
         std::fs::write(adder_1bit_export_path(level), adder_1bit_export(Some(level))).unwrap();
     }
 }

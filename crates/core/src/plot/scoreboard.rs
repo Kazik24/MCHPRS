@@ -326,6 +326,7 @@ impl Scoreboard {
     ) {
         let actual = match target_tps {
             Tps::Limited(0) => "0".to_owned(),
+            _ if actual_tps == Some(f32::INFINITY) => "oo".to_owned(),
             _ => actual_tps.map(|tps| compact_number(f64::from(tps))).unwrap_or_else(|| "-".to_owned()),
         };
         let target = match target_tps {
@@ -386,7 +387,7 @@ mod tests {
                 stable_instant_inputs: true,
                 ..Default::default()
             }),
-            "O5 + stable inputs"
+            "O6 + stable inputs"
         );
     }
 
@@ -480,5 +481,14 @@ mod tests {
         assert!(board.current_state.iter().any(|line| line == "Screen only: on"));
         assert_eq!(board.current_state.last().unwrap(), "Git: experiment");
         assert!(!board.current_state.iter().any(|line| line == "Git: main"));
+    }
+
+    #[test]
+    fn unlimited_idle_tps_displays_as_unlimited_and_paused_stays_zero() {
+        let mut board = Scoreboard::default();
+        board.update_plot_metrics(&[], Tps::Unlimited, Some(f32::INFINITY), false, 0, 0, 0, None, status(None));
+        assert!(board.current_state.iter().any(|line| line == "TPS: oo/oo"));
+        board.update_plot_metrics(&[], Tps::Limited(0), Some(f32::INFINITY), false, 0, 0, 0, None, status(None));
+        assert!(board.current_state.iter().any(|line| line == "TPS: 0/0"));
     }
 }

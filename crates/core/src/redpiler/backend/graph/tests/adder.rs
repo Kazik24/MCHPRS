@@ -52,6 +52,11 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+pub(super) fn counter_world() -> (PlotWorld, (BlockPos, BlockPos)) {
+    let circuit = boundary_contract_tests::load_mechanism("counter_basic");
+    (circuit.build(), circuit.bounds())
+}
+
 const ORIGIN: BlockPos = BlockPos::new(40, 30, 40);
 const EXTRA: BlockPos = BlockPos::new(1, 1, 1);
 const FAMILY: [&str; 2] = ["adder_1bit", "adder_11bits"];

@@ -42,6 +42,8 @@ const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     stable_logic_wire_values: 0,
     stable_logic_boundary_calls: 0,
     instant_kernel_invocations: 0,
+    logical_kernel_evaluations: 0,
+    logical_kernel_operations: 0,
     classic_net_invocations: 0,
     classic_receiver_ops: 0,
     ticks: 100,
@@ -181,7 +183,21 @@ impl Episode {
                     digest.update([strength]);
                 }
             }
-            return Ok(json!(format!("{:x}", digest.finalize())));
+            let electrical = format!("{:x}", digest.finalize());
+            if self.name == "io/adder_11bits" {
+                let bank = self.manifest["ports"]["observations"]["sum_repeater"]
+                    .as_array()
+                    .context("missing adder output bank")?;
+                let sum = bank.iter().enumerate().try_fold(0u16, |sum, (bit, local)| {
+                    let position = self.bounds.0 + manifest_position(local);
+                    let Block::RedstoneRepeater { repeater } = world.get_block(position) else {
+                        bail!("missing adder output repeater at {position:?}");
+                    };
+                    Ok(sum | (u16::from(!repeater.powered) << bit))
+                })?;
+                return Ok(json!({"electrical": electrical, "sum": sum}));
+            }
+            return Ok(json!(electrical));
         }
         if self.name == "cpu_bubblesort" {
             let mut ram = Vec::new();
@@ -314,7 +330,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"instant_wire_node_invocations":value.instant_wire_node_invocations,"instant_transport_invocations":value.instant_transport_invocations,"instant_transport_wire_visits":value.instant_transport_wire_visits,"instant_value_region_solves":value.instant_value_region_solves,"instant_value_region_cache_hits":value.instant_value_region_cache_hits,"instant_transport_compact_captures":value.instant_transport_compact_captures,"instant_value_region_inert_visits":value.instant_value_region_inert_visits,"signal_channel_invocations":value.signal_channel_invocations,"signal_channel_fallbacks":value.signal_channel_fallbacks,"signal_channel_operations":value.signal_channel_operations,"instant_kernel_invocations":value.instant_kernel_invocations,"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
+    json!({"instant_wire_node_invocations":value.instant_wire_node_invocations,"instant_transport_invocations":value.instant_transport_invocations,"instant_transport_wire_visits":value.instant_transport_wire_visits,"instant_value_region_solves":value.instant_value_region_solves,"instant_value_region_cache_hits":value.instant_value_region_cache_hits,"instant_transport_compact_captures":value.instant_transport_compact_captures,"instant_value_region_inert_visits":value.instant_value_region_inert_visits,"signal_channel_invocations":value.signal_channel_invocations,"signal_channel_fallbacks":value.signal_channel_fallbacks,"signal_channel_operations":value.signal_channel_operations,"instant_kernel_invocations":value.instant_kernel_invocations,"logical_kernel_evaluations":value.logical_kernel_evaluations,"logical_kernel_operations":value.logical_kernel_operations,"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
         "stable_logic_invocations":value.stable_logic_invocations,"stable_logic_fallbacks":value.stable_logic_fallbacks,
         "instant_transition_hits":value.instant_transition_hits,"instant_transition_misses":value.instant_transition_misses,
         "instant_transition_programs":value.instant_transition_programs,"instant_transition_operations":value.instant_transition_operations,
@@ -347,6 +363,8 @@ fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> V
         stable_logic_wire_values: after.stable_logic_wire_values - before.stable_logic_wire_values,
         stable_logic_boundary_calls: after.stable_logic_boundary_calls - before.stable_logic_boundary_calls,
         instant_kernel_invocations: after.instant_kernel_invocations - before.instant_kernel_invocations,
+        logical_kernel_evaluations: after.logical_kernel_evaluations - before.logical_kernel_evaluations,
+        logical_kernel_operations: after.logical_kernel_operations - before.logical_kernel_operations,
         classic_net_invocations: after.classic_net_invocations - before.classic_net_invocations,
         classic_receiver_ops: after.classic_receiver_ops - before.classic_receiver_ops,
         ticks: after.ticks - before.ticks,
@@ -510,6 +528,12 @@ fn verify_phase_response(episode: &Episode, phase: usize, trace: &[Value]) -> Re
 }
 
 fn verify_workload_response(episode: &Episode, trace: &[Value]) -> Result<()> {
+    if episode.name == "io/adder_11bits" {
+        let mut sums: Vec<_> = trace.iter().filter_map(|value| value["sum"].as_u64()).collect();
+        sums.sort_unstable();
+        sums.dedup();
+        ensure!(sums.len() > 1, "adder did not produce changing sum outputs");
+    }
     if episode.name == "anpu_pong" {
         let frames: Vec<ScreenFrame> = serde_json::from_slice(&std::fs::read(root().join("test_data/cpu-references/anpu_screen.json"))?)?;
         ensure!(trace.iter().any(|value| value != &trace[0]), "ANPU screen never changed");
@@ -821,7 +845,20 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
             workload["samples"].as_array_mut().unwrap().extend(results);
         }
         let mut summaries = Vec::new();
-        for executor in ["O0", "O1", "O2", "O3", "O3-stable", "O4", "O4-stable", "O5", "O5-stable", "interpreter"] {
+        for executor in [
+            "O0",
+            "O1",
+            "O2",
+            "O3",
+            "O3-stable",
+            "O4",
+            "O4-stable",
+            "O5",
+            "O5-stable",
+            "O6",
+            "O6-stable",
+            "interpreter",
+        ] {
             let mut times: Vec<_> = workload["samples"]
                 .as_array()
                 .unwrap()
@@ -866,8 +903,8 @@ pub fn main() -> Result<()> {
     ensure!(iterations > 0, "--iterations must be positive");
     let selected_tier = argument("--graph-tier").map(str::parse::<usize>).transpose()?;
     ensure!(
-        selected_tier.is_none_or(|tier| (1..=5).contains(&tier)),
-        "--graph-tier needs 1, 2, 3, 4 or 5"
+        selected_tier.is_none_or(|tier| (1..=6).contains(&tier)),
+        "--graph-tier needs 1, 2, 3, 4, 5 or 6"
     );
     let stable_inputs = args.iter().any(|arg| arg == "--stable-instant-inputs");
     ensure!(

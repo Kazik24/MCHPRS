@@ -288,6 +288,10 @@ pub struct GraphExecutionCounts {
     pub stable_logic_boundary_calls: u64,
     /// Reduced instant pull waves actually executed after entry and FIFO checks.
     pub instant_kernel_invocations: u64,
+    /// Incremental logical evaluations at an admitted kernel's original sample cut.
+    pub logical_kernel_evaluations: u64,
+    /// Boolean expressions revisited by those evaluations, including entry vetoes.
+    pub logical_kernel_operations: u64,
     pub classic_net_invocations: u64,
     pub classic_receiver_ops: u64,
     pub ticks: u64,
@@ -691,13 +695,13 @@ mod tests {
                 assert_eq!(options.optimization_label(), format!("O{level}"));
             }
             assert_eq!(CompilerOptions::parse(prefix).unwrap().optimization_level, None);
-            assert_eq!(CompilerOptions::parse(prefix).unwrap().optimization_label(), "O5");
+            assert_eq!(CompilerOptions::parse(prefix).unwrap().optimization_label(), "O6");
             assert!(CompilerOptions::parse(&format!("{prefix}{}", MAX_OPTIMIZATION_LEVEL + 1)).is_err());
         }
-        assert_eq!(CompilerOptions::parse("--optimize").unwrap().optimization_label(), "O5");
+        assert_eq!(CompilerOptions::parse("--optimize").unwrap().optimization_label(), "O6");
         assert_eq!(
             CompilerOptions::parse("--optimize --stable-instant-inputs").unwrap().optimization_label(),
-            "O5 stable"
+            "O6 stable"
         );
     }
 

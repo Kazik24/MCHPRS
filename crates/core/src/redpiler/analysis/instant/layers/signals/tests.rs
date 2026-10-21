@@ -121,6 +121,63 @@ fn corridor_thresholds_match_all_strengths_losses_and_positive_loss_cycles() {
 }
 
 #[test]
+fn disabled_transfer_is_used_only_for_positive_all_guard_atoms() {
+    let monitor = TaskMonitor::default();
+    let (mut graph, internal) = line(1, false);
+    let resource = ResourceId::new(7);
+    let destination = ContactId::new(9);
+    graph.guards.extend([
+        Guard::State(StateTest::ResourceAt {
+            resource,
+            contact: destination,
+        }),
+        Guard::State(StateTest::ResourceEnabled(resource)),
+        Guard::All(vec![GuardId::new(1), GuardId::new(2)].into()),
+        Guard::All(vec![GuardId::new(3)].into()),
+        Guard::Any(vec![GuardId::new(1), GuardId::new(2)].into()),
+        Guard::Not(GuardId::new(1)),
+        Guard::All(vec![GuardId::new(5), GuardId::new(2)].into()),
+        Guard::State(StateTest::ResourceAt {
+            resource,
+            contact: ContactId::new(10),
+        }),
+        Guard::All(vec![GuardId::new(8), GuardId::new(2)].into()),
+    ]);
+    let power = index_power(&graph);
+    let state = FxHashMap::default();
+    let mut disabled = FxHashSet::default();
+    disabled.insert((resource, destination));
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample).with_disabled_destinations(&disabled);
+
+    let positive_all = tracer.guard(GuardId::new(4), &mut builder).unwrap();
+    let disjunction = tracer.guard(GuardId::new(5), &mut builder).unwrap();
+    let negated_atom = tracer.guard(GuardId::new(7), &mut builder).unwrap();
+    let different_contact = tracer.guard(GuardId::new(9), &mut builder).unwrap();
+
+    // The contracted Near token is disabled at a settled cut, so the direct
+    // positive ResourceAt && ResourceEnabled conjunction cannot hold.
+    assert!(!evaluate(&builder, positive_all, |_| panic!("folded guard has no inputs")));
+    // Disjunction and negation are deliberately not interpreted as positive facts.
+    assert!(evaluate(&builder, disjunction, |input| match input.source {
+        LayerInputSource::State(StateTest::ResourceAt { .. }) | LayerInputSource::State(StateTest::ResourceEnabled(_)) => true,
+        other => panic!("unexpected input {other:?}"),
+    }));
+    assert!(evaluate(&builder, negated_atom, |input| match input.source {
+        LayerInputSource::State(StateTest::ResourceAt { .. }) => false,
+        LayerInputSource::State(StateTest::ResourceEnabled(_)) => true,
+        other => panic!("unexpected input {other:?}"),
+    }));
+    assert!(evaluate(&builder, different_contact, |_| true));
+
+    // Other tracer callers carry no cell-transfer contract and retain the raw guard.
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample);
+    let raw = tracer.guard(GuardId::new(4), &mut builder).unwrap();
+    assert!(evaluate(&builder, raw, |_| true));
+}
+
+#[test]
 fn conditional_contacts_and_prefix_writes_are_substituted_not_sampled_as_wires() {
     let monitor = TaskMonitor::default();
     let (mut graph, internal) = line(3, false);

@@ -1,6 +1,6 @@
 //! Opt-in test-only counts for repeated piston samples inside exact wire episodes.
 use super::*;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub(super) const EXACT: u8 = 0;
 pub(super) const REPLAY: u8 = 1;
@@ -25,6 +25,7 @@ struct Frame {
     kind: u8,
     active: bool,
     first_any: FxHashMap<PistonId, Option<mchprs_world::PistonAction>>,
+    seen_no_action: FxHashSet<PistonId>,
     first_qualifying: FxHashMap<PistonId, mchprs_world::PistonAction>,
 }
 
@@ -48,6 +49,7 @@ impl EpisodeSampleCensus {
         }
         if let Some(parent) = self.stack.last_mut() {
             parent.first_any.clear();
+            parent.seen_no_action.clear();
             parent.first_qualifying.clear();
         }
         self.stack.push(Frame {
@@ -64,6 +66,7 @@ impl EpisodeSampleCensus {
         self.stack.pop();
         if let Some(parent) = self.stack.last_mut() {
             parent.first_any.clear();
+            parent.seen_no_action.clear();
             parent.first_qualifying.clear();
         }
     }
@@ -74,6 +77,7 @@ impl EpisodeSampleCensus {
         }
         if let Some(frame) = self.stack.last_mut() {
             frame.first_any.clear();
+            frame.seen_no_action.clear();
             frame.first_qualifying.clear();
         }
     }
@@ -91,22 +95,27 @@ impl EpisodeSampleCensus {
         let kind = usize::from(frame.kind);
         let counts = &mut self.counts[kind];
         counts.samples += 1;
-        if let Some(first) = frame.first_any.get(&piston) {
+        if let Some(&first) = frame.first_any.get(&piston) {
             counts.repeated_any += 1;
-            if action.is_none() && first.is_none() {
-                counts.repeated_no_action += 1;
+            if first != action {
+                counts.action_conflicts += 1;
             }
         } else {
             frame.first_any.insert(piston, action);
         }
 
         match action {
-            None => counts.no_action += 1,
+            None => {
+                counts.no_action += 1;
+                if !frame.seen_no_action.insert(piston) {
+                    counts.repeated_no_action += 1;
+                }
+            }
             Some(action) => {
                 counts.qualifying += 1;
                 match frame.first_qualifying.get(&piston) {
                     Some(&first) if first == action => counts.repeated_qualifying_same_action += 1,
-                    Some(_) => counts.action_conflicts += 1,
+                    Some(_) => {}
                     None => {
                         frame.first_qualifying.insert(piston, action);
                     }
@@ -216,4 +225,141 @@ mod tests {
         assert_eq!(census.counts[3].repeated_any, 1);
         assert_eq!(census.counts[3].repeated_no_action, 1);
     }
+
+    #[test]
+    fn action_conflicts_include_none_to_action_and_action_to_none() {
+        let mut census = EpisodeSampleCensus::default();
+        census.enable();
+        census.begin(EXACT, true);
+        census.sample(actor(0), None);
+        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(1), Some(mchprs_world::PistonAction::Retract));
+        census.sample(actor(1), None);
+        census.end();
+        assert_eq!(census.counts[0].repeated_any, 2);
+        assert_eq!(census.counts[0].action_conflicts, 2);
+    }
+}
+
+#[path = "../../../../../benches/support/cpus.rs"]
+#[allow(dead_code)]
+pub(super) mod cpus;
+
+#[test]
+#[ignore = "research: full BubbleSort piston sample/action reuse census with every-tick frozen RAM validation"]
+fn bubblesort_piston_sample_reuse_census() {
+    use crate::redpiler::analysis::AnalysisLimits;
+    use crate::world::World;
+
+    let cpu = cpus::CPUS[2];
+    let mut world = cpus::load_cpu(cpu);
+    let sign = cpu.origin + BlockPos::new(186, 2, 184);
+    assert!(matches!(world.get_block(sign), Block::WallSign { .. }));
+    assert!(world.set_block(sign, Block::Air));
+    world.flush_block_changes();
+
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = crate::redpiler::CompilerOptions {
+        optimization_level: Some(5),
+        stable_instant_inputs: true,
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(
+        &world,
+        world.get_corners(),
+        world.scheduler().iter_entries().collect(),
+        &monitor,
+        AnalysisLimits::for_budget(8),
+    )
+    .unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let lowered = prepared.lower(&monitor).unwrap();
+    let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
+    backend.set_test_recording(false);
+    backend.enable_piston_sample_census();
+    backend.test_recorder.guard_kind_census_enabled = true;
+
+    let reference = cpus::reference(cpu);
+    assert!(reference.ram_trace.first().is_some_and(|(tick, _)| *tick == 0));
+    let mut trace_index = 0usize;
+    let mut expected = reference.ram_trace[0].1.clone();
+    assert_eq!(ram_words(&world, cpu), expected, "initial RAM");
+    backend.use_block(cpu.origin + cpu.start).unwrap();
+
+    for tick in 1..=10_036 {
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        while reference
+            .ram_trace
+            .get(trace_index + 1)
+            .is_some_and(|(changed_at, _)| *changed_at <= tick)
+        {
+            trace_index += 1;
+            expected.clone_from(&reference.ram_trace[trace_index].1);
+        }
+        assert_eq!(ram_words(&world, cpu), expected, "RAM at tick {tick}");
+        if tick % 2048 == 0 {
+            println!("piston sample census: {tick}/10036 ticks");
+        }
+    }
+
+    let final_words = ram_words(&world, cpu);
+    assert_eq!(final_words.len(), 64);
+    for (word, actual) in final_words[48..].iter().enumerate() {
+        assert_eq!(*actual, Some(word as u16), "sorted output word {word}");
+    }
+
+    for scope in &backend.test_recorder.piston_sample_census.counts {
+        assert_eq!(scope.action_conflicts, 0, "piston outcome changed within a constant-state segment");
+    }
+    let scope_counts = backend.piston_sample_census();
+    let guard_kind_names = [
+        "always",
+        "state",
+        "not",
+        "all",
+        "any",
+        "live_solid",
+        "live_transparent",
+        "live_is_wire",
+        "live_profile",
+        "captured_solid",
+        "captured_transparent",
+        "captured_is_wire",
+        "captured_profile",
+        "unused",
+    ];
+    let guard_kind_calls = guard_kind_names
+        .iter()
+        .zip(backend.test_recorder.guard_kind_census.iter())
+        .map(|(name, calls)| ((*name).to_owned(), calls.get()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let report = serde_json::json!({
+        "ticks": 10_036,
+        "schematic_sha256": cpu.sha256,
+        "ram_samples_checked": 10_037,
+        "final_output_words": final_words[48..],
+        "piston_sample_census": scope_counts,
+        "guard_kind_calls": guard_kind_calls,
+        "execution_counts": format!("{:?}", backend.execution_counts()),
+    });
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/piston-sample-census/cpu.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    println!("BubbleSort piston sample census: {}", path.display());
+}
+
+fn ram_words(world: &crate::plot::PlotWorld, cpu: cpus::Cpu) -> Vec<Option<u16>> {
+    let mut trace = Vec::new();
+    cpus::collect_ram(world, cpu, 0, &mut trace);
+    trace.pop().expect("RAM probe returned a sample").1
 }

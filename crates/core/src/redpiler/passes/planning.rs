@@ -4,7 +4,7 @@ use super::PassContext;
 use crate::redpiler::program_graph::GuardPredicatePlans;
 use crate::redpiler::program_graph::{
     CompileGraph, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan, InstantTransitionPrograms,
-    InstantTransport, InstantValueRegions, PlanChange, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
+    InstantTransport, InstantValueRegions, PlanChange, SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -32,7 +32,6 @@ pub(crate) enum InstantAnalysis {
     /// The complete cell/corridor boundary catalog for this graph and current classic ownership.
     Boundaries,
     /// The causal plan and lowering evidence for this graph and its validated catalog.
-    #[cfg_attr(not(test), expect(dead_code, reason = "Layers are built only by the experimental test pipeline."))]
     Layers,
 }
 
@@ -41,7 +40,6 @@ pub(crate) enum PlanOutput {
     MixedClassic(crate::redpiler::program_graph::MixedClassicProgram),
     FixedClassic(crate::redpiler::program_graph::FixedClassicPlans),
     Boundaries(crate::redpiler::program_graph::BoundaryCatalog),
-    #[cfg_attr(not(test), expect(dead_code, reason = "Layers are built only by the experimental test pipeline."))]
     Layers(crate::redpiler::program_graph::LayeredInstantPlan),
     FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
     InstantDrives(InstantDriveProgram),
@@ -49,6 +47,7 @@ pub(crate) enum PlanOutput {
     SignalChannels(crate::redpiler::program_graph::SignalChannels),
     StableInstantLogic(crate::redpiler::program_graph::StableInstantLogic),
     InstantValueRegions(InstantValueRegions),
+    SettledCircuit(SettledCircuit),
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
@@ -84,14 +83,19 @@ impl PlanOutput {
                 graph.plans.instant.boundaries = Some(catalog);
                 graph.plans.instant.regions.clear();
                 graph.plans.instant.proxies.clear();
+                graph.plans.settled_circuit = None;
             }
-            Self::Layers(layers) => graph.plans.instant.layers = Some(layers),
+            Self::Layers(layers) => {
+                graph.plans.instant.layers = Some(layers);
+                graph.plans.settled_circuit = None;
+            }
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
             Self::InstantDrives(plans) => graph.plans.instant_drives = plans,
             Self::InstantTransitionPrograms(plans) => graph.plans.instant_transition_programs = plans,
             Self::SignalChannels(plans) => graph.plans.signal_channels = plans,
             Self::StableInstantLogic(plans) => graph.plans.stable_instant_logic = plans,
             Self::InstantValueRegions(plans) => graph.plans.instant_value_regions = plans,
+            Self::SettledCircuit(plan) => graph.plans.settled_circuit = Some(plan),
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::WireCaptures(captures) => graph.plans.wire_captures = captures,
@@ -107,7 +111,10 @@ impl PlanOutput {
             Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
             #[cfg(test)]
             Self::GuardPredicates(plans) => graph.plans.guard_predicates = plans,
-            Self::BudMemoryReads(reads) => graph.plans.bud_memory_reads = reads,
+            Self::BudMemoryReads(reads) => {
+                graph.plans.bud_memory_reads = reads;
+                graph.plans.settled_circuit = None;
+            }
             Self::InstantTransport(plan) => graph.plans.instant_transport = plan,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
             Self::WireQueries(facts) => {
@@ -153,8 +160,12 @@ impl PlanOutput {
                 graph.plans.instant.boundaries = None;
                 graph.plans.instant.regions = regions;
                 graph.plans.instant.proxies.clear();
+                graph.plans.settled_circuit = None;
             }
-            Self::Proxies(proxies) => graph.plans.instant.proxies = proxies,
+            Self::Proxies(proxies) => {
+                graph.plans.instant.proxies = proxies;
+                graph.plans.settled_circuit = None;
+            }
         }
         Ok(change)
     }
@@ -171,6 +182,7 @@ impl PlanOutput {
             Self::SignalChannels(_) => PlanChange::SignalChannels,
             Self::StableInstantLogic(_) => PlanChange::StableInstantLogic,
             Self::InstantValueRegions(_) => PlanChange::InstantValueRegions,
+            Self::SettledCircuit(_) => PlanChange::SettledCircuit,
             Self::ClassicNets(_) => PlanChange::ClassicNets,
             Self::TurboCallbacks(_) => PlanChange::TurboCallbacks,
             Self::DustPaths(_) => PlanChange::DustPaths,

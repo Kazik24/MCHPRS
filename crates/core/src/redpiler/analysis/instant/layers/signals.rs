@@ -18,6 +18,9 @@ pub(super) struct SignalTracer<'a> {
     internal: &'a FxHashSet<NodeId>,
     /// These logical prefix values replace owned state reads after preceding cell writes.
     state: &'a FxHashMap<StateTest, LayerExprId>,
+    /// These transferred payloads are disabled at Near during the accepted retraction
+    /// until their delayed restoration; only positive All-guard conjunctions may use it.
+    disabled_destinations: Option<&'a FxHashSet<(ResourceId, ContactId)>>,
     /// This fixes the semantic sampling cut of any remaining outside read.
     role: LayerInputRole,
     /// These source/threshold roots share repeated electrical subqueries at this prefix.
@@ -46,12 +49,38 @@ impl<'a> SignalTracer<'a> {
             internal,
             state,
             role,
+            disabled_destinations: None,
             sources: FxHashMap::default(),
             targets: FxHashMap::default(),
             visiting: FxHashSet::default(),
             guards: FxHashMap::default(),
             pending_guards: FxHashSet::default(),
         }
+    }
+
+    /// Apply a source-derived settled-cell fact without changing other tracer callers.
+    pub(super) fn with_disabled_destinations(mut self, destinations: &'a FxHashSet<(ResourceId, ContactId)>) -> Self {
+        self.disabled_destinations = Some(destinations);
+        self
+    }
+
+    /// Exact wire nodes encountered among this tracer's input and conductor targets.
+    pub(super) fn queried_wire_nodes(&self) -> FxHashSet<NodeId> {
+        self.targets
+            .keys()
+            .filter_map(|(target, _)| {
+                let node = match target {
+                    PowerTarget::Input { node, .. } => *node,
+                    PowerTarget::Conductor { site, .. } => {
+                        let SiteSource::Component(node) = self.graph.sites[site.index()].source else {
+                            return None;
+                        };
+                        node
+                    }
+                };
+                matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(node)
+            })
+            .collect()
     }
 
     pub(super) fn contribution(&mut self, link: PowerLink, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
@@ -178,6 +207,7 @@ impl<'a> SignalTracer<'a> {
                 let value = self.guard(*child, builder)?;
                 builder.not(value)?
             }
+            Guard::All(children) if self.has_disabled_transfer_conjunction(children, builder)? => builder.constant(false)?,
             Guard::All(children) | Guard::Any(children) => {
                 let mut values = Vec::with_capacity(children.len());
                 for &child in children {
@@ -193,6 +223,37 @@ impl<'a> SignalTracer<'a> {
         self.pending_guards.remove(&guard);
         self.guards.insert(guard, root);
         Ok(root)
+    }
+
+    fn has_disabled_transfer_conjunction(&self, children: &[GuardId], builder: &mut LayerBuilder<'_>) -> Result<bool, ConstructionError> {
+        let Some(disabled) = self.disabled_destinations else {
+            return Ok(false);
+        };
+        if disabled.is_empty() {
+            return Ok(false);
+        }
+        let mut pending = children.to_vec();
+        let mut visited = FxHashSet::default();
+        let mut at_destination = FxHashSet::default();
+        let mut enabled = FxHashSet::default();
+        while let Some(guard) = pending.pop() {
+            builder.visit()?;
+            if !visited.insert(guard) {
+                continue;
+            }
+            match self.graph.guards.get(guard.index()).ok_or("guard references a missing row")? {
+                Guard::State(StateTest::ResourceAt { resource, contact }) if disabled.contains(&(*resource, *contact)) => {
+                    at_destination.insert(*resource);
+                }
+                Guard::State(StateTest::ResourceEnabled(resource)) => {
+                    enabled.insert(*resource);
+                }
+                Guard::All(nested) => pending.extend(nested.iter().copied()),
+                // Do not infer facts through disjunction or negation.
+                Guard::Always | Guard::State(_) | Guard::Site { .. } | Guard::Not(_) | Guard::Any(_) => {}
+            }
+        }
+        Ok(at_destination.iter().any(|resource| enabled.contains(resource)))
     }
 
     pub(super) fn site_test(&mut self, site: SiteId, test: SiteTest, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {

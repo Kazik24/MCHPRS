@@ -1,5 +1,11 @@
 # Current production FPU inference
 
+The schematic was replaced on 2026-10-20 from the author's server save
+`FPU_MROWW_20_10_2026.schem` (SHA-256
+`90035d2285c964f92150ee74686465150680e005c672fb39287e7a59b9f6bf1a`).
+The measurements below describe the previous schematic. A fresh native reference
+is required before comparing the replacement with compiled execution.
+
 ## Workload and checks
 
 The 2026-10-20 benchmark uses the existing production `instant` harness with

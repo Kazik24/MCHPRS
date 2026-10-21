@@ -84,6 +84,10 @@ impl CircuitDraft {
             PlanChange::SignalChannels => Ok(None),
             PlanChange::StableInstantLogic => Ok(None),
             PlanChange::InstantValueRegions => Ok(None),
+            PlanChange::SettledCircuit => {
+                self.validate_settled_circuit(monitor)?;
+                Ok(None)
+            }
             PlanChange::Layers => self.validate_instant_layers(monitor),
             PlanChange::Boundaries => {
                 // Boundary publication also removes old proxies, affecting fixed ownership.
@@ -155,6 +159,7 @@ impl CircuitDraft {
         &self,
         monitor: &crate::redpiler::TaskMonitor,
     ) -> Result<Option<LayerCompilationContext>, GraphBuildError> {
+        self.validate_settled_circuit(monitor)?;
         for (name, len) in [
             ("dust paths", self.plans.dust_paths.len()),
             ("instant regions", self.plans.instant.regions.len()),
@@ -341,6 +346,25 @@ impl CircuitDraft {
             return Err(invalid());
         }
         self.validate_instant_layers(monitor)
+    }
+
+    fn validate_settled_circuit(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        let Some(plan) = &self.plans.settled_circuit else { return Ok(()) };
+        let invalid = || GraphBuildError::InvalidInstantRegion {
+            table: "settled circuit",
+            index: 0,
+        };
+        plan.validate().map_err(|_| invalid())?;
+        let expected = if plan.timing.is_some() {
+            crate::redpiler::analysis::instant::layers::logical::compile_device(self, monitor)
+        } else {
+            crate::redpiler::analysis::instant::layers::logical::compile_settled(self, monitor)
+        }
+        .map_err(|_| invalid())?;
+        if *plan != expected {
+            return Err(invalid());
+        }
+        Ok(())
     }
 
     fn validate_instant_layers(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<Option<LayerCompilationContext>, GraphBuildError> {

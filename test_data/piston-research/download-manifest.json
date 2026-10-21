@@ -6,9 +6,11 @@
   "files": [
     {
       "name": "FPU_MROWW.schem",
-      "bytes": 77796,
-      "sha256": "88dc95cd6e048561a4fc2fe8f53dbecbc81e8adfda108eb27ba8e12966c0a5dc",
-      "mtime": 1791967461
+      "source_path": "/srv/mchprs/data/schems/mroww/FPU_MROWW_20_10_2026.schem",
+      "verified_utc": "2026-10-20T19:08:56Z",
+      "bytes": 77786,
+      "sha256": "90035d2285c964f92150ee74686465150680e005c672fb39287e7a59b9f6bf1a",
+      "mtime": 1792523155
     },
     {
       "name": "RILAX_MEMORY_BANK_BUD.schem",

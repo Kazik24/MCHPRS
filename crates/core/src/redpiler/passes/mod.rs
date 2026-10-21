@@ -13,7 +13,6 @@ mod compile_fixed_signals;
 mod compile_guarded_instant_transport;
 mod compile_instant_drives;
 pub(crate) mod compile_instant_events;
-#[cfg(test)]
 pub(crate) mod compile_instant_layers;
 pub(crate) mod compile_instant_proxies;
 pub(crate) mod compile_instant_resets;
@@ -22,6 +21,7 @@ pub(crate) mod compile_instant_transport;
 mod compile_instant_value_regions;
 pub(crate) mod compile_instant_wire_nodes;
 pub(crate) mod compile_mixed_classic;
+mod compile_settled_circuit;
 mod compile_signal_channels;
 mod compile_stable_instant_logic;
 pub(crate) mod compile_wire_callbacks;
@@ -92,7 +92,6 @@ impl<'a> PassContext<'a> {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn instant_layers(&self) -> Option<&super::program_graph::LayeredInstantPlan> {
         match self.prepared_instant {
             Some(validation::PreparedInstant::Layers { plan, .. }) => Some(plan),
@@ -419,6 +418,16 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         pass: Pass::build(compile_stable_instant_logic::CompileStableInstantLogic),
         enabled: level >= 5,
     });
+    if level >= 6 && options.stable_instant_inputs {
+        pipeline.entries.push(PassEntry {
+            pass: Pass::build(compile_instant_layers::CompileInstantLayers),
+            enabled: true,
+        });
+    }
+    pipeline.entries.push(PassEntry {
+        pass: Pass::build(compile_settled_circuit::CompileSettledCircuit),
+        enabled: level >= 6,
+    });
     #[cfg(feature = "unsafe-turbo-fixed-point")]
     let pipeline = {
         let mut pipeline = pipeline;
@@ -480,16 +489,18 @@ mod tests {
             "-O3",
             "-O4",
             "-O5",
+            "-O6",
             "-O",
             "-o",
             "--optimize",
             "-O5 --stable-instant-inputs",
+            "-O6 --stable-instant-inputs",
             "-O --stable-instant-inputs",
             "-o --stable-instant-inputs",
             "--optimize --stable-instant-inputs",
         ] {
             let options = CompilerOptions::parse(flags).unwrap();
-            let level = options.optimization_level.unwrap_or(5);
+            let level = options.optimization_level.unwrap_or(crate::redpiler::MAX_OPTIMIZATION_LEVEL);
             assert_eq!(options.stable_instant_inputs, flags.contains("--stable-instant-inputs"));
             let pipeline = default_graph_pipeline(&options);
             let enabled: Vec<_> = pipeline.entries.iter().filter(|p| p.enabled).map(|p| p.pass.name()).collect();
@@ -510,11 +521,12 @@ mod tests {
                 ("compile-instant-value-regions", 5),
                 ("compile-signal-channels", 5),
                 ("compile-stable-instant-logic", 5),
+                ("compile-settled-circuit", 6),
                 ("experimental-coalesce-delayed-updates", 5),
             ] {
                 assert_eq!(enabled.contains(&name), level >= minimum, "{flags}: {name}");
             }
-            assert!(!enabled.contains(&"compile-instant-layers"));
+            assert_eq!(enabled.contains(&"compile-instant-layers"), level >= 6 && options.stable_instant_inputs);
             assert!(!enabled.contains(&"compile-guard-predicates"));
             #[cfg(not(any(feature = "unsafe-abstract-instant-nets", feature = "unsafe-turbo-fixed-point")))]
             assert!(
@@ -783,7 +795,7 @@ mod tests {
     #[test]
     fn removed_synthesis_is_absent_at_every_level_with_stable_inputs() {
         let synthesis = ["compile-symbolic-regions", "compile-instant-machine", "compile-symbolic-kernels"];
-        for optimization_level in [Some(0), Some(3), Some(4), Some(5), None] {
+        for optimization_level in [Some(0), Some(3), Some(4), Some(5), Some(6), None] {
             for stable_instant_inputs in [false, true] {
                 let options = CompilerOptions {
                     optimization_level,

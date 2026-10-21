@@ -5,11 +5,17 @@ pairs and was excluded. A separate ordinary-route Shape-elision candidate
 removed zero rows from the actual BubbleSort program and was withdrawn; see
 [the admission census and next measurement](ORDINARY_ROUTE_EFFECTS_INVESTIGATION.md).
 The profile below remains evidence of retained costs, rather than proof that
-either rejected representation accelerates them.
+either rejected representation accelerates them. A subsequent full-sort
+[runtime census](PISTON_SAMPLE_REUSE_CENSUS.md) found only 1.75% of piston samples
+repeat in conservative queue-only intervals, but 39.55 million captured-profile
+guard checks. The [direct profile comparison](CAPTURED_PROFILE_GUARDS.md) passes
+correctness checks; its five-pair timing batch is still incomplete. A larger
+[pure state-guard cache](PURE_STATE_GUARD_CACHE_PLAN.md) is planned, not installed.
 
 The minimized O5 stable-input BubbleSort program now spends substantial time
-outside its remaining exact wire walks. Compile pure boundary guards into the
-existing compact Boolean representation before another broad propagation change.
+outside its remaining exact wire walks. The original recommendation was to
+compile pure boundary guards into the existing compact Boolean representation;
+that candidate was measured and rejected as slower.
 Whole-circuit replacement remains the goal; this profile identifies retained
 general graph work that the next compiled component must remove.
 
@@ -72,7 +78,7 @@ the generic piston dispatch adapter has weak justification. Reusing compact
 typed predicates for boundary guards reaches route delivery, capture selectors,
 replay admission and stable-input execution while preserving every sample cut.
 
-## Next compiler component
+## Original guard-packing hypothesis (subsequently rejected)
 
 Compile bounded pure guard predicates with the existing Boolean/DNF compiler,
 preserving live state and supplied captures. Keep current CPU-predicate
@@ -82,9 +88,10 @@ fallback atom must call that original evaluator directly to avoid recursively
 selecting its own compiled predicate. Validate the published plan independently
 and benchmark against the frozen minimized transition executable.
 
-A subsequent typed piston request operation can remove repeated samples after
+A typed piston request operation could remove repeated samples after
 the first qualifying request in a closed transport episode. This requires a
 proof that actor/resource/deferred state and tick phase stay fixed until the
 episode ends, plus fixed receiver identity and first-source preservation.
-Changing wire power remains live. This stronger reduction should follow the
-guard work rather than merely bypassing the inexpensive generic adapter.
+Changing wire power remains live. The subsequent runtime census found too few
+repeats in that conservative scope to prioritize this reduction. The current
+next candidate and its mutation obligations are in the state-guard cache plan.
