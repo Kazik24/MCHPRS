@@ -43,6 +43,7 @@ mod logical_device_author_profile_tests;
 #[cfg(test)]
 #[path = "graph/tests/logical_device_counter.rs"]
 mod logical_device_counter_tests;
+mod logical_firing;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
@@ -443,6 +444,7 @@ pub(crate) struct GraphBackend {
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
     /// This holds reusable wave scratch and the current synchronous route replacement.
     instant_kernel: instant_kernel::KernelExecution,
+    logical_firing: Option<logical_firing::LogicalFiringRuntime>,
     logical_device: Option<logical_device::LogicalDevice>,
     /// O6 logical BUD owners index immutable transition plans by physical piston ID.
     /// Their values, revisions and deferred deadlines remain in the shared CircuitState/GraphFuture.
@@ -590,6 +592,7 @@ impl GraphBackend {
         Self::validate_supported(&lowered.program)?;
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
         backend.import_ticks(lowered.imported_ticks)?;
+        backend.logical_firing = logical_firing::LogicalFiringRuntime::new(&backend);
         backend.install_logical_device().map_err(|_| GraphBackendError::UnsupportedComponent {
             position: None,
             kind: "logical device input or stationary entry contract",
@@ -871,6 +874,7 @@ impl GraphBackend {
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
             instant_kernel,
+            logical_firing: None,
             logical_device: None,
             logical_bud_owner_by_actor,
             logical_bud_samples_by_route,
@@ -1277,6 +1281,9 @@ impl GraphBackend {
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_tick(node);
+        }
+        if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node)) {
+            return self.tick_logical_firing_observer(node);
         }
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Wire(_) => Ok(()),
@@ -1940,13 +1947,18 @@ impl GraphBackend {
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
         let has_logical_sample = self.logical_bud_samples_by_route.get(route.index()).is_some_and(Option::is_some);
+        let has_logical_firing = self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_route(route));
         if !has_logical_sample
+            && !has_logical_firing
             && let Some(kernel) = self.instant_kernel.active.clone()
             && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
         {
             return self.deliver_kernel_route(&kernel.routes[index]);
         }
-        if !has_logical_sample && let Some(binding) = self.program.instant_route_binding(route) {
+        if !has_logical_sample
+            && !has_logical_firing
+            && let Some(binding) = self.program.instant_route_binding(route)
+        {
             return self.deliver_instant_route(route, binding, captured);
         }
         let delivery_count = self.program.routes()[route.index()].deliveries.len();
@@ -1963,15 +1975,11 @@ impl GraphBackend {
                 }
             }
             let delivery = self.program.routes()[route.index()].deliveries[index];
-            self.deliver_callback(
+            let occurrence = RouteOccurrence {
                 route,
-                delivery,
-                captured,
-                Some(RouteOccurrence {
-                    route,
-                    ordinal: index as u32,
-                }),
-            )?;
+                ordinal: index as u32,
+            };
+            self.deliver_callback(route, delivery, captured, Some(occurrence))?;
         }
         Ok(())
     }
@@ -2091,6 +2099,16 @@ impl GraphBackend {
         let Some(receiver) = receiver else {
             return Ok(());
         };
+        if matches!(receiver, CallbackReceiver::Component(node) if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node))) {
+            if matches!(delivery.kind, DeliveryKind::Update { .. } | DeliveryKind::Shape { .. }) {
+                let node = match receiver {
+                    CallbackReceiver::Component(node) => node,
+                    _ => unreachable!(),
+                };
+                self.update_component(node, delivery.kind, observed)?;
+            }
+            return Ok(());
+        }
         let logical_sample = occurrence
             .and_then(|occurrence| {
                 self.logical_bud_samples_by_route
@@ -2107,6 +2125,18 @@ impl GraphBackend {
             });
         if let Some(actor) = logical_sample {
             self.sample_piston_from(actor, route)?;
+            return Ok(());
+        }
+        let owned_firing_actor = self.logical_firing.as_ref().and_then(|runtime| {
+            let actor = runtime.actor();
+            match receiver {
+                CallbackReceiver::PistonBase(candidate) | CallbackReceiver::PistonHead(candidate) if candidate == actor => Some(actor),
+                CallbackReceiver::Component(node) if self.program.pistons()[actor.index()].node == node => Some(actor),
+                _ => None,
+            }
+        });
+        if let Some(actor) = owned_firing_actor {
+            self.sample_logical_firing_actor(actor, route)?;
             return Ok(());
         }
         self.counts.callbacks += 1;

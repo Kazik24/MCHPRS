@@ -4,10 +4,10 @@ use super::*;
 pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     let plan = compile_settled(graph, monitor)?;
     if graph.plans.bud_memory_reads.is_empty() {
-        return Ok(plan);
+        return compile_one_shot_device(graph, plan, monitor);
     }
     let Ok(timing) = super::timing::infer(graph, monitor) else {
-        return Ok(plan);
+        return compile_one_shot_device(graph, plan, monitor);
     };
     let mut targets = Vec::new();
     for output in &plan.outputs {
@@ -29,11 +29,199 @@ pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
         }
     }
     if targets.is_empty() {
-        return Ok(plan);
+        return compile_one_shot_device(graph, plan, monitor);
     }
     let mut compact = compile_public_boundary(graph, &targets, &graph.plans.bud_memory_reads, monitor)?;
     compact.timing = Some(timing);
     Ok(compact)
+}
+
+fn compile_one_shot_device(graph: &CompileGraph, fallback: SettledCircuit, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
+    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
+        return Ok(fallback);
+    };
+    let mut ports_by_owner = FxHashMap::<BoundaryOwner, Vec<BoundaryPort>>::default();
+    for port in catalog.ports.iter().copied() {
+        ports_by_owner.entry(port.owner).or_default().push(port);
+    }
+    let mut candidate = None;
+    for (cell_index, cell) in catalog.cells.iter().enumerate() {
+        if cell.uses.len() != 1 {
+            continue;
+        }
+        let use_ = &cell.uses[0];
+        if !matches!(use_.reset, CellReset::Observer { .. }) || use_.retraction.transfer.is_none() {
+            continue;
+        }
+        let owner = BoundaryOwner::Cell(u32::try_from(cell_index).map_err(|_| "too many catalog cells")?);
+        let owner_ports = ports_by_owner.get(&owner).map_or(&[][..], Vec::as_slice);
+        let lamp_occurrences: FxHashSet<_> = owner_ports
+            .iter()
+            .filter_map(|port| match port.kind {
+                BoundaryPortKind::Callback { occurrence }
+                    if port.owner == owner && port.direction == BoundaryDirection::Output && callback_targets_lamp(graph, occurrence) =>
+                {
+                    Some(occurrence)
+                }
+                _ => None,
+            })
+            .collect();
+        let has_lamp_output = !lamp_occurrences.is_empty();
+        let has_owned_corridor = catalog.ports.iter().any(
+            |port| matches!(port.kind, BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) && port.owner != owner),
+        );
+        if has_lamp_output && !has_owned_corridor {
+            candidate = Some(use_.actor);
+            break;
+        }
+    }
+    if let Some(actor) = candidate {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        if let Some(piston) = graph.pistons.get(actor.index()) {
+            let targets = [
+                PowerTarget::Input {
+                    node: piston.node,
+                    port: InputPort::Main,
+                },
+                PowerTarget::Input {
+                    node: piston.node,
+                    port: InputPort::Quasi,
+                },
+            ];
+            if let Ok(candidate) = compile_one_shot_boundary(graph, &targets, &[], monitor) {
+                if supports_single_lamp_cell(graph, &candidate, actor) {
+                    return Ok(candidate);
+                }
+            } else {
+                check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+            }
+        }
+    }
+    Ok(fallback)
+}
+
+fn callback_targets_lamp(graph: &CompileGraph, occurrence: RouteOccurrence) -> bool {
+    let Some(route) = graph.routes.get(occurrence.route.index()) else {
+        return false;
+    };
+    let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
+        return false;
+    };
+    let Some(CallbackReceiver::Component(node)) = delivery.receiver else {
+        return false;
+    };
+    graph
+        .nodes
+        .get(node.index())
+        .is_some_and(|node| matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp)))
+}
+
+fn supports_single_lamp_cell(graph: &CompileGraph, circuit: &SettledCircuit, actor: PistonId) -> bool {
+    let Some(firing) = circuit.firing.as_ref() else {
+        return false;
+    };
+    if firing.uses.len() != 1 || firing.uses[0].actor != actor || firing.uses[0].effect.transfer.is_none() {
+        return false;
+    }
+    if !matches!(firing.uses[0].reset, CellReset::Observer { .. }) {
+        return false;
+    }
+    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
+        return false;
+    };
+    let Some((cell_index, _)) = catalog
+        .cells
+        .iter()
+        .enumerate()
+        .find(|(_, cell)| cell.uses.iter().any(|use_| use_.actor == actor))
+    else {
+        return false;
+    };
+    let owner = BoundaryOwner::Cell(cell_index as u32);
+    let lamp_occurrences: FxHashSet<_> = circuit
+        .retained_effects
+        .iter()
+        .filter_map(|port| match port.kind {
+            BoundaryPortKind::Callback { occurrence }
+                if port.owner == owner && port.direction == BoundaryDirection::Output && callback_targets_lamp(graph, occurrence) =>
+            {
+                Some(occurrence)
+            }
+            _ => None,
+        })
+        .collect();
+    if lamp_occurrences.is_empty() {
+        return false;
+    }
+    for port in circuit.retained_effects.iter() {
+        if port.owner != owner || port.direction != BoundaryDirection::Output {
+            return false;
+        }
+        match port.kind {
+            BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) => {}
+            BoundaryPortKind::Power { link } => {
+                let Some(link) = graph.power_links.get(link as usize) else {
+                    return false;
+                };
+                let PowerTarget::Input { node, port: InputPort::Main } = link.to else {
+                    return false;
+                };
+                if !matches!(
+                    graph.nodes.get(node.index()).map(|node| &node.kind),
+                    Some(CircuitNodeKind::Electrical(NodeType::Lamp))
+                ) {
+                    return false;
+                }
+            }
+            BoundaryPortKind::GuardState { guard, .. } => {
+                if !lamp_occurrences.iter().any(|occurrence| {
+                    let Some(delivery) = graph
+                        .routes
+                        .get(occurrence.route.index())
+                        .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
+                    else {
+                        return false;
+                    };
+                    guard_contains(graph, delivery.guard, guard)
+                }) {
+                    return false;
+                }
+            }
+            BoundaryPortKind::ContactAlternative { contact, .. } => {
+                if !lamp_occurrences.iter().any(|occurrence| {
+                    graph
+                        .routes
+                        .get(occurrence.route.index())
+                        .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
+                        .and_then(|delivery| graph.sites.get(delivery.target.index()))
+                        .is_some_and(|site| site.source == SiteSource::Contact(contact))
+                }) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn guard_contains(graph: &CompileGraph, root: GuardId, needle: GuardId) -> bool {
+    let mut pending = vec![root];
+    let mut seen = FxHashSet::default();
+    while let Some(guard) = pending.pop() {
+        if guard == needle {
+            return true;
+        }
+        if !seen.insert(guard) {
+            continue;
+        }
+        match graph.guards.get(guard.index()) {
+            Some(Guard::Not(child)) => pending.push(*child),
+            Some(Guard::All(children) | Guard::Any(children)) => pending.extend(children.iter().copied()),
+            Some(Guard::Always | Guard::State(_) | Guard::Site { .. }) | None => {}
+        }
+    }
+    false
 }
 
 pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
@@ -210,7 +398,6 @@ pub(crate) fn compile_public_boundary(
 /// Compile selected power/register roots with explicit per-actor fired-state cuts.
 /// The artifact exposes power eligibility only; Graph remains authoritative for
 /// callback delivery, FIFO acceptance, action execution, and reset completion.
-#[cfg(test)]
 pub(crate) fn compile_one_shot_boundary(
     graph: &CompileGraph,
     power_targets: &[PowerTarget],
@@ -528,7 +715,6 @@ fn compile_boundary(
     // remains owned by the ordinary graph event path.
     equations.inline_repeaters = inline_repeaters;
     equations.defer_sources = true;
-    #[cfg(test)]
     {
         equations.one_shot_firing = one_shot_firing;
         if one_shot_firing {
@@ -537,8 +723,6 @@ fn compile_boundary(
             equations.resets.clear();
         }
     }
-    #[cfg(not(test))]
-    let _ = one_shot_firing;
     if !retained_resources.is_empty() {
         equations
             .retain_cells_touching(retained_resources, &[])
@@ -604,7 +788,6 @@ fn compile_boundary_equations(
         });
     }
 
-    #[cfg(test)]
     {
         if equations.one_shot_firing {
             // Lower once to discover the feedback owners reachable from the requested
@@ -666,12 +849,6 @@ fn compile_boundary_equations(
             lower_output_roots(equations, &mut outputs, monitor)?;
         }
     }
-    #[cfg(not(test))]
-    {
-        lower_output_roots(equations, &mut outputs, monitor)?;
-    }
-
-    #[cfg(test)]
     let mut firing = if equations.one_shot_firing && !equations.fired_inputs.is_empty() {
         let catalog = graph.plans.instant.boundaries.as_ref().ok_or("missing one-shot cell boundaries")?;
         let mut actors: Vec<_> = equations.fired_inputs.keys().copied().collect();
@@ -730,8 +907,6 @@ fn compile_boundary_equations(
     } else {
         None
     };
-    #[cfg(not(test))]
-    let mut firing: Option<LogicalFiringPlan> = None;
     let roots = outputs
         .iter()
         .flat_map(|output| output.roots.iter().copied())
@@ -755,7 +930,6 @@ fn compile_boundary_equations(
                 .ok_or_else(|| format!("reduced program lost fired input for {:?}", use_.actor))?;
         }
     }
-    #[cfg(test)]
     let retained_effects = if equations.one_shot_firing {
         firing
             .as_ref()
@@ -765,8 +939,6 @@ fn compile_boundary_equations(
     } else {
         Vec::new()
     };
-    #[cfg(not(test))]
-    let retained_effects = Vec::new();
     let circuit = SettledCircuit {
         program,
         outputs: outputs.into_boxed_slice(),
@@ -782,7 +954,6 @@ fn compile_boundary_equations(
 /// Keep only catalogued outputs that leave the one-shot cell/corridor closure.
 /// Internal callback rows remain represented by their original source-derived
 /// activation/retraction records and are omitted from the external effect list.
-#[cfg(test)]
 fn logical_action_retained_effects(graph: &CompileGraph, firing: &LogicalFiringPlan, monitor: &TaskMonitor) -> Result<Vec<BoundaryPort>, String> {
     let catalog = graph
         .plans

@@ -1,180 +1,67 @@
-# Production Redpiler optimization levels
+# Redpiler optimization levels
 
-Supported production passes are included in ordinary builds. Select a tier
-with `/rp compile -O1` through `/rp compile -O6`. `-O`, `-o` and `--optimize`
-select O6. Compilation without an optimization flag still selects O0.
-The same levels apply to `/rp analyze` and its graph export.
+Select `/rp compile -O1` through `/rp compile -O6`. `-O`, `-o`, and `--optimize`
+select O6; no optimization flag selects O0. The same tiers apply to `/rp analyze`
+and graph export. Higher tiers include the lower-tier pipeline, subject to
+admission checks and compilation budgets. Unsupported work retains Graph execution.
 
-| Tier | Added work |
-|---|---|
-| O1 | Guard/update cleanup, inert and unhandled callback pruning, Turbo callback indexes and certified static dust paths. |
-| O2 | State-guard simplification; wire queries, hops and callback specialization; compiled signal queries; packed whole-fixed classic execution, certified local classic nets and mixed-circuit fixed queries. |
-| O3 | Local piston and reset specialization, built-in reset clocks, compiled wire shapes/capture recipes, private instant regions and proxies. |
-| O4 | Instant boundary discovery, closed single-wire transfers, passive capture elimination, private BUD reads and connected FIFO-local event kernels. |
-| O5 | Equivalent delayed-update coalescing; flat CPU predicates; dense and guarded instant transport; typed drives; minimized exact transition programs; value regions and ordered signal channels. Stable power-expression programs additionally require `--stable-instant-inputs`. |
-| O6 | Experimental logical device execution for the recognized clock/BUD family: a shared Boolean DAG, logical clock phases, register commits and stable output writes, without internal physical updates. This activates automatically. Other circuits retain general execution; `--stable-instant-inputs` additionally enables finite pull waves. |
+| Tier | Main additions |
+| --- | --- |
+| O0 | General graph compilation and execution. |
+| O1 | Guard/update cleanup, inert callback pruning, callback indexes, static dust paths. |
+| O2 | Compiled signal queries, wire specialization, fixed classic execution and local classic nets. |
+| O3 | Piston/reset specialization, reset clocks, wire captures, private instant regions. |
+| O4 | Instant boundaries, single-wire transfers, private BUD reads, connected event kernels. |
+| O5 | Delayed-update coalescing, compiled predicates, transport, typed drives, transition programs and signal channels. Stable power expressions require the stable-input promise. |
+| O6 | Experimental logical clock/device execution and admitted finite pull waves; ordinary piston power queries can also be compiled while physical events remain. |
 
-Higher tiers retain lower-tier rules. O4 event kernels replace the O3
-region/proxy builders, avoiding duplicate ownership and unnecessary compilation.
-All rewrites run before dependent plan builders. Every pass retains its admission
-checks; unsupported or over-budget regions keep general Graph execution.
+## Stable inputs and version scope
 
-O4/O5 require no stable-input promise. Event entries sample live Main/Quasi power
-at the original acceptance cut and commit through existing state/future helpers.
-They preserve original requests, clocks, reset transitions, contact selection and
-deferred revisions. Their single-wire transfers retain ordered receiver delivery;
-they do not contract arbitrary multi-wire nets to equilibrium.
+In **tagged v0.6.0**, O6 implies stable inputs through reset and includes the
+qualified COUNTER and settled FPU runtimes. No additional flag is required for
+that release. Internal glitches, previews, and reset propagation may disappear
+under the admitted logical contract; consequential outputs and clock cadence remain.
+Interpreter handoff for those logical devices remains experimental.
 
-The stable-input assumption remains explicit:
-
-- `--stable-instant-inputs` explicitly promises stable external inputs through
-  reset. It enables the older O3 composed-region mode and O5 stable power-expression
-  programs. At O6 it also enables certified finite pull-wave compilation. O5 without this flag retains exact ordered transport/replay and live
-  input sampling.
-
-O6 pull waves take precedence over overlapping per-cell and CPU handlers only
-after source validation. A single-actor wave with no owned wire corridor keeps
-the existing event/CPU path when it removes no additional work. Runtime checks
-retain stationary entry, wire levels,
-request provenance and FIFO ownership; an unproven entry executes ordinary
-Graph acceptance. Each wave keeps current input/expression values and propagates
-changes through the shared DAG, without storing input combinations. Commits
-still use Graph's state, outside callbacks and deferred work, so interpreter
-handoff uses the existing projection for those finite waves.
-
-O6 separately recognizes the COUNTER clock/BUD family and executes its data
-path through `SettledMachine` and a small logical clock. It assumes stable
-observable results and normal controls; internal glitches, reset notifications
-and visual piston activity may disappear. No extra flag is required. This is
-an experiment: its interpreter handoff is not yet validated. FPU feedback
-classification and whole-device execution remain unfinished.
-
-O6 also compiles live Main/Quasi power queries for ordinary pistons, verified
-on BubbleSort and ANPU. Those queries retain physical event execution and do
-not establish whole-device logical compilation. The proposed generalization
-is scoped in the [logical compiler plan](notes/redpiler-pistons-v4/INSTANT_CIRCUIT_ACCELERATION_PLAN.md);
-its new state/event executor is not yet implemented.
-
-Classic-redstone compilation is automatic from O2. After whole-fixed execution
-declines, the local classic pass certifies each candidate region independently.
-Unsuitable regions keep general Graph execution; no `--classic-redstone` switch
-is needed or accepted. The explicit stable-input promise remains separate from
-optimization level: topology may prove dependencies irrelevant in some cases,
-but uncertain dependencies and their possible pending effects must be retained.
-
-CPU matching selects AVX2 once when the CPU/OS supports it; other machines use
-scalar word operations. No architecture-specific build flag is required.
-
-## Maximum compilation
+The **original development checkout** has a different policy: the
+`--stable-instant-inputs` promise remains explicit, including for O6 finite pull
+waves. Its one-shot firing runtime is experimental work beyond the release.
+Use source and the [architecture](REDPILER_ARCHITECTURE.md) to identify the policy
+of the checkout being built; do not assume that a branch contains every release change.
 
 ```text
 /rp compile --optimize
 /rp compile --optimize --stable-instant-inputs
 ```
 
-`--optimize`, `-O`, `-o` and `-O6` select the same current maximum pipeline.
-The first command supports changing inputs. Use the second only when external
-inputs remain stable through the computation/reset interval. The flag does not
-increase compilation budgets; the server controls those through player rank.
+Promise stable inputs only when external inputs remain stable through the required
+computation/reset interval. The flag does not increase compilation budgets.
+O4/O5 without that promise retain ordered event execution and live sampling.
+Classic-redstone compilation is automatic from O2; no separate switch is needed.
 
-The O5 instant stages run in this build order after boundary/event compilation:
+Compiling power queries does not eliminate piston callbacks, scheduler work, or
+physical state. BubbleSort and ANPU retain physical execution despite compiled
+queries. A plan's actor coverage does not measure removed runtime work or imply
+whole-device logical execution. See the [development plan](REDPILER_DEVELOPMENT.md)
+for state/event compilation and verification requirements.
 
-| Pass | Compiled representation |
-|---|---|
-| `optimize-instant-kernels-cpu` | Shared typed live reads and minimized Boolean predicates; scalar short circuits and AVX2 mask matching. |
-| `compile-instant-transport` | Dense local wire geometry and ordered external receivers. |
-| `compile-guarded-instant-transport` | Validated fixed admission masks with fallback for dynamic cuts. |
-| `compile-instant-drives` | Typed source/contact power expressions. |
-| `compile-instant-transition-programs` | Eligibility for bounded adaptive exact episodes, minimized into contiguous Capture/Select/SetPower/Call instructions. |
-| `compile-instant-value-regions` | Bounded electrical-distance and source-region tables for certified nets. |
-| `compile-signal-channels` | Exact ordered transition programs for supported channels. |
-| `compile-stable-instant-logic` | Shared max/attenuation expressions for certified stable-input nets; installs no program without the explicit promise. |
+## Compilation reports and inspection
 
-This is compilation order, not runtime precedence. Runtime checks stable logic
-and signal channels before transport; transport can replay a guarded learned
-episode or use its exact walk. Pure reads remain at the required sampling cuts;
-piston requests, reset scheduling and deferred publication keep their existing
-state owners. Entry checks fail before optimized effects, and unsupported work
-uses the existing path. A connected kernel does not mean the physical graph has
-been completely removed.
-
-The slower guard-packing experiment is excluded: five production pairs measured
-8.38% more BubbleSort inference time. Known incorrect abstract-net/fixed-point
-experiments also remain outside normal production selection.
-
-Methods, algorithms and fresh results are documented in
-[exact transition programs](notes/redpiler-pistons-v4/INSTANT_TRANSITION_PROGRAMS.md),
-[the inference profile](notes/redpiler-pistons-v4/INSTANT_TRANSITION_PROFILE.md),
-and [production FPU measurements](notes/redpiler-pistons-v4/FPU_CURRENT_INFERENCE.md).
-Earlier FPU measurements used the auxiliary output bank and a different trigger
-protocol. They are archived diagnostics, not evidence of completed FPU work.
-The replacement schematic must be measured with the trigger held OFF and the
-far dust bank observed; fresh arithmetic throughput remains unverified.
-
-The empty experimental Cargo feature aliases and the incorrect abstract-net and
-fixed-point experiments have been removed. Production pass selection is controlled
-by O0–O6 and the explicit stable-input option. Historical experiment results below
-refer to older snapshots.
-
-Tests cover the complete tier/ordering matrix, actual O4/O5 compilation without
-input promises, rapidly changing controls through unfinished reset work,
-state/pending-work comparison against the interpreter and native continuation.
-Existing capture, BUD, arithmetic, analog, imported-work and FIFO tests remain
-part of the normal test suite. O4/O5 inspection fixtures contain the actual
-selected event/CPU programs.
-
-Historical tier-promotion verification: 555 redpiler tests, 33 loader tests, 39 viewer tests and the
-command-completion test passed. Workspace checking with `--no-default-features`
-and the ordinary production `cargo build --release --locked` passed. The release
-build uses the configured fat LTO. Logs and binary identity are recorded under
-`target/production-tiers/`; the server executable is `target/release/mroww.exe`.
-
-The [earlier TPS report](notes/redpiler-pistons-v4/CPU_KERNEL_TPS_REPORT.md)
-records the frozen opt-in build before this tier promotion. Its timings have
-not been relabeled as measurements of the new production tier configuration.
-
-The 2026-10-20 follow-up has 613 passing broad checks after excluding the slower
-guard-packing experiment. The tier/alias test additionally checks every new O5
-stage for all maximum flags, with and without the stable-input promise.
-
-## Compilation reports and the graph viewer
-
-Completion chat uses a bounded summary: selected mode, total/stage time, graph
-size, configured pass counts, the two longest compilation steps, ownership and
-compiled-plan coverage. Detailed preparation-table dumps remain outside chat.
-Plan coverage overlaps Graph ownership; it does not estimate CPU-time share.
-
-Export the selected production pipeline without activating it:
+Completion chat reports mode, stage time, graph size, expensive stages, and plan
+coverage. Export a pipeline without activating it:
 
 ```text
 /rp analyze --graph --export-json --optimize
 /rp analyze --graph --export-json --optimize --stable-instant-inputs
 ```
 
-Open [the offline viewer](../tools/redpiler-graph-viewer/index.html) and choose
-the exported JSON. **Compiled plans** shows transport nets, typed inputs,
-predicates and possible outputs. Select a record and expand its operands to
-inspect exact expressions, dependency tables and ordered channel instructions.
-**Circuit (physical)** shows the original graph. Connections labeled original
-graph witnesses describe physical mappings, rather than a new execution-order
-proof. Runtime-learned transition transcripts are not present in compile-time
-exports; eligibility is labeled separately.
+Open the [offline viewer](../tools/redpiler-graph-viewer/index.html) and load the
+exported JSON. Compiled-plan records describe inputs, predicates, and outputs;
+the physical view retains source graph witnesses. Compile-time exports do not
+contain runtime-learned transition transcripts. Coverage and export sizes are
+inspection data, rather than throughput or runtime-memory measurements.
 
-The current FPU example is
-`target/graph-viewer-current/fpu-o5-stable.graph.json`, produced from
-`FPU_MROWW.schem` with O5, stable inputs and an 8x compilation budget. It contains
-70,458 nodes and 850,792 links. The complete compact export is 619.41 MiB,
-including 1,362,796 boundary-port records; instant-program tables occupy about
-19.93 MiB and CPU predicate tables 4.88 MiB. These are JSON sizes, not runtime
-memory estimates. The physical evidence remains available for inspection.
-
-Current verification: 619 broad redpiler checks pass, including option aliases,
-the compact chat report, the O0–O5 export fixtures and malformed compiled-IR
-checks; 46 viewer tests and 33 Python-loader tests also pass. The ignored
-full-FPU export check passes. Edge loaded the complete compact FPU export in
-19.41 seconds, displayed a connected overview and expanded a 21-wire stable
-program without JavaScript errors. The inspected page used about 814 MiB of
-JavaScript heap; this is one observed snapshot, not a peak-memory bound.
-Files over 32 MiB load incrementally; the viewer accepts files up to 2 GiB.
-All four benchmark harnesses compile, and the production server builds with
-release fat LTO. Artifacts and logs are under `target/graph-viewer-current/`.
+Historical stage inventories, measurements, and earlier verification counts are
+preserved in the [previous guide](../scraps/docs/research-2026-10-21/REDPILER_OPTIMIZATION_LEVELS_SNAPSHOT.md).
+They describe their recorded revisions. Use the development plan's benchmark
+discipline for new measurements.

@@ -1,7 +1,7 @@
 # Stateful instant kernels and FPU inference
 
 Promoted to normal O4+ production execution, with live inputs and no required
-Cargo feature or stable-input promise. See [production tiers](../../REDPILER_OPTIMIZATION_LEVELS.md).
+Cargo feature or stable-input promise. See [production tiers](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md).
 The measurements below record the earlier opt-in configuration of 2026-10-19.
 
 ## What composes
@@ -128,7 +128,7 @@ edge. Preparing while ON takes 2,624 ticks; preparing while OFF, resetting ON,
 then activating takes 4,160 ticks. Both eight-vector probes still produce only
 `0xffff`. Their green attachment is asserted against the imported blocks. These
 are protocol diagnostics, not a newly certified operating contract. See
-[the probe](../../../target/instant-event-kernels/native-protocol-probe.json).
+[the probe](../../../../../target/instant-event-kernels/native-protocol-probe.json).
 
 ## Five alternating random-input timing pairs
 
@@ -159,10 +159,10 @@ This does not mean 77.20% fewer runtime walks or callbacks. Measured walks remai
 **520,846** on both sides; callbacks decrease **29,086,849 → 28,907,366** (0.62%).
 Piston samples, accepted actions, scheduled ticks and deferred publications agree.
 
-The [raw pairs](../../../target/instant-event-kernels/fpu-random-paired.json),
-[summary](../../../target/instant-event-kernels/fpu-random-summary.json),
-[focused executable-entry records](../../../target/instant-event-kernels/fpu-kernel.json)
-and [source/executable provenance](../../../target/instant-event-kernels/provenance-v14.json)
+The [raw pairs](../../../../../target/instant-event-kernels/fpu-random-paired.json),
+[summary](../../../../../target/instant-event-kernels/fpu-random-summary.json),
+[focused executable-entry records](../../../../../target/instant-event-kernels/fpu-kernel.json)
+and [source/executable provenance](../../../../../target/instant-event-kernels/provenance-v14.json)
 retain the experiment. The entry-record JSON is an inspection slice referring to
 source graph IDs, not a standalone serialization of the complete executable.
 

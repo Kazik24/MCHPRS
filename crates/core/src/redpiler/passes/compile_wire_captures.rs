@@ -8,7 +8,7 @@
 //! writes, requests, schedules and duplicate deliveries. The wire_hops tests cover
 //! analog transitions, live contacts and nested walks. Build/validation are linear
 //! in sites, with one recipe per site and no runtime allocation for capture itself.
-//! See docs/notes/redpiler-pistons-v4/WIRE_CAPTURE_COMPILATION.md for measured scope.
+//! See scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/WIRE_CAPTURE_COMPILATION.md for measured scope.
 use super::{
     PassContext,
     planning::{PlanBuilder, PlanOutput},

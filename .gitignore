@@ -12,7 +12,14 @@ tools/node_modules/
 __pycache__/
 *.pyc
 *.pyo
-scraps/
+scraps/*
+!scraps/docs/
+scraps/docs/*
+!scraps/docs/README.md
+!scraps/docs/research-2026-10-21/
+!scraps/docs/reports/
+scraps/docs/reports/*
+!scraps/docs/reports/REDPILER_REVIEW_2026-10-21.md
 
 # Generated analysis outputs; retain schematics, fixture protocols and frozen baselines.
 /test_data/**/traces/

@@ -108,11 +108,11 @@ effects. On a match, it replays the saved operations, retaining power writes and
 boundary calls at their original sampling cuts. Transcript minimization removes
 known-false selections and unused captures; unknown boundary admission remains
 live. The implementation is in
-[`transitions.rs`](../../../crates/core/src/redpiler/backend/graph/transitions.rs),
+[`transitions.rs`](../../../../../crates/core/src/redpiler/backend/graph/transitions.rs),
 with the operation definitions and shared minimizer in
-[`signal_transitions.rs`](../../../crates/core/src/redpiler/program_graph/signal_transitions.rs)
+[`signal_transitions.rs`](../../../../../crates/core/src/redpiler/program_graph/signal_transitions.rs)
 and the static channel compiler in
-[`signal_channels.rs`](../../../crates/core/src/redpiler/program_graph/signal_channels.rs).
+[`signal_channels.rs`](../../../../../crates/core/src/redpiler/program_graph/signal_channels.rs).
 
 The CPU predicate path short-circuits small typed predicates and uses scalar or
 AVX2 clause-mask comparisons for larger eligible predicates. Vector comparisons
@@ -122,9 +122,9 @@ pure power expressions under that input-stability promise, then retains ordered
 boundary effects and deferred state handling. Internal reads come from graph
 state and compiled typed inputs rather than consulting the original World as a
 power oracle. See
-[`stable_instant_logic.rs`](../../../crates/core/src/redpiler/backend/graph/stable_instant_logic.rs),
-[`cpu_kernels.rs`](../../../crates/core/src/redpiler/backend/graph/cpu_kernels.rs)
-and the [O5 pass pipeline](../../../crates/core/src/redpiler/passes/mod.rs).
+[`stable_instant_logic.rs`](../../../../../crates/core/src/redpiler/backend/graph/stable_instant_logic.rs),
+[`cpu_kernels.rs`](../../../../../crates/core/src/redpiler/backend/graph/cpu_kernels.rs)
+and the [O5 pass pipeline](../../../../../crates/core/src/redpiler/passes/mod.rs).
 These passes reduce physical walks and replay work, but many callbacks and piston
 samples remain. They do not remove the whole physical graph or claim complete
 compiled-circuit execution.

@@ -165,6 +165,9 @@ impl GraphBackend {
                 action: request.action,
             });
         }
+        if self.apply_logical_firing_action(request)?.is_some() {
+            return Ok(());
+        }
         let accepted = compiled.unwrap_or_else(|| {
             let powered = self.piston_powered(request.piston);
             match request.action {
@@ -408,7 +411,7 @@ impl GraphBackend {
         self.publish_piston_action(request, extended);
     }
 
-    fn publish_piston_action(&mut self, request: PistonRequest, extended: bool) {
+    pub(super) fn publish_piston_action(&mut self, request: PistonRequest, extended: bool) {
         let spec = self.program.pistons()[request.piston.index()];
         #[cfg(test)]
         if self.test_recording {
@@ -746,6 +749,10 @@ impl GraphBackend {
     }
 
     pub(super) fn apply_deferred_event(&mut self, event: DeferredPistonEvent) -> Result<(), GraphExecutionError> {
+        if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_actor(event.piston)) {
+            self.apply_logical_firing_deferred(event)?;
+            return Ok(());
+        }
         if self.logical_bud_owner_by_actor.get(event.piston.index()).is_some_and(Option::is_some) {
             self.apply_logical_bud_deferred_event(event)?;
             #[cfg(test)]

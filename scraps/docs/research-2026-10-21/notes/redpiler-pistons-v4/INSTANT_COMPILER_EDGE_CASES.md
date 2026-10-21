@@ -12,7 +12,7 @@ the evidence. A plausible risk is not a confirmed fixture failure; label it acco
 
 The active design and acceptance criteria are in
 [the layered compiler plan](layered-instant-compiler/README.md). The
-[previous boundary-driven design](../../../scraps/docs/redpiler-pistons-v4/BOUNDARY_DRIVEN_INSTANT_COMPILER.md)
+[previous boundary-driven design](../../../redpiler-pistons-v4/BOUNDARY_DRIVEN_INSTANT_COMPILER.md)
 is preserved as historical evidence.
 
 ## Current assumptions
@@ -43,11 +43,11 @@ which only publishes the final wire level can produce the wrong output.
 **Required rule:** preserve the resulting scheduled transition. The compiler may derive a
 guarded scheduling effect directly; it need not replay all internal wire callbacks.
 
-**Evidence:** [native repeater](../../../crates/core/src/redstone/repeater.rs),
+**Evidence:** [native repeater](../../../../../crates/core/src/redstone/repeater.rs),
 `repeater_short_pulse_ends_after_selected_delay` in
-[master_tests.rs](../../../crates/core/src/redstone/master_tests.rs), and
+[master_tests.rs](../../../../../crates/core/src/redstone/master_tests.rs), and
 `repeater_keeps_short_pulse_and_delayed_off_transition` in
-[Graph component tests](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[Graph component tests](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 These existing tests were inspected, not rerun for this entry.
 
 ### E02. QC power and activation are separate inputs
@@ -62,7 +62,7 @@ Conversely, deleting an update because power stayed equal can suppress a real ac
 memory outside instant ownership; route qualifying effects to its normal Graph handler.
 
 **Evidence:** `regional_bud_memory_changes_only_after_the_independent_update` in
-[boundary_contract.rs](../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
+[boundary_contract.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
 Passed in release during this work, including the assertion that the memory actor is not
 owned by an instant program. This validates the existing path, not the unfinished event kernel.
 
@@ -81,7 +81,7 @@ transfer function. The same-tick outside-order assumption does not authorize uno
 internal propagation.
 
 **Evidence:** `fixed_point_reordered_adder_requests_change_the_sum_payload` in
-[fixed_point_adder.rs](../../../crates/core/src/redpiler/backend/graph/tests/fixed_point_adder.rs).
+[fixed_point_adder.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/fixed_point_adder.rs).
 Inspected existing counterexample; not rerun during this entry.
 
 **Step 04 recheck (2026-10-18):** reran
@@ -114,7 +114,7 @@ regions, enlarges the symbolic problem and creates false ownership dependencies.
 the receiving ownership groups.
 
 **Evidence:** `shared_external_power_does_not_merge_independent_instant_devices` in
-[boundary_contract.rs](../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
+[boundary_contract.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
 Existing regression; not rerun in this entry.
 
 ### E05. Endpoint classification misses dependencies hidden in guards
@@ -131,7 +131,7 @@ must not be mislabeled as owned state.
 **Evidence:** `internal_power_edges_keep_their_external_guard_dependencies`,
 `external_power_edges_expose_their_reads_of_region_owned_guards`, and
 `external_actor_guard_atoms_are_not_misclassified_as_owned_outputs` in
-[boundary_contract.rs](../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
+[boundary_contract.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
 
 ### E06. A comparator can observe owned geometry without a power-link guard
 
@@ -144,7 +144,7 @@ solid. That read can exist in the comparator plan rather than on a power edge.
 predicates in addition to ordinary power and callback edges.
 
 **Evidence:** `comparator_overrides_expose_owned_geometry_reads_without_a_power_edge` in
-[boundary_contract.rs](../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
+[boundary_contract.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs).
 
 ### E07. A region can activate without a selected lever or common trigger
 
@@ -159,7 +159,7 @@ internal propagation active while claiming kernel coverage.
 or whole-device input protocol is not a required entry shape.
 
 **Evidence:** `external_component_callback_runs_region_without_selected_lever_or_global_tick_gate`
-in [symbolic_kernel.rs](../../../crates/core/src/redpiler/backend/graph/tests/symbolic_kernel.rs).
+in [symbolic_kernel.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/symbolic_kernel.rs).
 This existing test exercises event entry; it does not by itself prove propagation removal.
 
 ### E08. Unrelated scheduled work must survive regional execution
@@ -187,7 +187,7 @@ current input, including analog strengths between zero and fifteen.
 paths, comparator overrides, state guards and contact-selected receivers.
 
 **Evidence:** `regional_external_power_reads_stay_dynamic_without_rebinding_internal_writes`
-in [boundary_contract.rs](../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs)
+in [boundary_contract.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/boundary_contract.rs)
 passed in debug during this work; it checks all sixteen stored strengths.
 
 ### E10. Rebinding an already-written field destroys sequential semantics
@@ -218,7 +218,7 @@ Close ownership over coupled footprints and conserve the token across valid tran
 **Evidence:** `three_sticky_actors_share_one_conserved_resource`,
 `shared_payload_overlapping_repeated_triggers_keep_fifo_and_conserve_one_token`, and
 `shared_resource_drop_and_recapture_ignore_the_obsolete_actor_event` in
-[components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E12. Actor and resource publication witnesses are independent
 
@@ -238,7 +238,7 @@ guard and independent actor/resource validity predicates. This draft issue was i
 in source review before the new path executed.
 
 **Evidence:** `stale_resource_publication_does_not_cancel_a_valid_actor_publication` and
-the drop/recapture regression in [components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+the drop/recapture regression in [components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 **Fresh corpus evidence:** the revised PC counter's Step 01 128-tick native/Graph/frozen
 episode passes output and full-state checkpoints while accepting 19 `RetractWithoutPull`
@@ -260,7 +260,7 @@ extension predicates. Include existing queued publications as inputs to a region
 **Evidence:** `shared_payload_deadline_reversal_executes_notified_actor_in_same_tick`,
 `shared_payload_opposite_direction_does_not_request_early_retraction`, and
 `piston_early_reversal_matches_interpreter_and_invalidates_old_restoration` in
-[components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E14. Requests must be revalidated at acceptance
 
@@ -275,9 +275,9 @@ interpreter cancels; failing to deduplicate can create extra actions.
 Preserve action-specific deduplication and admission conditions.
 
 **Evidence:** `symbolic_requests_are_deduplicated_and_revalidated_against_live_reset_power`
-in [symbolic_kernel.rs](../../../crates/core/src/redpiler/backend/graph/tests/symbolic_kernel.rs),
+in [symbolic_kernel.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/symbolic_kernel.rs),
 and `piston_acceptance_cancellation_matches_interpreter` in
-[components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E15. Pending work is typed, ordered and can intentionally be stale
 
@@ -294,7 +294,7 @@ deadline. Seed regional pending reads from matching live membership, not an empt
 **Evidence:** `imported_ticks_keep_duplicates_priority_fifo_and_reject_stale_types`,
 `untyped_imported_work_does_not_suppress_a_typed_callback_tick`, and
 `stale_tick_at_uncompiled_air_position_remains_until_dispatch` in
-[components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E16. Dispatch removes pending membership before the handler runs
 
@@ -306,8 +306,8 @@ follow-up tick. Replacing the whole future instead can erase unrelated work.
 **Required rule:** consume only the dispatched occurrence, update membership, then execute
 the regional routine and append its guarded schedule effect through the normal helper.
 
-**Evidence:** existing observer/reset behavior in [Graph components](../../../crates/core/src/redpiler/backend/graph/tests/components.rs)
-and [symbolic work semantics](../../../crates/core/src/redpiler/analysis/instant_regions/compiler/work.rs).
+**Evidence:** existing observer/reset behavior in [Graph components](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs)
+and [symbolic work semantics](../../../../../crates/core/src/redpiler/analysis/instant_regions/compiler/work.rs).
 
 ### E17. Shape notifications are not electrical updates
 
@@ -323,7 +323,7 @@ the receiver's real qualification rules; equal final power does not replace this
 **Evidence:** `shape_delivery_does_not_sample_observers`,
 `observer_shape_then_explicit_update_matches_native_for_every_orientation`, and
 `torch_shape_does_not_sample_power_before_the_update_phase` in
-[components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E18. Nested Turbo walks have independent captured observations
 
@@ -342,7 +342,7 @@ if two alternatives share a profile but have different receivers, a profile-only
 is insufficient. Preserve that distinction or explicitly prove it cannot occur in admission.
 
 **Evidence:** `bulb_callback_starts_a_nested_wire_walk_and_outer_order_resumes` in
-[components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+[components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E19. Stored dust strength and emitted power are different channels
 
@@ -356,9 +356,9 @@ back into a calculation which deliberately excludes it.
 **Required rule:** retain port/channel meaning and four-bit attenuation. Reduce to Boolean
 only where the receiving operation proves that zero/nonzero is sufficient.
 
-**Evidence:** [power semantics](../../../crates/core/src/redpiler/analysis/instant_regions/compiler/power.rs),
-[electrical parser tests](../../../crates/core/src/redpiler/analysis/tests.rs), and
-the external-wire/channel tests in [components.rs](../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
+**Evidence:** [power semantics](../../../../../crates/core/src/redpiler/analysis/instant_regions/compiler/power.rs),
+[electrical parser tests](../../../../../crates/core/src/redpiler/analysis/tests.rs), and
+the external-wire/channel tests in [components.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/components.rs).
 
 ### E20. Lowering can reorder IDs referenced by a certificate
 
@@ -375,7 +375,7 @@ number causes Update/Shape collisions, and truncating contact IDs to eight bits 
 collisions in large graphs. Keep distinct key fields and the full ID width.
 
 **Evidence:** `regional_adder_execution_matches_general_graph_and_interpreter_handoff` in
-[stable_region.rs](../../../crates/core/src/redpiler/backend/graph/tests/stable_region.rs)
+[stable_region.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/stable_region.rs)
 explicitly exercises a nontrivial power-link permutation.
 
 ### E21. Host-owned ordinary blocks may exist outside an instant region
@@ -390,7 +390,7 @@ devices coexist in the selection. Freezing those ordinary devices is equally inc
 reads as boundary inputs. Host execution remains normal Graph behavior.
 
 **Evidence:** scoped initialization now exists in
-[compiler/state.rs](../../../crates/core/src/redpiler/analysis/instant_regions/compiler/state.rs).
+[compiler/state.rs](../../../../../crates/core/src/redpiler/analysis/instant_regions/compiler/state.rs).
 Dedicated mixed-host/event-kernel validation remains required.
 
 ### E22. A correct private-state difference can still hide a wrong output
@@ -511,7 +511,7 @@ mutating the input to make compilation succeed destroys user data.
 activation. Stationary signs on piston bases are permitted by the agreed model; do not reject
 them merely because another attachment position would lose support.
 
-**Evidence:** [geometry parser](../../../crates/core/src/redpiler/analysis/geometry.rs) and its
+**Evidence:** [geometry parser](../../../../../crates/core/src/redpiler/analysis/geometry.rs) and its
 tests. For CPU benchmarks the sign normalization is an explicit, identical in-memory change
 to both inputs, not a schematic modification or a general acceptance proof.
 
@@ -530,7 +530,7 @@ Do not catch a cancelled trace as an ordinary unsupported-region decline. Large 
 trace budgets also need cancellation checks inside tracing, not only before and after it.
 
 **Evidence:** `symbolic_region_build_budgets_cancellation_and_stale_plans_are_checked` in
-[symbolic_kernel.rs](../../../crates/core/src/redpiler/backend/graph/tests/symbolic_kernel.rs).
+[symbolic_kernel.rs](../../../../../crates/core/src/redpiler/backend/graph/tests/symbolic_kernel.rs).
 New event-program validation remains to be completed.
 
 ## Performance traps that can disguise failure

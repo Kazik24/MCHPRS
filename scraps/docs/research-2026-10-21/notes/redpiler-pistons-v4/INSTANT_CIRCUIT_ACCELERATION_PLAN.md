@@ -3,7 +3,7 @@
 Status: implementation in progress, 2026-10-21. This replaces the earlier
 physical transport and stable-input implementation plan at this path. Existing
 O0-O5 optimizations remain supported. Implementation progress belongs in
-[TODO.md](../../../TODO.md); measurements and their limits remain in
+[TODO.md](../../../../../TODO.md); measurements and their limits remain in
 [SETTLED_RUNTIME_VERIFICATION.md](SETTLED_RUNTIME_VERIFICATION.md) and
 [STABLE_INSTANT_LOGIC_RESULTS.md](STABLE_INSTANT_LOGIC_RESULTS.md).
 

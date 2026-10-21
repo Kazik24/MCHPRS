@@ -371,7 +371,7 @@ impl CircuitDraft {
             index: 0,
         };
         plan.validate().map_err(|_| invalid())?;
-        let expected = if plan.timing.is_some() {
+        let expected = if plan.timing.is_some() || plan.firing.is_some() {
             crate::redpiler::analysis::instant::layers::logical::compile_device(self, monitor)
         } else {
             crate::redpiler::analysis::instant::layers::logical::compile_settled(self, monitor)

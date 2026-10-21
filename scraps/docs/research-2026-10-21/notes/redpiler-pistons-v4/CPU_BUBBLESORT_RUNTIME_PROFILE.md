@@ -67,9 +67,9 @@ Final regressions pass 527 Redpiler tests (36 ignored), two geometry tests,
 26 loader tests, 32 viewer tests and the workspace check. The separate FPU
 replay passes all three retained histories, without a numeric arithmetic claim.
 
-Artifacts: [paired summary](../../../target/bubblesort-instant-perf/summary.json),
-[provenance](../../../target/bubblesort-instant-perf/provenance.json),
-[native prefix](../../../target/bubblesort-queued-geometry-cpu-native.log).
+Artifacts: [paired summary](../../../../../target/bubblesort-instant-perf/summary.json),
+[provenance](../../../../../target/bubblesort-instant-perf/provenance.json),
+[native prefix](../../../../../target/bubblesort-queued-geometry-cpu-native.log).
 The directory also retains individual reports, logs, process observations,
 the source diff and both release executables. Baseline SHA-256 starts `ae401341`;
 candidate starts `ebba0c97`.
@@ -200,7 +200,7 @@ Ignored local artifacts are in `target/profiles/cpu-current-o3/`:
 - `capture.log`, `analysis.log`: recording and analysis output.
 - `cpu-o3.kernel.etl`: original ETL, approximately 3.62 GiB **on disk**, not measured runtime RAM.
 
-The one-off Python scripts alongside these files postprocess Samply's existing profile and symbolication API. They are not a runtime instrumentation framework or a new project dependency. Build, record, and inspect instructions are in [RUNTIME_BENCHMARK_AND_PROFILING_PLAN.md](../../../RUNTIME_BENCHMARK_AND_PROFILING_PLAN.md).
+The one-off Python scripts alongside these files postprocess Samply's existing profile and symbolication API. They are not a runtime instrumentation framework or a new project dependency. Build, record, and inspect instructions are in [RUNTIME_BENCHMARK_AND_PROFILING_PLAN.md](../../../../../RUNTIME_BENCHMARK_AND_PROFILING_PLAN.md).
 
 Limitations: this is a sampled CPU profile of a 100-tick prefix repeated five times, not a full BubbleSort or arbitrary-history equivalence proof. It does not measure hardware cache misses, allocation counts, or peak RSS. No new speedup is claimed. Some system symbols remain private; all sampled application addresses were resolved. Rust tests were not rerun for this documentation-only profiling work.
 

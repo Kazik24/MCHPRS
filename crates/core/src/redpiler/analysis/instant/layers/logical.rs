@@ -76,16 +76,12 @@ struct Equations<'a> {
     /// When set, a recognized payload-location backedge becomes an explicit state input.
     feedback_resources: bool,
     /// Cut recognized instant-cell payload feedback with source-derived fired inputs.
-    #[cfg(test)]
     one_shot_firing: bool,
     /// Fired-state inputs allocated for actors that own a requested feedback resource.
-    #[cfg(test)]
     fired_inputs: FxHashMap<PistonId, LayerInputId>,
     /// Shared source resources whose feedback was represented by owner fired inputs.
-    #[cfg(test)]
     firing_resources: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
     /// Prevalidated common-Far contracts built from one sticky-owner index.
-    #[cfg(test)]
     one_shot_contracts: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
     /// Diagnostic-only mode: retain otherwise unknown payload locations as leaves so one
     /// traversal can report every blocker. Executable compilation never enables this.
@@ -128,7 +124,6 @@ impl<'a> Equations<'a> {
             .into_iter()
             .filter_map(|(resource, count)| (count == 1).then_some(resource))
             .collect();
-        #[cfg(test)]
         let one_shot_contracts = common_far_contracts(graph, &cells, &unique_cell_resources);
         Ok(Self {
             graph,
@@ -171,13 +166,9 @@ impl<'a> Equations<'a> {
             pending_repeaters: FxHashSet::default(),
             retain_classic: false,
             feedback_resources: false,
-            #[cfg(test)]
             one_shot_firing: false,
-            #[cfg(test)]
             fired_inputs: FxHashMap::default(),
-            #[cfg(test)]
             firing_resources: FxHashMap::default(),
-            #[cfg(test)]
             one_shot_contracts,
             diagnostic_unknown_resources: false,
             #[cfg(test)]
@@ -244,7 +235,6 @@ impl<'a> Equations<'a> {
         self.reduced.input_expr(input)
     }
 
-    #[cfg(test)]
     fn fired_leaf(&mut self, actor: PistonId) -> Result<LayerExprId, ConstructionError> {
         let source = LayerInputSource::InstantFired { actor };
         let input = self.reduced.input(source, LayerInputRole::RequestSample)?;
@@ -252,7 +242,6 @@ impl<'a> Equations<'a> {
         self.reduced.input_expr(input)
     }
 
-    #[cfg(test)]
     fn one_shot_source_presence(&mut self, resource: ResourceId) -> Result<Option<LayerExprId>, ConstructionError> {
         if !self.one_shot_firing {
             return Ok(None);
@@ -268,17 +257,7 @@ impl<'a> Equations<'a> {
     }
 
     fn one_shot_live_destination(&self, resource: ResourceId, contact: ContactId) -> bool {
-        #[cfg(test)]
-        {
-            self.one_shot_firing
-                && self.one_shot_contracts.contains_key(&resource)
-                && self.graph.resources[resource.index()].contacts.contains(&contact)
-        }
-        #[cfg(not(test))]
-        {
-            let _ = (resource, contact);
-            false
-        }
+        self.one_shot_firing && self.one_shot_contracts.contains_key(&resource) && self.graph.resources[resource.index()].contacts.contains(&contact)
     }
 
     fn source(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
@@ -655,7 +634,6 @@ impl<'a> Equations<'a> {
                 }
             }
             LayerInputSource::State(StateTest::ResourceEnabled(resource)) => {
-                #[cfg(test)]
                 if self.one_shot_firing {
                     // Only canonical far-side ResourceAt values are represented by
                     // owner fired bits. Keep enablement live as an exact Graph phase
@@ -690,7 +668,6 @@ impl<'a> Equations<'a> {
                     }
                 } else if let Some((origin, actors)) = self.cells.get(&resource).cloned() {
                     if origin == contact {
-                        #[cfg(test)]
                         if let Some(present) = self.one_shot_source_presence(resource)? {
                             return Ok(present);
                         }
@@ -819,7 +796,6 @@ impl<'a> Equations<'a> {
     }
 }
 
-#[cfg(test)]
 fn common_far_contracts(
     graph: &CompileGraph,
     cells: &FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,

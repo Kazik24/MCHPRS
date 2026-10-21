@@ -38,7 +38,7 @@ targets; kernel predicates are about 4.6–4.8%. This supersedes the older runti
 profile's singleton-kernel census for current performance planning.
 
 The certified passes are now enabled in normal production
-[O1–O5 tiers](../../REDPILER_OPTIMIZATION_LEVELS.md). O4 selects connected
+[O1–O5 tiers](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md). O4 selects connected
 live-input event kernels, BUD reads, passive capture elimination, closed wire
 transfers and certified local classic nets; O5 adds CPU packing. No experimental
 Cargo features or stable-input promise is needed for O4/O5. The measurements below
@@ -118,8 +118,8 @@ Final validation passes 527 Redpiler tests (36 ignored), two wire-geometry tests
 26 Python loader tests, 32 viewer tests and the workspace check. The separately
 selected FPU replay passes all three histories: 480 native tick pairs and 16
 native handoff ticks per case. This does not certify floating-point arithmetic.
-See the [suite log](../../../target/bubblesort-final-redpiler.log) and
-[FPU replay](../../../target/bubblesort-final-fpu.log).
+See the [suite log](../../../../../target/bubblesort-final-redpiler.log) and
+[FPU replay](../../../../../target/bubblesort-final-fpu.log).
 
 ## Instant boundary update, 2026-10-19
 
@@ -143,13 +143,13 @@ This verifies the tested input/update/reset histories, not numeric floating-poin
 results or a performance gain. The 100-active-tick BubbleSort replay also passes,
 including 16 handoff ticks, with the previous 2,197 installed kernels.
 
-Evidence: [FPU replay](../../../target/instant-boundary-fpu.log),
-[FPU coverage](../../../target/layered-instant-devices/fpu.json),
-[CPU replay](../../../target/instant-boundary-cpu.log).
+Evidence: [FPU replay](../../../../../target/instant-boundary-fpu.log),
+[FPU coverage](../../../../../target/layered-instant-devices/fpu.json),
+[CPU replay](../../../../../target/instant-boundary-cpu.log).
 The final frozen test build passes 519 Redpiler tests (35 ignored), including
 budget/cancellation and partial-wave regressions; the two device replays above
 were selected explicitly. Workspace check, 25 Python loader tests and 31 viewer
-tests pass. [Full suite log](../../../target/instant-boundary-redpiler-tests.log).
+tests pass. [Full suite log](../../../../../target/instant-boundary-redpiler-tests.log).
 Next: profile construction in the two budget-limited regions and extend active
 corridor/reset arrival proofs without replacing callback order with settled power.
 
@@ -186,9 +186,9 @@ configured tiers, including O5; neither implicitly enables the two explicit opt-
 The diagnostic name `experimental-coalesce-delayed-updates` survives its O5 promotion.
 The unsafe fixed-point Cargo feature remains a separate, deliberately incorrect experiment.
 
-Sources: [options](../../../crates/core/src/redpiler/options.rs),
-[pipeline](../../../crates/core/src/redpiler/passes/mod.rs),
-[whole-fixed admission](../../../crates/core/src/redpiler/program_graph/fixed_classic.rs).
+Sources: [options](../../../../../crates/core/src/redpiler/options.rs),
+[pipeline](../../../../../crates/core/src/redpiler/passes/mod.rs),
+[whole-fixed admission](../../../../../crates/core/src/redpiler/program_graph/fixed_classic.rs).
 
 ## What can compile
 
@@ -214,10 +214,10 @@ save for missing moving-piston metadata and the fresh save for a missing piston 
 the corrected PM1 report was unreadable during review, so no success is claimed for it.
 These are fixture/Graph admission issues, separate from instant-layer proof failures.
 
-Sources: [admission](../../../crates/core/src/redpiler/analysis/mod.rs),
-[geometry](../../../crates/core/src/redpiler/analysis/geometry.rs),
+Sources: [admission](../../../../../crates/core/src/redpiler/analysis/mod.rs),
+[geometry](../../../../../crates/core/src/redpiler/analysis/geometry.rs),
 [recognition](ADDER1BIT_INSTANT_RECOGNITION_RESULTS.md),
-[device reports](../../../target/layered-instant-devices/).
+[device reports](../../../../../target/layered-instant-devices).
 
 ## Measured speed and compilation cost
 
@@ -249,8 +249,8 @@ The whole window executes only **8 net entries / 18 receiver operations**, elimi
 8 of 183,751 general walks. Static admission barely reaches active work. Earlier claims
 of zero ANPU local-net coverage are superseded; the measured speed limitation remains.
 
-Evidence: [paired CHUNGUS summary](../../../target/chungus-stage2-summary.json),
-[paired ANPU summary](../../../target/anpu-regional-summary.json),
+Evidence: [paired CHUNGUS summary](../../../../../target/chungus-stage2-summary.json),
+[paired ANPU summary](../../../../../target/anpu-regional-summary.json),
 [BubbleSort profile](CPU_BUBBLESORT_RUNTIME_PROFILE.md#2026-10-18-current-full-sort-with-all-inference-flags),
 [classic progress log](CLASSIC_REDSTONE_PROGRESS.md).
 Historical C/LLVM speed results belong to removed code and are excluded from current throughput.
@@ -289,7 +289,7 @@ The separate production O5 BubbleSort reference run covers all 10,036 RAM sample
 
 Evidence: [step 04](layered-instant-compiler/steps/04-regions-and-layers.md),
 [step 05](layered-instant-compiler/steps/05-reduction-and-lowering.md),
-[device reports](../../../target/layered-instant-devices/).
+[device reports](../../../../../target/layered-instant-devices).
 
 ## Work still required
 

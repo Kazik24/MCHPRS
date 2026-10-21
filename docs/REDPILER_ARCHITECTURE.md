@@ -1,0 +1,81 @@
+# Redpiler architecture
+
+Redpiler executes a compiled selection while preserving the world’s redstone
+state, controls, and scheduled work. Its physical graph and logical kernels
+serve different roles: the graph models component connectivity and events;
+logical kernels evaluate only subcircuits that compilation has certified.
+The graph remains the general executor and fallback.
+
+## Physical graph and logical programs
+
+Compilation starts from a read-only world analysis, then prepares and lowers a
+graph. The immutable [`CircuitProgram`](../crates/core/src/redpiler/program_graph.rs)
+contains component nodes, spatially discovered power links, input channels,
+guards, callback routes, piston/resource topology, and precomputed plans. Its
+paired `CircuitState` contains mutable component state, piston state, and which
+resource occupies each contact. [`GraphBackend`](../crates/core/src/redpiler/backend/graph.rs)
+runs the general circuit:
+control changes enter through component handlers, route notifications update
+receivers, and its scheduler and piston phases process delayed actions.
+
+A [`SettledCircuit`](../crates/core/src/redpiler/program_graph/settled_circuit.rs)
+is a separate reduced logical program. It is a Boolean or strength-valued DAG
+with explicit input and output bindings, optional state and event certificates,
+and source-derived timing information. It is not a replacement graph and does
+not rediscover physical topology at runtime. A specialized executor evaluates
+the DAG and applies results at its certified boundaries; callbacks, piston
+actions, reset effects, and retained outputs still belong to Graph unless a
+specific runtime binding handles them. Unsupported roots or effects must stay
+on the Graph path rather than being dropped.
+
+## Compile, ownership, and handoff
+
+[`Compiler::compile`](../crates/core/src/redpiler/mod.rs) analyzes the selected
+world, runs the configured graph pass pipeline, lowers the result, then creates
+the backend. Analysis is read-only. The backend takes ownership only after
+lowering and runtime admission succeed. Logical plans are optional: each has to
+bind its inputs, outputs, owned state, and any callbacks or events it consumes.
+The original graph remains available to execute work outside that contract.
+
+While active, the backend owns the selection’s component state and pending
+work. User lever, button, and pressure-plate changes enter through the graph
+backend; `flush` projects visible state to the world without ending execution.
+Reset writes the backend’s current state and remaining scheduled work back to
+the interpreter. Kernel-private state is not a saved-world format. Runtime
+admission also requires a valid starting boundary; pending entry work can keep
+the general graph executor selected.
+
+## Timing and controls
+
+The general Graph scheduler advances scheduled component ticks, then piston
+actions and deferred connections in defined phases. A logical device instead
+uses a source-qualified [`LogicalClock`](../crates/core/src/redpiler/backend/graph/logical_clock.rs)
+when its controller matches a supported topology. The clock supplies compute,
+publish, and commit edges; external data
+controls are sampled from their live component state at those boundaries. A
+clock certificate is deliberately narrower than arbitrary piston timing. The
+Counter kernel uses a qualified torch/observer clock; broader control, timer,
+or reset behavior remains with Graph unless another contract is added.
+
+The current original-checkout WIP adds a source-certified
+[`LogicalFiringRuntime`](../crates/core/src/redpiler/backend/graph/logical_firing.rs).
+It intercepts only an admitted activation, piston action, observer reset, and
+retained lamp effects, and leaves other routes and actors on Graph. This event
+runtime is experimental and is not part of the v0.6.0 release.
+
+## Version boundary and limits
+
+Tagged v0.6.0 includes the O6 settled FPU frame and Counter runtimes. In that
+release, O6 implies stable inputs through reset; no additional flag is needed.
+The current original-checkout WIP differs: stable-input behavior is explicitly
+requested with [`CompilerOptions`](../crates/core/src/redpiler/options.rs)'s
+`--stable-instant-inputs` option, and its O6 pipeline does not inherit the
+release’s implicit policy. Do not infer one checkout’s command contract from
+the other.
+
+Neither runtime is a universal circuit compiler. Specialized paths are
+qualified by input history, physical timing, state ownership, and output
+effects. Their admission limits and ordinary Graph fallback are part of the
+execution contract. See the [optimization tiers](REDPILER_OPTIMIZATION_LEVELS.md),
+[redstone model](REDSTONE_MODEL.md), and [piston model](PISTON_MODEL.md) for
+user-facing behavior and physical rules.

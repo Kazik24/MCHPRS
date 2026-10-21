@@ -1,7 +1,7 @@
 # Experimental instant wire nodes
 
 The certified single-wire pass is now selected by normal production O4+;
-see [production tiers](../../REDPILER_OPTIMIZATION_LEVELS.md). Its original
+see [production tiers](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md). Its original
 diagnostic name remains `experimental-compile-instant-wire-nodes`.
 The experiments below record the earlier opt-in configuration of 2026-10-19.
 

@@ -102,4 +102,4 @@ For the first family, test the net's committed signal explicitly: a source chang
 
 This scope adds one optional optimization and its necessary runtime/inspection support. It does not restore DirectBackend, introduce another scheduler or simulator, enable fixed-point propagation globally, require stable CPU input protocols, or recognize schematic names. Further families broaden eligibility only after establishing their own entry and boundary invariants.
 
-Background: [existing pass contract](../../../crates/core/src/redpiler/passes/README.md), [classic redstone research](../../../scraps/docs/redpiler-pistons-v4/SIMPLE_REDSTONE_ABSTRACTION_RESEARCH.md), and [the ordering counterexample](DUST_FIXED_POINT_INVESTIGATION.md#proven-ordering-counterexample).
+Background: [existing pass contract](../../../../../crates/core/src/redpiler/passes/README.md), [classic redstone research](../../../redpiler-pistons-v4/SIMPLE_REDSTONE_ABSTRACTION_RESEARCH.md), and [the ordering counterexample](DUST_FIXED_POINT_INVESTIGATION.md#proven-ordering-counterexample).

@@ -17,7 +17,7 @@ measurement. Host conditions and timing windows differ from the older table
 below; use paired measurements to attribute a change to an optimization.
 
 The frozen measurements below precede promotion to the normal production tiers.
-Current activation is described in [O1–O5 production levels](../../REDPILER_OPTIMIZATION_LEVELS.md);
+Current activation is described in [O1–O5 production levels](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md);
 the historical build flags and timing evidence below remain unchanged.
 
 Medians of five alternating release-harness pairs, measured on 2026-10-19:

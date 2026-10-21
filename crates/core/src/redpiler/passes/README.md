@@ -32,7 +32,7 @@ Execution and inspection use shared preparation and pass infrastructure. Preserv
 ## File organization — mandatory
 
 Instant region boundaries and the private-cell instruction proxy are documented in
-[INSTANT_REGIONS_AND_PROXIES.md](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_REGIONS_AND_PROXIES.md).
+[INSTANT_REGIONS_AND_PROXIES.md](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/INSTANT_REGIONS_AND_PROXIES.md).
 At O3, rewrites run before plan builders. `compile-instant-resets` derives reset
 certificates after the reset-related rewrites; `identify-instant-regions` then
 builds boundaries, and `compile-instant-proxies` builds their execution proxies.
@@ -48,7 +48,7 @@ layer builder remains an explicit research path with its stable-input contract.
 Event kernels retain live wire execution and every original pending-work owner;
 their connected groups are not a simultaneous Boolean replacement of the circuit.
 The algorithms and exact recovery commits are preserved in
-[ALGORITHMS_AND_RECOVERY.md](../../../../../docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
+[ALGORITHMS_AND_RECOVERY.md](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md).
 
 1. Every optimization pass **must have its own `.rs` file** under `crates/core/src/redpiler/passes/`. Use a descriptive name such as `simplify_guards.rs`, not a batch number.
 2. `mod.rs` holds registration and pipeline infrastructure. Do not implement unrelated transformations inside the runner, parser, compiler orchestration, or backend dispatch.
@@ -189,7 +189,7 @@ Long discovery/proof loops must check cancellation at sensible boundaries. Compu
 
 The exact identity is `guard_outer ? max_i(guard_i ? source_i.saturating_sub(a_i) : 0).saturating_sub(a_outer) : 0 = max_i((guard_outer && guard_i) ? source_i.saturating_sub(min(15, a_i + a_outer)) : 0)`. Source strengths are four-bit; guards and reads are pure. No callback or scheduled work executes during either query, so both expressions see the same live state. Query equality at every operation preserves sampling, acceptance and subsequent execution by induction. Mutable contacts are retained as source reads; only immutable fixed conductors are expanded. Recursive conductor programs stay general.
 
-Report recognized mechanisms, rewritten input owners, private output kernels and absorbed lifecycles separately. Observer-reset provenance does not authorize eliminating a lifecycle or replacing it with a truth table. Discovery/type rejection tests, rotated/transformed fixtures, real before/after runtime queries with multiple independent guards and strengths, and full adder differential/continuation tests establish this slice. The source catalogue and all-actor mechanism map are in [ADDER1BIT_INSTANT_RECOGNITION_RESEARCH.md](../../../../../docs/notes/redpiler-pistons-v4/ADDER1BIT_INSTANT_RECOGNITION_RESEARCH.md).
+Report recognized mechanisms, rewritten input owners, private output kernels and absorbed lifecycles separately. Observer-reset provenance does not authorize eliminating a lifecycle or replacing it with a truth table. Discovery/type rejection tests, rotated/transformed fixtures, real before/after runtime queries with multiple independent guards and strengths, and full adder differential/continuation tests establish this slice. The source catalogue and all-actor mechanism map are in [ADDER1BIT_INSTANT_RECOGNITION_RESEARCH.md](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/ADDER1BIT_INSTANT_RECOGNITION_RESEARCH.md).
 
 ### Built-in reset clocks
 
@@ -205,7 +205,7 @@ This lowering avoids ordinary observer handling, a duplicate pending lookup, emp
 
 `compile_wire_hops.rs` binds each unambiguous wire root and reuses its existing canonical neighbor IDs as direct hop destinations. It does not duplicate adjacency or store a second electrical state. Optimized walks reuse dense site-to-slot scratch, capture only profile/receiver/properties, and retain their discovered neighbor-slot arrays. Scratch is owned by an invocation; nested callbacks take another scratch record from the backend pool, and returning a walk clears only its discovered entries. General O0 walks retain sparse lookup as the comparison path.
 
-The optimization preserves heading, layer queues, admission-time guards, captured versus live reads, intermediate writes, callbacks and scheduler work. It does not replace an arbitrary network with its settled voltages or collapse a whole wire chain into a single observable event. Those stronger reductions still need a region-boundary proof. See [COMPILED_WIRE_HOPS.md](../../../../../docs/notes/redpiler-pistons-v4/COMPILED_WIRE_HOPS.md).
+The optimization preserves heading, layer queues, admission-time guards, captured versus live reads, intermediate writes, callbacks and scheduler work. It does not replace an arbitrary network with its settled voltages or collapse a whole wire chain into a single observable event. Those stronger reductions still need a region-boundary proof. See [COMPILED_WIRE_HOPS.md](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/COMPILED_WIRE_HOPS.md).
 
 Compiled hop roots are derived from existing component-site ownership and canonical wire neighbors. Validation rejects dangling, ambiguous and wrong-owner roots. JSON adds optional `hop_root` references; older exports remain valid.
 
@@ -310,8 +310,8 @@ Default enablement requires reviewed correctness evidence and measured benefit. 
 The unsafe fixed-point and abstract-net implementations have been removed.
 Final-state settling cannot replace ordered callbacks and piston requests.
 Historical counterexamples remain documented in
-[the stable-region contract](../../../../../docs/notes/redpiler-pistons-v4/STABLE_INSTANT_REGION_CONTRACT.md)
-and [the boundary experiment](../../../../../docs/notes/redpiler-pistons-v4/INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md).
+[the stable-region contract](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/STABLE_INSTANT_REGION_CONTRACT.md)
+and [the boundary experiment](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/INSTANT_NETWORK_BOUNDARY_EXPERIMENT.md).
 
 ## Compiled wire transfer expressions
 
@@ -401,7 +401,7 @@ wires, but runtime guards leave only 670 wires specialized after 5,000 ticks and
 the workload executes just eight compiled entries. No speedup was demonstrated.
 `simple_and_gate.schem` supplies a small positive fixture. Bounds, proofs,
 coverage, continuation/FIFO tests, storage and paired measurements are recorded
-in [CLASSIC_REDSTONE_PROGRESS.md](../../../../../docs/notes/redpiler-pistons-v4/CLASSIC_REDSTONE_PROGRESS.md).
+in [CLASSIC_REDSTONE_PROGRESS.md](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/CLASSIC_REDSTONE_PROGRESS.md).
 
 
 `compile-wire-callbacks` publishes per-wire 24-bit known/admitted masks. It evaluates
@@ -417,7 +417,7 @@ the original delivery rows remain available as provenance and general execution.
 ### Experimental instant boundary catalog
 
 `identify-instant-boundaries` is a read-only plan builder used by the explicit test
-pipeline in the [layered compiler plan](../../../../../docs/notes/redpiler-pistons-v4/layered-instant-compiler/steps/03-boundary-pass.md).
+pipeline in the [layered compiler plan](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/layered-instant-compiler/steps/03-boundary-pass.md).
 It replaces the old region/proxy builders in that pipeline; both ownership plans cannot
 coexist. Public optimization tiers retain their current behavior. The catalog is cold
 compile data and is discarded at lowering; it removes no executed work yet.
@@ -433,7 +433,7 @@ connected regions and records request, acceptance and consumed-use Boolean roots
 The current isolated-cell family retains the original reset clock and lifecycle work;
 unproved wire-arrival and shared-owner order produce whole-region decline witnesses.
 It is test-only cold analysis, not runtime replacement. See the
-[Step 04 gate](../../../../../docs/notes/redpiler-pistons-v4/layered-instant-compiler/steps/04-regions-and-layers.md)
+[Step 04 gate](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/layered-instant-compiler/steps/04-regions-and-layers.md)
 before extending it; parsing connectivity does not establish causal order.
 
 ### O5 equivalent delayed updates
@@ -484,7 +484,7 @@ shared-cell entries, exact private BUD reads, and constant passive capture
 elimination. Their validators independently reconstruct the source certificates.
 The pipeline omits old layer compilation because event entries cover the same
 admitted actors; dynamic wires, outside actors and pending work retain their
-original state owners. See [scope and evidence](../../../../../docs/notes/redpiler-pistons-v4/STATEFUL_INSTANT_KERNELS.md).
+original state owners. See [scope and evidence](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/STATEFUL_INSTANT_KERNELS.md).
 
 ### O5 CPU kernel packing
 
@@ -496,7 +496,7 @@ operations. It preserves Main-before-Quasi sampling, contact priority, live
 wire strengths and every original FIFO action/publication. Budget or unsupported
 entries use the original query/event program. Validation reconstructs the whole
 table from the source graph; export records hex masks losslessly. See
-[implementation and measurements](../../../../../docs/notes/redpiler-pistons-v4/CPU_KERNEL_EXECUTION.md).
+[implementation and measurements](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/CPU_KERNEL_EXECUTION.md).
 
 ### O4 instant wire nodes
 
@@ -508,4 +508,4 @@ reset clocks, imported future work and native continuation retain their owners.
 Every possible contact receiver and conducted power consumer must stay inside
 the admitted boundary; mixed consumers, other dust and overlapping private
 owners decline. This is local execution and needs no whole-kernel queue claim.
-See [scope, evidence and the multi-wire limit](../../../../../docs/notes/redpiler-pistons-v4/EXPERIMENTAL_INSTANT_WIRE_NODES.md).
+See [scope, evidence and the multi-wire limit](../../../../../scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/EXPERIMENTAL_INSTANT_WIRE_NODES.md).

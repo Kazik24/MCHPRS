@@ -6,7 +6,7 @@ the timing experiments below each retain their original measurement scope.
 
 `optimize-instant-kernels-cpu` is a separate production O5 builder, following
 the O4 stateful event-kernel family without a stable-input promise or Cargo flag.
-See the [production tier table](../../REDPILER_OPTIMIZATION_LEVELS.md).
+See the [production tier table](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md).
 It runs after event
 composition and consumes the certified kernel entries and original power graph.
 

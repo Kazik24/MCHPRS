@@ -70,8 +70,8 @@ Removing duplication must save at least 8.951 s plus the unmeasured outer work
 to meet the target for this sample; the observed maximum requires more.
 
 Sources: [measurement and prior changes](COMPILATION_AND_RUNTIME_PROFILE.md),
-[`summary.json`](../../../target/compile-pipeline-final-paired/summary.json), and
-[`2-final.json`](../../../target/compile-pipeline-final-paired/2-final.json).
+[`summary.json`](../../../../../target/compile-pipeline-final-paired/summary.json), and
+[`2-final.json`](../../../../../target/compile-pipeline-final-paired/2-final.json).
 The target artifacts are local and may be absent in another checkout.
 
 Source inspection confirms these repeated operations:

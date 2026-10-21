@@ -2,7 +2,7 @@
 
 This document specifies piston behavior implemented by the world interpreter. It includes quasi-connectivity, delivered updates, event acceptance, payload ownership, movement and the causal order often called nanoticks. The rules apply to geometry and ordered operations, independently of schematic names or particular truth tables.
 
-[REDSTONE_MODEL.md](REDSTONE_MODEL.md) defines positions, directional power, support checks, notifications and the shared scheduler. [REDPILER_MODEL.md](../scraps/docs/REDPILER_MODEL.md) defines the compiled abstraction; [REDPILER_ARCHITECTURE.md](../scraps/docs/REDPILER_ARCHITECTURE.md) describes its implementation. A derived logical gate or storage cell is valid only under the decoder and protocol stated for it. The physical interpreter continues to use the operational rules below for every input history.
+[REDSTONE_MODEL.md](REDSTONE_MODEL.md) defines positions, directional power, support checks, notifications and the shared scheduler. [compiled execution contract](REDPILER_ARCHITECTURE.md) defines the compiled abstraction; [REDPILER_ARCHITECTURE.md](REDPILER_ARCHITECTURE.md) describes its implementation. A derived logical gate or storage cell is valid only under the decoder and protocol stated for it. The physical interpreter continues to use the operational rules below for every input history.
 
 ## 1. State, notation and observables
 
@@ -418,11 +418,11 @@ Electrical boundary strength uses the
 Directional eligibility, attenuation, fixed contributors and comparator channels
 remain electrical properties when a logical result uses a falling-event decoder.
 
-A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpiler model](../scraps/docs/REDPILER_MODEL.md) covers piston-free compiled graphs; piston timing and ordering remain interpreter behavior.
+A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) covers piston-free compiled graphs; piston timing and ordering remain interpreter behavior.
 
 ## 6. General rules and implementation limits
 
-The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. Stationary piston builds within the admitted subset compile to the graph backend described in the [Redpiler architecture](../scraps/docs/REDPILER_ARCHITECTURE.md); other builds remain interpreter work.
+The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. Stationary piston builds within the admitted subset compile to the graph backend described in the [Redpiler architecture](REDPILER_ARCHITECTURE.md); other builds remain interpreter work.
 
 Transport/ownership limits follow section 3; event facing and early retraction
 follow section 2. Notification exclusions and restore-time support are defined

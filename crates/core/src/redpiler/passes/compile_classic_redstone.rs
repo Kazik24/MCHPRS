@@ -3,7 +3,7 @@
 //! every old/new strength pair; compact masks select receiver scheduling at original
 //! route occurrences. Unsupported boundaries and exhausted proof budgets stay general.
 //! Runs automatically at O2+ after whole fixed compilation declines.
-//! See docs/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md for the algorithm.
+//! See scraps/docs/research-2026-10-21/notes/redpiler-pistons-v4/ALGORITHMS_AND_RECOVERY.md for the algorithm.
 use super::{
     PassContext,
     planning::{PlanBuilder, PlanOutput},

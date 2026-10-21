@@ -19,7 +19,7 @@ checkpoints, semantic pending work and native continuation pass in every run.
 The native output bank remains constant, so these measure switching cost.
 
 All certified passes are now selected in normal production
-[O1–O5 tiers](../../REDPILER_OPTIMIZATION_LEVELS.md), including live-input event
+[O1–O5 tiers](../../../../../docs/REDPILER_OPTIMIZATION_LEVELS.md), including live-input event
 kernels at O4 and CPU packing at O5. No experimental Cargo flag is required.
 
 The next separate pass, [CPU kernel packing](CPU_KERNEL_EXECUTION.md), is

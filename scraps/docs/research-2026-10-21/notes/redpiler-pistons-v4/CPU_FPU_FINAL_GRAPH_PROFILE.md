@@ -12,9 +12,9 @@ Turbo propagation. Installed kernels are all singletons and own **zero wires**.
 These results describe a frozen snapshot: `7aba05d` plus the separate
 `compile-wire-shapes` pass and its supporting changes. The shared main checkout
 continued changing during this work. This is not a measurement of those later
-uncommitted changes. [Source, executable/PDB hashes and toolchain](../../../target/profiles/final-inference-20261019/provenance.json),
-[tracked source patch](../../../target/profiles/final-inference-20261019/snapshot.diff)
-and [new source files](../../../target/profiles/final-inference-20261019/new-files/)
+uncommitted changes. [Source, executable/PDB hashes and toolchain](../../../../../target/profiles/final-inference-20261019/provenance.json),
+[tracked source patch](../../../../../target/profiles/final-inference-20261019/snapshot.diff)
+and [new source files](../../../../../target/profiles/final-inference-20261019/new-files)
 preserve the measured snapshot.
 
 ## Measured BubbleSort gain
@@ -59,8 +59,8 @@ The pass makes existing work cheaper; it does not remove propagation. The
 single default-O5 control remains insufficient to establish an Instant-only
 speedup. These results are separate from the CHUNGUS gains.
 
-[Raw paired reports and observations](../../../target/instant-wire-shapes-perf/),
-[checked result summary](../../../target/profiles/final-inference-20261019/results-summary.json).
+[Raw paired reports and observations](../../../../../target/instant-wire-shapes-perf),
+[checked result summary](../../../../../target/profiles/final-inference-20261019/results-summary.json).
 
 ## Fresh runtime samples
 
@@ -117,10 +117,10 @@ samples are simultaneously inside a kernel route and a Turbo walk. This is why
 executing more singleton kernels has not removed the dominant cost. FPU Boolean
 program evaluation accounts for about 3.6% inclusive, much less than propagation.
 
-[CPU hotspots](../../../target/profiles/final-inference-20261019/bubblesort-normal/hotspots.json),
-[FPU hotspots](../../../target/profiles/final-inference-20261019/fpu-pooled/hotspots.json),
-[folded CPU stacks](../../../target/profiles/final-inference-20261019/bubblesort-normal/inference.folded),
-[folded FPU stacks](../../../target/profiles/final-inference-20261019/fpu-pooled/inference.folded).
+[CPU hotspots](../../../../../target/profiles/final-inference-20261019/bubblesort-normal/hotspots.json),
+[FPU hotspots](../../../../../target/profiles/final-inference-20261019/fpu-pooled/hotspots.json),
+[folded CPU stacks](../../../../../target/profiles/final-inference-20261019/bubblesort-normal/inference.folded),
+[folded FPU stacks](../../../../../target/profiles/final-inference-20261019/fpu-pooled/inference.folded).
 
 ## What the final graph actually executes
 
@@ -193,8 +193,8 @@ request-sample witness at actor 3650. The JSON retains original site/link/route
 references and actor positions. Existing outside consumers must remain boundary
 effects; a settled electrical value alone cannot establish delivered updates.
 
-[CPU final graph and active actors](../../../target/profiles/final-inference-20261019/graphs/final-graph-cpu_bubblesort.json),
-[FPU final graph and active actors](../../../target/profiles/final-inference-20261019/graphs/final-graph-fpu.json).
+[CPU final graph and active actors](../../../../../target/profiles/final-inference-20261019/graphs/final-graph-cpu_bubblesort.json),
+[FPU final graph and active actors](../../../../../target/profiles/final-inference-20261019/graphs/final-graph-fpu.json).
 
 ## Recommended next work
 
@@ -232,10 +232,10 @@ or runtime allocation tuning. Halving discovery/capture alone would imply about
 1.24x CPU or 1.18x FPU throughput if other costs stayed fixed; those are scenario
 calculations, not measured gains. Larger gains require eliminating propagation.
 
-Relevant measured source: [capture and neighbor discovery](../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/backend/graph/wire.rs),
-[site/property selection](../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/backend/graph/sites.rs),
-[retained kernel routes](../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/backend/graph/instant_kernel.rs),
-[Boolean construction](../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/analysis/instant/layers.rs).
+Relevant measured source: [capture and neighbor discovery](../../../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/backend/graph/wire.rs),
+[site/property selection](../../../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/backend/graph/sites.rs),
+[retained kernel routes](../../../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/backend/graph/instant_kernel.rs),
+[Boolean construction](../../../../../target/profiles/final-inference-20261019/checkout/crates/core/src/redpiler/analysis/instant/layers.rs).
 
 ## Correctness limits and reproduction
 

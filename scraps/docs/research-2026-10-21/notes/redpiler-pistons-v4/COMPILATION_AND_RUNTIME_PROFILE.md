@@ -528,10 +528,10 @@ Fixed-signal re-inference inside validation took 1.934 seconds. Reconstructing t
 program during validation took 0.459 seconds. Those repeated constructions exist, but
 they are much smaller targets than the callback-link multiset.
 
-Sources: [pipeline](../../../crates/core/src/redpiler/passes/mod.rs),
-[validation](../../../crates/core/src/redpiler/program_graph/validation.rs),
-[fixed-plan validation](../../../crates/core/src/redpiler/program_graph/fixed_classic.rs),
-[lowering](../../../crates/core/src/redpiler/program_graph/lowering.rs).
+Sources: [pipeline](../../../../../crates/core/src/redpiler/passes/mod.rs),
+[validation](../../../../../crates/core/src/redpiler/program_graph/validation.rs),
+[fixed-plan validation](../../../../../crates/core/src/redpiler/program_graph/fixed_classic.rs),
+[lowering](../../../../../crates/core/src/redpiler/program_graph/lowering.rs).
 
 ## Runtime bottlenecks
 
@@ -610,10 +610,10 @@ needed for the reporting-only changes; these runs do not validate later live res
 
 Local evidence is under `target/profiles/current-o5-20261019/`:
 
-- [Uninstrumented measurements](../../../target/profiles/current-o5-20261019/unprofiled-summary.json).
-- [O5 validation breakdown](../../../target/profiles/current-o5-20261019/diagnostic/validation-summary.json)
-  and [CHUNGUS O2 breakdown](../../../target/profiles/current-o5-20261019/diagnostic/chungus-o2-validation-summary.json).
-- [Raw runtime diagnostic estimates](../../../target/profiles/current-o5-20261019/runtime-summary.json).
+- [Uninstrumented measurements](../../../../../target/profiles/current-o5-20261019/unprofiled-summary.json).
+- [O5 validation breakdown](../../../../../target/profiles/current-o5-20261019/diagnostic/validation-summary.json)
+  and [CHUNGUS O2 breakdown](../../../../../target/profiles/current-o5-20261019/diagnostic/chungus-o2-validation-summary.json).
+- [Raw runtime diagnostic estimates](../../../../../target/profiles/current-o5-20261019/runtime-summary.json).
 - Per-machine JSON/log files, pinned executables/PDBs and the isolated source/instrumentation.
 
 These ignored artifacts may be absent in another checkout; the principal conclusions
