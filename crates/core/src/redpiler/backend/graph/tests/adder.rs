@@ -301,7 +301,7 @@ fn graph_step(backend: &mut GraphBackend, step: Step, toggle: bool) -> Result<()
 }
 
 #[derive(Debug, PartialEq)]
-struct Future {
+pub(super) struct Future {
     tick: u64,
     phase: AdvancePhase,
     cells: Vec<(BlockPos, Block)>,
@@ -311,7 +311,7 @@ struct Future {
     motions: Vec<(BlockPos, f32, f32, u64)>,
 }
 
-fn future(world: &PlotWorld, positions: &[BlockPos]) -> Future {
+pub(super) fn future(world: &PlotWorld, positions: &[BlockPos]) -> Future {
     let state = world.piston_state();
     Future {
         tick: state.logical_tick,
@@ -335,7 +335,7 @@ fn future(world: &PlotWorld, positions: &[BlockPos]) -> Future {
     }
 }
 
-fn first_difference(expected: &Future, actual: &Future) -> Option<String> {
+pub(super) fn first_difference(expected: &Future, actual: &Future) -> Option<String> {
     macro_rules! differs {
         ($field:ident) => {
             if expected.$field != actual.$field {

@@ -14,6 +14,7 @@ use serde::Serialize;
 use std::fmt;
 
 pub(crate) mod callbacks;
+pub(crate) mod diagnostics;
 pub(crate) mod electrical;
 #[cfg(test)]
 pub(crate) mod export_json;

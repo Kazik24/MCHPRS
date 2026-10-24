@@ -107,4 +107,18 @@ fn logical_bud_owner_rejects_shared_contacts_and_stale_plan_rows() {
         .expect("binding has an emitted callback row");
     event.occurrence.ordinal = u32::MAX;
     assert!(forged.validate().is_err(), "lowering must reject a forged callback occurrence");
+
+    let mut forged_dispatch = compile_rilax(6);
+    let binding = forged_dispatch
+        .plans
+        .logical_bud_owners
+        .iter_mut()
+        .find(|owner| owner.actor == actor)
+        .unwrap();
+    let event = binding.transition.events.first_mut().expect("binding has an emitted callback row");
+    event.dispatch = match event.dispatch {
+        crate::redpiler::program_graph::LogicalBudDispatch::OwnSample => crate::redpiler::program_graph::LogicalBudDispatch::Boundary,
+        crate::redpiler::program_graph::LogicalBudDispatch::Boundary => crate::redpiler::program_graph::LogicalBudDispatch::OwnSample,
+    };
+    assert!(forged_dispatch.validate().is_err(), "lowering must reject forged typed dispatch rows");
 }

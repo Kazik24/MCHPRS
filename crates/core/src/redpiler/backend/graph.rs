@@ -264,6 +264,9 @@ pub(crate) struct TestRecorder {
     observed_operations: Vec<GraphObservedOperation>,
     /// Native-format sample/applied trace at the same live request and acceptance cuts.
     native_piston_trace: Vec<crate::redstone::piston::trace::Entry>,
+    /// Executed typed dispatch paths for logical BUD transition occurrences.
+    logical_bud_direct_samples: FxHashMap<PistonId, u64>,
+    logical_bud_boundary_callbacks: FxHashMap<PistonId, u64>,
     /// Cold reduced Main/Quasi evaluator sampled before accepted actor mutation.
     accepted_boundary_probe: Option<accepted_boundary_probe::Probe>,
     /// Test-only one-shot evaluator sampled at selected native actor/reset cuts.
@@ -358,6 +361,8 @@ impl TestRecorder {
         self.comparator_updates.clear();
         self.observed_operations.clear();
         self.native_piston_trace.clear();
+        self.logical_bud_direct_samples.clear();
+        self.logical_bud_boundary_callbacks.clear();
         self.callback_census = CallbackCensus::default();
         for rows in &mut self.value_region_census.by_net {
             rows.fill(ValueRegionExecutionRow::default());
@@ -1986,7 +1991,12 @@ impl GraphBackend {
 
     /// Deliver one original callback occurrence bound to a logical BUD transition cut.
     /// Direct self-samples pass back through the owner sampler; external deliveries stay Graph-owned.
-    pub(super) fn deliver_logical_bud_occurrence(&mut self, actor: PistonId, occurrence: RouteOccurrence) -> Result<(), GraphExecutionError> {
+    pub(super) fn deliver_logical_bud_occurrence(
+        &mut self,
+        actor: PistonId,
+        occurrence: RouteOccurrence,
+        dispatch: LogicalBudDispatch,
+    ) -> Result<(), GraphExecutionError> {
         if self.program.logical_bud_owner(actor).is_none() {
             return Ok(());
         }
@@ -2016,7 +2026,40 @@ impl GraphBackend {
         {
             return Ok(());
         }
-        self.deliver_callback(occurrence.route, delivery, None, Some(occurrence))
+        match dispatch {
+            LogicalBudDispatch::OwnSample => {
+                debug_assert!(
+                    self.program
+                        .logical_bud_owner(actor)
+                        .is_some_and(|plan| plan.sample_routes.contains(&occurrence))
+                );
+                #[cfg(test)]
+                if self.test_recorder.callback_census_enabled
+                    && let Some(receiver) = delivery.receiver
+                {
+                    self.record_callback_candidate(receiver);
+                }
+                if matches!(delivery.kind, DeliveryKind::Update { .. }) && delivery.receiver.is_some_and(|receiver| self.instant_event_noop(receiver))
+                {
+                    return Ok(());
+                }
+                if delivery.view != OperandView::Live || !self.guard_matches(delivery.guard, None) {
+                    return Ok(());
+                }
+                #[cfg(test)]
+                if self.test_recorder.test_recording {
+                    *self.test_recorder.logical_bud_direct_samples.entry(actor).or_default() += 1;
+                }
+                self.sample_piston_from(actor, occurrence.route)
+            }
+            LogicalBudDispatch::Boundary => {
+                #[cfg(test)]
+                if self.test_recorder.test_recording {
+                    *self.test_recorder.logical_bud_boundary_callbacks.entry(actor).or_default() += 1;
+                }
+                self.deliver_callback(occurrence.route, delivery, None, Some(occurrence))
+            }
+        }
     }
 
     /// Replay the retained boundary rows for a transition cut in their compiled order.
@@ -2054,7 +2097,7 @@ impl GraphBackend {
                 LogicalBudEventCondition::ResourceRevisionCurrent => resource_revision_current,
             };
             if should_deliver {
-                self.deliver_logical_bud_occurrence(actor, event.occurrence)?;
+                self.deliver_logical_bud_occurrence(actor, event.occurrence, event.dispatch)?;
             }
         }
         Ok(())

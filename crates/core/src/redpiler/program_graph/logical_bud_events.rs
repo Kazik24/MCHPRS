@@ -35,6 +35,13 @@ pub(crate) struct LogicalBudRouteEvent {
     pub(crate) cut: LogicalBudEventCut,
     pub(crate) condition: LogicalBudEventCondition,
     pub(crate) occurrence: RouteOccurrence,
+    pub(crate) dispatch: LogicalBudDispatch,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LogicalBudDispatch {
+    OwnSample,
+    Boundary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,7 +233,7 @@ pub(crate) fn compile_logical_bud_owners(graph: &CompileGraph, monitor: &crate::
         if sample_routes[actor.index()].is_empty() {
             continue;
         }
-        let transition = transition_plan(graph, spec.routes);
+        let transition = transition_plan(graph, spec.routes, actor);
         plans.push(LogicalBudOwnerPlan {
             actor,
             resource: resource_id,
@@ -282,7 +289,7 @@ fn exclusive_contacts(
             .all(|contact| resources_by_contact[contact.index()].iter().all(|&other| other == resource))
 }
 
-fn transition_plan(graph: &CompileGraph, routes: PistonRoutes) -> LogicalBudTransitionPlan {
+fn transition_plan(graph: &CompileGraph, routes: PistonRoutes, actor: PistonId) -> LogicalBudTransitionPlan {
     let mut events = Vec::new();
     let mut sequence = 0u32;
     let mut add_route = |route: Option<RouteId>, cut, condition| {
@@ -293,13 +300,19 @@ fn transition_plan(graph: &CompileGraph, routes: PistonRoutes) -> LogicalBudTran
                     route,
                     ordinal: ordinal as u32,
                 };
-                events.push(LogicalBudRouteEvent {
-                    sequence,
-                    cut,
-                    condition,
-                    occurrence,
-                });
-                sequence = sequence.saturating_add(1);
+                match dispatch_for_occurrence(graph, occurrence, actor) {
+                    Some(dispatch) => {
+                        events.push(LogicalBudRouteEvent {
+                            sequence,
+                            cut,
+                            condition,
+                            occurrence,
+                            dispatch,
+                        });
+                        sequence = sequence.saturating_add(1);
+                    }
+                    None => {}
+                }
             }
         }
     };
@@ -378,5 +391,29 @@ fn transition_plan(graph: &CompileGraph, routes: PistonRoutes) -> LogicalBudTran
     LogicalBudTransitionPlan {
         publication_delay_ticks: 2,
         events: events.into_boxed_slice(),
+    }
+}
+
+fn dispatch_for_occurrence(graph: &CompileGraph, occurrence: RouteOccurrence, actor: PistonId) -> Option<LogicalBudDispatch> {
+    let delivery = graph.routes[occurrence.route.index()].deliveries[occurrence.ordinal as usize];
+    let receiver = delivery
+        .receiver
+        .or_else(|| match (graph.sites[delivery.target.index()].source, delivery.kind) {
+            (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+            _ => None,
+        });
+    // Classic entries bind only component receivers; retained rows still pass through their
+    // compiled entry before this typed dispatch is considered.
+    match receiver {
+        Some(CallbackReceiver::Contact(_)) | None => None,
+        Some(CallbackReceiver::PistonBase(owner) | CallbackReceiver::PistonHead(owner)) if owner == actor && delivery.view == OperandView::Live => {
+            Some(LogicalBudDispatch::OwnSample)
+        }
+        Some(CallbackReceiver::Component(node))
+            if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Piston(owner) if owner == actor) && delivery.view == OperandView::Live =>
+        {
+            Some(LogicalBudDispatch::OwnSample)
+        }
+        Some(_) => Some(LogicalBudDispatch::Boundary),
     }
 }

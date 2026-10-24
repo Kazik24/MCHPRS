@@ -1,6 +1,6 @@
 # Plan: czas kompilacji, pamięć i bezpieczny stos
 
-Status: plan implementacji, bez zmian algorytmu. Data: 2026-10-24.
+Status: pierwsza partia wdrożona i zmierzona; cel 10 s nadal nieosiągnięty. Data: 2026-10-24.
 Baza analizy: `2f5274a7bbb977290ce36cc89d625e1fe843249e` i aktualny worktree.
 
 ## Cel i granice
@@ -284,3 +284,130 @@ Zakończenie wymaga testów bez produkcyjnego powiększania stosu, zachowania
 semantyki i admisji oraz uczciwego pomiaru czasu i pamięci. Jeżeli 10 s nadal nie
 jest osiągnięte, wskazać aktualny dominujący koszt i osobno zaplanować zmianę
 algorytmiczną. Nie przedstawiać samego refaktoru jako rozwiązanej wydajności.
+
+## Wynik pierwszej partii — 2026-10-24
+
+Implementację i większe serie pomiarów wykonały trzy agenty Luna 6; zmiany
+zostały przejrzane przez agenta głównego. Porównane wersje kompilatora:
+
+- baza: `444c5a07f1a204754dcf990ded75c765dbad8871`;
+- wynik: `d5fe331a0cdd9ab1db428751cd235e9ec9d0e778`.
+
+Wersja wynikowa została w trakcie pracy zacommitowana przez inny proces.
+Późniejsze równoległe zmiany narzędzi diagnostycznych nie są częścią tego
+porównania. Pomiary i testy wykonano przypiętymi kopiami plików wykonywalnych,
+więc późniejsze edycje worktree nie zmieniają zakresu tych wyników.
+
+### Co zmieniono
+
+1. `Equations::expand` używa jawnych ramek DFS z kursorem dziecka. Zachowuje
+   kolejność, memoizację, rozliczanie pracy i obsługę ponownego wejścia, bez
+   klonowania listy operandów na potrzeby przejścia.
+2. `LayerBuilder::not/combine` rozpoznaje warianty przez pożyczenie wyrażeń.
+3. Sortowanie źródeł i krawędzi buforuje klucz `Debug` jednokrotnie na element,
+   zachowując dotychczasowy porządek tekstowy.
+4. Walidacja programu logicznego nie konstruuje już tymczasowego ewaluatora.
+   Konstruktor i walidator współdzielą te same kontrole referencji.
+5. Wybór kandydata lampy pomija skan całego katalogu portów, gdy zbiór
+   `lamp_occurrences` jest pusty. Wcześniej ten bezskuteczny skan powtarzano dla
+   wielu komórek. To największe potwierdzone źródło poprawy czasu tej partii.
+
+Wstępny eksperyment z wcześniejszym sprawdzaniem efektów lampy nie dał
+przekonującej poprawy i został usunięty. Nie dodano nowej reprezentacji grafu,
+cache globalnego, zależności ani produkcyjnego powiększania stosu.
+
+### Pomiar CPU_BubbleSort
+
+Ryzen 9 5950X, 80 GiB RAM, Windows/MSVC, Rust 1.98.1, profil release z fat LTO.
+O6, stabilne wejścia, mnożnik budżetu 8. Pięć par świeżych procesów,
+naprzemienna kolejność wersji. Ładowanie, aktywacja, 100 ticków wykonania,
+flush, odczyty RAM i reset nie należą do mierzonego czasu kompilatora.
+
+| Para | Baza [s] | Wynik [s] |
+| --- | ---: | ---: |
+| 1 | 45,409293 | 18,652196 |
+| 2 | 45,691492 | 19,339264 |
+| 3 | 41,692965 | 18,952340 |
+| 4 | 42,311949 | 19,182929 |
+| 5 | 41,209886 | 18,605952 |
+| Mediana | **42,311949** | **18,952340** |
+
+Stosunek median to około **2,23×**, czyli czas mniejszy o około **55,2%**.
+Mediana redukcji liczonej osobno w każdej parze wynosi **54,85%**.
+Cel 10 s nie został osiągnięty. To czas kompilatora, a nie pełne opóźnienie
+żądania serwerowego wraz ze snapshotem i oczekiwaniem na aktywację.
+
+Mediana `compile-settled-circuit` po zmianie wynosi 3,307 s: budowa 1,229 s,
+walidacja 2,070 s. Czasy są inclusive; nie sumować etapów zawierających te same
+wywołania. Dalsza praca powinna objąć koszt ponownej walidacji i analiz
+zależności, z zachowaniem ich kontroli semantycznych.
+
+Szczyt working set całego procesu pozostaje podobny: baza 915,1–916,6 MiB,
+wynik 915,9–917,4 MiB. Obejmuje loader i sprawdzanie wykonania; to nie jest
+wyizolowany szczyt kompilatora. Próbki prywatnej pamięci zbierano co 50 ms.
+Nie wykazano globalnej redukcji pamięci. Cached sorting przetrzymuje klucze
+jednocześnie; usunięte lokalne alokacje nie wystarczają do uznania celu RAM
+za osiągnięty.
+
+W każdej parze zgadzały się hashe wejścia i RAM, checkpointy aktywnego
+wykonania/resetu/32 ticków kontynuacji oraz wszystkie liczniki pracy grafu.
+Schemat na dysku nie był modyfikowany: blokujący znak usunięto identycznie
+w pamięci z wejść obu wersji. SHA-256 fixture:
+`803dbe5d6751b152bea9b134d6c8571cfafa3e840e372f82e41a535b658f1611`.
+
+Pełny przebieg wynikowej wersji obejmował **10 036 ticków**, porównanie RAM
+w każdym ticku z zamrożonym śladem interpretera i wynik **0..15**. Samo tickowanie
+zajęło 22,799 s; był to pojedynczy test poprawności, nie sparowany pomiar
+przyspieszenia wykonania. Wykonano też 32 ticki po handoff i zapisano stan;
+ten pojedynczy przebieg nie dowodzi niezależnie zgodności całej kontynuacji.
+
+### Stos i ograniczenia FPU
+
+Test 20 000-poziomowego DAG-u przechodzi z żądanym stosem roboczym 128 KiB.
+Osobny izolowany test potwierdza przepełnienie tego stosu przez starą
+rekurencyjną implementację-oracle. Porównanie małych DAG-ów obejmuje kolejność
+ID, areny, memoizację, budżety, błędy i ponowne wejście podczas dopisywania
+wyrażeń.
+
+Nie odtworzono aktualnego przepełnienia stosu FPU. Diagnostyka bazowa i wynikowa
+kończą się tym samym istniejącym błędem dla `ResourceId(6079)` /
+`ContactId(21085)`: `directional corridor output depends on dot/cross state`.
+Nie jest to udana kompilacja FPU ani dowód, że wskazany układ jest nieinstantowy.
+Pozostają rekurencja zapytań/guardów `SignalTracer`, inline repeaterów i pośrednie
+ponowne wejścia przez źródła. Nie ogłaszamy całego problemu stosu rozwiązanym.
+
+### Sprawdzenie i odtworzenie
+
+Budowa przypiętych executable:
+
+```powershell
+cargo test -p mchprs_core --lib --bench cpu_bubblesort --release --locked --no-run
+```
+
+Krótki pomiar wykonywano osobno dla bazowej i wynikowej kopii harnessu:
+
+```powershell
+target/compiler-resources/final-cpu.exe --ticks 100 --graph-tier 6 --stable-instant-inputs --iterations 1 --output target/compiler-resources/sample.json
+```
+
+Pełny sort używa tych samych argumentów bez `--ticks 100`. Raporty źródłowe,
+kolejność par, próbki pamięci i czasy etapów są w
+[paired-results.json](../../../target/compiler-resources/paired-results.json);
+jednorazowy wrapper `run-sample.ps1` w tym samym katalogu zapisuje zakres
+pomiaru pamięci. Są to lokalne artefakty w ignorowanym `target`, nie trwały
+framework profilowania.
+
+Przeszły `cargo check -p mchprs_core --lib --tests --locked`,
+`cargo check -p mroww --locked`, `cargo fmt -p mchprs_core -- --check`
+oraz `git diff --check` dla zmienionej wersji kompilatora. Testy obejmują
+iteracyjne rozwijanie, builder, sortowanie, walidację i skan kandydatów.
+Końcowy zestaw release Redpilera: **684 zaliczone, 0 błędów, 87 ignorowanych**
+(93,86 s; przypięty executable, po normalizacji końców linii snapshotów).
+Początkowy błąd snapshotu JSON występował również w przypiętej bazie:
+worktree miało CRLF zamiast LF. Wąska reguła `.gitattributes` ustala LF dla
+sześciu snapshotów ADDER1BIT, bez zmiany wartości JSON; dokładny test przechodzi
+po normalizacji w obu wersjach.
+
+Nie wykonano pełnego workspace, całego zestawu runtime debug ani fuzzingu.
+Etapy 04–05 pozostają otwarte; do następnej partii potrzebny jest pomiar
+pamięci w granicach samej kompilacji i analiza czasu życia największych danych.

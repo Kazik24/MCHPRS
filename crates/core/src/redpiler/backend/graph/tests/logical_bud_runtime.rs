@@ -3,7 +3,10 @@ use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::redpiler::CompilerOptions;
+use crate::redstone;
 use crate::world::storage::Chunk;
+use mchprs_blocks::blocks::{Block, Lever, LeverFace};
+use mchprs_blocks::{BlockDirection, BlockFace};
 use sha2::{Digest, Sha256};
 
 const ORIGIN: BlockPos = BlockPos::new(40, 30, 40);
@@ -34,6 +37,253 @@ fn rilax_world() -> (PlotWorld, (BlockPos, BlockPos)) {
         false,
     );
     (world, (first, last))
+}
+
+fn single_bud_world() -> (PlotWorld, BlockPos, BlockPos, (BlockPos, BlockPos)) {
+    let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+    let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+    let base = BlockPos::new(5, 20, 5);
+    let lever = base.offset(BlockFace::Top).offset(BlockFace::East);
+    world.set_block(
+        base,
+        Block::Piston {
+            piston: mchprs_blocks::blocks::RedstonePiston {
+                facing: mchprs_blocks::BlockFacing::East,
+                sticky: true,
+                extended: false,
+            },
+        },
+    );
+    world.set_block(base.offset(BlockFace::East), Block::RedstoneBlock);
+    world.set_block(lever.offset(BlockFace::East), Block::Stone {});
+    world.set_block(
+        base.offset(BlockFace::East).offset(BlockFace::East).offset(BlockFace::North),
+        Block::RedstoneLamp { lit: false },
+    );
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Wall, BlockDirection::West, false),
+        },
+    );
+    (world, base, lever, bounds)
+}
+
+fn set_native_bud_lever_level(world: &mut PlotWorld, position: BlockPos, powered: bool) {
+    let Block::Lever { mut lever } = world.get_block(position) else {
+        panic!("expected lever at {position:?}");
+    };
+    if lever.powered == powered {
+        return;
+    }
+    lever.powered = powered;
+    world.set_block(position, Block::Lever { lever });
+}
+
+#[test]
+fn single_logical_bud_slice_matches_native_piston_trace_and_handoff() {
+    let (mut native, base, lever, bounds) = single_bud_world();
+    let (mut graph_world, _, _, _) = single_bud_world();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.set_budget_multiplier(8);
+    let mut backend = GraphBackend::compile_with_options(&graph_world, bounds, vec![], &options, monitor).unwrap();
+    assert_eq!(
+        backend.program.logical_bud_owners().len(),
+        1,
+        "the fixture should contain one admitted owner"
+    );
+    let actor = backend.program.logical_bud_owners()[0].actor;
+    let piston_node = backend.program.pistons()[actor.index()].node;
+    let lever_node = backend.positions[&lever];
+    let lamp = base.offset(BlockFace::East).offset(BlockFace::East).offset(BlockFace::North);
+    let (first, last) = bounds;
+    let positions = (first.y..=last.y)
+        .flat_map(|y| (first.z..=last.z).flat_map(move |z| (first.x..=last.x).map(move |x| BlockPos::new(x, y, z))))
+        .collect::<Vec<_>>();
+    backend.set_test_recording(true);
+
+    set_native_bud_lever_level(&mut native, lever, true);
+    backend.set_node(lever_node, true, 15, None, false).unwrap();
+    assert!(
+        backend.native_piston_trace().is_empty(),
+        "a live QC level change alone must not sample the owner"
+    );
+    assert_eq!(backend.input_strength(piston_node, InputPort::Main), 0);
+    assert!(backend.input_strength(piston_node, InputPort::Quasi) > 0);
+    assert!(redstone::piston::should_piston_extend(&native, mchprs_blocks::BlockFacing::East, base));
+    let native_trace = crate::redstone::piston::trace::capture(|| {
+        let block = native.get_block(base);
+        redstone::update(block, &mut native, base, None);
+    });
+    let start = backend.native_piston_trace().len();
+    backend
+        .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_trace,
+        "native and logical qualifying notification"
+    );
+    let native_repeat = crate::redstone::piston::trace::capture(|| {
+        let block = native.get_block(base);
+        redstone::update(block, &mut native, base, None);
+    });
+    let start = backend.native_piston_trace().len();
+    backend
+        .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_repeat,
+        "same-level repeat keeps native sample ordering"
+    );
+    assert_eq!(backend.future.piston_requests.len(), 1, "logical owner deduplicates repeated requests");
+    assert_eq!(native.piston_state().events.len(), 1, "native piston deduplicates repeated requests");
+    set_native_bud_lever_level(&mut native, lever, false);
+    backend.set_node(lever_node, false, 0, None, false).unwrap();
+    assert_eq!(backend.input_strength(piston_node, InputPort::Quasi), 0);
+    let start = backend.native_piston_trace().len();
+    let native_trace = crate::redstone::piston::trace::capture(|| native.tick_interpreted());
+    backend.tick().unwrap();
+    assert_eq!(&backend.native_piston_trace()[start..], native_trace, "cancelled extension tick");
+    backend.flush(&mut graph_world, false);
+    assert_eq!(graph_world.get_block(lamp), native.get_block(lamp), "lamp after canceled request");
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if !piston.extended));
+
+    set_native_bud_lever_level(&mut native, lever, true);
+    backend.set_node(lever_node, true, 15, None, false).unwrap();
+    let native_trace = crate::redstone::piston::trace::capture(|| {
+        let block = native.get_block(base);
+        redstone::update(block, &mut native, base, None);
+    });
+    let start = backend.native_piston_trace().len();
+    backend
+        .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_trace,
+        "native and logical accepted extension sample"
+    );
+    let start = backend.native_piston_trace().len();
+    let native_trace = crate::redstone::piston::trace::capture(|| native.tick_interpreted());
+    backend.tick().unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_trace,
+        "native piston trace at extension acceptance"
+    );
+    backend.flush(&mut graph_world, false);
+    assert_eq!(
+        graph_world.get_block(lamp),
+        native.get_block(lamp),
+        "lamp during pending extension publication"
+    );
+    assert!(backend.future.deferred_pistons.iter().any(|event| event.piston == actor));
+    let native_busy_trace = crate::redstone::piston::trace::capture(|| {
+        let block = native.get_block(base);
+        redstone::update(block, &mut native, base, None);
+    });
+    let start = backend.native_piston_trace().len();
+    backend
+        .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_busy_trace,
+        "busy extension sampling preserves the pending publication"
+    );
+    for tick in 1..3 {
+        let start = backend.native_piston_trace().len();
+        let native_trace = crate::redstone::piston::trace::capture(|| native.tick_interpreted());
+        backend.tick().unwrap();
+        assert_eq!(
+            &backend.native_piston_trace()[start..],
+            native_trace,
+            "native piston trace at extension tick {tick}"
+        );
+        backend.flush(&mut graph_world, false);
+        assert_eq!(graph_world.get_block(lamp), native.get_block(lamp), "lamp during extension publication");
+    }
+    assert!(matches!(native.get_block(base), Block::Piston { piston } if piston.extended));
+    assert!(backend.state.pistons[actor.index()].extended);
+    assert_eq!(native.get_block(lamp), Block::RedstoneLamp { lit: true });
+
+    set_native_bud_lever_level(&mut native, lever, false);
+    backend.set_node(lever_node, false, 0, None, false).unwrap();
+    let native_trace = crate::redstone::piston::trace::capture(|| {
+        let block = native.get_block(base);
+        redstone::update(block, &mut native, base, None);
+    });
+    let start = backend.native_piston_trace().len();
+    backend
+        .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_trace,
+        "native and logical samples at retraction request"
+    );
+    let start = backend.native_piston_trace().len();
+    let native_trace = crate::redstone::piston::trace::capture(|| native.tick_interpreted());
+    backend.tick().unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_trace,
+        "native piston trace at retraction acceptance"
+    );
+    backend.flush(&mut graph_world, false);
+    assert_eq!(
+        graph_world.get_block(lamp),
+        native.get_block(lamp),
+        "lamp during pending retraction publication"
+    );
+    set_native_bud_lever_level(&mut native, lever, true);
+    backend.set_node(lever_node, true, 15, None, false).unwrap();
+    let native_busy_retract_trace = crate::redstone::piston::trace::capture(|| {
+        let block = native.get_block(base);
+        redstone::update(block, &mut native, base, None);
+    });
+    let start = backend.native_piston_trace().len();
+    backend
+        .update_component(piston_node, DeliveryKind::Update { direction: None }, None)
+        .unwrap();
+    assert_eq!(
+        &backend.native_piston_trace()[start..],
+        native_busy_retract_trace,
+        "busy retraction sampling preserves its publication"
+    );
+
+    assert_eq!(backend.counts.piston_samples, 0, "the claimed owner must leave the physical sample path");
+    assert_eq!(
+        backend.counts.piston_actions, 0,
+        "the claimed owner must leave physical connection mutation"
+    );
+    assert!(backend.counts.logical_bud_samples > 0);
+    assert!(backend.counts.logical_bud_accepts > 0);
+    assert!(backend.counts.logical_bud_publications > 0);
+    backend.reset(&mut graph_world);
+    assert_native_future_equal(&graph_world, &native, &positions, "single-owner native handoff");
+    for tick in 1..=5 {
+        graph_world.tick_interpreted();
+        native.tick_interpreted();
+        assert_native_future_equal(&graph_world, &native, &positions, &format!("native continuation tick {tick}"));
+    }
+}
+
+fn assert_native_future_equal(graph: &PlotWorld, native: &PlotWorld, positions: &[BlockPos], label: &str) {
+    let native_future = super::adder_tests::future(native, positions);
+    let graph_future = super::adder_tests::future(graph, positions);
+    assert_eq!(
+        super::adder_tests::first_difference(&native_future, &graph_future),
+        None,
+        "native/Graph continuation at {label}"
+    );
 }
 
 #[test]
@@ -138,6 +388,28 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     assert!(
         logical.counts.logical_bud_publications > 0,
         "the fixture must exercise delayed publication"
+    );
+    assert!(
+        logical.test_recorder.logical_bud_direct_samples.get(&owner).copied().unwrap_or_default() > 0,
+        "the selected owner must use the typed owner-sample path"
+    );
+    assert!(
+        logical
+            .test_recorder
+            .logical_bud_boundary_callbacks
+            .get(&owner)
+            .copied()
+            .unwrap_or_default()
+            > 0,
+        "the selected owner must preserve Graph boundary callbacks"
+    );
+    assert!(
+        logical
+            .test_recorder
+            .observed_operations
+            .iter()
+            .any(|operation| matches!(operation, GraphObservedOperation::Callback { .. })),
+        "retained boundary deliveries should execute generic callbacks"
     );
     assert_eq!(physical.counts.logical_bud_accepts, 0);
     assert_eq!(

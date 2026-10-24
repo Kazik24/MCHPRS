@@ -141,7 +141,7 @@ fn analysis_does_not_pause_ticks_or_report_after_requester_leaves() {
     plot.start_redpiler(Default::default());
     assert!(plot.compilation.is_none(), "analysis must reserve the plot worker slot");
     let worker_id = plot.analysis.as_ref().unwrap().worker.thread().id();
-    plot.start_redpiler_analysis(0, Default::default(), true);
+    plot.start_redpiler_analysis(0, Default::default(), true, Default::default());
     assert_eq!(
         plot.analysis.as_ref().unwrap().worker.thread().id(),
         worker_id,

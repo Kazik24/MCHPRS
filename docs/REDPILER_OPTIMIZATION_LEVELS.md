@@ -54,6 +54,17 @@ coverage. Inspect a prepared pipeline without activating it:
 /rp analyze --graph --optimize
 /rp analyze --graph --optimize --stable-instant-inputs
 ```
+Run `/rp analyze --updates --timing --unproven` to inspect three read-only
+views of the prepared candidate graph. `--updates` lists pistons with at least
+two update callback routes, quasi-connectivity inputs that also receive update
+activation, and movable resources shared by piston lanes. These are potential
+ordering sensitivities, not evidence of an incorrect update. `--timing` reports
+causal layer depth and input categories; this is not a configured device delay,
+nanotick count, or physical duration. If layer metadata was not computed (for
+example at O0), it reports that no timing conclusion is available. `--unproven`
+summarizes local piston lifecycle evidence and whether a complete lifecycle
+certificate is absent. Each category shows at most eight detail witnesses.
+The reports do not reproduce faults or provide a whole-circuit proof.
 Coverage is inspection data, rather than throughput or runtime-memory
 measurements.
 

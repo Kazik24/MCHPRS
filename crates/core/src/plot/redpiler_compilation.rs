@@ -1,8 +1,8 @@
 //! Compile an isolated snapshot while the plot continues handling players and commands.
 use super::*;
 use crate::redpiler::{CompileError, TaskMonitor};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 
 static ANALYSIS_WORKERS: AtomicUsize = AtomicUsize::new(0);
@@ -78,7 +78,7 @@ impl EntryVersion {
 }
 
 fn rejected_piston(error: &CompileError, world: &PlotWorld) -> Option<BlockPos> {
-    use crate::redpiler::analysis::{AdmissionIssue, geometry::GeometryError};
+    use crate::redpiler::analysis::{geometry::GeometryError, AdmissionIssue};
     use crate::redpiler::backend::graph::GraphBackendError;
     match error {
         CompileError::Unsupported(report) => report.pistons.first().copied(),
@@ -157,7 +157,13 @@ impl Plot {
         self.reset_timings();
     }
 
-    pub(super) fn start_redpiler_analysis(&mut self, player: usize, options: CompilerOptions, graph_only: bool) {
+    pub(super) fn start_redpiler_analysis(
+        &mut self,
+        player: usize,
+        options: CompilerOptions,
+        graph_only: bool,
+        diagnostics: crate::redpiler::analysis::diagnostics::DiagnosticOptions,
+    ) {
         if self.compilation.is_some() || self.analysis.is_some() {
             self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
             return;
@@ -183,7 +189,7 @@ impl Plot {
                 let _entered = span.enter();
                 let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
                 let mode = super::scoreboard::optimization_mode_label(&options);
-                if graph_only {
+                if graph_only || diagnostics.any() {
                     let candidate = match crate::redpiler::analysis::graph::prepare_candidate_graph(
                         &world,
                         world.get_corners(),
@@ -195,12 +201,23 @@ impl Plot {
                         Err(error) => return Err(error.to_string()),
                     };
                     let summary = candidate.summary();
-                    let mut lines = vec![format!(
-                        "Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated",
-                        summary.nodes, summary.links
-                    )];
-                    lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
-                    debug!(report = %serde_json::to_string(&candidate.report).unwrap(), graph = ?candidate.graph, "Redpiler candidate graph");
+                    let mut lines = if graph_only {
+                        vec![format!("Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated", summary.nodes, summary.links)]
+                    } else {
+                        let entry_tick = world.piston_state().logical_tick;
+                        vec![format!("Read-only candidate graph diagnostics from source snapshot at logical tick {entry_tick} ({} pending ticks), {mode}, update={}, io-only={}, stable-inputs={}; no compiler was activated", ticks.len(), options.update, options.io_only, options.stable_instant_inputs)]
+                    };
+                    if graph_only {
+                        lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
+                    }
+                    if diagnostics.any() {
+                        if graph_only {
+                            let entry_tick = world.piston_state().logical_tick;
+                            lines.push(format!("Diagnostic source snapshot: logical tick {entry_tick}, {} pending ticks; {mode}, update={}, io-only={}, stable-inputs={}", ticks.len(), options.update, options.io_only, options.stable_instant_inputs));
+                        }
+                        lines.extend(crate::redpiler::analysis::diagnostics::report(&candidate.graph, diagnostics, &worker_monitor)?);
+                    }
+                    debug!(report = %serde_json::to_string(&candidate.report).unwrap(), "Redpiler candidate graph prepared");
                     Ok(AnalysisOutput { lines, error: None })
                 } else {
                     let report = match crate::redpiler::analysis::analyze(
