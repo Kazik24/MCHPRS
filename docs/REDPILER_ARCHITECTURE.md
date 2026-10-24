@@ -71,13 +71,11 @@ runtime is experimental and is not part of the v0.6.0 release.
 
 ## Version boundary and limits
 
-Tagged v0.6.0 includes the O6 settled FPU frame and Counter runtimes. In that
-release, O6 implies stable inputs through reset; no additional flag is needed.
-The current original-checkout WIP differs: stable-input behavior is explicitly
-requested with [`CompilerOptions`](../crates/core/src/redpiler/options.rs)'s
-`--stable-instant-inputs` option, and its O6 pipeline does not inherit the
-release’s implicit policy. Do not infer one checkout’s command contract from
-the other.
+The v0.6.0 settled FPU frame and Counter runtimes are integrated with the newer
+logical BUD and firing work. O6 implies stable inputs through reset; no additional
+flag is needed. Lower tiers request that promise explicitly with
+[`CompilerOptions`](../crates/core/src/redpiler/options.rs)'s
+`--stable-instant-inputs` option.
 
 Neither runtime is a universal circuit compiler. Specialized paths are
 qualified by input history, physical timing, state ownership, and output

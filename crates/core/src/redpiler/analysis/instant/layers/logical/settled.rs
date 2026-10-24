@@ -4,6 +4,9 @@ use super::*;
 pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     let plan = compile_settled(graph, monitor)?;
     if graph.plans.bud_memory_reads.is_empty() {
+        if let Some(computation) = try_computation_frame(graph, monitor) {
+            return Ok(computation);
+        }
         return compile_one_shot_device(graph, plan, monitor);
     }
     let Ok(timing) = super::timing::infer(graph, monitor) else {
@@ -34,6 +37,112 @@ pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
     let mut compact = compile_public_boundary(graph, &targets, &graph.plans.bud_memory_reads, monitor)?;
     compact.timing = Some(timing);
     Ok(compact)
+}
+
+fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<SettledCircuit> {
+    if !computation_frame_command_blocks_supported(graph) {
+        return None;
+    }
+    let timing = super::timing::infer(graph, monitor).ok()?;
+    let clock = timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?;
+    if !clock.sticky || !matches!(clock.lane, PistonLane::SingleResource { .. }) {
+        return None;
+    }
+    let targets = terminal_wire_targets(graph);
+    if targets.is_empty() {
+        return None;
+    }
+    let mut computation = compile_computation(graph, &targets, monitor).ok()?;
+    if !computation.declines.is_empty() || !unsupported_computation_frame_inputs(graph, &computation).is_empty() {
+        return None;
+    }
+    if !computation
+        .outputs
+        .iter()
+        .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+    {
+        return None;
+    }
+    computation.timing = Some(timing);
+    Some(computation)
+}
+
+fn computation_frame_command_blocks_supported(graph: &CompileGraph) -> bool {
+    graph.nodes.iter().all(|node| {
+        if !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })) {
+            return true;
+        }
+        let ComponentState::Electrical(state) = &node.state else {
+            return false;
+        };
+        state.command_entity.as_ref().is_some_and(|entity| is_tellraw_diagnostic(&entity.command))
+    })
+}
+
+fn is_tellraw_diagnostic(command: &str) -> bool {
+    let command = command.trim_start();
+    let command = command.strip_prefix('/').unwrap_or(command);
+    command.split_whitespace().next() == Some("tellraw")
+}
+
+pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit: &SettledCircuit) -> Vec<LayerInputSource> {
+    let state_sources: FxHashMap<_, _> = circuit
+        .outputs
+        .iter()
+        .filter_map(|output| match output.target {
+            SettledTarget::ResourceState { resource, source } => Some((resource, source)),
+            _ => None,
+        })
+        .collect();
+    circuit
+        .program
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            let supported = match input.source {
+                LayerInputSource::State(StateTest::ResourceAt { resource, contact }) => state_sources.get(&resource) == Some(&contact),
+                LayerInputSource::SourceAbove {
+                    site,
+                    port: PowerPort::Output | PowerPort::Strong(_) | PowerPort::Weak(_),
+                    threshold: 0,
+                } => {
+                    let Some(SiteSource::Component(node)) = graph.sites.get(site.index()).map(|site| site.source) else {
+                        return Some(input.source);
+                    };
+                    matches!(
+                        graph.nodes.get(node.index()).map(|node| &node.kind),
+                        Some(CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate))
+                    )
+                }
+                _ => false,
+            };
+            (!supported).then_some(input.source)
+        })
+        .collect()
+}
+
+pub(super) fn terminal_wire_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
+    let consumed: FxHashSet<_> = graph
+        .power_links
+        .iter()
+        .filter_map(|link| match graph.sites.get(link.from.index())?.source {
+            SiteSource::Component(node) if matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)) => Some(node),
+            _ => None,
+        })
+        .collect();
+    let mut targets = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            (matches!(node.kind, CircuitNodeKind::Wire(_)) && !consumed.contains(&NodeId::new(index as u32))).then_some(PowerTarget::Input {
+                node: NodeId::new(index as u32),
+                port: InputPort::Main,
+            })
+        })
+        .collect::<Vec<_>>();
+    targets.sort_unstable();
+    targets
 }
 
 fn compile_one_shot_device(graph: &CompileGraph, fallback: SettledCircuit, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
@@ -229,6 +338,21 @@ fn guard_contains(graph: &CompileGraph, root: GuardId, needle: GuardId) -> bool 
         }
     }
     false
+}
+
+#[cfg(test)]
+mod computation_frame_command_tests {
+    use super::is_tellraw_diagnostic;
+
+    #[test]
+    fn only_tellraw_diagnostics_are_omitted_from_frames() {
+        assert!(is_tellraw_diagnostic("tellraw @a {\"text\":\"diagnostic\"}"));
+        assert!(is_tellraw_diagnostic("  /tellraw @a {\"text\":\"diagnostic\"}"));
+        assert!(!is_tellraw_diagnostic("tellrawx @a message"));
+        assert!(!is_tellraw_diagnostic("execute as @a run tellraw @s message"));
+        assert!(!is_tellraw_diagnostic("setblock 0 0 0 air"));
+        assert!(!is_tellraw_diagnostic("  "));
+    }
 }
 
 pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
@@ -1122,7 +1246,6 @@ fn declined_settled(monitor: &TaskMonitor, retained_effects: Vec<BoundaryPort>, 
 /// Compile requested stable outputs with explicit state bits for recognized
 /// shared-Far payload feedback. Unlike BUD registers, these are ordinary
 /// cell resources whose current source location closes a combinational cycle.
-#[cfg(test)]
 pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
     if power_targets.is_empty() {
@@ -1154,15 +1277,15 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
         if !seen_power.insert(target) {
             return Err(format!("duplicate logical computation output {target:?}"));
         }
-        // The first threshold is the public Boolean level; it preserves 0 vs
-        // any powered output while avoiding fifteen redundant strength roots.
-        let root = equations
-            .query(target, 0)
+        let kind = power_value_kind(graph, target);
+        let roots = (0..if kind == SettledValueKind::Strength { 15 } else { 1 })
+            .map(|threshold| equations.query(target, threshold))
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|error| format!("logical computation output {target:?}: {error:?}"))?;
         outputs.push(SettledOutput {
             target: SettledTarget::Power(target),
-            kind: SettledValueKind::Bool,
-            roots: Box::new([root]),
+            kind,
+            roots: roots.into_boxed_slice(),
         });
     }
 
@@ -1217,7 +1340,6 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
     Ok(circuit)
 }
 
-#[cfg(test)]
 pub(super) fn assume_computation_frame_observers_off(equations: &mut Equations<'_>) {
     // shortcut: assumes settled observer pulses; lower their events before admitting timed observer roots.
     for (index, node) in equations.graph.nodes.iter().enumerate() {
@@ -1232,7 +1354,6 @@ pub(super) fn assume_computation_frame_observers_off(equations: &mut Equations<'
 
 /// Candidate-only lane inference for equation research. The caller must not use this
 /// as a production cell/reset certificate.
-#[cfg(test)]
 pub(super) fn infer_raw_resource_lane(contacts: &[ContactId], pistons: &[PistonSpec]) -> Result<Option<(ContactId, Vec<PistonId>)>, String> {
     if contacts.len() < 2 || contacts.iter().copied().collect::<FxHashSet<_>>().len() != contacts.len() {
         return Ok(None);
@@ -1264,10 +1385,7 @@ pub(super) fn infer_raw_resource_lane(contacts: &[ContactId], pistons: &[PistonS
     Ok(canonical.map(|canonical| (canonical, owners)))
 }
 
-/// Install a local lane only in the test candidate compiler. `shortcut:` this assumes
-/// inferred payload lanes are resettable computation cells during a data frame; native
-/// trajectory validation must confirm that frame separately from observable tick timing.
-#[cfg(test)]
+/// `shortcut:` one Boolean records canonical Far occupancy; retain owner arbitration and hand off to Graph if that model cannot be bounded.
 pub(super) fn install_candidate_resource_lane(equations: &mut Equations<'_>, resource: ResourceId, canonical: ContactId, owners: Vec<PistonId>) {
     let contacts = &equations.graph.resources[resource.index()].contacts;
     if (1..=5).contains(&owners.len()) && contacts.contains(&canonical) {

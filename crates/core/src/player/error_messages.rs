@@ -67,7 +67,10 @@ mod tests {
         assert_eq!(diagnostic["color"], "yellow");
         assert_eq!(diagnostic["extra"][1]["click_event"]["command"], "/hl -2 3 4");
         assert_eq!(diagnostic["extra"][1]["insertion"], "/hl -2 3 4 --tp");
-        assert_eq!(diagnostic["extra"][1]["hover_event"]["value"]["text"], "Click to highlight. Shift-click, then Enter to teleport.");
+        assert_eq!(
+            diagnostic["extra"][1]["hover_event"]["value"]["text"],
+            "Click to highlight. Shift-click, then Enter to teleport."
+        );
         assert_eq!(diagnostic_component("Summary"), json!({"text": "Summary", "color": "yellow"}));
         let multiple = diagnostic_component("Source (1, 2, 3), target (-4, 5, -6)");
         assert_eq!(multiple["extra"][1]["click_event"]["command"], "/hl 1 2 3");

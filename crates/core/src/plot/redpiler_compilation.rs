@@ -1,8 +1,8 @@
 //! Compile an isolated snapshot while the plot continues handling players and commands.
 use super::*;
 use crate::redpiler::{CompileError, TaskMonitor};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::JoinHandle;
 
 static ANALYSIS_WORKERS: AtomicUsize = AtomicUsize::new(0);
@@ -78,7 +78,7 @@ impl EntryVersion {
 }
 
 fn rejected_piston(error: &CompileError, world: &PlotWorld) -> Option<BlockPos> {
-    use crate::redpiler::analysis::{geometry::GeometryError, AdmissionIssue};
+    use crate::redpiler::analysis::{AdmissionIssue, geometry::GeometryError};
     use crate::redpiler::backend::graph::GraphBackendError;
     match error {
         CompileError::Unsupported(report) => report.pistons.first().copied(),
@@ -157,13 +157,7 @@ impl Plot {
         self.reset_timings();
     }
 
-    pub(super) fn start_redpiler_analysis(
-        &mut self,
-        player: usize,
-        options: CompilerOptions,
-        graph_only: bool,
-        inspect: Option<BlockPos>,
-    ) {
+    pub(super) fn start_redpiler_analysis(&mut self, player: usize, options: CompilerOptions, graph_only: bool, inspect: Option<BlockPos>) {
         if self.compilation.is_some() || self.analysis.is_some() {
             self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
             return;
@@ -204,7 +198,10 @@ impl Plot {
                     let lines = if let Some(position) = inspect {
                         crate::redpiler::analysis::diagnostics::inspect(&candidate.graph, position, &worker_monitor)?
                     } else {
-                        let mut lines = vec![format!("Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated", summary.nodes, summary.links)];
+                        let mut lines = vec![format!(
+                            "Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated",
+                            summary.nodes, summary.links
+                        )];
                         lines.push(crate::redpiler::analysis::diagnostics::summary(&candidate.graph));
                         lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
                         lines

@@ -8,7 +8,7 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Promise stable inputs through reset; enables O3 composition and O5 stable logic.
+    /// Explicitly promise stable inputs through reset. O6 implies this contract.
     pub stable_instant_inputs: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
@@ -31,6 +31,11 @@ impl Default for CompilerOptions {
 }
 
 impl CompilerOptions {
+    /// O6's instant analyses require stable inputs; lower tiers opt in explicitly.
+    pub(crate) fn assumes_stable_instant_inputs(&self) -> bool {
+        self.stable_instant_inputs || self.optimization_level.unwrap_or(MAX_OPTIMIZATION_LEVEL) >= 6
+    }
+
     pub(crate) fn optimization_label(&self) -> String {
         let mut label = format!("O{}", self.optimization_level.unwrap_or(MAX_OPTIMIZATION_LEVEL));
         if self.stable_instant_inputs {

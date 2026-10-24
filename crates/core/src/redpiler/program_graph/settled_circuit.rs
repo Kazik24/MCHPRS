@@ -22,7 +22,6 @@ pub(crate) enum SettledTarget {
     /// This is `!fired && Main == 0 && Quasi == 0`, not a route, request, or accepted action.
     InstantPowerEligible(PistonId),
     /// A recognized two-contact payload whose stationary source occupancy is logical state.
-    #[cfg(test)]
     ResourceState {
         resource: ResourceId,
         source: ContactId,

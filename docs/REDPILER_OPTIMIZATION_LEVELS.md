@@ -13,29 +13,26 @@ admission checks and compilation budgets. Unsupported work retains Graph executi
 | O3 | Piston/reset specialization, reset clocks, wire captures, private instant regions. |
 | O4 | Instant boundaries, single-wire transfers, private BUD reads, connected event kernels. |
 | O5 | Delayed-update coalescing, compiled predicates, transport, typed drives, transition programs and signal channels. Stable power expressions require the stable-input promise. |
-| O6 | Experimental logical clock/device execution and admitted finite pull waves; ordinary piston power queries can also be compiled while physical events remain. |
+| O6 | Stable-input logical clock/device execution and admitted finite pull waves; ordinary piston power queries can also be compiled while physical events remain. |
 
 ## Stable inputs and version scope
 
-In **tagged v0.6.0**, O6 implies stable inputs through reset and includes the
-qualified COUNTER and settled FPU runtimes. No additional flag is required for
-that release. Internal glitches, previews, and reset propagation may disappear
+O6 implies stable inputs through reset, restoring the v0.6.0 contract and its
+qualified COUNTER and settled FPU runtimes. No additional flag is required.
+Internal glitches, previews, and reset propagation may disappear
 under the admitted logical contract; consequential outputs and clock cadence remain.
 Interpreter handoff for those logical devices remains experimental.
 
-The **original development checkout** has a different policy: the
-`--stable-instant-inputs` promise remains explicit, including for O6 finite pull
-waves. Its one-shot firing runtime is experimental work beyond the release.
-Use source and the [architecture](REDPILER_ARCHITECTURE.md) to identify the policy
-of the checkout being built; do not assume that a branch contains every release change.
+At O3 through O5, `--stable-instant-inputs` requests that promise explicitly.
+The newer one-shot firing runtime remains experimental work beyond the release.
 
 ```text
 /rp compile --optimize
 /rp compile --optimize --stable-instant-inputs
 ```
 
-Promise stable inputs only when external inputs remain stable through the required
-computation/reset interval. The flag does not increase compilation budgets.
+Select O6 or promise stable inputs only when external inputs remain stable through
+the required computation/reset interval. The flag does not increase compilation budgets.
 O4/O5 without that promise retain ordered event execution and live sampling.
 Classic-redstone compilation is automatic from O2; no separate switch is needed.
 

@@ -181,7 +181,8 @@ fn disk_snapshots(root: &Path, request: &Request, cache: &mut Cache) -> anyhow::
     let stamp = file_stamp(&path)?;
     let template = root.join("pTEMPLATE");
     let template_stamp = if stamp.is_none() { file_stamp(&template)? } else { None };
-    let claimed = super::database::is_claimed(request.plot.0, request.plot.1).unwrap_or(false);
+    let has_database = root.parent().is_some_and(|world| world.join("plots.db").exists());
+    let claimed = has_database && super::database::is_claimed(request.plot.0, request.plot.1).unwrap_or(false);
     let version = Version::Saved(stamp.is_some(), stamp.clone().or(template_stamp.clone()), claimed);
     let chunks: Vec<_> = request
         .chunks

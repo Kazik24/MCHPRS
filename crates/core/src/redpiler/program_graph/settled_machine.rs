@@ -23,7 +23,6 @@ impl SettledMachine {
         for (index, output) in circuit.outputs.iter().enumerate() {
             let (resource, source) = match output.target {
                 SettledTarget::Register(read) => (read.resource, read.source),
-                #[cfg(test)]
                 SettledTarget::ResourceState { resource, source } => (resource, source),
                 SettledTarget::Power(_) | SettledTarget::InstantPowerEligible(_) => continue,
             };

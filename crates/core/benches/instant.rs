@@ -7,6 +7,8 @@ mod cpu_support;
 
 use anyhow::{Context, Result, bail, ensure};
 use cpu_support::{load_manifest as load, manifest_origin as origin, manifest_position as position};
+#[path = "support/device_frame.rs"]
+mod device_frame;
 #[path = "support/graph_short.rs"]
 mod graph_short;
 #[path = "support/instant_wave.rs"]
@@ -133,6 +135,7 @@ fn main() -> Result<()> {
     let mut stable_instant_inputs = false;
     let mut interpreted = false;
     let mut changing_inputs = false;
+    let mut device_frame = false;
     let mut workload = Workload::Random;
     let mut seed = 0x4d43_4850_5253_2026u64;
     let mut input_every = 1usize;
@@ -143,6 +146,10 @@ fn main() -> Result<()> {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--bench" => continue,
+            "--device-frame" => {
+                device_frame = true;
+                continue;
+            }
             "--optimize" => {
                 optimize = true;
                 selected_tier = None;
@@ -168,6 +175,7 @@ fn main() -> Result<()> {
                 println!(
                     "--tier 0..6 selects a production tier; --optimize selects O6. --reference also checks Counter progression against a frozen native report."
                 );
+                println!("--device-frame measures production O6 FPU execution with inputs held for six game ticks.");
                 println!(
                     "instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--stable-instant-inputs] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero. Stable mode requires --optimize.\n--check-workloads verifies generators without loading a schematic."
                 );
@@ -280,6 +288,13 @@ fn main() -> Result<()> {
         descriptor["origin"] = json!([2, 8, 2]);
     } else if component == "fpu_legal" && descriptor.get("origin").is_none() {
         descriptor["origin"] = json!([40, 30, 40]);
+    }
+    if device_frame {
+        ensure!(
+            component == "fpu_legal" && optimize && selected_tier.unwrap_or(6) == 6 && !interpreted,
+            "--device-frame requires the O6 FPU"
+        );
+        return device_frame::run(&descriptor, episodes, iterations, seed, output.as_deref());
     }
     // Freeze native outputs or validate the compiled plan before timing stimulus and ticks.
     let mut reference_traces: Option<Vec<Vec<u16>>> = frozen

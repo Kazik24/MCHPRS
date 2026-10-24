@@ -559,13 +559,11 @@ impl<'a> Equations<'a> {
             .then(|| (*canonical, owners.clone()))
     }
 
-    #[cfg(test)]
     pub(super) fn shared_far_presence(&mut self, owners: &[PistonId]) -> Result<LayerExprId, ConstructionError> {
         let powered = owners.iter().map(|&owner| self.powered(owner)).collect::<Result<Vec<_>, _>>()?;
         self.shared_far_presence_from(powered)
     }
 
-    #[cfg(test)]
     fn shared_far_presence_from(&mut self, powered: Vec<LayerExprId>) -> Result<LayerExprId, ConstructionError> {
         self.reduced.all(powered)
     }

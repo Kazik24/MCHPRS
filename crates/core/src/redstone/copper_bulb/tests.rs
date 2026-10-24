@@ -118,7 +118,7 @@ fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
     let reference: serde_json::Value = serde_json::from_str(include_str!("../../../../../test_data/copper-bulbs/java-1.21.5.json")).unwrap();
     assert_eq!(reference["version"], "1.21.5");
     for case in reference["cases"].as_array().unwrap() {
-        for flags in [None, Some(""), Some("-O"), Some("-Oi")] {
+        for flags in [None, Some(""), Some("-O"), Some("-iO")] {
             let mut world = circuit(
                 case["variant"].as_str().unwrap(),
                 case["lit"].as_bool().unwrap(),
@@ -227,7 +227,7 @@ fn copper_bulb_waxing_and_scraping_preserve_the_latch() {
 #[test]
 fn copper_bulbs_toggle_on_the_aggregate_input_edge() {
     let second = BULB.offset(BlockFace::Top);
-    for flags in [None, Some(""), Some("-O"), Some("-Oi")] {
+    for flags in [None, Some(""), Some("-O"), Some("-iO")] {
         let mut world = circuit("waxed_copper_bulb", false, false);
         world.set_block(
             second,
@@ -277,7 +277,7 @@ fn copper_bulb_variants_do_not_age_during_simulation() {
         if !name.ends_with("copper_bulb") {
             continue;
         }
-        for flags in [None, Some(""), Some("-O"), Some("-Oi")] {
+        for flags in [None, Some(""), Some("-O"), Some("-iO")] {
             let mut world = circuit(name, false, false);
             let mut compiler = Compiler::default();
             let bounds = (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46));

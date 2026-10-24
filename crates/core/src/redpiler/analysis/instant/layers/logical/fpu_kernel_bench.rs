@@ -15,7 +15,7 @@ const SAMPLE_COUNT: usize = 3;
 const OPERANDS_PER_PATTERN: usize = 4_096;
 const MAX_FIXED_POINT_PASSES: usize = 128;
 
-fn run_frame(
+pub(super) fn run_frame(
     evaluation: &mut SettledEvaluation,
     inputs: &mut [bool],
     external_frame: &[bool],

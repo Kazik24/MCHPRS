@@ -225,6 +225,7 @@ fn report_fpu_computation_native_tick_trace() {
     let options = CompilerOptions {
         optimization_level: Some(6),
         budget_multiplier: 8,
+        stable_instant_inputs: true,
         ..Default::default()
     };
     passes::run_graph_pipeline(
@@ -415,6 +416,7 @@ fn report_fpu_computation_native_tick_trace() {
     let mut tick_number = 0usize;
     let mut tick_rows = Vec::new();
     let mut fresh_frames = Vec::new();
+    let mut frame_reappeared = Vec::new();
 
     for _ in 0..INITIAL_TICKS {
         tick_number += 1;
@@ -498,6 +500,11 @@ fn report_fpu_computation_native_tick_trace() {
             let before = frame.input_values().to_vec();
             frame.step(&frame_external).unwrap();
             steps += 1;
+            for &(slot, resource, contact) in &feedback_slots {
+                if contact == feedback_by_resource[&resource].0 && !before[slot] && frame.input_values()[slot] {
+                    frame_reappeared.push((vector_index, resource, slot, steps));
+                }
+            }
             if frame.input_values() == before {
                 converged = true;
                 break;
@@ -519,13 +526,14 @@ fn report_fpu_computation_native_tick_trace() {
         }
     }
     println!(
-        "FPU native-vs-logical trace: ticks={} vectors={} ticks_per_vector={} feedback_resources={} feedback_input_slots={} external_sources={} mismatch_count={} first_mismatches={:?} first_vector_boundaries={:?} first_phase_counts={:?} first_feedback_snapshot_differences={:?}",
+        "FPU native-vs-logical trace: ticks={} vectors={} ticks_per_vector={} feedback_resources={} feedback_input_slots={} external_sources={} frame_far_reappearances={} mismatch_count={} first_mismatches={:?} first_vector_boundaries={:?} first_phase_counts={:?} first_feedback_snapshot_differences={:?}",
         tick_number,
         vectors.len(),
         INPUT_TICKS,
         feedback_outputs.len(),
         feedback_slots.len(),
         external_sources.len(),
+        frame_reappeared.len(),
         mismatches_by_phase.values().sum::<usize>(),
         mismatches.iter().take(12).collect::<Vec<_>>(),
         vector_boundaries.iter().take(12).collect::<Vec<_>>(),
@@ -537,6 +545,10 @@ fn report_fpu_computation_native_tick_trace() {
         "expressions":circuit.program.expressions.len(),
         "feedback_resources":feedback_outputs.len(),
         "external_sources":external_sources.len(),
+        "frame_far_reappearances":frame_reappeared
+            .iter()
+            .map(|&(vector, resource, slot, pass)| serde_json::json!({"vector":vector,"resource":resource.index(),"slot":slot,"pass":pass}))
+            .collect::<Vec<_>>(),
         "input_vectors":vectors,
         "fresh_frames":fresh_frames,
         "ticks":tick_rows,
@@ -545,7 +557,316 @@ fn report_fpu_computation_native_tick_trace() {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     println!("FPU computation frame trace: {}", path.display());
+    assert!(
+        frame_reappeared.is_empty(),
+        "canonical Far occupancy reappeared before reset: {frame_reappeared:?}"
+    );
     assert_eq!(current_mask, *vectors.last().unwrap());
+}
+
+#[test]
+#[ignore = "focused O6 FPU production-admission diagnostic; reports graph-derived targets and compiler declines"]
+fn report_fpu_production_admission() {
+    let (_descriptor, _world, bounds) = fixture();
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let mut prepared = passes::rich::prepare(&_world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let command_blocks = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })).then_some(NodeId::new(index as u32))
+        })
+        .collect::<rustc_hash::FxHashSet<_>>();
+    let command_block_support = command_blocks
+        .iter()
+        .map(|&command_block| {
+            let node = &graph.nodes[command_block.index()];
+            let incoming = graph
+                .power_links
+                .iter()
+                .filter(|link| matches!(link.to, PowerTarget::Input { node, .. } if node == command_block))
+                .map(|link| (graph.sites[link.from.index()].source, link.from_port, link.to))
+                .collect::<Vec<_>>();
+            let outgoing = graph
+                .power_links
+                .iter()
+                .filter(|link| graph.sites[link.from.index()].source == SiteSource::Component(command_block))
+                .map(|link| (link.to, link.from_port))
+                .collect::<Vec<_>>();
+            (command_block, node.position, &node.kind, &node.state, incoming, outgoing)
+        })
+        .collect::<Vec<_>>();
+    println!(
+        "FPU command-block census: blocks={} input_links={} output_links={} detail={command_block_support:#?}",
+        command_blocks.len(),
+        command_block_support
+            .iter()
+            .map(|(_, _, _, _, incoming, _)| incoming.len())
+            .sum::<usize>(),
+        command_block_support
+            .iter()
+            .map(|(_, _, _, _, _, outgoing)| outgoing.len())
+            .sum::<usize>(),
+    );
+    let known_clock = graph
+        .pistons
+        .iter()
+        .enumerate()
+        .find_map(|(index, piston)| (piston.position == BlockPos::new(46, 66, 112)).then_some(PistonId::new(index as u32)));
+    if let Some(clock) = known_clock {
+        println!(
+            "FPU known direct-clock support: {:#?}",
+            super::timing::diagnostic_candidate_support(graph, clock, &monitor)
+        );
+    } else {
+        println!("FPU known direct-clock support: no piston at diagnostic position");
+    }
+    let targets = super::settled::terminal_wire_targets(graph);
+    let timing = super::timing::infer(graph, &monitor);
+    let computation = compile_computation(graph, &targets, &monitor);
+    println!(
+        "FPU production admission: graph_nodes={} pistons={} resources={} cell_contracts={} BUD_reads={} selected_terminal_wires={} selected_clock={:?}",
+        graph.nodes.len(),
+        graph.pistons.len(),
+        graph.resources.len(),
+        graph.plans.instant.boundaries.as_ref().map_or(0, |catalog| catalog.cells.len()),
+        graph.plans.bud_memory_reads.len(),
+        targets.len(),
+        timing
+            .as_ref()
+            .map(|island| (island.clock, island.actors.len(), island.nodes.len(), island.trigger)),
+    );
+    println!("FPU production timing inference: {timing:#?}");
+    match computation {
+        Ok(circuit) => {
+            println!(
+                "FPU production unsupported frame inputs: {:#?}",
+                super::settled::unsupported_computation_frame_inputs(graph, &circuit)
+            );
+            let mut sources = BTreeMap::<String, usize>::new();
+            for input in &circuit.program.inputs {
+                let kind = match input.source {
+                    LayerInputSource::SourceAbove { site, .. } => match graph.sites[site.index()].source {
+                        SiteSource::Component(node) => source_class(graph, node).to_owned(),
+                        other => format!("{other:?}"),
+                    },
+                    LayerInputSource::State(StateTest::ResourceAt { .. }) => "feedback".to_owned(),
+                    other => format!("{other:?}"),
+                };
+                *sources.entry(kind).or_default() += 1;
+            }
+            println!("FPU production input classes: {sources:?}");
+            println!(
+                "FPU production computation: inputs={} expressions={} outputs={} power_outputs={} resource_states={} declines={:#?}",
+                circuit.program.inputs.len(),
+                circuit.program.expressions.len(),
+                circuit.outputs.len(),
+                circuit
+                    .outputs
+                    .iter()
+                    .filter(|output| matches!(output.target, SettledTarget::Power(_)))
+                    .count(),
+                circuit
+                    .outputs
+                    .iter()
+                    .filter(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+                    .count(),
+                circuit.declines,
+            );
+        }
+        Err(error) => println!("FPU production computation declined: {error}"),
+    }
+    match super::settled::compile_device(graph, &monitor) {
+        Ok(circuit) => println!(
+            "FPU selected device artifact: inputs={} expressions={} outputs={} timing={} declines={:#?}",
+            circuit.program.inputs.len(),
+            circuit.program.expressions.len(),
+            circuit.outputs.len(),
+            circuit.timing.is_some(),
+            circuit.declines,
+        ),
+        Err(error) => println!("FPU selected device compiler error: {error}"),
+    }
+}
+
+#[test]
+#[ignore = "full FPU production adapter versus the accepted benchmark frame, including same-tick outputs"]
+fn fpu_production_device_matches_benchmark_frames_at_clock_edges() {
+    use crate::redpiler::backend::graph::GraphBackend;
+    use crate::redpiler::program_graph::SettledEvaluation;
+    use std::sync::Arc;
+
+    let (descriptor, mut world, bounds) = fixture();
+    let controls = descriptor["ports"]["light_blue_operand_inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(descriptor["ports"]["red_operand_inputs"].as_array().unwrap())
+        .chain(descriptor["ports"]["opcode_levers_by_sign_weight_4_2_1"].as_array().unwrap())
+        .map(pos)
+        .collect::<Vec<_>>();
+    let outputs = descriptor["observations"]["output"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(pos)
+        .collect::<Vec<_>>();
+    let trigger = pos(&descriptor["ports"]["trigger"]);
+    let mut current = controls.iter().enumerate().fold(0u64, |word, (bit, &position)| {
+        let Block::Lever { lever } = world.get_block(position) else {
+            panic!("input is not a lever")
+        };
+        word | (u64::from(lever.powered) << bit)
+    });
+    let words = stimuli(current, 16);
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let targets = outputs
+        .iter()
+        .map(|&position| {
+            let index = graph.nodes.iter().position(|node| node.position == Some(position)).unwrap();
+            PowerTarget::Input {
+                node: NodeId::new(index as u32),
+                port: InputPort::Main,
+            }
+        })
+        .collect::<Vec<_>>();
+    // This is the original benchmark's selected-output extraction, independent of automatic port selection.
+    let reference = compile_computation(graph, &targets, &monitor).unwrap();
+    let slots = targets
+        .iter()
+        .map(|target| {
+            reference
+                .outputs
+                .iter()
+                .position(|output| output.target == SettledTarget::Power(*target))
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
+    let state_outputs = reference
+        .outputs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, output)| match output.target {
+            SettledTarget::ResourceState { resource, source } => Some((resource, (source, index))),
+            _ => None,
+        })
+        .collect::<rustc_hash::FxHashMap<_, _>>();
+    let feedback = reference
+        .program
+        .inputs
+        .iter()
+        .enumerate()
+        .filter_map(|(slot, input)| {
+            let LayerInputSource::State(StateTest::ResourceAt { resource, contact }) = input.source else {
+                return None;
+            };
+            let &(source, output) = state_outputs.get(&resource).unwrap();
+            Some((slot, output, contact == source))
+        })
+        .collect::<Vec<_>>();
+    let mut evaluation = SettledEvaluation::new(&reference).unwrap();
+    let mut reference_inputs = vec![false; reference.program.inputs.len()];
+    let mut expected = Vec::new();
+    let mut expected_strengths = Vec::new();
+    for &word in &words {
+        let frame = reference
+            .program
+            .inputs
+            .iter()
+            .map(|input| match input.source {
+                LayerInputSource::SourceAbove { site, .. } => {
+                    if let SiteSource::Component(node) = graph.sites[site.index()].source {
+                        let position = graph.nodes[node.index()].position;
+                        if position == Some(trigger) {
+                            return false;
+                        }
+                        if let Some(bit) = controls.iter().position(|&p| position == Some(p)) {
+                            return word & (1 << bit) != 0;
+                        }
+                    }
+                    source_strength(graph, &world, input.source).expect("benchmark external seed")
+                }
+                LayerInputSource::State(StateTest::ResourceAt { .. }) => false,
+                other => panic!("unsupported benchmark seed {other:?}"),
+            })
+            .collect::<Vec<_>>();
+        expected.push(super::fpu_kernel_bench::run_frame(&mut evaluation, &mut reference_inputs, &frame, &feedback, &slots).0);
+        expected_strengths.push(slots.iter().map(|&slot| evaluation.outputs()[slot]).collect::<Vec<_>>());
+    }
+    let monitor = Arc::new(TaskMonitor::default());
+    let mut backend = GraphBackend::compile_with_options(&world, bounds, vec![], &options, monitor).unwrap();
+    for (index, (&word, &expected)) in words.iter().zip(&expected).enumerate() {
+        for (bit, &position) in controls.iter().enumerate() {
+            if (word ^ current) & (1 << bit) != 0 {
+                backend.use_block(position).unwrap();
+            }
+        }
+        current = word;
+        if index == 0 {
+            backend.use_block(trigger).unwrap();
+        }
+        for phase in 0..6 {
+            backend.tick().unwrap();
+            backend.flush(&mut world, false);
+            assert_eq!(
+                native_output_word(&world, &outputs),
+                expected,
+                "production frame {index}, game-tick offset {phase}: output must be immediate and held through reset"
+            );
+            for (&position, &strength) in outputs.iter().zip(&expected_strengths[index]) {
+                let Block::RedstoneWire { wire } = world.get_block(position) else {
+                    panic!("FPU output is not a wire at {position:?}");
+                };
+                assert_eq!(wire.power, strength, "frame {index}, offset {phase}, output {position:?}");
+            }
+        }
+        let work = backend.execution_counts();
+        assert_eq!(work.callbacks, 0, "physical fallback must not satisfy the test");
+        assert_eq!(work.piston_actions, 0);
+        assert_eq!(work.logical_kernel_evaluations, index as u64 + 1);
+    }
+    assert!(expected.windows(2).any(|words| words[0] != words[1]), "changing output activity");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/logical-inference/fpu-production-frame-equivalence.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&serde_json::json!({"input_words":words,"benchmark_output_words":expected,"game_ticks_per_frame":6})).unwrap(),
+    )
+    .unwrap();
 }
 
 #[allow(clippy::too_many_arguments)]
