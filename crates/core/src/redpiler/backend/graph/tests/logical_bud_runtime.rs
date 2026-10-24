@@ -69,6 +69,45 @@ fn single_bud_world() -> (PlotWorld, BlockPos, BlockPos, (BlockPos, BlockPos)) {
     (world, base, lever, bounds)
 }
 
+#[test]
+fn busy_callback_contraction_only_admits_active_owner_base_pending_rows() {
+    let (world, _, _, bounds) = single_bud_world();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.set_budget_multiplier(8);
+    let mut backend = GraphBackend::compile_with_options(&world, bounds, vec![], &options, monitor).unwrap();
+    let plan = &backend.program.logical_bud_owners()[0];
+    let actor = plan.actor;
+    let event = *plan
+        .transition
+        .events
+        .iter()
+        .find(|event| {
+            event.dispatch == crate::redpiler::program_graph::LogicalBudDispatch::OwnSample && backend.classic_route_entry(event.occurrence).is_none()
+        })
+        .expect("fixture has an own-sample occurrence without a classic entry");
+    backend.state.pistons[actor.index()].availability = crate::redpiler::program_graph::PistonAvailability::BasePending;
+    assert_eq!(backend.logical_bud_event_base_pending(actor, event), Some(actor));
+    backend.state.pistons[actor.index()].availability = crate::redpiler::program_graph::PistonAvailability::BasePendingHeadPresent;
+    assert_eq!(backend.logical_bud_event_base_pending(actor, event), Some(actor));
+    for availability in [
+        crate::redpiler::program_graph::PistonAvailability::Ready,
+        crate::redpiler::program_graph::PistonAvailability::HeadPending,
+        crate::redpiler::program_graph::PistonAvailability::PublishingHeadRemoval,
+    ] {
+        backend.state.pistons[actor.index()].availability = availability;
+        assert_eq!(backend.logical_bud_event_base_pending(actor, event), None, "{availability:?}");
+    }
+    backend.state.pistons[actor.index()].availability = crate::redpiler::program_graph::PistonAvailability::BasePending;
+    let owner = backend.logical_bud_owner_by_actor[actor.index()].take();
+    assert_eq!(backend.logical_bud_event_base_pending(actor, event), None, "inactive owner");
+    backend.logical_bud_owner_by_actor[actor.index()] = owner;
+}
+
 fn set_native_bud_lever_level(world: &mut PlotWorld, position: BlockPos, powered: bool) {
     let Block::Lever { mut lever } = world.get_block(position) else {
         panic!("expected lever at {position:?}");
@@ -316,6 +355,8 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     };
     let mut logical = GraphBackend::from_lowered(clone_lowered(), &monitor).unwrap();
     let mut physical = GraphBackend::from_lowered(clone_lowered(), &monitor).unwrap();
+    let mut contracted = GraphBackend::from_lowered(clone_lowered(), &monitor).unwrap();
+    logical.disable_busy_callback_contraction_for_test();
     assert!(
         logical.logical_bud_owner_by_actor.iter().any(Option::is_some),
         "the cold owner plan should activate"
@@ -323,14 +364,15 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     physical.disable_logical_bud_owners_for_test();
     logical.set_test_recording(true);
     physical.set_test_recording(true);
+    contracted.set_test_recording(true);
 
     let data = ORIGIN + BlockPos::new(14, 14, 25);
     let address = ORIGIN + BlockPos::new(19, 12, 3);
     let write_enable = ORIGIN + BlockPos::new(19, 12, 1);
-    toggle_pair(&mut logical, &mut physical, data, "data input");
-    tick_pair(&mut logical, &mut physical, 24, "settle data");
-    toggle_pair(&mut logical, &mut physical, address, "address input");
-    tick_pair(&mut logical, &mut physical, 24, "settle address");
+    toggle_triple(&mut logical, &mut physical, &mut contracted, data, "data input");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 24, "settle data");
+    toggle_triple(&mut logical, &mut physical, &mut contracted, address, "address input");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 24, "settle address");
 
     let owner_position = ORIGIN + BlockPos::new(0, 9, 24);
     let owner = lowered
@@ -348,13 +390,22 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     let same_level_route = lowered.program.logical_bud_owner(owner).unwrap().sample_routes[0].route;
     logical.deliver_route(same_level_route, None).unwrap();
     physical.deliver_route(same_level_route, None).unwrap();
+    let samples_before_external_update = contracted.counts.logical_bud_samples;
+    let elisions_before_external_update = contracted.test_recorder.logical_bud_busy_callbacks_elided;
+    contracted.deliver_route(same_level_route, None).unwrap();
     assert_same_cut(&logical, &physical, "same-level owner sample notification");
-    toggle_pair(&mut logical, &mut physical, write_enable, "write enable");
+    assert_contracted_cut(&contracted, &logical, "same-level owner sample notification");
+    assert_eq!(
+        contracted.test_recorder.logical_bud_busy_callbacks_elided,
+        elisions_before_external_update
+    );
+    assert!(contracted.counts.logical_bud_samples > samples_before_external_update);
+    toggle_triple(&mut logical, &mut physical, &mut contracted, write_enable, "write enable");
     for tick in 0..16 {
         if logical.counts.logical_bud_accepts > prior_accepts && logical.future.deferred_pistons.iter().any(|event| event.piston == owner) {
             break;
         }
-        tick_pair(&mut logical, &mut physical, 1, &format!("request wait {tick}"));
+        tick_triple(&mut logical, &mut physical, &mut contracted, 1, &format!("request wait {tick}"));
     }
     assert!(
         logical.counts.logical_bud_accepts > prior_accepts,
@@ -367,18 +418,20 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
 
     // Perturb inputs during the busy/deferred interval, then issue same-level updates without
     // waiting for the normal 24-tick quiet period.
-    toggle_pair(&mut logical, &mut physical, data, "data update while busy");
-    tick_pair(&mut logical, &mut physical, 1, "one tick after busy data update");
-    toggle_pair(&mut logical, &mut physical, address, "address level change while busy");
+    toggle_triple(&mut logical, &mut physical, &mut contracted, data, "data update while busy");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 1, "one tick after busy data update");
+    toggle_triple(&mut logical, &mut physical, &mut contracted, address, "address level change while busy");
     logical.deliver_route(same_level_route, None).unwrap();
     physical.deliver_route(same_level_route, None).unwrap();
+    contracted.deliver_route(same_level_route, None).unwrap();
     assert_same_cut(&logical, &physical, "same-level owner notification while busy");
-    tick_pair(&mut logical, &mut physical, 2, "two ticks through publication");
-    tick_pair(&mut logical, &mut physical, 21, "finish write publication");
-    toggle_pair(&mut logical, &mut physical, write_enable, "write disable");
-    tick_pair(&mut logical, &mut physical, 1, "retract request cut");
-    toggle_pair(&mut logical, &mut physical, data, "second data update during retraction");
-    tick_pair(&mut logical, &mut physical, 24, "finish retraction");
+    assert_contracted_cut(&contracted, &logical, "same-level owner notification while busy");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 2, "two ticks through publication");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 21, "finish write publication");
+    toggle_triple(&mut logical, &mut physical, &mut contracted, write_enable, "write disable");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 1, "retract request cut");
+    toggle_triple(&mut logical, &mut physical, &mut contracted, data, "second data update during retraction");
+    tick_triple(&mut logical, &mut physical, &mut contracted, 24, "finish retraction");
 
     assert!(logical.counts.logical_bud_samples > 0, "the logical sampling path must execute");
     assert!(
@@ -388,6 +441,31 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     assert!(
         logical.counts.logical_bud_publications > 0,
         "the fixture must exercise delayed publication"
+    );
+    assert!(
+        contracted.test_recorder.logical_bud_busy_callbacks_elided > 0,
+        "Rilax must exercise a busy internal owner callback"
+    );
+    assert_eq!(contracted.state, logical.state);
+    assert_eq!(contracted.future.piston_requests, logical.future.piston_requests);
+    assert_eq!(contracted.future.deferred_pistons, logical.future.deferred_pistons);
+    assert_eq!(contracted.counts.logical_bud_accepts, logical.counts.logical_bud_accepts);
+    assert_eq!(contracted.counts.logical_bud_publications, logical.counts.logical_bud_publications);
+    eprintln!(
+        "Rilax BUD busy callback elision: occurrence_dispatches={}/{} rows_elided={} samples={}/{} callbacks={}/{} accepts={}/{} publications={}/{} piston_actions={}/{}",
+        logical.test_recorder.logical_bud_occurrence_dispatches,
+        contracted.test_recorder.logical_bud_occurrence_dispatches,
+        contracted.test_recorder.logical_bud_busy_callbacks_elided,
+        logical.counts.logical_bud_samples,
+        contracted.counts.logical_bud_samples,
+        logical.counts.callbacks,
+        contracted.counts.callbacks,
+        logical.counts.logical_bud_accepts,
+        contracted.counts.logical_bud_accepts,
+        logical.counts.logical_bud_publications,
+        contracted.counts.logical_bud_publications,
+        logical.counts.piston_actions,
+        contracted.counts.piston_actions,
     );
     assert!(
         logical.test_recorder.logical_bud_direct_samples.get(&owner).copied().unwrap_or_default() > 0,
@@ -427,7 +505,12 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     // interpreter while the owner still has a queued two-tick publication.
     let mut handoff_logical = GraphBackend::from_lowered(clone_lowered(), &monitor).unwrap();
     let mut handoff_physical = GraphBackend::from_lowered(clone_lowered(), &monitor).unwrap();
+    let mut handoff_contracted = GraphBackend::from_lowered(clone_lowered(), &monitor).unwrap();
+    handoff_logical.disable_busy_callback_contraction_for_test();
     handoff_physical.disable_logical_bud_owners_for_test();
+    handoff_logical.set_test_recording(true);
+    handoff_physical.set_test_recording(true);
+    handoff_contracted.set_test_recording(true);
     let handoff_owner = lowered
         .program
         .logical_bud_owners()
@@ -435,24 +518,54 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
         .map(|owner| owner.actor)
         .find(|&actor| lowered.program.pistons()[actor.index()].position == owner_position)
         .unwrap();
-    toggle_pair(&mut handoff_logical, &mut handoff_physical, data, "handoff data setup");
-    tick_pair(&mut handoff_logical, &mut handoff_physical, 24, "handoff data settle");
-    toggle_pair(&mut handoff_logical, &mut handoff_physical, address, "handoff address setup");
-    tick_pair(&mut handoff_logical, &mut handoff_physical, 24, "handoff address settle");
+    toggle_triple(
+        &mut handoff_logical,
+        &mut handoff_physical,
+        &mut handoff_contracted,
+        data,
+        "handoff data setup",
+    );
+    tick_triple(
+        &mut handoff_logical,
+        &mut handoff_physical,
+        &mut handoff_contracted,
+        24,
+        "handoff data settle",
+    );
+    toggle_triple(
+        &mut handoff_logical,
+        &mut handoff_physical,
+        &mut handoff_contracted,
+        address,
+        "handoff address setup",
+    );
+    tick_triple(
+        &mut handoff_logical,
+        &mut handoff_physical,
+        &mut handoff_contracted,
+        24,
+        "handoff address settle",
+    );
     let handoff_sample_route = lowered.program.logical_bud_owner(handoff_owner).unwrap().sample_routes[0].route;
     handoff_logical.deliver_route(handoff_sample_route, None).unwrap();
     handoff_physical.deliver_route(handoff_sample_route, None).unwrap();
+    handoff_contracted.deliver_route(handoff_sample_route, None).unwrap();
     assert_same_cut(&handoff_logical, &handoff_physical, "handoff same-level owner notification");
+    assert_contracted_cut(&handoff_contracted, &handoff_logical, "handoff same-level owner notification");
     handoff_logical.use_block(write_enable).unwrap();
     handoff_physical.use_block(write_enable).unwrap();
+    handoff_contracted.use_block(write_enable).unwrap();
     assert_same_cut(&handoff_logical, &handoff_physical, "handoff write enable");
+    assert_contracted_cut(&handoff_contracted, &handoff_logical, "handoff write enable");
     for _ in 0..16 {
         if handoff_logical.future.deferred_pistons.iter().any(|event| event.piston == handoff_owner) {
             break;
         }
         handoff_logical.tick().unwrap();
         handoff_physical.tick().unwrap();
+        handoff_contracted.tick().unwrap();
         assert_same_cut(&handoff_logical, &handoff_physical, "handoff request wait");
+        assert_contracted_cut(&handoff_contracted, &handoff_logical, "handoff request wait");
     }
     let pending_owners: Vec<_> = handoff_logical
         .future
@@ -466,14 +579,25 @@ fn rilax_logical_bud_runtime_matches_physical_owner_at_every_tick_cut() {
     );
     let (mut logical_world, logical_bounds) = rilax_world();
     let (mut physical_world, physical_bounds) = rilax_world();
+    let (mut contracted_world, contracted_bounds) = rilax_world();
     assert_eq!(logical_bounds, physical_bounds);
+    assert_eq!(logical_bounds, contracted_bounds);
     handoff_logical.reset(&mut logical_world);
     handoff_physical.reset(&mut physical_world);
+    handoff_contracted.reset(&mut contracted_world);
     assert_interpreter_handoff_equal(&logical_world, &physical_world, logical_bounds, "tick 0 after reset");
-    for tick in 1..=2 {
+    assert_interpreter_handoff_equal(&contracted_world, &logical_world, logical_bounds, "contracted tick 0 after reset");
+    for tick in 1..=8 {
         logical_world.tick_interpreted();
         physical_world.tick_interpreted();
+        contracted_world.tick_interpreted();
         assert_interpreter_handoff_equal(&logical_world, &physical_world, logical_bounds, &format!("tick {tick} after reset"));
+        assert_interpreter_handoff_equal(
+            &contracted_world,
+            &logical_world,
+            logical_bounds,
+            &format!("contracted tick {tick} after reset"),
+        );
     }
 }
 
@@ -500,18 +624,70 @@ fn assert_same_cut(logical: &GraphBackend, physical: &GraphBackend, label: &str)
     assert_eq!(logical.native_piston_trace(), physical.native_piston_trace(), "piston trace at {label}");
 }
 
-fn toggle_pair(logical: &mut GraphBackend, physical: &mut GraphBackend, position: BlockPos, label: &str) {
+fn toggle_triple(logical: &mut GraphBackend, physical: &mut GraphBackend, contracted: &mut GraphBackend, position: BlockPos, label: &str) {
     logical.use_block(position).unwrap();
     physical.use_block(position).unwrap();
+    contracted.use_block(position).unwrap();
     assert_same_cut(logical, physical, label);
+    assert_contracted_cut(contracted, logical, label);
 }
 
-fn tick_pair(logical: &mut GraphBackend, physical: &mut GraphBackend, count: usize, label: &str) {
+fn tick_triple(logical: &mut GraphBackend, physical: &mut GraphBackend, contracted: &mut GraphBackend, count: usize, label: &str) {
     for tick in 0..count {
         logical.tick().unwrap();
         physical.tick().unwrap();
-        assert_same_cut(logical, physical, &format!("{label}, tick {tick}"));
+        contracted.tick().unwrap();
+        let label = format!("{label}, tick {tick}");
+        assert_same_cut(logical, physical, &label);
+        assert_contracted_cut(contracted, logical, &label);
     }
+}
+
+fn assert_contracted_cut(contracted: &GraphBackend, baseline: &GraphBackend, label: &str) {
+    assert_eq!(contracted.state, baseline.state, "circuit state at {label}");
+    assert_eq!(contracted.scheduled_ticks(), baseline.scheduled_ticks(), "scheduler at {label}");
+    assert_eq!(contracted.future.pending, baseline.future.pending, "pending identities at {label}");
+    assert_eq!(contracted.future.pending_nodes, baseline.future.pending_nodes, "pending index at {label}");
+    assert_eq!(contracted.future.piston_requests, baseline.future.piston_requests, "requests at {label}");
+    assert_eq!(
+        contracted.future.deferred_pistons, baseline.future.deferred_pistons,
+        "deferred events at {label}"
+    );
+    assert_eq!(
+        contracted.future.clock.logical_tick, baseline.future.clock.logical_tick,
+        "tick at {label}"
+    );
+    assert_eq!(contracted.future.clock.phase, baseline.future.clock.phase, "phase at {label}");
+    assert_eq!(
+        contracted.future.clock.scheduled_advanced, baseline.future.clock.scheduled_advanced,
+        "tick phase at {label}"
+    );
+    assert_eq!(
+        contracted.counts.logical_bud_samples, baseline.counts.logical_bud_samples,
+        "sample count at {label}"
+    );
+    assert_eq!(
+        contracted.native_piston_trace(),
+        baseline.native_piston_trace(),
+        "native trace at {label}"
+    );
+    assert_eq!(
+        contracted.test_recorder.observed_operations, baseline.test_recorder.observed_operations,
+        "observed operation order at {label}"
+    );
+    assert_eq!(
+        baseline.test_recorder.logical_bud_occurrence_dispatches,
+        contracted.test_recorder.logical_bud_occurrence_dispatches + contracted.test_recorder.logical_bud_busy_callbacks_elided,
+        "owner sample dispatches avoided at {label}"
+    );
+    assert_eq!(
+        contracted.counts.logical_bud_accepts, baseline.counts.logical_bud_accepts,
+        "acceptance at {label}"
+    );
+    assert_eq!(
+        contracted.counts.logical_bud_publications, baseline.counts.logical_bud_publications,
+        "publication at {label}"
+    );
 }
 
 fn logical_operations(backend: &GraphBackend) -> Vec<GraphObservedOperation> {

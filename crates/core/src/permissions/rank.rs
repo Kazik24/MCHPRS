@@ -16,8 +16,7 @@ impl Rank {
     pub fn compilation_budget_multiplier(self) -> usize {
         match self {
             Self::Player | Self::Builder => 1,
-            Self::Advanced => 2,
-            Self::Expert => 4,
+            Self::Advanced | Self::Expert => 2,
             Self::Engineer | Self::Moderator | Self::Admin => 8,
         }
     }

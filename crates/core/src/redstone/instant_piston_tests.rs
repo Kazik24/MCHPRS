@@ -5,7 +5,7 @@ use crate::world::{
     World,
     storage::{Chunk, PalettedBitBuffer},
 };
-use mchprs_blocks::blocks::{Block, RotateAmt};
+use mchprs_blocks::blocks::{Block, RedstoneWire, RedstoneWireSide, RotateAmt};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{AdvancePhase, PistonEvent};
 use serde_json::{Value, json};
@@ -172,7 +172,7 @@ fn triple(v: &Value) -> BlockPos {
         v[2].as_i64().unwrap() as i32,
     )
 }
-const ORIGIN: BlockPos = BlockPos::new(40, 30, 40);
+pub(crate) const ORIGIN: BlockPos = BlockPos::new(40, 30, 40);
 fn transform(mut p: BlockPos, dims: (u32, u32, u32), rotation: u32) -> BlockPos {
     let (mut w, _, mut l) = dims;
     for _ in 0..rotation / 90 {
@@ -463,8 +463,47 @@ fn episode(m: &Value, c: &Value, r: u32, mode: &str, capture: bool) -> Value {
         "samples":samples,"tail_callbacks":callbacks,"completed_boundaries":if capture {Value::Null}else{json!(boundaries)},"projections":projections})
 }
 
-fn fixture(id: &str) -> Value {
+pub(crate) fn fixture(id: &str) -> Value {
     manifests().into_iter().find(|m| m["id"] == id).unwrap()
+}
+
+pub(crate) fn balanced_nanotick_variant() -> (PlotWorld, Value, Vec<BlockPos>, (u32, u32, u32)) {
+    let manifest = fixture("nanotick_example");
+    let (mut world, watch, d) = load(&manifest, 0);
+    let face = RedstoneWireSide::Side;
+    let dust = |north, south, east, west| Block::RedstoneWire {
+        wire: RedstoneWire::new(north, south, east, west, 15),
+    };
+    for p in [
+        BlockPos::new(3, 2, 0), // delay-1 base
+        BlockPos::new(3, 2, 1), // its head
+        BlockPos::new(3, 2, 2), // its redstone-block payload
+        BlockPos::new(2, 2, 0), // trigger cable sandstone
+        BlockPos::new(3, 3, 0), // observer cap over the replaced base
+    ] {
+        world.set_block(transform(p, d, 0), Block::Air);
+    }
+    for p in [
+        BlockPos::new(2, 1, 0),
+        BlockPos::new(3, 1, 0),
+        BlockPos::new(3, 1, 1),
+        BlockPos::new(3, 1, 2),
+    ] {
+        world.set_block(transform(p, d, 0), Block::Sandstone {});
+    }
+    for (p, wire) in [
+        (BlockPos::new(2, 2, 0), dust(RedstoneWireSide::None, RedstoneWireSide::None, face, face)),
+        (BlockPos::new(3, 2, 0), dust(RedstoneWireSide::None, face, RedstoneWireSide::None, face)),
+        (BlockPos::new(3, 2, 1), dust(face, face, RedstoneWireSide::None, RedstoneWireSide::None)),
+        (
+            BlockPos::new(3, 2, 2),
+            dust(face, RedstoneWireSide::None, RedstoneWireSide::None, RedstoneWireSide::None),
+        ),
+    ] {
+        world.set_block(transform(p, d, 0), wire);
+    }
+    assert!(quiet(&world));
+    (world, manifest, watch, d)
 }
 fn named_case(m: &Value, id: &str) -> Value {
     m["cases"].as_array().unwrap().iter().find(|c| c["id"] == id).unwrap().clone()
@@ -836,6 +875,71 @@ fn supplied_nanotick_counterexample_activates_consumer_before_inhibit_arrives() 
         assert!(oi < ii);
         assert_eq!(events[oi]["tick"], events[ii]["tick"]);
     }
+}
+
+#[test]
+fn supplied_nanotick_counterexample_has_one_public_nano_cohort_of_skew() {
+    let m = fixture("nanotick_example");
+    let d = (
+        m["dimensions"][0].as_u64().unwrap() as u32,
+        m["dimensions"][1].as_u64().unwrap() as u32,
+        m["dimensions"][2].as_u64().unwrap() as u32,
+    );
+    let (d1, ordinary, d2, consumer, inhibit) = (
+        BlockPos::new(3, 2, 0),
+        BlockPos::new(0, 2, 5),
+        BlockPos::new(2, 2, 2),
+        BlockPos::new(1, 2, 9),
+        BlockPos::new(2, 2, 5),
+    );
+
+    for r in [0, 90, 180, 270] {
+        let t = episode(&m, &named_case(&m, "falling"), r, "nano", true);
+        let executed = |cohort| {
+            let sample = t["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["tick"] == 1 && s["operation"] == cohort)
+                .unwrap();
+            sample["callbacks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|e| e["kind"] == "event_execute")
+                .map(|e| serde_json::from_value::<BlockPos>(e["data"]["pos"].clone()).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let expected = |p| transform(p, d, r);
+        assert_eq!(executed(1), vec![expected(d1), expected(ordinary)], "rotation {r}");
+        assert_eq!(executed(2), vec![expected(d2), expected(consumer)], "rotation {r}");
+        assert_eq!(executed(3), vec![expected(inhibit)], "rotation {r}");
+
+        let at_cohort = |cohort| {
+            t["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["tick"] == 1 && s["operation"] == cohort)
+                .unwrap()
+        };
+        assert_eq!(power(&at_cohort(1)["observations"]["output"]), 15, "rotation {r}");
+        assert_eq!(power(&at_cohort(2)["observations"]["output"]), 0, "rotation {r}");
+        assert_eq!(power(&at_cohort(2)["observations"]["inhibited_net"]), 0, "rotation {r}");
+        assert_eq!(power(&at_cohort(3)["observations"]["inhibited_net"]), 13, "rotation {r}");
+    }
+}
+
+#[test]
+fn balanced_nanotick_variant_delivers_inhibit_before_consumer() {
+    let (mut w, m, _, d) = balanced_nanotick_variant();
+    let trigger = transform(BlockPos::new(0, 2, 0), d, 0);
+    crate::interaction::destroy(w.get_block(trigger), &mut w, trigger);
+    let mut operation = 0;
+    step(&mut w, "pico", 1, &mut operation, |_, _| {});
+    let output = observe(&w, &m, d, 0);
+    assert_eq!(power(&output["output"]), 15);
+    assert_eq!(power(&output["inhibited_net"]), 13);
 }
 
 #[test]

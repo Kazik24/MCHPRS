@@ -83,3 +83,29 @@ and [layered compiler notes](../scraps/docs/research-2026-10-21/notes/redpiler-p
 contain historical design detail and research evidence. Use this page, the architecture
 document, and the optimization-level reference for current direction and shipped behavior;
 do not copy old status tables or benchmark values forward as current results.
+
+## Ordinary BUD busy-row contraction
+
+The current narrow runtime contraction skips an internal owner event row when its target
+is still an active logical BUD owner, the delivery is live and resolves to that owner, the
+owner is already base-pending, and the route occurrence has no classic entry. Both the
+guard-false path and a qualifying sample return without effects while the base is pending;
+skipping therefore removes only this redundant event dispatch and guard evaluation. It
+does not remove a meaningful sample or power read. Captured deliveries, non-owner routes,
+classic entries, and every non-pending owner state keep the existing Graph path. Requests,
+acceptance-time checks, commits, delayed publications, FIFO order, and native continuation
+remain under their existing owners.
+
+The focused Rilax test compares the contracted path with a test-only logical baseline at
+each cut, including native piston traces, observed operation order, state, queues, and
+clock; it also verifies that externally issued same-level samples remain. The fixture
+exercises a connected memory slice through native continuation, not a whole memory device.
+In the Rilax stimulus, owner event dispatches fell from 57 to 49 (8 rows, about 14%).
+Logical samples remained 100, generic callbacks 2,967, accepted actions and publications
+5 each, and physical actions 28. These counts show the narrow internal row reduction;
+they do not show a reduction in samples, generic callbacks, or piston actions. Run
+`cargo test -p mchprs_core --lib logical_bud_runtime_tests -- --nocapture --test-threads=1`.
+Final verification passed: `cargo test -p mchprs_core --lib --locked -- redpiler --test-threads=2`
+(715 passed, 89 ignored), the focused runtime test (3 passed), and
+`cargo check -p mroww --locked`. This test supports no TPS or whole-device performance
+claim.

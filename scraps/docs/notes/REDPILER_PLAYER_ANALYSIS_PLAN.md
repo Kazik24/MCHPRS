@@ -141,6 +141,14 @@ optimizer plan presence alone cannot implement this contract soundly.
 
 ## Nanotick analysis and warnings
 
+The concrete successor to arbitrary route previews is described in
+[Timing hazard analysis](REDPILER_TIMING_HAZARD_ANALYSIS_PLAN.md): sampling
+points, feasible competing paths, observable effects and explicitly qualified
+arrival margins. The old route previews have been removed. The first numerical
+family replays independent falling-source snapshots and measures observed late
+inhibition in native queue cohorts; broader all-history timing proofs remain
+planned.
+
 [PISTON_MODEL.md](../../../docs/PISTON_MODEL.md) describes ordered causal work;
 it does not define a fixed elapsed-time duration for each callback or wire hop.
 

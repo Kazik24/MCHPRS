@@ -215,7 +215,15 @@ impl Plot {
                             let entry_tick = world.piston_state().logical_tick;
                             lines.push(format!("Snapshot tick {entry_tick} • {mode}{}", if options.stable_instant_inputs { " • stable-inputs promised" } else { "" }));
                         }
-                        lines.extend(crate::redpiler::analysis::diagnostics::report(&candidate.graph, diagnostics, &worker_monitor)?);
+                        let timing_probe = diagnostics
+                            .timing
+                            .then(|| crate::plot::redpiler_timing::probe(&world, &candidate.graph, &worker_monitor));
+                        lines.extend(crate::redpiler::analysis::diagnostics::report(
+                            &candidate.graph,
+                            diagnostics,
+                            timing_probe.as_ref(),
+                            &worker_monitor,
+                        )?);
                     }
                     debug!(report = %serde_json::to_string(&candidate.report).unwrap(), "Redpiler candidate graph prepared");
                     Ok(AnalysisOutput { lines, error: None })

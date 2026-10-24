@@ -2,7 +2,7 @@
 use crate::redpiler::program_graph::CompileGraph;
 use crate::redpiler::TaskMonitor;
 
-mod timing;
+pub(crate) mod timing;
 mod unproven;
 mod updates;
 
@@ -21,13 +21,19 @@ impl DiagnosticOptions {
     }
 }
 
-pub(crate) fn report(graph: &CompileGraph, options: DiagnosticOptions, monitor: &TaskMonitor) -> Result<Vec<String>, String> {
+pub(crate) fn report(
+    graph: &CompileGraph,
+    options: DiagnosticOptions,
+    timing_probe: Option<&timing::TimingProbeReport>,
+    monitor: &TaskMonitor,
+) -> Result<Vec<String>, String> {
     let mut lines = Vec::new();
     if options.updates {
         lines.extend(updates::report(graph, monitor)?);
     }
     if options.timing {
-        lines.extend(timing::report(graph, monitor)?);
+        let probe = timing_probe.ok_or("timing diagnostics require a cold replay result")?;
+        lines.extend(timing::report(probe, monitor)?);
     }
     if options.unproven {
         lines.extend(unproven::report(graph, monitor)?);

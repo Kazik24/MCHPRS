@@ -58,10 +58,17 @@ Run `/rp analyze --updates --timing --unproven` to inspect three read-only
 views of the prepared candidate graph. `--updates` lists pistons with at least
 two update callback routes, quasi-connectivity inputs that also receive update
 activation, and movable resources shared by piston lanes. These are potential
-ordering sensitivities, not evidence of an incorrect update. `--timing` reports
-causal layer depth and input categories; this is not a configured device delay,
-nanotick count, or physical duration. If layer metadata was not computed (for
-example at O0), it reports that no timing conclusion is available. `--unproven`
+ordering sensitivities, not evidence of an incorrect update. `--timing` replays
+independent hypothetical falling transitions on isolated snapshots: fixed
+redstone-block removal or a powered lever switched off, with other sources held
+at their snapshot values. It detects accepted piston retractions whose inhibit
+becomes effective only after acceptance, and reports the actual native nanotick
+queue-cohort gap and observed wire/base effect. It checks the first piston-event
+phase only. No optimization level or implicit stable-input flag is required.
+Pending entry work, probe/work bounds and untested controls are reported as
+incomplete; a clean bounded replay is not a proof for every input history.
+The [timing analysis plan](../scraps/docs/notes/REDPILER_TIMING_HAZARD_ANALYSIS_PLAN.md)
+records the scope and further families. `--unproven`
 summarizes local piston lifecycle evidence and whether a complete lifecycle
 certificate is absent. Each category shows at most eight detail witnesses.
 The reports do not reproduce faults or provide a whole-circuit proof.

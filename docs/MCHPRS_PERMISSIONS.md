@@ -155,8 +155,7 @@ multiplier when valid rank metadata is enabled:
 | Groups | Multiplier |
 | --- | --- |
 | `default`, `builder` | 1 |
-| `advanced` | 2 |
-| `expert` | 4 |
+| `advanced`, `expert` | 2 |
 | `engineer`, `moderator`, `admin` | 8 |
 
 Expiry/stale metadata falls back to multiplier 1. These multipliers raise
@@ -165,3 +164,11 @@ rank priority follows the same group order from default through admin; database
 prefixes may override fallback colors. Configure inheritance and action grants
 through the deployment's LuckPerms installation and preserve the selected
 server/world contexts when changing them.
+
+The intended Redpiler access policy starts at Z (`advanced`): Z and E (`expert`)
+use a 2× budget, while I (`engineer`) and higher use 8×. G (`default`) and B
+(`builder`) should not receive Redpiler access. Enforce command access in
+LuckPerms using `mchprs.commands.redpiler.*` (and
+`mchprs.commands.toggleautorp` for automatic compilation), preserving the
+deployment's contexts and higher-rank grants. The budget table does not grant
+or revoke command access; deployment changes are required separately.

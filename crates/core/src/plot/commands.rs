@@ -1913,6 +1913,7 @@ mod security_tests {
     #[test]
     fn redpiler_analysis_reports_the_unified_graph_and_compile_statistics() {
         use crate::world::World;
+        use crate::redstone::instant_piston_tests::{fixture, load, ORIGIN};
         use mchprs_blocks::blocks::{Block, Lever, LeverFace};
         use mchprs_blocks::{BlockDirection, BlockPos};
         use mchprs_network::packets::PacketDecoderExt;
@@ -1991,8 +1992,19 @@ mod security_tests {
                 assert!(lines.len() <= 35, "diagnostics response should stay bounded: {lines:?}");
                 assert!(links.iter().all(|(_, command)| command.starts_with("/hl ")));
                 assert!(lines.iter().any(|line| line.starts_with("Snapshot tick ")));
+                assert!(lines[0].contains("O0"), "timing diagnostics must preserve the requested tier: {lines:?}");
+                assert!(
+                    !lines[0].contains("stable-inputs promised"),
+                    "timing must not invent an input promise: {lines:?}"
+                );
                 assert!(lines.iter().any(|line| line.starts_with("Updates: ")));
-                assert!(lines.iter().any(|line| line.starts_with("Timing:")));
+                assert!(
+                    lines.iter().any(|line| {
+                        line.starts_with("Timing: ") && line.contains("hypothetical source-falling probes completed")
+                    }),
+                    "timing diagnostics must report the physical source probe: {lines:?}"
+                );
+                assert!(lines.iter().any(|line| line.starts_with("Timing: ") && line.contains("other controls held")));
                 assert!(lines.iter().any(|line| line.starts_with("Unproven: ")));
                 assert!(!plot.redpiler.is_active());
                 assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
@@ -2048,6 +2060,41 @@ mod security_tests {
             let (lines, links) = messages("Local evidence does not prove instant behavior.");
             assert!(lines.iter().any(|line| line.contains("piston at (38, 21, 32)")));
             assert!(links.iter().any(|(label, command)| label == "(38, 21, 32)" && command == "/hl 38 21 32"));
+
+            let (nanotick_world, _, _) = load(&fixture("nanotick_example"), 0);
+            plot.world = nanotick_world;
+            let source = ORIGIN + BlockPos::new(0, 2, 0);
+            let consumer = ORIGIN + BlockPos::new(1, 2, 9);
+            let inhibitor = ORIGIN + BlockPos::new(2, 2, 5);
+            let output = ORIGIN + BlockPos::new(1, 2, 12);
+            let before = [
+                plot.world.get_block(source),
+                plot.world.get_block(consumer),
+                plot.world.get_block(inhibitor),
+                plot.world.get_block(output),
+            ];
+            let piston_state = bincode::serialize(plot.world.piston_state()).unwrap();
+            let pending_before: Vec<_> = plot.world.scheduler().iter_entries().collect();
+            plot.handle_command(0, "/rp", vec!["analyze", "--timing"]);
+            plot.wait_for_redpiler_analysis();
+            let (lines, _) = messages("other controls and combinations remain unknown");
+            assert!(lines[0].contains("O0") && !lines[0].contains("stable-inputs promised"), "{lines:?}");
+            let hazard = lines.iter().find(|line| line.starts_with("Timing: late inhibit at ")).unwrap();
+            assert!(hazard.contains("(41, 32, 49): +1 nanotick (cohort 2→3)"), "{hazard}");
+            assert!(hazard.contains("caused by (42, 32, 45)"), "{hazard}");
+            assert!(lines.iter().any(|line| line == "Effect: wire (41, 32, 52) power 15→0"), "{lines:?}");
+            assert_eq!(
+                [
+                    plot.world.get_block(source),
+                    plot.world.get_block(consumer),
+                    plot.world.get_block(inhibitor),
+                    plot.world.get_block(output),
+                ],
+                before
+            );
+            assert_eq!(bincode::serialize(plot.world.piston_state()).unwrap(), piston_state);
+            assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
+            assert!(!plot.redpiler.is_active());
         }
     }
 

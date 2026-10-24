@@ -267,6 +267,11 @@ pub(crate) struct TestRecorder {
     /// Executed typed dispatch paths for logical BUD transition occurrences.
     logical_bud_direct_samples: FxHashMap<PistonId, u64>,
     logical_bud_boundary_callbacks: FxHashMap<PistonId, u64>,
+    /// Owner-route rows skipped because the active owner is already busy.
+    logical_bud_busy_callbacks_elided: u64,
+    disable_busy_callback_contraction: bool,
+    /// Owner event occurrences handed to the shared delivery path.
+    logical_bud_occurrence_dispatches: u64,
     /// Cold reduced Main/Quasi evaluator sampled before accepted actor mutation.
     accepted_boundary_probe: Option<accepted_boundary_probe::Probe>,
     /// Test-only one-shot evaluator sampled at selected native actor/reset cuts.
@@ -1997,6 +2002,10 @@ impl GraphBackend {
         occurrence: RouteOccurrence,
         dispatch: LogicalBudDispatch,
     ) -> Result<(), GraphExecutionError> {
+        #[cfg(test)]
+        if self.test_recorder.test_recording {
+            self.test_recorder.logical_bud_occurrence_dispatches += 1;
+        }
         if self.program.logical_bud_owner(actor).is_none() {
             return Ok(());
         }
@@ -2097,10 +2106,84 @@ impl GraphBackend {
                 LogicalBudEventCondition::ResourceRevisionCurrent => resource_revision_current,
             };
             if should_deliver {
+                let redundant = self.logical_bud_event_base_pending(actor, event).is_some() && {
+                    #[cfg(test)]
+                    {
+                        !self.test_recorder.disable_busy_callback_contraction
+                    }
+                    #[cfg(not(test))]
+                    {
+                        true
+                    }
+                };
+                if redundant {
+                    // The owner sampler itself returns before reading power or enqueuing work while its base is pending.
+                    #[cfg(test)]
+                    {
+                        if self.test_recorder.test_recording {
+                            self.test_recorder.logical_bud_busy_callbacks_elided += 1;
+                        }
+                    }
+                    continue;
+                }
                 self.deliver_logical_bud_occurrence(actor, event.occurrence, event.dispatch)?;
             }
         }
         Ok(())
+    }
+
+    fn logical_bud_event_base_pending(&self, actor: PistonId, event: LogicalBudRouteEvent) -> Option<PistonId> {
+        let delivery = *self
+            .program
+            .routes()
+            .get(event.occurrence.route.index())?
+            .deliveries
+            .get(event.occurrence.ordinal as usize)?;
+        if delivery.view != OperandView::Live {
+            return None;
+        }
+        let target = match event.dispatch {
+            LogicalBudDispatch::OwnSample => actor,
+            LogicalBudDispatch::Boundary => self
+                .logical_bud_samples_by_route
+                .get(event.occurrence.route.index())?
+                .as_ref()?
+                .get(event.occurrence.ordinal as usize)
+                .copied()??,
+        };
+        let receiver = delivery
+            .receiver
+            .or_else(|| match (self.program.sites()[delivery.target.index()].source, delivery.kind) {
+                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+                _ => None,
+            })?;
+        let matches_target = match receiver {
+            CallbackReceiver::PistonBase(owner) | CallbackReceiver::PistonHead(owner) => owner == target,
+            CallbackReceiver::Component(node) => self.program.pistons()[target.index()].node == node,
+            CallbackReceiver::Contact(_) => false,
+        };
+        if !matches_target {
+            return None;
+        }
+        if matches!(receiver, CallbackReceiver::Component(node) if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node))) {
+            return None;
+        }
+        self.logical_bud_owner_by_actor.get(target.index())?.as_ref()?;
+        if !self.state.pistons[target.index()].availability.base_pending() || self.classic_route_entry(event.occurrence).is_some() {
+            return None;
+        }
+        Some(target)
+    }
+
+    fn classic_route_entry(&self, occurrence: RouteOccurrence) -> Option<ClassicRouteEntry> {
+        let range = self.program.classic().route_ranges.get(occurrence.route.index())?;
+        self.program
+            .classic()
+            .route_entries
+            .get(range.clone())?
+            .iter()
+            .find(|binding| binding.ordinal == occurrence.ordinal)
+            .copied()
     }
 
     /// Check a delivery's guard, then notify its receiver using live or captured state.
@@ -2339,6 +2422,11 @@ impl GraphBackend {
     pub(crate) fn disable_logical_bud_owners_for_test(&mut self) {
         self.logical_bud_owner_by_actor.fill(None);
         self.logical_bud_samples_by_route.fill(None);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn disable_busy_callback_contraction_for_test(&mut self) {
+        self.test_recorder.disable_busy_callback_contraction = true;
     }
 
     #[cfg(test)]

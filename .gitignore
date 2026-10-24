@@ -20,6 +20,7 @@ scraps/docs/*
 scraps/docs/notes/*
 !scraps/docs/notes/REDPILER_PLAYER_ANALYSIS_PLAN.md
 !scraps/docs/notes/REDPILER_COMPILATION_RESOURCE_PLAN.md
+!scraps/docs/notes/REDPILER_TIMING_HAZARD_ANALYSIS_PLAN.md
 !scraps/docs/research-2026-10-21/
 !scraps/docs/reports/
 scraps/docs/reports/*

@@ -28,6 +28,7 @@ mod picking;
 mod piston_tests;
 mod preview;
 mod redpiler_compilation;
+pub(crate) mod redpiler_timing;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;
@@ -527,6 +528,15 @@ impl PlotWorld {
         true
     }
 
+    fn current_phase_operation_count(&self) -> usize {
+        match self.piston_state.phase {
+            AdvancePhase::ScheduledTicks => self.to_be_ticked.this_tick_ref().len(),
+            AdvancePhase::PistonEvents => self.piston_state.events.len(),
+            AdvancePhase::MovingEntities => self.piston_state.movement_work.len() - self.piston_state.movement_cursor,
+            AdvancePhase::BetweenTicks => 0,
+        }
+    }
+
     pub fn tick_interpreted(&mut self) {
         self.record_tick();
         while self.advance_operation() {}
@@ -541,12 +551,7 @@ impl PlotWorld {
             if !self.prepare_operation() {
                 continue;
             }
-            let count = match self.piston_state.phase {
-                AdvancePhase::ScheduledTicks => self.to_be_ticked.this_tick_ref().len(),
-                AdvancePhase::PistonEvents => self.piston_state.events.len(),
-                AdvancePhase::MovingEntities => self.piston_state.movement_work.len() - self.piston_state.movement_cursor,
-                AdvancePhase::BetweenTicks => 0,
-            };
+            let count = self.current_phase_operation_count();
             for _ in 0..count {
                 self.advance_operation();
             }

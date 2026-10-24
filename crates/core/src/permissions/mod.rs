@@ -614,7 +614,7 @@ mod tests {
             ("default", 1),
             ("builder", 1),
             ("advanced", 2),
-            ("expert", 4),
+            ("expert", 2),
             ("engineer", 8),
             ("moderator", 8),
             ("admin", 8),
