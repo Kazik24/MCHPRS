@@ -59,8 +59,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "--io-only",
         "--update",
         "--graph",
-        "--updates",
-        "--unproven",
         "-o",
         "-i",
         "-u",
@@ -77,7 +75,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
     .filter(|flag| match *flag {
         "--graph" => analyze,
-        "--updates" | "--unproven" => analyze,
         _ => true,
     })
     .map(|flag| CTabCompleteMatch {
@@ -419,14 +416,10 @@ impl Plot {
                     self.players[player].send_error_message("Reset Redpiler before analyzing live geometry.");
                     return;
                 }
-                let diagnostics = crate::redpiler::analysis::diagnostics::DiagnosticOptions {
-                    updates: args.contains(&"--updates"),
-                    unproven: args.contains(&"--unproven"),
-                };
                 let flags = args
                     .iter()
                     .copied()
-                    .filter(|&arg| !matches!(arg, "--graph" | "--updates" | "--unproven"))
+                    .filter(|&arg| arg != "--graph")
                     .collect::<Vec<_>>()
                     .join(" ");
                 let mut options = match CompilerOptions::parse(&flags) {
@@ -437,7 +430,7 @@ impl Plot {
                     }
                 };
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
-                self.start_redpiler_analysis(player, options, args.contains(&"--graph"), diagnostics);
+                self.start_redpiler_analysis(player, options, args.contains(&"--graph"), None);
                 return;
             }
             "compile" | "c" => {
@@ -459,13 +452,21 @@ impl Plot {
                 self.start_redpiler(options);
             }
             "inspect" | "i" => {
-                let player = &self.players[player];
-                let pos = worldedit::ray_trace_block(&self.world, player.eye_position(), player.pitch as f64, player.yaw as f64, 10.0);
+                if self.redpiler.is_active() {
+                    self.players[player].send_error_message("Reset Redpiler before inspecting live geometry.");
+                    return;
+                }
+                let viewer = &self.players[player];
+                let pos = worldedit::ray_trace_block(&self.world, viewer.eye_position(), viewer.pitch as f64, viewer.yaw as f64, 10.0);
                 let Some(pos) = pos else {
-                    player.send_error_message(messages::BLOCK_TRACE_FAILED);
+                    viewer.send_error_message(messages::BLOCK_TRACE_FAILED);
                     return;
                 };
-                self.redpiler.inspect(pos);
+                let options = CompilerOptions {
+                    budget_multiplier: self.players[player].compilation_budget_multiplier(),
+                    ..CompilerOptions::default()
+                };
+                self.start_redpiler_analysis(player, options, false, Some(pos));
             }
             "reset" | "r" => {
                 self.reset_redpiler();
@@ -1981,30 +1982,6 @@ mod security_tests {
                 panic!("analysis response did not complete");
             };
             plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.redpiler.analyze"]);
-            let mut diagnostic_rows: Option<Vec<String>> = None;
-            for _ in 0..2 {
-                plot.handle_command(0, "/rp", vec!["analyze", "--updates", "--unproven", "--update"]);
-                plot.wait_for_redpiler_analysis();
-                let (lines, links) = messages("unproven does not mean non-instant", "yellow");
-                assert!(lines.len() <= 35, "diagnostics response should stay bounded: {lines:?}");
-                assert!(links.iter().all(|(_, command)| command.starts_with("/hl ")));
-                assert!(lines.iter().any(|line| line.starts_with("Snapshot tick ")));
-                assert!(lines[0].contains("O0"), "diagnostics must preserve the requested tier: {lines:?}");
-                assert!(
-                    !lines[0].contains("stable-inputs promised"),
-                    "diagnostics must not invent an input promise: {lines:?}"
-                );
-                assert!(lines.iter().any(|line| line.starts_with("Updates: ")));
-                assert!(!lines.iter().any(|line| line.starts_with("Timing:")));
-                assert!(lines.iter().any(|line| line.starts_with("Unproven: ")));
-                assert!(!plot.redpiler.is_active());
-                assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
-                assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
-                if let Some(previous) = &diagnostic_rows {
-                    assert_eq!(&lines, previous, "read-only diagnostics must be deterministic for one source snapshot");
-                }
-                diagnostic_rows = Some(lines);
-            }
             for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
                 plot.wait_for_redpiler_analysis();
@@ -2046,17 +2023,27 @@ mod security_tests {
 
             let witness = BlockPos::new(38, 21, 32);
             plot.world.set_block(witness, Block::from_name("piston").unwrap());
-            plot.handle_command(0, "/rp", vec!["analyze", "--unproven"]);
+            plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.redpiler.analyze", "commands.redpiler.inspect"]);
+            plot.players[0].pos = PlayerPos::new(38.5, 19.9, 35.5);
+            plot.players[0].pitch = 0.0;
+            plot.players[0].yaw = 180.0;
+            plot.handle_command(0, "/rp", vec!["inspect"]);
             plot.wait_for_redpiler_analysis();
-            let (lines, links) = messages("Local evidence does not prove instant behavior.", "yellow");
-            assert!(lines.iter().any(|line| line.contains("piston at (38, 21, 32)")));
+            let (lines, links) = messages("Structural inspection only", "yellow");
+            assert!(lines.len() <= 8, "{lines:?}");
+            assert!(lines.iter().any(|line| line.contains("Local instant evidence")), "{lines:?}");
+            assert!(lines.iter().any(|line| line.starts_with("Incoming callbacks:")));
             assert!(links.iter().any(|(label, command)| label == "(38, 21, 32)" && command == "/hl 38 21 32"));
-
-            plot.handle_command(0, "/rp", vec!["analyze", "--timing"]);
-            let (lines, _) = messages("--timing", "red");
-            assert!(lines.iter().any(|line| line.contains("--timing")));
-            assert!(plot.analysis.is_none(), "removed timing flag must not start analysis");
+            assert_eq!(plot.world.get_block(witness), Block::from_name("piston").unwrap());
+            assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
+            assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
             assert!(!plot.redpiler.is_active());
+            for flag in ["--timing", "--updates", "--unproven"] {
+                plot.handle_command(0, "/rp", vec!["analyze", flag]);
+                let (lines, _) = messages(flag, "red");
+                assert!(lines.iter().any(|line| line.contains(flag)));
+                assert!(plot.analysis.is_none(), "removed flag must not start analysis");
+            }
         }
     }
 
@@ -2066,7 +2053,7 @@ mod security_tests {
         for flag in ["--updates", "--timing", "--unproven", "--verify", "--repro"] {
             assert!(
                 CompilerOptions::parse(flag).is_err(),
-                "diagnostic-only flag {flag} must not be a compiler option"
+                "removed flag {flag} must not be a compiler option"
             );
         }
         let nodes = declared_command_nodes();
@@ -2084,7 +2071,7 @@ mod security_tests {
             ("/rp compile --ass", vec![]),
             ("/redpiler c --optimize --i", vec!["--io-only"]),
             ("/rp analyze --graph --o", vec!["--optimize"]),
-            ("/rp analyze --u", vec!["--update", "--updates", "--unproven"]),
+            ("/rp analyze --u", vec!["--update"]),
             (
                 "/rp compile -",
                 vec![
@@ -2116,13 +2103,12 @@ mod security_tests {
             assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
             for item in response.matches {
                 // Tier-dependent flags are valid in their required O3 context.
-                assert!(
-                    matches!(item.match_.as_str(), "--graph" | "--updates" | "--unproven")
-                        || CompilerOptions::parse(&format!("-O3 {}", item.match_)).is_ok()
-                );
+                assert!(item.match_ == "--graph" || CompilerOptions::parse(&format!("-O3 {}", item.match_)).is_ok());
             }
         }
-        assert!(complete_redpiler(0, "/rp analyze --tim").unwrap().matches.is_empty());
+        for prefix in ["--tim", "--updates", "--unproven"] {
+            assert!(complete_redpiler(0, &format!("/rp analyze {prefix}")).unwrap().matches.is_empty());
+        }
         let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();
         assert!(!response.matches.iter().any(|m| m.match_ == "--graph"));
         let response = complete_redpiler(0, "/rp compile --u").unwrap();

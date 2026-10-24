@@ -54,15 +54,23 @@ coverage. Inspect a prepared pipeline without activating it:
 /rp analyze --graph --optimize
 /rp analyze --graph --optimize --stable-instant-inputs
 ```
-Run `/rp analyze --updates --unproven` for optional structural diagnostics.
-`--updates` lists multiple update routes, QC/update dependencies and shared
-resources. `--unproven` summarizes local piston lifecycle evidence and missing
-certificates. Each category shows at most eight detail witnesses. These reports
-are inspection data, not timing proofs or confirmed faults.
+`/rp analyze` checks compilation and reports aggregate execution coverage.
+`--graph` prepares the selected graph pipeline without activating an executor;
+it reports graph counts and aggregate local instant evidence where available.
+Local evidence is not a complete lifecycle proof. Optimization tier and
+`--stable-instant-inputs` retain their normal meanings.
 
-`--timing` was removed: independent input probes could not establish timing
-correctness for large circuits such as FPU. Native nanotick regression tests
-remain, but there is currently no whole-circuit timing checker.
+For individual details, point at a component within ten blocks and run
+`/rp inspect` (or `/rp i`) after resetting Redpiler. The asynchronous, read-only
+report shows incoming power/QC paths, update routes, shape checks and, for
+pistons, shared payload counts and local instant evidence or its decline reason.
+Counts include guarded alternatives; they are not timing warnings. Inspection
+prepares a snapshot graph and may take time on large builds.
+
+`--updates` and `--unproven` were removed from analysis in favor of targeted
+inspection. `--timing` was removed because independent input probes could not
+establish whole-circuit timing correctness. Native nanotick regression tests
+remain; there is currently no whole-circuit timing checker.
 
 Historical stage inventories, measurements, and earlier verification counts are
 preserved in the [previous guide](../scraps/docs/research-2026-10-21/REDPILER_OPTIMIZATION_LEVELS_SNAPSHOT.md).

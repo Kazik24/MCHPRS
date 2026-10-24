@@ -2389,20 +2389,6 @@ impl GraphBackend {
             .collect()
     }
 
-    pub(crate) fn inspect(&self, position: BlockPos) {
-        match self.positions.get(&position) {
-            Some(&node) => tracing::debug!(
-                "Graph node {node:?}: {:?} {:?}",
-                self.program.nodes()[node.index()].kind,
-                match &self.state.components[node.index()] {
-                    ComponentState::Wire(_) => ComponentState::Wire(self.wire_state(node)),
-                    state => state.clone(),
-                }
-            ),
-            None => tracing::debug!("could not find graph node at {position:?}"),
-        }
-    }
-
     #[cfg(test)]
     fn trace(&self) -> &[String] {
         &self.trace

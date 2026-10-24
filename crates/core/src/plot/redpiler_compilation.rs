@@ -162,7 +162,7 @@ impl Plot {
         player: usize,
         options: CompilerOptions,
         graph_only: bool,
-        diagnostics: crate::redpiler::analysis::diagnostics::DiagnosticOptions,
+        inspect: Option<BlockPos>,
     ) {
         if self.compilation.is_some() || self.analysis.is_some() {
             self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
@@ -189,7 +189,7 @@ impl Plot {
                 let _entered = span.enter();
                 let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
                 let mode = super::scoreboard::optimization_mode_label(&options);
-                if graph_only || diagnostics.any() {
+                if graph_only || inspect.is_some() {
                     let candidate = match crate::redpiler::analysis::graph::prepare_candidate_graph(
                         &world,
                         world.get_corners(),
@@ -201,26 +201,14 @@ impl Plot {
                         Err(error) => return Err(error.to_string()),
                     };
                     let summary = candidate.summary();
-                    let mut lines = if graph_only {
-                        vec![format!("Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated", summary.nodes, summary.links)]
+                    let lines = if let Some(position) = inspect {
+                        crate::redpiler::analysis::diagnostics::inspect(&candidate.graph, position, &worker_monitor)?
                     } else {
-                        let entry_tick = world.piston_state().logical_tick;
-                        vec![format!("Snapshot tick {entry_tick} • {mode}{}", if options.stable_instant_inputs { " • stable-inputs promised" } else { "" })]
-                    };
-                    if graph_only {
+                        let mut lines = vec![format!("Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated", summary.nodes, summary.links)];
+                        lines.push(crate::redpiler::analysis::diagnostics::summary(&candidate.graph));
                         lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
-                    }
-                    if diagnostics.any() {
-                        if graph_only {
-                            let entry_tick = world.piston_state().logical_tick;
-                            lines.push(format!("Snapshot tick {entry_tick} • {mode}{}", if options.stable_instant_inputs { " • stable-inputs promised" } else { "" }));
-                        }
-                        lines.extend(crate::redpiler::analysis::diagnostics::report(
-                            &candidate.graph,
-                            diagnostics,
-                            &worker_monitor,
-                        )?);
-                    }
+                        lines
+                    };
                     debug!(report = %serde_json::to_string(&candidate.report).unwrap(), "Redpiler candidate graph prepared");
                     Ok(AnalysisOutput { lines, error: None })
                 } else {

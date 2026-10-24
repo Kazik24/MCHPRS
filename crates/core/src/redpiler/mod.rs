@@ -504,14 +504,6 @@ impl Compiler {
     pub fn tick_with_world<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
         self.backend().tick_with_world(world)
     }
-
-    pub fn inspect(&mut self, pos: BlockPos) {
-        if let Some(backend) = &mut self.backend {
-            backend.inspect(pos);
-        } else {
-            debug!("cannot inspect when backend is not running");
-        }
-    }
 }
 
 /// Inputs needed to compile a bounded region of a world.
