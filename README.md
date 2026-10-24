@@ -48,7 +48,7 @@ defined in [config.rs](crates/core/src/config.rs); Docker's example is
 | `fast_render_send_rate` | `10` | Throttled visual flush rate. |
 | `native_chat` | `true` | Render public chat and join/leave notices; false leaves public chat entirely to an external provider. |
 | `redbox` | `false` | Enable the RedBox proxy bridge (positions, teleports, gamemode, and chat forwarding). Requires a Velocity proxy running RedBox. |
-| `schematic_save_prefix` | `""` | Prepend to saved schematic names: `./mroww/` creates a subfolder, `aaa@` adds a filename prefix, and `./mroww/aaa@` combines both. Relative to `schems/`, or the player's UUID folder with `schemati = true`. |
+| `schematic_save_prefix` | `""` | Prepend to saved schematic paths: `./mroww/` creates a subfolder, `aaa@` adds an extra filename prefix, and `./mroww/aaa@` combines both. Saves are automatically named `PlayerName@name.schem`; save names must be plain ASCII letters, numbers, `_` or `-` with a `.schem` or `.schematic` extension. Existing unprefixed schematics remain loadable. Relative to `schems/`, or the player's UUID folder with `schemati = true`. |
 | `worldedit_max_blocks` | `67108864` | Maximum blocks per WorldEdit operation; matches the schematic import/export cap and fits a full 512 × 256 × 512 arena. |
 | `worldedit_history_blocks` | `134217728` | Maximum blocks retained in undo/redo per player. |
 

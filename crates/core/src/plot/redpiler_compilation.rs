@@ -2,7 +2,30 @@
 use super::*;
 use crate::redpiler::{CompileError, TaskMonitor};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::JoinHandle;
+
+static ANALYSIS_WORKERS: AtomicUsize = AtomicUsize::new(0);
+const MAX_ANALYSIS_WORKERS: usize = 2;
+
+struct AnalysisWorkerPermit;
+impl Drop for AnalysisWorkerPermit {
+    fn drop(&mut self) {
+        ANALYSIS_WORKERS.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+pub(super) struct AnalysisJob {
+    started: Instant,
+    player: crate::player::EntityId,
+    monitor: Arc<TaskMonitor>,
+    worker: JoinHandle<Result<AnalysisOutput, String>>,
+}
+
+struct AnalysisOutput {
+    lines: Vec<String>,
+    error: Option<String>,
+}
 
 #[cfg(test)]
 mod tests;
@@ -82,7 +105,7 @@ impl Plot {
 
     pub(super) fn start_redpiler(&mut self, options: CompilerOptions) {
         // Keep cancelled workers until they finish so repeated requests cannot multiply large jobs.
-        if self.compilation.is_some() {
+        if self.compilation.is_some() || self.analysis.is_some() {
             for player in &self.players {
                 player.send_error_message(messages::REDPILER_COMPILATION_BUSY);
             }
@@ -132,6 +155,127 @@ impl Plot {
             Err(error) => self.reject_redpiler(started, &format!("cannot start compiler worker: {error}")),
         }
         self.reset_timings();
+    }
+
+    pub(super) fn start_redpiler_analysis(&mut self, player: usize, options: CompilerOptions, graph_only: bool) {
+        if self.compilation.is_some() || self.analysis.is_some() {
+            self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
+            return;
+        }
+        if ANALYSIS_WORKERS
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| (n < MAX_ANALYSIS_WORKERS).then_some(n + 1))
+            .is_err()
+        {
+            self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
+            return;
+        }
+        let permit = AnalysisWorkerPermit;
+        let started = Instant::now();
+        let world = self.world.activation_snapshot();
+        let player = self.players[player].entity_id;
+        let monitor = Arc::new(TaskMonitor::default());
+        let worker_monitor = monitor.clone();
+        let span = tracing::Span::current();
+        let worker = thread::Builder::new()
+            .name(format!("analyze-{},{}", self.world.x, self.world.z))
+            .spawn(move || {
+                let _permit = permit;
+                let _entered = span.enter();
+                let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+                let mode = super::scoreboard::optimization_mode_label(&options);
+                if graph_only {
+                    let candidate = match crate::redpiler::analysis::graph::prepare_candidate_graph(
+                        &world,
+                        world.get_corners(),
+                        &ticks,
+                        &options,
+                        worker_monitor.clone(),
+                    ) {
+                        Ok(candidate) => candidate,
+                        Err(error) => return Err(error.to_string()),
+                    };
+                    let summary = candidate.summary();
+                    let mut lines = vec![format!(
+                        "Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated",
+                        summary.nodes, summary.links
+                    )];
+                    lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
+                    debug!(report = %serde_json::to_string(&candidate.report).unwrap(), graph = ?candidate.graph, "Redpiler candidate graph");
+                    Ok(AnalysisOutput { lines, error: None })
+                } else {
+                    let report = match crate::redpiler::analysis::analyze(
+                        &world,
+                        world.get_corners(),
+                        &ticks,
+                        &worker_monitor,
+                        crate::redpiler::analysis::AnalysisLimits::for_budget(options.budget_multiplier),
+                    ) {
+                        Ok(report) => report,
+                        Err(error) => return Err(error.to_string()),
+                    };
+                    let mut lines = vec![report.summary()];
+                    debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
+                    let mut compiler = Compiler::default();
+                    let error = compiler.compile(&world, world.get_corners(), options, ticks, worker_monitor).err();
+                    let error = error.map(|error| format!("Redpiler: {error}"));
+                    if error.is_none() {
+                        if let Some(stats) = compiler.stats() {
+                            lines.extend(stats.chat_summary_lines(&mode));
+                        }
+                        lines.push(format!("This plot can compile in {mode} mode."));
+                    }
+                    Ok(AnalysisOutput { lines, error })
+                }
+            });
+        match worker {
+            Ok(worker) => {
+                self.analysis = Some(AnalysisJob {
+                    started,
+                    player,
+                    monitor,
+                    worker,
+                })
+            }
+            Err(error) => {
+                self.players
+                    .iter()
+                    .find(|p| p.entity_id == player)
+                    .map(|p| p.send_error_message(&format!("Could not start Redpiler analysis: {error}")));
+            }
+        }
+    }
+
+    pub(super) fn cancel_redpiler_analysis(&mut self) {
+        if let Some(job) = &self.analysis {
+            job.monitor.cancel();
+        }
+    }
+
+    pub(super) fn poll_redpiler_analysis(&mut self) {
+        if !self.analysis.as_ref().is_some_and(|job| job.worker.is_finished()) {
+            return;
+        }
+        let job = self.analysis.take().unwrap();
+        let output = job.worker.join();
+        if job.monitor.cancelled() {
+            return;
+        }
+        let Some(player) = self.players.iter().find(|player| player.entity_id == job.player) else {
+            return;
+        };
+        match output {
+            Ok(Ok(output)) => {
+                for line in output.lines {
+                    player.send_system_message(&line);
+                }
+                if let Some(error) = output.error {
+                    player.send_error_message(&error);
+                }
+            }
+            Ok(Err(error)) => player.send_error_message(&error),
+            Err(_) => player.send_error_message("Redpiler analysis worker failed."),
+        }
+        debug!(elapsed_ms = job.started.elapsed().as_millis(), "Redpiler analysis completed");
     }
 
     pub(super) fn poll_redpiler_compilation(&mut self) {

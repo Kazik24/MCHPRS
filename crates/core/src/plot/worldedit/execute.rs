@@ -226,8 +226,10 @@ pub(super) fn execute_load(ctx: CommandExecuteContext<'_>) {
 pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     let start_time = Instant::now();
 
-    let mut file_name = ctx.arguments[0].unwrap_string().clone();
-    file_name.insert_str(0, &CONFIG.schematic_save_prefix);
+    let Some(mut file_name) = schematic_save_name(&ctx.player.username, ctx.arguments[0].unwrap_string(), &CONFIG.schematic_save_prefix) else {
+        ctx.player.send_error_message(&messages::SCHEMATIC_INVALID_PATH);
+        return;
+    };
     if CONFIG.schemati {
         let prefix = HyphenatedUUID(ctx.player.uuid).to_string() + "/";
         file_name.insert_str(0, &prefix);
@@ -236,7 +238,8 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
     let clipboard = ctx.player.worldedit_clipboard.as_ref().unwrap();
     match save_schematic(&file_name, clipboard) {
         Ok(_) => {
-            ctx.player.send_worldedit_message(&messages::schematic_saved(start_time.elapsed()));
+            ctx.player
+                .send_worldedit_message(&messages::schematic_saved(&file_name, start_time.elapsed()));
         }
         Err(err) => {
             error!("There was an error saving a schematic: ");
@@ -244,6 +247,22 @@ pub(super) fn execute_save(ctx: CommandExecuteContext<'_>) {
             ctx.player.send_error_message(&messages::schematic_save_failed(err.root_cause()));
         }
     }
+}
+
+fn schematic_save_name(username: &str, input: &str, configured_prefix: &str) -> Option<String> {
+    let input = input.strip_prefix(&format!("{username}@")).unwrap_or(input);
+    let (stem, extension) = input.rsplit_once('.')?;
+    if stem.is_empty()
+        || username.is_empty()
+        || username.len() > 16
+        || username.len() + stem.len() + extension.len() + 2 > 255
+        || !stem.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+        || !matches!(extension.to_ascii_lowercase().as_str(), "schem" | "schematic")
+        || !username.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
+        return None;
+    }
+    Some(format!("{configured_prefix}{username}@{stem}.{extension}"))
 }
 
 pub(super) fn execute_stack(ctx: CommandExecuteContext<'_>) {
@@ -821,6 +840,34 @@ mod tests {
     use super::*;
     use crate::plot::PLOT_WIDTH;
     use crate::world::storage::Chunk;
+
+    #[test]
+    fn schematic_saves_always_use_the_callers_filename_namespace() {
+        assert_eq!(
+            schematic_save_name("Nick", "build.schem", "./mroww/"),
+            Some("./mroww/Nick@build.schem".into())
+        );
+        assert_eq!(
+            schematic_save_name("Nick", "Nick@build.schematic", ""),
+            Some("Nick@build.schematic".into())
+        );
+        for name in [
+            "Other@build.schem",
+            "nick@build.schem",
+            "../build.schem",
+            "build@x.schem",
+            "sub/build.schem",
+            r"sub\build.schem",
+            "build:name.schem",
+            "build\nname.schem",
+            "build.schem/evil",
+        ] {
+            assert!(schematic_save_name("Nick", name, "").is_none(), "{name}");
+        }
+        assert!(schematic_save_name("", "build.schem", "").is_none());
+        assert!(schematic_save_name("N".repeat(17).as_str(), "build.schem", "").is_none());
+        assert!(schematic_save_name("Nick", &format!("{}.schem", "x".repeat(251)), "").is_none());
+    }
 
     #[test]
     fn selection_traversal_preserves_order_and_reversed_bounds() {

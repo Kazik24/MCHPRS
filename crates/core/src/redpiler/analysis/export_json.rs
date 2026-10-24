@@ -1059,6 +1059,7 @@ pub(crate) fn prepare<W: World>(
 }
 
 /// prepare_and_write serializes and validates first, then publishes exactly one artifact.
+#[cfg(test)]
 pub(crate) fn prepare_and_write<W: World>(
     world: &W,
     bounds: (BlockPos, BlockPos),

@@ -48,18 +48,14 @@ for state/event compilation and verification requirements.
 ## Compilation reports and inspection
 
 Completion chat reports mode, stage time, graph size, expensive stages, and plan
-coverage. Export a pipeline without activating it:
+coverage. Inspect a prepared pipeline without activating it:
 
 ```text
-/rp analyze --graph --export-json --optimize
-/rp analyze --graph --export-json --optimize --stable-instant-inputs
+/rp analyze --graph --optimize
+/rp analyze --graph --optimize --stable-instant-inputs
 ```
-
-Open the [offline viewer](../tools/redpiler-graph-viewer/index.html) and load the
-exported JSON. Compiled-plan records describe inputs, predicates, and outputs;
-the physical view retains source graph witnesses. Compile-time exports do not
-contain runtime-learned transition transcripts. Coverage and export sizes are
-inspection data, rather than throughput or runtime-memory measurements.
+Coverage is inspection data, rather than throughput or runtime-memory
+measurements.
 
 Historical stage inventories, measurements, and earlier verification counts are
 preserved in the [previous guide](../scraps/docs/research-2026-10-21/REDPILER_OPTIMIZATION_LEVELS_SNAPSHOT.md).

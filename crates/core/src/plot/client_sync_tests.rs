@@ -490,6 +490,8 @@ fn teleport_resets_observers_relative_movement_base() {
 
 #[test]
 fn redpiler_flag_suggestions_reach_the_chat_client() {
+    use std::io::Read;
+
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);
         plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
@@ -512,6 +514,18 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
             assert!(!frame.read_bool().unwrap());
         }
         assert_eq!(frame.position() as usize, frame.get_ref().len());
+
+        for transaction_id in 43..53 {
+            plot.handle_tab_complete(
+                STabComplete {
+                    transaction_id,
+                    text: text.into(),
+                },
+                0,
+            );
+        }
+        peer.set_nonblocking(true).unwrap();
+        assert_eq!(peer.read(&mut [0]).unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
     }
 }
 

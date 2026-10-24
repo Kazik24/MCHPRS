@@ -221,6 +221,7 @@ pub struct Player {
     next_permissions_refresh: Instant,
     chat_window: Instant,
     chat_count: u32,
+    last_tab_complete: Option<Instant>,
     pub(crate) signed_velocity: crate::signed_velocity::Session,
     pub pos: PlayerPos,
     /// The last X chunk the player was in. This is used for updated view position.
@@ -429,6 +430,7 @@ impl Player {
             },
             chat_window: Instant::now(),
             chat_count: 0,
+            last_tab_complete: None,
             signed_velocity: Default::default(),
             pos: PlayerPos {
                 x: player_data.position[0],
@@ -1001,6 +1003,17 @@ impl Player {
         }
     }
 
+    pub(crate) fn allow_tab_complete_at(&mut self, now: Instant) -> bool {
+        if self.last_tab_complete.is_some_and(|last| {
+            now.checked_duration_since(last)
+                .is_none_or(|elapsed| elapsed < std::time::Duration::from_secs(1))
+        }) {
+            return false;
+        }
+        self.last_tab_complete = Some(now);
+        true
+    }
+
     pub fn numeric_permission_limit(&self, prefix: &str) -> Option<usize> {
         self.permissions_cache.as_ref().and_then(|cache| cache.numeric_limit(prefix))
     }
@@ -1245,5 +1258,15 @@ mod coordinate_security_tests {
         assert!(!PlayerPos::new(0.0, 2049.0, 0.0).is_valid());
         assert!(!PlayerPos::new(0.0, f64::NAN, 0.0).is_valid());
         assert!(PlayerPos::new(-128.0, 128.0, 128.0).is_valid());
+    }
+
+    #[test]
+    fn tab_completion_is_limited_per_player_to_one_request_per_second() {
+        let conn = mchprs_network::test_support::connection(false).unwrap();
+        let mut player = Player::test_player(conn.player);
+        let start = Instant::now();
+        assert!(player.allow_tab_complete_at(start));
+        assert!(!player.allow_tab_complete_at(start + std::time::Duration::from_millis(999)));
+        assert!(player.allow_tab_complete_at(start + std::time::Duration::from_secs(1)));
     }
 }

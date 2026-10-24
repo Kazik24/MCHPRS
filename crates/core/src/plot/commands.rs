@@ -13,9 +13,7 @@ use mchprs_network::packets::clientbound::{
 };
 use mchprs_save_data::plot_data::{Tps, WorldSendRate};
 use once_cell::sync::Lazy;
-use std::path::Path;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Instant;
 use tracing::{debug, info, warn};
 
@@ -60,7 +58,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "--optimize",
         "--io-only",
         "--update",
-        "--export-json",
         "--graph",
         "-o",
         "-i",
@@ -78,7 +75,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
     .filter(|flag| match *flag {
         "--graph" => analyze,
-        "--export-json" => analyze,
         _ => true,
     })
     .map(|flag| CTabCompleteMatch {
@@ -420,13 +416,7 @@ impl Plot {
                     self.players[player].send_error_message("Reset Redpiler before analyzing live geometry.");
                     return;
                 }
-                let ticks: Vec<_> = self.world.scheduler().iter_entries().collect();
-                let flags = args
-                    .iter()
-                    .copied()
-                    .filter(|&arg| !matches!(arg, "--graph" | "--export-json"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let flags = args.iter().copied().filter(|&arg| arg != "--graph").collect::<Vec<_>>().join(" ");
                 let mut options = match CompilerOptions::parse(&flags) {
                     Ok(options) => options,
                     Err(error) => {
@@ -434,94 +424,12 @@ impl Plot {
                         return;
                     }
                 };
-                if args.contains(&"--export-json") {
-                    options.budget_multiplier = self.players[player].compilation_budget_multiplier();
-                    let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
-                    let result = crate::redpiler::analysis::export_json::prepare_and_write(
-                        &self.world,
-                        self.world.get_corners(),
-                        &ticks,
-                        &options,
-                        &monitor,
-                        crate::redpiler::analysis::AnalysisLimits::for_budget(options.budget_multiplier),
-                        Path::new("./redpiler-exports"),
-                        self.world.x,
-                        self.world.z,
-                    );
-                    match result {
-                        Ok((path, counts)) => self.players[player].send_system_message(&format!(
-                            "Graph JSON v1 callback_draft written to {} ({} nodes, {} power links, {} sites, {} guards, {} resources)",
-                            path.display(),
-                            counts.nodes,
-                            counts.power_links,
-                            counts.sites,
-                            counts.guards,
-                            counts.resources,
-                        )),
-                        Err(error) => {
-                            warn!(code = error.code, error = %error, "Redpiler graph JSON export failed");
-                            self.players[player].send_error_message(&format!("Graph JSON export failed ({}): {}", error.code, error,));
-                        }
-                    }
-                    return;
-                }
                 options.budget_multiplier = self.players[player].compilation_budget_multiplier();
-                if args.contains(&"--graph") {
-                    let mode = super::scoreboard::optimization_mode_label(&options);
-                    let monitor = Arc::new(crate::redpiler::TaskMonitor::default());
-                    match crate::redpiler::analysis::graph::prepare_candidate_graph(
-                        &self.world,
-                        self.world.get_corners(),
-                        &ticks,
-                        &options,
-                        monitor.clone(),
-                    ) {
-                        Ok(candidate) => {
-                            let summary = candidate.summary();
-                            self.players[player].send_system_message(&format!(
-                                "Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated",
-                                summary.nodes, summary.links,
-                            ));
-                            for line in monitor.graph_statistics().chat_summary_lines() {
-                                self.players[player].send_system_message(&line);
-                            }
-                            debug!(report = %serde_json::to_string(&candidate.report).unwrap(), graph = ?candidate.graph, "Redpiler candidate graph");
-                        }
-                        Err(error) => self.players[player].send_error_message(&error.to_string()),
-                    }
-                    return;
-                }
-                match crate::redpiler::analysis::analyze(
-                    &self.world,
-                    self.world.get_corners(),
-                    &ticks,
-                    &Default::default(),
-                    crate::redpiler::analysis::AnalysisLimits::for_budget(self.players[player].compilation_budget_multiplier()),
-                ) {
-                    Ok(report) => {
-                        self.players[player].send_system_message(&report.summary());
-                        debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
-                        // Stage the same backend as compile, then drop it without
-                        // activating it or transferring any interpreter work.
-                        let mut compiler = crate::redpiler::Compiler::default();
-                        let mode = super::scoreboard::optimization_mode_label(&options);
-                        match compiler.compile(&self.world, self.world.get_corners(), options, ticks, Default::default()) {
-                            Ok(()) => {
-                                if let Some(stats) = compiler.stats() {
-                                    for line in stats.chat_summary_lines(&mode) {
-                                        self.players[player].send_system_message(&line);
-                                    }
-                                }
-                                self.players[player].send_system_message(&format!("This plot can compile in {mode} mode."));
-                            }
-                            Err(error) => self.players[player].send_error_message(&format!("Redpiler: {error}")),
-                        }
-                    }
-                    Err(error) => self.players[player].send_error_message(&error.to_string()),
-                }
+                self.start_redpiler_analysis(player, options, args.contains(&"--graph"));
+                return;
             }
             "compile" | "c" => {
-                if self.compilation.is_some() {
+                if self.compilation.is_some() || self.analysis.is_some() {
                     self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
                     return;
                 }
@@ -573,9 +481,8 @@ impl Plot {
             self.players[player].send_no_permission_message();
             return false;
         }
-        if crate::permissions::dedicated_permissions()
-            && (native_command_permission(command, &args).is_some_and(|node| !self.players[player].has_permission(&node))
-                || (changes_plot(command, &args) && !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z))))
+        if native_command_permission(command, &args).is_some_and(|node| !self.players[player].has_permission(&node))
+            || (changes_plot(command, &args) && !self.players[player].can_edit_plot(self.owner, (self.world.x, self.world.z)))
         {
             warn!("Command denied: permission or plot ownership");
             self.players[player].send_no_permission_message();
@@ -587,7 +494,7 @@ impl Plot {
             "/whitelist" => Some("minecraft.command.whitelist"),
             _ => None,
         };
-        if admin_permission.is_some_and(|node| !self.players[player].has_permission(node)) {
+        if admin_permission.is_some_and(|node| !self.players[player].has_explicit_permission(node)) {
             self.players[player].send_no_permission_message();
             return false;
         }
@@ -1159,8 +1066,8 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
         "/speed" => "speed".to_owned(),
         "/small" => "small".to_owned(),
         "/gmsp" | "/gmc" | "/gamemode" | "/gm" => "gamemode".to_owned(),
-        "/stop" => "stop".to_owned(),
-        "/whitelist" => "whitelist".to_owned(),
+        // These two use explicit Minecraft nodes in the admin guard below.
+        "/stop" | "/whitelist" => return None,
         "/tellraw" => "tellraw".to_owned(),
         "/say" => "say".to_owned(),
         "/tps" => format!("rtps.{}", if args.is_empty() || args == ["timings"] { "view" } else { "set" }),
@@ -1584,6 +1491,55 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 #[cfg(test)]
 mod security_tests {
     #[test]
+    fn stop_and_whitelist_require_explicit_permissions_without_luckperms() {
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+
+        for command in ["/stop", "/whitelist"] {
+            assert!(!plot.handle_command(0, command, vec![]));
+            assert!(receiver.try_recv().is_err(), "{command} must not reach the server");
+        }
+    }
+
+    #[test]
+    fn explicit_stop_and_whitelist_grants_reach_their_handlers() {
+        let (mut plot, mut peer) = super::super::client_sync_tests::fixture(false);
+        plot.players[0].set_test_permissions(&["minecraft.command.stop", "minecraft.command.whitelist"]);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        plot.message_sender = sender;
+
+        assert!(!plot.handle_command(0, "/whitelist", vec![]));
+        assert!(receiver.try_recv().is_err());
+        assert!(!plot.handle_command(0, "/stop", vec![]));
+        assert!(matches!(receiver.try_recv(), Ok(crate::server::Message::Shutdown)));
+        assert!(mchprs_network::test_support::read_frame(&mut peer, false).is_ok());
+    }
+
+    #[test]
+    fn legacy_plot_mutations_require_permission_and_allow_the_owner() {
+        assert!(!crate::permissions::dedicated_permissions());
+        let (mut plot, _) = super::super::client_sync_tests::fixture(false);
+        let owner = 2;
+        plot.owner = Some(owner);
+        plot.players[0].set_test_permissions(&["commands.rtps.set", "commands.radvance", "commands.redpiler.reset", "commands.curse"]);
+
+        let commands = [("/tps", vec!["42"]), ("/adv", vec!["1"]), ("/rp", vec!["reset"]), ("/curse", vec![])];
+        for (command, args) in &commands {
+            assert!(!plot.handle_command(0, command, args.clone()));
+            assert_ne!(plot.tps, Tps::Limited(42));
+            assert!(!plot.world.is_cursed);
+        }
+
+        plot.owner = Some(plot.players[0].uuid);
+        for (command, args) in &commands {
+            assert!(!plot.handle_command(0, command, args.clone()));
+        }
+        assert_eq!(plot.tps, Tps::Limited(42));
+        assert!(plot.world.is_cursed);
+    }
+
+    #[test]
     fn bounded_advance_stops_on_execution_failure() {
         let mut calls = 0;
         let advanced = super::advance_bounded(10, || {
@@ -1989,6 +1945,7 @@ mod security_tests {
             };
             for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
+                plot.wait_for_redpiler_analysis();
                 let lines = messages("passes configured:");
                 assert!(lines.len() <= 6, "graph analysis should stay compact: {lines:?}");
                 assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
@@ -2013,6 +1970,7 @@ mod security_tests {
                 assert!(!plot.redpiler.is_active());
             }
             plot.handle_redpiler_command(0, "analyze", &[]);
+            plot.wait_for_redpiler_analysis();
             let lines = messages("This plot can compile in O0 mode.");
             assert!(lines.len() <= 8, "compile analysis should stay compact: {lines:?}");
             assert!(lines.iter().any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
@@ -2030,6 +1988,7 @@ mod security_tests {
 
     #[test]
     fn redpiler_flags_complete_aliases_prefixes_and_multiple_options() {
+        assert!(CompilerOptions::parse("--export-json").is_err());
         let nodes = declared_command_nodes();
         for command in ["compile", "analyze"] {
             let node = nodes.iter().find(|n| n.name == Some(command)).unwrap();
@@ -2067,7 +2026,7 @@ mod security_tests {
                     "--stable-instant-inputs",
                 ],
             ),
-            ("/rp analyze --ex", vec!["--export-json"]),
+            ("/rp analyze --ex", vec![]),
             ("/rp compile --stable", vec!["--stable-instant-inputs"]),
             ("/rp compile --unknown", vec![]),
         ] {
@@ -2079,9 +2038,7 @@ mod security_tests {
             assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
             for item in response.matches {
                 // Tier-dependent flags are valid in their required O3 context.
-                assert!(
-                    item.match_ == "--graph" || item.match_ == "--export-json" || CompilerOptions::parse(&format!("-O3 {}", item.match_)).is_ok()
-                );
+                assert!(item.match_ == "--graph" || CompilerOptions::parse(&format!("-O3 {}", item.match_)).is_ok());
             }
         }
         let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();

@@ -94,6 +94,7 @@ pub struct Plot {
     pub redpiler: Compiler,
     /// In-flight compilation owns a snapshot; the live plot stays on this thread.
     compilation: Option<redpiler_compilation::CompilationJob>,
+    analysis: Option<redpiler_compilation::AnalysisJob>,
 
     // Thread communication
     message_receiver: BusReader<BroadcastMessage>,
@@ -1300,6 +1301,7 @@ impl Plot {
 
     /// Redpiler needs to reset implicitly in the case of any block changes done by a player. This can be
     fn reset_redpiler(&mut self) {
+        self.cancel_redpiler_analysis();
         if self.compiling_redpiler() {
             self.cancel_redpiler_compilation();
             self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
@@ -1685,6 +1687,7 @@ impl Plot {
         self.handle_messages();
         self.update_render_mode();
         self.poll_redpiler_compilation();
+        self.poll_redpiler_analysis();
 
         // Only tick if there are players in the plot
         if !self.players.is_empty() {
@@ -1964,6 +1967,7 @@ impl Plot {
             always_running,
             redpiler: Default::default(),
             compilation: None,
+            analysis: None,
             timings: TimingsMonitor::new(tps),
             owner,
             async_rt: Plot::create_async_rt(),
@@ -2069,6 +2073,7 @@ impl Plot {
 impl Drop for Plot {
     fn drop(&mut self) {
         self.cancel_redpiler_compilation();
+        self.cancel_redpiler_analysis();
         // Packet-handler tests own an in-memory world, with no persistent saves
         // or server thread to receive crash-recovery messages.
         #[cfg(any(test, feature = "plot-bench"))]

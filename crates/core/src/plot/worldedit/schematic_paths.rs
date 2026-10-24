@@ -1,8 +1,16 @@
 //! Schematic paths stay within their library; the shared rf folder is read-only.
 use crate::messages;
 use anyhow::{Context, Result, bail, ensure};
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+const COMPLETION_CACHE_TTL: Duration = Duration::from_secs(5);
+const MAX_COMPLETION_CACHE_ROOTS: usize = 16;
+type CompletionCache = Mutex<HashMap<PathBuf, (Instant, Arc<Vec<String>>)>>;
+static COMPLETION_CACHE: OnceLock<CompletionCache> = OnceLock::new();
 
 fn relative_path(name: &str) -> Result<PathBuf> {
     let name = name.replace('\\', "/");
@@ -43,14 +51,40 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
     if !root.exists() {
         return Ok(Vec::new());
     }
-    let query = query.replace('\\', "/").to_lowercase();
-    // Treat the folder as a search scope, and match the remaining text anywhere
-    // in filenames below it (rf/PM1 also finds rf/Gwiezdny@PM1-...schem).
-    let (directory, needle) = query
-        .rsplit_once('/')
-        .map_or(("", query.as_str()), |(_, needle)| (&query[..query.len() - needle.len()], needle));
+    complete_names_at(root, query, Instant::now())
+}
+
+fn complete_names_at(root: &Path, query: &str, now: Instant) -> Result<Vec<String>> {
+    let root = root.canonicalize()?;
+    let cache = COMPLETION_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let names = {
+        let entries = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        entries.get(&root).and_then(|(created, names)| {
+            now.checked_duration_since(*created)
+                .is_some_and(|age| age < COMPLETION_CACHE_TTL)
+                .then(|| Arc::clone(names))
+        })
+    };
+    if let Some(names) = names {
+        return Ok(filter_schematic_names(names.as_slice(), query));
+    }
+
+    let names = Arc::new(list_schematic_names(&root)?);
+    let mut entries = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    entries.retain(|_, (created, _)| now.checked_duration_since(*created).is_some_and(|age| age < COMPLETION_CACHE_TTL));
+    if entries.len() >= MAX_COMPLETION_CACHE_ROOTS && !entries.contains_key(&root) {
+        if let Some(oldest) = entries.iter().min_by_key(|(_, (created, _))| created).map(|(root, _)| root.clone()) {
+            entries.remove(&oldest);
+        }
+    }
+    entries.insert(root, (now, Arc::clone(&names)));
+    drop(entries);
+    Ok(filter_schematic_names(names.as_slice(), query))
+}
+
+fn list_schematic_names(root: &Path) -> Result<Vec<String>> {
     let mut folders = vec![root.to_path_buf()];
-    let mut names = std::collections::BTreeSet::new();
+    let mut names = BTreeSet::new();
     while let Some(folder) = folders.pop() {
         for entry in fs::read_dir(folder)? {
             let entry = entry?;
@@ -68,18 +102,26 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
                 }
                 let relative = path.strip_prefix(root)?;
                 names.insert(relative.to_string_lossy().replace('\\', "/"));
-                // Only suggest folders that lead to a usable schematic.
                 let mut parent = relative.parent();
                 while let Some(path) = parent.filter(|path| !path.as_os_str().is_empty()) {
                     names.insert(format!("{}/", path.to_string_lossy().replace('\\', "/")));
                     parent = path.parent();
                 }
             }
-            // Symlinks are neither traversed nor suggested.
         }
     }
+    Ok(names.into_iter().collect())
+}
+
+fn filter_schematic_names(names: &[String], query: &str) -> Vec<String> {
+    let query = query.replace('\\', "/").to_lowercase();
+    // Treat the folder as a search scope, and match the remaining text anywhere
+    // in filenames below it (rf/PM1 also finds rf/Gwiezdny@PM1-...schem).
+    let (directory, needle) = query
+        .rsplit_once('/')
+        .map_or(("", query.as_str()), |(_, needle)| (&query[..query.len() - needle.len()], needle));
     let mut matches: Vec<_> = names
-        .into_iter()
+        .iter()
         .filter_map(|name| {
             let lower = name.to_lowercase();
             let relative = lower.strip_prefix(directory)?;
@@ -100,11 +142,11 @@ pub(in crate::plot) fn complete_names(root: &Path, query: &str) -> Result<Vec<St
                     return None;
                 }
             };
-            Some((rank, !name.ends_with('/'), lower, name))
+            Some((rank, !name.ends_with('/'), lower, name.clone()))
         })
         .collect();
     matches.sort();
-    Ok(matches.into_iter().take(256).map(|(_, _, _, name)| name).collect())
+    matches.into_iter().take(256).map(|(_, _, _, name)| name).collect()
 }
 
 pub(super) fn load_path(root: &Path, name: &str) -> Result<PathBuf> {
@@ -224,6 +266,23 @@ mod tests {
             assert!(load_path(&library.0, &name).is_ok());
         }
         assert!(complete_names(&library.0.join("missing"), "").unwrap().is_empty());
+    }
+
+    #[test]
+    fn completion_reuses_listing_for_five_seconds_then_refreshes() {
+        let library = Library::new();
+        library.file("first.schem");
+        let start = Instant::now();
+        assert_eq!(complete_names_at(&library.0, "", start).unwrap(), ["first.schem"]);
+        library.file("second.schem");
+        assert_eq!(
+            complete_names_at(&library.0, "", start + Duration::from_secs(4)).unwrap(),
+            ["first.schem"]
+        );
+        assert_eq!(
+            complete_names_at(&library.0, "", start + Duration::from_secs(5)).unwrap(),
+            ["first.schem", "second.schem"]
+        );
     }
 
     #[test]

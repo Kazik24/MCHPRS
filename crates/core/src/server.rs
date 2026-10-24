@@ -239,16 +239,6 @@ impl MinecraftServer {
             pending_redbox: FxHashMap::default(),
         };
 
-        // Load the spawn area plot on server start
-        // This plot should be always active
-        let (spawn_tx, spawn_rx) = mpsc::channel();
-        Plot::load_and_run(0, 0, server.broadcaster.add_rx(), server.plot_sender.clone(), spawn_rx, true, None);
-        server.running_plots.push(PlotListEntry {
-            plot_x: 0,
-            plot_z: 0,
-            priv_message_sender: spawn_tx,
-        });
-
         info!("Done! Start took {:?}", start_time.elapsed());
 
         loop {

@@ -1,5 +1,14 @@
 # REDPILER review documents
 
+## Current scoped work
+
+- [Compilation time, memory, and stack](notes/REDPILER_COMPILATION_RESOURCE_PLAN.md):
+  measurement, iterative expression expansion, allocation reduction, and staged
+  correctness/performance gates. Planned, not implemented.
+- [Player-facing analysis and instant assertions](notes/REDPILER_PLAYER_ANALYSIS_PLAN.md):
+  proposed inspection, network highlighting, proof evidence, nanotick warnings,
+  and the separate compiler-resource investigation status. Scoped, not implemented.
+
 ## Latest archive
 
 - [2026-10-21 research and plan snapshots](research-2026-10-21/README.md): the

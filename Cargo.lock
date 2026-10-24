@@ -1559,6 +1559,7 @@ dependencies = [
  "crc32fast",
  "criterion",
  "ctrlc",
+ "flate2",
  "hematite-nbt",
  "hmac 0.12.1",
  "impls",

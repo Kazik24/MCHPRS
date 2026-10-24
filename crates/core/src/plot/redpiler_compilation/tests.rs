@@ -8,6 +8,15 @@ use std::sync::mpsc;
 mod cpu_fixture;
 
 impl Plot {
+    pub(in crate::plot) fn wait_for_redpiler_analysis(&mut self) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while self.analysis.is_some() {
+            assert!(Instant::now() < deadline, "analysis worker did not finish");
+            self.poll_redpiler_analysis();
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+
     pub(in crate::plot) fn wait_for_redpiler(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(20);
         while self.compilation.is_some() {
@@ -92,6 +101,62 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
         CompilationResult { world, compiler, result }
     });
     release
+}
+
+fn blocked_analysis(plot: &mut Plot) -> mpsc::Sender<()> {
+    let (release, gate) = mpsc::channel();
+    let monitor = Arc::new(TaskMonitor::default());
+    plot.analysis = Some(AnalysisJob {
+        started: Instant::now(),
+        player: plot.players[0].entity_id,
+        monitor,
+        worker: thread::spawn(move || {
+            gate.recv_timeout(Duration::from_secs(20)).unwrap();
+            Ok(AnalysisOutput {
+                lines: vec!["completed".to_owned()],
+                error: None,
+            })
+        }),
+    });
+    release
+}
+
+#[test]
+fn analysis_does_not_pause_ticks_or_report_after_requester_leaves() {
+    let (mut plot, _peer) = fixture(false);
+    let release = blocked_analysis(&mut plot);
+    let logical_tick = plot.world.piston_state.logical_tick;
+    assert!(plot.tick());
+    assert!(plot.world.piston_state.logical_tick > logical_tick);
+
+    let connection = mchprs_network::test_support::connection(false).unwrap();
+    plot.players[0].client = connection.player;
+    let received = Instant::now() - Duration::from_secs(20);
+    plot.players[0].last_keep_alive_received = received;
+    connection.incoming.send(Box::new(SKeepAlive { id: 7 })).unwrap();
+    plot.update();
+    assert!(plot.players[0].last_keep_alive_received > received);
+    assert!(plot.players[0].client.alive());
+
+    plot.start_redpiler(Default::default());
+    assert!(plot.compilation.is_none(), "analysis must reserve the plot worker slot");
+    let worker_id = plot.analysis.as_ref().unwrap().worker.thread().id();
+    plot.start_redpiler_analysis(0, Default::default(), true);
+    assert_eq!(
+        plot.analysis.as_ref().unwrap().worker.thread().id(),
+        worker_id,
+        "a second analysis must be rejected while the first drains"
+    );
+    plot.cancel_redpiler_analysis();
+    plot.players.clear();
+    release.send(()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while plot.analysis.is_some() {
+        assert!(Instant::now() < deadline, "analysis worker did not finish");
+        plot.poll_redpiler_analysis();
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!plot.redpiler.is_active());
 }
 
 #[test]

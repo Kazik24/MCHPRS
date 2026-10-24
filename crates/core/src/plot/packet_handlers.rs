@@ -612,7 +612,7 @@ impl ServerBoundPacketHandler for Plot {
     }
 
     fn handle_tab_complete(&mut self, packet: STabComplete, player_idx: usize) {
-        if !self.players[player_idx].can_use_commands() {
+        if !self.players[player_idx].can_use_commands() || !self.players[player_idx].allow_tab_complete_at(Instant::now()) {
             return;
         }
         if !crate::redbox::enabled() {

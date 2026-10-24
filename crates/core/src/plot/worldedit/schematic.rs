@@ -14,11 +14,103 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::FxHashMap;
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::path::Path;
 
 type Compound = std::collections::HashMap<String, nbt::Value>;
 const MAX_BLOCKS: u32 = 67_108_864;
+const MAX_NBT_BYTES: usize = 256 * 1024 * 1024;
+const MAX_NBT_DEPTH: usize = 64;
+const MAX_NBT_TAGS: usize = 1_000_000;
+
+fn skip_nbt_bytes(reader: &mut Cursor<&[u8]>, len: u64) -> Result<()> {
+    anyhow::ensure!(
+        reader.position().checked_add(len).is_some_and(|end| end <= reader.get_ref().len() as u64),
+        "truncated NBT payload"
+    );
+    reader.set_position(reader.position() + len);
+    Ok(())
+}
+
+fn skip_nbt_string(reader: &mut Cursor<&[u8]>) -> Result<()> {
+    let mut len = [0; 2];
+    reader.read_exact(&mut len)?;
+    skip_nbt_bytes(reader, u16::from_be_bytes(len) as u64)
+}
+
+fn preflight_nbt_payload(reader: &mut Cursor<&[u8]>, tag: u8, depth: usize, tags: &mut usize) -> Result<()> {
+    use anyhow::{bail, ensure};
+    ensure!(depth <= MAX_NBT_DEPTH, "NBT nesting limit exceeded");
+    match tag {
+        1 => skip_nbt_bytes(reader, 1)?,
+        2 => skip_nbt_bytes(reader, 2)?,
+        3 | 5 => skip_nbt_bytes(reader, 4)?,
+        4 | 6 => skip_nbt_bytes(reader, 8)?,
+        7 | 11 | 12 => {
+            let mut len = [0; 4];
+            reader.read_exact(&mut len)?;
+            let count = i32::from_be_bytes(len);
+            let width = match tag {
+                7 => 1u64,
+                11 => 4,
+                _ => 8,
+            };
+            ensure!(count >= 0 && count as u64 <= MAX_NBT_BYTES as u64 / width, "invalid NBT array length");
+            let bytes = (count as u64).checked_mul(width).context("NBT array length overflow")?;
+            skip_nbt_bytes(reader, bytes)?;
+        }
+        8 => skip_nbt_string(reader)?,
+        9 => {
+            let mut head = [0; 5];
+            reader.read_exact(&mut head)?;
+            let child = head[0];
+            let count = i32::from_be_bytes(head[1..].try_into().unwrap());
+            ensure!(count >= 0 && count as usize <= MAX_NBT_TAGS, "invalid NBT list length");
+            ensure!(child <= 12 && (child != 0 || count == 0), "invalid NBT list type");
+            for _ in 0..count {
+                *tags += 1;
+                ensure!(*tags <= MAX_NBT_TAGS, "NBT tag count limit exceeded");
+                preflight_nbt_payload(reader, child, depth + 1, tags)?;
+            }
+        }
+        10 => loop {
+            let mut child = [0];
+            reader.read_exact(&mut child)?;
+            if child[0] == 0 {
+                break;
+            }
+            ensure!(child[0] <= 12, "invalid NBT tag type");
+            skip_nbt_string(reader)?;
+            *tags += 1;
+            ensure!(*tags <= MAX_NBT_TAGS, "NBT tag count limit exceeded");
+            preflight_nbt_payload(reader, child[0], depth + 1, tags)?;
+        },
+        _ => bail!("invalid NBT tag type"),
+    }
+    Ok(())
+}
+
+fn preflight_nbt(bytes: &[u8]) -> Result<()> {
+    use anyhow::ensure;
+    let mut input = Cursor::new(bytes);
+    let mut tag = [0];
+    input.read_exact(&mut tag)?;
+    ensure!(tag[0] == 10, "NBT root must be a compound");
+    skip_nbt_string(&mut input)?;
+    let mut tags = 0;
+    preflight_nbt_payload(&mut input, tag[0], 0, &mut tags)?;
+    ensure!(input.position() as usize == bytes.len(), "trailing NBT data");
+    Ok(())
+}
+
+fn read_gzip_nbt(mut file: impl Read, limit: usize) -> Result<Vec<u8>> {
+    let mut decoded = Vec::new();
+    flate2::read::GzDecoder::new(&mut file)
+        .take((limit + 1) as u64)
+        .read_to_end(&mut decoded)?;
+    anyhow::ensure!(decoded.len() <= limit, "schematic NBT byte limit exceeded");
+    Ok(decoded)
+}
 
 pub(super) fn parse_block(input: &str) -> Option<Block> {
     static RE: Lazy<Regex> =
@@ -233,7 +325,9 @@ pub fn load_schematic(file: impl Read) -> Result<WorldEditClipboard> {
 }
 
 pub fn load_schematic_with_warnings(mut file: impl Read) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
-    let nbt = nbt::Blob::from_gzip_reader(&mut file).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
+    let decoded = read_gzip_nbt(&mut file, MAX_NBT_BYTES).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
+    preflight_nbt(&decoded).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
+    let nbt = nbt::Blob::from_reader(&mut Cursor::new(decoded)).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
     let schema = Schema::read(&nbt).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
     tracing::debug!(
         "Importing Sponge v{} with source Minecraft DataVersion {}",
@@ -548,5 +642,53 @@ mod tests {
                 assert!(load_schematic(std::io::Cursor::new(encode(version, invalid))).is_err());
             }
         }
+    }
+
+    #[test]
+    fn nbt_preflight_rejects_hostile_lengths_and_nesting() {
+        // Root compound name followed by an int array with a negative element count.
+        let negative_array = [10, 0, 0, 11, 0, 1, b'x', 0xff, 0xff, 0xff, 0xff];
+        assert!(preflight_nbt(&negative_array).is_err());
+        let huge_list = [10, 0, 0, 9, 0, 1, b'x', 1, 0, 0x00, 0x0f, 0x42, 0x41];
+        assert!(preflight_nbt(&huge_list).is_err());
+        // Root compound containing itself more than the admitted nesting depth.
+        let mut nested = vec![10, 0, 0];
+        for _ in 0..MAX_NBT_DEPTH + 1 {
+            nested.extend([10, 0, 0]);
+        }
+        nested.extend([0; MAX_NBT_DEPTH + 2]);
+        assert!(preflight_nbt(&nested).is_err());
+    }
+
+    #[test]
+    fn schematic_loader_rejects_malformed_nbt_before_deserialization() {
+        fn gzip(nbt: &[u8]) -> Vec<u8> {
+            use std::io::Write;
+            let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            encoder.write_all(nbt).unwrap();
+            encoder.finish().unwrap()
+        }
+
+        let negative_array = [10, 0, 0, 11, 0, 1, b'x', 0xff, 0xff, 0xff, 0xff];
+        let negative_list = [10, 0, 0, 9, 0, 1, b'x', 1, 0xff, 0xff, 0xff, 0xff];
+        let list_with_end_items = [10, 0, 0, 9, 0, 1, b'x', 0, 0, 0, 0, 1];
+        let truncated_scalar = [10, 0, 0, 3, 0, 0, 0, 0, 0];
+        let oversized_array = [10, 0, 0, 7, 0, 1, b'x', 16, 0, 0, 1]; // MAX_NBT_BYTES + 1
+        let mut too_deep = vec![10, 0, 0];
+        for _ in 0..MAX_NBT_DEPTH + 1 {
+            too_deep.extend([10, 0, 0]);
+        }
+        too_deep.extend([0; MAX_NBT_DEPTH + 2]);
+        for bytes in [
+            negative_array.as_slice(),
+            &negative_list,
+            &list_with_end_items,
+            &truncated_scalar,
+            &oversized_array,
+            &too_deep,
+        ] {
+            assert!(load_schematic_with_warnings(Cursor::new(gzip(bytes))).is_err());
+        }
+        assert!(read_gzip_nbt(Cursor::new(gzip(&[1, 2, 3])), 2).is_err());
     }
 }
