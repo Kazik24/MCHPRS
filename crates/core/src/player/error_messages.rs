@@ -7,6 +7,14 @@ static COORDINATES: Lazy<Regex> =
 
 /// Keep diagnostics readable while linking block positions to the highlight command.
 pub(super) fn component(message: &str) -> Value {
+    coordinate_component(message, "red")
+}
+
+pub(crate) fn diagnostic_component(message: &str) -> Value {
+    coordinate_component(message, "yellow")
+}
+
+fn coordinate_component(message: &str, color: &str) -> Value {
     let mut extra = Vec::new();
     let mut end = 0;
     for captures in COORDINATES.captures_iter(message) {
@@ -28,10 +36,10 @@ pub(super) fn component(message: &str) -> Value {
         end = span.end();
     }
     if end == 0 {
-        return json!({"text": message, "color": "red"});
+        return json!({"text": message, "color": color});
     }
     extra.push(json!({"text": &message[end..]}));
-    json!({"text": "", "color": "red", "extra": extra})
+    json!({"text": "", "color": color, "extra": extra})
 }
 
 #[cfg(test)]
@@ -54,5 +62,15 @@ mod tests {
         );
         assert_eq!(component("No coordinates"), json!({"text": "No coordinates", "color": "red"}));
         assert!(component("(999999999999, 1, 2)").get("extra").is_none());
+
+        let diagnostic = diagnostic_component("At (-2, 3, 4)");
+        assert_eq!(diagnostic["color"], "yellow");
+        assert_eq!(diagnostic["extra"][1]["click_event"]["command"], "/hl -2 3 4");
+        assert_eq!(diagnostic["extra"][1]["insertion"], "/hl -2 3 4 --tp");
+        assert_eq!(diagnostic["extra"][1]["hover_event"]["value"]["text"], "Click to highlight. Shift-click, then Enter to teleport.");
+        assert_eq!(diagnostic_component("Summary"), json!({"text": "Summary", "color": "yellow"}));
+        let multiple = diagnostic_component("Source (1, 2, 3), target (-4, 5, -6)");
+        assert_eq!(multiple["extra"][1]["click_event"]["command"], "/hl 1 2 3");
+        assert_eq!(multiple["extra"][3]["click_event"]["command"], "/hl -4 5 -6");
     }
 }

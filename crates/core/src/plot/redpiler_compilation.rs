@@ -205,7 +205,7 @@ impl Plot {
                         vec![format!("Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated", summary.nodes, summary.links)]
                     } else {
                         let entry_tick = world.piston_state().logical_tick;
-                        vec![format!("Read-only candidate graph diagnostics from source snapshot at logical tick {entry_tick} ({} pending ticks), {mode}, update={}, io-only={}, stable-inputs={}; no compiler was activated", ticks.len(), options.update, options.io_only, options.stable_instant_inputs)]
+                        vec![format!("Snapshot tick {entry_tick} • {mode}{}", if options.stable_instant_inputs { " • stable-inputs promised" } else { "" })]
                     };
                     if graph_only {
                         lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
@@ -213,7 +213,7 @@ impl Plot {
                     if diagnostics.any() {
                         if graph_only {
                             let entry_tick = world.piston_state().logical_tick;
-                            lines.push(format!("Diagnostic source snapshot: logical tick {entry_tick}, {} pending ticks; {mode}, update={}, io-only={}, stable-inputs={}", ticks.len(), options.update, options.io_only, options.stable_instant_inputs));
+                            lines.push(format!("Snapshot tick {entry_tick} • {mode}{}", if options.stable_instant_inputs { " • stable-inputs promised" } else { "" }));
                         }
                         lines.extend(crate::redpiler::analysis::diagnostics::report(&candidate.graph, diagnostics, &worker_monitor)?);
                     }
@@ -283,7 +283,7 @@ impl Plot {
         match output {
             Ok(Ok(output)) => {
                 for line in output.lines {
-                    player.send_system_message(&line);
+                    player.send_raw_system_message(crate::player::diagnostic_component(&line).to_string());
                 }
                 if let Some(error) = output.error {
                     player.send_error_message(&error);

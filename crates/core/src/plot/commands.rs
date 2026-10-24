@@ -1933,6 +1933,7 @@ mod security_tests {
             let pending_before: Vec<_> = plot.world.scheduler().iter_entries().collect();
             let mut messages = |last: &str| {
                 let mut messages = Vec::new();
+                let mut coordinate_links = Vec::new();
                 // Read the bounded analysis response through its final status.
                 for _ in 0..256 {
                     let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
@@ -1944,16 +1945,39 @@ mod security_tests {
                     named.extend(frame.read_to_end().unwrap());
                     let mut named = std::io::Cursor::new(named);
                     let component = nbt::Blob::from_reader(&mut named).unwrap();
-                    let nbt::Value::String(text) = &component.content["text"] else {
-                        panic!("system chat is missing its text");
-                    };
+                    let component: serde_json::Value = serde_json::from_str(&mchprs_network::text::to_json(
+                        &nbt::Value::Compound(component.content),
+                    ))
+                    .unwrap();
+                    assert_eq!(component["color"], "yellow");
+                    fn visit(component: &serde_json::Value, text: &mut String, links: &mut Vec<(String, String)>) {
+                        if let Some(value) = component.get("text").and_then(serde_json::Value::as_str) {
+                            text.push_str(value);
+                            if let Some(command) = component
+                                .get("click_event")
+                                .and_then(|event| event.get("command"))
+                                .and_then(serde_json::Value::as_str)
+                            {
+                                assert_eq!(component["color"], "aqua");
+                                assert_eq!(component["underlined"], true);
+                                assert_eq!(component["insertion"], format!("{command} --tp"));
+                                links.push((value.to_owned(), command.to_owned()));
+                            }
+                        }
+                        if let Some(extra) = component.get("extra").and_then(serde_json::Value::as_array) {
+                            for child in extra {
+                                visit(child, text, links);
+                            }
+                        }
+                    }
+                    let mut text = String::new();
+                    visit(&component, &mut text, &mut coordinate_links);
                     assert!(!named.read_bool().unwrap());
                     assert_eq!(named.position() as usize, named.get_ref().len());
-                    let text = text.clone();
                     let complete = text.contains(last);
                     messages.push(text);
                     if complete {
-                        return messages;
+                        return (messages, coordinate_links);
                     }
                 }
                 panic!("analysis response did not complete");
@@ -1963,12 +1987,13 @@ mod security_tests {
             for _ in 0..2 {
                 plot.handle_command(0, "/rp", vec!["analyze", "--updates", "--timing", "--unproven", "--update"]);
                 plot.wait_for_redpiler_analysis();
-                let lines = messages("optimization plans and local contracts");
+                let (lines, links) = messages("unproven does not mean non-instant");
                 assert!(lines.len() <= 35, "diagnostics response should stay bounded: {lines:?}");
-                assert!(lines.iter().any(|line| line.contains("source snapshot at logical tick")));
-                assert!(lines.iter().any(|line| line.starts_with("updates diagnostics:")));
-                assert!(lines.iter().any(|line| line.starts_with("timing:")));
-                assert!(lines.iter().any(|line| line.starts_with("unproven lifecycle:")));
+                assert!(links.iter().all(|(_, command)| command.starts_with("/hl ")));
+                assert!(lines.iter().any(|line| line.starts_with("Snapshot tick ")));
+                assert!(lines.iter().any(|line| line.starts_with("Updates: ")));
+                assert!(lines.iter().any(|line| line.starts_with("Timing:")));
+                assert!(lines.iter().any(|line| line.starts_with("Unproven: ")));
                 assert!(!plot.redpiler.is_active());
                 assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
                 assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
@@ -1980,7 +2005,7 @@ mod security_tests {
             for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
                 plot.wait_for_redpiler_analysis();
-                let lines = messages("passes configured:");
+                let (lines, _) = messages("passes configured:");
                 assert!(lines.len() <= 6, "graph analysis should stay compact: {lines:?}");
                 assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
                 let summary = lines.iter().find(|line| line.starts_with("Graph:")).unwrap();
@@ -2005,7 +2030,7 @@ mod security_tests {
             }
             plot.handle_redpiler_command(0, "analyze", &[]);
             plot.wait_for_redpiler_analysis();
-            let lines = messages("This plot can compile in O0 mode.");
+            let (lines, _) = messages("This plot can compile in O0 mode.");
             assert!(lines.len() <= 8, "compile analysis should stay compact: {lines:?}");
             assert!(lines.iter().any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
             assert!(lines
@@ -2015,6 +2040,14 @@ mod security_tests {
             assert!(!lines.iter().any(|line| line.contains("Graph preparation table estimate")));
             assert!(!plot.redpiler.is_active());
             assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
+
+            let witness = BlockPos::new(38, 21, 32);
+            plot.world.set_block(witness, Block::from_name("piston").unwrap());
+            plot.handle_command(0, "/rp", vec!["analyze", "--unproven"]);
+            plot.wait_for_redpiler_analysis();
+            let (lines, links) = messages("Local evidence does not prove instant behavior.");
+            assert!(lines.iter().any(|line| line.contains("piston at (38, 21, 32)")));
+            assert!(links.iter().any(|(label, command)| label == "(38, 21, 32)" && command == "/hl 38 21 32"));
         }
     }
 

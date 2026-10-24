@@ -32,6 +32,14 @@ pub(crate) fn report(graph: &CompileGraph, options: DiagnosticOptions, monitor: 
     if options.unproven {
         lines.extend(unproven::report(graph, monitor)?);
     }
+    if options.updates || options.unproven {
+        lines.push(match (options.updates, options.unproven) {
+            (true, true) => "Candidates are not confirmed faults; unproven does not mean non-instant.".into(),
+            (true, false) => "Candidates are not confirmed faults.".into(),
+            (false, true) => "Local evidence does not prove instant behavior.".into(),
+            (false, false) => unreachable!(),
+        });
+    }
     if monitor.cancelled() {
         return Err("diagnostics cancelled".into());
     }

@@ -6,7 +6,7 @@ use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
     CellReset, ContactId, InputPort, LayerInputSource, PowerPort, PowerTarget, ResourceId, SettledTarget, SiteSource, StateTest,
 };
-use crate::redpiler::{CompilerOptions, passes};
+use crate::redpiler::{passes, CompilerOptions};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, LeverFace};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -77,6 +77,26 @@ pub(super) fn stimuli(initial: u64, count: usize) -> Vec<u64> {
             word
         })
         .collect()
+}
+
+#[test]
+#[ignore = "production O6 stable-input FPU compile-only regression; no execution replay"]
+fn compile_fpu_o6_stable_io_only() {
+    let (_, world, bounds) = fixture();
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        update: false,
+    };
+    let prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let validated = prepared
+        .run_passes(&options, &passes::default_graph_pipeline(&options), &monitor)
+        .unwrap();
+    validated.graph().validate_for_lowering(&monitor).unwrap();
 }
 
 pub(super) fn source_strength(graph: &CompileGraph, world: &PlotWorld, source: LayerInputSource) -> Option<bool> {

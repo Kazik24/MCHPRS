@@ -25,6 +25,7 @@ mod client_sync;
 #[cfg(test)]
 mod client_sync_tests;
 mod error_messages;
+pub(crate) use error_messages::diagnostic_component;
 
 pub type EntityId = u32;
 static ENTITY_ID_COUNTER: AtomicU32 = AtomicU32::new(0);

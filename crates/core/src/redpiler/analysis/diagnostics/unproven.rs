@@ -54,16 +54,16 @@ pub(super) fn report(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<
         }
         if details.len() < super::MAX_WITNESSES {
             let evidence = if let Some(cell) = actor_cells[index] {
-                format!("stationary pull-cell contract recorded (cell {cell}); local computation evidence only")
+                format!("local pull-cell evidence (cell {cell})")
             } else if let Some(reason) = actor_declines[index] {
-                format!("stationary pull-cell admission declined: {}", decline_reason(reason))
+                format!("admission declined: {}", decline_reason(reason))
             } else if catalog.is_some() {
-                "no stationary pull-cell contract recorded; this does not establish non-instant behavior".to_owned()
+                "no pull-cell evidence".to_owned()
             } else {
-                "boundary catalog not computed; no local admission result is available".to_owned()
+                "catalog unavailable".to_owned()
             };
             details.push(format!(
-                "piston at {}, {}, {}: {evidence}",
+                "piston at ({}, {}, {}): {evidence}",
                 piston.position.x, piston.position.y, piston.position.z
             ));
         }
@@ -73,29 +73,28 @@ pub(super) fn report(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<
     }
 
     let mut lines = vec![format!(
-        "unproven lifecycle: {} piston actor(s); complete activation/reset/reactivation protocol is not certified ({} actors with local pull-cell evidence, {} actors with explicit admission declines)",
+        "Unproven: {} pistons; local evidence {}; declined {}",
         graph.pistons.len(),
         with_cell,
         declined
     )];
+    let shown = details.len();
     lines.extend(details);
-    lines.push(format!(
-        "{} actor detail line(s) shown (limit {}); optimization plans and local contracts are not whole-lifecycle proof",
-        lines.len().saturating_sub(1),
-        super::MAX_WITNESSES
-    ));
+    if shown < graph.pistons.len() {
+        lines.push(format!("Showing {shown}/{}", graph.pistons.len()));
+    }
     Ok(lines)
 }
 
 fn decline_reason(reason: CellDeclineReason) -> String {
     match reason {
-        CellDeclineReason::UnrecognizedActor(actor) => format!("actor {} has no recognized reset provenance", actor.index()),
-        CellDeclineReason::DifferentPullSources(resource) => format!("resource {} has different Far contacts among owners", resource.index()),
-        CellDeclineReason::NoPullSource(resource) => format!("resource {} has no actor with a complete Near/Far pull lane", resource.index()),
-        CellDeclineReason::MissingDeferredWake(actor) => format!("actor {} has no base or payload restoration route", actor.index()),
-        CellDeclineReason::PinTableBudgetExceeded => "local pin table exceeded its preparation budget".into(),
-        CellDeclineReason::ConflictingSourceContact(contact) => format!("contact {} would contain conflicting stationary payloads", contact.index()),
-        CellDeclineReason::UnsupportedMaterial(resource) => format!("resource {} has unsupported material", resource.index()),
+        CellDeclineReason::UnrecognizedActor(actor) => format!("actor {}: reset not recognized", actor.index()),
+        CellDeclineReason::DifferentPullSources(resource) => format!("resource {}: different Far sources", resource.index()),
+        CellDeclineReason::NoPullSource(resource) => format!("resource {}: no supported pull lane", resource.index()),
+        CellDeclineReason::MissingDeferredWake(actor) => format!("actor {}: no restore route", actor.index()),
+        CellDeclineReason::PinTableBudgetExceeded => "pin table budget exceeded".into(),
+        CellDeclineReason::ConflictingSourceContact(contact) => format!("contact {}: conflicting payloads", contact.index()),
+        CellDeclineReason::UnsupportedMaterial(resource) => format!("resource {}: unsupported material", resource.index()),
     }
 }
 
@@ -152,8 +151,8 @@ mod tests {
     #[test]
     fn empty_graph_has_no_actor_details() {
         let lines = report(&empty_graph(), &TaskMonitor::default()).unwrap();
-        assert!(lines[0].contains("0 piston actor(s)"));
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Unproven: 0 pistons; local evidence 0; declined 0");
+        assert_eq!(lines.len(), 1);
     }
 
     #[test]
@@ -161,9 +160,8 @@ mod tests {
         let mut graph = empty_graph();
         graph.pistons.push(piston(0));
         let lines = report(&graph, &TaskMonitor::default()).unwrap();
-        assert!(lines[1].contains("boundary catalog not computed"));
-        assert!(!lines[1].contains("non-instant"));
-        assert!(lines[0].contains("complete activation/reset/reactivation protocol is not certified"));
+        assert!(lines[1].contains("catalog unavailable"));
+        assert_eq!(lines[0], "Unproven: 1 pistons; local evidence 0; declined 0");
     }
 
     #[test]
@@ -180,8 +178,8 @@ mod tests {
             ..BoundaryCatalog::default()
         });
         let lines = report(&graph, &TaskMonitor::default()).unwrap();
-        assert!(lines[1].contains("actor 0 has no recognized reset provenance"));
-        assert!(lines[0].contains("complete activation/reset/reactivation protocol is not certified"));
+        assert!(lines[1].contains("actor 0: reset not recognized"));
+        assert_eq!(lines[0], "Unproven: 1 pistons; local evidence 0; declined 1");
     }
 
     #[test]
@@ -229,8 +227,8 @@ mod tests {
             ..BoundaryCatalog::default()
         });
         let lines = report(&graph, &TaskMonitor::default()).unwrap();
-        assert!(lines[1].contains("local computation evidence only"));
-        assert!(lines[0].contains("complete activation/reset/reactivation protocol is not certified"));
+        assert!(lines[1].contains("local pull-cell evidence"));
+        assert!(lines[0].starts_with("Unproven: 1 pistons; local evidence 1; declined 0"));
     }
 
     #[test]
@@ -241,7 +239,7 @@ mod tests {
             .extend((0..super::super::MAX_WITNESSES + 3).map(|index| piston(index as u32)));
         let lines = report(&graph, &TaskMonitor::default()).unwrap();
         assert_eq!(lines.len(), super::super::MAX_WITNESSES + 2);
-        assert!(lines.last().unwrap().contains("8 actor detail line(s) shown"));
+        assert_eq!(lines.last().unwrap(), "Showing 8/11");
     }
 
     #[test]
