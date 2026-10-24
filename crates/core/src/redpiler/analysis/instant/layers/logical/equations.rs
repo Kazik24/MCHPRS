@@ -113,7 +113,7 @@ fn lower_source_equations(
     // only their dependents, so a long acyclic chain remains linear in graph size.
     let mut constants = FxHashMap::<LayerInputSource, bool>::default();
     let mut initial_sources: Vec<_> = source_roots.keys().copied().collect();
-    initial_sources.sort_unstable_by_key(|source| format!("{source:?}"));
+    sort_sources(&mut initial_sources);
     let mut constant_work: VecDeque<_> = initial_sources.into();
     while let Some(source) = constant_work.pop_front() {
         check_cancelled(monitor).map_err(|error| SourceLoweringError::Fatal(format!("{error:?}")))?;
@@ -131,7 +131,7 @@ fn lower_source_equations(
 
     let mut live_dependencies = FxHashMap::<LayerInputSource, FxHashSet<LayerInputSource>>::default();
     let mut equation_sources: Vec<_> = source_roots.keys().copied().collect();
-    equation_sources.sort_unstable_by_key(|source| format!("{source:?}"));
+    sort_sources(&mut equation_sources);
     for source in equation_sources {
         let root = source_roots[&source];
         check_cancelled(monitor).map_err(|error| SourceLoweringError::Fatal(format!("{error:?}")))?;
@@ -182,7 +182,7 @@ fn lower_source_equations(
         }
     }
     let mut ready: Vec<_> = remaining.iter().filter_map(|(&source, &count)| (count == 0).then_some(source)).collect();
-    ready.sort_unstable_by_key(|source| format!("{source:?}"));
+    sort_sources(&mut ready);
     let mut topo: VecDeque<_> = ready.into();
     let mut order = Vec::with_capacity(remaining.len());
     while let Some(source) = topo.pop_front() {
@@ -209,7 +209,7 @@ fn lower_source_equations(
                 .copied()
                 .filter(|dependency| cycle_nodes.contains(dependency))
                 .collect();
-            dependencies.sort_unstable_by_key(|source| format!("{source:?}"));
+            sort_sources(&mut dependencies);
             adjacency.insert(source, dependencies);
         }
         let cycle = find_cycle(&adjacency, &cycle_nodes);
@@ -239,7 +239,7 @@ fn lower_source_equations(
                         );
                     }
                 }
-                edges.sort_unstable_by_key(|(source, dependency)| (format!("{source:?}"), format!("{dependency:?}")));
+                edges.sort_by_cached_key(|(source, dependency)| (format!("{source:?}"), format!("{dependency:?}")));
                 equations.source_scc_edges = edges;
             }
         }
@@ -254,7 +254,7 @@ fn lower_source_equations(
     let mut lowered = LayerBuilder::new(old.monitor).map_err(|error| map_lowering_error("expression arena", error))?;
     let mut source_values = FxHashMap::<LayerInputSource, LayerExprId>::default();
     let mut constant_sources: Vec<_> = constants.keys().copied().collect();
-    constant_sources.sort_unstable_by_key(|source| format!("{source:?}"));
+    sort_sources(&mut constant_sources);
     for source in constant_sources {
         let value = constants[&source];
         source_values.insert(source, lowered.constant(value).map_err(|error| map_lowering_error("constant", error))?);
@@ -599,8 +599,13 @@ fn strongly_connected_component(
 
 fn sorted_sources(sources: &FxHashSet<LayerInputSource>) -> Vec<LayerInputSource> {
     let mut values: Vec<_> = sources.iter().copied().collect();
-    values.sort_unstable_by_key(|source| format!("{source:?}"));
+    sort_sources(&mut values);
     values
+}
+
+fn sort_sources(sources: &mut [LayerInputSource]) {
+    // Keep the established textual order while formatting each key once.
+    sources.sort_by_cached_key(|source| format!("{source:?}"));
 }
 
 fn is_semantic_unsupported(message: &str) -> bool {
@@ -617,6 +622,141 @@ mod tests {
 
     fn source(index: u32) -> LayerInputSource {
         LayerInputSource::State(StateTest::ResourceEnabled(ResourceId::new(index)))
+    }
+
+    #[test]
+    fn cached_debug_sort_matches_old_order_for_every_source_variant_and_edge() {
+        use crate::redpiler::program_graph::{PowerLink, PowerPort, PowerTarget, RouteOccurrence};
+
+        let link = PowerLink {
+            from: SiteId::new(9),
+            from_port: PowerPort::Strong(mchprs_blocks::BlockFace::West),
+            to: PowerTarget::Input {
+                node: NodeId::new(7),
+                port: InputPort::Quasi,
+            },
+            face: mchprs_blocks::BlockFace::East,
+            attenuation: 3,
+            guard: GuardId::new(5),
+        };
+        let occurrence = RouteOccurrence {
+            route: RouteId::new(11),
+            ordinal: 2,
+        };
+        let other_occurrence = RouteOccurrence {
+            route: RouteId::new(3),
+            ordinal: 7,
+        };
+        let other_link = PowerLink {
+            from: SiteId::new(1),
+            from_port: PowerPort::Conducted { include_dust: true },
+            to: PowerTarget::Conductor {
+                site: SiteId::new(2),
+                include_dust: false,
+            },
+            face: mchprs_blocks::BlockFace::South,
+            attenuation: 0,
+            guard: GuardId::new(4),
+        };
+        let sources = [
+            LayerInputSource::SourceAbove {
+                site: SiteId::new(8),
+                port: PowerPort::Weak(mchprs_blocks::BlockFace::North),
+                threshold: 4,
+            },
+            LayerInputSource::SourceAbove {
+                site: SiteId::new(18),
+                port: PowerPort::Strong(mchprs_blocks::BlockFace::East),
+                threshold: 15,
+            },
+            LayerInputSource::BoundaryEvent { port: 3, occurrence },
+            LayerInputSource::BoundaryEvent {
+                port: 13,
+                occurrence: other_occurrence,
+            },
+            LayerInputSource::BoundaryRequest {
+                port: 4,
+                occurrence,
+                actor: PistonId::new(6),
+            },
+            LayerInputSource::BoundaryRequest {
+                port: 14,
+                occurrence: other_occurrence,
+                actor: PistonId::new(16),
+            },
+            LayerInputSource::BoundaryState {
+                port: 5,
+                test: StateTest::PistonAvailability {
+                    piston: PistonId::new(6),
+                    is: PistonAvailability::Ready,
+                },
+            },
+            LayerInputSource::BoundaryState {
+                port: 15,
+                test: StateTest::ResourceEnabled(ResourceId::new(17)),
+            },
+            LayerInputSource::PowerContribution { port: 7, link },
+            LayerInputSource::PowerContribution { port: 17, link: other_link },
+            LayerInputSource::LocalResetOutput {
+                observer: NodeId::new(10),
+                link,
+            },
+            LayerInputSource::LocalResetOutput {
+                observer: NodeId::new(20),
+                link: other_link,
+            },
+            LayerInputSource::State(StateTest::ResourceAt {
+                resource: ResourceId::new(12),
+                contact: ContactId::new(13),
+            }),
+            LayerInputSource::State(StateTest::ResourceAt {
+                resource: ResourceId::new(22),
+                contact: ContactId::new(23),
+            }),
+            LayerInputSource::InstantFired { actor: PistonId::new(14) },
+            LayerInputSource::InstantFired { actor: PistonId::new(24) },
+        ];
+        let debug_keys: FxHashSet<_> = sources.iter().map(|source| format!("{source:?}")).collect();
+        assert_eq!(debug_keys.len(), sources.len(), "Debug keys distinguish the source variants and fields");
+        let mut expected = sources.to_vec();
+        expected.sort_unstable_by_key(|source| format!("{source:?}"));
+
+        for insertion_order in [sources.to_vec(), sources.iter().rev().copied().collect(), {
+            let mut rotated = sources.to_vec();
+            rotated.rotate_left(3);
+            rotated
+        }] {
+            let set: FxHashSet<_> = insertion_order.into_iter().collect();
+            let mut actual: Vec<_> = set.into_iter().collect();
+            sort_sources(&mut actual);
+            assert_eq!(actual, expected);
+        }
+
+        let mut tied = vec![sources[2], sources[2], sources[0], sources[0]];
+        let mut tied_expected = tied.clone();
+        tied_expected.sort_unstable_by_key(|source| format!("{source:?}"));
+        sort_sources(&mut tied);
+        assert_eq!(tied, tied_expected);
+
+        let edges = [
+            (sources[2], sources[0]),
+            (sources[2], sources[4]),
+            (sources[0], sources[2]),
+            (sources[2], sources[0]),
+        ];
+        let mut expected_edges = edges.to_vec();
+        expected_edges.sort_unstable_by_key(|(source, dependency)| (format!("{source:?}"), format!("{dependency:?}")));
+        let mut cached_edges = edges.to_vec();
+        cached_edges.sort_by_cached_key(|(source, dependency)| (format!("{source:?}"), format!("{dependency:?}")));
+        assert_eq!(cached_edges, expected_edges);
+        for insertion_order in [edges.to_vec(), edges.iter().rev().copied().collect()] {
+            let set: FxHashSet<_> = insertion_order.into_iter().collect();
+            let mut actual_edges: Vec<_> = set.into_iter().collect();
+            actual_edges.sort_by_cached_key(|(source, dependency)| (format!("{source:?}"), format!("{dependency:?}")));
+            let mut expected_set: Vec<_> = edges.iter().copied().collect::<FxHashSet<_>>().into_iter().collect();
+            expected_set.sort_unstable_by_key(|(source, dependency)| (format!("{source:?}"), format!("{dependency:?}")));
+            assert_eq!(actual_edges, expected_set);
+        }
     }
 
     fn make_equations<'a>(graph: &'a CompileGraph, monitor: &'a TaskMonitor) -> Equations<'a> {

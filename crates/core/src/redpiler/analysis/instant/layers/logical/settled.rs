@@ -37,8 +37,35 @@ pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
 }
 
 fn compile_one_shot_device(graph: &CompileGraph, fallback: SettledCircuit, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
-    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
+    let Some(actor) = first_single_lamp_candidate(graph)? else {
         return Ok(fallback);
+    };
+    check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+    if let Some(piston) = graph.pistons.get(actor.index()) {
+        let targets = [
+            PowerTarget::Input {
+                node: piston.node,
+                port: InputPort::Main,
+            },
+            PowerTarget::Input {
+                node: piston.node,
+                port: InputPort::Quasi,
+            },
+        ];
+        if let Ok(candidate) = compile_one_shot_boundary(graph, &targets, &[], monitor) {
+            if supports_single_lamp_cell(graph, &candidate, actor) {
+                return Ok(candidate);
+            }
+        } else {
+            check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        }
+    }
+    Ok(fallback)
+}
+
+pub(super) fn first_single_lamp_candidate(graph: &CompileGraph) -> Result<Option<PistonId>, String> {
+    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
+        return Ok(None);
     };
     let mut ports_by_owner = FxHashMap::<BoundaryOwner, Vec<BoundaryPort>>::default();
     for port in catalog.ports.iter().copied() {
@@ -66,41 +93,21 @@ fn compile_one_shot_device(graph: &CompileGraph, fallback: SettledCircuit, monit
                 _ => None,
             })
             .collect();
-        let has_lamp_output = !lamp_occurrences.is_empty();
+        if lamp_occurrences.is_empty() {
+            continue;
+        }
         let has_owned_corridor = catalog.ports.iter().any(
             |port| matches!(port.kind, BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) && port.owner != owner),
         );
-        if has_lamp_output && !has_owned_corridor {
+        if !has_owned_corridor {
             candidate = Some(use_.actor);
             break;
         }
     }
-    if let Some(actor) = candidate {
-        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-        if let Some(piston) = graph.pistons.get(actor.index()) {
-            let targets = [
-                PowerTarget::Input {
-                    node: piston.node,
-                    port: InputPort::Main,
-                },
-                PowerTarget::Input {
-                    node: piston.node,
-                    port: InputPort::Quasi,
-                },
-            ];
-            if let Ok(candidate) = compile_one_shot_boundary(graph, &targets, &[], monitor) {
-                if supports_single_lamp_cell(graph, &candidate, actor) {
-                    return Ok(candidate);
-                }
-            } else {
-                check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-            }
-        }
-    }
-    Ok(fallback)
+    Ok(candidate)
 }
 
-fn callback_targets_lamp(graph: &CompileGraph, occurrence: RouteOccurrence) -> bool {
+pub(super) fn callback_targets_lamp(graph: &CompileGraph, occurrence: RouteOccurrence) -> bool {
     let Some(route) = graph.routes.get(occurrence.route.index()) else {
         return false;
     };

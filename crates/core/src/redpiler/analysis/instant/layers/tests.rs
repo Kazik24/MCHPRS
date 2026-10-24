@@ -115,6 +115,48 @@ fn shared_boolean_operands_are_charged_only_when_retained() {
     assert_eq!(builder.expressions.len(), expressions);
 }
 
+#[test]
+fn boolean_builder_simplifications_preserve_roots_and_work_charges() {
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let false_root = LayerExprId(0);
+    let true_root = LayerExprId(1);
+    let input = builder
+        .input(
+            LayerInputSource::State(StateTest::PistonExtended(PistonId::new(0))),
+            LayerInputRole::RequestSample,
+        )
+        .unwrap();
+    let a = builder.input_expr(input).unwrap();
+    let b_input = builder
+        .input(
+            LayerInputSource::State(StateTest::PistonExtended(PistonId::new(1))),
+            LayerInputRole::RequestSample,
+        )
+        .unwrap();
+    let b = builder.input_expr(b_input).unwrap();
+
+    assert_eq!(builder.not(false_root).unwrap(), true_root);
+    assert_eq!(builder.not(true_root).unwrap(), false_root);
+    let not_a = builder.not(a).unwrap();
+    assert_eq!(builder.not(not_a).unwrap(), a);
+    assert_eq!(builder.all([]).unwrap(), true_root);
+    assert_eq!(builder.any([]).unwrap(), false_root);
+
+    let before = builder.budget.work;
+    assert_eq!(builder.all([true_root, a]).unwrap(), a);
+    assert_eq!(builder.budget.work - before, 2);
+    let before = builder.budget.work;
+    assert_eq!(builder.any([false_root, a]).unwrap(), a);
+    assert_eq!(builder.budget.work - before, 2);
+    assert_eq!(builder.all([a, a]).unwrap(), a);
+    assert_eq!(builder.any([a, a]).unwrap(), a);
+    assert_eq!(builder.all([a, not_a]).unwrap(), false_root);
+    assert_eq!(builder.any([a, not_a]).unwrap(), true_root);
+    assert_eq!(builder.all([a, b, false_root]).unwrap(), false_root);
+    assert_eq!(builder.any([a, b, true_root]).unwrap(), true_root);
+}
+
 fn power_link(attenuation: u8) -> PowerLink {
     PowerLink {
         from: SiteId::new(0),

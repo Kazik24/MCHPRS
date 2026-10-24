@@ -1,3 +1,4 @@
+use super::settled::{callback_targets_lamp, first_single_lamp_candidate};
 use super::*;
 use crate::plot::PlotWorld;
 use crate::redpiler::analysis::AnalysisLimits;
@@ -27,6 +28,50 @@ pub(super) fn prepared_o6(world: &PlotWorld, bounds: (BlockPos, BlockPos), monit
     )
     .unwrap();
     prepared.graph
+}
+
+fn original_first_single_lamp_candidate(graph: &CompileGraph) -> (Option<PistonId>, usize) {
+    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
+        return (None, 0);
+    };
+    let mut ports_by_owner = FxHashMap::<BoundaryOwner, Vec<BoundaryPort>>::default();
+    for port in catalog.ports.iter().copied() {
+        ports_by_owner.entry(port.owner).or_default().push(port);
+    }
+    let mut skipped_empty_owner_sets = 0;
+    for (cell_index, cell) in catalog.cells.iter().enumerate() {
+        if cell.uses.len() != 1 {
+            continue;
+        }
+        let use_ = &cell.uses[0];
+        if !matches!(use_.reset, CellReset::Observer { .. }) || use_.retraction.transfer.is_none() {
+            continue;
+        }
+        let owner = BoundaryOwner::Cell(u32::try_from(cell_index).unwrap());
+        let owner_ports = ports_by_owner.get(&owner).map_or(&[][..], Vec::as_slice);
+        let lamp_occurrences: FxHashSet<_> = owner_ports
+            .iter()
+            .filter_map(|port| match port.kind {
+                BoundaryPortKind::Callback { occurrence }
+                    if port.owner == owner && port.direction == BoundaryDirection::Output && callback_targets_lamp(graph, occurrence) =>
+                {
+                    Some(occurrence)
+                }
+                _ => None,
+            })
+            .collect();
+        let has_lamp_output = !lamp_occurrences.is_empty();
+        if !has_lamp_output {
+            skipped_empty_owner_sets += 1;
+        }
+        let has_owned_corridor = catalog.ports.iter().any(
+            |port| matches!(port.kind, BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) && port.owner != owner),
+        );
+        if has_lamp_output && !has_owned_corridor {
+            return (Some(use_.actor), skipped_empty_owner_sets);
+        }
+    }
+    (None, skipped_empty_owner_sets)
 }
 
 fn tiny_world() -> PlotWorld {
@@ -1046,6 +1091,13 @@ fn one_shot_boundary_emits_fired_cut_and_keeps_reset_observers_live() {
     let monitor = TaskMonitor::default();
     let graph = prepared_o6(&world, world.get_corners(), &monitor);
     let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let candidate = first_single_lamp_candidate(&graph).unwrap();
+    let (original_candidate, skipped_empty_owner_sets) = original_first_single_lamp_candidate(&graph);
+    assert_eq!(candidate, original_candidate, "the short-circuit preserves first-candidate selection");
+    assert!(
+        skipped_empty_owner_sets > 0,
+        "the fixture includes empty lamp-occurrence sets whose global corridor scan is skipped"
+    );
     let mut equations = Equations::new(&graph, &monitor).unwrap();
     let (resource, (source, owners)) = equations
         .one_shot_contracts

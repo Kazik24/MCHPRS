@@ -16,6 +16,8 @@ mod cpus;
 mod divider;
 mod equations;
 #[cfg(test)]
+mod expansion_tests;
+#[cfg(test)]
 mod fpu;
 #[cfg(test)]
 mod fpu_computation_tests;
@@ -95,12 +97,20 @@ struct Equations<'a> {
     /// All post-propagation internal edges in the SCC containing that witness.
     #[cfg(test)]
     source_scc_edges: Vec<(LayerInputSource, LayerInputSource)>,
-    /// Diagnostic-only source equation worklist mode; each dependency is a typed leaf.
+    /// Defer sources to the iterative equation worklist, recording dependency edges.
     defer_sources: bool,
     deferred_parent: Option<LayerInputSource>,
     deferred_roots: FxHashSet<LayerInputSource>,
     deferred_children: FxHashMap<LayerInputSource, FxHashSet<LayerInputSource>>,
     feedback_state_sources: Vec<(ResourceId, ContactId)>,
+}
+
+/// One cursor per active operator; earlier-child IDs bound its depth by the raw arena size.
+struct ExpandFrame {
+    /// The raw operator being completed.
+    id: LayerExprId,
+    /// The next operand to visit, kept across source-triggered arena growth.
+    next_child: usize,
 }
 
 impl<'a> Equations<'a> {
@@ -210,24 +220,89 @@ impl<'a> Equations<'a> {
     }
 
     fn expand(&mut self, id: LayerExprId) -> Result<LayerExprId, ConstructionError> {
-        self.reduced.visit()?;
-        if let Some(&value) = self.expanded.get(&id) {
-            return Ok(value);
+        let mut pending = Some(id);
+        let mut stack = Vec::new();
+        loop {
+            if let Some(current) = pending.take() {
+                self.reduced.visit()?;
+                if self.expanded.contains_key(&current) {
+                    continue;
+                }
+                match self.raw.expression(current)? {
+                    LayerExpr::Constant(value) => {
+                        let value = self.reduced.constant(*value)?;
+                        self.expanded.insert(current, value);
+                    }
+                    LayerExpr::Input(input) => {
+                        let source = self
+                            .raw
+                            .inputs
+                            .get(input.0 as usize)
+                            .ok_or("logical expression references a missing input")?
+                            .source;
+                        let value = self.source(source)?;
+                        self.expanded.insert(current, value);
+                    }
+                    LayerExpr::Not(_) | LayerExpr::All(_) | LayerExpr::Any(_) => stack.push(ExpandFrame { id: current, next_child: 0 }),
+                }
+                continue;
+            }
+
+            let Some(frame) = stack.last_mut() else {
+                return self
+                    .expanded
+                    .get(&id)
+                    .copied()
+                    .ok_or_else(|| "logical expression was not expanded".into());
+            };
+            let child = self.expand_child(frame)?;
+            if let Some(child) = child {
+                frame.next_child += 1;
+                pending = Some(child);
+                continue;
+            }
+
+            let frame = stack.pop().expect("the current expansion frame exists");
+            let value = self.finish_expand(frame.id)?;
+            self.expanded.insert(frame.id, value);
         }
-        let value = match self.raw.expression(id)?.clone() {
-            LayerExpr::Constant(value) => self.reduced.constant(value)?,
-            LayerExpr::Input(input) => self.source(self.raw.inputs[input.0 as usize].source)?,
-            LayerExpr::Not(child) => {
-                let child = self.expand(child)?;
-                self.reduced.not(child)?
-            }
-            LayerExpr::All(children) | LayerExpr::Any(children) => {
-                let values = children.iter().map(|&child| self.expand(child)).collect::<Result<Vec<_>, _>>()?;
-                self.reduced.combine(values, matches!(self.raw.expression(id)?, LayerExpr::All(_)))?
-            }
+    }
+
+    fn expand_child(&self, frame: &ExpandFrame) -> Result<Option<LayerExprId>, ConstructionError> {
+        let child = match self.raw.expression(frame.id)? {
+            LayerExpr::Not(child) if frame.next_child == 0 => Some(*child),
+            LayerExpr::Not(_) => None,
+            LayerExpr::All(children) | LayerExpr::Any(children) => children.get(frame.next_child).copied(),
+            _ => return Err("logical expression is not an operator".into()),
         };
-        self.expanded.insert(id, value);
-        Ok(value)
+        if child.is_some_and(|child| child.0 >= frame.id.0) {
+            return Err("logical expression references a non-prior root".into());
+        }
+        Ok(child)
+    }
+
+    fn finish_expand(&mut self, id: LayerExprId) -> Result<LayerExprId, ConstructionError> {
+        match self.raw.expression(id)? {
+            LayerExpr::Not(child) => {
+                let child = self.expanded.get(child).copied().ok_or("logical child was not expanded")?;
+                self.reduced.not(child)
+            }
+            LayerExpr::All(_) => self.finish_combine(id, true),
+            LayerExpr::Any(_) => self.finish_combine(id, false),
+            _ => return Err("logical expression is not an operator".into()),
+        }
+    }
+
+    fn finish_combine(&mut self, id: LayerExprId, all: bool) -> Result<LayerExprId, ConstructionError> {
+        let children = match self.raw.expression(id)? {
+            LayerExpr::All(children) | LayerExpr::Any(children) => children,
+            _ => return Err("logical expression is not an operator".into()),
+        };
+        let values = children
+            .iter()
+            .map(|child| self.expanded.get(child).copied().ok_or_else(|| "logical child was not expanded".into()))
+            .collect::<Result<Vec<_>, ConstructionError>>()?;
+        self.reduced.combine(values, all)
     }
 
     fn leaf(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {

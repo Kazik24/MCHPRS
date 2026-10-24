@@ -113,34 +113,20 @@ pub(crate) struct LogicalValues {
 }
 
 impl LogicalValues {
+    /// Check program structure without building or cloning evaluator indexes.
+    pub(crate) fn validate_program(program: &ReducedLayerProgram) -> Result<(), String> {
+        validate_roots(program)?;
+        validate_expressions(program, None, None)
+    }
+
     /// Validate and index a program once, retaining storage for future evaluations.
     pub(crate) fn new(program: &ReducedLayerProgram) -> Result<Self, String> {
         let expression_count = program.expressions.len();
         let input_count = program.inputs.len();
-        if program.roots.iter().any(|(_, root)| root.0 as usize >= expression_count) {
-            return Err("logical program has a missing root expression".into());
-        }
+        validate_roots(program)?;
         let mut user_counts = vec![0usize; expression_count];
         let mut input_counts = vec![0usize; input_count];
-
-        for (index, expression) in program.expressions.iter().enumerate() {
-            match expression {
-                LayerExpr::Constant(_) => {}
-                LayerExpr::Input(input) => {
-                    let slot = input.0 as usize;
-                    let Some(count) = input_counts.get_mut(slot) else {
-                        return Err(format!("logical input {slot} is out of range"));
-                    };
-                    *count += 1;
-                }
-                LayerExpr::Not(child) => add_operand_user(*child, index, &mut user_counts)?,
-                LayerExpr::All(children) | LayerExpr::Any(children) => {
-                    for &child in children.iter() {
-                        add_operand_user(child, index, &mut user_counts)?;
-                    }
-                }
-            }
-        }
+        validate_expressions(program, Some(&mut user_counts), Some(&mut input_counts))?;
 
         let user_offsets = prefix_offsets(&user_counts);
         let input_offsets = prefix_offsets(&input_counts);
@@ -368,12 +354,49 @@ impl LogicalValues {
     }
 }
 
-fn add_operand_user(operand: LayerExprId, user: usize, user_counts: &mut [usize]) -> Result<(), String> {
+fn validate_roots(program: &ReducedLayerProgram) -> Result<(), String> {
+    if program.roots.iter().any(|(_, root)| root.0 as usize >= program.expressions.len()) {
+        return Err("logical program has a missing root expression".into());
+    }
+    Ok(())
+}
+
+fn validate_expressions(
+    program: &ReducedLayerProgram,
+    mut user_counts: Option<&mut [usize]>,
+    mut input_counts: Option<&mut [usize]>,
+) -> Result<(), String> {
+    for (index, expression) in program.expressions.iter().enumerate() {
+        match expression {
+            LayerExpr::Constant(_) => {}
+            LayerExpr::Input(input) => {
+                let slot = input.0 as usize;
+                if slot >= program.inputs.len() {
+                    return Err(format!("logical input {slot} is out of range"));
+                }
+                if let Some(counts) = input_counts.as_deref_mut() {
+                    counts[slot] += 1;
+                }
+            }
+            LayerExpr::Not(child) => add_operand_user(*child, index, user_counts.as_deref_mut(), program.expressions.len())?,
+            LayerExpr::All(children) | LayerExpr::Any(children) => {
+                for &child in children.iter() {
+                    add_operand_user(child, index, user_counts.as_deref_mut(), program.expressions.len())?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn add_operand_user(operand: LayerExprId, user: usize, user_counts: Option<&mut [usize]>, expression_count: usize) -> Result<(), String> {
     let operand_index = operand.0 as usize;
-    if operand_index >= user || operand_index >= user_counts.len() {
+    if operand_index >= user || operand_index >= expression_count {
         return Err(format!("logical expression {user} has a missing or forward operand {operand_index}"));
     }
-    user_counts[operand_index] += 1;
+    if let Some(counts) = user_counts {
+        counts[operand_index] += 1;
+    }
     Ok(())
 }
 
@@ -521,5 +544,44 @@ mod tests {
         assert_eq!(values.evaluate(&[]).unwrap(), 1);
         assert_eq!(values.evaluate(&[true]), Err("logical input count does not match the program"));
         assert_eq!(values.values(), &[true]);
+    }
+
+    #[test]
+    fn structure_validation_matches_value_constructor_errors() {
+        let mut valid = input_program(
+            vec![
+                LayerExpr::Input(LayerInputId(0)),
+                LayerExpr::Not(LayerExprId(0)),
+                LayerExpr::All(vec![LayerExprId(0), LayerExprId(1)].into_boxed_slice()),
+                LayerExpr::Any(vec![LayerExprId(2), LayerExprId(1)].into_boxed_slice()),
+            ],
+            1,
+        );
+        valid.roots = Box::new([(super::super::LayerRoot::Output(0), LayerExprId(3))]);
+        assert_eq!(LogicalValues::validate_program(&valid), Ok(()));
+        LogicalValues::new(&valid).unwrap();
+
+        let mut invalid_root = input_program(vec![LayerExpr::Constant(true)], 0);
+        invalid_root.roots = Box::new([(super::super::LayerRoot::Output(0), LayerExprId(1))]);
+        let invalid_input = input_program(vec![LayerExpr::Input(LayerInputId(0))], 0);
+        let invalid_expressions = [
+            LayerExpr::Not(LayerExprId(1)),
+            LayerExpr::Not(LayerExprId(u32::MAX)),
+            LayerExpr::All(vec![LayerExprId(1)].into_boxed_slice()),
+            LayerExpr::All(vec![LayerExprId(u32::MAX)].into_boxed_slice()),
+            LayerExpr::Any(vec![LayerExprId(1)].into_boxed_slice()),
+            LayerExpr::Any(vec![LayerExprId(u32::MAX)].into_boxed_slice()),
+        ];
+        let invalid = std::iter::once(invalid_root).chain(std::iter::once(invalid_input)).chain(
+            invalid_expressions
+                .into_iter()
+                .map(|expression| input_program(vec![LayerExpr::Constant(true), expression], 0)),
+        );
+        for program in invalid {
+            assert_eq!(
+                LogicalValues::validate_program(&program).unwrap_err(),
+                LogicalValues::new(&program).unwrap_err()
+            );
+        }
     }
 }

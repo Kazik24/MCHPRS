@@ -1293,9 +1293,9 @@ impl<'a> LayerBuilder<'a> {
     }
 
     fn not(&mut self, value: LayerExprId) -> Result<LayerExprId, ConstructionError> {
-        match self.expression(value)?.clone() {
-            LayerExpr::Constant(value) => self.constant(!value),
-            LayerExpr::Not(inner) => Ok(inner),
+        match self.expression(value)? {
+            LayerExpr::Constant(value) => self.constant(!*value),
+            LayerExpr::Not(inner) => Ok(*inner),
             _ => self.intern(LayerExpr::Not(value)),
         }
     }
@@ -1322,10 +1322,10 @@ impl<'a> LayerBuilder<'a> {
             if self.interned.get(&LayerExpr::Not(value)).is_some_and(|opposite| seen.contains(opposite)) {
                 return self.constant(absorbing);
             }
-            match self.expression(value)?.clone() {
-                LayerExpr::Constant(value) if value == absorbing => return self.constant(absorbing),
-                LayerExpr::Constant(value) if value == identity => {}
-                LayerExpr::Not(child) if seen.contains(&child) => return self.constant(absorbing),
+            match self.expression(value)? {
+                LayerExpr::Constant(value) if *value == absorbing => return self.constant(absorbing),
+                LayerExpr::Constant(value) if *value == identity => {}
+                LayerExpr::Not(child) if seen.contains(child) => return self.constant(absorbing),
                 _ => operands.push(value),
             }
         }

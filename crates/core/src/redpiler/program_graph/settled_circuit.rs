@@ -45,7 +45,7 @@ pub(crate) struct SettledOutput {
 
 impl SettledCircuit {
     pub(crate) fn validate(&self) -> Result<(), String> {
-        LogicalValues::new(&self.program)?;
+        LogicalValues::validate_program(&self.program)?;
         for output in &self.outputs {
             let count = match output.kind {
                 SettledValueKind::Bool => 1,
