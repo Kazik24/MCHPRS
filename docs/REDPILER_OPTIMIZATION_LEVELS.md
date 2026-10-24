@@ -54,26 +54,15 @@ coverage. Inspect a prepared pipeline without activating it:
 /rp analyze --graph --optimize
 /rp analyze --graph --optimize --stable-instant-inputs
 ```
-Run `/rp analyze --updates --timing --unproven` to inspect three read-only
-views of the prepared candidate graph. `--updates` lists pistons with at least
-two update callback routes, quasi-connectivity inputs that also receive update
-activation, and movable resources shared by piston lanes. These are potential
-ordering sensitivities, not evidence of an incorrect update. `--timing` replays
-independent hypothetical falling transitions on isolated snapshots: fixed
-redstone-block removal or a powered lever switched off, with other sources held
-at their snapshot values. It detects accepted piston retractions whose inhibit
-becomes effective only after acceptance, and reports the actual native nanotick
-queue-cohort gap and observed wire/base effect. It checks the first piston-event
-phase only. No optimization level or implicit stable-input flag is required.
-Pending entry work, probe/work bounds and untested controls are reported as
-incomplete; a clean bounded replay is not a proof for every input history.
-The [timing analysis plan](../scraps/docs/notes/REDPILER_TIMING_HAZARD_ANALYSIS_PLAN.md)
-records the scope and further families. `--unproven`
-summarizes local piston lifecycle evidence and whether a complete lifecycle
-certificate is absent. Each category shows at most eight detail witnesses.
-The reports do not reproduce faults or provide a whole-circuit proof.
-Coverage is inspection data, rather than throughput or runtime-memory
-measurements.
+Run `/rp analyze --updates --unproven` for optional structural diagnostics.
+`--updates` lists multiple update routes, QC/update dependencies and shared
+resources. `--unproven` summarizes local piston lifecycle evidence and missing
+certificates. Each category shows at most eight detail witnesses. These reports
+are inspection data, not timing proofs or confirmed faults.
+
+`--timing` was removed: independent input probes could not establish timing
+correctness for large circuits such as FPU. Native nanotick regression tests
+remain, but there is currently no whole-circuit timing checker.
 
 Historical stage inventories, measurements, and earlier verification counts are
 preserved in the [previous guide](../scraps/docs/research-2026-10-21/REDPILER_OPTIMIZATION_LEVELS_SNAPSHOT.md).

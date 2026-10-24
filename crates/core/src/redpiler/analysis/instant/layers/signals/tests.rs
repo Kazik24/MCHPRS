@@ -475,11 +475,7 @@ fn stable_wire_mode_honors_saved_dot_and_cross_without_weakening_legacy_queries(
         RedstoneWireSide::Side,
         15,
     );
-    for (saved, east_connection, expected) in [
-        (RedstoneWire::default(), false, false),
-        (RedstoneWire::default(), true, true),
-        (cross, false, true),
-    ] {
+    for (saved, east_connection) in [(RedstoneWire::default(), false), (RedstoneWire::default(), true), (cross, false)] {
         let monitor = TaskMonitor::default();
         let (mut graph, _) = line(0, false);
         graph.nodes[0].kind = CircuitNodeKind::Wire(0);
@@ -519,6 +515,100 @@ fn stable_wire_mode_honors_saved_dot_and_cross_without_weakening_legacy_queries(
             .with_stable_wire_modes()
             .wire_emits(NodeId::new(0), PowerPort::Weak(BlockFace::West), &mut stable_builder)
             .unwrap();
-        assert_eq!(evaluate(&stable_builder, root, |_| unreachable!()), expected);
+        let modes: &[bool] = if crate::redstone::wire::is_dot(saved) {
+            &[true, false]
+        } else {
+            &[false]
+        };
+        for &dot_mode in modes {
+            let expected = if dot_mode { east_connection } else { true };
+            assert_eq!(
+                evaluate(&stable_builder, root, |input| match input.source {
+                    LayerInputSource::WireDot { node } => {
+                        assert_eq!(node, NodeId::new(0));
+                        dot_mode
+                    }
+                    _ => unreachable!("geometry is fixed in this fixture"),
+                }),
+                expected,
+                "saved={saved:?}, east_connection={east_connection}, live_dot={dot_mode}"
+            );
+        }
+    }
+
+    let monitor = TaskMonitor::default();
+    let (mut graph, _) = line(0, false);
+    graph.nodes[0].kind = CircuitNodeKind::Wire(0);
+    graph.nodes[0].state = ComponentState::Wire(RedstoneWire::default());
+    graph.profiles = vec![
+        profile(Block::Air, ProfileElectrical::None),
+        profile(Block::RedstoneBlock, ProfileElectrical::RedstoneSource),
+    ];
+    graph.sites = (0..24)
+        .map(|index| SiteSpec {
+            position: BlockPos::new(index, 20, 0),
+            source: SiteSource::Constant(ProfileId::new(0)),
+            source_strength: 0,
+        })
+        .collect();
+    graph.guards = vec![
+        Guard::Always,
+        Guard::State(StateTest::PistonExtended(PistonId::new(0))),
+        Guard::Not(GuardId::new(1)),
+    ];
+    graph.contacts.push(ContactSpec {
+        node: NodeId::new(0),
+        position: BlockPos::new(1, 20, 0),
+        variants: vec![
+            ContactVariant {
+                when: GuardId::new(1),
+                profile: ProfileId::new(1),
+                receiver: None,
+            },
+            ContactVariant {
+                when: GuardId::new(2),
+                profile: ProfileId::new(0),
+                receiver: None,
+            },
+        ]
+        .into_boxed_slice(),
+    });
+    graph.sites[1].source = SiteSource::Contact(ContactId::new(0));
+    graph.wires.push(WirePlan {
+        node: NodeId::new(0),
+        canonical_neighbors: std::array::from_fn(|index| SiteId::new(index as u32)),
+        shape_route: None,
+        turbo_route: None,
+        execution: Default::default(),
+    });
+    let power = index_power(&graph);
+    let state = FxHashMap::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let root = SignalTracer::new(&graph, &power, &FxHashSet::default(), &state, LayerInputRole::RequestSample)
+        .with_stable_wire_modes()
+        .wire_emits(NodeId::new(0), PowerPort::Weak(BlockFace::West), &mut builder)
+        .unwrap();
+    let dot = RedstoneWire::default();
+    let connected = crate::redstone::wire::on_neighbor_changed_from(
+        dot,
+        RedstoneWire {
+            east: RedstoneWireSide::Side,
+            ..Default::default()
+        },
+        BlockFace::West,
+    );
+    let disconnected = crate::redstone::wire::on_neighbor_changed_from(connected, RedstoneWire::default(), BlockFace::West);
+    assert!(crate::redstone::wire::is_cross(disconnected));
+    for (native, neighbor_connected) in [(dot, false), (connected, true), (disconnected, false)] {
+        let expected = crate::redstone::wire::get_current_side(native, BlockDirection::East) != RedstoneWireSide::None;
+        let actual = evaluate(&builder, root, |input| match input.source {
+            LayerInputSource::WireDot { node } => {
+                assert_eq!(node, NodeId::new(0));
+                crate::redstone::wire::is_dot(native)
+            }
+            LayerInputSource::State(StateTest::PistonExtended(piston)) if piston == PistonId::new(0) => neighbor_connected,
+            source => panic!("unexpected wire equation input: {source:?}"),
+        });
+        assert_eq!(actual, expected, "native wire={native:?}, connected={neighbor_connected}");
     }
 }

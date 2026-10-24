@@ -28,6 +28,12 @@ actions, reset effects, and retained outputs still belong to Graph unless a
 specific runtime binding handles them. Unsupported roots or effects must stay
 on the Graph path rather than being dropped.
 
+Settled wire equations that start from a saved dot bind its native dot/cross
+mode as a live component-state input. They combine that mode with the current
+symbolic neighbor geometry, so a dot that connects and later disconnects keeps
+the native cross fallback. Extracting an FPU's Boolean equations does not by
+itself certify its clock, reset interval, or full runtime behavior.
+
 ## Compile, ownership, and handoff
 
 [`Compiler::compile`](../crates/core/src/redpiler/mod.rs) analyzes the selected

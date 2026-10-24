@@ -350,6 +350,77 @@ fn settled_outputs_keep_comparator_strength_as_fifteen_thresholds() {
 }
 
 #[test]
+fn settled_equations_sample_dot_mode_without_resource_feedback() {
+    let mut world = tiny_world();
+    let source = BlockPos::new(4, 2, 4);
+    let wire = source + BlockPos::new(1, 0, 0);
+    let lamp = source + BlockPos::new(2, 0, 0);
+    for position in [source, wire, lamp] {
+        world.set_block(position + BlockPos::new(0, -1, 0), Block::Stone {});
+    }
+    world.set_block(source, Block::RedstoneBlock);
+    world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        },
+    );
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+    let monitor = TaskMonitor::default();
+    let mut graph = prepared_o6(&world, (source + BlockPos::new(-2, -1, -2), source + BlockPos::new(4, 3, 4)), &monitor);
+    let wire_node = graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(wire))
+        .map(|index| NodeId::new(index as u32))
+        .unwrap();
+    let lamp_node = graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(lamp))
+        .map(|index| NodeId::new(index as u32))
+        .unwrap();
+    graph.nodes[wire_node.index()].state = ComponentState::Wire(RedstoneWire::default());
+    let target = graph
+        .power_links
+        .iter()
+        .find(|link| {
+            matches!(link.to, PowerTarget::Input { node, port: InputPort::Main } if node == lamp_node)
+                && matches!(graph.sites[link.from.index()].source, SiteSource::Component(node) if node == wire_node)
+        })
+        .map(|link| link.to)
+        .expect("lamp input is powered by the wire in this fixture");
+
+    // Exercise the public settled-boundary constructor, which owns its wire policy.
+    // Its live mode leaf must be lowered and validated without enabling resource feedback.
+    let boundary = compile_public_boundary(&graph, &[target], &[], &monitor).unwrap();
+    assert!(boundary.declines.is_empty());
+    assert!(boundary.outputs.iter().any(|output| output.target == SettledTarget::Power(target)));
+    assert!(
+        boundary
+            .program
+            .inputs
+            .iter()
+            .any(|input| input.source == LayerInputSource::WireDot { node: wire_node })
+    );
+
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    equations.retain_classic = true;
+    equations.inline_repeaters = true;
+    equations.stable_wire_modes = true;
+    assert!(!equations.feedback_resources);
+    equations.query(target, 0).unwrap();
+    assert!(
+        equations
+            .reduced
+            .inputs
+            .iter()
+            .any(|input| input.source == LayerInputSource::WireDot { node: wire_node })
+    );
+    assert!(!equations.feedback_resources, "wire policy must not enable resource-feedback semantics");
+}
+
+#[test]
 fn settled_boundary_keeps_external_observers_but_drops_internal_reset_callbacks() {
     let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/fixtures/counter_basic.json");
     let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();

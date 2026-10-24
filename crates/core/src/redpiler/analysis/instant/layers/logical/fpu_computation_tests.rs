@@ -6,7 +6,7 @@ use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
     CellReset, ContactId, InputPort, LayerInputSource, PowerPort, PowerTarget, ResourceId, SettledTarget, SiteSource, StateTest,
 };
-use crate::redpiler::{passes, CompilerOptions};
+use crate::redpiler::{CompilerOptions, passes};
 use crate::world::World;
 use mchprs_blocks::blocks::{Block, LeverFace};
 use mchprs_blocks::{BlockFace, BlockPos};
@@ -96,7 +96,15 @@ fn compile_fpu_o6_stable_io_only() {
     let validated = prepared
         .run_passes(&options, &passes::default_graph_pipeline(&options), &monitor)
         .unwrap();
-    validated.graph().validate_for_lowering(&monitor).unwrap();
+    let graph = validated.graph();
+    graph.validate_for_lowering(&monitor).unwrap();
+    let circuit = compile_settled(graph, &monitor).expect("production settled FPU extraction should complete");
+    assert!(!circuit.outputs.is_empty(), "production settled extraction must retain FPU outputs");
+    assert!(
+        circuit.declines.is_empty(),
+        "production settled extraction declined: {:#?}",
+        circuit.declines
+    );
 }
 
 pub(super) fn source_strength(graph: &CompileGraph, world: &PlotWorld, source: LayerInputSource) -> Option<bool> {

@@ -99,6 +99,8 @@ struct Equations<'a> {
     source_scc_edges: Vec<(LayerInputSource, LayerInputSource)>,
     /// Defer sources to the iterative equation worklist, recording dependency edges.
     defer_sources: bool,
+    /// Allow dynamic sampling of native dot-to-cross wire mode in settled equations.
+    stable_wire_modes: bool,
     deferred_parent: Option<LayerInputSource>,
     deferred_roots: FxHashSet<LayerInputSource>,
     deferred_children: FxHashMap<LayerInputSource, FxHashSet<LayerInputSource>>,
@@ -188,6 +190,7 @@ impl<'a> Equations<'a> {
             #[cfg(test)]
             source_scc_edges: Vec::new(),
             defer_sources: false,
+            stable_wire_modes: false,
             deferred_parent: None,
             deferred_roots: FxHashSet::default(),
             deferred_children: FxHashMap::default(),
@@ -204,7 +207,7 @@ impl<'a> Equations<'a> {
         let mut tracer = signals::SignalTracer::new(self.graph, &self.power, &self.wires, &state, LayerInputRole::RequestSample)
             .with_disabled_destinations(&self.disabled_destinations)
             .with_memo(std::mem::take(&mut self.signal_memo));
-        if self.feedback_resources {
+        if self.stable_wire_modes {
             tracer = tracer.with_stable_wire_modes();
         }
         let raw = tracer.query(target, threshold, &mut self.raw);
@@ -597,7 +600,7 @@ impl<'a> Equations<'a> {
         let mut tracer = signals::SignalTracer::new(self.graph, &self.power, &self.wires, &state, LayerInputRole::RequestSample)
             .with_disabled_destinations(&self.disabled_destinations)
             .with_memo(std::mem::take(&mut self.signal_memo));
-        if self.feedback_resources {
+        if self.stable_wire_modes {
             tracer = tracer.with_stable_wire_modes();
         }
         let raw = tracer.guard(guard, &mut self.raw);
@@ -701,6 +704,12 @@ impl<'a> Equations<'a> {
 
     fn source_value(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
         let value = match source {
+            LayerInputSource::WireDot { node } => {
+                if !matches!(self.graph.nodes.get(node.index()).map(|node| &node.kind), Some(CircuitNodeKind::Wire(_))) {
+                    return Err(format!("wire-mode input refers to a non-wire component {node:?}").into());
+                }
+                self.leaf(source)?
+            }
             LayerInputSource::State(StateTest::PistonAvailability { piston, is }) => {
                 if self.actors.contains(&piston) || self.registers.values().any(|read| read.storage == piston) {
                     self.reduced.constant(is == PistonAvailability::Ready)?

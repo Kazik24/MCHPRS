@@ -78,6 +78,8 @@ pub(crate) enum LayerInputSource {
         /// This is the exclusive threshold after accumulating path attenuation.
         threshold: u8,
     },
+    /// This samples whether a compiled wire is currently in native dot mode.
+    WireDot { node: NodeId },
     /// This is an original callback occurrence delivered through the referenced input port.
     BoundaryEvent {
         /// This indexes the original catalog input port that admits the callback.

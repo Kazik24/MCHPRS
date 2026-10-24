@@ -237,6 +237,7 @@ pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Re
     equations.retain_classic = true;
     // Inline feed-forward repeaters; side-locked and feedback repeaters remain state leaves.
     equations.inline_repeaters = true;
+    equations.stable_wire_modes = true;
     equations.defer_sources = true;
     let (owned, requests) = select_settled_boundary_targets(graph, &equations, monitor)?;
     let catalog = graph.plans.instant.boundaries.as_ref().ok_or("missing settled circuit boundaries")?;
@@ -399,7 +400,7 @@ pub(crate) fn compile_public_boundary(
     register_reads: &[BudMemoryRead],
     monitor: &TaskMonitor,
 ) -> Result<SettledCircuit, String> {
-    compile_boundary(graph, power_targets, register_reads, true, &[], false, monitor)
+    compile_boundary(graph, power_targets, register_reads, BoundaryKind::Settled, &[], monitor)
 }
 
 /// Compile selected power/register roots with explicit per-actor fired-state cuts.
@@ -411,14 +412,14 @@ pub(crate) fn compile_one_shot_boundary(
     register_reads: &[BudMemoryRead],
     monitor: &TaskMonitor,
 ) -> Result<SettledCircuit, String> {
-    compile_boundary(graph, power_targets, register_reads, false, &[], true, monitor)
+    compile_boundary(graph, power_targets, register_reads, BoundaryKind::OneShot, &[], monitor)
 }
 
 /// Diagnostic counterpart to `compile_public_boundary` that leaves repeaters
 /// as state leaves, matching an event boundary rather than a settled frame.
 #[cfg(test)]
 pub(crate) fn compile_event_boundary(graph: &CompileGraph, power_targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
-    compile_boundary(graph, power_targets, &[], false, &[], false, monitor)
+    compile_boundary(graph, power_targets, &[], BoundaryKind::Event, &[], monitor)
 }
 
 /// Trace a live source cycle to the owning piston-input queries after constant propagation.
@@ -637,7 +638,7 @@ pub(crate) fn compile_event_boundary_with_retained_resources(
     retained_resources: &[ResourceId],
     monitor: &TaskMonitor,
 ) -> Result<SettledCircuit, String> {
-    compile_boundary(graph, power_targets, &[], false, retained_resources, false, monitor)
+    compile_boundary(graph, power_targets, &[], BoundaryKind::Event, retained_resources, monitor)
 }
 
 /// Diagnostic extraction that retains each catalog-cell resource responsible for a
@@ -703,13 +704,20 @@ pub(crate) fn compile_event_boundary_cut_feedback(
     Err(format!("event-boundary feedback cut exceeded {MAX_CUT_RESOURCES} iterations"))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BoundaryKind {
+    Settled,
+    #[cfg(test)]
+    Event,
+    OneShot,
+}
+
 fn compile_boundary(
     graph: &CompileGraph,
     power_targets: &[PowerTarget],
     register_reads: &[BudMemoryRead],
-    inline_repeaters: bool,
+    kind: BoundaryKind,
     retained_resources: &[ResourceId],
-    one_shot_firing: bool,
     monitor: &TaskMonitor,
 ) -> Result<SettledCircuit, String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
@@ -718,13 +726,15 @@ fn compile_boundary(
     }
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
     equations.retain_classic = true;
-    // Power queries observe the repeater's current state; delayed propagation
-    // remains owned by the ordinary graph event path.
-    equations.inline_repeaters = inline_repeaters;
+    // Event and one-shot queries observe the repeater's current state; delayed
+    // propagation remains owned by the ordinary graph event path. Settled
+    // boundaries inline repeaters to model the sampled settled cut.
+    equations.inline_repeaters = kind == BoundaryKind::Settled;
+    equations.stable_wire_modes = kind == BoundaryKind::Settled;
     equations.defer_sources = true;
     {
-        equations.one_shot_firing = one_shot_firing;
-        if one_shot_firing {
+        equations.one_shot_firing = kind == BoundaryKind::OneShot;
+        if kind == BoundaryKind::OneShot {
             // Reset pulses remain live boundary inputs until the event adapter proves
             // the exact completion edge that rearms each actor.
             equations.resets.clear();
@@ -1122,6 +1132,7 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
     equations.retain_classic = true;
     equations.inline_repeaters = true;
     equations.feedback_resources = true;
+    equations.stable_wire_modes = true;
     assume_computation_frame_observers_off(&mut equations);
     // This test-only extractor deliberately asks whether the local stationary lane
     // is enough to form a candidate state equation. It does not grant production
@@ -1304,6 +1315,7 @@ pub(crate) fn diagnostic_computation_failures(
     equations.retain_classic = true;
     equations.inline_repeaters = true;
     equations.feedback_resources = true;
+    equations.stable_wire_modes = true;
     equations.diagnostic_unknown_resources = true;
     let mut failures = Vec::new();
     for &target in power_targets {

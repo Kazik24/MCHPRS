@@ -42,8 +42,10 @@ impl GraphBackend {
         let machine = SettledMachine::new(circuit, &inputs)?;
         let mut external_nodes = Vec::new();
         for input in machine.external_inputs() {
-            let LayerInputSource::SourceAbove { site, .. } = input.source else {
-                return Err(format!("logical device has unresolved physical input {:?}", input.source));
+            let site = match input.source {
+                LayerInputSource::SourceAbove { site, .. } => site,
+                LayerInputSource::WireDot { .. } => return Ok(()),
+                source => return Err(format!("logical device has unresolved physical input {source:?}")),
             };
             let SiteSource::Component(node) = self.program.sites()[site.index()].source else {
                 return Err("logical device has a non-component boundary source".into());

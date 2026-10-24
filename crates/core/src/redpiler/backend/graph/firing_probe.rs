@@ -485,6 +485,7 @@ fn summarize_sources(circuit: &SettledCircuit, queries: &[PowerQuery]) -> String
                 LayerInputSource::State(StateTest::ResourceEnabled(_)) => counts.resource_enabled += 1,
                 LayerInputSource::State(_) | LayerInputSource::BoundaryState { .. } => counts.other_state += 1,
                 LayerInputSource::SourceAbove { .. } => counts.source_above += 1,
+                LayerInputSource::WireDot { .. } => counts.other += 1,
                 LayerInputSource::BoundaryEvent { .. } => counts.boundary_event += 1,
                 LayerInputSource::BoundaryRequest { .. } => counts.boundary_request += 1,
                 LayerInputSource::PowerContribution { .. } => counts.power_contribution += 1,

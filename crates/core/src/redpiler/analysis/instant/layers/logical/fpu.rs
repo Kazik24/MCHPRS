@@ -503,6 +503,7 @@ fn set_lever(world: &mut crate::plot::PlotWorld, position: BlockPos, powered: bo
 
 fn leaf_kind(graph: &CompileGraph, equations: &Equations<'_>, source: LayerInputSource) -> String {
     match source {
+        LayerInputSource::WireDot { .. } => "WireDot".into(),
         LayerInputSource::SourceAbove { site, port, threshold } => {
             let kind = match graph.sites[site.index()].source {
                 SiteSource::Component(node) => match &graph.nodes[node.index()].kind {

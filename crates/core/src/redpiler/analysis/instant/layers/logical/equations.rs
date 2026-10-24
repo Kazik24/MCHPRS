@@ -791,6 +791,7 @@ mod tests {
             source_cycle_witness: Vec::new(),
             source_scc_edges: Vec::new(),
             defer_sources: true,
+            stable_wire_modes: false,
             deferred_parent: None,
             deferred_roots: FxHashSet::default(),
             deferred_children: FxHashMap::default(),

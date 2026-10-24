@@ -262,6 +262,9 @@ fn evaluate_entry(region: &LayeredRegion, backend: &GraphBackend) -> Vec<bool> {
 
 fn entry_input(input: LayerInput, backend: &GraphBackend) -> bool {
     match input.source {
+        LayerInputSource::WireDot { node } => {
+            matches!(backend.state.components[node.index()], ComponentState::Wire(wire) if crate::redstone::wire::is_dot(wire))
+        }
         LayerInputSource::SourceAbove { site, port, threshold } => backend.site_power(site, port) > threshold,
         LayerInputSource::BoundaryEvent { occurrence, .. } => {
             backend.program.nodes()[backend.program.routes()[occurrence.route.index()].source.index()].position == Some(CONTROL)

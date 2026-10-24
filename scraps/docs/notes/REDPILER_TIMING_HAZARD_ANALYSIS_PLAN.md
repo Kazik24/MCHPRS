@@ -1,3 +1,8 @@
+> Archived experiment — removed from production on 2026-10-24. The bounded
+> replay below could not prove whole-circuit timing, especially for large builds
+> with many inputs. `/rp analyze --timing` is no longer supported. Historical
+> findings below describe the removed implementation, not a current feature.
+
 # Timing analysis: sampling hazards, arrival margins and witnesses
 
 Status: the first numerical late-inhibit checker is implemented and passed

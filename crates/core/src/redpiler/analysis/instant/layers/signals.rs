@@ -33,8 +33,7 @@ pub(super) struct SignalTracer<'a> {
     /// These transferred payloads are disabled at Near during the accepted retraction
     /// until their delayed restoration; only positive All-guard conjunctions may use it.
     disabled_destinations: Option<&'a FxHashSet<(ResourceId, ContactId)>>,
-    /// Stable logical extraction may trust saved dot/cross modes while deriving other sides
-    /// from the current physical geometry. Legacy tracer callers keep the original decline.
+    /// Settled logical extraction may bind saved-dot mode as a live input; legacy callers decline.
     stable_wire_modes: bool,
     /// This fixes the semantic sampling cut of any remaining outside read.
     role: LayerInputRole,
@@ -80,7 +79,7 @@ impl<'a> SignalTracer<'a> {
         self
     }
 
-    /// Use the saved dot/cross mode only for stable logical-query extraction.
+    /// Bind an initially saved dot's live mode for settled logical-query extraction.
     pub(super) fn with_stable_wire_modes(mut self) -> Self {
         self.stable_wire_modes = true;
         self
@@ -347,16 +346,16 @@ impl<'a> SignalTracer<'a> {
         let CircuitNodeKind::Wire(index) = self.graph.nodes[node.index()].kind else {
             return Err("corridor owns a non-wire component".into());
         };
-        // Legacy extraction declines a saved dot; stable extraction derives its actual sides
-        // from fixed geometry but keeps the dot's no-fallback mode.
-        let saved_dot = match self.graph.nodes[node.index()].state {
-            ComponentState::Wire(saved) if crate::redstone::wire::is_dot(saved) => {
-                if !self.stable_wire_modes {
-                    return Err("directional corridor output depends on dot/cross state".into());
-                }
-                true
-            }
-            _ => false,
+        let saved_dot = matches!(self.graph.nodes[node.index()].state, ComponentState::Wire(saved) if crate::redstone::wire::is_dot(saved));
+        if saved_dot && !self.stable_wire_modes {
+            return Err("directional corridor output depends on dot/cross state".into());
+        }
+        // Native neighbor updates preserve cross mode; player edits invalidate the compiled graph.
+        let dot_mode = if saved_dot {
+            let input = builder.input(LayerInputSource::WireDot { node }, self.role)?;
+            Some(builder.input_expr(input)?)
+        } else {
+            None
         };
         let neighbors = self.graph.wires[index].canonical_neighbors;
         let above_solid = self.site_test(neighbors[3], SiteTest::Solid, builder)?;
@@ -388,13 +387,16 @@ impl<'a> SignalTracer<'a> {
             BlockDirection::East => (2, [0, 1]),
             BlockDirection::West => (3, [0, 1]),
         };
-        if saved_dot {
-            return Ok(connected[side]);
-        }
         let first = builder.not(connected[perpendicular[0]])?;
         let second = builder.not(connected[perpendicular[1]])?;
         let complete_axis = builder.all([first, second])?;
-        builder.any([connected[side], complete_axis])
+        if let Some(dot_mode) = dot_mode {
+            let not_dot = builder.not(dot_mode)?;
+            let cross_axis_emits = builder.all([not_dot, complete_axis])?;
+            builder.any([connected[side], cross_axis_emits])
+        } else {
+            builder.any([connected[side], complete_axis])
+        }
     }
 
     fn block_test(

@@ -203,6 +203,7 @@ pub(crate) fn controller_support(graph: &CompileGraph, clock: PistonId, monitor:
                             SiteSource::Constant(_) => {}
                         }
                     }
+                    LayerInputSource::WireDot { node } => pending_nodes.push(node),
                     LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => {
                         process_state(graph, test, &bud_resources, &bud_actors, &mut resources, &mut pending_actors)?;
                     }

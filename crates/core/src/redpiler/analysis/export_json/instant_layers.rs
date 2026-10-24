@@ -67,6 +67,7 @@ fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
             };
             json!({"kind":"source_above","site":typed_id("site",site.index()),"port":port,"threshold":threshold})
         }
+        LayerInputSource::WireDot { node } => json!({"kind":"wire_dot","node":typed_id("node",node.index())}),
         LayerInputSource::BoundaryEvent { port, occurrence } => json!({
             "kind":"boundary_event",
             "port":typed_id("instant_port",port as usize),
