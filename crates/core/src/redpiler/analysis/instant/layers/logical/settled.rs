@@ -40,20 +40,35 @@ pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
 }
 
 fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<SettledCircuit> {
-    if !computation_frame_command_blocks_supported(graph) {
-        return None;
-    }
     let timing = super::timing::infer(graph, monitor).ok()?;
     let clock = timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?;
     if !clock.sticky || !matches!(clock.lane, PistonLane::SingleResource { .. }) {
         return None;
     }
-    let targets = terminal_wire_targets(graph);
+    let Some((mut targets, retained_cells, retained_effects)) = frame_retained_output_cells(graph) else {
+        return None;
+    };
+    for use_ in &retained_cells {
+        let node = graph.pistons[use_.actor.index()].node;
+        targets.extend([
+            PowerTarget::Input { node, port: InputPort::Main },
+            PowerTarget::Input {
+                node,
+                port: InputPort::Quasi,
+            },
+        ]);
+    }
+    targets.sort_unstable();
+    targets.dedup();
     if targets.is_empty() {
         return None;
     }
-    let mut computation = compile_computation(graph, &targets, monitor).ok()?;
-    if !computation.declines.is_empty() || !unsupported_computation_frame_inputs(graph, &computation).is_empty() {
+    let mut computation = match compile_computation(graph, &targets, monitor) {
+        Ok(computation) => computation,
+        Err(_) => return None,
+    };
+    let unsupported = unsupported_computation_frame_inputs(graph, &computation);
+    if !computation.declines.is_empty() || !unsupported.is_empty() {
         return None;
     }
     if !computation
@@ -63,26 +78,284 @@ fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<
     {
         return None;
     }
+    for (index, node) in graph.nodes.iter().enumerate() {
+        if !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })) {
+            continue;
+        }
+        let target = PowerTarget::Input {
+            node: NodeId::new(index as u32),
+            port: InputPort::Main,
+        };
+        let retained = retained_effects
+            .iter()
+            .any(|port| matches!(port.kind, BoundaryPortKind::Power { link } if graph.power_links[link as usize].to == target));
+        let published = computation.outputs.iter().any(|output| output.target == SettledTarget::Power(target));
+        if retained == published {
+            return None;
+        }
+    }
+    computation.retained_cells = retained_cells.into_boxed_slice();
+    computation.retained_effects = retained_effects.into_boxed_slice();
     computation.timing = Some(timing);
     Some(computation)
 }
 
-fn computation_frame_command_blocks_supported(graph: &CompileGraph) -> bool {
-    graph.nodes.iter().all(|node| {
-        if !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })) {
-            return true;
+/// Keep command outputs backed by a single certified payload cell in Graph's
+/// exact event schedule, while the bulk FPU remains a settled computation.
+fn frame_retained_output_cells(graph: &CompileGraph) -> Option<(Vec<PowerTarget>, Vec<CellUse>, Vec<BoundaryPort>)> {
+    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
+        return None;
+    };
+    let mut targets = frame_power_targets(graph);
+    let mut retained_cells = Vec::<CellUse>::new();
+    let mut retained_effects = Vec::<BoundaryPort>::new();
+    let command_nodes = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })).then_some(NodeId::new(index as u32))
+        })
+        .collect::<Vec<_>>();
+    for node in command_nodes {
+        let target = PowerTarget::Input { node, port: InputPort::Main };
+        let links = graph.power_links.iter().filter(|link| link.to == target).collect::<Vec<_>>();
+        if links.is_empty() {
+            continue;
         }
-        let ComponentState::Electrical(state) = &node.state else {
-            return false;
+        let mut selected: Option<(usize, CellUse)> = None;
+        for (link_index, link) in graph.power_links.iter().enumerate().filter(|(_, link)| link.to == target) {
+            let SiteSource::Contact(contact) = graph.sites[link.from.index()].source else {
+                return None;
+            };
+            let found = catalog.cells.iter().enumerate().find_map(|(cell_index, cell)| {
+                cell.resources.iter().find_map(|resource| {
+                    let source_resource = &graph.resources[resource.resource.index()];
+                    if !source_resource.contacts.contains(&contact) {
+                        return None;
+                    }
+                    if source_resource.material.index() >= graph.profiles.len() {
+                        return None;
+                    }
+                    if graph.profiles[source_resource.material.index()].electrical != ProfileElectrical::RedstoneSource {
+                        return None;
+                    }
+                    let owners = resource.owners.as_ref();
+                    if owners.len() != 1 || cell.uses.len() != 1 {
+                        return None;
+                    }
+                    let actor = owners[0];
+                    let Some(piston) = graph.pistons.get(actor.index()) else {
+                        return None;
+                    };
+                    if piston.near != contact || !matches!(piston.lane, PistonLane::SingleResource { far } if far == resource.source) {
+                        return None;
+                    }
+                    let use_ = cell.uses.iter().find(|use_| {
+                        use_.actor == actor
+                            && matches!(use_.reset, CellReset::Observer { .. })
+                            && use_.retraction.transfer.is_some_and(|transfer| transfer.resource == resource.resource)
+                    });
+                    let Some(use_) = use_ else {
+                        return None;
+                    };
+                    Some((cell_index, use_.clone()))
+                })
+            });
+            let Some((cell_index, use_)) = found else {
+                return None;
+            };
+            if let Some((previous_cell, previous_use)) = &selected {
+                if *previous_cell != cell_index || previous_use.actor != use_.actor {
+                    return None;
+                }
+            } else {
+                selected = Some((cell_index, use_));
+            }
+            if !catalog.ports.iter().any(|port| {
+                port.owner == BoundaryOwner::Cell(cell_index as u32)
+                    && port.direction == BoundaryDirection::Output
+                    && port.kind == (BoundaryPortKind::Power { link: link_index as u32 })
+            }) {
+                return None;
+            }
+        }
+        let Some((cell_index, use_)) = selected else {
+            return None;
         };
-        state.command_entity.as_ref().is_some_and(|entity| is_tellraw_diagnostic(&entity.command))
-    })
+        let cell = &catalog.cells[cell_index];
+        if cell.uses.len() != 1 || use_.activations.is_empty() {
+            return None;
+        }
+        let actor = use_.actor;
+        if !retained_cells.iter().any(|retained| retained.actor == actor) {
+            retained_cells.push(use_.clone());
+        }
+        for port in catalog
+            .ports
+            .iter()
+            .filter(|port| port.owner == BoundaryOwner::Cell(cell_index as u32) && port.direction == BoundaryDirection::Output)
+        {
+            if !retained_cell_effect_is_owned(graph, catalog, cell, &use_, port) {
+                return None;
+            }
+            if !retained_effects.contains(port) {
+                retained_effects.push(*port);
+            }
+        }
+        targets.retain(|candidate| *candidate != target);
+    }
+    retained_cells.sort_unstable_by_key(|use_| use_.actor);
+    retained_effects.sort_unstable_by_key(|port| match port.kind {
+        BoundaryPortKind::Power { link } => link,
+        _ => u32::MAX,
+    });
+    Some((targets, retained_cells, retained_effects))
 }
 
-fn is_tellraw_diagnostic(command: &str) -> bool {
-    let command = command.trim_start();
-    let command = command.strip_prefix('/').unwrap_or(command);
-    command.split_whitespace().next() == Some("tellraw")
+fn retained_cell_effect_is_owned(graph: &CompileGraph, catalog: &BoundaryCatalog, cell: &CellContract, use_: &CellUse, port: &BoundaryPort) -> bool {
+    match port.kind {
+        BoundaryPortKind::Power { link } => {
+            let power_link = graph.power_links[link as usize];
+            let target = power_link.to;
+            let piston_node = graph.pistons[use_.actor.index()].node;
+            if matches!(target, PowerTarget::Input { node, .. } if node == piston_node)
+                || matches!(target, PowerTarget::Input { node, port: InputPort::Main } if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })))
+            {
+                return true;
+            }
+            if retained_cell_reset_conductor_is_owned(graph, use_, power_link) {
+                return true;
+            }
+            let corridor_index = match target {
+                PowerTarget::Input { node, .. } if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)) => {
+                    catalog.corridors.iter().position(|corridor| corridor.wires.contains(&node))
+                }
+                PowerTarget::Conductor { site, .. } => catalog.corridors.iter().position(|corridor| corridor.conductive_sites.contains(&site)),
+                _ => None,
+            };
+            corridor_index.is_some_and(|corridor_index| {
+                catalog.ports.iter().any(|peer| {
+                    peer.owner == BoundaryOwner::Corridor(corridor_index as u32)
+                        && peer.direction == BoundaryDirection::Input
+                        && peer.kind == port.kind
+                })
+            })
+        }
+        BoundaryPortKind::Callback { occurrence } => {
+            let Some(delivery) = graph
+                .routes
+                .get(occurrence.route.index())
+                .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
+            else {
+                return false;
+            };
+            let source = graph.sites[delivery.target.index()].source;
+            match delivery.receiver.or_else(|| match (source, delivery.kind) {
+                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+                _ => None,
+            }) {
+                Some(CallbackReceiver::Component(node)) if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)) => {
+                    retained_cell_corridor_wire_is_owned(catalog, port.kind, node)
+                }
+                _ => true,
+            }
+        }
+        kind if retained_cell_observation_is_owned(graph, cell, kind) => true,
+        BoundaryPortKind::WireRelation { relation } => {
+            retained_cell_corridor_wire_is_owned(catalog, port.kind, graph.wire_relations[relation as usize].from)
+        }
+        BoundaryPortKind::WireNeighborhood { wire, .. } | BoundaryPortKind::CapturedWire { wire, .. } => {
+            retained_cell_corridor_wire_is_owned(catalog, port.kind, wire)
+        }
+        _ => false,
+    }
+}
+
+fn retained_cell_reset_conductor_is_owned(graph: &CompileGraph, use_: &CellUse, link: PowerLink) -> bool {
+    let CellReset::Observer { node: reset, .. } = use_.reset else {
+        return false;
+    };
+    let PowerTarget::Conductor { site, include_dust } = link.to else {
+        return false;
+    };
+    if !matches!(link.from_port, PowerPort::Output | PowerPort::Stored)
+        || !matches!(graph.sites[link.from.index()].source, SiteSource::Component(node) if node == reset)
+    {
+        return false;
+    }
+    let SiteSource::Constant(profile) = graph.sites[site.index()].source else {
+        return false;
+    };
+    let profile = graph.profiles[profile.index()];
+    if !profile.solid || !profile.cube {
+        return false;
+    }
+    // The circuit builder can leave the observer's old conductor delivery in
+    // the cell after specializing the piston query to the direct observer
+    // output. An unqueried solid site has no runtime consumer and is inert.
+    if !graph.power_links.iter().any(|candidate| candidate.from == site) {
+        return true;
+    }
+    let piston_node = graph.pistons[use_.actor.index()].node;
+    let untracked_dynamic_source = graph.power_links.iter().any(|candidate| {
+        matches!(candidate.to, PowerTarget::Conductor { site: candidate_site, include_dust: dust } if candidate_site == site && dust == include_dust)
+            && matches!(graph.sites[candidate.from.index()].source, SiteSource::Component(node) if node != reset)
+    });
+    !untracked_dynamic_source
+        && graph.power_links.iter().any(|actor_link| {
+            actor_link.from == site
+                && matches!(actor_link.from_port, PowerPort::Conducted { include_dust: dust } if dust == include_dust)
+                && matches!(actor_link.to, PowerTarget::Input { node, port: InputPort::Main | InputPort::Quasi } if node == piston_node)
+        })
+}
+
+fn retained_cell_corridor_wire_is_owned(catalog: &BoundaryCatalog, kind: BoundaryPortKind, wire: NodeId) -> bool {
+    let Some(corridor_index) = catalog.corridors.iter().position(|corridor| corridor.wires.contains(&wire)) else {
+        return false;
+    };
+    catalog
+        .ports
+        .iter()
+        .any(|peer| peer.owner == BoundaryOwner::Corridor(corridor_index as u32) && peer.direction == BoundaryDirection::Input && peer.kind == kind)
+}
+
+fn retained_cell_observation_is_owned(graph: &CompileGraph, cell: &CellContract, kind: BoundaryPortKind) -> bool {
+    match kind {
+        BoundaryPortKind::GuardState { test, .. } => match test {
+            StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. } => {
+                cell.uses.iter().any(|cell_use| cell_use.actor == actor)
+            }
+            StateTest::ResourceAt { resource, contact } => {
+                cell.resources.iter().any(|pin| pin.resource == resource) && graph.resources[resource.index()].contacts.contains(&contact)
+            }
+            StateTest::ResourceEnabled(resource) => cell.resources.iter().any(|pin| pin.resource == resource),
+        },
+        BoundaryPortKind::ContactAlternative { contact, .. } => cell.uses.iter().any(|cell_use| {
+            let piston = &graph.pistons[cell_use.actor.index()];
+            [piston.base, piston.near, piston.far].contains(&contact)
+        }),
+        BoundaryPortKind::ObserverWatch { observer, site } => cell.uses.iter().any(|cell_use| {
+            let piston = &graph.pistons[cell_use.actor.index()];
+            matches!(cell_use.reset, CellReset::Observer { node, .. } if node == observer)
+                && graph.sites[site.index()].source == SiteSource::Contact(piston.base)
+        }),
+        BoundaryPortKind::GuardSite { site, .. } => {
+            let source = graph.sites[site.index()].source;
+            match source {
+                SiteSource::Contact(contact) => cell.uses.iter().any(|cell_use| {
+                    let piston = &graph.pistons[cell_use.actor.index()];
+                    [piston.base, piston.near, piston.far].contains(&contact)
+                }),
+                SiteSource::Component(node) => cell.uses.iter().any(|cell_use| {
+                    node == graph.pistons[cell_use.actor.index()].node
+                        || matches!(cell_use.reset, CellReset::Observer { node: observer, .. } if node == observer)
+                }),
+                SiteSource::Constant(_) => false,
+            }
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit: &SettledCircuit) -> Vec<LayerInputSource> {
@@ -121,7 +394,8 @@ pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit
         .collect()
 }
 
-pub(super) fn terminal_wire_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
+/// Compile terminal wires and command-block power as public frame outputs.
+pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
     let consumed: FxHashSet<_> = graph
         .power_links
         .iter()
@@ -135,8 +409,11 @@ pub(super) fn terminal_wire_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
         .iter()
         .enumerate()
         .filter_map(|(index, node)| {
-            (matches!(node.kind, CircuitNodeKind::Wire(_)) && !consumed.contains(&NodeId::new(index as u32))).then_some(PowerTarget::Input {
-                node: NodeId::new(index as u32),
+            let id = NodeId::new(index as u32);
+            let terminal_wire = matches!(node.kind, CircuitNodeKind::Wire(_)) && !consumed.contains(&id);
+            let command_output = matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }));
+            (terminal_wire || command_output).then_some(PowerTarget::Input {
+                node: id,
                 port: InputPort::Main,
             })
         })
@@ -340,21 +617,6 @@ fn guard_contains(graph: &CompileGraph, root: GuardId, needle: GuardId) -> bool 
     false
 }
 
-#[cfg(test)]
-mod computation_frame_command_tests {
-    use super::is_tellraw_diagnostic;
-
-    #[test]
-    fn only_tellraw_diagnostics_are_omitted_from_frames() {
-        assert!(is_tellraw_diagnostic("tellraw @a {\"text\":\"diagnostic\"}"));
-        assert!(is_tellraw_diagnostic("  /tellraw @a {\"text\":\"diagnostic\"}"));
-        assert!(!is_tellraw_diagnostic("tellrawx @a message"));
-        assert!(!is_tellraw_diagnostic("execute as @a run tellraw @s message"));
-        assert!(!is_tellraw_diagnostic("setblock 0 0 0 air"));
-        assert!(!is_tellraw_diagnostic("  "));
-    }
-}
-
 pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
@@ -452,6 +714,7 @@ pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Re
         program,
         outputs: outputs.into_boxed_slice(),
         firing: None,
+        retained_cells: Box::new([]),
         retained_effects: retained_effects.into_boxed_slice(),
         declines: declines.into_boxed_slice(),
         timing: None,
@@ -1084,6 +1347,7 @@ fn compile_boundary_equations(
         program,
         outputs: outputs.into_boxed_slice(),
         firing,
+        retained_cells: Box::new([]),
         retained_effects: retained_effects.into_boxed_slice(),
         declines: Box::new([]),
         timing: None,
@@ -1235,6 +1499,7 @@ fn declined_settled(monitor: &TaskMonitor, retained_effects: Vec<BoundaryPort>, 
         program,
         outputs: Box::new([]),
         firing: None,
+        retained_cells: Box::new([]),
         retained_effects: retained_effects.into_boxed_slice(),
         declines: declines.into_boxed_slice(),
         timing: None,
@@ -1255,6 +1520,7 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
     equations.retain_classic = true;
     equations.inline_repeaters = true;
     equations.feedback_resources = true;
+    equations.reject_unrepresented_destinations = true;
     equations.stable_wire_modes = true;
     assume_computation_frame_observers_off(&mut equations);
     // This test-only extractor deliberately asks whether the local stationary lane
@@ -1332,6 +1598,7 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
         program,
         outputs: outputs.into_boxed_slice(),
         firing: None,
+        retained_cells: Box::new([]),
         retained_effects: Box::new([]),
         declines: Box::new([]),
         timing: None,

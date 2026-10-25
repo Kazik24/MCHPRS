@@ -782,6 +782,7 @@ mod tests {
             pending_repeaters: FxHashSet::default(),
             retain_classic: true,
             feedback_resources: false,
+            reject_unrepresented_destinations: false,
             one_shot_firing: false,
             fired_inputs: FxHashMap::default(),
             firing_resources: FxHashMap::default(),

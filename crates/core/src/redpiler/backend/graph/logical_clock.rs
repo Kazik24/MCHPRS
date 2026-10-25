@@ -34,6 +34,7 @@ enum ClockKind {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ClockStep {
     pub(crate) compute: bool,
+    pub(crate) resample: bool,
     pub(crate) publish: bool,
     pub(crate) commit: bool,
 }
@@ -160,6 +161,7 @@ impl LogicalClock {
         if self.kind == ClockKind::StickyObserver {
             return self.advance_sticky_observer(trigger);
         }
+        let resample = trigger && trigger != self.last_trigger;
         if trigger != self.last_trigger {
             self.last_trigger = trigger;
             let desired_torch = !trigger;
@@ -167,6 +169,7 @@ impl LogicalClock {
         }
         self.tick = self.tick.checked_add(1).ok_or("logical clock tick overflow")?;
         let mut result = ClockStep::default();
+        result.resample = resample;
         if let Some((due, desired)) = self.pending_torch
             && due <= self.tick
         {
@@ -203,12 +206,14 @@ impl LogicalClock {
 
     fn advance_sticky_observer(&mut self, trigger: bool) -> Result<ClockStep, &'static str> {
         self.tick = self.tick.checked_add(1).ok_or("logical clock tick overflow")?;
+        let resample = trigger && trigger != self.last_trigger;
         if trigger != self.last_trigger {
             self.last_trigger = trigger;
             self.pulse_on = false;
             self.phase = if trigger { Phase::Idle } else { Phase::StickyRetract(self.tick) };
         }
         let mut result = ClockStep::default();
+        result.resample = resample;
         self.phase = match self.phase {
             Phase::StickyRetract(due) if due <= self.tick && !self.last_trigger => {
                 self.clock_extended = false;

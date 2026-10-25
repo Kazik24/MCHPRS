@@ -36,6 +36,12 @@ the required computation/reset interval. The flag does not increase compilation 
 O4/O5 without that promise retain ordered event execution and live sampling.
 Classic-redstone compilation is automatic from O2; no separate switch is needed.
 
+For the qualified FPU frame, stop and reset the circuit with its green trigger
+ON, compile with `-O6`, then switch the trigger OFF. Hold data inputs through
+each computation/reset interval. Pending physical work keeps Graph execution.
+Command blocks remain boundary outputs and use the existing command scheduler;
+their effects are not discarded as internal reset work.
+
 Compiling power queries does not eliminate piston callbacks, scheduler work, or
 physical state. BubbleSort and ANPU retain physical execution despite compiled
 queries. A plan's actor coverage does not measure removed runtime work or imply

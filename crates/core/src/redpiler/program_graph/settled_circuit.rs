@@ -7,6 +7,8 @@ pub(crate) struct SettledCircuit {
     pub(crate) outputs: Box<[SettledOutput]>,
     /// Optional one-shot firing/reset bindings over roots in this same program.
     pub(crate) firing: Option<LogicalFiringPlan>,
+    /// Source-certified local cells whose event timing remains owned by Graph.
+    pub(crate) retained_cells: Box<[CellUse]>,
     /// These observations/effects still require a boundary adapter; they are never discarded as resets.
     pub(crate) retained_effects: Box<[BoundaryPort]>,
     /// Unsupported roots retain ordinary execution instead of acquiring invented logical state.

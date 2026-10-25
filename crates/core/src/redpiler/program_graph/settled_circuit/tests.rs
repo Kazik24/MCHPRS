@@ -38,6 +38,7 @@ fn circuit(program: ReducedLayerProgram, outputs: Vec<SettledOutput>) -> Settled
         program,
         outputs: outputs.into_boxed_slice(),
         firing: None,
+        retained_cells: Box::new([]),
         retained_effects: Box::new([]),
         declines: Box::new([]),
         timing: None,

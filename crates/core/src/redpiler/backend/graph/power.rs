@@ -64,6 +64,44 @@ impl GraphBackend {
     /// Read a component's main, side, or quasi input strength.
     /// Uses a specialized query when available, otherwise follows the power links.
     pub(super) fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
+        if let Some(binding) = self
+            .active_frame_power_inputs
+            .iter()
+            .find(|binding| binding.node == node && binding.port == port)
+        {
+            let target = PowerTarget::Input { node, port };
+            let mut reset_strength = 0;
+            for link in self.program.power_links_to(target) {
+                if !self.guard_matches(link.guard, None) {
+                    continue;
+                }
+                if matches!(self.program.sites()[link.from.index()].source, SiteSource::Component(source) if source == binding.reset) {
+                    reset_strength = reset_strength.max(self.link_strength(link));
+                    continue;
+                }
+                let SiteSource::Constant(profile) = self.program.sites()[link.from.index()].source else {
+                    continue;
+                };
+                if !self.program.profiles()[profile.index()].solid || !self.program.profiles()[profile.index()].cube {
+                    continue;
+                }
+                let PowerPort::Conducted { include_dust } = link.from_port else {
+                    continue;
+                };
+                let conductor = PowerTarget::Conductor {
+                    site: link.from,
+                    include_dust,
+                };
+                for reset_link in self.program.power_links_to(conductor) {
+                    if matches!(self.program.sites()[reset_link.from.index()].source, SiteSource::Component(source) if source == binding.reset)
+                        && self.guard_matches(reset_link.guard, None)
+                    {
+                        reset_strength = reset_strength.max(self.link_strength(reset_link).saturating_sub(link.attenuation));
+                    }
+                }
+            }
+            return binding.data_strength.max(reset_strength);
+        }
         if self.fixed_classic.is_some() {
             return self.fixed_classic_input_strength(node, port);
         }

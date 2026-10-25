@@ -27,6 +27,7 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
     let mut samples = Vec::new();
     for sample in 0..iterations {
         let mut world = load(descriptor)?;
+        world.disable_command_output_limits_for_replay();
         let mut mask = inputs.iter().enumerate().try_fold(0u64, |word, (bit, &p)| -> Result<u64> {
             let Block::Lever { lever } = world.get_block(p) else {
                 bail!("input is not a lever")
@@ -63,7 +64,7 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
                 }
             }
             mask = word;
-            // Three redstone ticks per frame; inputs stay fixed through reset.
+            // Hold each input frame for six game ticks, including its reset interval.
             for _ in 0..6 {
                 compiler.tick_with_world(&mut world)?;
             }
@@ -75,25 +76,28 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
         }
         let seconds = start.elapsed().as_secs_f64();
         let after = compiler.graph_execution_counts().context("missing counters")?;
+        let logical_kernel_evaluations = after.logical_kernel_evaluations - before.logical_kernel_evaluations;
+        let wire_walks = after.wire_walks - before.wire_walks;
+        let piston_samples = after.piston_samples - before.piston_samples;
+        let piston_actions = after.piston_actions - before.piston_actions;
+        let deferred_publications = after.deferred_publications - before.deferred_publications;
+        let callbacks = after.callbacks - before.callbacks;
+        let command_output_count = world.command_output().count();
         ensure!(
-            after.logical_kernel_evaluations - before.logical_kernel_evaluations == episodes as u64,
+            logical_kernel_evaluations == episodes as u64,
             "logical device did not execute once per six-game-tick frame"
         );
+        ensure!(wire_walks == 0, "frame workload performed physical wire walks: {wire_walks}");
         ensure!(observed.len() > 1, "no changing FPU output activity");
-        ensure!(
-            after.callbacks == 0
-                && after.wire_walks == 0
-                && after.piston_samples == 0
-                && after.piston_actions == 0
-                && after.deferred_publications == 0,
-            "frame execution retained physical datapath work: {after:?}"
-        );
+        ensure!(command_output_count > 0, "frame workload produced no real command output");
         let ticks = episodes as u64 * 6;
         let report = json!({"sample":sample + 1,"compile_seconds":compile_seconds,
             "game_ticks":ticks,"seconds":seconds,"game_tps":ticks as f64 / seconds,
-            "calculations":after.logical_kernel_evaluations - before.logical_kernel_evaluations,
+            "calculations":logical_kernel_evaluations,
             "logical_operations":after.logical_kernel_operations - before.logical_kernel_operations,
-            "output_words":observed,"physical_callbacks":after.callbacks});
+            "output_words":observed,"callbacks":callbacks,
+            "wire_walks":wire_walks,"piston_samples":piston_samples,"piston_actions":piston_actions,
+            "deferred_publications":deferred_publications,"command_output_count":command_output_count});
         println!("{report}");
         samples.push(report);
     }
@@ -102,7 +106,7 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
     let report = json!({"measurement_kind":"production_o6_fpu_frames","optimized":!cfg!(debug_assertions),
         "flags":"-O6","input_contract":"compile stopped circuit, then toggle trigger to start; inputs held for six game ticks; no warm-up",
         "warmup_game_ticks":0,"trigger_edges_per_sample":1,
-        "scope":"normal Compiler tick_with_world, input controls and per-frame output projection; no physical fallback",
+        "scope":"bulk logical frame plus three retained native output cells; includes control updates, piston samples/actions, deferred publications, callbacks, and command output",
         "correctness_scope":"activity check; benchmark-frame equivalence and native clock timing are tested separately",
         "median_game_tps":rates[rates.len()/2],"samples":samples});
     if let Some(path) = output {

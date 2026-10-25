@@ -77,6 +77,8 @@ struct Equations<'a> {
     retain_classic: bool,
     /// When set, a recognized payload-location backedge becomes an explicit state input.
     feedback_resources: bool,
+    /// Refuse outputs whose exact transferred contact is outside the frame state model.
+    reject_unrepresented_destinations: bool,
     /// Cut recognized instant-cell payload feedback with source-derived fired inputs.
     one_shot_firing: bool,
     /// Fired-state inputs allocated for actors that own a requested feedback resource.
@@ -178,6 +180,7 @@ impl<'a> Equations<'a> {
             pending_repeaters: FxHashSet::default(),
             retain_classic: false,
             feedback_resources: false,
+            reject_unrepresented_destinations: false,
             one_shot_firing: false,
             fired_inputs: FxHashMap::default(),
             firing_resources: FxHashMap::default(),
@@ -764,6 +767,12 @@ impl<'a> Equations<'a> {
                         && self.feedback_resource_contract(resource).is_some()
                         && self.graph.resources[resource.index()].contacts.contains(&contact)
                     {
+                        if self.reject_unrepresented_destinations {
+                            return Err(format!(
+                                "logical computation cannot expose an unresolved transferred resource contact: {resource:?} at {contact:?}"
+                            )
+                            .into());
+                        }
                         self.reduced.constant(false)?
                     } else {
                         if self.retain_classic {

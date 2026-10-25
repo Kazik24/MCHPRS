@@ -39,6 +39,10 @@ impl GraphBackend {
     }
 
     pub(super) fn piston_powered(&self, actor: PistonId) -> bool {
+        if self.active_frame_retained_actors.contains(&actor) {
+            let node = self.program.pistons()[actor.index()].node;
+            return self.input_strength(node, InputPort::Main) > 0 || self.input_strength(node, InputPort::Quasi) > 0;
+        }
         if self.fixed_classic.is_none()
             && let Some(entry) = self.program.cpu_power_query_entry(actor)
         {

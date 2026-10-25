@@ -63,6 +63,15 @@ clock certificate is deliberately narrower than arbitrary piston timing. The
 Counter kernel uses a qualified torch/observer clock; broader control, timer,
 or reset behavior remains with Graph unless another contract is added.
 
+Command-block power is an explicit frame output. The existing command scheduler
+and host execute its effects, including `tellraw`, and retain command entity
+results. A command result that cannot be bound into the logical input cone keeps
+the circuit on Graph; commands are never discarded to admit a frame.
+For certified single-owner payload cells feeding commands, Graph retains the
+local piston, reset observer, and deferred publication work while the frame
+supplies the data inputs. Near-contact outputs retain their transfer delay and
+repeated command pulses. Unsupported output boundaries keep Graph execution.
+
 The current original-checkout WIP adds a source-certified
 [`LogicalFiringRuntime`](../crates/core/src/redpiler/backend/graph/logical_firing.rs).
 It intercepts only an admitted activation, piston action, observer reset, and
@@ -83,3 +92,21 @@ effects. Their admission limits and ordinary Graph fallback are part of the
 execution contract. See the [optimization tiers](REDPILER_OPTIMIZATION_LEVELS.md),
 [redstone model](REDSTONE_MODEL.md), and [piston model](PISTON_MODEL.md) for
 user-facing behavior and physical rules.
+
+The October 25, 2026 release benchmark measured median **47,687 game TPS** for
+`FPU_MROWW` and **47,417 game TPS** for `FPU_FIXED_INSTANT` on a Ryzen 9 5950X.
+Each of three samples ran 4,096 changing input frames held for six game ticks,
+including input updates, projection, and real command execution. Each sample
+recorded 4,096 logical evaluations, zero wire walks, 512 callbacks, 64 piston
+actions, and 32 command outputs. Compilation took approximately 22 seconds and
+was excluded from TPS. Run `cargo bench -p mchprs_core --bench instant --locked
+-- --component fpu_legal --device-frame --tier 6 --episodes 4096 --iterations 3`
+to repeat the original workload. Reports are in
+`target/fpu-device-frame-{original,fixed}.json`; the executable SHA-256 is
+`0d9a36add5d5ac8f488a935558b3a08a239eb073cfbdc37ba336ef6f08c18426`.
+
+The production regression checks data outputs against the accepted computation
+frame and independently checks native command power, execution, repeated pulses,
+and stopping. These checks do not establish full native arithmetic, transient,
+or interpreter-handoff equivalence. The older approximately 600 TPS measurements
+used a different workload protocol and are not a matched speedup comparison.

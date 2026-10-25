@@ -71,6 +71,200 @@ fn fpu_random_inputs_one_kernel_and_paired_inference() {
 }
 
 #[test]
+#[ignore = "native-only FPU command-output/reset timing trace for bounded operand and opcode cases"]
+fn fpu_native_command_output_reset_trace() {
+    use mchprs_blocks::block_entities::BlockEntity;
+    use mchprs_blocks::blocks::Block;
+    use serde_json::json;
+
+    let fixture = manifest("fpu_legal");
+    let (mut world, _) = load(&fixture);
+    world.disable_command_output_limits_for_replay();
+
+    let position = |value: &Value| local_pos(value) - BASE + origin(&fixture);
+    let ports = &fixture["ports"];
+    let a: Vec<_> = ports["light_blue_operand_inputs"].as_array().unwrap().iter().map(position).collect();
+    let b: Vec<_> = ports["red_operand_inputs"].as_array().unwrap().iter().map(position).collect();
+    let opcode: Vec<_> = ports["opcode_levers_by_sign_weight_4_2_1"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(position)
+        .collect();
+    let trigger = position(&ports["trigger"]);
+    assert_eq!((a.len(), b.len(), opcode.len()), (16, 16, 3));
+
+    let commands = [BlockPos::new(66, 44, 51), BlockPos::new(68, 44, 51), BlockPos::new(70, 44, 51)];
+    let actors = [BlockPos::new(66, 43, 52), BlockPos::new(68, 43, 52), BlockPos::new(70, 43, 52)];
+    let actor_contacts = actors.map(|base| {
+        let Block::Piston { piston } = world.get_block(base) else {
+            panic!("expected the traced FPU piston at {base:?}");
+        };
+        let facing = mchprs_blocks::BlockFace::from(piston.facing);
+        let near = base.offset(facing);
+        (base, near, near.offset(facing))
+    });
+    for pos in commands {
+        let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity(pos) else {
+            panic!("expected an imported FPU command entity at {pos:?}");
+        };
+        eprintln!("FPU command at {pos:?}: {}", entity.command);
+    }
+    let observers: Vec<_> = {
+        let mut positions = Vec::new();
+        for (base, _, _) in actor_contacts {
+            for y in base.y - 5..=base.y + 5 {
+                for z in base.z - 5..=base.z + 5 {
+                    for x in base.x - 5..=base.x + 5 {
+                        let candidate = BlockPos::new(x, y, z);
+                        if matches!(world.get_block(candidate), Block::Observer { .. }) {
+                            positions.push(candidate);
+                        }
+                    }
+                }
+            }
+        }
+        positions.sort_unstable_by_key(|pos| (pos.x, pos.y, pos.z));
+        positions.dedup();
+        positions
+    };
+    let command_states = |world: &PlotWorld| {
+        commands.map(|pos| match world.get_block_entity(pos) {
+            Some(BlockEntity::CommandBlock(entity)) => json!({
+                "pos": pos,
+                "powered": entity.powered,
+                "last_execution": entity.last_execution,
+                "success_count": entity.success_count,
+                "command": entity.command,
+            }),
+            entity => json!({"pos":pos,"missing_or_wrong_entity":format!("{entity:?}")}),
+        })
+    };
+    let tick_snapshot = |world: &PlotWorld| {
+        json!({
+            "tick": world.piston_state().logical_tick,
+            "phase": format!("{:?}", world.piston_state().phase),
+            "commands": command_states(world),
+            "cells": actor_contacts.map(|(base, near, far)| {
+                let block = world.get_block(base);
+                let extended = match block {
+                    Block::Piston { piston } => Some(piston.extended),
+                    _ => None,
+                };
+                json!({"base":base,"base_block":block.get_name(),"extended":extended,
+                    "near":world.get_block(near).get_name(),"far":world.get_block(far).get_name()})
+            }),
+            "observers": observers.iter().map(|&pos| {
+                let powered = matches!(world.get_block(pos), Block::Observer { observer } if observer.powered);
+                json!({"pos":pos,"powered":powered})
+            }).collect::<Vec<_>>(),
+            "outputs": world.command_output().count(),
+            "latest_output": world.command_output().last(),
+        })
+    };
+
+    // Match the fixture's idle protocol before sweeping common boundary
+    // encodings and all eight opcode selectors. Port bit order is treated as
+    // raw fixture order; this makes no claim about numerical interpretation.
+    lever_action(&mut world, trigger, true);
+    advance(&mut world, 64);
+    let mut current_outputs = world.command_output().count();
+    let mut firing_windows = 0;
+    let mut cases_examined = 0;
+    let words = [0x0000u16, 0xffff, 0x7c00, 0x7e00, 0x3c00];
+    'search: for a_word in words {
+        for b_word in words {
+            for selector in 0..8 {
+                cases_examined += 1;
+                let previous_executions = commands.map(|pos| match world.get_block_entity(pos) {
+                    Some(BlockEntity::CommandBlock(entity)) => entity.last_execution,
+                    _ => -1,
+                });
+                for (bit, &pos) in a.iter().enumerate() {
+                    lever_action(&mut world, pos, a_word & (1 << bit) != 0);
+                }
+                for (bit, &pos) in b.iter().enumerate() {
+                    lever_action(&mut world, pos, b_word & (1 << bit) != 0);
+                }
+                for (bit, &pos) in opcode.iter().enumerate() {
+                    lever_action(&mut world, pos, selector & (1 << (2 - bit)) != 0);
+                }
+
+                // Firing is an ON-to-OFF trigger edge. Keep it low for two
+                // logical frames so both command and resource reset edges are visible.
+                lever_action(&mut world, trigger, false);
+                let mut trace = Vec::new();
+                for _ in 0..12 {
+                    world.tick_interpreted();
+                    trace.push(tick_snapshot(&world));
+                }
+                let output_count = world.command_output().count();
+                let fired = output_count > current_outputs
+                    || commands.iter().zip(previous_executions).any(|(&pos, previous)| {
+                        matches!(world.get_block_entity(pos), Some(BlockEntity::CommandBlock(entity)) if entity.last_execution > previous)
+                    });
+                if fired {
+                    firing_windows += 1;
+                    eprintln!(
+                        "native FPU command trace raw_a={a_word:#06x} raw_b={b_word:#06x} opcode={selector:03b} outputs={current_outputs}->{output_count}",
+                    );
+                    for row in trace {
+                        eprintln!("{row}");
+                    }
+                    current_outputs = output_count;
+
+                    // Keep the same condition asserted for another pair of
+                    // clock frames to expose observer reset and repeat timing.
+                    let repeated_previous = commands.map(|pos| match world.get_block_entity(pos) {
+                        Some(BlockEntity::CommandBlock(entity)) => entity.last_execution,
+                        _ => -1,
+                    });
+                    let mut repeated_trace = Vec::new();
+                    for _ in 0..12 {
+                        world.tick_interpreted();
+                        repeated_trace.push(tick_snapshot(&world));
+                    }
+                    let repeated_outputs = world.command_output().count();
+                    let repeated = repeated_outputs > current_outputs
+                        || commands.iter().zip(repeated_previous).any(|(&pos, previous)| {
+                            matches!(world.get_block_entity(pos), Some(BlockEntity::CommandBlock(entity)) if entity.last_execution > previous)
+                        });
+                    if repeated {
+                        firing_windows += 1;
+                        eprintln!(
+                            "native FPU held-condition repeat raw_a={a_word:#06x} raw_b={b_word:#06x} opcode={selector:03b} outputs={current_outputs}->{repeated_outputs}",
+                        );
+                        for row in repeated_trace {
+                            eprintln!("{row}");
+                        }
+                    }
+
+                    // Switch the trigger back to its idle level after the
+                    // held-low trace and capture the stop/reset boundary.
+                    lever_action(&mut world, trigger, true);
+                    eprintln!("native FPU trigger-on stop/reset raw_a={a_word:#06x} raw_b={b_word:#06x} opcode={selector:03b}",);
+                    for _ in 0..6 {
+                        world.tick_interpreted();
+                        eprintln!("{}", tick_snapshot(&world));
+                    }
+                    break 'search;
+                }
+                current_outputs = output_count;
+
+                // Restore the idle edge before installing the next vector.
+                lever_action(&mut world, trigger, true);
+                advance(&mut world, 6);
+            }
+        }
+    }
+    eprintln!("native FPU command trace completed: cases_examined={cases_examined} firing_windows={firing_windows}");
+    assert!(
+        firing_windows > 0,
+        "bounded native FPU sweep did not fire any of the three traced command blocks"
+    );
+}
+
+#[test]
 #[ignore = "explicit random switching-cost diagnostic; constant outputs do not establish arithmetic throughput"]
 fn fpu_random_inputs_one_kernel_diagnostic_measurement() {
     random_fpu(false, CpuComparison::Off);

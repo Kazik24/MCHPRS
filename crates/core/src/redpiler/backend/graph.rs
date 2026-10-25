@@ -459,6 +459,11 @@ pub(crate) struct GraphBackend {
     instant_kernel: instant_kernel::KernelExecution,
     logical_firing: Option<logical_firing::LogicalFiringRuntime>,
     logical_device: Option<logical_device::LogicalDevice>,
+    active_frame_command_outputs: Vec<NodeId>,
+    active_frame_retained_actors: Vec<PistonId>,
+    active_frame_retained_nodes: Vec<NodeId>,
+    active_frame_retained_routes: Vec<RouteOccurrence>,
+    active_frame_power_inputs: Vec<logical_device::ActiveFramePowerInput>,
     /// O6 logical BUD owners index immutable transition plans by physical piston ID.
     /// Their values, revisions and deferred deadlines remain in the shared CircuitState/GraphFuture.
     logical_bud_owner_by_actor: Vec<Option<usize>>,
@@ -889,6 +894,11 @@ impl GraphBackend {
             instant_kernel,
             logical_firing: None,
             logical_device: None,
+            active_frame_command_outputs: Vec::new(),
+            active_frame_retained_actors: Vec::new(),
+            active_frame_retained_nodes: Vec::new(),
+            active_frame_retained_routes: Vec::new(),
+            active_frame_power_inputs: Vec::new(),
             logical_bud_owner_by_actor,
             logical_bud_samples_by_route,
             future: GraphFuture {
@@ -1096,18 +1106,15 @@ impl GraphBackend {
         if let Some(error) = &self.failure {
             return Err(error.clone());
         }
-        if self.logical_device.is_some() {
-            let result = self.tick_logical_device();
-            if let Some(host) = host.as_mut() {
-                host.publish_logical_tick(self.future.clock.logical_tick);
-            }
-            self.latch_error(&result);
-            return result;
-        }
         if host.is_none()
             && let Some(position) = self.command_host_preflight_position()
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
+        }
+        if self.logical_device.is_some() {
+            let result = self.tick_logical_device(&mut host);
+            self.latch_error(&result);
+            return result;
         }
         let result = self.tick_phases(&mut host);
         if let Err(error) = &result {
@@ -1157,6 +1164,16 @@ impl GraphBackend {
     /// Run due ticks, advance the scheduler and check again, then handle piston
     /// actions and deferred connections. Callbacks can add work during each phase.
     fn tick_phases<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
+        self.tick_phases_with_hook(host, |_, _| Ok(()))
+    }
+
+    /// Run the ordinary graph tick with one source-derived computation hook
+    /// after scheduled callbacks and before piston sampling/actions.
+    fn tick_phases_with_hook<'h>(
+        &mut self,
+        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
+        mut before_piston_actions: impl FnMut(&mut Self, &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError>,
+    ) -> Result<(), GraphExecutionError> {
         self.counts.ticks += 1;
         self.future.clock.logical_tick += 1;
         if let Some(host) = host.as_mut() {
@@ -1181,6 +1198,12 @@ impl GraphBackend {
         graph_test_trace!(self, "phase scheduled_ticks_after_advance".into());
         let drain_result = self.drain_current_ticks(host);
         if let Err(error) = drain_result {
+            self.future.clock.phase = GraphPhase::BetweenTicks;
+            self.future.clock.scheduled_advanced = false;
+            return Err(error);
+        }
+
+        if let Err(error) = before_piston_actions(self, host) {
             self.future.clock.phase = GraphPhase::BetweenTicks;
             self.future.clock.scheduled_advanced = false;
             return Err(error);
@@ -1292,6 +1315,9 @@ impl GraphBackend {
 
     /// Run a component's scheduled tick and send any resulting notifications.
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
+        if !self.active_frame_retained_actors.is_empty() && !self.active_frame_retained_nodes.contains(&node) {
+            return Err(self.unsupported(node, "logical frame received an unowned scheduled tick"));
+        }
         if self.fixed_classic.is_some() {
             return self.fixed_classic_tick(node);
         }
@@ -1403,7 +1429,14 @@ impl GraphBackend {
     }
 
     fn update_command_power(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
+        if self.active_frame_command_outputs.contains(&node) {
+            return Ok(());
+        }
         let powered = self.input_strength(node, InputPort::Main) > 0;
+        self.update_command_powered(node, powered)
+    }
+
+    fn update_command_powered(&mut self, node: NodeId, powered: bool) -> Result<(), GraphExecutionError> {
         let (repeating, chain, automatic) = match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Electrical(NodeType::CommandBlock {
                 repeating, chain, automatic, ..
@@ -1951,7 +1984,7 @@ impl GraphBackend {
     /// The general path keeps duplicate notifications. A callback can run another route.
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        if self.fixed_classic.is_some() {
+        if self.fixed_classic.is_some() && self.active_frame_retained_actors.is_empty() {
             return self.fixed_classic_route(route, captured);
         }
         let result = self.deliver_route_inner(route, captured);
@@ -1959,16 +1992,27 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
+        let retained_frame = !self.active_frame_retained_actors.is_empty();
+        if retained_frame
+            && self
+                .active_frame_retained_routes
+                .binary_search_by_key(&route, |occurrence| occurrence.route)
+                .is_err()
+        {
+            return Ok(());
+        }
         let has_logical_sample = self.logical_bud_samples_by_route.get(route.index()).is_some_and(Option::is_some);
         let has_logical_firing = self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_route(route));
-        if !has_logical_sample
+        if !retained_frame
+            && !has_logical_sample
             && !has_logical_firing
             && let Some(kernel) = self.instant_kernel.active.clone()
             && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
         {
             return self.deliver_kernel_route(&kernel.routes[index]);
         }
-        if !has_logical_sample
+        if !retained_frame
+            && !has_logical_sample
             && !has_logical_firing
             && let Some(binding) = self.program.instant_route_binding(route)
         {
@@ -1978,7 +2022,7 @@ impl GraphBackend {
         let classic_range = self.program.classic().route_ranges.get(route.index()).cloned().unwrap_or(0..0);
         let mut classic_cursor = classic_range.start;
         for index in 0..delivery_count {
-            if classic_cursor < classic_range.end {
+            if !retained_frame && classic_cursor < classic_range.end {
                 let binding = self.program.classic().route_entries[classic_cursor];
                 if binding.ordinal as usize == index {
                     classic_cursor += 1;
@@ -1992,6 +2036,14 @@ impl GraphBackend {
                 route,
                 ordinal: index as u32,
             };
+            if retained_frame
+                && self
+                    .active_frame_retained_routes
+                    .binary_search_by_key(&(route, occurrence.ordinal), |row| (row.route, row.ordinal))
+                    .is_err()
+            {
+                continue;
+            }
             self.deliver_callback(route, delivery, captured, Some(occurrence))?;
         }
         Ok(())

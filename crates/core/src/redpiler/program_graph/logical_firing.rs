@@ -275,6 +275,7 @@ mod tests {
             },
             outputs: outputs.into_boxed_slice(),
             firing: Some(plan),
+            retained_cells: Box::new([]),
             retained_effects: Box::new([]),
             declines: Box::new([]),
             timing: None,
