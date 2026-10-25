@@ -42,7 +42,7 @@ fn captured_profile_guards_match_the_resolver_snapshot() {
     let not_guard = GuardId::try_from_index(graph.guards.len()).unwrap();
     graph.guards.push(Guard::Not(cases[0].2));
     let (program, state) = graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let captures = (0..backend.program.sites().len())
         .map(|index| backend.observe_site(SiteId::new(index as u32)))
         .collect::<Vec<_>>();

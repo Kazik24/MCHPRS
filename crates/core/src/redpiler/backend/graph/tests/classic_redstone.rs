@@ -65,7 +65,7 @@ fn optimize(graph: &mut CompileGraph, entry: &EntryState) {
 
 fn backend(graph: CompileGraph) -> GraphBackend {
     let (program, state) = graph.lower().unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 #[test]

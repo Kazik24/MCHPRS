@@ -26,7 +26,7 @@ fn compile(world: &PlotWorld, enabled: bool) -> GraphBackend {
         std::fs::write(directory.join("private-cell.graph.json"), export.to_bytes().unwrap()).unwrap();
     }
     let (program, state) = prepared.graph.lower().unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 fn same_future(general: &GraphBackend, candidate: &GraphBackend) {
@@ -244,9 +244,9 @@ fn instant_wire_node_shared_sources_and_inhibited_fanout_match_native() {
             1
         );
         let (program, state) = prepared.graph.lower().unwrap();
-        let mut candidate = GraphBackend::new(program, state, 0).unwrap();
+        let mut candidate = GraphBackend::new_unactivated(program, state, 0).unwrap();
         let (program, state) = baseline.lower().unwrap();
-        let mut general = GraphBackend::new(program, state, 0).unwrap();
+        let mut general = GraphBackend::new_unactivated(program, state, 0).unwrap();
         let control = BlockPos::new(12, 22, 12);
         candidate.use_block(control).unwrap();
         general.use_block(control).unwrap();

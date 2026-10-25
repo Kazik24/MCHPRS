@@ -65,7 +65,7 @@ impl ClassicReference {
             wire.execution = Default::default();
         }
         let (program, state) = graph.lower().map_err(|error| error.to_string())?;
-        let backend = GraphBackend::new(program, state, 0).map_err(|error| error.to_string())?;
+        let backend = GraphBackend::new_unactivated(program, state, 0).map_err(|error| error.to_string())?;
         let baseline = backend.state.clone();
         let baseline_clock = backend.future.clock;
         Ok(Self {

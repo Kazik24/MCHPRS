@@ -249,7 +249,7 @@ fn chungus_bounded_interpreter_graph_differential() {
     let mut unchecked = None;
     if weighted {
         let started = Instant::now();
-        let mut candidate = GraphBackend::new(graphs[0].program.clone(), graphs[0].state.clone(), 0).unwrap();
+        let mut candidate = GraphBackend::new_unactivated(graphs[0].program.clone(), graphs[0].state.clone(), 0).unwrap();
         unchecked = Some(super::unchecked_classic_anpu::UncheckedProgram::attach_all(&mut candidate));
         compile_seconds.push(started.elapsed().as_secs_f64());
         graphs.push(candidate);

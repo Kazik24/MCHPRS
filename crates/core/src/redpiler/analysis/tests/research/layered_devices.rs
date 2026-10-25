@@ -106,7 +106,7 @@ fn prepare_artifact(world: &PlotWorld, bounds: (BlockPos, BlockPos), budget: usi
 
 fn backend(graph: &CompileGraph) -> GraphBackend {
     let (program, state) = graph.clone().lower().unwrap();
-    let backend = GraphBackend::new(program, state, 0).unwrap();
+    let backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let coverage = backend.execution_coverage();
     assert!(coverage.instant_kernel_nodes <= coverage.piston_nodes + coverage.wire_nodes);
     assert_eq!(coverage.native_nodes, 0);

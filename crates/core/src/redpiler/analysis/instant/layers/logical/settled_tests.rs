@@ -408,7 +408,7 @@ fn settled_equations_sample_dot_mode_without_resource_feedback() {
     equations.retain_classic = true;
     equations.inline_repeaters = true;
     equations.stable_wire_modes = true;
-    assert!(!equations.feedback_resources);
+    assert!(!equations.resource_semantics.uses_feedback());
     equations.query(target, 0).unwrap();
     assert!(
         equations
@@ -417,7 +417,10 @@ fn settled_equations_sample_dot_mode_without_resource_feedback() {
             .iter()
             .any(|input| input.source == LayerInputSource::WireDot { node: wire_node })
     );
-    assert!(!equations.feedback_resources, "wire policy must not enable resource-feedback semantics");
+    assert!(
+        !equations.resource_semantics.uses_feedback(),
+        "wire policy must not enable resource-feedback semantics"
+    );
 }
 
 #[test]
@@ -1052,7 +1055,9 @@ fn computation_feedback_leaf_uses_far_contact_as_canonical_state() {
     equations
         .sources
         .insert(LayerInputSource::State(StateTest::ResourceAt { resource, contact: far }), far_root);
-    equations.feedback_resources = true;
+    equations.resource_semantics = ResourceSemantics::Feedback {
+        reject_unrepresented_destinations: false,
+    };
     assert_eq!(
         equations.source_value(near_source).unwrap(),
         near_root,
@@ -1177,7 +1182,7 @@ fn one_shot_boundary_emits_fired_cut_and_keeps_reset_observers_live() {
         .map(|(&resource, contract)| (resource, contract.clone()))
         .expect("counter fixture has a recognized shared-Far cell resource");
 
-    equations.one_shot_firing = true;
+    equations.resource_semantics = ResourceSemantics::OneShot;
     let presence = equations.one_shot_source_presence(resource).unwrap().unwrap();
     let fired_sources = equation_inputs(&equations.reduced, presence);
     let expected_fired: FxHashSet<_> = owners.iter().map(|&actor| LayerInputSource::InstantFired { actor }).collect();
@@ -1593,7 +1598,9 @@ fn candidate_torch_source_inlines_the_main_input_inverse() {
 
     let mut equations = Equations::new(&graph, &monitor).unwrap();
     equations.retain_classic = true;
-    equations.feedback_resources = true;
+    equations.resource_semantics = ResourceSemantics::Feedback {
+        reject_unrepresented_destinations: false,
+    };
     let root = equations
         .source(LayerInputSource::SourceAbove {
             site: torch_site,

@@ -348,7 +348,9 @@ impl<'a> SignalTracer<'a> {
         };
         let saved_dot = matches!(self.graph.nodes[node.index()].state, ComponentState::Wire(saved) if crate::redstone::wire::is_dot(saved));
         if saved_dot && !self.stable_wire_modes {
-            return Err("directional corridor output depends on dot/cross state".into());
+            return Err(ConstructionError::Unsupported(
+                "directional corridor output depends on dot/cross state".into(),
+            ));
         }
         // Native neighbor updates preserve cross mode; player edits invalidate the compiled graph.
         let dot_mode = if saved_dot {

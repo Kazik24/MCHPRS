@@ -115,7 +115,7 @@ fn private_proxies_decline_uncertain_reset_ingress_and_are_idempotent() {
 fn private_resource_checks_match_general_checks_for_every_logical_availability() {
     let (graph, _) = proxy_graph("adder_1bit");
     let (program, state) = graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let proxies = backend.program.instant_proxies().to_vec();
     let availability = [
         PistonAvailability::Ready,
@@ -290,8 +290,8 @@ fn private_proxy_routes_refine_all_adder_states_and_pending_reset_obligations() 
     let (program, state) = graph.lower().unwrap();
     for phase in 0..32 {
         for &route in &routes {
-            let mut general = GraphBackend::new(general_program.clone(), general_state.clone(), 0).unwrap();
-            let mut proxy = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+            let mut general = GraphBackend::new_unactivated(general_program.clone(), general_state.clone(), 0).unwrap();
+            let mut proxy = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
             for backend in [&mut general, &mut proxy] {
                 backend.test_recording = true;
                 for (index, actor) in backend.state.pistons.iter_mut().enumerate() {

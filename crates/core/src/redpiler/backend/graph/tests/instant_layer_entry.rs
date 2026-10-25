@@ -45,7 +45,7 @@ fn turbo_requests_retain_the_actual_captured_update_route() {
     let monitor = TaskMonitor::default();
     let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
     let (program, state) = prepared.graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let wire = backend.positions[&CONTROL];
     let route = backend.wire_plan(wire).turbo_route.unwrap();
     backend.use_block(source).unwrap();
@@ -184,7 +184,7 @@ fn parser_admits_a_private_reset_cell_without_synthetic_contracts() {
     // Ordinary Graph and native execution remain independent oracles; this evaluates
     // only the new Boolean artifact and does not execute a hidden wire/piston simulator.
     let (program, state) = prepared.graph.clone().lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let mut native = direct_cell_world();
     let trigger = Step::SetLever {
         position: CONTROL,
@@ -370,7 +370,7 @@ fn downstream_reset_is_derived_from_restored_input_and_requires_its_update() {
         );
 
         let (program, state) = source.clone().lower().unwrap();
-        let mut backend = GraphBackend::new(program, state, 0).unwrap();
+        let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
         let mut native = chain_world(dust);
         native.set_block(second.offset(BlockFace::Top), Block::Air);
         let mut projected = world;
@@ -547,7 +547,7 @@ fn four_cell_wave_executes_without_internal_turbo_and_preserves_reset() {
     assert_eq!(program.instant_kernels().len(), 1);
     assert_eq!(program.instant_kernels()[0].actors.len(), 4);
     assert_eq!(program.instant_kernels()[0].wires.len(), 6);
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     backend.use_block(CONTROL).unwrap();
     native_step(
         &mut native,
@@ -592,7 +592,7 @@ fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins(
         assert!(prepared.graph.plans.instant.layers.is_none());
         assert_eq!(prepared.graph.plans.instant_events.len(), 1);
         let (program, state) = prepared.graph.lower().unwrap();
-        let mut backend = GraphBackend::new(program, state, 0).unwrap();
+        let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
         assert_eq!(backend.program.instant_kernels().len(), 1);
         let positions: Vec<_> = backend.program.sites().iter().map(|site| site.position).collect();
         backend.use_block(CONTROL).unwrap();
@@ -681,7 +681,7 @@ fn check_composed_chain(dust: bool) {
     assert!(stale.validate().is_err(), "compact programs cannot be detached from their layer evidence");
     let (program, state) = prepared.graph.clone().lower().unwrap();
     assert_eq!(program.instant_kernels().len(), 1, "the certified region must lower to an executable");
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     native_step(
         &mut native,
         Step::SetLever {

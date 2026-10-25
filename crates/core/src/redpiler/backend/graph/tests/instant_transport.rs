@@ -18,8 +18,8 @@ fn transition_programs_replay_arbitrary_entry_profiles_and_preserve_boundary_ord
     let (program, initial) = graph.lower().unwrap();
     let (reference_program, _) = exact.lower().unwrap();
     let sources = [BlockPos::new(42, 34, 42), BlockPos::new(44, 34, 43)].map(|position| program.position_index()[&position]);
-    let mut candidate = GraphBackend::new(program, initial.clone(), 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program, initial.clone(), 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial, 0).unwrap();
     for profile in 0..8 {
         for repeat in 0..2 {
             let before = candidate.execution_counts();
@@ -174,8 +174,8 @@ fn transition_guard_ignores_wire_captured_only_for_neighbor_discovery() {
     exact.plans.instant_transition_programs = Default::default();
     let (program, initial) = graph.lower().unwrap();
     let (exact_program, _) = exact.lower().unwrap();
-    let mut candidate = GraphBackend::new(program.clone(), initial.clone(), 0).unwrap();
-    let mut reference = GraphBackend::new(exact_program, initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(exact_program, initial, 0).unwrap();
     let root_node = program.position_index()[&BlockPos::new(43, 34, 42)];
 
     for backend in [&mut candidate, &mut reference] {
@@ -230,8 +230,8 @@ fn value_regions_skip_settled_queries_but_recheck_each_walk_and_preserve_boundar
     let (program, initial) = graph.lower().unwrap();
     let (reference_program, _) = ordinary.lower().unwrap();
     let source = program.position_index()[&BlockPos::new(42, 34, 42)];
-    let mut candidate = GraphBackend::new(program, initial.clone(), 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program, initial.clone(), 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial, 0).unwrap();
     for powered in [false, true, false, true] {
         for unsettled in [false, true] {
             for root in 0..3 {
@@ -299,8 +299,8 @@ fn value_region_cache_reuses_unchanged_state_and_invalidates_power_and_shape_wri
     ordinary.plans.instant_transition_programs = Default::default();
     let (program, initial) = graph.lower().unwrap();
     let (reference_program, _) = ordinary.lower().unwrap();
-    let mut candidate = GraphBackend::new(program, initial.clone(), 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program, initial.clone(), 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial, 0).unwrap();
     for phase in 0..5 {
         let before = candidate.execution_counts();
         for backend in [&mut candidate, &mut reference] {
@@ -377,8 +377,8 @@ fn compact_wire_captures_require_all_inbound_slot_proofs_and_preserve_full_captu
     let net = graph.plans.instant_transport.nets[0].clone();
     let (program, initial) = graph.lower().unwrap();
     let (reference_program, _) = ordinary.lower().unwrap();
-    let mut candidate = GraphBackend::new(program, initial.clone(), 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program, initial.clone(), 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial, 0).unwrap();
     for backend in [&mut candidate, &mut reference] {
         backend.set_test_recording(true);
         for (index, wire) in net.wires.iter().enumerate() {
@@ -511,7 +511,7 @@ fn stable_logic_adder11_preserves_all_pinned_output_windows() {
     {
         let mut native = circuit.build();
         let mut projected = circuit.build();
-        let mut candidate = GraphBackend::new(program.clone(), initial.clone(), 0).unwrap();
+        let mut candidate = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
         let mut steps = case_steps(&circuit, case, false, true);
         let response = steps.len();
         steps.extend(std::iter::repeat_n(Step::Tick, 16));
@@ -545,7 +545,7 @@ fn stable_logic_evaluates_independent_inputs_as_one_combinational_program() {
     let sources = [BlockPos::new(42, 34, 42), BlockPos::new(44, 34, 43)].map(|position| program.position_index()[&position]);
     for a in [false, true] {
         for b in [false, true] {
-            let mut backend = GraphBackend::new(program.clone(), initial.clone(), 0).unwrap();
+            let mut backend = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
             for (source, powered) in sources.into_iter().zip([a, b]) {
                 let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
                     unreachable!()
@@ -593,8 +593,8 @@ fn stable_logic_cached_updates_match_full_solves_and_invalidate_on_wire_writes()
     let net = graph.plans.instant_transport.nets[0].clone();
     let (program, initial) = graph.lower().unwrap();
     let sources = [BlockPos::new(42, 34, 42), BlockPos::new(44, 34, 43)].map(|position| program.position_index()[&position]);
-    let mut cached = GraphBackend::new(program.clone(), initial.clone(), 0).unwrap();
-    let mut full = GraphBackend::new(program, initial, 0).unwrap();
+    let mut cached = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
+    let mut full = GraphBackend::new_unactivated(program, initial, 0).unwrap();
     cached.set_test_recording(true);
     full.set_test_recording(true);
     for step in 0..128usize {
@@ -700,7 +700,7 @@ fn stable_logic_changes_only_expressions_reachable_from_changed_inputs() {
     let (program, initial) = prepared.graph.lower().unwrap();
     let source = program.position_index()[&BlockPos::new(42, 34, 42)];
     let root = program.position_index()[&BlockPos::new(43, 34, 42)];
-    let mut backend = GraphBackend::new(program, initial, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, initial, 0).unwrap();
     for powered in [true, false, true, false] {
         let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
             unreachable!()
@@ -736,8 +736,8 @@ fn signal_channels_execute_exact_ordered_transitions_and_reject_stale_entries() 
         for new in 0..2 {
             for root in 0..net.wires.len() {
                 for pose in 0..8 {
-                    let mut reference = GraphBackend::new(reference_program.clone(), initial.clone(), 0).unwrap();
-                    let mut candidate = GraphBackend::new(candidate_program.clone(), initial.clone(), 0).unwrap();
+                    let mut reference = GraphBackend::new_unactivated(reference_program.clone(), initial.clone(), 0).unwrap();
+                    let mut candidate = GraphBackend::new_unactivated(candidate_program.clone(), initial.clone(), 0).unwrap();
                     for backend in [&mut reference, &mut candidate] {
                         backend.set_test_recording(true);
                         let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
@@ -773,8 +773,8 @@ fn signal_channels_execute_exact_ordered_transitions_and_reject_stale_entries() 
     }
     assert!(executed_ops > 0);
 
-    let mut reference = GraphBackend::new(reference_program, initial.clone(), 0).unwrap();
-    let mut candidate = GraphBackend::new(candidate_program, initial, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial.clone(), 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, initial, 0).unwrap();
     let node = net.wires[0].node;
     let site = candidate.component_sites[node.index()].unwrap();
     let mut captured = candidate.observe_wire_site(site).unwrap();
@@ -830,9 +830,9 @@ fn typed_instant_drives_match_general_reads_across_live_adder_states() {
     let mut ordinary = prepared.graph.clone();
     ordinary.clear_execution_plans();
     let (program, state) = ordinary.lower().unwrap();
-    let mut reference = GraphBackend::new(program, state, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let (program, state) = prepared.graph.lower().unwrap();
-    let mut candidate = GraphBackend::new(program, state, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let wires: Vec<_> = candidate.program.wires().iter().map(|plan| plan.node).collect();
     let mut compared = 0;
     for strength in 0..16u8 {
@@ -888,8 +888,8 @@ fn dense_transport_preserves_unsettled_wire_strengths_and_request_provenance() {
     let mut invocations = 0;
     for packed in 0..4096u32 {
         for root in 0..3 {
-            let mut reference = GraphBackend::new(reference_program.clone(), initial.clone(), 0).unwrap();
-            let mut candidate = GraphBackend::new(candidate_program.clone(), initial.clone(), 0).unwrap();
+            let mut reference = GraphBackend::new_unactivated(reference_program.clone(), initial.clone(), 0).unwrap();
+            let mut candidate = GraphBackend::new_unactivated(candidate_program.clone(), initial.clone(), 0).unwrap();
             for backend in [&mut reference, &mut candidate] {
                 backend.set_test_recording(true);
                 for (index, &node) in wires.iter().enumerate() {
@@ -928,8 +928,8 @@ fn compiled_signal_program_preserves_all_strengths_live_pistons_and_ordered_futu
         let old: Vec<_> = (0..net.wires.len()).map(|wire| ((packed >> (4 * wire)) & 15) as u8).collect();
         for root in 0..net.wires.len() {
             let transcript = compiler.compile(&net, root as u32, &old, &vec![0; net.wires.len()], &monitor).unwrap();
-            let mut reference = GraphBackend::new(program.clone(), initial.clone(), 0).unwrap();
-            let mut candidate = GraphBackend::new(program.clone(), initial.clone(), 0).unwrap();
+            let mut reference = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
+            let mut candidate = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
             for backend in [&mut reference, &mut candidate] {
                 backend.set_test_recording(true);
                 // The transcript must not freeze the reference generator's receiver pose.
@@ -980,7 +980,7 @@ fn dense_transport_preserves_adder_fifo_during_reset_and_native_handoff() {
     reference.plans.instant_transition_programs = Default::default();
     reference.plans.signal_channels = Default::default();
     let (program, state) = reference.lower().unwrap();
-    let mut reference = GraphBackend::new(program, state, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let mut candidate = GraphBackend::from_lowered(prepared.lower(&monitor).unwrap(), &monitor).unwrap();
     reference.set_test_recording(true);
     candidate.set_test_recording(true);

@@ -60,18 +60,7 @@ pub(super) fn lower_deferred_sources(
         }
         equations.deferred_parent = Some(source);
         equations.expanded.clear();
-        let root = equations.source_value(source).map_err(|error| match error {
-            ConstructionError::BudgetExceeded => {
-                SourceLoweringError::BudgetExceeded("logical source equation exceeded its construction budget".into())
-            }
-            ConstructionError::Invalid(message) if message.starts_with("logical feedback requires a register:") => {
-                SourceLoweringError::Unsupported(format!("logical source equation {source:?}: {message}"))
-            }
-            ConstructionError::Invalid(message) if is_semantic_unsupported(&message) => {
-                SourceLoweringError::Unsupported(format!("logical source equation {source:?}: {message}"))
-            }
-            ConstructionError::Invalid(message) => SourceLoweringError::Fatal(format!("logical source equation {source:?}: {message}")),
-        })?;
+        let root = equations.source_value(source).map_err(|error| map_source_error(source, error))?;
         let reachable = reachable_sources(equations, root)?;
         let children = equations
             .deferred_children
@@ -521,7 +510,22 @@ fn lower_template(
 fn map_lowering_error(context: &str, error: ConstructionError) -> SourceLoweringError {
     match error {
         ConstructionError::BudgetExceeded => SourceLoweringError::BudgetExceeded(format!("lowering {context} exceeded the logical proof budget")),
+        ConstructionError::Unsupported(message) => SourceLoweringError::Fatal(format!("lowering {context}: {message}")),
+        ConstructionError::FeedbackRequiresRegister(source) => {
+            SourceLoweringError::Fatal(format!("lowering {context}: logical feedback requires a register: {source:?}"))
+        }
         ConstructionError::Invalid(message) => SourceLoweringError::Fatal(format!("lowering {context}: {message}")),
+    }
+}
+
+fn map_source_error(source: LayerInputSource, error: ConstructionError) -> SourceLoweringError {
+    match error {
+        ConstructionError::BudgetExceeded => SourceLoweringError::BudgetExceeded("logical source equation exceeded its construction budget".into()),
+        ConstructionError::Unsupported(message) => SourceLoweringError::Unsupported(format!("logical source equation {source:?}: {message}")),
+        ConstructionError::FeedbackRequiresRegister(feedback) => SourceLoweringError::Unsupported(format!(
+            "logical source equation {source:?}: logical feedback requires a register: {feedback:?}"
+        )),
+        ConstructionError::Invalid(message) => SourceLoweringError::Fatal(format!("logical source equation {source:?}: {message}")),
     }
 }
 
@@ -606,15 +610,6 @@ fn sorted_sources(sources: &FxHashSet<LayerInputSource>) -> Vec<LayerInputSource
 fn sort_sources(sources: &mut [LayerInputSource]) {
     // Keep the established textual order while formatting each key once.
     sources.sort_by_cached_key(|source| format!("{source:?}"));
-}
-
-fn is_semantic_unsupported(message: &str) -> bool {
-    message.starts_with("logical cell destination requires an explicit transfer equation:")
-        || message.starts_with("unsupported logical source ")
-        || message == "logical repeater equation exceeds its inline depth bound"
-        || message == "logical comparator has an unsupported live direct override"
-        || message == "logical comparator has an unsupported live far override"
-        || message == "directional corridor output depends on dot/cross state"
 }
 
 #[cfg(test)]
@@ -781,9 +776,7 @@ mod tests {
             pending: FxHashSet::default(),
             pending_repeaters: FxHashSet::default(),
             retain_classic: true,
-            feedback_resources: false,
-            reject_unrepresented_destinations: false,
-            one_shot_firing: false,
+            resource_semantics: ResourceSemantics::default(),
             fired_inputs: FxHashMap::default(),
             firing_resources: FxHashMap::default(),
             one_shot_contracts: FxHashMap::default(),
@@ -947,19 +940,35 @@ mod tests {
     }
 
     #[test]
-    fn only_explicitly_unmodeled_semantics_become_declines() {
-        assert!(is_semantic_unsupported(
-            "logical cell destination requires an explicit transfer equation: ResourceId(1) at ContactId(2)"
+    fn semantic_unsupported_category_does_not_depend_on_diagnostic_wording() {
+        assert!(matches!(
+            map_source_error(source(21), ConstructionError::Unsupported("any diagnostic wording".into())),
+            SourceLoweringError::Unsupported(_)
         ));
-        assert!(is_semantic_unsupported("logical comparator has an unsupported live direct override"));
-        assert!(is_semantic_unsupported("unsupported logical source NodeId(7): SomeElectricalKind"));
-        assert!(is_semantic_unsupported("directional corridor output depends on dot/cross state"));
-        assert!(!is_semantic_unsupported(
-            "directional corridor output depends on dot/cross state: malformed corridor"
-        ));
-        assert!(!is_semantic_unsupported("logical expression references a missing input"));
-        assert!(!is_semantic_unsupported("logical input is not a component"));
-        assert!(!is_semantic_unsupported("logical resource ID is invalid"));
+        for message in [
+            "missing input",
+            "input is not a component",
+            "resource ID is invalid",
+            "logical cell destination requires an explicit transfer equation: diagnostic text",
+            "unsupported logical source NodeId(7): SomeElectricalKind",
+        ] {
+            assert!(matches!(
+                map_source_error(source(21), ConstructionError::Invalid(message.into())),
+                SourceLoweringError::Fatal(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn unresolved_feedback_declines_with_a_stable_readable_reason() {
+        let error = map_source_error(source(21), ConstructionError::FeedbackRequiresRegister(source(22)));
+        let SourceLoweringError::Unsupported(message) = error else {
+            panic!("unresolved feedback must decline logical lowering");
+        };
+        assert_eq!(
+            message,
+            "logical source equation State(ResourceEnabled(ResourceId(21))): logical feedback requires a register: State(ResourceEnabled(ResourceId(22)))"
+        );
     }
 
     #[test]

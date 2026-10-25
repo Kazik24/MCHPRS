@@ -43,7 +43,7 @@ fn fixture() -> CompileGraph {
 
 fn backend(graph: CompileGraph) -> GraphBackend {
     let (program, state) = graph.lower().unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 fn strength(backend: &mut GraphBackend, position: BlockPos, strength: u8) {
@@ -193,7 +193,7 @@ fn chungus_fixed_queries_paired_execution() {
     if matches!(comparison.as_str(), "callbacks" | "combined") {
         general_program = general_program.without_fixed_wire_callbacks();
     }
-    let mut general = GraphBackend::new(general_program, compiled.state.clone(), 0).unwrap();
+    let mut general = GraphBackend::new_unactivated(general_program, compiled.state.clone(), 0).unwrap();
     general.test_recorder.general_pending_queries = matches!(comparison.as_str(), "pending" | "combined");
     let mut engines = [general, compiled];
     let mut activation = [Duration::ZERO; 2];

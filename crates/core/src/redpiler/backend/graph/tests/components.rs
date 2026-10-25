@@ -518,7 +518,7 @@ fn contact_resource_backend() -> GraphBackend {
     }
     .lower()
     .unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
@@ -607,7 +607,7 @@ fn backend_with_unrelated_power_links(unrelated: usize) -> GraphBackend {
     }
     .lower()
     .unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 #[test]
@@ -4122,7 +4122,7 @@ fn site_geometry_guards_use_compiled_profile_facts() {
     }
     .lower()
     .unwrap();
-    let backend = GraphBackend::new(program, state, 0).unwrap();
+    let backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
 
     assert!(!backend.guard_matches(GuardId::new(0), None));
 }

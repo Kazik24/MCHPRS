@@ -92,9 +92,9 @@ fn every_instant_adder_power_channel_matches_across_strengths_contacts_and_saved
     )
     .unwrap();
     let (program, state) = graph.lower().unwrap();
-    let mut exact = GraphBackend::new(program, state, 0).unwrap();
+    let mut exact = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let (program, state) = specialized.lower().unwrap();
-    let mut optimized = GraphBackend::new(program, state, 0).unwrap();
+    let mut optimized = GraphBackend::new_unactivated(program, state, 0).unwrap();
     for wire_level in 0u8..16 {
         for observer_level in 0u8..16 {
             for phase in 0..4 {
@@ -166,7 +166,7 @@ fn compiled_adder_wire_transfers_match_general_queries_before_and_after_contact_
             .all(|wire| wire.execution.query_facts.unwrap().transfer.is_some())
     );
     let (program, state) = prepared.graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let plans = backend.program.wires().to_vec();
     let mut comparisons = 0;
     for strength in 0..16 {

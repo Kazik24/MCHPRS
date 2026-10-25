@@ -663,7 +663,7 @@ impl TransportReference {
         graph.clear_execution_plans();
         let (program, state) = graph.lower().map_err(|error| error.to_string())?;
         Ok(Self {
-            backend: GraphBackend::new(program, state, 0).map_err(|error| error.to_string())?,
+            backend: GraphBackend::new_unactivated(program, state, 0).map_err(|error| error.to_string())?,
         })
     }
 

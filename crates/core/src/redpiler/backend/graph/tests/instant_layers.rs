@@ -150,7 +150,7 @@ fn causal_layer_building_is_read_only_and_lowering_checks_its_certificates() {
     source.plans.instant.layers = Some(rebuilt);
     source.validate().unwrap();
     let lowered = source.lower().unwrap();
-    let backend = GraphBackend::new(lowered.0, lowered.1, 0).unwrap();
+    let backend = GraphBackend::new_unactivated(lowered.0, lowered.1, 0).unwrap();
     assert!(
         backend.execution_coverage().instant_kernel_nodes > 0,
         "lowering installs the newly supported certificates"

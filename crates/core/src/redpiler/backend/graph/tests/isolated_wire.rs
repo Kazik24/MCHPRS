@@ -45,7 +45,7 @@ fn backend(mut graph: CompileGraph, isolated: bool) -> GraphBackend {
         }
     }
     let (program, state) = graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     backend.set_test_recording(true);
     backend
 }

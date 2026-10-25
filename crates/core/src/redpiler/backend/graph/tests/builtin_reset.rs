@@ -148,8 +148,8 @@ fn builtin_reset_notifications_and_imported_ticks_match_every_clock_transition()
             for direction in std::iter::once(None).chain(BlockFace::values().map(Some)) {
                 for captured_power in [None, Some(false), Some(true)] {
                     for pending_case in 0..5 {
-                        let mut general = GraphBackend::new(general_program.clone(), general_state.clone(), 0).unwrap();
-                        let mut builtin = GraphBackend::new(builtin_program.clone(), builtin_state.clone(), 0).unwrap();
+                        let mut general = GraphBackend::new_unactivated(general_program.clone(), general_state.clone(), 0).unwrap();
+                        let mut builtin = GraphBackend::new_unactivated(builtin_program.clone(), builtin_state.clone(), 0).unwrap();
                         for backend in [&mut general, &mut builtin] {
                             let ComponentState::Electrical(state) = &mut backend.state.components[observer.index()] else {
                                 unreachable!()

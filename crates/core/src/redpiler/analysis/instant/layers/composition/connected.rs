@@ -21,6 +21,8 @@ impl From<ConstructionError> for Failure {
     fn from(error: ConstructionError) -> Self {
         match error {
             ConstructionError::BudgetExceeded => Self::BudgetExceeded,
+            ConstructionError::Unsupported(message) => Self::Invalid(message),
+            ConstructionError::FeedbackRequiresRegister(source) => Self::Invalid(format!("logical feedback requires a register: {source:?}")),
             ConstructionError::Invalid(message) => Self::Invalid(message),
         }
     }

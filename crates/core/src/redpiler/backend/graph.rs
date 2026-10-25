@@ -542,7 +542,12 @@ impl GraphBackend {
         }
     }
 
-    pub(crate) fn new(program: CircuitProgram, state: CircuitState, logical_tick: u64) -> Result<Self, GraphBackendError> {
+    /// Create a bare Graph executor without production activation.
+    ///
+    /// The returned executor remains usable for ordinary Graph execution. Use `from_lowered`
+    /// when activation is required: it imports ticks, installs the logical firing/device
+    /// runtimes, and schedules initial command ticks.
+    pub(crate) fn new_unactivated(program: CircuitProgram, state: CircuitState, logical_tick: u64) -> Result<Self, GraphBackendError> {
         let positions = program.position_index();
         Self::new_with_positions(program, state, logical_tick, positions)
     }

@@ -508,7 +508,7 @@ fn stable_wire_mode_honors_saved_dot_and_cross_without_weakening_legacy_queries(
             &mut legacy_builder,
         );
         if crate::redstone::wire::is_dot(saved) {
-            assert!(matches!(legacy, Err(ConstructionError::Invalid(message)) if message.contains("dot/cross")));
+            assert!(matches!(legacy, Err(ConstructionError::Unsupported(message)) if message.contains("dot/cross")));
         }
         let mut stable_builder = LayerBuilder::new(&monitor).unwrap();
         let root = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample)

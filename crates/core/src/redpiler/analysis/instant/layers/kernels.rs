@@ -89,6 +89,10 @@ fn lower_pull_waves(
             match composition::corridors::certify(graph, catalog, component, power, monitor) {
                 Ok(arrivals) => arrivals,
                 Err(ConstructionError::BudgetExceeded) => continue,
+                Err(ConstructionError::Unsupported(message)) => return Err(message),
+                Err(ConstructionError::FeedbackRequiresRegister(source)) => {
+                    return Err(format!("logical feedback requires a register: {source:?}"));
+                }
                 Err(ConstructionError::Invalid(message)) => return Err(message),
             }
         } else {

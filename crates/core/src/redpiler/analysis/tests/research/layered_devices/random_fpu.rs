@@ -392,7 +392,7 @@ fn random_fpu(require_activity: bool, comparison: CpuComparison) {
     println!("FPU: one kernel, {actors} actors, {pins} reduced pins, {constant_entries} single-pin entries; compile {compile_seconds:.3}s");
     let make = |graph: &CompileGraph| {
         let (program, state) = graph.clone().lower().unwrap();
-        let mut backend = GraphBackend::new(program, state, 0).unwrap();
+        let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
         backend.set_test_recording(false);
         backend
     };

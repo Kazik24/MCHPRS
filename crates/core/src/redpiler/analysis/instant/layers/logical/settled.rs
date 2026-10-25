@@ -153,7 +153,7 @@ fn frame_retained_output_cells(graph: &CompileGraph) -> Option<(Vec<PowerTarget>
                     }
                     let use_ = cell.uses.iter().find(|use_| {
                         use_.actor == actor
-                            && matches!(use_.reset, CellReset::Observer { .. })
+                            && use_.reset.observer().is_some()
                             && use_.retraction.transfer.is_some_and(|transfer| transfer.resource == resource.resource)
                     });
                     let Some(use_) = use_ else {
@@ -273,7 +273,7 @@ fn retained_cell_effect_is_owned(graph: &CompileGraph, catalog: &BoundaryCatalog
 }
 
 fn retained_cell_reset_conductor_is_owned(graph: &CompileGraph, use_: &CellUse, link: PowerLink) -> bool {
-    let CellReset::Observer { node: reset, .. } = use_.reset else {
+    let Some(reset) = use_.reset.observer() else {
         return false;
     };
     let PowerTarget::Conductor { site, include_dust } = link.to else {
@@ -337,8 +337,7 @@ fn retained_cell_observation_is_owned(graph: &CompileGraph, cell: &CellContract,
         }),
         BoundaryPortKind::ObserverWatch { observer, site } => cell.uses.iter().any(|cell_use| {
             let piston = &graph.pistons[cell_use.actor.index()];
-            matches!(cell_use.reset, CellReset::Observer { node, .. } if node == observer)
-                && graph.sites[site.index()].source == SiteSource::Contact(piston.base)
+            cell_use.reset.observer() == Some(observer) && graph.sites[site.index()].source == SiteSource::Contact(piston.base)
         }),
         BoundaryPortKind::GuardSite { site, .. } => {
             let source = graph.sites[site.index()].source;
@@ -347,10 +346,10 @@ fn retained_cell_observation_is_owned(graph: &CompileGraph, cell: &CellContract,
                     let piston = &graph.pistons[cell_use.actor.index()];
                     [piston.base, piston.near, piston.far].contains(&contact)
                 }),
-                SiteSource::Component(node) => cell.uses.iter().any(|cell_use| {
-                    node == graph.pistons[cell_use.actor.index()].node
-                        || matches!(cell_use.reset, CellReset::Observer { node: observer, .. } if node == observer)
-                }),
+                SiteSource::Component(node) => cell
+                    .uses
+                    .iter()
+                    .any(|cell_use| node == graph.pistons[cell_use.actor.index()].node || cell_use.reset.observer() == Some(node)),
                 SiteSource::Constant(_) => false,
             }
         }
@@ -463,7 +462,7 @@ pub(super) fn first_single_lamp_candidate(graph: &CompileGraph) -> Result<Option
             continue;
         }
         let use_ = &cell.uses[0];
-        if !matches!(use_.reset, CellReset::Observer { .. }) || use_.retraction.transfer.is_none() {
+        if use_.reset.observer().is_none() || use_.retraction.transfer.is_none() {
             continue;
         }
         let owner = BoundaryOwner::Cell(u32::try_from(cell_index).map_err(|_| "too many catalog cells")?);
@@ -516,7 +515,7 @@ fn supports_single_lamp_cell(graph: &CompileGraph, circuit: &SettledCircuit, act
     if firing.uses.len() != 1 || firing.uses[0].actor != actor || firing.uses[0].effect.transfer.is_none() {
         return false;
     }
-    if !matches!(firing.uses[0].reset, CellReset::Observer { .. }) {
+    if firing.uses[0].reset.observer().is_none() {
         return false;
     }
     let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
@@ -1120,8 +1119,12 @@ fn compile_boundary(
     equations.stable_wire_modes = kind == BoundaryKind::Settled;
     equations.defer_sources = true;
     {
-        equations.one_shot_firing = kind == BoundaryKind::OneShot;
-        if kind == BoundaryKind::OneShot {
+        equations.resource_semantics = if kind == BoundaryKind::OneShot {
+            ResourceSemantics::OneShot
+        } else {
+            ResourceSemantics::Settled
+        };
+        if equations.resource_semantics.uses_one_shot_firing() {
             // Reset pulses remain live boundary inputs until the event adapter proves
             // the exact completion edge that rearms each actor.
             equations.resets.clear();
@@ -1193,7 +1196,7 @@ fn compile_boundary_equations(
     }
 
     {
-        if equations.one_shot_firing {
+        if equations.resource_semantics.uses_one_shot_firing() {
             // Lower once to discover the feedback owners reachable from the requested
             // roots. Each eligibility batch can itself reveal another layer of owners,
             // so lower the complete root set again after every batch before deciding
@@ -1253,7 +1256,7 @@ fn compile_boundary_equations(
             lower_output_roots(equations, &mut outputs, monitor)?;
         }
     }
-    let mut firing = if equations.one_shot_firing && !equations.fired_inputs.is_empty() {
+    let mut firing = if equations.resource_semantics.uses_one_shot_firing() && !equations.fired_inputs.is_empty() {
         let catalog = graph.plans.instant.boundaries.as_ref().ok_or("missing one-shot cell boundaries")?;
         let mut actors: Vec<_> = equations.fired_inputs.keys().copied().collect();
         actors.sort_unstable();
@@ -1334,7 +1337,7 @@ fn compile_boundary_equations(
                 .ok_or_else(|| format!("reduced program lost fired input for {:?}", use_.actor))?;
         }
     }
-    let retained_effects = if equations.one_shot_firing {
+    let retained_effects = if equations.resource_semantics.uses_one_shot_firing() {
         firing
             .as_ref()
             .map(|plan| logical_action_retained_effects(graph, plan, monitor))
@@ -1519,8 +1522,9 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
     equations.retain_classic = true;
     equations.inline_repeaters = true;
-    equations.feedback_resources = true;
-    equations.reject_unrepresented_destinations = true;
+    equations.resource_semantics = ResourceSemantics::Feedback {
+        reject_unrepresented_destinations: true,
+    };
     equations.stable_wire_modes = true;
     assume_computation_frame_observers_off(&mut equations);
     // This test-only extractor deliberately asks whether the local stationary lane
@@ -1699,7 +1703,9 @@ pub(crate) fn diagnostic_computation_failures(
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
     equations.retain_classic = true;
     equations.inline_repeaters = true;
-    equations.feedback_resources = true;
+    equations.resource_semantics = ResourceSemantics::Feedback {
+        reject_unrepresented_destinations: false,
+    };
     equations.stable_wire_modes = true;
     equations.diagnostic_unknown_resources = true;
     let mut failures = Vec::new();

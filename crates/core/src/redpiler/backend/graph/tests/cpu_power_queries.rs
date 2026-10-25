@@ -132,8 +132,8 @@ fn rilax_o6_main_quasi_power_queries_match_recursive_reads_at_each_cut() {
         "the global power plan should lower ordinary roots to live leaves, not only fallback inputs"
     );
 
-    let mut compiled = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
-    let mut recursive = GraphBackend::new(program, state, 0).unwrap();
+    let mut compiled = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+    let mut recursive = GraphBackend::new_unactivated(program, state, 0).unwrap();
     recursive.use_general_cpu_power_queries();
 
     // These are separate live samples, so changing a BUD payload or wire strength

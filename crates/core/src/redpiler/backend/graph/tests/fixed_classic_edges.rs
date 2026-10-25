@@ -357,7 +357,7 @@ fn fixed_classic_attachment_rejects_changed_certified_sides_but_accepts_new_powe
         RedstoneWireSide::None
     };
     assert!(matches!(
-        GraphBackend::new(candidate.program.clone(), changed, 0),
+        GraphBackend::new_unactivated(candidate.program.clone(), changed, 0),
         Err(GraphBackendError::UnsupportedComponent {
             kind: "fixed classic wire sides differ from certified entry",
             ..
@@ -368,7 +368,7 @@ fn fixed_classic_attachment_rejects_changed_certified_sides_but_accepts_new_powe
         panic!("wire state")
     };
     wire.power = 11;
-    assert!(GraphBackend::new(candidate.program.clone(), power_only, 0).is_ok());
+    assert!(GraphBackend::new_unactivated(candidate.program.clone(), power_only, 0).is_ok());
 }
 
 #[test]

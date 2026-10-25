@@ -1444,8 +1444,8 @@ fn unchecked_tape_rebinds_receiver_capture_and_uses_live_pending() {
     let program = template.program.clone();
     let tapes = TapeProgram::attach(&mut template);
     for (powered, pending) in [(true, false), (false, false), (true, true)] {
-        let mut native = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
-        let mut replay = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        let mut native = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+        let mut replay = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
         for backend in [&mut native, &mut replay] {
             let ComponentState::Electrical(lamp_state) = &mut backend.state.components[lamp.index()] else {
                 unreachable!()
@@ -1480,7 +1480,7 @@ fn unchecked_tape_source_properties_guard_replay() {
     let program = template.program.clone();
     let tapes = TapeProgram::attach(&mut template);
     for strength in [0, 0, 1] {
-        let mut backend = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        let mut backend = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
         let ComponentState::Electrical(source_state) = &mut backend.state.components[source.index()] else {
             unreachable!()
         };

@@ -324,7 +324,7 @@ fn boundary_only_pipeline_preserves_both_adders_state_outputs_and_pending_work()
             let mut native = circuit.build();
             let mut projected = circuit.build();
             let (program, state) = prepared.graph.clone().lower().unwrap();
-            let mut backend = GraphBackend::new(program, state, 0).unwrap();
+            let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
             let steps = case_steps(&circuit, &case, false, true)
                 .into_iter()
                 .chain(std::iter::repeat_n(Step::Tick, 32));

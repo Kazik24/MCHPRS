@@ -45,7 +45,7 @@ fn backend(mut graph: CompileGraph) -> GraphBackend {
         graph.wires[index].execution.query_facts = Some(WireQueryFacts::infer(&graph, &graph.wires[index]));
     }
     let (program, state) = graph.lower().unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 fn root_plan(backend: &GraphBackend) -> WirePlan {

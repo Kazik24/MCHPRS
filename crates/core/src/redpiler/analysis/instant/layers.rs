@@ -13,6 +13,10 @@ const MAX_LAYER_WORK: usize = 8 * 1024 * 1024;
 #[derive(Debug, PartialEq, Eq)]
 enum ConstructionError {
     BudgetExceeded,
+    /// The requested analysis needs semantics this compiler path does not model.
+    Unsupported(String),
+    /// A live source cycle needs state, unless an enclosing repeater is retained as a leaf.
+    FeedbackRequiresRegister(crate::redpiler::program_graph::LayerInputSource),
     Invalid(String),
 }
 
@@ -136,6 +140,8 @@ fn component_result(
             first_witness(graph, catalog, component),
             LayerDeclineReason::ProofBudgetExceeded,
         ))),
+        Err(ConstructionError::Unsupported(message)) => Err(message),
+        Err(ConstructionError::FeedbackRequiresRegister(source)) => Err(format!("logical feedback requires a register: {source:?}")),
         Err(ConstructionError::Invalid(message)) => Err(message),
     }
 }

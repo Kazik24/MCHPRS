@@ -75,12 +75,7 @@ struct Equations<'a> {
     pending: FxHashSet<LayerInputSource>,
     pending_repeaters: FxHashSet<NodeId>,
     retain_classic: bool,
-    /// When set, a recognized payload-location backedge becomes an explicit state input.
-    feedback_resources: bool,
-    /// Refuse outputs whose exact transferred contact is outside the frame state model.
-    reject_unrepresented_destinations: bool,
-    /// Cut recognized instant-cell payload feedback with source-derived fired inputs.
-    one_shot_firing: bool,
+    resource_semantics: ResourceSemantics,
     /// Fired-state inputs allocated for actors that own a requested feedback resource.
     fired_inputs: FxHashMap<PistonId, LayerInputId>,
     /// Shared source resources whose feedback was represented by owner fired inputs.
@@ -107,6 +102,36 @@ struct Equations<'a> {
     deferred_roots: FxHashSet<LayerInputSource>,
     deferred_children: FxHashMap<LayerInputSource, FxHashSet<LayerInputSource>>,
     feedback_state_sources: Vec<(ResourceId, ContactId)>,
+}
+
+#[derive(Clone, Copy, Default)]
+enum ResourceSemantics {
+    /// Model resource locations at the settled cut without opening feedback state.
+    #[default]
+    Settled,
+    /// Turn recognized source-location cycles into state inputs; optionally reject unknown destinations.
+    Feedback { reject_unrepresented_destinations: bool },
+    /// Replace canonical source occupancy with the actors' one-use fired bits.
+    OneShot,
+}
+
+impl ResourceSemantics {
+    fn uses_feedback(self) -> bool {
+        matches!(self, Self::Feedback { .. })
+    }
+
+    fn rejects_unrepresented_destinations(self) -> bool {
+        matches!(
+            self,
+            Self::Feedback {
+                reject_unrepresented_destinations: true
+            }
+        )
+    }
+
+    fn uses_one_shot_firing(self) -> bool {
+        matches!(self, Self::OneShot)
+    }
 }
 
 /// One cursor per active operator; earlier-child IDs bound its depth by the raw arena size.
@@ -179,9 +204,7 @@ impl<'a> Equations<'a> {
             pending: FxHashSet::default(),
             pending_repeaters: FxHashSet::default(),
             retain_classic: false,
-            feedback_resources: false,
-            reject_unrepresented_destinations: false,
-            one_shot_firing: false,
+            resource_semantics: ResourceSemantics::default(),
             fired_inputs: FxHashMap::default(),
             firing_resources: FxHashMap::default(),
             one_shot_contracts,
@@ -324,7 +347,7 @@ impl<'a> Equations<'a> {
     }
 
     fn one_shot_source_presence(&mut self, resource: ResourceId) -> Result<Option<LayerExprId>, ConstructionError> {
-        if !self.one_shot_firing {
+        if !self.resource_semantics.uses_one_shot_firing() {
             return Ok(None);
         }
         let Some((source, owners)) = self.one_shot_contracts.get(&resource).cloned() else {
@@ -338,7 +361,9 @@ impl<'a> Equations<'a> {
     }
 
     fn one_shot_live_destination(&self, resource: ResourceId, contact: ContactId) -> bool {
-        self.one_shot_firing && self.one_shot_contracts.contains_key(&resource) && self.graph.resources[resource.index()].contacts.contains(&contact)
+        self.resource_semantics.uses_one_shot_firing()
+            && self.one_shot_contracts.contains_key(&resource)
+            && self.graph.resources[resource.index()].contacts.contains(&contact)
     }
 
     fn source(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
@@ -359,7 +384,9 @@ impl<'a> Equations<'a> {
                 // to the exact graph path instead of risking stack exhaustion.
                 const MAX_INLINE_REPEATER_DEPTH: usize = 128;
                 if self.pending_repeaters.len() >= MAX_INLINE_REPEATER_DEPTH {
-                    return Err("logical repeater equation exceeds its inline depth bound".into());
+                    return Err(ConstructionError::Unsupported(
+                        "logical repeater equation exceeds its inline depth bound".into(),
+                    ));
                 }
                 self.pending_repeaters.insert(node);
                 let result = self.input_power(node, InputPort::Main);
@@ -387,7 +414,7 @@ impl<'a> Equations<'a> {
             if let LayerInputSource::State(StateTest::ResourceAt { resource, contact }) = source {
                 self.resource_cycle_witness.get_or_insert((resource, contact));
             }
-            if self.feedback_resources {
+            if self.resource_semantics.uses_feedback() {
                 if let Some(value) = self.feedback_resource_leaf(source)? {
                     return Ok(value);
                 }
@@ -401,7 +428,7 @@ impl<'a> Equations<'a> {
                 self.stateful_repeaters.extend(self.pending_repeaters.iter().copied());
                 self.stateful_repeaters.extend(repeater);
             }
-            return Err(format!("logical feedback requires a register: {source:?}").into());
+            return Err(ConstructionError::FeedbackRequiresRegister(source));
         }
         if self.pending.len() >= 256 {
             return Err("logical equation exceeds its source nesting bound".into());
@@ -417,9 +444,8 @@ impl<'a> Equations<'a> {
         }
         let value = match result {
             Ok(value) => value,
-            Err(ConstructionError::Invalid(message))
+            Err(ConstructionError::FeedbackRequiresRegister(_))
                 if self.inline_repeaters
-                    && message.starts_with("logical feedback requires a register:")
                     && self
                         .repeater_source_node(source)
                         .is_some_and(|node| self.stateful_repeaters.contains(&node)) =>
@@ -677,7 +703,9 @@ impl<'a> Equations<'a> {
         if let Some(source) = plan.direct_override {
             return match source {
                 ComparatorOverride::Literal(strength) => self.comparator_output_above(node, mode, threshold, Some(strength)),
-                ComparatorOverride::LiveComponentOutput(_) => Err("logical comparator has an unsupported live direct override".into()),
+                ComparatorOverride::LiveComponentOutput(_) => Err(ConstructionError::Unsupported(
+                    "logical comparator has an unsupported live direct override".into(),
+                )),
             };
         }
         let rear_output = self.comparator_output_above(node, mode, threshold, None)?;
@@ -686,7 +714,11 @@ impl<'a> Equations<'a> {
         };
         let override_strength = match override_source {
             ComparatorOverride::Literal(strength) => strength,
-            ComparatorOverride::LiveComponentOutput(_) => return Err("logical comparator has an unsupported live far override".into()),
+            ComparatorOverride::LiveComponentOutput(_) => {
+                return Err(ConstructionError::Unsupported(
+                    "logical comparator has an unsupported live far override".into(),
+                ));
+            }
         };
         let rear_meets_override_threshold = if plan.far_threshold == 0 {
             self.reduced.constant(true)?
@@ -719,7 +751,7 @@ impl<'a> Equations<'a> {
                 }
             }
             LayerInputSource::State(StateTest::ResourceEnabled(resource)) => {
-                if self.one_shot_firing {
+                if self.resource_semantics.uses_one_shot_firing() {
                     // Only canonical far-side ResourceAt values are represented by
                     // owner fired bits. Keep enablement live as an exact Graph phase
                     // input, including for private destinations and register lanes.
@@ -763,27 +795,26 @@ impl<'a> Equations<'a> {
                         // preserve any moved destination as an exact live Graph state
                         // input rather than inventing a destination transfer.
                         self.leaf(source)?
-                    } else if self.feedback_resources
+                    } else if self.resource_semantics.uses_feedback()
                         && self.feedback_resource_contract(resource).is_some()
                         && self.graph.resources[resource.index()].contacts.contains(&contact)
                     {
-                        if self.reject_unrepresented_destinations {
-                            return Err(format!(
+                        if self.resource_semantics.rejects_unrepresented_destinations() {
+                            return Err(ConstructionError::Invalid(format!(
                                 "logical computation cannot expose an unresolved transferred resource contact: {resource:?} at {contact:?}"
-                            )
-                            .into());
+                            )));
                         }
                         self.reduced.constant(false)?
                     } else {
                         if self.retain_classic {
-                            return Err(
-                                format!("logical cell destination requires an explicit transfer equation: {resource:?} at {contact:?}").into(),
-                            );
+                            return Err(ConstructionError::Unsupported(format!(
+                                "logical cell destination requires an explicit transfer equation: {resource:?} at {contact:?}"
+                            )));
                         }
                         self.reduced.constant(false)?
                     }
                 } else {
-                    return if (self.retain_classic && !self.feedback_resources) || self.diagnostic_unknown_resources {
+                    return if (self.retain_classic && !self.resource_semantics.uses_feedback()) || self.diagnostic_unknown_resources {
                         self.leaf(source)
                     } else {
                         Err(format!("unclassified logical resource {resource:?}").into())
@@ -847,10 +878,10 @@ impl<'a> Equations<'a> {
                     } else {
                         self.input_power(node, InputPort::Main)?
                     }
-                } else if self.feedback_resources && matches!(kind, CircuitNodeKind::Electrical(NodeType::Torch)) {
+                } else if self.resource_semantics.uses_feedback() && matches!(kind, CircuitNodeKind::Electrical(NodeType::Torch)) {
                     let main = self.input_power(node, InputPort::Main)?;
                     self.reduced.not(main)?
-                } else if self.feedback_resources && matches!(kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
+                } else if self.resource_semantics.uses_feedback() && matches!(kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
                     self.comparator_source(node, threshold)?
                 } else if can_sample_binary_source {
                     // Direction was checked by SignalTracer before it emitted this
@@ -877,7 +908,9 @@ impl<'a> Equations<'a> {
                             let power = self.input_power(node, InputPort::Main)?;
                             self.reduced.not(power)?
                         }
-                        ref kind => return Err(format!("unsupported logical source {node:?}: {kind:?}").into()),
+                        ref kind => {
+                            return Err(ConstructionError::Unsupported(format!("unsupported logical source {node:?}: {kind:?}")));
+                        }
                     }
                 }
             }
@@ -958,10 +991,10 @@ fn disabled_destinations(graph: &CompileGraph, catalog: &BoundaryCatalog) -> FxH
                 let Some(wake) = use_.retraction.wake.resource else {
                     continue;
                 };
-                let reset_witness = match &use_.reset {
-                    CellReset::Observer { wake, .. } => !wake.on_base_changed.is_empty() && !wake.on_base_restored.is_empty(),
-                    CellReset::Payload { .. } | CellReset::InputRestoration { .. } => true,
-                };
+                let reset_witness = use_
+                    .reset
+                    .observer_wake()
+                    .is_none_or(|wake| !wake.on_base_changed.is_empty() && !wake.on_base_restored.is_empty());
                 let actor_spec = graph.pistons[actor.index()];
                 if reset_witness
                     && transfer.resource == resource.resource

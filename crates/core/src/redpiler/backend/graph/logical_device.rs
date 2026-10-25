@@ -113,7 +113,7 @@ fn retained_cell_observation_is_owned(
         BoundaryPortKind::ObserverWatch { observer, site } => {
             retained_observers.contains(&observer)
                 && retained_cells.iter().any(|use_| {
-                    matches!(use_.reset, CellReset::Observer { node, .. } if node == observer)
+                    use_.reset.observer() == Some(observer)
                         && backend.program.sites()[site.index()].source == SiteSource::Contact(backend.program.pistons()[use_.actor.index()].base)
                 })
         }
@@ -171,9 +171,11 @@ impl SettledFrame {
         let retained_resets: FxHashMap<_, _> = circuit
             .retained_cells
             .iter()
-            .map(|use_| match &use_.reset {
-                CellReset::Observer { node, .. } => Ok((use_.actor, *node)),
-                _ => Err("logical frame retained output cell has no observer reset".to_owned()),
+            .map(|use_| {
+                use_.reset
+                    .observer()
+                    .map(|node| (use_.actor, node))
+                    .ok_or_else(|| "logical frame retained output cell has no observer reset".to_owned())
             })
             .collect::<Result<_, _>>()?;
         let mut retained_observers = retained_resets.values().copied().collect::<Vec<_>>();
@@ -373,7 +375,7 @@ impl SettledFrame {
             if let Some(resource) = use_.retraction.wake.resource {
                 retained_route_ids.insert(resource.route);
             }
-            if let CellReset::Observer { wake, .. } = &use_.reset {
+            if let Some(wake) = use_.reset.observer_wake() {
                 required_occurrences.extend(wake.on_base_changed.iter().copied());
                 required_occurrences.extend(wake.on_base_restored.iter().copied());
             }
@@ -839,56 +841,8 @@ impl GraphBackend {
                 .clock
                 .advance(self.node_state(device.trigger).powered)
                 .map_err(|kind| self.unsupported(device.trigger, kind))?;
-            if let Some(frame) = &mut device.frame {
-                if step.compute {
-                    for boundary in frame.boundaries.iter().copied() {
-                        let (slot, value) = match boundary {
-                            FrameBoundary::Power {
-                                slot,
-                                source: _,
-                                clock_node: Some(node),
-                                threshold,
-                                ..
-                            } => (slot, device.clock.source_value(node).is_some_and(|powered| powered && 15 > threshold)),
-                            FrameBoundary::Power { slot, source, .. } => (
-                                slot,
-                                self.sample_settled_input(source).map_err(|kind| self.unsupported(device.trigger, kind))?,
-                            ),
-                            FrameBoundary::ClockState { slot, test } => (
-                                slot,
-                                device
-                                    .clock
-                                    .state_value(test)
-                                    .ok_or_else(|| self.unsupported(device.trigger, "unbound logical clock state"))?,
-                            ),
-                        };
-                        frame.inputs[slot] = value;
-                    }
-                    let operations = frame.evaluate().map_err(|kind| self.unsupported(device.trigger, kind))?;
-                    self.counts.logical_kernel_evaluations += 1;
-                    self.counts.logical_kernel_operations += operations as u64;
-                    for feedback in &frame.feedback_resources {
-                        let at = if frame.evaluation.outputs()[feedback.output] != 0 {
-                            feedback.source
-                        } else {
-                            feedback.other
-                        };
-                        let resource = &mut self.state.resources[feedback.resource.index()];
-                        if resource.at != at || !resource.enabled {
-                            resource.revision = resource.revision.wrapping_add(1);
-                        }
-                        resource.at = at;
-                        resource.enabled = true;
-                    }
-                    for &(node, output, kind) in &frame.outputs {
-                        let value = frame.evaluation.outputs()[output];
-                        let strength = match kind {
-                            SettledValueKind::Bool => 15 * u8::from(value != 0),
-                            SettledValueKind::Strength => value,
-                        };
-                        self.publish_frame_output(node, strength)?;
-                    }
-                }
+            if device.frame.is_some() {
+                self.run_frame_step(&mut device, step)?;
             } else if step.compute {
                 let machine = device.machine.as_mut().expect("register machine installed");
                 for (value, &node) in device.external.iter_mut().zip(device.external_nodes.iter()) {
@@ -946,7 +900,8 @@ impl GraphBackend {
         let Some(frame) = &mut device.frame else {
             return Ok(());
         };
-        if !step.compute && !step.resample {
+        let retained_path = !frame.retained_actors.is_empty();
+        if !step.compute && !(retained_path && step.resample) {
             return Ok(());
         }
         for boundary in frame.boundaries.iter().copied() {
@@ -977,7 +932,7 @@ impl GraphBackend {
         self.counts.logical_kernel_operations += operations as u64;
         if step.compute {
             for feedback in &frame.feedback_resources {
-                if frame.retained_resources.contains(&feedback.resource) {
+                if retained_path && frame.retained_resources.contains(&feedback.resource) {
                     continue;
                 }
                 let at = if frame.evaluation.outputs()[feedback.output] != 0 {
@@ -993,9 +948,11 @@ impl GraphBackend {
                 resource.enabled = true;
             }
         }
-        self.refresh_frame_power_inputs(frame);
-        for &actor in frame.retained_actors.iter() {
-            self.sample_piston(actor)?;
+        if retained_path {
+            self.refresh_frame_power_inputs(frame);
+            for &actor in frame.retained_actors.iter() {
+                self.sample_piston(actor)?;
+            }
         }
         if step.compute {
             for &(node, output, kind) in &frame.outputs {
@@ -1103,5 +1060,70 @@ impl GraphBackend {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::redpiler::CompilerOptions;
+    use crate::redpiler::program_graph::{LayerExpr, ReducedLayerProgram, SettledCircuit};
+    use std::sync::Arc;
+
+    #[test]
+    fn unretained_frame_does_not_evaluate_on_resample() {
+        let (world, bounds) = super::super::adder_tests::counter_world();
+        let ticks = world.scheduler().iter_entries().collect();
+        let options = CompilerOptions {
+            optimization_level: Some(6),
+            budget_multiplier: 8,
+            ..Default::default()
+        };
+        let mut backend = GraphBackend::compile_with_options(&world, bounds, ticks, &options, Arc::default()).unwrap();
+        let mut device = backend.logical_device.take().expect("COUNTER installs its logical device");
+        let circuit = SettledCircuit {
+            program: ReducedLayerProgram {
+                inputs: Box::new([]),
+                expressions: vec![LayerExpr::Constant(false)].into_boxed_slice(),
+                roots: Box::new([]),
+            },
+            outputs: Box::new([]),
+            firing: None,
+            retained_cells: Box::new([]),
+            retained_effects: Box::new([]),
+            declines: Box::new([]),
+            timing: None,
+        };
+        device.frame = Some(SettledFrame {
+            evaluation: SettledEvaluation::new(&circuit).unwrap(),
+            inputs: Box::new([]),
+            boundaries: Box::new([]),
+            feedback_slots: Box::new([]),
+            feedback_resources: Box::new([]),
+            outputs: Box::new([]),
+            button_nodes: Box::new([]),
+            retained_actors: Box::new([]),
+            retained_observers: Box::new([]),
+            retained_commands: Box::new([]),
+            retained_routes: Box::new([]),
+            retained_resources: Box::new([]),
+            retained_power_inputs: Box::new([]),
+        });
+        let step = device.clock.advance(true).unwrap();
+        assert!(step.resample);
+        assert!(!step.compute);
+
+        backend.run_frame_step(&mut device, step).unwrap();
+        assert_eq!(backend.counts.logical_kernel_evaluations, 0);
+        backend
+            .run_frame_step(
+                &mut device,
+                super::super::logical_clock::ClockStep {
+                    compute: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(backend.counts.logical_kernel_evaluations, 1);
     }
 }

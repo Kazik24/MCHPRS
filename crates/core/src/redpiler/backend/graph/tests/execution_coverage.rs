@@ -42,7 +42,7 @@ fn circuit_coverage_reports_recognition_separately_from_execution_ownership() {
         let candidates = crate::redpiler::analysis::instant::cells::discover_cells(&prepared.graph, &monitor).unwrap();
         let candidate_actors: usize = candidates.cells.iter().map(|cell| cell.uses.len()).sum();
         let (program, state) = prepared.graph.lower().unwrap();
-        let mut backend = GraphBackend::new(program, state, 0).unwrap();
+        let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
         let coverage = backend.execution_coverage();
         assert_partition(coverage);
         println!(

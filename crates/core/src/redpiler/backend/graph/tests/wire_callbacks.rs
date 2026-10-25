@@ -56,7 +56,7 @@ fn compile(graph: &mut CompileGraph) {
 }
 fn backend(graph: CompileGraph) -> GraphBackend {
     let (program, state) = graph.lower().unwrap();
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 fn assert_selections(backend: &GraphBackend) {
     for (index, wire) in backend.program.wires().iter().enumerate() {

@@ -57,7 +57,7 @@ fn hop_backend(mut graph: CompileGraph, compiled: bool) -> GraphBackend {
         compile_hops(&mut graph);
     }
     let (program, state) = graph.lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     backend.set_test_recording(true);
     backend
 }

@@ -43,6 +43,17 @@ lowering and runtime admission succeed. Logical plans are optional: each has to
 bind its inputs, outputs, owned state, and any callbacks or events it consumes.
 The original graph remains available to execute work outside that contract.
 
+Production activation goes through `GraphBackend::from_lowered`: it imports
+pending ticks, admits logical runtimes, and schedules initial command work.
+`new_unactivated` deliberately constructs only the underlying Graph executor;
+proof and comparison code can use it without activating a whole-device runtime.
+
+Equation extraction explicitly selects settled resource semantics, recognized
+feedback state, or one-shot fired state. Unsupported semantics, unresolved
+feedback, exhausted budgets, and malformed programs have typed internal errors;
+diagnostic wording does not decide whether compilation declines. Physical
+boundary certification and runtime entry checks remain separate obligations.
+
 While active, the backend owns the selection’s component state and pending
 work. User lever, button, and pressure-plate changes enter through the graph
 backend; `flush` projects visible state to the world without ending execution.
@@ -93,8 +104,9 @@ execution contract. See the [optimization tiers](REDPILER_OPTIMIZATION_LEVELS.md
 [redstone model](REDSTONE_MODEL.md), and [piston model](PISTON_MODEL.md) for
 user-facing behavior and physical rules.
 
-The October 25, 2026 release benchmark measured median **47,687 game TPS** for
-`FPU_MROWW` and **47,417 game TPS** for `FPU_FIXED_INSTANT` on a Ryzen 9 5950X.
+The October 25, 2026 release benchmark after the architecture cleanup measured
+median **48,476 game TPS** for `FPU_MROWW` and **48,373 game TPS** for
+`FPU_FIXED_INSTANT` on a Ryzen 9 5950X.
 Each of three samples ran 4,096 changing input frames held for six game ticks,
 including input updates, projection, and real command execution. Each sample
 recorded 4,096 logical evaluations, zero wire walks, 512 callbacks, 64 piston
@@ -102,8 +114,8 @@ actions, and 32 command outputs. Compilation took approximately 22 seconds and
 was excluded from TPS. Run `cargo bench -p mchprs_core --bench instant --locked
 -- --component fpu_legal --device-frame --tier 6 --episodes 4096 --iterations 3`
 to repeat the original workload. Reports are in
-`target/fpu-device-frame-{original,fixed}.json`; the executable SHA-256 is
-`0d9a36add5d5ac8f488a935558b3a08a239eb073cfbdc37ba336ef6f08c18426`.
+`target/architecture-cleanup-fpu-{original,fixed}.json`; the executable SHA-256 is
+`94abca940aab260bcd235868f63728dea1434dd038ce0be474c40bf80e8bff89`.
 
 The production regression checks data outputs against the accepted computation
 frame and independently checks native command power, execution, repeated pulses,

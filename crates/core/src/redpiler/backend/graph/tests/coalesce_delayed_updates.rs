@@ -161,7 +161,7 @@ fn rewrite(graph: &mut CompileGraph) -> TaskMonitor {
 
 fn backend(graph: CompileGraph) -> GraphBackend {
     let (program, state) = graph.lower().unwrap();
-    GraphBackend::new(program, state, 17).unwrap()
+    GraphBackend::new_unactivated(program, state, 17).unwrap()
 }
 
 fn same(left: &GraphBackend, right: &GraphBackend) {

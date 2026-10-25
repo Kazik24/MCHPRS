@@ -208,8 +208,8 @@ fn unchecked_chungus_tick512_traces_live_sources_and_receiver_timing() {
         CircuitNodeKind::Electrical(NodeType::Comparator { .. })
     ));
 
-    let mut reference = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
-    let mut candidate = GraphBackend::new(program.clone(), state, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program.clone(), state, 0).unwrap();
     reference.test_recorder.comparator_tick_focus = Some((comparator, FOCUS_TICK));
     candidate.test_recorder.comparator_tick_focus = Some((comparator, FOCUS_TICK));
     let unchecked = UncheckedProgram::attach_all(&mut candidate);

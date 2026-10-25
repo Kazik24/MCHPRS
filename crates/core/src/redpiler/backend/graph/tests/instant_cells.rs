@@ -79,7 +79,7 @@ fn set_source_strength(backend: &mut GraphBackend, node: NodeId, strength: u8) -
 
 fn check_admitted_inputs(graph: &CompileGraph, cells: &[CellContract]) -> usize {
     let (program, state) = graph.clone().lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let active: BTreeSet<_> = cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect();
     let mut checks = 0;
 
@@ -453,7 +453,7 @@ fn accepted_retractions_keep_shared_payload_and_existing_reset_obligations() {
 
 fn graph_after_shared_pull_requests(graph: &CompileGraph, resource: &CellResourcePin, owners: &[PistonId], fifo: &[PistonId]) -> GraphBackend {
     let (program, state) = graph.clone().lower().unwrap();
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     backend.set_test_recording(true);
     for component in &mut backend.state.components {
         match component {
@@ -823,7 +823,7 @@ fn malformed_cell_unary_arity_and_forward_pin_references_are_rejected() {
     let (graph, cells) = assert_all_fixture_actors_accounted("adder_1bit", 13);
     let cell = cells.first().unwrap();
     let (program, state) = graph.lower().unwrap();
-    let backend = GraphBackend::new(program, state, 0).unwrap();
+    let backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     let active = BTreeSet::new();
     let mut values = Vec::new();
 

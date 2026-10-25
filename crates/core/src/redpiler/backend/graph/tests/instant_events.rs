@@ -157,7 +157,7 @@ fn bud_memory_read_certificates_reject_extra_inputs_and_variable_guards() {
 }
 
 fn backend(lowered: &LoweredCircuit) -> GraphBackend {
-    let mut backend = GraphBackend::new(lowered.program.clone(), lowered.state.clone(), 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(lowered.program.clone(), lowered.state.clone(), 0).unwrap();
     backend.set_test_recording(true);
     backend
 }

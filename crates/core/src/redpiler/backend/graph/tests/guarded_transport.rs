@@ -165,8 +165,8 @@ fn same_after_seed(graph: &CompileGraph, root: NodeId, repeater_case: Option<(bo
     let reference_graph = reference_graph(graph);
     let (candidate_program, initial) = graph.clone().lower().unwrap();
     let (reference_program, reference_initial) = reference_graph.clone().lower().unwrap();
-    let mut candidate = GraphBackend::new(candidate_program, initial, 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, reference_initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, initial, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, reference_initial, 0).unwrap();
     candidate.set_test_recording(true);
     reference.set_test_recording(true);
 
@@ -242,8 +242,8 @@ fn same_after_seed_with_resource(graph: &CompileGraph, root: NodeId, occupied_se
     let ordinary = reference_graph(graph);
     let (candidate_program, initial) = graph.clone().lower().unwrap();
     let (reference_program, reference_initial) = ordinary.lower().unwrap();
-    let mut candidate = GraphBackend::new(candidate_program, initial, 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, reference_initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, initial, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, reference_initial, 0).unwrap();
     let selector = BlockPos::new(5, 21, 6);
     let site = graph.sites.iter().position(|site| site.position == selector).expect("selector site");
     let contact = match graph.sites[site].source {
@@ -339,7 +339,7 @@ fn guarded_transport_replays_torch_comparator_and_repeater_boundaries_in_order()
                 let (program, _) = ordinary.lower().unwrap();
                 let root = program.position_index()[&BlockPos::new(8, 20, 6)];
                 let (check_program, check_state) = graph.clone().lower().unwrap();
-                let check_backend = GraphBackend::new(check_program, check_state, 0).unwrap();
+                let check_backend = GraphBackend::new_unactivated(check_program, check_state, 0).unwrap();
                 let repeater = check_backend
                     .program
                     .nodes()
@@ -388,8 +388,8 @@ fn guarded_transport_rejects_noncanonical_imported_repeater_before_effects() {
     state.powered = true;
     state.output_strength = 7;
     let initial = candidate_state.clone();
-    let mut candidate = GraphBackend::new(candidate_program, candidate_state, 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, candidate_state, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial, 0).unwrap();
     assert!(!candidate.transport_entry_admitted(transport as u32));
     let root = graph.plans.instant_transport.nets[transport].wires[0].node;
     candidate.evaluate_seed(root, None).unwrap();
@@ -493,8 +493,8 @@ fn value_region_cache_rechecks_changed_conditional_selector_between_walks() {
         state.powered = false;
         state.output_strength = 0;
     }
-    let mut candidate = GraphBackend::new(program, initial, 0).unwrap();
-    let mut reference = GraphBackend::new(reference_program, reference_initial, 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program, initial, 0).unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, reference_initial, 0).unwrap();
     candidate.set_test_recording(true);
     reference.set_test_recording(true);
 
@@ -641,7 +641,7 @@ fn transition_replay_rechecks_a_used_conditional_geometry_selector() {
                 unreachable!();
             }
         }
-        let mut probe = GraphBackend::new(candidate_program.clone(), candidate_state, 0).unwrap();
+        let mut probe = GraphBackend::new_unactivated(candidate_program.clone(), candidate_state, 0).unwrap();
         let first_values = conditional_selector_values(&probe, &selectors);
         let Some(&second) = contacts.iter().find(|&&second| {
             if second == first {
@@ -688,8 +688,8 @@ fn transition_replay_rechecks_a_used_conditional_geometry_selector() {
             }
         }
         let reference_state = candidate_state.clone();
-        let mut candidate = GraphBackend::new(candidate_program.clone(), candidate_state, 0).unwrap();
-        let mut reference = GraphBackend::new(reference_program.clone(), reference_state, 0).unwrap();
+        let mut candidate = GraphBackend::new_unactivated(candidate_program.clone(), candidate_state, 0).unwrap();
+        let mut reference = GraphBackend::new_unactivated(reference_program.clone(), reference_state, 0).unwrap();
         candidate.set_test_recording(true);
         reference.set_test_recording(true);
 

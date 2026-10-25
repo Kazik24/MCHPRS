@@ -151,14 +151,14 @@ fn ordered_wire_tapes_preserve_adder_fifo_and_native_response() {
     let initial = circuit.build();
     let prepared = passes::rich::prepare(&initial, circuit.bounds(), vec![], &TaskMonitor::default(), AnalysisLimits::default()).unwrap();
     let (program, state) = prepared.graph.lower().unwrap();
-    let mut template = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+    let mut template = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
     let tapes = super::super::unchecked_classic_anpu::TapeProgram::attach(&mut template);
     let positions = circuit.positions();
     for repetition in 0..3 {
         let mut native = circuit.build();
         let mut projection = circuit.build();
-        let mut exact = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
-        let mut replay = GraphBackend::new(program.clone(), state.clone(), 0).unwrap();
+        let mut exact = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+        let mut replay = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
         replay.test_recorder.wire_tapes = Some(tapes.clone());
         exact.set_test_recording(true);
         replay.set_test_recording(true);

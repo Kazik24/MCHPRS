@@ -100,7 +100,8 @@ pub(super) fn attach(reference: &GraphBackend) -> (GraphBackend, Duration) {
     assert_eq!(program.wires.len(), reference.program.wires().len());
     assert_eq!(program.nodes.len(), reference.program.nodes().len());
     assert_eq!(program.routes.len(), reference.program.routes().len());
-    let mut candidate = GraphBackend::new(reference.program.clone(), reference.state.clone(), reference.future.clock.logical_tick).unwrap();
+    let mut candidate =
+        GraphBackend::new_unactivated(reference.program.clone(), reference.state.clone(), reference.future.clock.logical_tick).unwrap();
     candidate.future.scheduler = reference.future.scheduler.clone();
     candidate.future.pending.clone_from(&reference.future.pending);
     candidate.future.pending_nodes.clone_from(&reference.future.pending_nodes);

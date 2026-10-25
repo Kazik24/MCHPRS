@@ -28,7 +28,7 @@ fn compile_world(world: &PlotWorld) -> GraphBackend {
     crate::redpiler::analysis::export_json::from_graph(&prepared.report, &prepared.graph).unwrap();
     let (program, state) = prepared.graph.lower().unwrap();
     assert!(!program.instant_kernels().is_empty(), "the artifact must actually execute");
-    GraphBackend::new(program, state, 0).unwrap()
+    GraphBackend::new_unactivated(program, state, 0).unwrap()
 }
 
 fn compile_o6_world(world: &PlotWorld, incremental: bool, required_pull_actors: usize) -> GraphBackend {
@@ -81,7 +81,7 @@ fn compile_o6_world(world: &PlotWorld, incremental: bool, required_pull_actors: 
         },
         "O6 kernel profitability/admission mismatch; layer_plan={layer_summary:?}, kernels={kernel_summary:?}"
     );
-    let mut backend = GraphBackend::new(program, state, 0).unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
     if !incremental {
         // Keep the identical O6 artifact and ownership; disable only its test cache.
         backend.disable_incremental_values();

@@ -471,9 +471,9 @@ pub(crate) mod tests {
                 apply(&mut simplified, &TaskMonitor::default()).unwrap();
                 assert_ne!(general.power_links, simplified.power_links);
                 let (program, state) = general.lower().unwrap();
-                let mut baseline = GraphBackend::new(program, state, 0).unwrap();
+                let mut baseline = GraphBackend::new_unactivated(program, state, 0).unwrap();
                 let (program, state) = simplified.lower().unwrap();
-                let mut optimized = GraphBackend::new(program, state, 0).unwrap();
+                let mut optimized = GraphBackend::new_unactivated(program, state, 0).unwrap();
                 let (mut baseline_world, bounds) = fixture();
                 let (mut optimized_world, _) = fixture();
                 for tick in 0..12 {
