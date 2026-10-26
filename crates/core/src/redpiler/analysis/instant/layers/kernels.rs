@@ -8,10 +8,10 @@ pub(crate) fn lower(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<A
     let (Some(catalog), Some(plan)) = (&graph.plans.instant.boundaries, &graph.plans.instant.layers) else {
         return lower_with_context(graph, monitor, None);
     };
-    if plan.regions.is_empty() {
-        return lower_with_context(graph, monitor, None);
+    let (expected, context) = compile_layers_with_context(graph, catalog, monitor)?;
+    if plan != &expected {
+        return Err("kernel lowering received a stale layer plan".into());
     }
-    let context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
     lower_with_context(graph, monitor, Some(&context))
 }
 

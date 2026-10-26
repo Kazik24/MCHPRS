@@ -466,19 +466,134 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
         lamp_devices.iter().all(|device| device.scope.component != lamp_component),
         "an ordinary terminal lamp must keep its connected FPU island on Graph"
     );
-    let backend = GraphBackend::from_lowered(validated.lower(&monitor).unwrap(), &monitor).expect("FPU readout backend should lower");
+    let owned_nodes: FxHashSet<_> = scoped.iter().flat_map(|device| device.scope.owned_nodes.iter().copied()).collect();
+    let control_positions = controls
+        .iter()
+        .copied()
+        .chain(std::iter::once(pos(&descriptor["ports"]["trigger"])))
+        .collect::<Vec<_>>();
+    let output_positions: FxHashSet<_> = readouts
+        .iter()
+        .copied()
+        .chain(readouts.iter().map(|position| position.offset(BlockFace::East)))
+        .collect();
+    let native_positions: FxHashSet<_> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !owned_nodes.contains(&NodeId::new(*index as u32)))
+        .filter_map(|(_, node)| node.position)
+        .filter(|position| !output_positions.contains(position))
+        .chain(control_positions.iter().copied())
+        .collect();
+    let observer_positions = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !owned_nodes.contains(&NodeId::new(*index as u32)))
+        .filter(|(_, node)| {
+            matches!(
+                node.kind,
+                CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
+            )
+        })
+        .filter_map(|(_, node)| node.position)
+        .collect::<Vec<_>>();
+    assert!(
+        !observer_positions.is_empty(),
+        "the native FPU input cone must include observers or compiled reset observers"
+    );
+    let lamp_positions = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !owned_nodes.contains(&NodeId::new(*index as u32)))
+        .filter(|(_, node)| matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp)))
+        .filter_map(|(_, node)| node.position)
+        .collect::<Vec<_>>();
+    let initial_lamp_blocks = lamp_positions.iter().map(|&position| world.get_block(position)).collect::<Vec<_>>();
+    let lowered = validated.lower(&monitor).unwrap();
+    assert!(
+        lowered.imported_ticks.is_empty(),
+        "the fixture supplies no pending ticks to the native baseline"
+    );
+    let mut physical = GraphBackend::new_unactivated(lowered.program.clone(), lowered.state.clone(), lowered.logical_tick)
+        .expect("ordinary Graph FPU baseline should initialize from the same compiled program and state");
+    let backend = GraphBackend::from_lowered(lowered, &monitor).expect("FPU readout backend should lower");
     assert_eq!(backend.logical_device_admission(), &LogicalDeviceAdmission::Active);
 
     let mut backend = backend;
+    let mut physical_world = fixture().1;
+    for position in &readouts {
+        physical_world.set_block(
+            position.offset(BlockFace::East),
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    facing: mchprs_blocks::BlockDirection::West,
+                    delay: 1,
+                    powered: false,
+                    locked: false,
+                },
+            },
+        );
+    }
+    let mut saw_lamp_transition = false;
+    let mut saw_observer_on = false;
+    let mut saw_observer_off_after_on = false;
+    let mut observer_was_on = observer_positions
+        .iter()
+        .map(|&position| matches!(world.get_block(position), Block::Observer { observer } if observer.powered))
+        .collect::<Vec<_>>();
+    let mut compare_native_state = |tick: usize, world: &PlotWorld, physical_world: &PlotWorld| {
+        for &position in &native_positions {
+            assert_eq!(
+                world.get_block(position),
+                physical_world.get_block(position),
+                "native FPU projection at {position:?}, tick {tick}"
+            );
+        }
+        for (lamp_index, &position) in lamp_positions.iter().enumerate() {
+            let projected = world.get_block(position);
+            assert_eq!(
+                projected,
+                physical_world.get_block(position),
+                "FPU indicator at {position:?}, tick {tick}"
+            );
+            saw_lamp_transition |= projected != initial_lamp_blocks[lamp_index];
+        }
+        for (observer_index, &position) in observer_positions.iter().enumerate() {
+            let on = matches!(world.get_block(position), Block::Observer { observer } if observer.powered);
+            assert_eq!(
+                on,
+                matches!(physical_world.get_block(position), Block::Observer { observer } if observer.powered)
+            );
+            saw_observer_on |= on;
+            saw_observer_off_after_on |= observer_was_on[observer_index] && !on;
+            observer_was_on[observer_index] = on;
+        }
+    };
     let trigger = pos(&descriptor["ports"]["trigger"]);
     let mut saw_output_high = false;
     let mut saw_readout_repeater_on = false;
+    for (bit, &position) in controls.iter().enumerate() {
+        let Block::Lever { lever } = world.get_block(position) else {
+            panic!("FPU input is not a lever at {position:?}");
+        };
+        if lever.powered != (witness_word & (1 << bit) != 0) {
+            backend.use_block(position).unwrap();
+            physical.use_block(position).unwrap();
+        }
+    }
     if !matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered) {
         backend.use_block(trigger).unwrap();
+        physical.use_block(trigger).unwrap();
     }
-    for _ in 0..64 {
+    for tick in 0..64 {
         backend.tick_with_world(&mut world).unwrap();
         backend.flush(&mut world, false);
+        physical.tick_with_world(&mut physical_world).unwrap();
+        physical.flush(&mut physical_world, false);
+        compare_native_state(tick, &world, &physical_world);
         saw_output_high |= readouts
             .iter()
             .any(|position| matches!(world.get_block(*position), Block::RedstoneWire { wire } if wire.power > 0));
@@ -487,20 +602,17 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
             .any(|position| matches!(world.get_block(position.offset(BlockFace::East)), Block::RedstoneRepeater { repeater } if repeater.powered));
     }
     backend.use_block(trigger).unwrap();
-    for (bit, &position) in controls.iter().enumerate() {
-        let Block::Lever { lever } = world.get_block(position) else {
-            panic!("FPU input is not a lever at {position:?}");
-        };
-        if lever.powered != (witness_word & (1 << bit) != 0) {
-            backend.use_block(position).unwrap();
-        }
-    }
+    physical.use_block(trigger).unwrap();
     for offset in 0..25 {
         if offset == 24 {
             backend.use_block(trigger).unwrap();
+            physical.use_block(trigger).unwrap();
         }
         backend.tick_with_world(&mut world).unwrap();
         backend.flush(&mut world, false);
+        physical.tick_with_world(&mut physical_world).unwrap();
+        physical.flush(&mut physical_world, false);
+        compare_native_state(64 + offset, &world, &physical_world);
         saw_output_high |= readouts
             .iter()
             .any(|position| matches!(world.get_block(*position), Block::RedstoneWire { wire } if wire.power > 0));
@@ -508,9 +620,12 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
             .iter()
             .any(|position| matches!(world.get_block(position.offset(BlockFace::East)), Block::RedstoneRepeater { repeater } if repeater.powered));
     }
-    for _ in 0..8 {
+    for offset in 0..8 {
         backend.tick_with_world(&mut world).unwrap();
         backend.flush(&mut world, false);
+        physical.tick_with_world(&mut physical_world).unwrap();
+        physical.flush(&mut physical_world, false);
+        compare_native_state(89 + offset, &world, &physical_world);
         saw_output_high |= readouts
             .iter()
             .any(|position| matches!(world.get_block(*position), Block::RedstoneWire { wire } if wire.power > 0));
@@ -522,7 +637,12 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
         backend.execution_counts().logical_kernel_evaluations > 0,
         "the admitted readout frame must execute during the trigger protocol"
     );
-    assert_eq!(backend.execution_counts().wire_walks, 0, "the readout frame should not bulk-walk wires");
+    assert!(
+        backend.execution_counts().wire_walks < physical.execution_counts().wire_walks,
+        "the readout frame should reduce wire walks against ordinary Graph for the same trigger and input protocol: candidate={} physical={}",
+        backend.execution_counts().wire_walks,
+        physical.execution_counts().wire_walks
+    );
     assert!(saw_output_high, "the chosen FPU input vector must exercise a nonzero output wire");
     assert!(
         saw_readout_repeater_on,
@@ -536,6 +656,109 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
             "terminal readout repeater at {repeater:?} must follow its published input wire after the native delay"
         );
     }
+
+    // Compare a deterministic sequence of complete stable frames against ordinary Graph.
+    // Inputs change only at the six-GT frame boundary, after each prior frame has published.
+    backend.use_block(trigger).unwrap();
+    physical.use_block(trigger).unwrap();
+    for tick in 0..24 {
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        physical.tick_with_world(&mut physical_world).unwrap();
+        physical.flush(&mut physical_world, false);
+        compare_native_state(200 + tick, &world, &physical_world);
+    }
+
+    let input_mask = if controls.len() == u64::BITS as usize {
+        u64::MAX
+    } else {
+        (1u64 << controls.len()) - 1
+    };
+    let mut random_state = 0x9e37_79b9_7f4a_7c15u64;
+    let mut frame_inputs = Vec::with_capacity(16);
+    for _ in 0..16 {
+        random_state ^= random_state << 13;
+        random_state ^= random_state >> 7;
+        random_state ^= random_state << 17;
+        frame_inputs.push(random_state & input_mask);
+    }
+    assert_eq!(frame_inputs.len(), 16);
+
+    let apply_inputs = |backend: &mut GraphBackend, physical: &mut GraphBackend, world: &PlotWorld, physical_world: &PlotWorld, word: u64| {
+        for (bit, &position) in controls.iter().enumerate() {
+            let powered = matches!(world.get_block(position), Block::Lever { lever } if lever.powered);
+            let physical_powered = matches!(physical_world.get_block(position), Block::Lever { lever } if lever.powered);
+            assert_eq!(powered, physical_powered, "input lever differs before frame preparation at {position:?}");
+            if powered != (word & (1u64 << bit) != 0) {
+                backend.use_block(position).unwrap();
+                physical.use_block(position).unwrap();
+            }
+        }
+    };
+    let repeater_word = |world: &PlotWorld| {
+        readouts.iter().fold(0u16, |word, position| {
+            let powered = matches!(
+                world.get_block(position.offset(BlockFace::East)),
+                Block::RedstoneRepeater { repeater } if repeater.powered
+            );
+            (word << 1) | u16::from(powered)
+        })
+    };
+
+    // Prepare the first vector while stopped, then activate the trigger.
+    apply_inputs(&mut backend, &mut physical, &world, &physical_world, frame_inputs[0]);
+    backend.use_block(trigger).unwrap();
+    physical.use_block(trigger).unwrap();
+    for (frame, &word) in frame_inputs.iter().enumerate() {
+        if frame > 0 {
+            apply_inputs(&mut backend, &mut physical, &world, &physical_world, word);
+        }
+        for gt in 0..6 {
+            backend.tick_with_world(&mut world).unwrap();
+            backend.flush(&mut world, false);
+            physical.tick_with_world(&mut physical_world).unwrap();
+            physical.flush(&mut physical_world, false);
+            compare_native_state(300 + frame * 6 + gt, &world, &physical_world);
+        }
+        assert_eq!(
+            native_output_word(&world, &readouts),
+            native_output_word(&physical_world, &readouts),
+            "FPU output wires differ at the published end of randomized frame {frame}"
+        );
+        assert_eq!(
+            repeater_word(&world),
+            repeater_word(&physical_world),
+            "FPU terminal repeater outputs differ at the end of randomized frame {frame}"
+        );
+    }
+
+    backend.use_block(trigger).unwrap();
+    physical.use_block(trigger).unwrap();
+    for tick in 0..24 {
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        physical.tick_with_world(&mut physical_world).unwrap();
+        physical.flush(&mut physical_world, false);
+        compare_native_state(400 + tick, &world, &physical_world);
+    }
+    assert_eq!(
+        native_output_word(&world, &readouts),
+        native_output_word(&physical_world, &readouts),
+        "FPU outputs differ after the randomized protocol drains"
+    );
+    assert_eq!(
+        repeater_word(&world),
+        repeater_word(&physical_world),
+        "FPU terminal repeaters differ after the randomized protocol drains"
+    );
+    assert!(
+        saw_observer_on && saw_observer_off_after_on,
+        "native FPU observers must pulse and return off during the input protocol"
+    );
+    assert!(
+        lamp_positions.is_empty() || saw_lamp_transition,
+        "native FPU indicator lamps must show an exercised transition"
+    );
 }
 
 pub(super) fn source_strength(graph: &CompileGraph, world: &PlotWorld, source: LayerInputSource) -> Option<bool> {

@@ -43,6 +43,144 @@ fn draft(near_contact: bool) -> CompileGraph {
     .unwrap()
     .graph
 }
+
+fn input_callback_ports_world() -> PlotWorld {
+    let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+    for z in [5, 10] {
+        world.set_block(BlockPos::new(5, 19, z), Block::Stone {});
+        world.set_block(
+            BlockPos::new(5, 20, z),
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
+            },
+        );
+        for x in [6, 7] {
+            let position = BlockPos::new(x, 20, z);
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+            world.set_block(position, Block::RedstoneWire { wire: Default::default() });
+        }
+        world.set_block(BlockPos::new(8, 20, z), Block::RedstoneLamp { lit: false });
+    }
+    world.set_block(BlockPos::new(12, 19, 12), Block::Stone {});
+    world.set_block(
+        BlockPos::new(12, 20, 12),
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFace::East.into(),
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    world
+}
+
+#[test]
+fn logical_input_callback_ports_are_exact_and_preserve_native_lamp_callbacks() {
+    let mut world = input_callback_ports_world();
+    let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+    let mut backend = GraphBackend::compile(&world, bounds, vec![], Arc::default()).unwrap();
+    let source = backend.positions[&BlockPos::new(5, 20, 5)];
+    let expected_target = backend.positions[&BlockPos::new(6, 20, 5)];
+    let clock_piston = backend
+        .program
+        .pistons()
+        .iter()
+        .enumerate()
+        .find_map(|(index, piston)| {
+            (backend.program.nodes()[piston.node.index()].position == Some(BlockPos::new(12, 20, 12)))
+                .then_some(crate::redpiler::program_graph::PistonId::new(index as u32))
+        })
+        .expect("the fixture's isolated piston supplies a clock-state guard");
+    let clock_node = backend.program.pistons()[clock_piston.index()].node;
+    let clock_guard = backend
+        .program
+        .guards()
+        .iter()
+        .position(|guard| {
+            *guard == crate::redpiler::program_graph::Guard::State(crate::redpiler::program_graph::StateTest::PistonExtended(clock_piston))
+        })
+        .map(|index| crate::redpiler::program_graph::GuardId::new(index as u32))
+        .expect("piston-state guard reads the logical clock state");
+    backend.set_node(source, true, 15, None, false).unwrap();
+    let (route, occurrence, delivery) = backend
+        .program
+        .routes()
+        .iter()
+        .enumerate()
+        .filter(|(_, route)| route.source == source)
+        .find_map(|(route_index, route)| {
+            route.deliveries.iter().enumerate().find_map(|(ordinal, delivery)| {
+                (delivery.receiver == Some(CallbackReceiver::Component(expected_target))
+                    && matches!(delivery.kind, DeliveryKind::Update { .. })
+                    && delivery.view == OperandView::Live
+                    && backend.guard_matches(delivery.guard, None))
+                .then_some((
+                    RouteId::new(route_index as u32),
+                    RouteOccurrence {
+                        route: RouteId::new(route_index as u32),
+                        ordinal: ordinal as u32,
+                    },
+                    *delivery,
+                ))
+            })
+        })
+        .expect("native lever route updates the first dust node");
+
+    backend.logical_device_owner = vec![None; backend.program.nodes().len()];
+    backend.logical_device_owner[expected_target.index()] = Some(0);
+    backend.logical_device_owner[clock_node.index()] = Some(0);
+    backend.logical_input_callbacks.insert(occurrence);
+
+    let mut clock_guarded_delivery = delivery;
+    clock_guarded_delivery.guard = clock_guard;
+    for extended in [false, true] {
+        backend.state.pistons[clock_piston.index()].extended = extended;
+        assert_eq!(
+            backend.guard_matches(clock_guard, None),
+            extended,
+            "the guard observes clock state {extended}"
+        );
+        let callbacks_before = backend.counts.callbacks;
+        backend.deliver_callback(route, clock_guarded_delivery, None, Some(occurrence)).unwrap();
+        assert_eq!(backend.counts.callbacks, callbacks_before, "the certified input callback is skipped");
+        assert_eq!(
+            backend.state.pistons[clock_piston.index()].extended,
+            extended,
+            "port consumption never mutates the clock"
+        );
+        assert_eq!(
+            backend.wire_state(expected_target).power,
+            0,
+            "the owned wire is sampled by its device, not mutated by Graph"
+        );
+    }
+
+    let wrong_ordinal = RouteOccurrence {
+        route,
+        ordinal: occurrence.ordinal + 1,
+    };
+    backend.logical_input_callbacks.clear();
+    backend.logical_input_callbacks.insert(wrong_ordinal);
+    backend.state.pistons[clock_piston.index()].extended = true;
+    assert!(matches!(
+        backend.deliver_callback(route, clock_guarded_delivery, None, Some(occurrence)),
+        Err(GraphExecutionError::UnsupportedComponent {
+            kind: "ordinary callback crosses a logical-device scope",
+            ..
+        })
+    ));
+
+    let callbacks_before = backend.counts.callbacks;
+    backend.use_block(BlockPos::new(5, 20, 10)).unwrap();
+    backend.flush(&mut world, false);
+    assert!(backend.counts.callbacks > callbacks_before, "ordinary native callbacks still run");
+    assert!(matches!(world.get_block(BlockPos::new(8, 20, 10)), Block::RedstoneLamp { lit: true }));
+
+    backend.reset(&mut world);
+    assert!(backend.logical_input_callbacks.is_empty(), "reset clears persistent input callback ports");
+}
+
 fn compile(graph: &mut CompileGraph) {
     let monitor = TaskMonitor::default();
     let options = Default::default();

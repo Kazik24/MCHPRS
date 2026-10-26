@@ -164,7 +164,7 @@ impl GraphBackend {
         self.accept_action_using(request, Some(accepted))
     }
 
-    fn accept_action_using(&mut self, request: PistonRequest, compiled: Option<bool>) -> Result<(), GraphExecutionError> {
+    pub(super) fn accept_action_using(&mut self, request: PistonRequest, compiled: Option<bool>) -> Result<(), GraphExecutionError> {
         #[cfg(test)]
         let spec = self.program.pistons()[request.piston.index()];
         let state = self.state.pistons[request.piston.index()];
@@ -196,6 +196,29 @@ impl GraphBackend {
         self.record_accepted_boundary_probe(request, accepted);
         #[cfg(test)]
         self.record_logical_firing_accept(request, accepted);
+        if accepted
+            && matches!(
+                request.action,
+                mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull
+            )
+            && self.native_action_clock_owner.get(request.piston.index()).is_some_and(Option::is_some)
+        {
+            self.run_native_action_clock_step(request.piston, request.action)?;
+        }
+        #[cfg(test)]
+        if accepted
+            && matches!(
+                request.action,
+                mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull
+            )
+            && self.native_action_clock_owner.get(request.piston.index()).is_some_and(Option::is_some)
+            && self.test_recording
+        {
+            self.test_recorder.observed_operations.push(GraphObservedOperation::RetractionDispatch {
+                actor: self.program.nodes()[spec.node.index()].position.unwrap(),
+                without_pull: request.action == mchprs_world::PistonAction::RetractWithoutPull,
+            });
+        }
         if self.logical_bud_owner_by_actor.get(request.piston.index()).is_some_and(Option::is_some) {
             if accepted {
                 self.apply_logical_bud_action(request)?;

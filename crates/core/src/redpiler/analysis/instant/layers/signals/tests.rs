@@ -1,4 +1,5 @@
 use super::*;
+use crate::redpiler::analysis::instant::layers::trace_native_power_targets;
 use crate::redpiler::analysis::instant::layers::{reduction::reduce_roots, tests::empty_graph};
 use crate::redpiler::components::{NodeState, NodeType};
 use mchprs_blocks::BlockPos;
@@ -84,6 +85,43 @@ fn evaluate(builder: &LayerBuilder<'_>, root: LayerExprId, mut input: impl FnMut
     let mut scratch = vec![false; program.expressions.len()];
     program.evaluate(&mut scratch, &mut input).unwrap();
     scratch[program.roots[0].1.0 as usize]
+}
+
+#[test]
+fn logical_equation_wire_support_maps_raw_queries_and_keeps_only_live_roots() {
+    let mut graph = empty_graph(link(0, 1, 0, 0));
+    for index in 0..2 {
+        graph.nodes.push(CircuitNodeDraft {
+            position: Some(BlockPos::new(index, 20, 0)),
+            raw_state: Some(
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                }
+                .get_id(),
+            ),
+            kind: CircuitNodeKind::Wire(index as usize),
+            state: ComponentState::Wire(RedstoneWire::default()),
+            output_route: None,
+        });
+    }
+    let first = NodeId::new(0);
+    let second = NodeId::new(1);
+    let first_raw = LayerExprId(3);
+    let second_raw = LayerExprId(4);
+    let first_expanded = LayerExprId(13);
+    let second_expanded = LayerExprId(14);
+    let mut memo = SignalMemo::default();
+    memo.targets.insert((target(0), 0), first_raw);
+    memo.targets.insert((target(1), 0), second_raw);
+    let expanded = [(first_raw, first_expanded), (second_raw, second_expanded)].into_iter().collect();
+    let live_nonconstant = [first_expanded].into_iter().collect();
+
+    assert_eq!(
+        memo.live_expanded_wire_nodes(&graph, &expanded, &live_nonconstant),
+        [first].into_iter().collect(),
+        "wire support must follow raw query roots through expansion and exclude dead roots"
+    );
+    assert!(!memo.live_expanded_wire_nodes(&graph, &expanded, &FxHashSet::default()).contains(&second));
 }
 
 #[test]
@@ -385,6 +423,79 @@ fn contact_power_and_geometry_use_the_first_selected_profile() {
             .query(target(1), 0, &mut builder),
         Err(ConstructionError::Invalid(message)) if message.contains("active contact")
     ));
+}
+
+#[test]
+fn native_power_trace_keeps_only_inputs_reachable_from_each_query_root() {
+    let monitor = TaskMonitor::default();
+    let (mut graph, _) = line(1, false);
+    let resource = ResourceId::new(0);
+    graph.profiles = vec![
+        profile(Block::Air, ProfileElectrical::None),
+        profile(Block::RedstoneBlock, ProfileElectrical::RedstoneSource),
+    ];
+    graph.guards.push(Guard::State(StateTest::ResourceEnabled(resource)));
+    graph.sites[0].source = SiteSource::Contact(ContactId::new(0));
+    graph.contacts.push(ContactSpec {
+        node: NodeId::new(0),
+        position: BlockPos::new(0, 20, 0),
+        variants: vec![ContactVariant {
+            when: GuardId::new(1),
+            profile: ProfileId::new(0),
+            receiver: None,
+        }]
+        .into(),
+    });
+    graph.power_links[0].guard = GuardId::new(1);
+
+    let mut add_node = |position: i32, kind: CircuitNodeKind| {
+        let node = NodeId::new(graph.nodes.len() as u32);
+        graph.nodes.push(CircuitNodeDraft {
+            position: Some(BlockPos::new(position, 20, 0)),
+            raw_state: Some(Block::RedstoneBlock {}.get_id()),
+            kind,
+            state: ComponentState::Electrical(NodeState::default()),
+            output_route: None,
+        });
+        let site = SiteId::new(graph.sites.len() as u32);
+        graph.sites.push(SiteSpec {
+            position: BlockPos::new(position, 20, 0),
+            source: SiteSource::Component(node),
+            source_strength: 15,
+        });
+        (node, site)
+    };
+    let (_lever, lever_site) = add_node(2, CircuitNodeKind::Electrical(NodeType::Lever));
+    let (observer, observer_site) = add_node(
+        3,
+        CircuitNodeKind::Observer {
+            watched: SiteId::new(0),
+            facing: BlockFace::North,
+        },
+    );
+    let (live_target, _) = add_node(4, CircuitNodeKind::Electrical(NodeType::Constant));
+    graph.power_links.push(link(lever_site.index() as u32, live_target.index() as u32, 0, 0));
+    graph
+        .power_links
+        .push(link(observer_site.index() as u32, live_target.index() as u32, 0, 0));
+
+    let trace = trace_native_power_targets(&graph, &[target(1), target(live_target.index() as u32)], &monitor).unwrap();
+    assert!(trace.inputs.contains(&LayerInputSource::SourceAbove {
+        site: lever_site,
+        port: PowerPort::Output,
+        threshold: 0,
+    }));
+    assert!(trace.inputs.contains(&LayerInputSource::SourceAbove {
+        site: observer_site,
+        port: PowerPort::Output,
+        threshold: 0,
+    }));
+    assert!(!trace.inputs.contains(&LayerInputSource::State(StateTest::ResourceEnabled(resource))));
+    assert!(!trace.source_sites.contains(&SiteId::new(0)));
+    assert!(trace.source_sites.contains(&lever_site));
+    assert!(trace.source_sites.contains(&observer_site));
+    assert!(!trace.wires.contains(&NodeId::new(1)));
+    assert_eq!(observer, NodeId::new(3));
 }
 
 #[test]

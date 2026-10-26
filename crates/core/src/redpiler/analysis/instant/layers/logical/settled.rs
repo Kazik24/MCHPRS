@@ -76,21 +76,44 @@ fn compile_scoped_devices_with_plan(
         clocks_by_island[island].push(clock);
     }
 
+    let physical_ownership = if clocks_by_island.iter().any(|clocks| clocks.len() == 1) {
+        let all_actors = (0..graph.pistons.len()).map(|index| PistonId::new(index as u32)).collect::<Vec<_>>();
+        Some(
+            crate::redpiler::analysis::instant::ownership::close_seeded_ownership(graph, &[], &all_actors, monitor)
+                .map_err(|error| format!("scoped native ownership closure: {error}"))?,
+        )
+    } else {
+        None
+    };
+
     let mut devices = Vec::new();
     for (index, island) in partition.islands.iter().enumerate() {
         if monitor.cancelled() {
             return Err("cancelled while compiling scoped logical devices".into());
         }
         if clocks_by_island[index].len() != 1 {
+            #[cfg(test)]
+            if island.nodes.len() >= 1_000 {
+                eprintln!(
+                    "scoped logical device decline: island {} has {} candidate clocks",
+                    island.id,
+                    clocks_by_island[index].len()
+                );
+            }
             continue;
         }
-        let Some(circuit) = try_scoped_device_for_island(graph, island, clocks_by_island[index][0], settled_plan, monitor) else {
+        let Some(physical_ownership) = physical_ownership.as_ref() else {
+            return Err("scoped native ownership closure was not prepared".into());
+        };
+        let Some(device) = try_scoped_device_for_island(graph, island, clocks_by_island[index][0], settled_plan, physical_ownership, monitor) else {
+            #[cfg(test)]
+            eprintln!(
+                "scoped logical device decline: island {} clock {:?} failed a scoped admission gate",
+                island.id, clocks_by_island[index][0]
+            );
             continue;
         };
-        let Some(scope) = scoped_device_scope(graph, island, &circuit) else {
-            continue;
-        };
-        devices.push(ScopedSettledDevice { circuit, scope });
+        devices.push(device);
     }
     Ok(devices)
 }
@@ -105,11 +128,24 @@ fn try_scoped_device_for_island(
     island: &LogicalIsland,
     clock: PistonId,
     settled_plan: &SettledCircuit,
+    physical_ownership: &crate::redpiler::analysis::instant::ownership::OwnershipClosure,
     monitor: &TaskMonitor,
-) -> Option<SettledCircuit> {
-    let timing = super::timing::infer_for_clock_in_island(graph, clock, island, monitor).ok()?;
+) -> Option<ScopedSettledDevice> {
+    let timing = match super::timing::infer_for_clock_in_island(graph, clock, island, monitor) {
+        Ok(timing) => timing,
+        Err(reason) => {
+            #[cfg(test)]
+            eprintln!(
+                "scoped logical device decline: timing inference for island {} clock {:?}: {reason}",
+                island.id, clock
+            );
+            return None;
+        }
+    };
     let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
     if timing.nodes.iter().any(|node| !owns_node(*node)) || timing.actor_specs.iter().any(|actor| !owns_node(actor.node)) {
+        #[cfg(test)]
+        eprintln!("scoped logical device decline: island {} timing actors/nodes escape island", island.id);
         return None;
     }
     let local_bud_reads = graph
@@ -119,14 +155,52 @@ fn try_scoped_device_for_island(
         .copied()
         .filter(|read| island.resources.binary_search(&read.resource).is_ok())
         .collect::<Vec<_>>();
+    #[cfg(test)]
+    if island.nodes.len() >= 1_000 {
+        eprintln!(
+            "scoped logical device: island {} local BUD read count {}",
+            island.id,
+            local_bud_reads.len()
+        );
+    }
     if local_bud_reads.is_empty() {
-        let (circuit, expanded_components) = try_computation_frame_with_timing(graph, Some(island), timing, monitor)?;
-        return scoped_frame_power_sinks_supported(graph, island, &circuit, &expanded_components).then_some(circuit);
+        let (circuit, expanded_components) = match try_computation_frame_with_timing(graph, Some(island), timing, monitor) {
+            Some(result) => result,
+            None => {
+                #[cfg(test)]
+                eprintln!("scoped logical device decline: computation-frame compile failed for island {}", island.id);
+                return None;
+            }
+        };
+        let scope = match scoped_computation_device_scope(graph, island, &circuit, &expanded_components, physical_ownership, monitor) {
+            Some(scope) => scope,
+            None => {
+                #[cfg(test)]
+                eprintln!("scoped logical device decline: ownership/scope proof failed for island {}", island.id);
+                return None;
+            }
+        };
+        if !scoped_frame_power_sinks_supported(graph, &scope, &circuit, &expanded_components) {
+            #[cfg(test)]
+            eprintln!("scoped logical device decline: unsupported frame power sink in island {}", island.id);
+            return None;
+        }
+        if !scoped_frame_outputs_are_closed(graph, &scope, &circuit) {
+            #[cfg(test)]
+            eprintln!("scoped logical device decline: frame outputs are not closed in island {}", island.id);
+            return None;
+        }
+        return Some(ScopedSettledDevice { circuit, scope });
     }
     if !matches!(
         timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?.lane,
         PistonLane::Empty
     ) {
+        #[cfg(test)]
+        eprintln!(
+            "scoped logical device decline: island {} has BUD reads and non-empty clock lane",
+            island.id
+        );
         return None;
     }
 
@@ -178,7 +252,8 @@ fn try_scoped_device_for_island(
     }) {
         return None;
     }
-    Some(compact)
+    let scope = scoped_device_scope(graph, island, &compact)?;
+    Some(ScopedSettledDevice { circuit: compact, scope })
 }
 
 /// A scoped frame suppresses ordinary callbacks from every owned source. Keep
@@ -186,18 +261,23 @@ fn try_scoped_device_for_island(
 /// by a published frame output or by the certified clock/cell boundary.
 fn scoped_frame_power_sinks_supported(
     graph: &CompileGraph,
-    island: &LogicalIsland,
+    scope: &SettledDeviceScope,
     circuit: &SettledCircuit,
     expanded_components: &FxHashSet<NodeId>,
 ) -> bool {
-    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
-    if island.nodes.iter().any(|node| {
-        graph
-            .nodes
-            .get(node.index())
-            .is_none_or(|draft| scoped_frame_has_unmodeled_native_effect(&draft.kind))
-    }) {
-        return false;
+    let owns_node = |node: NodeId| scope.owned_nodes.binary_search(&node).is_ok();
+    for &node in scope.owned_nodes.iter() {
+        let Some(draft) = graph.nodes.get(node.index()) else {
+            return false;
+        };
+        if scoped_frame_has_unmodeled_native_effect(&draft.kind) {
+            #[cfg(test)]
+            eprintln!(
+                "scoped logical frame sink declined: unmodeled native effect node={node:?} position={:?} kind={:?}",
+                draft.position, draft.kind
+            );
+            return false;
+        }
     }
     let timing_nodes = circuit
         .timing
@@ -262,7 +342,7 @@ fn scoped_frame_power_sinks_supported(
             return false;
         };
         let value_component_certified =
-            expanded_components.contains(&node) && expanded_component_routes_supported(graph, island, node, &catalog_actors, &catalog_resets);
+            expanded_components.contains(&node) && expanded_component_routes_supported(graph, scope, node, &catalog_actors, &catalog_resets);
         let actor_certified = matches!(
             &draft.kind,
             CircuitNodeKind::Piston(actor) if retained_actors.contains(actor) || eligible_actors.contains(actor) || catalog_actors.contains(actor)
@@ -374,12 +454,12 @@ fn comparator_side_state_is_invariant(
 /// when every route occurrence ends at a wire or a certified cell/reset actor.
 fn expanded_component_routes_supported(
     graph: &CompileGraph,
-    island: &LogicalIsland,
+    scope: &SettledDeviceScope,
     node: NodeId,
     catalog_actors: &FxHashSet<PistonId>,
     catalog_resets: &FxHashSet<NodeId>,
 ) -> bool {
-    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
+    let owns_node = |node: NodeId| scope.owned_nodes.binary_search(&node).is_ok();
     if !owns_node(node) {
         return false;
     }
@@ -412,22 +492,580 @@ fn expanded_component_routes_supported(
 }
 
 fn scoped_device_scope(graph: &CompileGraph, island: &LogicalIsland, circuit: &SettledCircuit) -> Option<SettledDeviceScope> {
-    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
-    if circuit.timing.is_none()
-        || island
-            .routes
+    scoped_device_scope_with_masks(
+        graph,
+        island,
+        circuit,
+        island.nodes.iter().copied().collect(),
+        FxHashSet::default(),
+        FxHashSet::default(),
+        FxHashSet::default(),
+        FxHashSet::default(),
+        Box::new([]),
+        crate::redpiler::program_graph::SettledClockDriver::Logical,
+    )
+}
+
+/// Frame publication replaces value equations, so it cannot replay an owned
+/// source's callback into an outside native component. Such crossings are
+/// valid only when the exact occurrence is already owned by a retained cell.
+fn scoped_frame_outputs_are_closed(graph: &CompileGraph, scope: &SettledDeviceScope, circuit: &SettledCircuit) -> bool {
+    let retained_callbacks = circuit
+        .retained_effects
+        .iter()
+        .filter_map(|port| match (port.direction, port.kind) {
+            (BoundaryDirection::Output, BoundaryPortKind::Callback { occurrence }) => Some(occurrence),
+            _ => None,
+        })
+        .collect::<FxHashSet<_>>();
+    for &route_id in scope.owned_source_routes.iter() {
+        let Some(route) = graph.routes.get(route_id.index()) else {
+            return false;
+        };
+        for (ordinal, delivery) in route.deliveries.iter().enumerate() {
+            let Some(target) = resolved_delivery_node(graph, delivery) else {
+                continue;
+            };
+            if scope.owned_nodes.binary_search(&target).is_ok() {
+                continue;
+            }
+            let Ok(ordinal) = u32::try_from(ordinal) else {
+                return false;
+            };
+            if !retained_callbacks.contains(&RouteOccurrence { route: route_id, ordinal }) {
+                #[cfg(test)]
+                eprintln!(
+                    "logical frame decline: owned callback {route_id:?}/{ordinal} from {:?} at {:?} crosses to {:?} at {:?}",
+                    route.source,
+                    graph.nodes.get(route.source.index()).and_then(|node| node.position),
+                    target,
+                    graph.nodes.get(target.index()).and_then(|node| node.position)
+                );
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn scoped_computation_device_scope(
+    graph: &CompileGraph,
+    island: &LogicalIsland,
+    circuit: &SettledCircuit,
+    expanded_components: &FxHashSet<NodeId>,
+    physical_ownership: &crate::redpiler::analysis::instant::ownership::OwnershipClosure,
+    monitor: &TaskMonitor,
+) -> Option<SettledDeviceScope> {
+    let Some(timing) = circuit.timing.as_ref() else {
+        #[cfg(test)]
+        eprintln!("logical frame decline: scoped circuit is missing timing");
+        return None;
+    };
+    let mut native_nodes = FxHashSet::default();
+    let mut trace_targets = Vec::new();
+    let mut trace_source_sites = Vec::new();
+    let mut trace_source_states = Vec::new();
+    #[cfg(test)]
+    let mut native_effect_trace_wires = FxHashSet::default();
+    let mut equation_clock_sites = FxHashSet::default();
+    let feedback_sources = computation_feedback_sources(circuit);
+    for input in &circuit.program.inputs {
+        match input.source {
+            LayerInputSource::SourceAbove { site, .. } => {
+                let Some(source_site) = graph.sites.get(site.index()) else {
+                    #[cfg(test)]
+                    eprintln!("logical frame decline: source input references missing site {site:?}");
+                    return None;
+                };
+                let site_source = source_site.source;
+                if let SiteSource::Component(node) = site_source
+                    && node != timing.trigger
+                    && timing.node_specs.iter().any(|spec| {
+                        spec.node == node && matches!(spec.kind, ClockNodeKind::Torch | ClockNodeKind::Observer | ClockNodeKind::BuiltinReset)
+                    })
+                {
+                    equation_clock_sites.insert(site);
+                }
+                if collect_native_source_node(graph, site_source, timing, &mut native_nodes, &mut trace_targets).is_none() {
+                    #[cfg(test)]
+                    eprintln!("native input decline: equation source site {site:?} has unsupported source {site_source:?}");
+                    return None;
+                }
+            }
+            LayerInputSource::WireDot { node } => {
+                if !matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)) {
+                    #[cfg(test)]
+                    eprintln!("logical frame decline: wire-dot input references non-wire node {node:?}");
+                    return None;
+                }
+                native_nodes.insert(node);
+            }
+            LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } if timing_source_state(timing, test) => {}
+            LayerInputSource::State(test) if computation_feedback_input_supported(test, &feedback_sources) => {
+                // The settled evaluator feeds back only the exact ResourceAt
+                // source represented by this frame's ResourceState output.
+            }
+            // Computation-frame runtime has no native ownership proof for the other layer boundaries.
+            unsupported => {
+                #[cfg(test)]
+                eprintln!("logical frame decline: unsupported equation input {unsupported:?}");
+                return None;
+            }
+        }
+    }
+
+    let lamps = island
+        .nodes
+        .iter()
+        .copied()
+        .filter(|node| matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Lamp)))
+        .collect::<Vec<_>>();
+    for &lamp in &lamps {
+        trace_targets.push(PowerTarget::Input {
+            node: lamp,
+            port: InputPort::Main,
+        });
+    }
+    if !trace_targets.is_empty() {
+        let trace = match super::trace_native_power_targets(graph, &trace_targets, monitor) {
+            Ok(trace) => trace,
+            Err(reason) => {
+                #[cfg(test)]
+                eprintln!("native input decline: lamp/wire source trace failed: {reason}");
+                return None;
+            }
+        };
+        if trace.source_sites.iter().any(|site| site.index() >= graph.sites.len()) {
+            #[cfg(test)]
+            eprintln!("native input decline: source trace returned an invalid site");
+            return None;
+        }
+        trace_source_sites.extend(trace.source_sites.iter().copied());
+        for site in trace.source_sites {
+            let Some(source_site) = graph.sites.get(site.index()) else {
+                #[cfg(test)]
+                eprintln!("native input decline: source trace returned missing site {site:?}");
+                return None;
+            };
+            let source = source_site.source;
+            if collect_native_source_node(graph, source, timing, &mut native_nodes, &mut Vec::new()).is_none() {
+                #[cfg(test)]
+                eprintln!("native input decline: traced site {site:?} has unsupported source {source:?}");
+                return None;
+            }
+        }
+        for input in trace.inputs {
+            match input {
+                LayerInputSource::SourceAbove { site, .. } => {
+                    trace_source_sites.push(site);
+                    let Some(source_site) = graph.sites.get(site.index()) else {
+                        #[cfg(test)]
+                        eprintln!("native input decline: traced input references missing site {site:?}");
+                        return None;
+                    };
+                    let source = source_site.source;
+                    if collect_native_source_node(graph, source, timing, &mut native_nodes, &mut Vec::new()).is_none() {
+                        #[cfg(test)]
+                        eprintln!("native input decline: traced input site {site:?} has unsupported source {source:?}");
+                        return None;
+                    }
+                }
+                LayerInputSource::WireDot { node } if matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)) => {
+                    native_nodes.insert(node);
+                }
+                LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => trace_source_states.push(test),
+                unsupported => {
+                    #[cfg(test)]
+                    eprintln!("native input decline: unsupported power trace input {unsupported:?}");
+                    return None;
+                }
+            }
+        }
+        for node in trace.wires {
+            if !matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)) {
+                #[cfg(test)]
+                eprintln!("native input decline: power trace returned non-wire node {node:?}");
+                return None;
+            }
+            #[cfg(test)]
+            native_effect_trace_wires.insert(node);
+            native_nodes.insert(node);
+        }
+    }
+    native_nodes.extend(lamps);
+    // The computation frame follows the qualified controller's actual accepted
+    // native actions. Keep the complete timing power island on Graph so its
+    // piston, observers and pulse routes remain in their original FIFO.
+    native_nodes.extend(timing.nodes.iter().copied());
+    native_nodes.extend(timing.actor_specs.iter().map(|actor| actor.node));
+    equation_clock_sites.retain(|site| !trace_source_sites.contains(site));
+
+    let native = super::native_inputs::discover(
+        graph,
+        island,
+        expanded_components,
+        physical_ownership,
+        &native_nodes,
+        &trace_source_sites,
+        &trace_source_states,
+        &equation_clock_sites,
+        monitor,
+    );
+    let Some(mut native) = native else {
+        #[cfg(test)]
+        eprintln!("native input decline: complete physical source/callback ownership closure could not be proven");
+        return None;
+    };
+    native_nodes = std::mem::take(&mut native.nodes);
+
+    // The same node cannot be both sampled as an ordinary input and published as frame state.
+    for output in &circuit.outputs {
+        let overlaps_native = match output.target {
+            SettledTarget::Power(PowerTarget::Input { node, .. }) => native_nodes.contains(&node),
+            SettledTarget::Power(PowerTarget::Conductor { site, .. }) => {
+                native.sites.contains(&site)
+                    || matches!(graph.sites.get(site.index()).map(|site| site.source), Some(SiteSource::Contact(contact)) if native.contacts.contains(&contact))
+            }
+            SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).is_some_and(|piston| native_nodes.contains(&piston.node)),
+            SettledTarget::ResourceState { resource, .. } | SettledTarget::Register(BudMemoryRead { resource, .. }) => {
+                native.resources.contains(&resource)
+            }
+        };
+        if overlaps_native {
+            #[cfg(test)]
+            if let SettledTarget::Power(PowerTarget::Input { node, .. }) = output.target {
+                eprintln!(
+                    "logical frame decline: output {:?} at {:?} overlaps native input cone; direct native-effect trace wire={}, traced source sites {:?}",
+                    output.target,
+                    graph.nodes.get(node.index()).and_then(|node| node.position),
+                    native_effect_trace_wires.contains(&node),
+                    trace_source_sites
+                        .iter()
+                        .copied()
+                        .filter(|site| graph
+                            .sites
+                            .get(site.index())
+                            .is_some_and(|site| site.source == SiteSource::Component(node)))
+                        .collect::<Vec<_>>()
+                );
+                let mut path = Vec::new();
+                let mut cursor = Some(node);
+                let mut trace_result = None;
+                for _ in 0..64 {
+                    let Some(current) = cursor else { break };
+                    let Some((parent, reason)) = native.diagnostic_parents.get(&current).copied() else {
+                        path.push((current, None, "no recorded ownership cause"));
+                        break;
+                    };
+                    let position = graph.nodes.get(current.index()).and_then(|node| node.position);
+                    path.push((current, position, reason));
+                    if trace_result.is_none() && reason == "native power trace result" {
+                        trace_result = Some(current);
+                    }
+                    cursor = parent;
+                }
+                eprintln!("native ownership path from output wire toward its seed: {path:?}");
+                if let Some(wire) = trace_result {
+                    diagnose_trace_origin(graph, monitor, &native, wire);
+                }
+            } else {
+                eprintln!("logical frame decline: output {:?} overlaps native input cone", output.target);
+            }
+            return None;
+        }
+    }
+    if native_nodes.iter().any(|node| island.nodes.binary_search(node).is_err())
+        || native.contacts.iter().any(|contact| island.contacts.binary_search(contact).is_err())
+        || native.resources.iter().any(|resource| island.resources.binary_search(resource).is_err())
+        || native.sites.iter().any(|site| island.sites.binary_search(site).is_err())
+    {
+        #[cfg(test)]
+        eprintln!("logical frame decline: native input cone escaped its interaction island");
+        return None;
+    }
+
+    let owned_nodes = island
+        .nodes
+        .iter()
+        .copied()
+        .filter(|node| !native_nodes.contains(node))
+        .collect::<Vec<_>>();
+    let owned_set: FxHashSet<_> = owned_nodes.iter().copied().collect();
+    let timing_nodes: FxHashSet<_> = timing
+        .nodes
+        .iter()
+        .copied()
+        .chain(timing.actor_specs.iter().map(|actor| actor.node))
+        .collect();
+    let mut input_callbacks = Vec::new();
+    for &route_id in &island.routes {
+        let Some(route) = graph.routes.get(route_id.index()) else {
+            #[cfg(test)]
+            eprintln!("logical frame decline: island references missing route {route_id:?}");
+            return None;
+        };
+        if !native_nodes.contains(&route.source) {
+            continue;
+        }
+        for (ordinal, delivery) in route.deliveries.iter().enumerate() {
+            let Some(target) = resolved_delivery_node(graph, delivery) else {
+                continue;
+            };
+            if !owned_set.contains(&target) {
+                continue;
+            }
+            if !matches!(delivery.kind, DeliveryKind::Update { .. })
+                || (!expanded_components.contains(&target) && (!timing_nodes.contains(&target) || route.source != timing.trigger))
+            {
+                #[cfg(test)]
+                eprintln!(
+                    "logical frame decline: native input callback {:?}/{} from {:?} at {:?} targets unsupported owned node {:?} at {:?} ({:?})",
+                    route_id,
+                    ordinal,
+                    route.source,
+                    graph.nodes.get(route.source.index()).and_then(|node| node.position),
+                    target,
+                    graph.nodes.get(target.index()).and_then(|node| node.position),
+                    delivery.kind
+                );
+                return None;
+            }
+            input_callbacks.push(RouteOccurrence {
+                route: route_id,
+                ordinal: u32::try_from(ordinal).ok()?,
+            });
+        }
+    }
+    input_callbacks.sort_unstable_by_key(|occurrence| (occurrence.route, occurrence.ordinal));
+    input_callbacks.dedup_by_key(|occurrence| (occurrence.route, occurrence.ordinal));
+
+    let scope = scoped_device_scope_with_masks(
+        graph,
+        island,
+        circuit,
+        owned_nodes,
+        native_nodes,
+        native.sites,
+        native.contacts,
+        native.resources,
+        input_callbacks.into_boxed_slice(),
+        crate::redpiler::program_graph::SettledClockDriver::NativeAction { clock: timing.clock },
+    );
+    if scope.is_none() {
+        #[cfg(test)]
+        eprintln!("logical frame decline: final scope masks do not partition island {}", island.id);
+    }
+    scope
+}
+
+#[cfg(test)]
+fn diagnose_trace_origin(graph: &CompileGraph, monitor: &TaskMonitor, native: &super::native_inputs::NativeInputOwnership, wire: NodeId) {
+    let Some(&batch_index) = native.diagnostic_trace_wire_batches.get(&wire) else {
+        eprintln!("native trace provenance: no recorded query batch for {wire:?}");
+        return;
+    };
+    let Some(batch) = native.diagnostic_trace_batches.get(batch_index) else {
+        eprintln!("native trace provenance: invalid batch {batch_index} for {wire:?}");
+        return;
+    };
+    let mut targets = batch.targets.clone();
+    let mut ambiguous = false;
+    while targets.len() > 1 {
+        let midpoint = targets.len() / 2;
+        let left = targets[..midpoint].to_vec();
+        let right = targets[midpoint..].to_vec();
+        let left_has_wire = match super::trace_native_power_targets(graph, &left, monitor) {
+            Ok(trace) => trace.wires.contains(&wire),
+            Err(error) => {
+                eprintln!("native trace provenance: left split failed for {wire:?}: {error}");
+                return;
+            }
+        };
+        let right_has_wire = match super::trace_native_power_targets(graph, &right, monitor) {
+            Ok(trace) => trace.wires.contains(&wire),
+            Err(error) => {
+                eprintln!("native trace provenance: right split failed for {wire:?}: {error}");
+                return;
+            }
+        };
+        if left_has_wire {
+            ambiguous |= right_has_wire;
+            targets = left;
+        } else if right_has_wire {
+            targets = right;
+        } else {
+            eprintln!(
+                "native trace provenance: batch of {} queries produced {wire:?}, but neither half reproduced it (merged-root result)",
+                batch.targets.len()
+            );
+            return;
+        }
+    }
+    let Some(target) = targets.first().copied() else {
+        eprintln!("native trace provenance: empty query batch for {wire:?}");
+        return;
+    };
+    let origins = batch.origins.get(&target).into_iter().flatten().copied().collect::<Vec<_>>();
+    let origin_details = origins
+        .iter()
+        .map(|origin| {
+            (
+                *origin,
+                graph.nodes.get(origin.index()).and_then(|node| node.position),
+                graph.nodes.get(origin.index()).map(|node| &node.kind),
+            )
+        })
+        .collect::<Vec<_>>();
+    eprintln!(
+        "native trace provenance: {wire:?} is reproduced by query {target:?} from origins {origin_details:?}; multiple halves also reproduced it={ambiguous}"
+    );
+    if let Some(&origin) = origins.first() {
+        let mut path = Vec::new();
+        let mut cursor = Some(origin);
+        for _ in 0..64 {
+            let Some(current) = cursor else { break };
+            let Some((parent, reason)) = native.diagnostic_parents.get(&current).copied() else {
+                path.push((current, None, "no recorded ownership cause"));
+                break;
+            };
+            path.push((current, graph.nodes.get(current.index()).and_then(|node| node.position), reason));
+            cursor = parent;
+        }
+        eprintln!("native trace query origin ownership path: {path:?}");
+    }
+}
+
+fn collect_native_source_node(
+    graph: &CompileGraph,
+    source: SiteSource,
+    timing: &SettledTimingIsland,
+    native_nodes: &mut FxHashSet<NodeId>,
+    trace_targets: &mut Vec<PowerTarget>,
+) -> Option<()> {
+    let SiteSource::Component(node) = source else {
+        return Some(());
+    };
+    let kind = &graph.nodes.get(node.index())?.kind;
+    match kind {
+        CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Lamp) => {
+            native_nodes.insert(node);
+        }
+        CircuitNodeKind::Wire(_) => {
+            native_nodes.insert(node);
+            trace_targets.push(PowerTarget::Input { node, port: InputPort::Main });
+        }
+        CircuitNodeKind::Electrical(NodeType::Constant) => {
+            native_nodes.insert(node);
+        }
+        CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } if !timing_source_value(timing, node) => {
+            native_nodes.insert(node);
+        }
+        _ if timing_source_value(timing, node) => {}
+        _ => return None,
+    }
+    Some(())
+}
+
+fn timing_source_value(timing: &SettledTimingIsland, node: NodeId) -> bool {
+    node == timing.trigger
+        || timing
+            .node_specs
             .iter()
-            .any(|route| graph.routes.get(route.index()).is_none_or(|route| !owns_node(route.source)))
+            .any(|spec| spec.node == node && matches!(spec.kind, ClockNodeKind::Torch | ClockNodeKind::Observer | ClockNodeKind::BuiltinReset))
+}
+
+fn timing_source_state(timing: &SettledTimingIsland, test: StateTest) -> bool {
+    matches!(test, StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) if actor == timing.clock)
+}
+
+fn resolved_delivery_node(graph: &CompileGraph, delivery: &RouteDelivery) -> Option<NodeId> {
+    let receiver = delivery
+        .receiver
+        .or_else(|| match (graph.sites.get(delivery.target.index())?.source, delivery.kind) {
+            (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+            _ => None,
+        })?;
+    Some(match receiver {
+        CallbackReceiver::Component(node) => node,
+        CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => graph.pistons.get(actor.index())?.node,
+        CallbackReceiver::Contact(contact) => graph.contacts.get(contact.index())?.node,
+    })
+}
+
+fn scoped_device_scope_with_masks(
+    graph: &CompileGraph,
+    island: &LogicalIsland,
+    circuit: &SettledCircuit,
+    owned_nodes: Vec<NodeId>,
+    native_nodes: FxHashSet<NodeId>,
+    native_sites: FxHashSet<SiteId>,
+    native_contacts: FxHashSet<ContactId>,
+    native_resources: FxHashSet<ResourceId>,
+    input_callbacks: Box<[RouteOccurrence]>,
+    clock_driver: crate::redpiler::program_graph::SettledClockDriver,
+) -> Option<SettledDeviceScope> {
+    let owns_node = |node: NodeId| owned_nodes.binary_search(&node).is_ok();
+    let native_clock_is_owned = match clock_driver {
+        crate::redpiler::program_graph::SettledClockDriver::Logical => true,
+        crate::redpiler::program_graph::SettledClockDriver::NativeAction { clock } => {
+            circuit.timing.as_ref().is_some_and(|timing| timing.clock == clock)
+                && graph
+                    .pistons
+                    .get(clock.index())
+                    .is_some_and(|piston| native_nodes.contains(&piston.node) && !owns_node(piston.node))
+        }
+    };
+    if circuit.timing.is_none()
+        || !native_clock_is_owned
+        || island.routes.iter().any(|route| {
+            graph
+                .routes
+                .get(route.index())
+                .is_none_or(|route| owns_node(route.source) != !native_nodes.contains(&route.source))
+        })
     {
         return None;
     }
+    let owned_source_routes = island
+        .routes
+        .iter()
+        .copied()
+        .filter(|route| owns_node(graph.routes[route.index()].source))
+        .collect::<Vec<_>>();
+    let owned_sites = island
+        .sites
+        .iter()
+        .copied()
+        .filter(|site| {
+            !native_sites.contains(site)
+                && match graph.sites[site.index()].source {
+                    SiteSource::Component(node) => !native_nodes.contains(&node),
+                    SiteSource::Contact(contact) => !native_contacts.contains(&contact),
+                    SiteSource::Constant(_) => true,
+                }
+        })
+        .collect::<Vec<_>>();
     Some(SettledDeviceScope {
         component: island.id,
-        owned_nodes: island.nodes.clone(),
-        owned_sites: island.sites.clone(),
-        owned_contacts: island.contacts.clone(),
-        owned_resources: island.resources.clone(),
-        owned_source_routes: island.routes.clone(),
+        owned_nodes: owned_nodes.into_boxed_slice(),
+        owned_sites: owned_sites.into_boxed_slice(),
+        owned_contacts: island
+            .contacts
+            .iter()
+            .copied()
+            .filter(|contact| !native_contacts.contains(contact))
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        owned_resources: island
+            .resources
+            .iter()
+            .copied()
+            .filter(|resource| !native_resources.contains(resource))
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+        owned_source_routes: owned_source_routes.into_boxed_slice(),
+        input_callbacks,
+        clock_driver,
     })
 }
 fn try_computation_frame_with_timing(
@@ -436,11 +1074,25 @@ fn try_computation_frame_with_timing(
     timing: crate::redpiler::program_graph::SettledTimingIsland,
     monitor: &TaskMonitor,
 ) -> Option<(SettledCircuit, FxHashSet<NodeId>)> {
-    let clock = timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?;
+    let Some(clock) = timing.actor_specs.iter().find(|actor| actor.piston == timing.clock) else {
+        #[cfg(test)]
+        eprintln!("computation-frame decline: clock {:?} missing from timing actor specs", timing.clock);
+        return None;
+    };
     if !clock.sticky || !matches!(clock.lane, PistonLane::SingleResource { .. }) {
+        #[cfg(test)]
+        eprintln!(
+            "computation-frame decline: clock {:?} is not a sticky single-resource clock",
+            timing.clock
+        );
         return None;
     }
     let Some((mut targets, retained_cells, retained_effects)) = frame_retained_output_cells(graph, island) else {
+        #[cfg(test)]
+        eprintln!(
+            "computation-frame decline: retained output cells not certified for island {:?}",
+            island.map(|island| island.id)
+        );
         return None;
     };
     for use_ in &retained_cells {
@@ -456,14 +1108,33 @@ fn try_computation_frame_with_timing(
     targets.sort_unstable();
     targets.dedup();
     if targets.is_empty() {
+        #[cfg(test)]
+        eprintln!(
+            "computation-frame decline: no power targets for island {:?}",
+            island.map(|island| island.id)
+        );
         return None;
     }
     let (mut computation, expanded_components) = match compile_computation_with_support(graph, &targets, monitor) {
         Ok(computation) => computation,
-        Err(_) => return None,
+        Err(reason) => {
+            #[cfg(test)]
+            eprintln!(
+                "computation-frame decline: equation compilation failed for island {:?}: {reason}",
+                island.map(|island| island.id)
+            );
+            return None;
+        }
     };
     let unsupported = unsupported_computation_frame_inputs(graph, &computation);
     if !computation.declines.is_empty() || !unsupported.is_empty() {
+        #[cfg(test)]
+        eprintln!(
+            "computation-frame decline: island {:?} has {} compiler declines and {} unsupported inputs",
+            island.map(|island| island.id),
+            computation.declines.len(),
+            unsupported.len()
+        );
         return None;
     }
     if !computation
@@ -471,6 +1142,11 @@ fn try_computation_frame_with_timing(
         .iter()
         .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
     {
+        #[cfg(test)]
+        eprintln!(
+            "computation-frame decline: island {:?} has no resource-state output",
+            island.map(|island| island.id)
+        );
         return None;
     }
     if let Some(island) = island {
@@ -482,6 +1158,8 @@ fn try_computation_frame_with_timing(
             SettledTarget::ResourceState { resource, .. } => !island.resources.contains(&resource),
             SettledTarget::Register(read) => !island.resources.contains(&read.resource),
         }) {
+            #[cfg(test)]
+            eprintln!("computation-frame decline: output lies outside island {:?}", island.id);
             return None;
         }
         for input in &computation.program.inputs {
@@ -489,6 +1167,11 @@ fn try_computation_frame_with_timing(
                 && let Some(SiteSource::Component(node)) = graph.sites.get(site.index()).map(|site| site.source)
                 && !owns_node(node)
             {
+                #[cfg(test)]
+                eprintln!(
+                    "computation-frame decline: input source site {site:?} lies outside island {:?}",
+                    island.id
+                );
                 return None;
             }
         }
@@ -509,6 +1192,11 @@ fn try_computation_frame_with_timing(
             .any(|port| matches!(port.kind, BoundaryPortKind::Power { link } if graph.power_links[link as usize].to == target));
         let published = computation.outputs.iter().any(|output| output.target == SettledTarget::Power(target));
         if retained == published {
+            #[cfg(test)]
+            eprintln!(
+                "computation-frame decline: command output ownership mismatch at {node_id:?} in island {:?}",
+                island.map(|island| island.id)
+            );
             return None;
         }
     }
@@ -785,21 +1473,14 @@ fn retained_cell_observation_is_owned(graph: &CompileGraph, cell: &CellContract,
 }
 
 pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit: &SettledCircuit) -> Vec<LayerInputSource> {
-    let state_sources: FxHashMap<_, _> = circuit
-        .outputs
-        .iter()
-        .filter_map(|output| match output.target {
-            SettledTarget::ResourceState { resource, source } => Some((resource, source)),
-            _ => None,
-        })
-        .collect();
+    let state_sources = computation_feedback_sources(circuit);
     circuit
         .program
         .inputs
         .iter()
         .filter_map(|input| {
             let supported = match input.source {
-                LayerInputSource::State(StateTest::ResourceAt { resource, contact }) => state_sources.get(&resource) == Some(&contact),
+                LayerInputSource::State(test) if computation_feedback_input_supported(test, &state_sources) => true,
                 LayerInputSource::SourceAbove {
                     site,
                     port: PowerPort::Output | PowerPort::Strong(_) | PowerPort::Weak(_),
@@ -818,6 +1499,54 @@ pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit
             (!supported).then_some(input.source)
         })
         .collect()
+}
+
+fn computation_feedback_sources(circuit: &SettledCircuit) -> FxHashMap<ResourceId, ContactId> {
+    circuit
+        .outputs
+        .iter()
+        .filter_map(|output| match output.target {
+            SettledTarget::ResourceState { resource, source } => Some((resource, source)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn computation_feedback_input_supported(test: StateTest, state_sources: &FxHashMap<ResourceId, ContactId>) -> bool {
+    matches!(test, StateTest::ResourceAt { resource, contact } if state_sources.get(&resource) == Some(&contact))
+}
+
+#[cfg(test)]
+mod scoped_feedback_input_tests {
+    use super::*;
+
+    #[test]
+    fn scoped_frame_accepts_only_the_bound_resource_feedback_contact() {
+        let resource = ResourceId::new(4);
+        let source = ContactId::new(9);
+        let other = ContactId::new(10);
+        let state_sources = FxHashMap::from_iter([(resource, source)]);
+
+        assert!(computation_feedback_input_supported(
+            StateTest::ResourceAt { resource, contact: source },
+            &state_sources
+        ));
+        assert!(!computation_feedback_input_supported(
+            StateTest::ResourceAt { resource, contact: other },
+            &state_sources
+        ));
+        assert!(!computation_feedback_input_supported(
+            StateTest::ResourceAt {
+                resource: ResourceId::new(5),
+                contact: source
+            },
+            &state_sources
+        ));
+        assert!(!computation_feedback_input_supported(
+            StateTest::ResourceEnabled(resource),
+            &state_sources
+        ));
+    }
 }
 
 /// Compile terminal wires, safe terminal-repeater inputs, and command-block power as public frame outputs.
@@ -2105,6 +2834,14 @@ fn compile_computation_with_support(
         .enumerate()
         .map(|(index, root)| (LayerRoot::Output(index), root))
         .collect();
+    let output_roots = outputs.iter().flat_map(|output| output.roots.iter().copied()).collect::<Vec<_>>();
+    let live_nonconstant = live_nonconstant_expressions(&equations.reduced.expressions, &output_roots, monitor)?;
+    let mut equation_support = equations.expanded_components.clone();
+    equation_support.extend(
+        equations
+            .signal_memo
+            .live_expanded_wire_nodes(graph, &equations.expanded, &live_nonconstant),
+    );
     let program = reduction::reduce_roots(&equations.reduced.inputs, &equations.reduced.expressions, roots, monitor)?;
     let mut mapped = program.roots.iter();
     for output in &mut outputs {
@@ -2122,7 +2859,46 @@ fn compile_computation_with_support(
         timing: None,
     };
     circuit.validate()?;
-    Ok((circuit, equations.expanded_components))
+    Ok((circuit, equation_support))
+}
+
+fn live_nonconstant_expressions(expressions: &[LayerExpr], roots: &[LayerExprId], monitor: &TaskMonitor) -> Result<FxHashSet<LayerExprId>, String> {
+    let mut live = vec![false; expressions.len()];
+    for &root in roots {
+        *live.get_mut(root.0 as usize).ok_or("observable logical equation root is missing")? = true;
+    }
+    let mut nonconstant = FxHashSet::default();
+    for index in (0..expressions.len()).rev() {
+        if index & 0x3fff == 0 && monitor.cancelled() {
+            return Err("cancelled while deriving live logical equation support".into());
+        }
+        if !live[index] {
+            continue;
+        }
+        let id = LayerExprId(index as u32);
+        let operands: &[LayerExprId] = match &expressions[index] {
+            LayerExpr::Constant(_) => &[],
+            LayerExpr::Input(_) => {
+                nonconstant.insert(id);
+                &[]
+            }
+            LayerExpr::Not(value) => {
+                nonconstant.insert(id);
+                std::slice::from_ref(value)
+            }
+            LayerExpr::All(values) | LayerExpr::Any(values) => {
+                nonconstant.insert(id);
+                values
+            }
+        };
+        for &operand in operands {
+            if operand.0 as usize >= index {
+                return Err("logical equation has a missing or forward operand".into());
+            }
+            live[operand.0 as usize] = true;
+        }
+    }
+    Ok(nonconstant)
 }
 
 pub(super) fn assume_computation_frame_observers_off(equations: &mut Equations<'_>) {

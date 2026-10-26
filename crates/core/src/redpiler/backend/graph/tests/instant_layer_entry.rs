@@ -458,6 +458,29 @@ fn chain_world(dust: bool) -> PlotWorld {
     world
 }
 
+fn wire_arrival_world(observer: bool) -> PlotWorld {
+    let mut world = chain_world(true);
+    if observer {
+        world.set_block(
+            BlockPos::new(11, 21, 8),
+            Block::Observer {
+                observer: RedstoneObserver {
+                    facing: BlockFacing::Down,
+                    powered: false,
+                },
+            },
+        );
+    } else {
+        let position = BlockPos::new(11, 20, 8);
+        let Block::RedstoneWire { mut wire } = world.get_block(position) else {
+            unreachable!()
+        };
+        wire.power = 0;
+        world.set_block(position, Block::RedstoneWire { wire });
+    }
+    world
+}
+
 #[test]
 fn parser_composes_two_direct_cells_in_native_callback_order() {
     check_composed_chain(false);
@@ -627,37 +650,138 @@ fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins(
 }
 
 #[test]
-fn cable_arrival_declines_an_observed_or_unsettled_wire_instead_of_dropping_it() {
+fn corridor_retry_recovers_supported_wire_boundary_and_preserves_native_observer_work() {
+    let mut recovered_unsettled_wire = false;
     for observer in [false, true] {
-        let mut world = chain_world(true);
-        if observer {
-            world.set_block(
-                BlockPos::new(11, 21, 8),
-                Block::Observer {
-                    observer: RedstoneObserver {
-                        facing: BlockFacing::Down,
-                        powered: false,
-                    },
+        let world = wire_arrival_world(observer);
+        let monitor = TaskMonitor::default();
+        let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+        let catalog = infer_boundaries(&prepared.graph, &monitor).unwrap();
+        let (baseline, baseline_context) =
+            crate::redpiler::analysis::instant::layers::compile_layers_without_failure_guided_cuts(&prepared.graph, &catalog, &monitor).unwrap();
+        assert!(
+            baseline.regions.is_empty(),
+            "the connected island remains unsupported without a certified cut"
+        );
+        assert_eq!(baseline.declines.len(), 1);
+
+        let (plan, context) = crate::redpiler::analysis::instant::layers::compile_layers_with_context(&prepared.graph, &catalog, &monitor).unwrap();
+        let lowered_pull_actors = |plan: &crate::redpiler::program_graph::LayeredInstantPlan,
+                                   context: &crate::redpiler::analysis::instant::layers::LayerCompilationContext| {
+            let mut candidate = prepared.graph.clone();
+            candidate.plans.instant.boundaries = Some(catalog.clone());
+            candidate.plans.instant.layers = Some(plan.clone());
+            crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&candidate, &monitor, Some(context))
+                .unwrap()
+                .into_iter()
+                .filter_map(|kernel| matches!(&kernel.program, KernelProgram::PullWave { .. }).then_some(kernel.actors.to_vec()))
+                .flatten()
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        let baseline_actors = lowered_pull_actors(&baseline, &baseline_context);
+        let retried_actors = lowered_pull_actors(&plan, &context);
+        let newly_lowered: Vec<_> = retried_actors.difference(&baseline_actors).copied().collect();
+
+        if !newly_lowered.is_empty() {
+            if !observer {
+                recovered_unsettled_wire = true;
+            }
+            prepared.graph.plans.instant.boundaries = Some(catalog);
+            prepared.graph.plans.instant.layers = Some(plan);
+            prepared.graph.validate().unwrap();
+            let (program, state) = prepared.graph.clone().lower().unwrap();
+            assert!(
+                program.instant_kernels().iter().any(|kernel| {
+                    matches!(&kernel.program, KernelProgram::PullWave { .. }) && kernel.actors.iter().any(|actor| newly_lowered.contains(actor))
+                }),
+                "the recovered actor must be installed in the executable"
+            );
+            let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
+            let mut native = wire_arrival_world(observer);
+            native_step(
+                &mut native,
+                Step::SetLever {
+                    position: CONTROL,
+                    powered: false,
                 },
             );
+            backend.use_block(CONTROL).unwrap();
+            let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
+            let mut projected = world;
+            for tick in 0..32 {
+                backend.tick().unwrap();
+                native.tick_interpreted();
+                check_boundary(
+                    &backend,
+                    &native,
+                    &mut projected,
+                    &positions,
+                    &format!("failure-guided unsettled-wire retry tick {tick}"),
+                )
+                .unwrap();
+                if tick == 0 {
+                    assert!(backend.execution_counts().instant_kernel_invocations > 0);
+                }
+            }
+            let mut handed_back = wire_arrival_world(observer);
+            backend.reset(&mut handed_back);
+            assert_eq!(
+                first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
+                None,
+                "reset must hand the recovered wave's pending work back without changing its FIFO-visible state"
+            );
+            for tick in 0..8 {
+                native.tick_interpreted();
+                handed_back.tick_interpreted();
+                assert_eq!(
+                    first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
+                    None,
+                    "native continuation after recovered-wave reset tick {tick}"
+                );
+            }
         } else {
-            let position = BlockPos::new(11, 20, 8);
-            let Block::RedstoneWire { mut wire } = world.get_block(position) else {
-                unreachable!()
-            };
-            wire.power = 0;
-            world.set_block(position, Block::RedstoneWire { wire });
+            assert!(plan.regions.is_empty(), "a region without an executable PullWave is not a recovery");
+            assert_eq!(plan.declines.len(), 1);
+            prepared.graph.plans.instant.boundaries = Some(catalog);
+            prepared.graph.plans.instant.layers = Some(plan);
+            prepared.graph.validate().unwrap();
+            let (program, state) = prepared.graph.clone().lower().unwrap();
+            assert!(
+                !program
+                    .instant_kernels()
+                    .iter()
+                    .any(|kernel| matches!(&kernel.program, KernelProgram::PullWave { .. }))
+            );
+            let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
+            let mut native = wire_arrival_world(observer);
+            native_step(
+                &mut native,
+                Step::SetLever {
+                    position: CONTROL,
+                    powered: false,
+                },
+            );
+            backend.use_block(CONTROL).unwrap();
+            let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
+            let mut projected = wire_arrival_world(observer);
+            for tick in 0..32 {
+                backend.tick().unwrap();
+                native.tick_interpreted();
+                check_boundary(
+                    &backend,
+                    &native,
+                    &mut projected,
+                    &positions,
+                    &format!("native-owned observed-wire boundary tick {tick}"),
+                )
+                .unwrap();
+            }
         }
-        let monitor = TaskMonitor::default();
-        let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
-        let catalog = infer_boundaries(&prepared.graph, &monitor).unwrap();
-        let plan = compile_layers(&prepared.graph, &catalog, &monitor).unwrap();
-        assert!(
-            plan.regions.is_empty(),
-            "unsupported wire state/observer cannot become a settled value assumption"
-        );
-        assert_eq!(plan.declines.len(), 1);
     }
+    assert!(
+        recovered_unsettled_wire,
+        "the unsettled-wire fixture must exercise a real recovered PullWave"
+    );
 }
 
 fn check_composed_chain(dust: bool) {

@@ -245,6 +245,8 @@ impl GraphBackend {
         self.project_future(world);
         self.logical_devices.clear();
         self.logical_device_owner.clear();
+        self.native_action_clock_owner.fill(None);
+        self.logical_input_callbacks.clear();
         self.logical_device_admission = crate::redpiler::LogicalDeviceAdmission::NotApplicable;
         self.dirty.fill(false);
         self.contact_dirty.fill(false);

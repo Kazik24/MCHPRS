@@ -1,14 +1,33 @@
 //! Couple executable computation; retain reset, geometry and unsupported owners as boundaries.
 use super::*;
 
-pub(super) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<regions::RegionPartition, String> {
+/// Rebuild the same certified owner partition after rejecting selected wire corridors.
+/// Cell/resource owners remain indivisible and all original port rows stay available as
+/// perimeter evidence; only the selected corridor may stop coupling neighboring owners.
+pub(super) fn partition_with_corridor_cuts(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &TaskMonitor,
+    cut_corridors: &[u32],
+) -> Result<regions::RegionPartition, String> {
     let cells = catalog.cells.iter().map(|cell| private_observer_cell(graph, cell));
     let candidates = computation_corridors(graph, catalog, monitor)?;
     let corridors = catalog.corridors.iter().zip(candidates).map(|(corridor, candidate)| {
         let wires = corridor.wires.iter().copied().collect();
         candidate && composition::corridors::closed_straight_cable(graph, &wires)
     });
-    let joinable: Vec<_> = cells.chain(corridors).collect();
+    let mut joinable: Vec<_> = cells.chain(corridors).collect();
+    for &corridor in cut_corridors {
+        let owner = catalog
+            .cells
+            .len()
+            .checked_add(corridor as usize)
+            .ok_or("instant corridor owner index overflow")?;
+        let Some(joinable) = joinable.get_mut(owner) else {
+            return Err("failure-guided cut references a missing wire corridor".into());
+        };
+        *joinable = false;
+    }
     regions::partition_with_cuts(graph, catalog, monitor, &joinable, |kind| computation_dependency(graph, kind))
 }
 

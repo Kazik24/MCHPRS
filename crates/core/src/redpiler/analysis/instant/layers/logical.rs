@@ -24,6 +24,7 @@ mod fpu_computation_tests;
 #[cfg(test)]
 mod fpu_kernel_bench;
 mod islands;
+mod native_inputs;
 mod settled;
 pub(crate) mod timing;
 pub(crate) use islands::LogicalIsland;

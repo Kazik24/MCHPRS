@@ -1026,7 +1026,9 @@ fn replay(template: Template, protocol: &Protocol) -> Result<ReplayResult, Strin
                 PistonAction::Extend => coverage.accepted_extensions += 1,
                 PistonAction::Retract | PistonAction::RetractWithoutPull => coverage.accepted_retractions += 1,
             },
-            GraphObservedOperation::Callback { .. } => {}
+            GraphObservedOperation::Callback { .. }
+            | GraphObservedOperation::NativeFrameStep { .. }
+            | GraphObservedOperation::RetractionDispatch { .. } => {}
         }
     }
     Ok(ReplayResult {

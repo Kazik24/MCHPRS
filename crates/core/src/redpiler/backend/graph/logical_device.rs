@@ -62,6 +62,22 @@ struct SettledFrame {
     power_input_offset: usize,
 }
 
+enum DeviceClockDriver {
+    Logical(LogicalClock),
+    NativeAction { clock: PistonId, last_trigger: bool },
+}
+
+fn native_clock_state_is_bound(timing: &SettledTimingIsland, test: StateTest) -> bool {
+    match test {
+        StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor) | StateTest::PistonAvailability { piston: actor, .. } => {
+            timing.actors.contains(&actor)
+        }
+        StateTest::ResourceAt { resource, .. } | StateTest::ResourceEnabled(resource) => {
+            timing.actor_specs.iter().any(|actor| actor.resource == Some(resource))
+        }
+    }
+}
+
 fn retained_cell_callback_is_owned(
     program: &CircuitProgram,
     delivery: &RouteDelivery,
@@ -162,7 +178,7 @@ pub(super) struct ActiveFramePowerInput {
 pub(super) struct LogicalDevice {
     machine: Option<SettledMachine>,
     frame: Option<SettledFrame>,
-    clock: LogicalClock,
+    clock_driver: DeviceClockDriver,
     trigger: NodeId,
     external: Box<[bool]>,
     external_nodes: Box<[NodeId]>,
@@ -171,7 +187,12 @@ pub(super) struct LogicalDevice {
 }
 
 impl SettledFrame {
-    fn new(backend: &GraphBackend, circuit: &SettledCircuit, clock: &LogicalClock) -> Result<Self, String> {
+    fn new(
+        backend: &GraphBackend,
+        circuit: &SettledCircuit,
+        clock: Option<&LogicalClock>,
+        native_timing: Option<&SettledTimingIsland>,
+    ) -> Result<Self, String> {
         if !circuit.declines.is_empty() {
             return Err("logical frame requires a complete circuit".into());
         }
@@ -590,7 +611,9 @@ impl SettledFrame {
                     }
                 }
                 LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => {
-                    if clock.state_value(test).is_none() {
+                    let bound = clock.is_some_and(|clock| clock.state_value(test).is_some())
+                        || native_timing.is_some_and(|timing| native_clock_state_is_bound(timing, test));
+                    if !bound {
                         return Err(format!("logical frame has an unbound external state input: {test:?}"));
                     }
                     boundaries.push(FrameBoundary::ClockState { slot, test });
@@ -598,7 +621,12 @@ impl SettledFrame {
                 LayerInputSource::SourceAbove { site, port, threshold } => {
                     let site_spec = &backend.program.sites()[site.index()];
                     let clock_node = match site_spec.source {
-                        SiteSource::Component(node) if clock.source_value(node).is_some() => Some(node),
+                        SiteSource::Component(node)
+                            if clock.is_some_and(|clock| clock.source_value(node).is_some())
+                                || native_timing.is_some_and(|timing| timing.nodes.contains(&node)) =>
+                        {
+                            Some(node)
+                        }
                         SiteSource::Component(node) => {
                             match backend.program.nodes()[node.index()].kind {
                                 CircuitNodeKind::Electrical(NodeType::Button) => {
@@ -782,6 +810,7 @@ impl GraphBackend {
 
     pub(super) fn install_logical_device(&mut self) -> Result<LogicalDeviceAdmission, String> {
         let count = self.program.logical_devices().len();
+        self.native_action_clock_owner.fill(None);
         if count == 0 {
             return Ok(if self.program.settled_circuit().is_some() {
                 LogicalDeviceAdmission::Declined("no independently certified logical device".into())
@@ -793,8 +822,17 @@ impl GraphBackend {
         let mut declines = Vec::new();
         for program_index in 0..count {
             let nodes = self.program.logical_devices()[program_index].scope.owned_nodes.clone();
+            let clock_driver = self.program.logical_devices()[program_index].scope.clock_driver;
             if nodes.iter().any(|&node| self.logical_node_owned(node)) {
                 declines.push("overlapping logical-device scopes".to_owned());
+                continue;
+            }
+            if let SettledClockDriver::NativeAction { clock } = clock_driver
+                && (self.native_action_clock_owner.get(clock.index()).is_none_or(Option::is_some)
+                    || self.logical_bud_owner_by_actor.get(clock.index()).is_some_and(Option::is_some)
+                    || self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_actor(clock)))
+            {
+                declines.push(format!("native-action clock {clock:?} has a conflicting or intercepted owner"));
                 continue;
             }
             match self.prepare_logical_device(program_index) {
@@ -803,7 +841,12 @@ impl GraphBackend {
                     for &node in &nodes {
                         self.logical_device_owner[node.index()] = Some(owner);
                     }
+                    self.logical_input_callbacks
+                        .extend(self.program.logical_devices()[program_index].scope.input_callbacks.iter().copied());
                     self.logical_devices.push(device);
+                    if let SettledClockDriver::NativeAction { clock } = clock_driver {
+                        self.native_action_clock_owner[clock.index()] = Some(owner);
+                    }
                 }
                 Err(reason) => {
                     #[cfg(test)]
@@ -834,13 +877,20 @@ impl GraphBackend {
             return Err("pending graph work in logical-device scope at entry".into());
         }
         let timing = circuit.timing.as_ref().ok_or("no certified logical-device timing")?;
-        let clock = LogicalClock::new(&self.program, &self.state, timing)?;
+        let clock_driver = match scope.clock_driver {
+            SettledClockDriver::Logical => DeviceClockDriver::Logical(LogicalClock::new(&self.program, &self.state, timing)?),
+            SettledClockDriver::NativeAction { clock } => self.prepare_native_action_clock(clock, timing)?,
+        };
         if circuit
             .outputs
             .iter()
             .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
         {
-            let frame = SettledFrame::new(self, circuit, &clock)?;
+            let logical_clock = match &clock_driver {
+                DeviceClockDriver::Logical(clock) => Some(clock),
+                DeviceClockDriver::NativeAction { .. } => None,
+            };
+            let frame = SettledFrame::new(self, circuit, logical_clock, Some(timing))?;
             if frame
                 .retained_routes
                 .iter()
@@ -859,10 +909,13 @@ impl GraphBackend {
                 external_nodes: Box::new([]),
                 outputs: Box::new([]),
                 registers: Box::new([]),
-                clock,
+                clock_driver,
                 trigger: timing.trigger,
             });
         }
+        let DeviceClockDriver::Logical(clock) = &clock_driver else {
+            return Err("native-action clock driver requires a computation frame".into());
+        };
         let inputs = circuit
             .program
             .inputs
@@ -910,10 +963,34 @@ impl GraphBackend {
             external_nodes: external_nodes.into_boxed_slice(),
             machine: Some(machine),
             frame: None,
-            clock,
+            clock_driver,
             trigger: timing.trigger,
             outputs: outputs.into_boxed_slice(),
             registers: registers.into_boxed_slice(),
+        })
+    }
+
+    fn prepare_native_action_clock(&self, clock: PistonId, timing: &SettledTimingIsland) -> Result<DeviceClockDriver, String> {
+        if clock != timing.clock {
+            return Err("native-action frame clock does not match its certified timing island".into());
+        }
+        let clock_state = self
+            .state
+            .pistons
+            .get(clock.index())
+            .ok_or("native-action frame clock state is missing")?;
+        if !clock_state.extended || !clock_state.head_present || clock_state.availability != PistonAvailability::Ready {
+            return Err("native-action frame requires an extended stationary clock piston".into());
+        }
+        if self.logical_bud_owner_by_actor.get(clock.index()).is_some_and(Option::is_some)
+            || self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_actor(clock))
+        {
+            return Err("native-action frame clock is intercepted by a logical piston owner".into());
+        }
+        let powered = self.node_state(timing.trigger).powered;
+        Ok(DeviceClockDriver::NativeAction {
+            clock,
+            last_trigger: powered,
         })
     }
 
@@ -928,6 +1005,10 @@ impl GraphBackend {
             if let Some(frame) = &mut device.frame {
                 frame.power_input_offset = self.active_frame_power_inputs.len();
                 self.active_frame_retained_actors.extend_from_slice(&frame.retained_actors);
+                if let DeviceClockDriver::NativeAction { clock, .. } = &device.clock_driver {
+                    self.active_frame_retained_actors.push(*clock);
+                    self.active_frame_retained_nodes.push(self.program.pistons()[clock.index()].node);
+                }
                 self.active_frame_retained_nodes.extend(
                     frame
                         .retained_actors
@@ -957,21 +1038,50 @@ impl GraphBackend {
             .sort_unstable_by_key(|occurrence| (occurrence.route, occurrence.ordinal));
         self.active_frame_retained_routes.dedup();
         let result = self.tick_phases_with_hook(host, |backend, _| {
-            for device in &mut devices {
-                let step = device
-                    .clock
-                    .advance(backend.node_state(device.trigger).powered)
-                    .map_err(|kind| backend.unsupported(device.trigger, kind))?;
-                backend.run_logical_device_step(device, step)?;
-            }
-            Ok(())
+            let step_result = (|| {
+                for device in &mut devices {
+                    let (logical_step, native_resample) = match &mut device.clock_driver {
+                        DeviceClockDriver::Logical(clock) => (
+                            Some(
+                                clock
+                                    .advance(backend.node_state(device.trigger).powered)
+                                    .map_err(|kind| backend.unsupported(device.trigger, kind))?,
+                            ),
+                            false,
+                        ),
+                        DeviceClockDriver::NativeAction { last_trigger, .. } => {
+                            let trigger = backend.node_state(device.trigger).powered;
+                            let resample = trigger && trigger != *last_trigger;
+                            *last_trigger = trigger;
+                            (None, resample)
+                        }
+                    };
+                    if let Some(step) = logical_step {
+                        backend.run_logical_device_step(device, step)?;
+                    }
+                    if native_resample {
+                        backend.run_frame_step(
+                            device,
+                            super::logical_clock::ClockStep {
+                                resample: true,
+                                ..Default::default()
+                            },
+                        )?;
+                    }
+                }
+                Ok(())
+            })();
+            backend.logical_devices = std::mem::take(&mut devices);
+            step_result
         });
         self.active_frame_command_outputs.clear();
         self.active_frame_retained_actors.clear();
         self.active_frame_retained_nodes.clear();
         self.active_frame_retained_routes.clear();
         self.active_frame_power_inputs.clear();
-        self.logical_devices = devices;
+        if !devices.is_empty() {
+            self.logical_devices = devices;
+        }
         result
     }
 
@@ -980,9 +1090,12 @@ impl GraphBackend {
             return self.run_frame_step(device, step);
         }
         let mut inputs_changed = false;
-        if step.compute || device.clock.is_quiescent() {
+        let DeviceClockDriver::Logical(clock) = &device.clock_driver else {
+            return Err(self.unsupported(device.trigger, "register machine has a native-action clock"));
+        };
+        if step.compute || clock.is_quiescent() {
             for (value, &node) in device.external.iter_mut().zip(device.external_nodes.iter()) {
-                let sampled = device.clock.source_value(node).expect("validated logical device input");
+                let sampled = clock.source_value(node).expect("validated logical device input");
                 inputs_changed |= *value != sampled;
                 *value = sampled;
             }
@@ -992,7 +1105,7 @@ impl GraphBackend {
             let operations = machine.step(&device.external).expect("validated logical device inputs");
             self.counts.logical_kernel_evaluations += 1;
             self.counts.logical_kernel_operations += operations as u64;
-        } else if device.clock.is_quiescent() && inputs_changed {
+        } else if clock.is_quiescent() && inputs_changed {
             let machine = device.machine.as_mut().expect("register machine installed");
             let operations = machine.observe(&device.external).expect("validated logical device inputs");
             self.counts.logical_kernel_evaluations += 1;
@@ -1025,6 +1138,40 @@ impl GraphBackend {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn run_native_action_clock_step(&mut self, clock: PistonId, _action: mchprs_world::PistonAction) -> Result<(), GraphExecutionError> {
+        let Some(owner) = self.native_action_clock_owner.get(clock.index()).copied().flatten() else {
+            return Err(self.unsupported(self.program.pistons()[clock.index()].node, "unbound native-action clock"));
+        };
+        let mut devices = std::mem::take(&mut self.logical_devices);
+        let result = if let Some(device) = devices.get_mut(owner) {
+            if matches!(&device.clock_driver, DeviceClockDriver::NativeAction { clock: expected, .. } if *expected == clock) {
+                let result = self.run_frame_step(
+                    device,
+                    super::logical_clock::ClockStep {
+                        compute: true,
+                        publish: true,
+                        commit: true,
+                        ..Default::default()
+                    },
+                );
+                #[cfg(test)]
+                if result.is_ok() && self.test_recording {
+                    self.test_recorder.observed_operations.push(GraphObservedOperation::NativeFrameStep {
+                        actor: self.program.nodes()[self.program.pistons()[clock.index()].node.index()].position.unwrap(),
+                        action: _action,
+                    });
+                }
+                result
+            } else {
+                Err(self.unsupported(self.program.pistons()[clock.index()].node, "native-action clock owner mismatch"))
+            }
+        } else {
+            Err(self.unsupported(self.program.pistons()[clock.index()].node, "native-action clock owner is missing"))
+        };
+        self.logical_devices = devices;
+        result
     }
 
     fn refresh_frame_power_inputs(&mut self, frame: &SettledFrame) {
@@ -1066,22 +1213,31 @@ impl GraphBackend {
             let (slot, value) = match boundary {
                 FrameBoundary::Power {
                     slot,
-                    source: _,
+                    source,
                     clock_node: Some(node),
                     threshold,
                     ..
-                } => (slot, device.clock.source_value(node).is_some_and(|powered| powered && 15 > threshold)),
+                } => {
+                    let powered = match &device.clock_driver {
+                        DeviceClockDriver::Logical(clock) => clock.source_value(node).is_some_and(|powered| powered && 15 > threshold),
+                        DeviceClockDriver::NativeAction { .. } => {
+                            self.sample_settled_input(source).map_err(|kind| self.unsupported(device.trigger, kind))?
+                        }
+                    };
+                    (slot, powered)
+                }
                 FrameBoundary::Power { slot, source, .. } => (
                     slot,
                     self.sample_settled_input(source).map_err(|kind| self.unsupported(device.trigger, kind))?,
                 ),
-                FrameBoundary::ClockState { slot, test } => (
-                    slot,
-                    device
-                        .clock
-                        .state_value(test)
-                        .ok_or_else(|| self.unsupported(device.trigger, "unbound logical clock state"))?,
-                ),
+                FrameBoundary::ClockState { slot, test } => {
+                    let value = match &device.clock_driver {
+                        DeviceClockDriver::Logical(clock) => clock.state_value(test),
+                        DeviceClockDriver::NativeAction { .. } => Some(self.state.matches(test)),
+                    }
+                    .ok_or_else(|| self.unsupported(device.trigger, "unbound logical clock state"))?;
+                    (slot, value)
+                }
             };
             frame.inputs[slot] = value;
         }
@@ -1157,32 +1313,9 @@ mod tests {
     use crate::redpiler::program_graph::{LayerExpr, ReducedLayerProgram, SettledCircuit};
     use std::sync::Arc;
 
-    #[test]
-    fn unretained_frame_does_not_evaluate_on_resample() {
-        let (world, bounds) = super::super::adder_tests::counter_world();
-        let ticks = world.scheduler().iter_entries().collect();
-        let options = CompilerOptions {
-            optimization_level: Some(6),
-            budget_multiplier: 8,
-            ..Default::default()
-        };
-        let mut backend = GraphBackend::compile_with_options(&world, bounds, ticks, &options, Arc::default()).unwrap();
-        let mut device = backend.logical_devices.pop().expect("COUNTER installs its logical device");
-        let circuit = SettledCircuit {
-            program: ReducedLayerProgram {
-                inputs: Box::new([]),
-                expressions: vec![LayerExpr::Constant(false)].into_boxed_slice(),
-                roots: Box::new([]),
-            },
-            outputs: Box::new([]),
-            firing: None,
-            retained_cells: Box::new([]),
-            retained_effects: Box::new([]),
-            declines: Box::new([]),
-            timing: None,
-        };
-        device.frame = Some(SettledFrame {
-            evaluation: SettledEvaluation::new(&circuit).unwrap(),
+    fn constant_frame(circuit: &SettledCircuit) -> SettledFrame {
+        SettledFrame {
+            evaluation: SettledEvaluation::new(circuit).unwrap(),
             inputs: Box::new([]),
             boundaries: Box::new([]),
             feedback_slots: Box::new([]),
@@ -1197,8 +1330,42 @@ mod tests {
             retained_power_inputs: Box::new([]),
             terminal_repeater_inputs: Box::new([]),
             power_input_offset: 0,
-        });
-        let step = device.clock.advance(true).unwrap();
+        }
+    }
+
+    fn constant_circuit() -> SettledCircuit {
+        SettledCircuit {
+            program: ReducedLayerProgram {
+                inputs: Box::new([]),
+                expressions: vec![LayerExpr::Constant(false)].into_boxed_slice(),
+                roots: Box::new([]),
+            },
+            outputs: Box::new([]),
+            firing: None,
+            retained_cells: Box::new([]),
+            retained_effects: Box::new([]),
+            declines: Box::new([]),
+            timing: None,
+        }
+    }
+
+    #[test]
+    fn unretained_frame_does_not_evaluate_on_resample() {
+        let (world, bounds) = super::super::adder_tests::counter_world();
+        let ticks = world.scheduler().iter_entries().collect();
+        let options = CompilerOptions {
+            optimization_level: Some(6),
+            budget_multiplier: 8,
+            ..Default::default()
+        };
+        let mut backend = GraphBackend::compile_with_options(&world, bounds, ticks, &options, Arc::default()).unwrap();
+        let mut device = backend.logical_devices.pop().expect("COUNTER installs its logical device");
+        let circuit = constant_circuit();
+        device.frame = Some(constant_frame(&circuit));
+        let DeviceClockDriver::Logical(clock) = &mut device.clock_driver else {
+            panic!("COUNTER should use its source-derived logical clock");
+        };
+        let step = clock.advance(true).unwrap();
         assert!(step.resample);
         assert!(!step.compute);
 
@@ -1214,5 +1381,118 @@ mod tests {
             )
             .unwrap();
         assert_eq!(backend.counts.logical_kernel_evaluations, 1);
+    }
+
+    #[test]
+    fn native_clock_frame_runs_only_after_acceptance_and_before_retract_effects() {
+        let (mut world, bounds) = super::super::adder_tests::counter_world();
+        let ticks = world.scheduler().iter_entries().collect();
+        let options = CompilerOptions {
+            optimization_level: Some(6),
+            budget_multiplier: 8,
+            ..Default::default()
+        };
+        let mut backend = GraphBackend::compile_with_options(&world, bounds, ticks, &options, Arc::default()).unwrap();
+        let mut device = backend.logical_devices.pop().expect("COUNTER installs a source-clocked logical device");
+        let timing = backend.program.logical_devices()[0].circuit.timing.as_ref().unwrap();
+        let clock = timing.clock;
+        let trigger = timing.trigger;
+        device.frame = Some(constant_frame(&constant_circuit()));
+        device.machine = None;
+        device.clock_driver = DeviceClockDriver::NativeAction {
+            clock,
+            last_trigger: backend.node_state(trigger).powered,
+        };
+        device.trigger = trigger;
+        backend.native_action_clock_owner[clock.index()] = Some(0);
+        backend.logical_devices.push(device);
+        backend.set_test_recording(true);
+
+        let request = PistonRequest {
+            piston: clock,
+            action: mchprs_world::PistonAction::Retract,
+            source: None,
+        };
+        let clock_position = backend.program.pistons()[clock.index()].position;
+        backend.accept_action_using(request, Some(false)).unwrap();
+        assert!(
+            !backend
+                .observed_operations
+                .iter()
+                .any(|operation| matches!(operation, GraphObservedOperation::NativeFrameStep { actor, .. } if *actor == clock_position)),
+            "a rejected clock action must not run the native-clock frame"
+        );
+
+        let start = backend.observed_operations.len();
+        backend.accept_action_using(request, Some(true)).unwrap();
+        let operations = &backend.observed_operations[start..];
+        let frame = operations
+            .iter()
+            .position(|operation| matches!(operation, GraphObservedOperation::NativeFrameStep { actor, action } if *actor == clock_position && *action == request.action))
+            .expect("accepted native clock retract runs its frame");
+        let dispatch = operations
+            .iter()
+            .position(|operation| matches!(operation, GraphObservedOperation::RetractionDispatch { actor, .. } if *actor == clock_position))
+            .expect("accepted retract reaches its shared dispatch boundary");
+        let accepted = operations
+            .iter()
+            .position(|operation| matches!(operation, GraphObservedOperation::Accepted { actor, action } if *actor == clock_position && *action == request.action))
+            .expect("accepted retract publishes its accepted action");
+        assert!(
+            frame < dispatch && dispatch < accepted,
+            "frame compute must precede the shared retract dispatch in the action FIFO"
+        );
+
+        let no_pull_request = PistonRequest {
+            action: mchprs_world::PistonAction::RetractWithoutPull,
+            ..request
+        };
+        let start = backend.observed_operations.len();
+        backend.accept_action_using(no_pull_request, Some(true)).unwrap();
+        let operations = &backend.observed_operations[start..];
+        let frame = operations
+            .iter()
+            .position(|operation| matches!(operation, GraphObservedOperation::NativeFrameStep { actor, action } if *actor == clock_position && *action == no_pull_request.action))
+            .expect("accepted RetractWithoutPull runs the native-clock frame");
+        let dispatch = operations
+            .iter()
+            .position(
+                |operation| matches!(operation, GraphObservedOperation::RetractionDispatch { actor, without_pull: true } if *actor == clock_position),
+            )
+            .expect("RetractWithoutPull reaches its no-pull dispatch");
+        let accepted = operations
+            .iter()
+            .position(|operation| matches!(operation, GraphObservedOperation::Accepted { actor, action } if *actor == clock_position && *action == no_pull_request.action))
+            .expect("accepted no-pull retract is published");
+        assert!(frame < dispatch && dispatch < accepted);
+        assert!(
+            backend.future.deferred_pistons.back().unwrap().resource.is_none(),
+            "RetractWithoutPull must not enqueue a resource pull"
+        );
+
+        assert_eq!(backend.native_action_clock_owner[clock.index()], Some(0));
+        backend.reset(&mut world);
+        assert!(backend.native_action_clock_owner.iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn native_action_clock_requires_stationary_pose_at_binding() {
+        let (world, bounds) = super::super::adder_tests::counter_world();
+        let ticks = world.scheduler().iter_entries().collect();
+        let options = CompilerOptions {
+            optimization_level: Some(6),
+            budget_multiplier: 8,
+            ..Default::default()
+        };
+        let mut backend = GraphBackend::compile_with_options(&world, bounds, ticks, &options, Arc::default()).unwrap();
+        let timing = backend.program.logical_devices()[0].circuit.timing.as_ref().unwrap().clone();
+        let clock = timing.clock;
+        assert!(backend.prepare_native_action_clock(clock, &timing).is_ok());
+
+        backend.state.pistons[clock.index()].availability = crate::redpiler::program_graph::PistonAvailability::BasePending;
+        assert!(matches!(
+            backend.prepare_native_action_clock(clock, &timing),
+            Err(reason) if reason.contains("extended stationary clock piston")
+        ));
     }
 }

@@ -30,6 +30,25 @@ pub(super) fn prepared_o6(world: &PlotWorld, bounds: (BlockPos, BlockPos), monit
     prepared.graph
 }
 
+fn prepared_o3(world: &PlotWorld, bounds: (BlockPos, BlockPos), monitor: &TaskMonitor) -> CompileGraph {
+    monitor.set_budget_multiplier(8);
+    let mut prepared = passes::rich::prepare(world, bounds, vec![], monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(3),
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::experimental_layer_pipeline(&options),
+        monitor,
+    )
+    .unwrap();
+    prepared.graph
+}
+
 fn original_first_single_lamp_candidate(graph: &CompileGraph) -> (Option<PistonId>, usize) {
     let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
         return (None, 0);
@@ -1636,4 +1655,127 @@ fn evaluate_logical_expression(builder: &LayerBuilder<'_>, root: LayerExprId, in
         LayerExpr::All(children) => children.iter().all(|&child| evaluate_logical_expression(builder, child, inputs)),
         LayerExpr::Any(children) => children.iter().any(|&child| evaluate_logical_expression(builder, child, inputs)),
     }
+}
+
+#[test]
+#[ignore = "failure-guided retry census across ANPU, adder, counter and FPU fixtures"]
+fn failure_guided_corridor_retry_census_actual_device_fixtures() {
+    let monitor = TaskMonitor::default();
+    let mut total_new_pull_owners = 0usize;
+    for cpu in super::cpus::CPUS.iter().filter(|cpu| cpu.name == "anpu_pong") {
+        let world = super::cpus::load_cpu(*cpu);
+        let bounds = world.get_corners();
+        let graph_o3 = prepared_o3(&world, bounds, &monitor);
+        total_new_pull_owners += failure_guided_recovery_census(&format!("{} O3", cpu.name), &graph_o3, &monitor);
+        let graph_o6 = prepared_o6(&world, bounds, &monitor);
+        total_new_pull_owners += failure_guided_recovery_census(&format!("{} O6", cpu.name), &graph_o6, &monitor);
+    }
+    for fixture in [
+        "../../test_data/instant-pistons-io/fixtures/adder_11bits.json",
+        "../../test_data/instant-pistons-io/fixtures/counter_basic.json",
+        "../../test_data/piston-research/fixtures/fpu_legal.json",
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
+        let mut descriptor: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        if fixture.ends_with("fpu_legal.json") {
+            let origin = BlockPos::new(40, 30, 40);
+            descriptor["origin"] = serde_json::json!([origin.x, origin.y, origin.z]);
+        }
+        let world = super::cpus::load_manifest(&descriptor).unwrap();
+        let bounds = world.get_corners();
+        let graph_o3 = prepared_o3(&world, bounds, &monitor);
+        total_new_pull_owners += failure_guided_recovery_census(&format!("{fixture} O3"), &graph_o3, &monitor);
+        let graph_o6 = prepared_o6(&world, bounds, &monitor);
+        total_new_pull_owners += failure_guided_recovery_census(&format!("{fixture} O6"), &graph_o6, &monitor);
+    }
+    eprintln!("failure-guided fixture census total newly lowered PullWave owners: {total_new_pull_owners}");
+    assert!(total_new_pull_owners > 0, "at least one real fixture must gain a lowered PullWave owner");
+}
+
+fn failure_guided_recovery_census(label: &str, graph: &CompileGraph, monitor: &TaskMonitor) -> usize {
+    let catalog = graph
+        .plans
+        .instant
+        .boundaries
+        .as_ref()
+        .expect("fixture pipeline publishes boundaries")
+        .clone();
+    let (with_retry, with_context) =
+        crate::redpiler::analysis::instant::layers::compile_layers_with_context(graph, &catalog, monitor).expect("failure-guided layers compile");
+    let (without_retry, without_context) =
+        crate::redpiler::analysis::instant::layers::compile_layers_without_failure_guided_cuts(graph, &catalog, monitor)
+            .expect("whole-island baseline layers compile");
+
+    let owners = |plan: &LayeredInstantPlan| {
+        plan.regions
+            .iter()
+            .flat_map(|region| {
+                region
+                    .cells
+                    .iter()
+                    .flat_map(|&cell| catalog.cells[cell as usize].uses.iter().map(|use_| use_.actor))
+            })
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let lower_pull_owners = |plan: &LayeredInstantPlan, context: &LayerCompilationContext| {
+        let mut candidate = graph.clone();
+        candidate.plans.instant.layers = Some(plan.clone());
+        crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&candidate, monitor, Some(context))
+            .expect("recovery plan lowers with its rebuilt ownership context")
+            .iter()
+            .filter_map(|kernel| {
+                matches!(&kernel.program, crate::redpiler::program_graph::KernelProgram::PullWave { .. }).then_some(kernel.actors.iter().copied())
+            })
+            .flatten()
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let before_owners = owners(&without_retry);
+    let after_owners = owners(&with_retry);
+    let before_pull_owners = lower_pull_owners(&without_retry, &without_context);
+    let after_pull_owners = lower_pull_owners(&with_retry, &with_context);
+    let newly_compiled: Vec<_> = after_owners.difference(&before_owners).copied().collect();
+    let newly_lowered: Vec<_> = after_pull_owners.difference(&before_pull_owners).copied().collect();
+    assert!(newly_lowered.iter().all(|actor| newly_compiled.contains(actor)));
+    let new_regions: Vec<_> = with_retry
+        .regions
+        .iter()
+        .filter(|region| {
+            region
+                .cells
+                .iter()
+                .any(|&cell| catalog.cells[cell as usize].uses.iter().any(|use_| newly_compiled.contains(&use_.actor)))
+        })
+        .map(|region| (region.id, region.cells.clone(), region.corridors.clone()))
+        .collect();
+    let mut decline_counts = std::collections::BTreeMap::<&'static str, usize>::new();
+    for decline in &with_retry.declines {
+        let label = match decline.reason {
+            LayerDeclineReason::ProofBudgetExceeded => "proof-budget",
+            LayerDeclineReason::SignalArrivalUnproven => "signal-arrival",
+            LayerDeclineReason::CallbackSemanticsUnsupported => "callback",
+            LayerDeclineReason::SharedOwnerOrderUnknown => "shared-owner-order",
+            LayerDeclineReason::BoundaryEffectUnsupported => "boundary-effect",
+        };
+        *decline_counts.entry(label).or_default() += 1;
+    }
+    let decline_witnesses: Vec<_> = with_retry
+        .declines
+        .iter()
+        .filter(|decline| decline.reason == LayerDeclineReason::SignalArrivalUnproven)
+        .take(8)
+        .map(|decline| (decline.cells.first().copied(), decline.witness))
+        .collect();
+    eprintln!(
+        "failure-guided {label} census: compiled_cells={} -> {}, pullwave_owners={} -> {}, newly_compiled={:?}, newly_lowered={:?}, new_regions={:?}, declines={:?}, arrival_witnesses={:?}",
+        before_owners.len(),
+        after_owners.len(),
+        before_pull_owners.len(),
+        after_pull_owners.len(),
+        newly_compiled,
+        newly_lowered,
+        new_regions,
+        decline_counts,
+        decline_witnesses
+    );
+    newly_lowered.len()
 }

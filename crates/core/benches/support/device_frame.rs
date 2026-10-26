@@ -81,14 +81,16 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
         let mut observed = BTreeSet::new();
         let mut saw_readout_on = false;
         let start = Instant::now();
-        compiler.on_use_block(trigger);
-        for word in words {
+        for (frame, word) in words.into_iter().enumerate() {
             for (bit, &p) in inputs.iter().enumerate() {
                 if (word ^ mask) & (1 << bit) != 0 {
                     compiler.on_use_block(p);
                 }
             }
             mask = word;
+            if frame == 0 {
+                compiler.on_use_block(trigger);
+            }
             // Hold each input frame for six game ticks, including its reset interval.
             for _ in 0..6 {
                 compiler.tick_with_world(&mut world)?;
@@ -117,7 +119,6 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
             logical_kernel_evaluations == episodes as u64,
             "logical device did not execute once per six-game-tick frame"
         );
-        ensure!(wire_walks == 0, "frame workload performed physical wire walks: {wire_walks}");
         ensure!(observed.len() > 1, "no changing FPU output activity");
         ensure!(command_output_count > 0, "frame workload produced no real command output");
         ensure!(
@@ -139,9 +140,9 @@ pub(super) fn run(descriptor: &Value, episodes: usize, iterations: usize, seed: 
     rates.sort_by(f64::total_cmp);
     let report = json!({"measurement_kind":"production_o6_fpu_frames","optimized":!cfg!(debug_assertions),
         "terminal_readout_delay":readout_delay,
-        "flags":"-O6","input_contract":"compile stopped circuit, then toggle trigger to start; inputs held for six game ticks; no warm-up",
+        "flags":"-O6","input_contract":"prepare operands before starting the stopped clock; inputs held for six game ticks; no warm-up",
         "warmup_game_ticks":0,"trigger_edges_per_sample":1,
-        "scope":"bulk logical frame plus three retained native output cells; includes control updates, piston samples/actions, deferred publications, callbacks, and command output",
+        "scope":"certified logical frame with native input and output boundaries; includes control updates, wire propagation, piston samples/actions, deferred publications, callbacks, and command output",
         "correctness_scope":"activity check; benchmark-frame equivalence and native clock timing are tested separately",
         "median_game_tps":rates[rates.len()/2],"samples":samples});
     if let Some(path) = output {

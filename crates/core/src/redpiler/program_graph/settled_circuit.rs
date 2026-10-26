@@ -39,6 +39,19 @@ pub(crate) struct SettledDeviceScope {
     pub(crate) owned_resources: Box<[ResourceId]>,
     /// Routes whose source node is owned by this interaction island.
     pub(crate) owned_source_routes: Box<[RouteId]>,
+    /// Exact native-input callback occurrences that may cross into a frame-owned equation/clock node.
+    pub(crate) input_callbacks: Box<[RouteOccurrence]>,
+    /// The qualified event that advances this device's frame.
+    pub(crate) clock_driver: SettledClockDriver,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum SettledClockDriver {
+    /// The scoped device advances from its source-derived logical clock.
+    #[default]
+    Logical,
+    /// Graph owns the physical controller; accepted retractions advance the frame.
+    NativeAction { clock: PistonId },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

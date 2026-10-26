@@ -69,7 +69,91 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             &LogicalDeviceAdmission::Active,
             "FPU must compile independently of an ordinary neighboring circuit (crop={crop})"
         );
-        assert!(backend.logical_node_owned(backend.positions[&TRIGGER]));
+        let (timing, clock_node) = backend
+            .program
+            .logical_devices()
+            .iter()
+            .find_map(|device| {
+                let timing = device.circuit.timing.as_ref()?;
+                (timing.trigger == backend.positions[&TRIGGER]).then(|| {
+                    let clock = timing.actor_specs.iter().find(|actor| actor.piston == timing.clock).unwrap();
+                    (timing, clock.node)
+                })
+            })
+            .expect("the admitted clock must be certified against the manifest trigger");
+        assert_eq!(backend.program.nodes()[timing.trigger.index()].position, Some(TRIGGER));
+        assert!(
+            !backend.logical_node_owned(timing.trigger),
+            "the source trigger control must remain native Graph work"
+        );
+        assert!(
+            backend.logical_node_owned(clock_node),
+            "the certified logical clock piston must belong to the admitted device"
+        );
+
+        let owned_nodes: FxHashSet<_> = backend
+            .program
+            .logical_devices()
+            .iter()
+            .flat_map(|device| device.scope.owned_nodes.iter().copied())
+            .collect();
+        let native_fpu_nodes = backend
+            .program
+            .nodes()
+            .iter()
+            .enumerate()
+            .filter_map(|(index, node)| {
+                node.position
+                    .filter(|position| inside_fpu(*position))
+                    .filter(|_| !owned_nodes.contains(&NodeId::new(index as u32)))
+                    .map(|_| NodeId::new(index as u32))
+            })
+            .collect::<Vec<_>>();
+        let indicator_lamps = native_fpu_nodes
+            .iter()
+            .copied()
+            .filter(|&node| matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Lamp)))
+            .collect::<Vec<_>>();
+        assert_eq!(indicator_lamps.len(), 35, "the FPU's 35 indicator lamps must remain Graph-owned");
+        let indicator_positions = indicator_lamps
+            .iter()
+            .map(|&node| backend.program.nodes()[node.index()].position.unwrap())
+            .collect::<Vec<_>>();
+        let initial_indicator_blocks = indicator_positions.iter().map(|&position| world.get_block(position)).collect::<Vec<_>>();
+        let fpu_controls = native_fpu_nodes
+            .iter()
+            .filter_map(|&node| {
+                let spec = &backend.program.nodes()[node.index()];
+                (spec.position != Some(TRIGGER) && matches!(spec.kind, CircuitNodeKind::Electrical(NodeType::Lever)))
+                    .then_some(spec.position.unwrap())
+            })
+            .collect::<Vec<_>>();
+        assert!(fpu_controls.len() >= 3, "the native FPU input cone must expose changing control levers");
+        let driven_fpu_controls = [fpu_controls[0], fpu_controls[fpu_controls.len() / 2], *fpu_controls.last().unwrap()];
+        let observer_nodes = native_fpu_nodes
+            .iter()
+            .copied()
+            .filter(|&node| {
+                matches!(
+                    backend.program.nodes()[node.index()].kind,
+                    CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
+                )
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !observer_nodes.is_empty(),
+            "the native FPU input cone must include its observers or compiled reset observers"
+        );
+        assert!(
+            observer_nodes
+                .iter()
+                .all(|&node| matches!(backend.state.components[node.index()], ComponentState::Electrical(_))),
+            "native observer/reset pulses use electrical component state"
+        );
+        let native_positions: FxHashSet<_> = native_fpu_nodes
+            .iter()
+            .filter_map(|&node| backend.program.nodes()[node.index()].position)
+            .collect();
 
         let mut physical_world = saved_world();
         let mut physical = GraphBackend::new_with_positions(
@@ -89,6 +173,20 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             .collect();
         let initial_neighbors = neighbors.iter().map(|&i| backend.state.components[i].clone()).collect::<Vec<_>>();
         let mut saw_neighbor_activity = false;
+        let mut saw_indicator_transition = false;
+        let mut saw_delayed_indicator_lamp_off = false;
+        let mut saw_native_scheduled_work = false;
+        let mut saw_observer_on = false;
+        let mut saw_observer_off_after_on = false;
+        let mut observer_was_on = observer_nodes
+            .iter()
+            .map(|&node| matches!(backend.state.components[node.index()], ComponentState::Electrical(ref state) if state.powered))
+            .collect::<Vec<_>>();
+        let mut indicator_was_lit = initial_indicator_blocks
+            .iter()
+            .map(|block| matches!(block, Block::RedstoneLamp { lit: true }))
+            .collect::<Vec<_>>();
+        let mut indicator_had_scheduled_tick = vec![false; indicator_positions.len()];
         let controls: Vec<_> = neighbors
             .iter()
             .filter_map(|&i| {
@@ -96,15 +194,66 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
                     .then_some(backend.program.nodes()[i].position.unwrap())
             })
             .collect();
-        backend.use_block(TRIGGER).unwrap();
-        physical.use_block(TRIGGER).unwrap();
         for tick in 0..48 {
+            if tick == 0 || tick == 18 {
+                for &control in &driven_fpu_controls {
+                    backend.use_block(control).unwrap();
+                    physical.use_block(control).unwrap();
+                }
+            }
+            if tick == 0 {
+                backend.use_block(TRIGGER).unwrap();
+                physical.use_block(TRIGGER).unwrap();
+            }
+            if tick == 24 || tick == 36 {
+                backend.use_block(TRIGGER).unwrap();
+                physical.use_block(TRIGGER).unwrap();
+            }
             if let Some(&control) = controls.get(tick / 2) {
                 backend.use_block(control).unwrap();
                 physical.use_block(control).unwrap();
             }
             backend.tick_with_world(&mut world).unwrap();
             physical.tick_with_world(&mut physical_world).unwrap();
+            backend.flush(&mut world, false);
+            physical.flush(&mut physical_world, false);
+            for &i in &native_fpu_nodes {
+                assert_eq!(
+                    backend.state.components[i.index()],
+                    physical.state.components[i.index()],
+                    "native FPU input-cone node {:?} at tick {tick}",
+                    backend.program.nodes()[i.index()].position
+                );
+            }
+            let native_ticks = |graph: &GraphBackend| {
+                graph
+                    .scheduled_ticks()
+                    .into_iter()
+                    .filter(|entry| native_positions.contains(&entry.pos))
+                    .collect::<Vec<_>>()
+            };
+            let frame_native_ticks = native_ticks(&backend);
+            assert_eq!(frame_native_ticks, native_ticks(&physical), "native FPU scheduled work at tick {tick}");
+            saw_native_scheduled_work |= !frame_native_ticks.is_empty();
+            for (lamp_index, &position) in indicator_positions.iter().enumerate() {
+                let projected = world.get_block(position);
+                assert_eq!(
+                    projected,
+                    physical_world.get_block(position),
+                    "FPU indicator lamp at {position:?}, tick {tick}"
+                );
+                saw_indicator_transition |= projected != initial_indicator_blocks[lamp_index];
+                let lit = matches!(projected, Block::RedstoneLamp { lit: true });
+                saw_delayed_indicator_lamp_off |= indicator_was_lit[lamp_index] && !lit && indicator_had_scheduled_tick[lamp_index];
+                indicator_was_lit[lamp_index] = lit;
+                indicator_had_scheduled_tick[lamp_index] = frame_native_ticks.iter().any(|entry| entry.pos == position);
+            }
+            for (observer_index, &node) in observer_nodes.iter().enumerate() {
+                let on = matches!(backend.state.components[node.index()], ComponentState::Electrical(ref state) if state.powered);
+                saw_observer_on |= on;
+                saw_observer_off_after_on |= observer_was_on[observer_index] && !on;
+                observer_was_on[observer_index] = on;
+            }
             saw_neighbor_activity |= neighbors.iter().zip(&initial_neighbors).any(|(&i, initial)| {
                 !matches!(backend.program.nodes()[i].kind, CircuitNodeKind::Electrical(NodeType::Lever)) && backend.state.components[i] != *initial
             });
@@ -163,11 +312,23 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
                 outside_ticks(&physical),
                 "independent delayed work at tick {tick}"
             );
-            backend.flush(&mut world, false);
             for z in (-221..=-161).step_by(4) {
                 assert!(matches!(world.get_block(BlockPos::new(-102, 55, z)), Block::RedstoneRepeater { .. }));
             }
         }
+        assert!(saw_indicator_transition, "changing FPU inputs must exercise an indicator lamp transition");
+        assert!(
+            saw_delayed_indicator_lamp_off,
+            "at least one native indicator lamp must turn off after its scheduled Graph tick"
+        );
+        assert!(
+            saw_native_scheduled_work,
+            "native input-cone observer/OFF work must stay on Graph's scheduler"
+        );
+        assert!(
+            saw_observer_on && saw_observer_off_after_on,
+            "observer pulses must turn on and return off while the frame is admitted"
+        );
         assert!(crop || saw_neighbor_activity, "the neighboring circuit must execute real native work");
         eprintln!(
             "saved FPU crop={crop}: devices={} evaluations={} wire_walks={} native_ticks={}",
@@ -178,7 +339,12 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
         );
         assert!(backend.counts.logical_kernel_evaluations > 0);
         if crop {
-            assert_eq!(backend.counts.wire_walks, 0, "isolated FPU must execute without bulk wire walks");
+            assert!(
+                backend.counts.wire_walks < physical.counts.wire_walks,
+                "isolated FPU must reduce wire walks against the ordinary Graph replay: candidate={} physical={}",
+                backend.counts.wire_walks,
+                physical.counts.wire_walks
+            );
         }
     }
 }

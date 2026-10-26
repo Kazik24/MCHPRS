@@ -254,6 +254,8 @@ enum GraphObservedOperation {
     Sample { actor: BlockPos, extended: bool, powered: bool },
     Request { actor: BlockPos, action: mchprs_world::PistonAction },
     AcceptanceAttempt { actor: BlockPos, action: mchprs_world::PistonAction },
+    NativeFrameStep { actor: BlockPos, action: mchprs_world::PistonAction },
+    RetractionDispatch { actor: BlockPos, without_pull: bool },
     Accepted { actor: BlockPos, action: mchprs_world::PistonAction },
 }
 
@@ -466,6 +468,10 @@ pub(crate) struct GraphBackend {
     logical_firing: Option<logical_firing::LogicalFiringRuntime>,
     logical_devices: Vec<logical_device::LogicalDevice>,
     logical_device_owner: Vec<Option<usize>>,
+    /// Source-qualified native clock pistons dispatch accepted retracts to their frame owner.
+    native_action_clock_owner: Vec<Option<usize>>,
+    /// Exact native callback occurrences replaced by certified logical-device inputs.
+    logical_input_callbacks: FxHashSet<RouteOccurrence>,
     logical_device_admission: crate::redpiler::LogicalDeviceAdmission,
     active_frame_command_outputs: Vec<NodeId>,
     active_frame_retained_actors: Vec<PistonId>,
@@ -851,6 +857,7 @@ impl GraphBackend {
         let fixed_classic = program.fixed_classic().cloned();
         let instant_kernel = instant_kernel::KernelExecution::new(&program);
         let mut logical_bud_owner_by_actor = vec![None; program.pistons().len()];
+        let native_action_clock_owner = vec![None; program.pistons().len()];
         let mut logical_bud_samples_by_route: Vec<Option<Box<[Option<PistonId>]>>> =
             std::iter::repeat_with(|| None).take(program.routes().len()).collect();
         let instant_kernel_routes: FxHashSet<_> = program
@@ -908,6 +915,8 @@ impl GraphBackend {
             logical_firing: None,
             logical_devices: Vec::new(),
             logical_device_owner: Vec::new(),
+            native_action_clock_owner,
+            logical_input_callbacks: FxHashSet::default(),
             logical_device_admission: crate::redpiler::LogicalDeviceAdmission::NotApplicable,
             active_frame_command_outputs: Vec::new(),
             active_frame_retained_actors: Vec::new(),
@@ -2266,6 +2275,9 @@ impl GraphBackend {
         captured: Option<&[Option<ObservedSite>]>,
         occurrence: Option<RouteOccurrence>,
     ) -> Result<(), GraphExecutionError> {
+        if occurrence.is_some_and(|occurrence| occurrence.route == route && self.logical_input_callbacks.contains(&occurrence)) {
+            return Ok(());
+        }
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled
             && let Some(receiver) = delivery.receiver

@@ -1,9 +1,9 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CompileGraph, CpuPowerQueryPlans, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan,
-    InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, ScopedSettledDevice, SettledCircuit, SiteId, TurboCallbackIndex,
-    WireCallbackSelection, WireQueryFacts,
+    CallbackReceiver, CompileGraph, CpuPowerQueryPlans, DeliveryKind, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy,
+    InstantRegion, InstantResetPlan, InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, ScopedSettledDevice,
+    SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -283,6 +283,7 @@ impl PlanOutput {
             let mut globally_owned_sites = rustc_hash::FxHashSet::default();
             let mut globally_owned_contacts = rustc_hash::FxHashSet::default();
             let mut globally_owned_resources = rustc_hash::FxHashSet::default();
+            let mut globally_owned_input_callbacks = rustc_hash::FxHashSet::default();
             for scoped in devices {
                 scoped.circuit.validate().map_err(|_| GraphBuildError::InvalidInstantRegion {
                     table: "scoped settled device",
@@ -294,6 +295,7 @@ impl PlanOutput {
                     || !strictly_sorted(&scoped.scope.owned_contacts)
                     || !strictly_sorted(&scoped.scope.owned_resources)
                     || !strictly_sorted(&scoped.scope.owned_source_routes)
+                    || !strictly_sorted_by_key(&scoped.scope.input_callbacks, |occurrence| (occurrence.route, occurrence.ordinal))
                     || scoped.circuit.timing.is_none()
                     || scoped.scope.owned_nodes.iter().any(|node| node.index() >= graph.nodes.len())
                     || scoped.scope.owned_sites.iter().any(|site| site.index() >= graph.sites.len())
@@ -305,6 +307,32 @@ impl PlanOutput {
                         .any(|resource| resource.index() >= graph.resources.len())
                     || scoped.scope.owned_source_routes.iter().any(|route| {
                         route.index() >= graph.routes.len() || scoped.scope.owned_nodes.binary_search(&graph.routes[route.index()].source).is_err()
+                    })
+                    || scoped.scope.input_callbacks.iter().any(|occurrence| {
+                        let Some(route) = graph.routes.get(occurrence.route.index()) else {
+                            return true;
+                        };
+                        let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
+                            return true;
+                        };
+                        if scoped.scope.owned_nodes.binary_search(&route.source).is_ok() {
+                            return true;
+                        }
+                        let receiver = delivery
+                            .receiver
+                            .or_else(|| match (graph.sites.get(delivery.target.index())?.source, delivery.kind) {
+                                (crate::redpiler::program_graph::SiteSource::Component(node), DeliveryKind::Update { .. }) => {
+                                    Some(CallbackReceiver::Component(node))
+                                }
+                                _ => None,
+                            });
+                        let target = match receiver {
+                            Some(CallbackReceiver::Component(node)) => node,
+                            Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => graph.pistons[actor.index()].node,
+                            Some(CallbackReceiver::Contact(contact)) => graph.contacts[contact.index()].node,
+                            None => return true,
+                        };
+                        scoped.scope.owned_nodes.binary_search(&target).is_err()
                     })
                     || scoped.scope.owned_nodes.iter().any(|node| !globally_owned_nodes.insert(*node))
                     || scoped.scope.owned_sites.iter().any(|site| !globally_owned_sites.insert(*site))
@@ -318,6 +346,11 @@ impl PlanOutput {
                         .owned_resources
                         .iter()
                         .any(|resource| !globally_owned_resources.insert(*resource))
+                    || scoped
+                        .scope
+                        .input_callbacks
+                        .iter()
+                        .any(|occurrence| !globally_owned_input_callbacks.insert(*occurrence))
                 {
                     return Err(GraphBuildError::InvalidInstantRegion {
                         table: "scoped settled device ordering",
@@ -370,4 +403,8 @@ impl PlanOutput {
 
 fn strictly_sorted<T: Ord>(items: &[T]) -> bool {
     items.windows(2).all(|pair| pair[0] < pair[1])
+}
+
+fn strictly_sorted_by_key<T, K: Ord>(items: &[T], key: impl Fn(&T) -> K) -> bool {
+    items.windows(2).all(|pair| key(&pair[0]) < key(&pair[1]))
 }

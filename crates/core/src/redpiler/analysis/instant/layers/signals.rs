@@ -21,6 +21,35 @@ pub(super) struct SignalMemo {
     guards: FxHashMap<GuardId, LayerExprId>,
 }
 
+impl SignalMemo {
+    /// Map queried wire targets through the logical expansion arena and retain
+    /// only non-constant queries that feed an observable equation root.
+    pub(super) fn live_expanded_wire_nodes(
+        &self,
+        graph: &CompileGraph,
+        expanded: &FxHashMap<LayerExprId, LayerExprId>,
+        live_nonconstant: &FxHashSet<LayerExprId>,
+    ) -> FxHashSet<NodeId> {
+        self.targets
+            .iter()
+            .filter_map(|((target, _), raw_root)| {
+                let expanded_root = expanded.get(raw_root)?;
+                if !live_nonconstant.contains(expanded_root) {
+                    return None;
+                }
+                let node = match target {
+                    PowerTarget::Input { node, .. } => *node,
+                    PowerTarget::Conductor { site, .. } => match graph.sites.get(site.index())?.source {
+                        SiteSource::Component(node) => node,
+                        SiteSource::Contact(_) | SiteSource::Constant(_) => return None,
+                    },
+                };
+                matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)).then_some(node)
+            })
+            .collect()
+    }
+}
+
 pub(super) struct SignalTracer<'a> {
     /// These immutable directional contributions already encode conducted and dust channels.
     graph: &'a CompileGraph,
@@ -120,6 +149,36 @@ impl<'a> SignalTracer<'a> {
                 };
                 matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(node)
             })
+            .collect()
+    }
+
+    /// Return only wire target equations in the observable expression slice.
+    pub(super) fn queried_wire_nodes_in(&self, live_nonconstant: &FxHashSet<LayerExprId>) -> FxHashSet<NodeId> {
+        self.targets
+            .iter()
+            .filter_map(|((target, _), root)| {
+                if !live_nonconstant.contains(root) {
+                    return None;
+                }
+                let node = match target {
+                    PowerTarget::Input { node, .. } => *node,
+                    PowerTarget::Conductor { site, .. } => {
+                        let SiteSource::Component(node) = self.graph.sites[site.index()].source else {
+                            return None;
+                        };
+                        node
+                    }
+                };
+                matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(node)
+            })
+            .collect()
+    }
+
+    /// Return only source-site equations in the observable expression slice.
+    pub(super) fn queried_source_sites_in(&self, live_nonconstant: &FxHashSet<LayerExprId>) -> FxHashSet<SiteId> {
+        self.sources
+            .iter()
+            .filter_map(|((site, _, _), root)| live_nonconstant.contains(root).then_some(*site))
             .collect()
     }
 
