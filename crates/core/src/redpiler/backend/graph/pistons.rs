@@ -38,7 +38,7 @@ impl GraphBackend {
     }
 
     fn sample_piston_inner(&mut self, piston: PistonId, source: Option<RouteId>) -> Result<(), GraphExecutionError> {
-        if !self.active_frame_retained_actors.is_empty() && !self.active_frame_retained_actors.contains(&piston) {
+        if !self.active_frame_retained_nodes.is_empty() && !self.active_frame_retained_actors.contains(&piston) {
             let node = self.program.pistons()[piston.index()].node;
             return Err(self.unsupported(node, "logical frame received an unowned piston sample"));
         }
@@ -133,7 +133,7 @@ impl GraphBackend {
 
     pub(super) fn drain_piston_actions(&mut self) -> Result<(), GraphExecutionError> {
         while let Some(request) = self.future.piston_requests.pop_front() {
-            if !self.active_frame_retained_actors.is_empty() && !self.active_frame_retained_actors.contains(&request.piston) {
+            if !self.active_frame_retained_nodes.is_empty() && !self.active_frame_retained_actors.contains(&request.piston) {
                 let node = self.program.pistons()[request.piston.index()].node;
                 return Err(self.unsupported(node, "logical frame received an unowned piston action"));
             }

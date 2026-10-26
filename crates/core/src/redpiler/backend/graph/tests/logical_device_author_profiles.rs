@@ -144,6 +144,8 @@ fn bubblesort_o6_power_queries_match_every_frozen_ram_tick_and_handoff() {
     let mut backend = compile_o6(&world);
     assert_full_cpu_power_coverage(&backend, cpu);
     report_logical_bud_coverage(&backend, cpu, "before activity");
+    let coverage = backend.execution_coverage();
+    eprintln!("O6 BubbleSort runtime kernel coverage before activity: {coverage:?}");
     backend.set_test_recording(true);
     let ticks = cpu.active_ticks + 1;
     let expected = expand_ram(cpu, ticks + 32);
@@ -164,6 +166,12 @@ fn bubblesort_o6_power_queries_match_every_frozen_ram_tick_and_handoff() {
     }
     let counts = backend.execution_counts();
     report_logical_bud_coverage(&backend, cpu, "after activity");
+    assert!(coverage.instant_kernel_nodes > 0, "BubbleSort installed no instant runtime kernels");
+    assert!(counts.instant_kernel_invocations > 0, "BubbleSort invoked no instant runtime kernels");
+    eprintln!(
+        "O6 BubbleSort full-sort runtime counts: installed_kernel_nodes={}, instant_kernel_invocations={}, logical_kernel_evaluations={}",
+        coverage.instant_kernel_nodes, counts.instant_kernel_invocations, counts.logical_kernel_evaluations
+    );
     assert!(
         counts.piston_samples > 0 && counts.piston_actions > 0,
         "BubbleSort exercised piston power queries"

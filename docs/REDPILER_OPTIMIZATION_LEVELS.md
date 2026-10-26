@@ -51,7 +51,12 @@ for state/event compilation and verification requirements.
 ## Compilation reports and inspection
 
 Completion chat reports mode, stage time, graph size, expensive stages, and plan
-coverage. Inspect a prepared pipeline without activating it:
+coverage. It also reports whether the logical-device evaluator actually activated.
+If admission declines, the report gives the reason and general Graph execution
+continues. Kernel coverage alone does not mean that the logical-device evaluator
+is active. Pending work can prevent admission even when the build is recognized;
+stop and let the circuit settle before compiling for logical-device execution.
+Inspect a prepared pipeline without activating it:
 
 ```text
 /rp analyze --graph --optimize

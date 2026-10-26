@@ -393,14 +393,73 @@ pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit
         .collect()
 }
 
-/// Compile terminal wires and command-block power as public frame outputs.
+/// Compile terminal wires, safe terminal-repeater inputs, and command-block power as public frame outputs.
 pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
-    let consumed: FxHashSet<_> = graph
+    let outgoing_components: FxHashSet<_> = graph
         .power_links
         .iter()
         .filter_map(|link| match graph.sites.get(link.from.index())?.source {
-            SiteSource::Component(node) if matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)) => Some(node),
+            SiteSource::Component(node) => Some(node),
             _ => None,
+        })
+        .collect();
+    let side_input_nodes: FxHashSet<_> = graph
+        .power_links
+        .iter()
+        .filter_map(|link| match link.to {
+            PowerTarget::Input { node, port: InputPort::Side } => Some(node),
+            _ => None,
+        })
+        .collect();
+    let terminal_repeater_inputs: FxHashSet<_> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            let id = NodeId::new(index as u32);
+            let has_semantic_output_callback = match node.output_route {
+                Some(route_id) => match graph.routes.get(route_id.index()) {
+                    Some(route) => route.deliveries.iter().any(|delivery| {
+                        let Some(site) = graph.sites.get(delivery.target.index()) else {
+                            return true;
+                        };
+                        let receiver = delivery.receiver.or_else(|| match (site.source, delivery.kind) {
+                            (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+                            _ => None,
+                        });
+                        receiver.is_some_and(|receiver| {
+                            !terminal_repeater_receiver_is_safe(
+                                receiver,
+                                id,
+                                matches!(receiver, CallbackReceiver::Component(receiver) if matches!(graph.nodes[receiver.index()].kind, CircuitNodeKind::Wire(_))),
+                            )
+                        })
+                    }),
+                    None => true,
+                },
+                None => false,
+            };
+            (matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
+                && !side_input_nodes.contains(&id)
+                && !outgoing_components.contains(&id)
+                && !has_semantic_output_callback)
+                .then_some(PowerTarget::Input {
+                    node: id,
+                    port: InputPort::Main,
+                })
+        })
+        .collect();
+    let repeater_input_wires: FxHashSet<_> = graph
+        .power_links
+        .iter()
+        .filter_map(|link| {
+            if !terminal_repeater_inputs.contains(&link.to) {
+                return None;
+            }
+            let SiteSource::Component(node) = graph.sites.get(link.from.index())?.source else {
+                return None;
+            };
+            matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)).then_some(node)
         })
         .collect();
     let mut targets = graph
@@ -409,7 +468,8 @@ pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
         .enumerate()
         .filter_map(|(index, node)| {
             let id = NodeId::new(index as u32);
-            let terminal_wire = matches!(node.kind, CircuitNodeKind::Wire(_)) && !consumed.contains(&id);
+            let terminal_wire =
+                matches!(node.kind, CircuitNodeKind::Wire(_)) && (!outgoing_components.contains(&id) || repeater_input_wires.contains(&id));
             let command_output = matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }));
             (terminal_wire || command_output).then_some(PowerTarget::Input {
                 node: id,
@@ -417,8 +477,16 @@ pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
             })
         })
         .collect::<Vec<_>>();
+    targets.extend(terminal_repeater_inputs);
     targets.sort_unstable();
     targets
+}
+
+fn terminal_repeater_receiver_is_safe(receiver: CallbackReceiver, repeater: NodeId, is_wire: bool) -> bool {
+    match receiver {
+        CallbackReceiver::Component(node) => node == repeater || is_wire,
+        CallbackReceiver::Contact(_) | CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_) => false,
+    }
 }
 
 fn compile_one_shot_device(graph: &CompileGraph, fallback: SettledCircuit, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
@@ -1959,5 +2027,25 @@ pub(super) fn externally_observed(
         // These non-value observations remain explicit until the adapter has a
         // contract for their geometry, comparator override, or side effect.
         _ => true,
+    }
+}
+
+#[cfg(test)]
+mod frame_power_target_tests {
+    use super::*;
+
+    #[test]
+    fn terminal_repeater_owns_self_updates_but_not_foreign_piston_callbacks() {
+        let repeater = NodeId::new(7);
+        let foreign = NodeId::new(8);
+
+        assert!(terminal_repeater_receiver_is_safe(CallbackReceiver::Component(repeater), repeater, false));
+        assert!(terminal_repeater_receiver_is_safe(CallbackReceiver::Component(foreign), repeater, true));
+        assert!(!terminal_repeater_receiver_is_safe(CallbackReceiver::Component(foreign), repeater, false));
+        assert!(!terminal_repeater_receiver_is_safe(
+            CallbackReceiver::PistonHead(PistonId::new(3)),
+            repeater,
+            false
+        ));
     }
 }

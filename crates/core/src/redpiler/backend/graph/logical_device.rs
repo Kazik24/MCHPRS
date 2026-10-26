@@ -1,6 +1,7 @@
 //! O6 data and timing kernels. Physical topology is used only at activation/projection.
 use super::logical_clock::LogicalClock;
 use super::*;
+use crate::redpiler::LogicalDeviceAdmission;
 use crate::redpiler::program_graph::settled_machine::SettledMachine;
 use crate::redpiler::program_graph::{SettledEvaluation, SettledValueKind};
 
@@ -57,6 +58,8 @@ struct SettledFrame {
     retained_routes: Box<[RouteOccurrence]>,
     retained_resources: Box<[ResourceId]>,
     retained_power_inputs: Box<[FramePowerInput]>,
+    terminal_repeater_inputs: Box<[FrameRepeaterInput]>,
+    computed: bool,
 }
 
 fn retained_cell_callback_is_owned(
@@ -66,6 +69,7 @@ fn retained_cell_callback_is_owned(
     retained_contacts: &FxHashSet<ContactId>,
     retained_observers: &[NodeId],
     retained_commands: &[NodeId],
+    retained_repeaters: &FxHashSet<NodeId>,
 ) -> Result<bool, String> {
     let source = program.sites()[delivery.target.index()].source;
     let receiver = delivery.receiver.or_else(|| match (source, delivery.kind) {
@@ -80,7 +84,11 @@ fn retained_cell_callback_is_owned(
         Some(CallbackReceiver::Contact(contact)) if retained_contacts.contains(&contact) => true,
         Some(CallbackReceiver::Contact(contact)) if inert_cell_contact(program, contact) => false,
         Some(CallbackReceiver::Contact(_)) => return Err("retained output cell callback reaches an observable unowned contact".into()),
-        Some(CallbackReceiver::Component(node)) if retained_observers.contains(&node) || retained_commands.contains(&node) => true,
+        Some(CallbackReceiver::Component(node))
+            if retained_observers.contains(&node) || retained_commands.contains(&node) || retained_repeaters.contains(&node) =>
+        {
+            true
+        }
         Some(CallbackReceiver::Component(node)) if matches!(program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)) => false,
         Some(CallbackReceiver::Component(_)) => return Err("retained output cell callback reaches an unowned component".into()),
         // Match Graph::deliver_callback: contact/constant deliveries without an explicit
@@ -136,12 +144,19 @@ struct FramePowerInput {
     reset: NodeId,
 }
 
+#[derive(Clone, Copy)]
+struct FrameRepeaterInput {
+    node: NodeId,
+    output: usize,
+    strength: u8,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ActiveFramePowerInput {
     pub(super) node: NodeId,
     pub(super) port: InputPort,
     pub(super) data_strength: u8,
-    pub(super) reset: NodeId,
+    pub(super) reset: Option<NodeId>,
 }
 
 pub(super) struct LogicalDevice {
@@ -164,6 +179,16 @@ impl SettledFrame {
         let mut feedback_outputs = FxHashMap::<ResourceId, (ContactId, usize)>::default();
         let mut outputs = Vec::new();
         let mut retained_power_inputs = Vec::new();
+        let mut terminal_repeater_inputs = Vec::new();
+        let power_output_nodes: FxHashSet<_> = backend
+            .program
+            .power_links()
+            .iter()
+            .filter_map(|link| match backend.program.sites()[link.from.index()].source {
+                SiteSource::Component(node) => Some(node),
+                _ => None,
+            })
+            .collect();
         let retained_actors: FxHashSet<_> = circuit.retained_cells.iter().map(|use_| use_.actor).collect();
         let mut retained_actor_order = circuit.retained_cells.iter().map(|use_| use_.actor).collect::<Vec<_>>();
         retained_actor_order.sort_unstable();
@@ -220,6 +245,30 @@ impl SettledFrame {
                             output: index,
                             reset,
                         });
+                    } else if port == InputPort::Main
+                        && matches!(
+                            backend.program.nodes()[node.index()].kind,
+                            CircuitNodeKind::Electrical(NodeType::Repeater { .. })
+                        )
+                    {
+                        if output.kind != SettledValueKind::Bool {
+                            return Err("terminal repeater input roots must be Boolean".into());
+                        }
+                        if !backend
+                            .program
+                            .power_links_to(PowerTarget::Input { node, port: InputPort::Side })
+                            .is_empty()
+                        {
+                            return Err("terminal repeater with a side input is not owned by the logical frame".into());
+                        }
+                        if power_output_nodes.contains(&node) {
+                            return Err("logical frame repeater output has a downstream consumer".into());
+                        }
+                        terminal_repeater_inputs.push(FrameRepeaterInput {
+                            node,
+                            output: index,
+                            strength: 0,
+                        });
                     } else if port == InputPort::Main {
                         outputs.push((node, index, output.kind));
                     } else {
@@ -241,6 +290,7 @@ impl SettledFrame {
                 _ => return Err("logical frame has an unsupported output target".into()),
             }
         }
+        let retained_repeaters: FxHashSet<_> = terminal_repeater_inputs.iter().map(|input| input.node).collect();
         for &actor in &retained_actors {
             let node = backend.program.pistons()[actor.index()].node;
             let reset = retained_resets[&actor];
@@ -342,6 +392,7 @@ impl SettledFrame {
         let mut retained_route_ids = FxHashSet::default();
         let mut required_occurrences = FxHashSet::default();
         let mut command_output_occurrences = FxHashSet::default();
+        let mut terminal_boundary_occurrences = FxHashSet::default();
         let retained_output_callbacks: FxHashSet<_> = circuit
             .retained_effects
             .iter()
@@ -406,6 +457,22 @@ impl SettledFrame {
                 }));
             }
         }
+        let public_wire_outputs: FxHashSet<_> = outputs
+            .iter()
+            .filter_map(|(node, _, _)| matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(*node))
+            .collect();
+        // The frame writes these wire values directly; their native callbacks must not overwrite them later.
+        for node in retained_repeaters.iter().copied() {
+            if let Some(route) = backend.program.nodes()[node.index()].output_route {
+                retained_route_ids.insert(route);
+                terminal_boundary_occurrences.extend(backend.program.routes()[route.index()].deliveries.iter().enumerate().map(|(ordinal, _)| {
+                    RouteOccurrence {
+                        route,
+                        ordinal: ordinal as u32,
+                    }
+                }));
+            }
+        }
         let mut occurrences_to_classify = required_occurrences.clone();
         for route in retained_route_ids {
             occurrences_to_classify.extend(backend.program.routes()[route.index()].deliveries.iter().enumerate().map(|(ordinal, _)| {
@@ -422,6 +489,11 @@ impl SettledFrame {
             else {
                 return Err("retained output cell certificate names a missing callback occurrence".into());
             };
+            let source = backend.program.sites()[delivery.target.index()].source;
+            let receiver = delivery.receiver.or_else(|| match (source, delivery.kind) {
+                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+                _ => None,
+            });
             let owned = retained_cell_callback_is_owned(
                 &backend.program,
                 delivery,
@@ -429,19 +501,47 @@ impl SettledFrame {
                 &retained_contacts,
                 &retained_observers,
                 &retained_commands,
-            )?;
-            let source = backend.program.sites()[delivery.target.index()].source;
-            let receiver = delivery.receiver.or_else(|| match (source, delivery.kind) {
-                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
-                _ => None,
-            });
+                &retained_repeaters,
+            )
+            .map_err(|reason| {
+                let route = &backend.program.routes()[occurrence.route.index()];
+                let route_position = backend.program.nodes()[route.source.index()].position;
+                let receiver_position = match receiver {
+                    Some(CallbackReceiver::Component(node)) => backend.program.nodes()[node.index()].position,
+                    Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => {
+                        let node = backend.program.pistons()[actor.index()].node;
+                        backend.program.nodes()[node.index()].position
+                    }
+                    Some(CallbackReceiver::Contact(contact)) => Some(backend.program.contacts()[contact.index()].position),
+                    None => None,
+                };
+                format!(
+                    "{reason}; {occurrence:?} from {:?} to {receiver:?} at {:?}",
+                    route_position, receiver_position
+                )
+            })?;
             if matches!(receiver, Some(CallbackReceiver::Component(node)) if matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
                 && !retained_output_callbacks.contains(&occurrence)
+                && !matches!(receiver, Some(CallbackReceiver::Component(node)) if public_wire_outputs.contains(&node))
             {
                 return Err("retained output cell callback reaches an unowned wire outside its certified corridor".into());
             }
             if owned {
                 retained_routes.insert(occurrence);
+            } else if terminal_boundary_occurrences.contains(&occurrence) {
+                match receiver {
+                    // A repeater with only inert shape/constant listeners has no further
+                    // native effect to preserve beyond its own scheduled state change.
+                    None => {
+                        retained_routes.insert(occurrence);
+                    }
+                    // The frame publishes these wires from its equation result; a later
+                    // physical neighbor callback must not replace that value with stale
+                    // graph state.
+                    Some(CallbackReceiver::Component(node))
+                        if public_wire_outputs.contains(&node) && matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)) => {}
+                    _ => return Err("terminal repeater output route reaches an unowned receiver".into()),
+                }
             } else if command_output_occurrences.contains(&occurrence) {
                 if receiver.is_some() && !retained_output_callbacks.contains(&occurrence) {
                     return Err("retained command output route reaches an unowned callback receiver".into());
@@ -549,6 +649,8 @@ impl SettledFrame {
             retained_routes: retained_routes.into_boxed_slice(),
             retained_resources: retained_resources.into_boxed_slice(),
             retained_power_inputs: retained_power_inputs.into_boxed_slice(),
+            terminal_repeater_inputs: terminal_repeater_inputs.into_boxed_slice(),
+            computed: false,
         })
     }
 
@@ -666,9 +768,17 @@ fn retained_unbound_reset_source(program: &CircuitProgram, reset: NodeId, input:
 }
 
 impl GraphBackend {
-    pub(super) fn install_logical_device(&mut self) -> Result<(), String> {
-        let Some(circuit) = self.program.settled_circuit() else { return Ok(()) };
-        let Some(timing) = &circuit.timing else { return Ok(()) };
+    pub(crate) fn logical_device_admission(&self) -> &LogicalDeviceAdmission {
+        &self.logical_device_admission
+    }
+
+    pub(super) fn install_logical_device(&mut self) -> Result<LogicalDeviceAdmission, String> {
+        let Some(circuit) = self.program.settled_circuit() else {
+            return Ok(LogicalDeviceAdmission::NotApplicable);
+        };
+        let Some(timing) = &circuit.timing else {
+            return Ok(LogicalDeviceAdmission::Declined("no certified logical-device timing".into()));
+        };
         let is_frame = circuit
             .outputs
             .iter()
@@ -677,19 +787,19 @@ impl GraphBackend {
             // Keep entry-time graph work on the ordinary executor; never abandon a live queue.
             #[cfg(test)]
             eprintln!("logical device activation declined: pending graph work; frame={is_frame}");
-            return Ok(());
+            return Ok(LogicalDeviceAdmission::Declined("pending graph work at entry".into()));
         }
         if is_frame && self.future.scheduler.iter().next().is_some() {
             #[cfg(test)]
             eprintln!("logical device activation declined: scheduled work; frame=true");
-            return Ok(());
+            return Ok(LogicalDeviceAdmission::Declined("scheduled graph work at entry".into()));
         }
         let clock = match LogicalClock::new(&self.program, &self.state, timing) {
             Ok(clock) => clock,
-            Err(_error) if is_frame => {
+            Err(error) if is_frame => {
                 #[cfg(test)]
-                eprintln!("logical device activation declined: clock: {_error}");
-                return Ok(());
+                eprintln!("logical device activation declined: clock: {error}");
+                return Ok(LogicalDeviceAdmission::Declined(format!("logical clock: {error}")));
             }
             Err(error) => return Err(error),
         };
@@ -699,7 +809,7 @@ impl GraphBackend {
                 Err(_error) => {
                     #[cfg(test)]
                     eprintln!("logical device activation declined: frame: {_error}");
-                    return Ok(());
+                    return Ok(LogicalDeviceAdmission::Declined(format!("logical frame: {_error}")));
                 }
             };
             self.logical_device = Some(LogicalDevice {
@@ -712,7 +822,7 @@ impl GraphBackend {
                 clock,
                 trigger: timing.trigger,
             });
-            return Ok(());
+            return Ok(LogicalDeviceAdmission::Active);
         }
 
         let inputs = circuit
@@ -767,12 +877,16 @@ impl GraphBackend {
             outputs: outputs.into_boxed_slice(),
             registers: registers.into_boxed_slice(),
         });
-        Ok(())
+        Ok(LogicalDeviceAdmission::Active)
     }
 
     pub(super) fn tick_logical_device<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
         let mut device = self.logical_device.take().expect("installed logical device");
-        if let Some(frame) = device.frame.as_ref().filter(|frame| !frame.retained_actors.is_empty()) {
+        if let Some(frame) = device
+            .frame
+            .as_ref()
+            .filter(|frame| !frame.retained_actors.is_empty() || !frame.terminal_repeater_inputs.is_empty())
+        {
             self.active_frame_command_outputs.clear();
             self.active_frame_retained_actors = frame.retained_actors.to_vec();
             self.active_frame_retained_nodes = frame
@@ -782,6 +896,7 @@ impl GraphBackend {
                 .chain(frame.retained_observers.iter().copied())
                 .chain(frame.retained_commands.iter().copied())
                 .chain(frame.button_nodes.iter().copied())
+                .chain(frame.terminal_repeater_inputs.iter().map(|input| input.node))
                 .chain(frame.outputs.iter().filter_map(|(node, _, _)| {
                     matches!(
                         self.program.nodes()[node.index()].kind,
@@ -835,6 +950,7 @@ impl GraphBackend {
         }
         let result = (|| {
             if let Some(frame) = &device.frame {
+                self.refresh_frame_power_inputs(frame);
                 self.advance_frame_scheduler(device.trigger, &frame.button_nodes, host)?;
             }
             let step = device
@@ -881,6 +997,7 @@ impl GraphBackend {
             Ok(())
         })();
         self.active_frame_command_outputs.clear();
+        self.active_frame_power_inputs.clear();
         self.logical_device = Some(device);
         result
     }
@@ -892,8 +1009,17 @@ impl GraphBackend {
                 node: input.node,
                 port: input.port,
                 data_strength: if frame.evaluation.outputs()[input.output] != 0 { 15 } else { 0 },
-                reset: input.reset,
+                reset: Some(input.reset),
             }));
+        if frame.computed {
+            self.active_frame_power_inputs
+                .extend(frame.terminal_repeater_inputs.iter().map(|input| ActiveFramePowerInput {
+                    node: input.node,
+                    port: InputPort::Main,
+                    data_strength: input.strength,
+                    reset: None,
+                }));
+        }
     }
 
     fn run_frame_step(&mut self, device: &mut LogicalDevice, step: super::logical_clock::ClockStep) -> Result<(), GraphExecutionError> {
@@ -928,6 +1054,12 @@ impl GraphBackend {
             frame.inputs[slot] = value;
         }
         let operations = frame.evaluate().map_err(|kind| self.unsupported(device.trigger, kind))?;
+        if step.compute {
+            for input in frame.terminal_repeater_inputs.iter_mut() {
+                input.strength = if frame.evaluation.outputs()[input.output] != 0 { 15 } else { 0 };
+            }
+            frame.computed = true;
+        }
         self.counts.logical_kernel_evaluations += 1;
         self.counts.logical_kernel_operations += operations as u64;
         if step.compute {
@@ -948,7 +1080,7 @@ impl GraphBackend {
                 resource.enabled = true;
             }
         }
-        if retained_path {
+        if retained_path || (step.compute && !frame.terminal_repeater_inputs.is_empty()) {
             self.refresh_frame_power_inputs(frame);
             for &actor in frame.retained_actors.iter() {
                 self.sample_piston(actor)?;
@@ -962,6 +1094,9 @@ impl GraphBackend {
                     SettledValueKind::Strength => value,
                 };
                 self.publish_frame_output(node, strength)?;
+            }
+            for input in frame.terminal_repeater_inputs.iter() {
+                self.update_repeater(input.node, None)?;
             }
         }
         Ok(())
@@ -1108,6 +1243,8 @@ mod tests {
             retained_routes: Box::new([]),
             retained_resources: Box::new([]),
             retained_power_inputs: Box::new([]),
+            terminal_repeater_inputs: Box::new([]),
+            computed: false,
         });
         let step = device.clock.advance(true).unwrap();
         assert!(step.resample);

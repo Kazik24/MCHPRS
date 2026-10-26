@@ -111,7 +111,7 @@ fn main() -> Result<()> {
     let iterations = argument("--iterations").unwrap_or("5").parse::<usize>()?;
     let tier = argument("--graph-tier").unwrap_or("2").parse::<usize>()?;
     ensure!(ticks > 0 && ticks <= u32::MAX - 32 && iterations > 0, "invalid window or sample count");
-    ensure!((2..=5).contains(&tier), "baseline supports O2 through O5");
+    ensure!((2..=6).contains(&tier), "baseline supports O2 through O6");
     let git = |args: &[&str]| -> Result<String> {
         let output = Command::new("git").args(args).current_dir(root()).output()?;
         ensure!(output.status.success(), "git metadata failed");

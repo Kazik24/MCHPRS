@@ -1,9 +1,10 @@
 //! Frame-boundary external input scheduling.
+use super::logical_device::ActiveFramePowerInput;
 use super::*;
 use crate::plot::PlotWorld;
 use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::CommandBlockEntity;
-use mchprs_blocks::blocks::{Block, ButtonFace, StoneButton};
+use mchprs_blocks::blocks::{Block, ButtonFace, Lever, LeverFace, RedstoneRepeater, StoneButton};
 use std::sync::Arc;
 
 const BUTTON: BlockPos = BlockPos::new(5, 20, 5);
@@ -17,6 +18,72 @@ fn button_backend() -> GraphBackend {
         },
     );
     GraphBackend::compile(&world, (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)), vec![], Arc::default()).unwrap()
+}
+
+#[test]
+fn frame_repeater_input_matches_native_delays_and_pending_ticks() {
+    let upstream = BlockPos::new(7, 20, 5);
+    let repeater_pos = BlockPos::new(6, 20, 5);
+    let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+    world.set_block(upstream.offset(mchprs_blocks::BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        upstream,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, mchprs_blocks::BlockDirection::North, false),
+        },
+    );
+    world.set_block(
+        repeater_pos,
+        Block::RedstoneRepeater {
+            repeater: RedstoneRepeater {
+                facing: mchprs_blocks::BlockDirection::East,
+                delay: 2,
+                powered: false,
+                locked: false,
+            },
+        },
+    );
+    let bounds = (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15));
+    let mut frame = GraphBackend::compile(&world, bounds, vec![], Arc::default()).unwrap();
+    let mut ordinary = GraphBackend::compile(&world, bounds, vec![], Arc::default()).unwrap();
+    let repeater = frame.positions[&repeater_pos];
+    assert_eq!(ordinary.positions[&repeater_pos], repeater);
+    frame.active_frame_power_inputs.push(ActiveFramePowerInput {
+        node: repeater,
+        port: InputPort::Main,
+        data_strength: 0,
+        reset: None,
+    });
+
+    let mut previous = false;
+    for (tick, powered) in [true, false, false, false, true, true, true, false, true, false, false, false, false]
+        .into_iter()
+        .enumerate()
+    {
+        if tick == 0 || powered != previous {
+            let strength = 15 * u8::from(powered);
+            frame.active_frame_power_inputs[0].data_strength = strength;
+            frame.update_repeater(repeater, None).unwrap();
+            ordinary.use_block(upstream).unwrap();
+            previous = powered;
+        }
+        assert_eq!(ordinary.input_strength(repeater, InputPort::Main), 15 * u8::from(powered));
+        assert_eq!(
+            frame.node_state(frame.positions[&upstream]).powered,
+            false,
+            "frame must use its compiled input, not the physical source"
+        );
+        let mut host: Option<&mut dyn GraphCommandHost> = None;
+        frame.tick_phases(&mut host).unwrap();
+        let mut host = None;
+        ordinary.tick_phases(&mut host).unwrap();
+        assert_eq!(frame.node_state(repeater), ordinary.node_state(repeater), "repeater state at tick {tick}");
+        assert_eq!(frame.scheduled_ticks(), ordinary.scheduled_ticks(), "pending delay at tick {tick}");
+    }
+    frame.flush(&mut world, false);
+    let projected = world.get_block(repeater_pos);
+    ordinary.flush(&mut world, false);
+    assert_eq!(projected, world.get_block(repeater_pos), "repeater projection must match ordinary Graph");
 }
 
 #[test]

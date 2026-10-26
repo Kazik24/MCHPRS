@@ -83,6 +83,12 @@ local piston, reset observer, and deferred publication work while the frame
 supplies the data inputs. Near-contact outputs retain their transfer delay and
 repeated command pulses. Unsupported output boundaries keep Graph execution.
 
+Terminal readout repeaters are native frame boundaries too. The frame computes
+their Main inputs and retains the held values between evaluations; Graph owns
+their scheduled transitions and delays. Their source wires remain public outputs.
+Repeaters with downstream consumers or side inputs require a broader boundary
+proof and are not admitted by this terminal-output adapter.
+
 The current original-checkout WIP adds a source-certified
 [`LogicalFiringRuntime`](../crates/core/src/redpiler/backend/graph/logical_firing.rs).
 It intercepts only an admitted activation, piston action, observer reset, and

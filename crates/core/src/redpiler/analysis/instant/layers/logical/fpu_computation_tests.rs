@@ -2,15 +2,16 @@
 use super::*;
 use crate::plot::PlotWorld;
 use crate::redpiler::analysis::AnalysisLimits;
+use crate::redpiler::backend::graph::GraphBackend;
 use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
     CallbackEdgeRef, CellReset, ContactId, InputPort, LayerInputSource, LinkSpec, PowerPort, PowerTarget, ResourceId, SettledTarget, SiteSource,
     StateTest,
 };
-use crate::redpiler::{CompilerOptions, passes};
+use crate::redpiler::{CompilerOptions, LogicalDeviceAdmission, passes};
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{Block, LeverFace};
+use mchprs_blocks::blocks::{Block, LeverFace, RedstoneRepeater};
 use mchprs_blocks::{BlockFace, BlockPos};
 use std::collections::BTreeMap;
 
@@ -290,6 +291,201 @@ fn compile_fpu_o6_stable_io_only() {
         "production settled extraction declined: {:#?}",
         circuit.declines
     );
+}
+
+#[test]
+#[ignore = "production O6 FPU readout-repeater frame regression"]
+fn compile_fpu_o6_terminal_repeater_readouts() {
+    let (descriptor, mut world, (min, max)) = fixture();
+    let controls = descriptor["ports"]["light_blue_operand_inputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(descriptor["ports"]["red_operand_inputs"].as_array().unwrap())
+        .chain(descriptor["ports"]["opcode_levers_by_sign_weight_4_2_1"].as_array().unwrap())
+        .map(pos)
+        .collect::<Vec<_>>();
+    let witness_word = (0xffffu64 << 16) | (0b110u64 << 32);
+    let readouts = descriptor["observations"]["output"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(pos)
+        .collect::<Vec<_>>();
+    assert_eq!(readouts.len(), 16);
+    for position in &readouts {
+        let repeater = position.offset(BlockFace::East);
+        world.set_block(
+            repeater,
+            Block::RedstoneRepeater {
+                repeater: RedstoneRepeater {
+                    facing: mchprs_blocks::BlockDirection::West,
+                    delay: 1,
+                    powered: false,
+                    locked: false,
+                },
+            },
+        );
+    }
+    let bounds = (min, max + BlockPos::new(1, 0, 0));
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        update: false,
+    };
+    let prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let validated = prepared
+        .run_passes(&options, &passes::default_graph_pipeline(&options), &monitor)
+        .unwrap();
+    let graph = validated.graph();
+    let targets = super::settled::frame_power_targets(graph);
+    let repeater_roots: FxHashSet<_> = targets
+        .iter()
+        .filter_map(|target| match target {
+            PowerTarget::Input { node, port: InputPort::Main }
+                if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. })) =>
+            {
+                Some(*node)
+            }
+            _ => None,
+        })
+        .collect();
+    let manifest_repeater_roots: FxHashSet<_> = readouts
+        .iter()
+        .map(|position| {
+            graph
+                .nodes
+                .iter()
+                .position(|node| node.position == Some(position.offset(BlockFace::East)))
+                .unwrap()
+        })
+        .map(|index| NodeId::new(index as u32))
+        .collect();
+    assert_eq!(manifest_repeater_roots.len(), 16);
+    assert!(
+        manifest_repeater_roots.is_subset(&repeater_roots),
+        "all 16 manifest readout repeaters must become delayed frame boundaries; extracted {} repeaters",
+        repeater_roots.len()
+    );
+    assert_eq!(
+        repeater_roots.len(),
+        16,
+        "internal repeaters with semantic output callbacks are not public frame boundaries"
+    );
+    let wire_roots: FxHashSet<_> = targets
+        .iter()
+        .filter_map(|target| match target {
+            PowerTarget::Input { node, port: InputPort::Main } if matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)) => Some(*node),
+            _ => None,
+        })
+        .collect();
+    for repeater in &manifest_repeater_roots {
+        assert!(
+            graph.power_links.iter().any(|link| {
+                link.to
+                    == PowerTarget::Input {
+                        node: *repeater,
+                        port: InputPort::Main,
+                    }
+                    && matches!(graph.sites[link.from.index()].source, SiteSource::Component(wire) if wire_roots.contains(&wire))
+            }),
+            "the computed public boundary must include the upstream readout wire for {repeater:?}"
+        );
+    }
+    let circuit = super::settled::compile_device(graph, &monitor).expect("FPU readout frame extraction should complete");
+    assert!(circuit.declines.is_empty(), "terminal repeater frame declined: {:#?}", circuit.declines);
+    assert!(circuit.timing.is_some(), "FPU readout frame must retain its certified clock");
+    assert_eq!(circuit.retained_cells.len(), 3);
+    assert!(
+        circuit
+            .outputs
+            .iter()
+            .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+    );
+    assert!(
+        repeater_roots.iter().all(|node| circuit.outputs.iter().any(|output| {
+            output.target
+                == SettledTarget::Power(PowerTarget::Input {
+                    node: *node,
+                    port: InputPort::Main,
+                })
+        })),
+        "all 16 repeater inputs must be bound into the frame equations"
+    );
+    let backend = GraphBackend::from_lowered(validated.lower(&monitor).unwrap(), &monitor).expect("FPU readout backend should lower");
+    assert_eq!(backend.logical_device_admission(), &LogicalDeviceAdmission::Active);
+
+    let mut backend = backend;
+    let trigger = pos(&descriptor["ports"]["trigger"]);
+    let mut saw_output_high = false;
+    let mut saw_readout_repeater_on = false;
+    if !matches!(world.get_block(trigger), Block::Lever { lever } if lever.powered) {
+        backend.use_block(trigger).unwrap();
+    }
+    for _ in 0..64 {
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        saw_output_high |= readouts
+            .iter()
+            .any(|position| matches!(world.get_block(*position), Block::RedstoneWire { wire } if wire.power > 0));
+        saw_readout_repeater_on |= readouts
+            .iter()
+            .any(|position| matches!(world.get_block(position.offset(BlockFace::East)), Block::RedstoneRepeater { repeater } if repeater.powered));
+    }
+    backend.use_block(trigger).unwrap();
+    for (bit, &position) in controls.iter().enumerate() {
+        let Block::Lever { lever } = world.get_block(position) else {
+            panic!("FPU input is not a lever at {position:?}");
+        };
+        if lever.powered != (witness_word & (1 << bit) != 0) {
+            backend.use_block(position).unwrap();
+        }
+    }
+    for offset in 0..25 {
+        if offset == 24 {
+            backend.use_block(trigger).unwrap();
+        }
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        saw_output_high |= readouts
+            .iter()
+            .any(|position| matches!(world.get_block(*position), Block::RedstoneWire { wire } if wire.power > 0));
+        saw_readout_repeater_on |= readouts
+            .iter()
+            .any(|position| matches!(world.get_block(position.offset(BlockFace::East)), Block::RedstoneRepeater { repeater } if repeater.powered));
+    }
+    for _ in 0..8 {
+        backend.tick_with_world(&mut world).unwrap();
+        backend.flush(&mut world, false);
+        saw_output_high |= readouts
+            .iter()
+            .any(|position| matches!(world.get_block(*position), Block::RedstoneWire { wire } if wire.power > 0));
+        saw_readout_repeater_on |= readouts
+            .iter()
+            .any(|position| matches!(world.get_block(position.offset(BlockFace::East)), Block::RedstoneRepeater { repeater } if repeater.powered));
+    }
+    assert!(
+        backend.execution_counts().logical_kernel_evaluations > 0,
+        "the admitted readout frame must execute during the trigger protocol"
+    );
+    assert_eq!(backend.execution_counts().wire_walks, 0, "the readout frame should not bulk-walk wires");
+    assert!(saw_output_high, "the chosen FPU input vector must exercise a nonzero output wire");
+    assert!(
+        saw_readout_repeater_on,
+        "the native terminal repeaters must publish a computed high output"
+    );
+    for output in &readouts {
+        let input_powered = matches!(world.get_block(*output), Block::RedstoneWire { wire } if wire.power > 0);
+        let repeater = output.offset(BlockFace::East);
+        assert!(
+            matches!(world.get_block(repeater), Block::RedstoneRepeater { repeater } if repeater.powered == input_powered),
+            "terminal readout repeater at {repeater:?} must follow its published input wire after the native delay"
+        );
+    }
 }
 
 pub(super) fn source_strength(graph: &CompileGraph, world: &PlotWorld, source: LayerInputSource) -> Option<bool> {

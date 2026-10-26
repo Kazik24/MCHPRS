@@ -46,6 +46,9 @@ mod logical_device_counter_tests;
 #[cfg(test)]
 #[path = "graph/tests/logical_device_frame.rs"]
 mod logical_device_frame_tests;
+#[cfg(test)]
+#[path = "graph/tests/logical_device_saved_plot.rs"]
+mod logical_device_saved_plot_tests;
 mod logical_firing;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
@@ -459,6 +462,7 @@ pub(crate) struct GraphBackend {
     instant_kernel: instant_kernel::KernelExecution,
     logical_firing: Option<logical_firing::LogicalFiringRuntime>,
     logical_device: Option<logical_device::LogicalDevice>,
+    logical_device_admission: crate::redpiler::LogicalDeviceAdmission,
     active_frame_command_outputs: Vec<NodeId>,
     active_frame_retained_actors: Vec<PistonId>,
     active_frame_retained_nodes: Vec<NodeId>,
@@ -616,7 +620,7 @@ impl GraphBackend {
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
         backend.import_ticks(lowered.imported_ticks)?;
         backend.logical_firing = logical_firing::LogicalFiringRuntime::new(&backend);
-        backend.install_logical_device().map_err(|_| GraphBackendError::UnsupportedComponent {
+        backend.logical_device_admission = backend.install_logical_device().map_err(|_| GraphBackendError::UnsupportedComponent {
             position: None,
             kind: "logical device input or stationary entry contract",
         })?;
@@ -899,6 +903,7 @@ impl GraphBackend {
             instant_kernel,
             logical_firing: None,
             logical_device: None,
+            logical_device_admission: crate::redpiler::LogicalDeviceAdmission::NotApplicable,
             active_frame_command_outputs: Vec::new(),
             active_frame_retained_actors: Vec::new(),
             active_frame_retained_nodes: Vec::new(),
@@ -1320,7 +1325,7 @@ impl GraphBackend {
 
     /// Run a component's scheduled tick and send any resulting notifications.
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
-        if !self.active_frame_retained_actors.is_empty() && !self.active_frame_retained_nodes.contains(&node) {
+        if !self.active_frame_retained_nodes.is_empty() && !self.active_frame_retained_nodes.contains(&node) {
             return Err(self.unsupported(node, "logical frame received an unowned scheduled tick"));
         }
         if self.fixed_classic.is_some() {
@@ -1989,7 +1994,7 @@ impl GraphBackend {
     /// The general path keeps duplicate notifications. A callback can run another route.
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        if self.fixed_classic.is_some() && self.active_frame_retained_actors.is_empty() {
+        if self.fixed_classic.is_some() && self.active_frame_retained_nodes.is_empty() {
             return self.fixed_classic_route(route, captured);
         }
         let result = self.deliver_route_inner(route, captured);
@@ -1997,7 +2002,7 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        let retained_frame = !self.active_frame_retained_actors.is_empty();
+        let retained_frame = !self.active_frame_retained_nodes.is_empty();
         if retained_frame
             && self
                 .active_frame_retained_routes

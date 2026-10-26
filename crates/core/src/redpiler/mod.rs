@@ -179,7 +179,9 @@ pub use backend::{Queues, TickScheduler};
 pub use options::CompilerOptions;
 #[cfg(test)]
 pub(crate) use options::MAX_OPTIMIZATION_LEVEL;
-pub use statistics::{CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, PassStatistics, PreparationTableStatistics};
+pub use statistics::{
+    CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, LogicalDeviceAdmission, PassStatistics, PreparationTableStatistics,
+};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
@@ -404,6 +406,7 @@ impl Compiler {
             graph: monitor.graph_statistics(),
             backend: BackendKind::Graph,
             backend_nodes: backend.node_count(),
+            logical_device_admission: backend.logical_device_admission().clone(),
             execution_coverage: backend.execution_coverage(),
             analysis_duration,
             backend_duration,

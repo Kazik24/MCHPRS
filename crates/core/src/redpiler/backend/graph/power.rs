@@ -69,13 +69,16 @@ impl GraphBackend {
             .iter()
             .find(|binding| binding.node == node && binding.port == port)
         {
+            let Some(reset_node) = binding.reset else {
+                return binding.data_strength;
+            };
             let target = PowerTarget::Input { node, port };
             let mut reset_strength = 0;
             for link in self.program.power_links_to(target) {
                 if !self.guard_matches(link.guard, None) {
                     continue;
                 }
-                if matches!(self.program.sites()[link.from.index()].source, SiteSource::Component(source) if source == binding.reset) {
+                if matches!(self.program.sites()[link.from.index()].source, SiteSource::Component(source) if source == reset_node) {
                     reset_strength = reset_strength.max(self.link_strength(link));
                     continue;
                 }
@@ -93,7 +96,7 @@ impl GraphBackend {
                     include_dust,
                 };
                 for reset_link in self.program.power_links_to(conductor) {
-                    if matches!(self.program.sites()[reset_link.from.index()].source, SiteSource::Component(source) if source == binding.reset)
+                    if matches!(self.program.sites()[reset_link.from.index()].source, SiteSource::Component(source) if source == reset_node)
                         && self.guard_matches(reset_link.guard, None)
                     {
                         reset_strength = reset_strength.max(self.link_strength(reset_link).saturating_sub(link.attenuation));

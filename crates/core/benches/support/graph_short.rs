@@ -130,7 +130,7 @@ impl Episode {
     }
 
     fn generic(&self) -> bool {
-        self.cpu.is_none() && !matches!(self.name.as_str(), "fpu_divider" | "counter_basic")
+        self.cpu.is_none() && !matches!(self.name.as_str(), "fpu_divider" | "counter_basic" | "research/rilax_memory_bank_bud")
     }
 
     fn load(&self) -> Result<PlotWorld> {
@@ -173,6 +173,34 @@ impl Episode {
     }
 
     fn observe(&self, world: &PlotWorld) -> Result<Value> {
+        if self.name == "research/rilax_memory_bank_bud" {
+            let word = |positions: &[Value]| -> Result<Option<u8>> {
+                let mut word = 0u8;
+                for (bit, local) in positions.iter().enumerate() {
+                    let position = self.bounds.0 + manifest_position(local);
+                    let powered = match world.get_block(position) {
+                        Block::Piston { piston } => !piston.extended,
+                        Block::RedstoneRepeater { repeater } => repeater.powered,
+                        Block::Air | Block::PistonHead { .. } | Block::MovingPiston { .. } => return Ok(None),
+                        block => bail!("unexpected Rilax observation block {} at {position:?}", block.get_name()),
+                    };
+                    word |= u8::from(powered) << bit;
+                }
+                Ok(Some(word))
+            };
+            let memory = self.manifest["observations"]["memory"]
+                .as_array()
+                .context("missing Rilax memory probes")?;
+            let mut memory: Vec<Option<u8>> = memory.chunks(8).map(word).collect::<Result<_>>()?;
+            // Manifest storage probes are emitted x=0..14, while protocol addresses map 7..0.
+            memory.reverse();
+            let output = word(
+                self.manifest["observations"]["output"]
+                    .as_array()
+                    .context("missing Rilax output probes")?,
+            )?;
+            return Ok(json!({"memory":memory,"output":output}));
+        }
         if self.generic() || self.name == "pm1_sort" {
             let mut digest = Sha256::new();
             for &position in &self.electrical {
@@ -461,6 +489,218 @@ fn warm_up(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotW
     Ok((trigger, elapsed))
 }
 
+/// Run the frozen Rilax address/write/read cases independently, with setup and observation outside the timer.
+fn run_rilax(episode: &Episode, tier: Option<usize>, compose_regions: bool) -> Result<Value> {
+    let cases = episode.manifest["cases"].as_array().context("missing Rilax protocol cases")?;
+    let selected: Vec<_> = cases
+        .iter()
+        .filter(|case| {
+            let id = case["id"].as_str().unwrap_or_default();
+            id.starts_with("address_") && id.ends_with("_write_a5_read") && id != "address_1_write_a5_read"
+        })
+        .collect();
+    ensure!(selected.len() == 7, "expected seven valid Rilax address write/read cases");
+    let mut measured_cases = Vec::new();
+    let mut seconds = 0.0;
+    let mut active_ticks = 0u32;
+    for case in selected {
+        let id = case["id"].as_str().context("Rilax case without id")?;
+        let mut world = episode.load()?;
+        let mut compiler = tier.map(|tier| episode.compile(&world, tier, compose_regions)).transpose()?;
+        let mut trace = vec![episode.observe(&world)?];
+        let mut elapsed = Duration::ZERO;
+        for step in case["steps"].as_array().context("Rilax case without steps")? {
+            if let Some(ticks) = step["advance"].as_u64() {
+                for _ in 0..ticks {
+                    measure(&mut elapsed, || tick(&mut compiler, &mut world))?;
+                    active_ticks += 1;
+                    publish(&mut compiler, &mut world);
+                    trace.push(episode.observe(&world)?);
+                }
+            } else if step["op"] == "lever" {
+                let position = episode.bounds.0 + manifest_position(&step["pos"]);
+                let desired = step["powered"].as_bool().context("Rilax lever action missing state")?;
+                let Block::Lever { lever } = world.get_block(position) else {
+                    bail!("missing Rilax protocol lever at {position:?}");
+                };
+                if lever.powered != desired {
+                    toggle(&mut compiler, &mut world, position)?;
+                }
+                publish(&mut compiler, &mut world);
+            } else {
+                bail!("unsupported Rilax protocol action {step}");
+            }
+        }
+        let address = case["address"].as_u64().context("missing address")? as usize;
+        let data = case["data"].clone();
+        let expected_memory = trace
+            .last()
+            .and_then(|state| state["memory"][address].as_u64())
+            .context("Rilax addressed storage remained in motion at transaction end")?;
+        ensure!(
+            expected_memory == data.as_u64().context("Rilax data is not a byte")?,
+            "Rilax {id} did not store expected byte: {expected_memory:#04x}"
+        );
+        ensure!(
+            trace.iter().any(|state| state["memory"][address] == data && state["output"] == data),
+            "Rilax {id} never exposed the written byte on the output while read-enable was exercised"
+        );
+        let active_final = checkpoint(&world, trace.len() as u32 - 1, &[]);
+        if let Some(mut active) = compiler.take() {
+            active.reset(&mut world, episode.bounds);
+        }
+        let reset_future = future(&world);
+        let reset_checkpoint = checkpoint(&world, trace.len() as u32 - 1, &[]);
+        let mut continuation = Vec::new();
+        for _ in 0..32 {
+            world.tick_interpreted();
+            continuation.push(episode.observe(&world)?);
+        }
+        let continuation_future = future(&world);
+        let continuation_checkpoint = checkpoint(&world, trace.len() as u32 + 31, &[]);
+        seconds += elapsed.as_secs_f64();
+        measured_cases.push(json!({"id":id,"address":case["address"],"data":case["data"],"active_ticks":trace.len()-1,
+            "seconds":elapsed.as_secs_f64(),"trace":trace,"active_final_checkpoint":active_final,
+            "reset_checkpoint":reset_checkpoint,"reset_future":reset_future,"continuation":continuation,
+            "continuation_checkpoint":continuation_checkpoint,"continuation_future":continuation_future}));
+    }
+    Ok(
+        json!({"executor":tier.map_or("interpreter".to_owned(),|tier| if compose_regions {format!("O{tier}-stable")} else {format!("O{tier}")}),
+        "seconds":seconds,"active_ticks":active_ticks,"ticks_per_second":f64::from(active_ticks)/seconds,
+        "timed_operations":"tick_with_world/tick_interpreted calls only; compilation, lever input, publication, observations, reset and continuation excluded",
+        "cases":measured_cases}),
+    )
+}
+
+/// Execute four complete arithmetic transactions from their frozen manifest protocols.
+fn run_adder(episode: &Episode, tier: Option<usize>, compose_regions: bool) -> Result<Value> {
+    let cases = episode.manifest["cases"].as_array().context("missing adder cases")?;
+    let ids = ["prepared-0-0-0", "prepared-1-0-0", "prepared-1023-1-0", "prepared-2047-1-0"];
+    let selected: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            cases
+                .iter()
+                .find(|case| case["id"].as_str() == Some(*id))
+                .with_context(|| format!("missing manifest case {id}"))
+        })
+        .collect::<Result<_>>()?;
+    let mut measured_cases = Vec::new();
+    let mut seconds = 0.0;
+    let mut active_ticks = 0u32;
+    let mut sums = Vec::new();
+    for case in selected {
+        let id = case["id"].as_str().context("adder case without id")?;
+        let mut world = episode.load()?;
+        let mut compiler = tier.map(|tier| episode.compile(&world, tier, compose_regions)).transpose()?;
+        let trigger = episode.bounds.0 + manifest_position(&episode.manifest["ports"]["inputs"]["trigger"]);
+        let mut prepared_before_trigger = None;
+        let mut elapsed = Duration::ZERO;
+        let mut work_before = None;
+        for action in case["actions"].as_array().context("adder case without actions")? {
+            ensure!(
+                prepared_before_trigger.is_none(),
+                "adder manifest actions continue after the falling trigger"
+            );
+            match action["op"].as_str() {
+                Some("lever") => {
+                    let position = episode.bounds.0 + manifest_position(&action["pos"]);
+                    let desired = action["powered"].as_bool().context("adder lever action missing state")?;
+                    if position == trigger {
+                        ensure!(!desired, "adder transaction must launch on the fixture's falling trigger");
+                        ensure!(prepared_before_trigger.is_none(), "adder case contains multiple trigger actions");
+                        prepared_before_trigger = Some(episode.observe(&world)?);
+                        work_before = Some(compiler.as_ref().and_then(Compiler::graph_execution_counts));
+                    }
+                    let Block::Lever { lever } = world.get_block(position) else {
+                        bail!("missing adder protocol lever at {position:?}");
+                    };
+                    if lever.powered != desired {
+                        if position == trigger {
+                            ensure!(lever.powered, "adder transaction trigger was not armed before falling edge");
+                            measure(&mut elapsed, || toggle(&mut compiler, &mut world, position))?;
+                        } else {
+                            toggle(&mut compiler, &mut world, position)?;
+                        }
+                    }
+                    publish(&mut compiler, &mut world);
+                }
+                Some("wait" | "wait_ready") => {
+                    let ticks = action["ticks"].as_u64().context("adder wait without tick count")?;
+                    for _ in 0..ticks {
+                        tick(&mut compiler, &mut world)?;
+                        publish(&mut compiler, &mut world);
+                    }
+                }
+                operation => bail!("unsupported adder protocol operation {operation:?}"),
+            }
+        }
+        ensure!(prepared_before_trigger.is_some(), "adder case did not contain a falling trigger action");
+        let work_before = work_before.context("missing adder pre-trigger work snapshot")?;
+        let mut trace = Vec::new();
+        let ticks = case["ticks"].as_u64().context("adder case without response ticks")? as u32;
+        ensure!(ticks > 0, "adder case must include active response ticks");
+        for _ in 0..ticks {
+            measure(&mut elapsed, || tick(&mut compiler, &mut world))?;
+            active_ticks += 1;
+            publish(&mut compiler, &mut world);
+            trace.push(episode.observe(&world)?);
+        }
+        let work_after = compiler.as_ref().and_then(Compiler::graph_execution_counts);
+        let inputs = case["inputs"].as_array().context("adder case without arithmetic inputs")?;
+        let a = inputs[0].as_u64().context("adder left input missing")?;
+        let b = inputs[1].as_u64().context("adder right input missing")?;
+        let carry_in = inputs[2].as_u64().context("adder carry input missing")?;
+        let total = a + b + carry_in;
+        let expected_sum = total & 0x7ff;
+        let expected_carry = total >> 11;
+        ensure!(
+            case["expectation"]["sum"].as_u64() == Some(expected_sum),
+            "{id} manifest sum is not arithmetic"
+        );
+        ensure!(
+            case["expectation"]["carry"].as_u64() == Some(expected_carry),
+            "{id} manifest carry is not arithmetic"
+        );
+        ensure!(
+            trace.last().is_some_and(|value| value["sum"].as_u64() == Some(expected_sum)),
+            "{id} did not reach expected sum {expected_sum}"
+        );
+        sums.push(expected_sum);
+
+        let active_final = checkpoint(&world, ticks, &[]);
+        if let Some(mut active) = compiler.take() {
+            active.reset(&mut world, episode.bounds);
+        }
+        let reset_future = future(&world);
+        let reset_checkpoint = checkpoint(&world, ticks, &[]);
+        let mut continuation = Vec::new();
+        for _ in 0..32 {
+            world.tick_interpreted();
+            continuation.push(episode.observe(&world)?);
+        }
+        let continuation_future = future(&world);
+        let continuation_checkpoint = checkpoint(&world, ticks + 32, &[]);
+        seconds += elapsed.as_secs_f64();
+        measured_cases.push(json!({"id":id,"inputs":inputs,"expectation":case["expectation"],
+            "prepared_before_trigger":prepared_before_trigger,"active_ticks":ticks,"seconds":elapsed.as_secs_f64(),"trace":trace,
+            "work_in_window":work_before.zip(work_after).map(|(before,after)|window_counts(before,after)),
+            "active_final_checkpoint":active_final,"reset_checkpoint":reset_checkpoint,"reset_future":reset_future,
+            "continuation":continuation,"continuation_checkpoint":continuation_checkpoint,"continuation_future":continuation_future}));
+    }
+    sums.sort_unstable();
+    sums.dedup();
+    ensure!(sums.len() > 1, "adder transactions did not produce changing sum outputs");
+    let transaction_count = measured_cases.len();
+    Ok(
+        json!({"executor":tier.map_or("interpreter".to_owned(),|tier| if compose_regions {format!("O{tier}-stable")} else {format!("O{tier}")}),
+        "seconds":seconds,"active_ticks":active_ticks,"ticks_per_second":f64::from(active_ticks)/seconds,
+            "game_ticks_per_second":f64::from(active_ticks)/seconds,"transactions_per_second":transaction_count as f64/seconds,
+            "timed_operations":"final falling-trigger action plus response tick_with_world/tick_interpreted calls; compilation, operand preparation, wait-ready ticks, publication, observations, reset and continuation excluded",
+        "cases":measured_cases}),
+    )
+}
+
 /// Use a pinned arithmetic case, then hold every external lever throughout the timed episode.
 fn prepare_stable_adder(episode: &Episode, compiler: &mut Option<Compiler>, world: &mut PlotWorld, elapsed: &mut Duration) -> Result<BlockPos> {
     let case = episode.manifest["cases"]
@@ -561,6 +801,14 @@ fn verify_workload_response(episode: &Episode, trace: &[Value]) -> Result<()> {
 }
 
 fn run(episode: &Episode, tier: Option<usize>, reset_pending: bool, compose_regions: bool) -> Result<Value> {
+    if episode.name == "io/adder_11bits" {
+        ensure!(!reset_pending, "adder reset-pending microepisodes are not part of this protocol");
+        return run_adder(episode, tier, compose_regions);
+    }
+    if episode.name == "research/rilax_memory_bank_bud" {
+        ensure!(!reset_pending, "Rilax reset-pending microepisodes are not part of this protocol");
+        return run_rilax(episode, tier, compose_regions);
+    }
     let mut world = episode.load()?;
     let initial = checkpoint(&world, 0, &[]);
     let compile_started = Instant::now();
@@ -752,17 +1000,108 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                     .with_context(|| format!("{name} sample {} executor {tier:?} composed={compose_regions}", sample + 1))?;
                 result["sample"] = json!(sample + 1);
                 result["order"] = json!(position + 1);
-                println!(
-                    "{name} sample {} {}: {:.6}s active; {:.6}s including preparation and activation",
-                    sample + 1,
-                    result["executor"],
-                    result["seconds"].as_f64().unwrap(),
-                    result["episode_execution_seconds"].as_f64().unwrap()
-                );
+                if let Some(episode_seconds) = result["episode_execution_seconds"].as_f64() {
+                    println!(
+                        "{name} sample {} {}: {:.6}s active; {:.6}s including preparation and activation",
+                        sample + 1,
+                        result["executor"],
+                        result["seconds"].as_f64().unwrap(),
+                        episode_seconds
+                    );
+                } else {
+                    println!(
+                        "{name} sample {} {}: {:.6}s; {} game ticks, {:.1} ticks/s",
+                        sample + 1,
+                        result["executor"],
+                        result["seconds"].as_f64().unwrap(),
+                        result["active_ticks"].as_u64().unwrap_or(0),
+                        result["game_ticks_per_second"]
+                            .as_f64()
+                            .or(result["ticks_per_second"].as_f64())
+                            .unwrap_or(0.0)
+                    );
+                }
                 results.push(result);
             }
-            let native = results.iter().find(|result| result["executor"] == "interpreter").unwrap();
-            for result in &results {
+            let native = results.iter().find(|result| result["executor"] == "interpreter").unwrap().clone();
+            for result in &mut results {
+                if name == "research/rilax_memory_bank_bud" || name == "io/adder_11bits" {
+                    ensure!(
+                        result["cases"].as_array().unwrap().len() == native["cases"].as_array().unwrap().len(),
+                        "{} case count mismatch",
+                        name
+                    );
+                    let executor = result["executor"].clone();
+                    for (actual, expected) in result["cases"]
+                        .as_array_mut()
+                        .unwrap()
+                        .iter_mut()
+                        .zip(native["cases"].as_array().unwrap())
+                    {
+                        ensure!(actual["id"] == expected["id"], "{} manifest case order mismatch", name);
+                        for field in ["trace", "continuation", "prepared_before_trigger"] {
+                            ensure!(
+                                actual[field] == expected[field],
+                                "{} {} compiled/native mismatch: {field}",
+                                name,
+                                actual["id"]
+                            );
+                        }
+                        for field in ["reset_future", "continuation_future"] {
+                            if actual[field] != expected[field] {
+                                let future_fields = ["logical_tick", "phase", "scheduled_ticks", "piston_events", "motions"];
+                                let differences: Vec<_> = future_fields
+                                    .into_iter()
+                                    .filter(|key| actual[field][*key] != expected[field][*key])
+                                    .map(|key| json!({"field":key,"actual":actual[field][key],"expected":expected[field][key]}))
+                                    .collect();
+                                let diagnostic = json!({"workload":name,"case_id":actual["id"],"executor":executor,
+                                    "future_field":field,"differences":differences,"actual":actual[field],"expected":expected[field]});
+                                let filename = if name == "io/adder_11bits" {
+                                    "adder-future-diff.json"
+                                } else {
+                                    "rilax-future-diff.json"
+                                };
+                                let path = root().join("target/build-audit-tps").join(filename);
+                                std::fs::create_dir_all(path.parent().unwrap())?;
+                                std::fs::write(&path, serde_json::to_vec_pretty(&diagnostic)?)?;
+                                bail!(
+                                    "{} {} {} differs from interpreter; structured actual/expected future saved to {}",
+                                    name,
+                                    actual["id"],
+                                    field,
+                                    path.display()
+                                );
+                            }
+                        }
+                        let checkpoint_fields = ["tick", "blocks", "entities", "chat", "messages", "lit_lamps"];
+                        for checkpoint in ["reset_checkpoint", "continuation_checkpoint"] {
+                            for field in checkpoint_fields {
+                                ensure!(
+                                    actual[checkpoint][field] == expected[checkpoint][field],
+                                    "{} {} {} checkpoint field {field} differs after handoff",
+                                    name,
+                                    actual["id"],
+                                    checkpoint
+                                );
+                            }
+                        }
+                        let diagnostic_fields = ["tick", "blocks", "entities", "scheduler", "pistons", "chat", "messages", "lit_lamps"];
+                        let active_differences: Vec<_> = diagnostic_fields
+                            .into_iter()
+                            .filter(|field| actual["active_final_checkpoint"][*field] != expected["active_final_checkpoint"][*field])
+                            .collect();
+                        let has_active_differences = !active_differences.is_empty();
+                        actual["active_final_checkpoint_difference_fields"] = json!(active_differences);
+                        if has_active_differences {
+                            println!(
+                                "{name} {} active checkpoint differences before handoff: {:?}",
+                                actual["id"], active_differences
+                            );
+                        }
+                    }
+                    continue;
+                }
                 for field in ["initial", "trace", "chat", "continuation", "reset_future", "continuation_future"] {
                     ensure!(
                         result[field] == native[field],
@@ -783,7 +1122,7 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                     }
                 }
             }
-            if sample == 0 {
+            if sample == 0 && name != "research/rilax_memory_bank_bud" && name != "io/adder_11bits" {
                 for &(tier, compose_regions) in &order {
                     let Some(tier) = tier else {
                         continue;
@@ -842,13 +1181,25 @@ fn benchmark_episode(episode: &Episode, iterations: usize, smoke: bool, selected
                 .unwrap()
                 .iter()
                 .filter(|sample| sample["executor"] == executor)
-                .map(|sample| sample["episode_execution_seconds"].as_f64().unwrap())
+                .map(|sample| {
+                    sample["episode_execution_seconds"]
+                        .as_f64()
+                        .unwrap_or(sample["seconds"].as_f64().unwrap())
+                })
                 .collect();
             episode_times.sort_by(f64::total_cmp);
+            let active_ticks = workload["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|sample| sample["executor"] == executor)
+                .and_then(|sample| sample["active_ticks"].as_u64());
             summaries.push(
                 json!({"executor":executor,"median_seconds":times[times.len()/2],"range_seconds":[times[0],times[times.len()-1]],
                 "episode_median_seconds":episode_times[episode_times.len()/2],
-                "episode_range_seconds":[episode_times[0],episode_times[episode_times.len()-1]]}),
+                "episode_range_seconds":[episode_times[0],episode_times[episode_times.len()-1]],
+                "active_ticks":active_ticks,
+                "median_ticks_per_second":active_ticks.map(|ticks| ticks as f64 / times[times.len()/2])}),
             );
         }
         workload["summaries"] = json!(summaries);
