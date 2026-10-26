@@ -13,7 +13,7 @@ impl PlanBuilder for CompileSettledCircuit {
     }
 
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
-        let plan = logical::compile_device(graph, context.monitor)?;
-        Ok(PlanOutput::SettledCircuit(plan))
+        let (legacy, devices) = logical::compile_devices(graph, context.monitor)?;
+        Ok(PlanOutput::SettledDevices { legacy, devices })
     }
 }

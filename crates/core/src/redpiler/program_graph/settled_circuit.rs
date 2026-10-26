@@ -17,6 +17,30 @@ pub(crate) struct SettledCircuit {
     pub(crate) timing: Option<SettledTimingIsland>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// One independently certified logical device and its exact physical ownership closure.
+pub(crate) struct ScopedSettledDevice {
+    pub(crate) circuit: SettledCircuit,
+    pub(crate) scope: SettledDeviceScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// Source-derived masks needed to execute one logical device beside ordinary Graph components.
+pub(crate) struct SettledDeviceScope {
+    /// Stable partition number assigned by the graph-derived interaction partition.
+    pub(crate) component: u32,
+    /// Every mutable component node and virtual piston/contact node owned by this island.
+    pub(crate) owned_nodes: Box<[NodeId]>,
+    /// Sites whose dynamic properties or powered conduit state are inside the island.
+    pub(crate) owned_sites: Box<[SiteId]>,
+    /// Movable geometry contacts shared by the island's components.
+    pub(crate) owned_contacts: Box<[ContactId]>,
+    /// Complete payload resources read or moved by the island.
+    pub(crate) owned_resources: Box<[ResourceId]>,
+    /// Routes whose source node is owned by this interaction island.
+    pub(crate) owned_source_routes: Box<[RouteId]>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettledTarget {
     Power(PowerTarget),

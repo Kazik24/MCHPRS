@@ -406,6 +406,7 @@ impl Compiler {
             graph: monitor.graph_statistics(),
             backend: BackendKind::Graph,
             backend_nodes: backend.node_count(),
+            logical_device_count: backend.logical_devices_count(),
             logical_device_admission: backend.logical_device_admission().clone(),
             execution_coverage: backend.execution_coverage(),
             analysis_duration,

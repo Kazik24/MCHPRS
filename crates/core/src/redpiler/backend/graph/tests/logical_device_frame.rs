@@ -94,16 +94,17 @@ fn frame_button_release_matches_native_scheduler_delay_without_callbacks() {
     assert_eq!(ordinary.positions[&BUTTON], button);
 
     // Logical-frame button activation suppresses route delivery and uses the shared timer queue.
+    frame.logical_device_owner = vec![None; frame.program.nodes().len()];
+    frame.logical_device_owner[button.index()] = Some(0);
+    frame.active_frame_retained_nodes.push(button);
     frame.schedule(button, 10, TickPriority::Normal);
     frame.set_node(button, true, 15, None, false).unwrap();
     ordinary.schedule(button, 10, TickPriority::Normal);
     ordinary.set_node(button, true, 15, None, false).unwrap();
 
-    let boundary_buttons = [button];
     for tick in 1..=20 {
-        frame.future.clock.logical_tick += 1;
         let mut host: Option<&mut dyn GraphCommandHost> = None;
-        frame.advance_frame_scheduler(button, &boundary_buttons, &mut host).unwrap();
+        frame.tick_phases(&mut host).unwrap();
         let mut host = None;
         ordinary.tick_phases(&mut host).unwrap();
 
@@ -176,12 +177,10 @@ fn frame_command_outputs_use_shared_edges_scheduler_and_entity_updates() {
         Some(entity) if entity.powered
     ));
     let run_frame = |backend: &mut GraphBackend, world: &mut PlotWorld| {
-        backend.future.clock.logical_tick += 1;
         backend.active_frame_command_outputs.push(first_node);
         backend.active_frame_command_outputs.push(chain_node);
         let mut host: Option<&mut dyn GraphCommandHost> = Some(world);
-        host.as_mut().unwrap().publish_logical_tick(backend.future.clock.logical_tick);
-        backend.advance_frame_scheduler(first_node, &[], &mut host).unwrap();
+        backend.tick_phases(&mut host).unwrap();
         backend.active_frame_command_outputs.clear();
     };
     run_frame(&mut backend, &mut world);

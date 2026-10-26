@@ -47,6 +47,9 @@ mod logical_device_counter_tests;
 #[path = "graph/tests/logical_device_frame.rs"]
 mod logical_device_frame_tests;
 #[cfg(test)]
+#[path = "graph/tests/logical_device_islands.rs"]
+mod logical_device_island_tests;
+#[cfg(test)]
 #[path = "graph/tests/logical_device_saved_plot.rs"]
 mod logical_device_saved_plot_tests;
 mod logical_firing;
@@ -461,7 +464,8 @@ pub(crate) struct GraphBackend {
     /// This holds reusable wave scratch and the current synchronous route replacement.
     instant_kernel: instant_kernel::KernelExecution,
     logical_firing: Option<logical_firing::LogicalFiringRuntime>,
-    logical_device: Option<logical_device::LogicalDevice>,
+    logical_devices: Vec<logical_device::LogicalDevice>,
+    logical_device_owner: Vec<Option<usize>>,
     logical_device_admission: crate::redpiler::LogicalDeviceAdmission,
     active_frame_command_outputs: Vec<NodeId>,
     active_frame_retained_actors: Vec<PistonId>,
@@ -902,7 +906,8 @@ impl GraphBackend {
             fixed_classic_scratch: Vec::new(),
             instant_kernel,
             logical_firing: None,
-            logical_device: None,
+            logical_devices: Vec::new(),
+            logical_device_owner: Vec::new(),
             logical_device_admission: crate::redpiler::LogicalDeviceAdmission::NotApplicable,
             active_frame_command_outputs: Vec::new(),
             active_frame_retained_actors: Vec::new(),
@@ -1121,7 +1126,7 @@ impl GraphBackend {
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        if self.logical_device.is_some() {
+        if !self.logical_devices.is_empty() {
             let result = self.tick_logical_device(&mut host);
             self.latch_error(&result);
             return result;
@@ -1282,12 +1287,12 @@ impl GraphBackend {
         match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Electrical(NodeType::Lever) => {
                 let powered = !self.node_state(node).powered;
-                self.set_node(node, powered, u8::from(powered) * 15, None, self.logical_device.is_none())?;
+                self.set_node(node, powered, u8::from(powered) * 15, None, !self.logical_node_owned(node))?;
             }
             CircuitNodeKind::Electrical(NodeType::Button) => {
                 if !self.node_state(node).powered {
                     self.schedule(node, 10, TickPriority::Normal);
-                    self.set_node(node, true, 15, None, self.logical_device.is_none())?;
+                    self.set_node(node, true, 15, None, !self.logical_node_owned(node))?;
                 }
             }
             _ => {}
@@ -1312,7 +1317,7 @@ impl GraphBackend {
             self.program.nodes()[node.index()].kind,
             CircuitNodeKind::Electrical(NodeType::PressurePlate)
         ) {
-            self.set_node(node, powered, u8::from(powered) * 15, None, self.logical_device.is_none())?;
+            self.set_node(node, powered, u8::from(powered) * 15, None, !self.logical_node_owned(node))?;
         }
         Ok(())
     }
@@ -1325,7 +1330,7 @@ impl GraphBackend {
 
     /// Run a component's scheduled tick and send any resulting notifications.
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
-        if !self.active_frame_retained_nodes.is_empty() && !self.active_frame_retained_nodes.contains(&node) {
+        if self.logical_node_owned(node) && !self.active_frame_retained_nodes.contains(&node) {
             return Err(self.unsupported(node, "logical frame received an unowned scheduled tick"));
         }
         if self.fixed_classic.is_some() {
@@ -1994,7 +1999,7 @@ impl GraphBackend {
     /// The general path keeps duplicate notifications. A callback can run another route.
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        if self.fixed_classic.is_some() && self.active_frame_retained_nodes.is_empty() {
+        if self.fixed_classic.is_some() && !self.logical_node_owned(self.program.routes()[route.index()].source) {
             return self.fixed_classic_route(route, captured);
         }
         let result = self.deliver_route_inner(route, captured);
@@ -2002,7 +2007,7 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        let retained_frame = !self.active_frame_retained_nodes.is_empty();
+        let retained_frame = self.logical_node_owned(self.program.routes()[route.index()].source);
         if retained_frame
             && self
                 .active_frame_retained_routes
@@ -2290,6 +2295,16 @@ impl GraphBackend {
         let Some(receiver) = receiver else {
             return Ok(());
         };
+        if !self.logical_device_owner.is_empty() && !self.logical_node_owned(self.program.routes()[route.index()].source) {
+            let target = match receiver {
+                CallbackReceiver::Component(node) => node,
+                CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => self.program.pistons()[actor.index()].node,
+                CallbackReceiver::Contact(contact) => self.program.contacts()[contact.index()].node,
+            };
+            if self.logical_node_owned(target) {
+                return Err(self.unsupported(target, "ordinary callback crosses a logical-device scope"));
+            }
+        }
         if matches!(receiver, CallbackReceiver::Component(node) if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node))) {
             if matches!(delivery.kind, DeliveryKind::Update { .. } | DeliveryKind::Shape { .. }) {
                 let node = match receiver {

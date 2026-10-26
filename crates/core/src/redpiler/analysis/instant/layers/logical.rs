@@ -23,8 +23,10 @@ mod fpu;
 mod fpu_computation_tests;
 #[cfg(test)]
 mod fpu_kernel_bench;
+mod islands;
 mod settled;
 pub(crate) mod timing;
+pub(crate) use islands::LogicalIsland;
 #[cfg(test)]
 pub(crate) use settled::compile_computation;
 #[cfg(test)]
@@ -45,7 +47,7 @@ pub(crate) use settled::diagnostic_computation_failures;
 pub(crate) use settled::diagnostic_query;
 #[cfg(test)]
 pub(crate) use settled::diagnostic_source_cycle_edges;
-pub(crate) use settled::{compile_device, compile_settled};
+pub(crate) use settled::{compile_device, compile_devices, compile_scoped_devices, compile_settled};
 #[cfg(test)]
 mod adders11;
 #[cfg(test)]
@@ -65,6 +67,8 @@ struct Equations<'a> {
     disabled_destinations: FxHashSet<(ResourceId, ContactId)>,
     actors: FxHashSet<PistonId>,
     registers: FxHashMap<ResourceId, BudMemoryRead>,
+    /// Value producers whose source semantics were expanded into this equation set.
+    expanded_components: FxHashSet<NodeId>,
     inline_repeaters: bool,
     stateful_repeaters: FxHashSet<NodeId>,
     raw: LayerBuilder<'a>,
@@ -183,6 +187,7 @@ impl<'a> Equations<'a> {
             disabled_destinations,
             actors: catalog.cells.iter().flat_map(|cell| cell.uses.iter().map(|use_| use_.actor)).collect(),
             registers: graph.plans.bud_memory_reads.iter().map(|read| (read.resource, *read)).collect(),
+            expanded_components: FxHashSet::default(),
             inline_repeaters: false,
             stateful_repeaters: graph
                 .power_links
@@ -876,13 +881,19 @@ impl<'a> Equations<'a> {
                     if self.stateful_repeaters.contains(&node) {
                         self.binary_source_leaf(source)?
                     } else {
-                        self.input_power(node, InputPort::Main)?
+                        let value = self.input_power(node, InputPort::Main)?;
+                        self.expanded_components.insert(node);
+                        value
                     }
                 } else if self.resource_semantics.uses_feedback() && matches!(kind, CircuitNodeKind::Electrical(NodeType::Torch)) {
                     let main = self.input_power(node, InputPort::Main)?;
-                    self.reduced.not(main)?
+                    let value = self.reduced.not(main)?;
+                    self.expanded_components.insert(node);
+                    value
                 } else if self.resource_semantics.uses_feedback() && matches!(kind, CircuitNodeKind::Electrical(NodeType::Comparator { .. })) {
-                    self.comparator_source(node, threshold)?
+                    let value = self.comparator_source(node, threshold)?;
+                    self.expanded_components.insert(node);
+                    value
                 } else if can_sample_binary_source {
                     // Direction was checked by SignalTracer before it emitted this
                     // boundary. These source classes emit only 0 or 15, so all
@@ -906,7 +917,9 @@ impl<'a> Equations<'a> {
                         CircuitNodeKind::Electrical(NodeType::Repeater { .. } | NodeType::Lamp) => self.input_power(node, InputPort::Main)?,
                         CircuitNodeKind::Electrical(NodeType::Torch) => {
                             let power = self.input_power(node, InputPort::Main)?;
-                            self.reduced.not(power)?
+                            let value = self.reduced.not(power)?;
+                            self.expanded_components.insert(node);
+                            value
                         }
                         ref kind => {
                             return Err(ConstructionError::Unsupported(format!("unsupported logical source {node:?}: {kind:?}")));

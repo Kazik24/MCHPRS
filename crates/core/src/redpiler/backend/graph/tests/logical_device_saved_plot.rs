@@ -64,19 +64,12 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             backend.program.pistons().len(),
             backend.logical_device_admission()
         );
-        if crop {
-            assert_eq!(
-                backend.logical_device_admission(),
-                &LogicalDeviceAdmission::Active,
-                "terminal readout repeaters must not hide the isolated FPU's computation"
-            );
-        } else if backend.logical_device.is_none() {
-            assert!(
-                matches!(backend.logical_device_admission(), LogicalDeviceAdmission::Declined(_)),
-                "a mixed plot must explain why it keeps general Graph execution"
-            );
-            continue;
-        }
+        assert_eq!(
+            backend.logical_device_admission(),
+            &LogicalDeviceAdmission::Active,
+            "FPU must compile independently of an ordinary neighboring circuit (crop={crop})"
+        );
+        assert!(backend.logical_node_owned(backend.positions[&TRIGGER]));
 
         let mut physical_world = saved_world();
         let mut physical = GraphBackend::new_with_positions(
@@ -94,6 +87,8 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             .filter(|(_, node)| node.position.is_some_and(|p| !inside_fpu(p)))
             .map(|(i, _)| i)
             .collect();
+        let initial_neighbors = neighbors.iter().map(|&i| backend.state.components[i].clone()).collect::<Vec<_>>();
+        let mut saw_neighbor_activity = false;
         let controls: Vec<_> = neighbors
             .iter()
             .filter_map(|&i| {
@@ -110,6 +105,9 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             }
             backend.tick_with_world(&mut world).unwrap();
             physical.tick_with_world(&mut physical_world).unwrap();
+            saw_neighbor_activity |= neighbors.iter().zip(&initial_neighbors).any(|(&i, initial)| {
+                !matches!(backend.program.nodes()[i].kind, CircuitNodeKind::Electrical(NodeType::Lever)) && backend.state.components[i] != *initial
+            });
             for &i in &neighbors {
                 assert_eq!(
                     backend.state.components[i],
@@ -170,6 +168,14 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
                 assert!(matches!(world.get_block(BlockPos::new(-102, 55, z)), Block::RedstoneRepeater { .. }));
             }
         }
+        assert!(crop || saw_neighbor_activity, "the neighboring circuit must execute real native work");
+        eprintln!(
+            "saved FPU crop={crop}: devices={} evaluations={} wire_walks={} native_ticks={}",
+            backend.logical_devices_count(),
+            backend.counts.logical_kernel_evaluations,
+            backend.counts.wire_walks,
+            backend.counts.scheduled_ticks
+        );
         assert!(backend.counts.logical_kernel_evaluations > 0);
         if crop {
             assert_eq!(backend.counts.wire_walks, 0, "isolated FPU must execute without bulk wire walks");

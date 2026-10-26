@@ -204,6 +204,15 @@ impl LogicalClock {
         }
     }
 
+    /// Whether the source-derived controller is stopped at an idle boundary where external
+    /// input changes can be observed without racing a pending register commit.
+    pub(crate) fn is_quiescent(&self) -> bool {
+        match self.kind {
+            ClockKind::TorchObserver => self.phase == Phase::Idle && self.pending_torch.is_none() && !self.last_trigger && self.torch_powered,
+            ClockKind::StickyObserver => self.phase == Phase::Idle && self.last_trigger && !self.pulse_on,
+        }
+    }
+
     fn advance_sticky_observer(&mut self, trigger: bool) -> Result<ClockStep, &'static str> {
         self.tick = self.tick.checked_add(1).ok_or("logical clock tick overflow")?;
         let resample = trigger && trigger != self.last_trigger;

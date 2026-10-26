@@ -12,11 +12,51 @@ const MAX_TIMING_INPUTS: usize = 1024;
 /// Callback closure is deliberately excluded: the runtime keeps callback delivery
 /// within this returned physical island and ignores internal datapath reset callbacks.
 pub(crate) fn infer(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledTimingIsland, String> {
+    let candidates = candidate_clocks(graph, monitor)?;
+    if candidates.len() != 1 {
+        return Err(format!(
+            "found {} clock pistons whose base observer feeds Quasi: {candidates:?}",
+            candidates.len()
+        ));
+    }
+    infer_for_clock(graph, candidates[0], monitor)
+}
+
+pub(crate) fn infer_for_clock(graph: &CompileGraph, clock: PistonId, monitor: &TaskMonitor) -> Result<SettledTimingIsland, String> {
+    infer_for_clock_in_scope(graph, clock, None, monitor)
+}
+
+pub(crate) fn infer_for_clock_in_island(
+    graph: &CompileGraph,
+    clock: PistonId,
+    island: &super::islands::LogicalIsland,
+    monitor: &TaskMonitor,
+) -> Result<SettledTimingIsland, String> {
+    infer_for_clock_in_scope(graph, clock, Some(island), monitor)
+}
+
+fn infer_for_clock_in_scope(
+    graph: &CompileGraph,
+    clock: PistonId,
+    island: Option<&super::islands::LogicalIsland>,
+    monitor: &TaskMonitor,
+) -> Result<SettledTimingIsland, String> {
     let observers_by_base = observers_by_base(graph, monitor)?;
     let power = index_power(graph);
-    let clock = find_clock(graph, &power, &observers_by_base, monitor)?;
-    let bud_resources: FxHashSet<_> = graph.plans.bud_memory_reads.iter().map(|read| read.resource).collect();
-    let bud_actors: FxHashSet<_> = graph.plans.bud_memory_reads.iter().map(|read| read.storage).collect();
+    let bud_resources: FxHashSet<_> = graph
+        .plans
+        .bud_memory_reads
+        .iter()
+        .filter(|read| island.is_none_or(|island| island.resources.binary_search(&read.resource).is_ok()))
+        .map(|read| read.resource)
+        .collect();
+    let bud_actors: FxHashSet<_> = graph
+        .plans
+        .bud_memory_reads
+        .iter()
+        .filter(|read| island.is_none_or(|island| island.pistons.binary_search(&read.storage).is_ok()))
+        .map(|read| read.storage)
+        .collect();
 
     let mut actors = FxHashSet::default();
     let mut nodes = FxHashSet::default();
@@ -209,12 +249,46 @@ pub(crate) fn infer(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Settl
     })
 }
 
-fn find_clock(
+pub(crate) fn candidate_clocks(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<PistonId>, String> {
+    let observers_by_base = observers_by_base(graph, monitor)?;
+    let power = index_power(graph);
+    let has_bud = !graph.plans.bud_memory_reads.is_empty();
+    find_clock_candidates(graph, &power, &observers_by_base, monitor, |_| has_bud)
+}
+
+pub(crate) fn candidate_clocks_in_islands(
+    graph: &CompileGraph,
+    partition: &super::islands::LogicalIslandPartition,
+    monitor: &TaskMonitor,
+) -> Result<Vec<PistonId>, String> {
+    let observers_by_base = observers_by_base(graph, monitor)?;
+    let power = index_power(graph);
+    let mut island_has_bud = vec![false; partition.islands.len()];
+    for read in &graph.plans.bud_memory_reads {
+        if let Some(&island) = partition.resource_island.get(read.resource.index()).and_then(Option::as_ref) {
+            island_has_bud[island as usize] = true;
+        }
+        if let Some(&island) = partition.piston_island.get(read.storage.index()) {
+            island_has_bud[island as usize] = true;
+        }
+    }
+    find_clock_candidates(graph, &power, &observers_by_base, monitor, |actor| {
+        partition
+            .piston_island
+            .get(actor.index())
+            .and_then(|island| island_has_bud.get(*island as usize))
+            .copied()
+            .unwrap_or(!graph.plans.bud_memory_reads.is_empty())
+    })
+}
+
+fn find_clock_candidates(
     graph: &CompileGraph,
     power: &PowerIndex,
     observers_by_base: &FxHashMap<ContactId, Vec<NodeId>>,
     monitor: &TaskMonitor,
-) -> Result<PistonId, String> {
+    has_bud: impl Fn(PistonId) -> bool,
+) -> Result<Vec<PistonId>, String> {
     let mut candidates = Vec::new();
     let internal_wires: FxHashSet<_> = graph
         .nodes
@@ -229,10 +303,11 @@ fn find_clock(
         }
         // Preserve the existing BUD counter's empty-lane selector. The direct
         // single-resource clock family is only considered for no-BUD frames.
-        if graph.plans.bud_memory_reads.is_empty() != matches!(piston.lane, PistonLane::SingleResource { .. }) {
+        let actor = PistonId::new(index as u32);
+        let bud_mode = has_bud(actor);
+        if bud_mode == matches!(piston.lane, PistonLane::SingleResource { .. }) {
             continue;
         }
-        let actor = PistonId::new(index as u32);
         let base_observers: Vec<_> = observers_by_base
             .get(&piston.base)
             .into_iter()
@@ -248,7 +323,7 @@ fn find_clock(
         if base_observers.is_empty() {
             continue;
         }
-        if graph.plans.bud_memory_reads.is_empty() && !direct_lever_main(graph, power, actor, monitor)? {
+        if !bud_mode && !direct_lever_main(graph, power, actor, monitor)? {
             continue;
         }
         // Conducted power is represented by intermediate conductor targets, so inspecting
@@ -286,13 +361,7 @@ fn find_clock(
             candidates.push(PistonId::new(index as u32));
         }
     }
-    if candidates.len() != 1 {
-        return Err(format!(
-            "found {} clock pistons whose base observer feeds Quasi: {candidates:?}",
-            candidates.len()
-        ));
-    }
-    Ok(candidates[0])
+    Ok(candidates)
 }
 
 #[cfg(test)]

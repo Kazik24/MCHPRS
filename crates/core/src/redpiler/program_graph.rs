@@ -914,6 +914,7 @@ struct InstantProgram {
 /// Immutable tables used by the graph executor after lowering.
 pub(crate) struct CircuitProgram {
     settled_circuit: Option<SettledCircuit>,
+    logical_devices: Box<[ScopedSettledDevice]>,
     /// Fixed electrical reads inside otherwise general mixed-circuit execution.
     mixed_classic: MixedClassicProgram,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
@@ -974,6 +975,10 @@ pub(crate) struct CircuitProgram {
 impl CircuitProgram {
     pub(crate) fn settled_circuit(&self) -> Option<&SettledCircuit> {
         self.settled_circuit.as_ref()
+    }
+
+    pub(crate) fn logical_devices(&self) -> &[ScopedSettledDevice] {
+        &self.logical_devices
     }
 
     pub(crate) fn logical_bud_owners(&self) -> &[LogicalBudOwnerPlan] {

@@ -149,6 +149,22 @@ Next engine work is certified per-device scope: infer and compile a clock/output
 
 Current evidence is in [the final normal suite](../target/build-audit-tps/prod/redpiler-suite-final.log), [saved-plot replay](../target/build-audit-tps/prod/saved-plot-after.log), and the `*-final.log` build replays alongside them. No updated code was deployed to production.
 
+## Independent logical devices (26 October)
+
+Logical-device execution is now represented by a collection of certified scopes rather than a whole-plot switch. The partition follows dynamic power and conducted paths, resources and contacts, callback receivers, guard dependencies, watched sites, and command-chain adjacency. Shared immutable profile facts do not couple unrelated devices. No build names or coordinate rules participate in admission.
+
+Each accepted scope owns its nodes, sites, contacts, resources, and source routes, and has its own source-derived clock. Admission checks pending work within that scope. A declined scope stays on ordinary Graph while other scopes can activate. All active devices and ordinary components use one native scheduler and piston FIFO; owned callback suppression cannot discard unrelated work. Compile completion reports the installed logical-device count.
+
+The saved production replay now admits the FPU in both its isolated crop and the complete **87,048-node / 10,155-piston FPU + Divider plot**. A read-only 48-tick replay compares neighboring component/piston/resource state, piston FIFO, and delayed-work order against ordinary Graph. The isolated FPU still performs no bulk wire walks. This replaces the whole-plot admission limitation documented above; it is not a live-server deployment or TPS measurement. [Replay evidence](../target/build-audit-tps/prod/islands-saved-plot.log).
+
+The architecture deliberately preserves connected dependencies. If two clocks share an interaction island, that island currently remains Graph-owned. Arbitrary connected kernels require narrower ownership and explicit boundary ports describing sampled values, publication phase, native delays, and event order. Those contracts must be established before cutting a live connection. Unsupported observable sinks must force local fallback rather than vanish from the frame roots. Independent admission is a foundation for that composition, not a claim that every connected circuit already lowers to separate kernels.
+
+The new two-COUNTER integration passes with staggered clocks, an active ordinary repeater/lamp, per-tick outside-Graph state and ordered-work parity, stable memory and publication-cut checks, and eight exact interpreter continuation ticks after a stopped drain. Admission tests also confirm that unrelated preexisting scheduled work survives, in-scope pending work prevents activation, and a malformed third controller does not block two valid devices.
+
+This exposed an existing register-machine output bug after stopping: memory settled correctly but the last active output word remained published. The runtime now resamples changed source inputs only when its clock is quiescent, using `SettledMachine::observe` without committing a register. It does not overwrite a result between its computation and delayed physical commit. The existing six-OFF-phase regression, 24-tick drains, and restarts pass.
+
+Frame completeness uses transient source-expansion support from the existing equation compiler, together with native retained power boundaries. It does not assume that an unlisted sink disappeared. Unsupported native effects remain a reason for local fallback; constant comparator inputs are accepted only when the shared comparator rules prove no state transition from the saved entry. Final FPU completeness and release-throughput checks are in progress. No production deployment has been made.
+
 ## Reproducing the measurements
 
 Run from `crates/core` so the expected configuration is loaded. The commands use existing benchmark entry points; `--output` paths below are resolved by those harnesses.

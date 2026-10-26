@@ -105,16 +105,30 @@ impl CircuitDraft {
             })
             .collect::<Vec<_>>();
 
-        if let Some(settled) = &mut self.plans.settled_circuit {
+        let power_link_remap = if self.plans.settled_circuit.is_some() || !self.plans.logical_devices.is_empty() {
             let mut order: Vec<_> = (0..self.power_links.len()).collect();
             order.sort_by_key(|&index| self.power_links[index].to);
             let mut remap = vec![0; order.len()];
             for (new, old) in order.into_iter().enumerate() {
                 remap[old] = new as u32;
             }
+            Some(remap)
+        } else {
+            None
+        };
+        if let (Some(settled), Some(remap)) = (&mut self.plans.settled_circuit, &power_link_remap) {
             for effect in &mut settled.retained_effects {
                 if let BoundaryPortKind::Power { link } = &mut effect.kind {
                     *link = remap[*link as usize];
+                }
+            }
+        }
+        if let Some(remap) = &power_link_remap {
+            for scoped in &mut self.plans.logical_devices {
+                for effect in &mut scoped.circuit.retained_effects {
+                    if let BoundaryPortKind::Power { link } = &mut effect.kind {
+                        *link = remap[*link as usize];
+                    }
                 }
             }
         }
@@ -269,6 +283,7 @@ impl CircuitDraft {
         };
         let program = CircuitProgram {
             settled_circuit: self.plans.settled_circuit,
+            logical_devices: self.plans.logical_devices.into_boxed_slice(),
             mixed_classic: self.plans.mixed_classic,
             fixed_classic: self.plans.fixed_classic.program,
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),

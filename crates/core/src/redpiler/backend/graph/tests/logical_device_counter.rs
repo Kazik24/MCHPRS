@@ -242,7 +242,10 @@ fn o6_counter_matches_native_at_stable_storage_and_publication_cuts() {
     };
     let monitor = Arc::new(TaskMonitor::default());
     let mut backend = GraphBackend::compile_with_options(&graph_world, bounds, ticks, &options, monitor).unwrap();
-    assert!(backend.logical_device.is_some(), "the O6 COUNTER must install its settled logical device");
+    assert!(
+        !backend.logical_devices.is_empty(),
+        "the O6 COUNTER must install its settled logical device"
+    );
 
     let initial = memory_q(&native, &memory_positions).expect("stationary initial memory bank");
     assert_eq!(initial, memory_q(&graph_world, &memory_positions).unwrap());
@@ -428,7 +431,7 @@ fn o6_counter_off_phase_cuts_match_native_and_restart() {
             ..Default::default()
         };
         let mut backend = GraphBackend::compile_with_options(&graph_world, bounds, ticks, &options, Arc::new(TaskMonitor::default())).unwrap();
-        assert!(backend.logical_device.is_some());
+        assert!(!backend.logical_devices.is_empty());
 
         set_native_lever(&mut native, trigger, true);
         backend.use_block(trigger).unwrap();
@@ -624,7 +627,7 @@ fn o6_counter_falls_back_to_graph_when_an_imported_tick_is_pending() {
     });
 
     let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
-    assert!(backend.logical_device.is_none(), "entry work must select the ordinary Graph path");
+    assert!(backend.logical_devices.is_empty(), "entry work must select the ordinary Graph path");
     assert!(!backend.future.pending.is_empty());
     backend.tick().unwrap();
     assert!(backend.counts.scheduled_ticks > 0, "the imported repeater tick ran in Graph");

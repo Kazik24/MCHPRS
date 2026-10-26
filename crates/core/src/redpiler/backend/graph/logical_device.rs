@@ -59,7 +59,7 @@ struct SettledFrame {
     retained_resources: Box<[ResourceId]>,
     retained_power_inputs: Box<[FramePowerInput]>,
     terminal_repeater_inputs: Box<[FrameRepeaterInput]>,
-    computed: bool,
+    power_input_offset: usize,
 }
 
 fn retained_cell_callback_is_owned(
@@ -267,7 +267,7 @@ impl SettledFrame {
                         terminal_repeater_inputs.push(FrameRepeaterInput {
                             node,
                             output: index,
-                            strength: 0,
+                            strength: backend.input_strength(node, InputPort::Main),
                         });
                     } else if port == InputPort::Main {
                         outputs.push((node, index, output.kind));
@@ -650,7 +650,7 @@ impl SettledFrame {
             retained_resources: retained_resources.into_boxed_slice(),
             retained_power_inputs: retained_power_inputs.into_boxed_slice(),
             terminal_repeater_inputs: terminal_repeater_inputs.into_boxed_slice(),
-            computed: false,
+            power_input_offset: 0,
         })
     }
 
@@ -772,47 +772,87 @@ impl GraphBackend {
         &self.logical_device_admission
     }
 
+    pub(crate) fn logical_devices_count(&self) -> usize {
+        self.logical_devices.len()
+    }
+
+    pub(super) fn logical_node_owned(&self, node: NodeId) -> bool {
+        self.logical_device_owner.get(node.index()).is_some_and(Option::is_some)
+    }
+
     pub(super) fn install_logical_device(&mut self) -> Result<LogicalDeviceAdmission, String> {
-        let Some(circuit) = self.program.settled_circuit() else {
-            return Ok(LogicalDeviceAdmission::NotApplicable);
-        };
-        let Some(timing) = &circuit.timing else {
-            return Ok(LogicalDeviceAdmission::Declined("no certified logical-device timing".into()));
-        };
-        let is_frame = circuit
+        let count = self.program.logical_devices().len();
+        if count == 0 {
+            return Ok(if self.program.settled_circuit().is_some() {
+                LogicalDeviceAdmission::Declined("no independently certified logical device".into())
+            } else {
+                LogicalDeviceAdmission::NotApplicable
+            });
+        }
+        self.logical_device_owner = vec![None; self.program.nodes().len()];
+        let mut declines = Vec::new();
+        for program_index in 0..count {
+            let nodes = self.program.logical_devices()[program_index].scope.owned_nodes.clone();
+            if nodes.iter().any(|&node| self.logical_node_owned(node)) {
+                declines.push("overlapping logical-device scopes".to_owned());
+                continue;
+            }
+            match self.prepare_logical_device(program_index) {
+                Ok(device) => {
+                    let owner = self.logical_devices.len();
+                    for &node in &nodes {
+                        self.logical_device_owner[node.index()] = Some(owner);
+                    }
+                    self.logical_devices.push(device);
+                }
+                Err(reason) => {
+                    #[cfg(test)]
+                    eprintln!("logical device {program_index} declined: {reason}");
+                    declines.push(reason);
+                }
+            }
+        }
+        Ok(if self.logical_devices.is_empty() {
+            self.logical_device_owner.clear();
+            LogicalDeviceAdmission::Declined(declines.join("; "))
+        } else {
+            LogicalDeviceAdmission::Active
+        })
+    }
+
+    fn prepare_logical_device(&self, program_index: usize) -> Result<LogicalDevice, String> {
+        let plan = &self.program.logical_devices()[program_index];
+        let circuit = &plan.circuit;
+        let scope = &plan.scope;
+        let owns = |node: NodeId| scope.owned_nodes.binary_search(&node).is_ok();
+        let owns_actor = |actor: PistonId| owns(self.program.pistons()[actor.index()].node);
+        if self.future.pending.keys().any(|tick| tick.node.is_some_and(owns))
+            || self.future.piston_requests.iter().any(|request| owns_actor(request.piston))
+            || self.future.deferred_pistons.iter().any(|event| owns_actor(event.piston))
+            || self.future.scheduler.iter().any(|(tick, _, _)| tick.node.is_some_and(owns))
+        {
+            return Err("pending graph work in logical-device scope at entry".into());
+        }
+        let timing = circuit.timing.as_ref().ok_or("no certified logical-device timing")?;
+        let clock = LogicalClock::new(&self.program, &self.state, timing)?;
+        if circuit
             .outputs
             .iter()
-            .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }));
-        if !self.future.pending.is_empty() || !self.future.piston_requests.is_empty() || !self.future.deferred_pistons.is_empty() {
-            // Keep entry-time graph work on the ordinary executor; never abandon a live queue.
-            #[cfg(test)]
-            eprintln!("logical device activation declined: pending graph work; frame={is_frame}");
-            return Ok(LogicalDeviceAdmission::Declined("pending graph work at entry".into()));
-        }
-        if is_frame && self.future.scheduler.iter().next().is_some() {
-            #[cfg(test)]
-            eprintln!("logical device activation declined: scheduled work; frame=true");
-            return Ok(LogicalDeviceAdmission::Declined("scheduled graph work at entry".into()));
-        }
-        let clock = match LogicalClock::new(&self.program, &self.state, timing) {
-            Ok(clock) => clock,
-            Err(error) if is_frame => {
-                #[cfg(test)]
-                eprintln!("logical device activation declined: clock: {error}");
-                return Ok(LogicalDeviceAdmission::Declined(format!("logical clock: {error}")));
+            .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+        {
+            let frame = SettledFrame::new(self, circuit, &clock)?;
+            if frame
+                .retained_routes
+                .iter()
+                .any(|occurrence| scope.owned_source_routes.binary_search(&occurrence.route).is_err())
+                || frame
+                    .feedback_resources
+                    .iter()
+                    .any(|feedback| scope.owned_resources.binary_search(&feedback.resource).is_err())
+            {
+                return Err("logical frame boundary escapes its certified scope".into());
             }
-            Err(error) => return Err(error),
-        };
-        if is_frame {
-            let frame = match SettledFrame::new(self, circuit, &clock) {
-                Ok(frame) => frame,
-                Err(_error) => {
-                    #[cfg(test)]
-                    eprintln!("logical device activation declined: frame: {_error}");
-                    return Ok(LogicalDeviceAdmission::Declined(format!("logical frame: {_error}")));
-                }
-            };
-            self.logical_device = Some(LogicalDevice {
+            return Ok(LogicalDevice {
                 machine: None,
                 frame: Some(frame),
                 external: Box::new([]),
@@ -822,9 +862,7 @@ impl GraphBackend {
                 clock,
                 trigger: timing.trigger,
             });
-            return Ok(LogicalDeviceAdmission::Active);
         }
-
         let inputs = circuit
             .program
             .inputs
@@ -867,7 +905,7 @@ impl GraphBackend {
                 _ => return Err("logical device has an unsupported public output".into()),
             }
         }
-        self.logical_device = Some(LogicalDevice {
+        Ok(LogicalDevice {
             external: vec![false; external_nodes.len()].into_boxed_slice(),
             external_nodes: external_nodes.into_boxed_slice(),
             machine: Some(machine),
@@ -876,149 +914,143 @@ impl GraphBackend {
             trigger: timing.trigger,
             outputs: outputs.into_boxed_slice(),
             registers: registers.into_boxed_slice(),
-        });
-        Ok(LogicalDeviceAdmission::Active)
+        })
     }
 
     pub(super) fn tick_logical_device<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
-        let mut device = self.logical_device.take().expect("installed logical device");
-        if let Some(frame) = device
-            .frame
-            .as_ref()
-            .filter(|frame| !frame.retained_actors.is_empty() || !frame.terminal_repeater_inputs.is_empty())
-        {
-            self.active_frame_command_outputs.clear();
-            self.active_frame_retained_actors = frame.retained_actors.to_vec();
-            self.active_frame_retained_nodes = frame
-                .retained_actors
-                .iter()
-                .map(|actor| self.program.pistons()[actor.index()].node)
-                .chain(frame.retained_observers.iter().copied())
-                .chain(frame.retained_commands.iter().copied())
-                .chain(frame.button_nodes.iter().copied())
-                .chain(frame.terminal_repeater_inputs.iter().map(|input| input.node))
-                .chain(frame.outputs.iter().filter_map(|(node, _, _)| {
-                    matches!(
+        let mut devices = std::mem::take(&mut self.logical_devices);
+        self.active_frame_command_outputs.clear();
+        self.active_frame_retained_actors.clear();
+        self.active_frame_retained_nodes.clear();
+        self.active_frame_retained_routes.clear();
+        self.active_frame_power_inputs.clear();
+        for device in &mut devices {
+            if let Some(frame) = &mut device.frame {
+                frame.power_input_offset = self.active_frame_power_inputs.len();
+                self.active_frame_retained_actors.extend_from_slice(&frame.retained_actors);
+                self.active_frame_retained_nodes.extend(
+                    frame
+                        .retained_actors
+                        .iter()
+                        .map(|actor| self.program.pistons()[actor.index()].node)
+                        .chain(frame.retained_observers.iter().copied())
+                        .chain(frame.retained_commands.iter().copied())
+                        .chain(frame.button_nodes.iter().copied())
+                        .chain(frame.terminal_repeater_inputs.iter().map(|input| input.node)),
+                );
+                self.active_frame_retained_routes.extend_from_slice(&frame.retained_routes);
+                for &(node, _, _) in &frame.outputs {
+                    if matches!(
                         self.program.nodes()[node.index()].kind,
                         CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                    )
-                    .then_some(*node)
-                }))
-                .collect();
-            self.active_frame_retained_nodes.sort_unstable();
-            self.active_frame_retained_nodes.dedup();
-            self.active_frame_retained_routes = frame.retained_routes.to_vec();
-            self.refresh_frame_power_inputs(frame);
-            for &(node, _, _) in &frame.outputs {
-                if matches!(
-                    self.program.nodes()[node.index()].kind,
-                    CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                ) {
-                    self.active_frame_command_outputs.push(node);
+                    ) {
+                        self.active_frame_retained_nodes.push(node);
+                        self.active_frame_command_outputs.push(node);
+                    }
                 }
+                self.refresh_frame_power_inputs(frame);
             }
-            let result = self.tick_phases_with_hook(host, |backend, _| {
+        }
+        self.active_frame_retained_nodes.sort_unstable();
+        self.active_frame_retained_nodes.dedup();
+        self.active_frame_retained_routes
+            .sort_unstable_by_key(|occurrence| (occurrence.route, occurrence.ordinal));
+        self.active_frame_retained_routes.dedup();
+        let result = self.tick_phases_with_hook(host, |backend, _| {
+            for device in &mut devices {
                 let step = device
                     .clock
                     .advance(backend.node_state(device.trigger).powered)
                     .map_err(|kind| backend.unsupported(device.trigger, kind))?;
-                backend.run_frame_step(&mut device, step)
-            });
-            self.active_frame_command_outputs.clear();
-            self.active_frame_retained_actors.clear();
-            self.active_frame_retained_nodes.clear();
-            self.active_frame_retained_routes.clear();
-            self.active_frame_power_inputs.clear();
-            self.logical_device = Some(device);
-            return result;
-        }
-        self.counts.ticks += 1;
-        self.future.clock.logical_tick += 1;
-        self.active_frame_command_outputs.clear();
-        if let Some(frame) = &device.frame {
-            for &(node, _, _) in &frame.outputs {
-                if matches!(
-                    self.program.nodes()[node.index()].kind,
-                    CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                ) {
-                    self.active_frame_command_outputs.push(node);
-                }
-            }
-        }
-        if let Some(host) = host.as_mut() {
-            host.publish_logical_tick(self.future.clock.logical_tick);
-        }
-        let result = (|| {
-            if let Some(frame) = &device.frame {
-                self.refresh_frame_power_inputs(frame);
-                self.advance_frame_scheduler(device.trigger, &frame.button_nodes, host)?;
-            }
-            let step = device
-                .clock
-                .advance(self.node_state(device.trigger).powered)
-                .map_err(|kind| self.unsupported(device.trigger, kind))?;
-            if device.frame.is_some() {
-                self.run_frame_step(&mut device, step)?;
-            } else if step.compute {
-                let machine = device.machine.as_mut().expect("register machine installed");
-                for (value, &node) in device.external.iter_mut().zip(device.external_nodes.iter()) {
-                    *value = device.clock.source_value(node).expect("validated logical device input");
-                }
-                let operations = machine.step(&device.external).expect("validated logical device inputs");
-                self.counts.logical_kernel_evaluations += 1;
-                self.counts.logical_kernel_operations += operations as u64;
-            }
-            if step.publish && device.frame.is_none() {
-                let machine = device.machine.as_ref().expect("register machine installed");
-                for &(node, output) in &device.outputs {
-                    let strength = 15 * u8::from(machine.outputs()[output] != 0);
-                    self.set_node(node, strength != 0, strength, None, false)?;
-                }
-            }
-            if step.commit && device.frame.is_none() {
-                let machine = device.machine.as_ref().expect("register machine installed");
-                for register in &device.registers {
-                    let at = if machine.outputs()[register.output] != 0 {
-                        register.source
-                    } else if register.source == register.far {
-                        register.near
-                    } else {
-                        register.far
-                    };
-                    let piston = &mut self.state.pistons[register.storage.index()];
-                    piston.extended = at == register.far;
-                    piston.head_present = piston.extended;
-                    piston.availability = PistonAvailability::Ready;
-                    let resource = &mut self.state.resources[register.resource.index()];
-                    resource.at = at;
-                    resource.enabled = true;
-                }
+                backend.run_logical_device_step(device, step)?;
             }
             Ok(())
-        })();
+        });
         self.active_frame_command_outputs.clear();
+        self.active_frame_retained_actors.clear();
+        self.active_frame_retained_nodes.clear();
+        self.active_frame_retained_routes.clear();
         self.active_frame_power_inputs.clear();
-        self.logical_device = Some(device);
+        self.logical_devices = devices;
         result
     }
 
+    fn run_logical_device_step(&mut self, device: &mut LogicalDevice, step: super::logical_clock::ClockStep) -> Result<(), GraphExecutionError> {
+        if device.frame.is_some() {
+            return self.run_frame_step(device, step);
+        }
+        let mut inputs_changed = false;
+        if step.compute || device.clock.is_quiescent() {
+            for (value, &node) in device.external.iter_mut().zip(device.external_nodes.iter()) {
+                let sampled = device.clock.source_value(node).expect("validated logical device input");
+                inputs_changed |= *value != sampled;
+                *value = sampled;
+            }
+        }
+        if step.compute {
+            let machine = device.machine.as_mut().expect("register machine installed");
+            let operations = machine.step(&device.external).expect("validated logical device inputs");
+            self.counts.logical_kernel_evaluations += 1;
+            self.counts.logical_kernel_operations += operations as u64;
+        } else if device.clock.is_quiescent() && inputs_changed {
+            let machine = device.machine.as_mut().expect("register machine installed");
+            let operations = machine.observe(&device.external).expect("validated logical device inputs");
+            self.counts.logical_kernel_evaluations += 1;
+            self.counts.logical_kernel_operations += operations as u64;
+        }
+        if step.publish || (!step.compute && inputs_changed) {
+            let machine = device.machine.as_ref().expect("register machine installed");
+            for &(node, output) in &device.outputs {
+                let strength = 15 * u8::from(machine.outputs()[output] != 0);
+                self.set_node(node, strength != 0, strength, None, false)?;
+            }
+        }
+        if step.commit {
+            let machine = device.machine.as_ref().expect("register machine installed");
+            for register in &device.registers {
+                let at = if machine.outputs()[register.output] != 0 {
+                    register.source
+                } else if register.source == register.far {
+                    register.near
+                } else {
+                    register.far
+                };
+                let piston = &mut self.state.pistons[register.storage.index()];
+                piston.extended = at == register.far;
+                piston.head_present = piston.extended;
+                piston.availability = PistonAvailability::Ready;
+                let resource = &mut self.state.resources[register.resource.index()];
+                resource.at = at;
+                resource.enabled = true;
+            }
+        }
+        Ok(())
+    }
+
     fn refresh_frame_power_inputs(&mut self, frame: &SettledFrame) {
-        self.active_frame_power_inputs.clear();
-        self.active_frame_power_inputs
-            .extend(frame.retained_power_inputs.iter().map(|input| ActiveFramePowerInput {
+        let inputs = frame
+            .retained_power_inputs
+            .iter()
+            .map(|input| ActiveFramePowerInput {
                 node: input.node,
                 port: input.port,
                 data_strength: if frame.evaluation.outputs()[input.output] != 0 { 15 } else { 0 },
                 reset: Some(input.reset),
+            })
+            .chain(frame.terminal_repeater_inputs.iter().map(|input| ActiveFramePowerInput {
+                node: input.node,
+                port: InputPort::Main,
+                data_strength: input.strength,
+                reset: None,
             }));
-        if frame.computed {
-            self.active_frame_power_inputs
-                .extend(frame.terminal_repeater_inputs.iter().map(|input| ActiveFramePowerInput {
-                    node: input.node,
-                    port: InputPort::Main,
-                    data_strength: input.strength,
-                    reset: None,
-                }));
+        for (offset, input) in inputs.enumerate() {
+            let slot = frame.power_input_offset + offset;
+            if slot < self.active_frame_power_inputs.len() {
+                self.active_frame_power_inputs[slot] = input;
+            } else {
+                debug_assert_eq!(slot, self.active_frame_power_inputs.len());
+                self.active_frame_power_inputs.push(input);
+            }
         }
     }
 
@@ -1058,7 +1090,6 @@ impl GraphBackend {
             for input in frame.terminal_repeater_inputs.iter_mut() {
                 input.strength = if frame.evaluation.outputs()[input.output] != 0 { 15 } else { 0 };
             }
-            frame.computed = true;
         }
         self.counts.logical_kernel_evaluations += 1;
         self.counts.logical_kernel_operations += operations as u64;
@@ -1117,85 +1148,6 @@ impl GraphBackend {
         }
         Ok(())
     }
-
-    pub(super) fn advance_frame_scheduler<'h>(
-        &mut self,
-        trigger: NodeId,
-        button_nodes: &[NodeId],
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
-        for (tick, _, _) in self.future.scheduler.iter() {
-            if tick.registry_type == tick.current_registry_type
-                && !tick.node.is_some_and(|node| {
-                    button_nodes.contains(&node)
-                        || matches!(
-                            self.program.nodes()[node.index()].kind,
-                            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                        )
-                })
-            {
-                return Err(self.unsupported(trigger, "logical frame has an unexpected scheduled tick"));
-            }
-        }
-        self.future.clock.phase = GraphPhase::ScheduledTicks;
-        self.future.clock.scheduled_advanced = false;
-        let result = (|| {
-            self.drain_frame_ticks(trigger, button_nodes, host)?;
-            self.future.scheduler.end_last_tick_move_next();
-            self.future.clock.scheduled_advanced = true;
-            self.drain_frame_ticks(trigger, button_nodes, host)
-        })();
-        self.future.clock.phase = GraphPhase::BetweenTicks;
-        self.future.clock.scheduled_advanced = false;
-        result
-    }
-
-    fn drain_frame_ticks<'h>(
-        &mut self,
-        trigger: NodeId,
-        button_nodes: &[NodeId],
-        host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>,
-    ) -> Result<(), GraphExecutionError> {
-        loop {
-            let Some(tick) = ({ self.future.scheduler.this_tick_ref().iter().next().map(|(tick, _)| *tick) }) else {
-                break;
-            };
-            if tick.registry_type == tick.current_registry_type
-                && !tick.node.is_some_and(|node| {
-                    button_nodes.contains(&node)
-                        || matches!(
-                            self.program.nodes()[node.index()].kind,
-                            CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                        )
-                })
-            {
-                return Err(self.unsupported(trigger, "logical frame has an unexpected scheduled tick"));
-            }
-            let tick = self.future.scheduler.this_tick().pop_first().expect("peeked scheduler tick");
-            self.popped(tick);
-            if tick.registry_type != tick.current_registry_type {
-                continue;
-            }
-            let Some(node) = tick.node.filter(|node| button_nodes.contains(node)) else {
-                let Some(node) = tick.node.filter(|node| {
-                    matches!(
-                        self.program.nodes()[node.index()].kind,
-                        CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
-                    )
-                }) else {
-                    return Err(self.unsupported(trigger, "logical frame has an unexpected scheduled tick"));
-                };
-                self.counts.scheduled_ticks += 1;
-                self.tick_command_block(node, host)?;
-                continue;
-            };
-            self.counts.scheduled_ticks += 1;
-            if self.node_state(node).powered {
-                self.set_node(node, false, 0, None, false)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
@@ -1215,7 +1167,7 @@ mod tests {
             ..Default::default()
         };
         let mut backend = GraphBackend::compile_with_options(&world, bounds, ticks, &options, Arc::default()).unwrap();
-        let mut device = backend.logical_device.take().expect("COUNTER installs its logical device");
+        let mut device = backend.logical_devices.pop().expect("COUNTER installs its logical device");
         let circuit = SettledCircuit {
             program: ReducedLayerProgram {
                 inputs: Box::new([]),
@@ -1244,7 +1196,7 @@ mod tests {
             retained_resources: Box::new([]),
             retained_power_inputs: Box::new([]),
             terminal_repeater_inputs: Box::new([]),
-            computed: false,
+            power_input_offset: 0,
         });
         let step = device.clock.advance(true).unwrap();
         assert!(step.resample);

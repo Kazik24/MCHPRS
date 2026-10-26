@@ -3,6 +3,10 @@ use super::*;
 
 pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     let plan = compile_settled(graph, monitor)?;
+    compile_device_with_plan(graph, plan, monitor)
+}
+
+fn compile_device_with_plan(graph: &CompileGraph, plan: SettledCircuit, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     if graph.plans.bud_memory_reads.is_empty() {
         if let Some(computation) = try_computation_frame(graph, monitor) {
             return Ok(computation);
@@ -39,13 +43,404 @@ pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Res
     Ok(compact)
 }
 
+pub(crate) fn compile_devices(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<(SettledCircuit, Vec<ScopedSettledDevice>), String> {
+    let plan = compile_settled(graph, monitor)?;
+    let devices = compile_scoped_devices_with_plan(graph, &plan, monitor)?;
+    let legacy = compile_device_with_plan(graph, plan, monitor)?;
+    Ok((legacy, devices))
+}
+
+pub(crate) fn compile_scoped_devices(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<ScopedSettledDevice>, String> {
+    let plan = compile_settled(graph, monitor)?;
+    compile_scoped_devices_with_plan(graph, &plan, monitor)
+}
+
+fn compile_scoped_devices_with_plan(
+    graph: &CompileGraph,
+    settled_plan: &SettledCircuit,
+    monitor: &TaskMonitor,
+) -> Result<Vec<ScopedSettledDevice>, String> {
+    let partition = super::islands::partition(graph, monitor)?;
+    let clocks = super::timing::candidate_clocks_in_islands(graph, &partition, monitor)?;
+    let mut clocks_by_island = vec![Vec::<PistonId>::new(); partition.islands.len()];
+    for clock in clocks {
+        let node = graph
+            .pistons
+            .get(clock.index())
+            .ok_or("logical clock candidate references a missing piston")?
+            .node;
+        let island = *partition
+            .node_island
+            .get(node.index())
+            .ok_or("logical clock candidate references a missing component")? as usize;
+        clocks_by_island[island].push(clock);
+    }
+
+    let mut devices = Vec::new();
+    for (index, island) in partition.islands.iter().enumerate() {
+        if monitor.cancelled() {
+            return Err("cancelled while compiling scoped logical devices".into());
+        }
+        if clocks_by_island[index].len() != 1 {
+            continue;
+        }
+        let Some(circuit) = try_scoped_device_for_island(graph, island, clocks_by_island[index][0], settled_plan, monitor) else {
+            continue;
+        };
+        let Some(scope) = scoped_device_scope(graph, island, &circuit) else {
+            continue;
+        };
+        devices.push(ScopedSettledDevice { circuit, scope });
+    }
+    Ok(devices)
+}
+
 fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<SettledCircuit> {
     let timing = super::timing::infer(graph, monitor).ok()?;
+    try_computation_frame_with_timing(graph, None, timing, monitor).map(|(circuit, _)| circuit)
+}
+
+fn try_scoped_device_for_island(
+    graph: &CompileGraph,
+    island: &LogicalIsland,
+    clock: PistonId,
+    settled_plan: &SettledCircuit,
+    monitor: &TaskMonitor,
+) -> Option<SettledCircuit> {
+    let timing = super::timing::infer_for_clock_in_island(graph, clock, island, monitor).ok()?;
+    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
+    if timing.nodes.iter().any(|node| !owns_node(*node)) || timing.actor_specs.iter().any(|actor| !owns_node(actor.node)) {
+        return None;
+    }
+    let local_bud_reads = graph
+        .plans
+        .bud_memory_reads
+        .iter()
+        .copied()
+        .filter(|read| island.resources.binary_search(&read.resource).is_ok())
+        .collect::<Vec<_>>();
+    if local_bud_reads.is_empty() {
+        let (circuit, expanded_components) = try_computation_frame_with_timing(graph, Some(island), timing, monitor)?;
+        return scoped_frame_power_sinks_supported(graph, island, &circuit, &expanded_components).then_some(circuit);
+    }
+    if !matches!(
+        timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?.lane,
+        PistonLane::Empty
+    ) {
+        return None;
+    }
+
+    let mut targets = Vec::new();
+    for output in &settled_plan.outputs {
+        let target = match output.target {
+            SettledTarget::Power(target @ PowerTarget::Input { node, .. }) => {
+                if !owns_node(node) || timing.nodes.contains(&node) {
+                    continue;
+                }
+                target
+            }
+            // A live conductor output is observable boundary state that this
+            // scoped public-input adapter does not currently publish.
+            SettledTarget::Power(PowerTarget::Conductor { site, .. }) => {
+                if island.sites.binary_search(&site).is_ok() {
+                    return None;
+                }
+                continue;
+            }
+            _ => continue,
+        };
+        match target {
+            PowerTarget::Input { node, port: InputPort::Main }
+                if matches!(
+                    graph.nodes[node.index()].kind,
+                    CircuitNodeKind::Electrical(NodeType::Repeater { .. } | NodeType::Lamp)
+                ) =>
+            {
+                targets.push(target)
+            }
+            // Unsupported observable consumers remain on ordinary Graph.
+            _ => return None,
+        }
+    }
+    targets.sort_unstable();
+    targets.dedup();
+    if targets.is_empty() {
+        return None;
+    }
+    let mut compact = compile_public_boundary(graph, &targets, &local_bud_reads, monitor).ok()?;
+    compact.timing = Some(timing);
+    if compact.outputs.iter().any(|output| match output.target {
+        SettledTarget::Power(PowerTarget::Input { node, .. }) => !owns_node(node),
+        SettledTarget::Power(PowerTarget::Conductor { site, .. }) => island.sites.binary_search(&site).is_err(),
+        SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).is_none_or(|piston| !owns_node(piston.node)),
+        SettledTarget::ResourceState { resource, .. } => island.resources.binary_search(&resource).is_err(),
+        SettledTarget::Register(read) => island.resources.binary_search(&read.resource).is_err(),
+    }) {
+        return None;
+    }
+    Some(compact)
+}
+
+/// A scoped frame suppresses ordinary callbacks from every owned source. Keep
+/// admission conservative: every active electrical receiver must be represented
+/// by a published frame output or by the certified clock/cell boundary.
+fn scoped_frame_power_sinks_supported(
+    graph: &CompileGraph,
+    island: &LogicalIsland,
+    circuit: &SettledCircuit,
+    expanded_components: &FxHashSet<NodeId>,
+) -> bool {
+    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
+    if island.nodes.iter().any(|node| {
+        graph
+            .nodes
+            .get(node.index())
+            .is_none_or(|draft| scoped_frame_has_unmodeled_native_effect(&draft.kind))
+    }) {
+        return false;
+    }
+    let timing_nodes = circuit
+        .timing
+        .as_ref()
+        .map(|timing| timing.nodes.iter().copied().collect::<FxHashSet<_>>())
+        .unwrap_or_default();
+    let mut covered_power = circuit
+        .outputs
+        .iter()
+        .filter_map(|output| match output.target {
+            SettledTarget::Power(target) => Some(target),
+            _ => None,
+        })
+        .collect::<FxHashSet<_>>();
+    for port in circuit.retained_effects.iter().filter(|port| port.direction == BoundaryDirection::Output) {
+        let BoundaryPortKind::Power { link } = port.kind else {
+            continue;
+        };
+        let Some(link) = graph.power_links.get(link as usize) else {
+            return false;
+        };
+        covered_power.insert(link.to);
+    }
+    let retained_actors = circuit.retained_cells.iter().map(|use_| use_.actor).collect::<FxHashSet<_>>();
+    let eligible_actors = circuit
+        .outputs
+        .iter()
+        .filter_map(|output| match output.target {
+            SettledTarget::InstantPowerEligible(actor) => Some(actor),
+            _ => None,
+        })
+        .collect::<FxHashSet<_>>();
+    let catalog_actors = graph
+        .plans
+        .instant
+        .boundaries
+        .as_ref()
+        .into_iter()
+        .flat_map(|catalog| catalog.cells.iter())
+        .flat_map(|cell| cell.uses.iter().map(|use_| use_.actor))
+        .collect::<FxHashSet<_>>();
+    let catalog_resets = graph
+        .plans
+        .instant
+        .boundaries
+        .as_ref()
+        .into_iter()
+        .flat_map(|catalog| catalog.cells.iter())
+        .flat_map(|cell| cell.uses.iter().filter_map(|use_| use_.reset.observer()))
+        .collect::<FxHashSet<_>>();
+    let mut all_supported = true;
+    #[cfg(test)]
+    let mut rejected = Vec::<String>::new();
+    for link in &graph.power_links {
+        let PowerTarget::Input { node, .. } = link.to else {
+            continue;
+        };
+        if !owns_node(node) || timing_nodes.contains(&node) {
+            continue;
+        }
+        let Some(draft) = graph.nodes.get(node.index()) else {
+            return false;
+        };
+        let value_component_certified =
+            expanded_components.contains(&node) && expanded_component_routes_supported(graph, island, node, &catalog_actors, &catalog_resets);
+        let actor_certified = matches!(
+            &draft.kind,
+            CircuitNodeKind::Piston(actor) if retained_actors.contains(actor) || eligible_actors.contains(actor) || catalog_actors.contains(actor)
+        ) || matches!(&draft.kind, CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } if catalog_resets.contains(&node))
+            || value_component_certified;
+        let invariant_comparator_side = matches!(
+            link.to,
+            PowerTarget::Input {
+                node,
+                port: InputPort::Side
+            } if comparator_side_input_is_inert(graph, node)
+        );
+        if !scoped_frame_sink_kind_supported(&draft.kind, covered_power.contains(&link.to), actor_certified, invariant_comparator_side) {
+            all_supported = false;
+            #[cfg(test)]
+            {
+                let reason = format!("target={:?}, kind={:?}, position={:?}", link.to, draft.kind, draft.position);
+                if !rejected.contains(&reason) {
+                    rejected.push(reason);
+                }
+            }
+        }
+    }
+    #[cfg(test)]
+    for reason in rejected {
+        eprintln!("scoped logical frame sink declined: {reason}");
+    }
+    all_supported
+}
+
+fn scoped_frame_sink_kind_supported(kind: &CircuitNodeKind, power_is_covered: bool, actor_certified: bool, invariant_comparator_side: bool) -> bool {
+    match kind {
+        // Wires are combinational transport; their downstream semantic
+        // receivers are checked separately by their own incoming links.
+        CircuitNodeKind::Wire(_) | CircuitNodeKind::Electrical(NodeType::Wire) => true,
+        CircuitNodeKind::Piston(_) => power_is_covered || actor_certified,
+        CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => power_is_covered || actor_certified,
+        CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }) => power_is_covered,
+        CircuitNodeKind::Electrical(NodeType::Lamp) => false,
+        CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => actor_certified || invariant_comparator_side,
+        // Torches, observers, note blocks, bulbs, hoppers, trapdoors, and
+        // control sources retain native behavior this frame does not own.
+        CircuitNodeKind::Electrical(_) | CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Contact(_) => {
+            actor_certified
+        }
+    }
+}
+
+fn scoped_frame_has_unmodeled_native_effect(kind: &CircuitNodeKind) -> bool {
+    matches!(
+        kind,
+        CircuitNodeKind::Electrical(NodeType::Lamp | NodeType::CopperBulb | NodeType::Hopper | NodeType::Trapdoor | NodeType::NoteBlock { .. })
+    )
+}
+
+/// Admit only comparator inputs whose every possible Side strength leaves the
+/// compiled comparator state unchanged. That prevents its native updater from
+/// scheduling the suppressed output route after a Side-only change.
+fn comparator_side_input_is_inert(graph: &CompileGraph, node: NodeId) -> bool {
+    let Some(CircuitNodeDraft {
+        kind: CircuitNodeKind::Electrical(NodeType::Comparator { mode, .. }),
+        state: ComponentState::Electrical(state),
+        ..
+    }) = graph.nodes.get(node.index())
+    else {
+        return false;
+    };
+    let Some(plan) = graph.comparator_inputs.iter().find(|plan| plan.node == node) else {
+        return false;
+    };
+    comparator_side_state_is_invariant(
+        *mode,
+        plan.direct_override,
+        plan.far_override.is_some(),
+        state.output_strength,
+        state.powered,
+        state.pending_tick,
+    )
+}
+
+fn comparator_side_state_is_invariant(
+    mode: mchprs_blocks::blocks::ComparatorMode,
+    direct_override: Option<ComparatorOverride>,
+    has_far_override: bool,
+    output_strength: u8,
+    powered: bool,
+    pending_tick: bool,
+) -> bool {
+    if pending_tick || has_far_override {
+        return false;
+    }
+    let Some(ComparatorOverride::Literal(input)) = direct_override else {
+        return false;
+    };
+    let expected = (
+        crate::redpiler::power_rules::comparator_output_strength(input, 0, mode),
+        crate::redpiler::power_rules::comparator_is_powered(input, 0, mode),
+    );
+    expected == (output_strength, powered)
+        && (0..=15).all(|side| {
+            (
+                crate::redpiler::power_rules::comparator_output_strength(input, side, mode),
+                crate::redpiler::power_rules::comparator_is_powered(input, side, mode),
+            ) == expected
+        })
+}
+
+/// Expanded logical value producers may suppress their native callbacks only
+/// when every route occurrence ends at a wire or a certified cell/reset actor.
+fn expanded_component_routes_supported(
+    graph: &CompileGraph,
+    island: &LogicalIsland,
+    node: NodeId,
+    catalog_actors: &FxHashSet<PistonId>,
+    catalog_resets: &FxHashSet<NodeId>,
+) -> bool {
+    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
+    if !owns_node(node) {
+        return false;
+    }
+    let Some(route_id) = graph.nodes[node.index()].output_route else {
+        return true;
+    };
+    let Some(route) = graph.routes.get(route_id.index()) else {
+        return false;
+    };
+    route.deliveries.iter().all(|delivery| {
+        let Some(site) = graph.sites.get(delivery.target.index()) else {
+            return false;
+        };
+        let receiver = delivery.receiver.or_else(|| match (site.source, delivery.kind) {
+            (SiteSource::Component(target), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(target)),
+            _ => None,
+        });
+        match receiver {
+            None => true,
+            Some(CallbackReceiver::Component(target)) if target == node => true,
+            Some(CallbackReceiver::Component(target)) if owns_node(target) => match graph.nodes[target.index()].kind {
+                CircuitNodeKind::Wire(_) | CircuitNodeKind::Electrical(NodeType::Wire) => true,
+                CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } => catalog_resets.contains(&target),
+                _ => false,
+            },
+            Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => catalog_actors.contains(&actor),
+            _ => false,
+        }
+    })
+}
+
+fn scoped_device_scope(graph: &CompileGraph, island: &LogicalIsland, circuit: &SettledCircuit) -> Option<SettledDeviceScope> {
+    let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
+    if circuit.timing.is_none()
+        || island
+            .routes
+            .iter()
+            .any(|route| graph.routes.get(route.index()).is_none_or(|route| !owns_node(route.source)))
+    {
+        return None;
+    }
+    Some(SettledDeviceScope {
+        component: island.id,
+        owned_nodes: island.nodes.clone(),
+        owned_sites: island.sites.clone(),
+        owned_contacts: island.contacts.clone(),
+        owned_resources: island.resources.clone(),
+        owned_source_routes: island.routes.clone(),
+    })
+}
+fn try_computation_frame_with_timing(
+    graph: &CompileGraph,
+    island: Option<&LogicalIsland>,
+    timing: crate::redpiler::program_graph::SettledTimingIsland,
+    monitor: &TaskMonitor,
+) -> Option<(SettledCircuit, FxHashSet<NodeId>)> {
     let clock = timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?;
     if !clock.sticky || !matches!(clock.lane, PistonLane::SingleResource { .. }) {
         return None;
     }
-    let Some((mut targets, retained_cells, retained_effects)) = frame_retained_output_cells(graph) else {
+    let Some((mut targets, retained_cells, retained_effects)) = frame_retained_output_cells(graph, island) else {
         return None;
     };
     for use_ in &retained_cells {
@@ -63,7 +458,7 @@ fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<
     if targets.is_empty() {
         return None;
     }
-    let mut computation = match compile_computation(graph, &targets, monitor) {
+    let (mut computation, expanded_components) = match compile_computation_with_support(graph, &targets, monitor) {
         Ok(computation) => computation,
         Err(_) => return None,
     };
@@ -78,12 +473,35 @@ fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<
     {
         return None;
     }
+    if let Some(island) = island {
+        let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
+        if computation.outputs.iter().any(|output| match output.target {
+            SettledTarget::Power(PowerTarget::Input { node, .. }) => !owns_node(node),
+            SettledTarget::Power(PowerTarget::Conductor { site, .. }) => island.sites.binary_search(&site).is_err(),
+            SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).is_none_or(|piston| !owns_node(piston.node)),
+            SettledTarget::ResourceState { resource, .. } => !island.resources.contains(&resource),
+            SettledTarget::Register(read) => !island.resources.contains(&read.resource),
+        }) {
+            return None;
+        }
+        for input in &computation.program.inputs {
+            if let LayerInputSource::SourceAbove { site, .. } = input.source
+                && let Some(SiteSource::Component(node)) = graph.sites.get(site.index()).map(|site| site.source)
+                && !owns_node(node)
+            {
+                return None;
+            }
+        }
+    }
     for (index, node) in graph.nodes.iter().enumerate() {
-        if !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })) {
+        let node_id = NodeId::new(index as u32);
+        if !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }))
+            || island.is_some_and(|island| island.nodes.binary_search(&node_id).is_err())
+        {
             continue;
         }
         let target = PowerTarget::Input {
-            node: NodeId::new(index as u32),
+            node: node_id,
             port: InputPort::Main,
         };
         let retained = retained_effects
@@ -97,16 +515,16 @@ fn try_computation_frame(graph: &CompileGraph, monitor: &TaskMonitor) -> Option<
     computation.retained_cells = retained_cells.into_boxed_slice();
     computation.retained_effects = retained_effects.into_boxed_slice();
     computation.timing = Some(timing);
-    Some(computation)
+    Some((computation, expanded_components))
 }
 
 /// Keep command outputs backed by a single certified payload cell in Graph's
 /// exact event schedule, while the bulk FPU remains a settled computation.
-fn frame_retained_output_cells(graph: &CompileGraph) -> Option<(Vec<PowerTarget>, Vec<CellUse>, Vec<BoundaryPort>)> {
+fn frame_retained_output_cells(graph: &CompileGraph, island: Option<&LogicalIsland>) -> Option<(Vec<PowerTarget>, Vec<CellUse>, Vec<BoundaryPort>)> {
     let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
         return None;
     };
-    let mut targets = frame_power_targets(graph);
+    let mut targets = island.map_or_else(|| frame_power_targets(graph), |island| frame_power_targets_in(graph, Some(island)));
     let mut retained_cells = Vec::<CellUse>::new();
     let mut retained_effects = Vec::<BoundaryPort>::new();
     let command_nodes = graph
@@ -114,7 +532,9 @@ fn frame_retained_output_cells(graph: &CompileGraph) -> Option<(Vec<PowerTarget>
         .iter()
         .enumerate()
         .filter_map(|(index, node)| {
-            matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })).then_some(NodeId::new(index as u32))
+            (matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }))
+                && island.is_none_or(|island| island.nodes.binary_search(&NodeId::new(index as u32)).is_ok()))
+            .then_some(NodeId::new(index as u32))
         })
         .collect::<Vec<_>>();
     for node in command_nodes {
@@ -129,6 +549,13 @@ fn frame_retained_output_cells(graph: &CompileGraph) -> Option<(Vec<PowerTarget>
                 return None;
             };
             let found = catalog.cells.iter().enumerate().find_map(|(cell_index, cell)| {
+                if island.is_some_and(|island| {
+                    cell.uses
+                        .iter()
+                        .any(|use_| island.nodes.binary_search(&graph.pistons[use_.actor.index()].node).is_err())
+                }) {
+                    return None;
+                }
                 cell.resources.iter().find_map(|resource| {
                     let source_resource = &graph.resources[resource.resource.index()];
                     if !source_resource.contacts.contains(&contact) {
@@ -395,6 +822,11 @@ pub(super) fn unsupported_computation_frame_inputs(graph: &CompileGraph, circuit
 
 /// Compile terminal wires, safe terminal-repeater inputs, and command-block power as public frame outputs.
 pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
+    frame_power_targets_in(graph, None)
+}
+
+fn frame_power_targets_in(graph: &CompileGraph, island: Option<&LogicalIsland>) -> Vec<PowerTarget> {
+    let owns_node = |node: NodeId| island.is_none_or(|island| island.nodes.binary_search(&node).is_ok());
     let outgoing_components: FxHashSet<_> = graph
         .power_links
         .iter()
@@ -417,6 +849,9 @@ pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
         .enumerate()
         .filter_map(|(index, node)| {
             let id = NodeId::new(index as u32);
+            if !owns_node(id) {
+                return None;
+            }
             let has_semantic_output_callback = match node.output_route {
                 Some(route_id) => match graph.routes.get(route_id.index()) {
                     Some(route) => route.deliveries.iter().any(|delivery| {
@@ -468,6 +903,9 @@ pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
         .enumerate()
         .filter_map(|(index, node)| {
             let id = NodeId::new(index as u32);
+            if !owns_node(id) {
+                return None;
+            }
             let terminal_wire =
                 matches!(node.kind, CircuitNodeKind::Wire(_)) && (!outgoing_components.contains(&id) || repeater_input_wires.contains(&id));
             let command_output = matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }));
@@ -1583,6 +2021,14 @@ fn declined_settled(monitor: &TaskMonitor, retained_effects: Vec<BoundaryPort>, 
 /// shared-Far payload feedback. Unlike BUD registers, these are ordinary
 /// cell resources whose current source location closes a combinational cycle.
 pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
+    compile_computation_with_support(graph, power_targets, monitor).map(|(circuit, _)| circuit)
+}
+
+fn compile_computation_with_support(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    monitor: &TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
     if power_targets.is_empty() {
         return Err("logical computation requires at least one public output".into());
@@ -1676,7 +2122,7 @@ pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTa
         timing: None,
     };
     circuit.validate()?;
-    Ok(circuit)
+    Ok((circuit, equations.expanded_components))
 }
 
 pub(super) fn assume_computation_frame_observers_off(equations: &mut Equations<'_>) {
@@ -2047,5 +2493,180 @@ mod frame_power_target_tests {
             repeater,
             false
         ));
+    }
+}
+
+#[cfg(test)]
+mod scoped_sink_tests {
+    use super::*;
+
+    #[test]
+    fn scoped_frame_requires_explicit_support_for_semantic_sinks() {
+        assert!(scoped_frame_sink_kind_supported(&CircuitNodeKind::Wire(0), false, false, false));
+        assert!(scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Repeater {
+                delay: 1,
+                facing_diode: false
+            }),
+            true,
+            false,
+            false,
+        ));
+        assert!(!scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Repeater {
+                delay: 1,
+                facing_diode: false
+            }),
+            false,
+            false,
+            false,
+        ));
+        assert!(scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Repeater {
+                delay: 1,
+                facing_diode: false
+            }),
+            false,
+            true,
+            false,
+        ));
+        assert!(!scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Lamp),
+            false,
+            false,
+            false,
+        ));
+        assert!(!scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Lamp),
+            true,
+            false,
+            false,
+        ));
+        for kind in [NodeType::Lamp, NodeType::CopperBulb, NodeType::Hopper, NodeType::Trapdoor] {
+            assert!(scoped_frame_has_unmodeled_native_effect(&CircuitNodeKind::Electrical(kind)));
+        }
+        assert!(scoped_frame_has_unmodeled_native_effect(&CircuitNodeKind::Electrical(
+            NodeType::NoteBlock {
+                instrument: mchprs_blocks::blocks::Instrument::Bass,
+                note: 0,
+            }
+        )));
+        assert!(!scoped_frame_has_unmodeled_native_effect(&CircuitNodeKind::Electrical(NodeType::Lever)));
+        assert!(!scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Comparator {
+                mode: mchprs_blocks::blocks::ComparatorMode::Compare,
+                far_input: None,
+                facing_diode: false,
+            }),
+            true,
+            false,
+            false,
+        ));
+        assert!(scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Comparator {
+                mode: mchprs_blocks::blocks::ComparatorMode::Compare,
+                far_input: None,
+                facing_diode: false,
+            }),
+            false,
+            false,
+            true,
+        ));
+        assert!(scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::Comparator {
+                mode: mchprs_blocks::blocks::ComparatorMode::Compare,
+                far_input: None,
+                facing_diode: false,
+            }),
+            false,
+            true,
+            false,
+        ));
+        assert!(!scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Electrical(NodeType::NoteBlock {
+                instrument: mchprs_blocks::blocks::Instrument::Bass,
+                note: 0,
+            }),
+            true,
+            false,
+            false,
+        ));
+        assert!(scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Piston(PistonId::new(1)),
+            false,
+            true,
+            false
+        ));
+        assert!(!scoped_frame_sink_kind_supported(
+            &CircuitNodeKind::Piston(PistonId::new(1)),
+            false,
+            false,
+            false,
+        ));
+    }
+
+    #[test]
+    fn comparator_side_sink_requires_all_strengths_to_preserve_current_state() {
+        use mchprs_blocks::blocks::ComparatorMode;
+
+        let literal = |strength| Some(ComparatorOverride::Literal(strength));
+        assert!(comparator_side_state_is_invariant(
+            ComparatorMode::Compare,
+            literal(15),
+            false,
+            15,
+            true,
+            false
+        ));
+        assert!(comparator_side_state_is_invariant(
+            ComparatorMode::Compare,
+            literal(0),
+            false,
+            0,
+            false,
+            false
+        ));
+
+        assert!(!comparator_side_state_is_invariant(
+            ComparatorMode::Compare,
+            literal(15),
+            false,
+            14,
+            true,
+            false
+        ));
+        assert!(!comparator_side_state_is_invariant(
+            ComparatorMode::Compare,
+            literal(15),
+            false,
+            15,
+            true,
+            true
+        ));
+        assert!(!comparator_side_state_is_invariant(
+            ComparatorMode::Compare,
+            literal(15),
+            true,
+            15,
+            true,
+            false
+        ));
+        assert!(!comparator_side_state_is_invariant(
+            ComparatorMode::Compare,
+            literal(7),
+            false,
+            7,
+            true,
+            false
+        ));
+        assert!(!comparator_side_state_is_invariant(
+            ComparatorMode::Subtract,
+            literal(15),
+            false,
+            15,
+            true,
+            false
+        ));
+        assert!(!comparator_side_state_is_invariant(ComparatorMode::Compare, None, false, 15, true, false));
     }
 }

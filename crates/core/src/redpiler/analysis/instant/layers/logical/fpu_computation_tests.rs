@@ -416,6 +416,56 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
         })),
         "all 16 repeater inputs must be bound into the frame equations"
     );
+    let scoped = super::settled::compile_scoped_devices(graph, &monitor).expect("scoped FPU extraction should complete");
+    let output_wire = graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(readouts[0]))
+        .map(|index| NodeId::new(index as u32))
+        .expect("first FPU output wire exists in the graph");
+    assert!(
+        scoped.iter().any(|device| {
+            device.scope.owned_nodes.binary_search(&output_wire).is_ok()
+                && device
+                    .circuit
+                    .outputs
+                    .iter()
+                    .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+        }),
+        "the complete FPU readout island must remain admitted"
+    );
+
+    // A lamp attached to the same public output makes this island own an
+    // ordinary native electrical sink. The frame must decline the whole
+    // interaction island rather than suppressing the lamp's update route.
+    let mut lamp_world = fixture().1;
+    lamp_world.set_block(readouts[0].offset(BlockFace::East), Block::RedstoneLamp { lit: false });
+    let lamp_bounds = (min, max + BlockPos::new(1, 0, 0));
+    let lamp_prepared = passes::rich::prepare(&lamp_world, lamp_bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let lamp_validated = lamp_prepared
+        .run_passes(&options, &passes::default_graph_pipeline(&options), &monitor)
+        .unwrap();
+    let lamp_graph = lamp_validated.graph();
+    let lamp = lamp_graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(readouts[0].offset(BlockFace::East)))
+        .map(|index| NodeId::new(index as u32))
+        .expect("attached lamp exists in the graph");
+    assert!(
+        lamp_graph.power_links.iter().any(|link| {
+            link.to == PowerTarget::Input { node: lamp, port: InputPort::Main }
+                && matches!(lamp_graph.sites[link.from.index()].source, SiteSource::Component(node) if matches!(lamp_graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)))
+        }),
+        "fixture mutation must create a real wire-to-lamp electrical sink"
+    );
+    let lamp_partition = super::islands::partition(lamp_graph, &monitor).expect("lamp island partition should complete");
+    let lamp_component = lamp_partition.node_island[lamp.index()];
+    let lamp_devices = super::settled::compile_scoped_devices(lamp_graph, &monitor).expect("lamp scoped extraction should complete");
+    assert!(
+        lamp_devices.iter().all(|device| device.scope.component != lamp_component),
+        "an ordinary terminal lamp must keep its connected FPU island on Graph"
+    );
     let backend = GraphBackend::from_lowered(validated.lower(&monitor).unwrap(), &monitor).expect("FPU readout backend should lower");
     assert_eq!(backend.logical_device_admission(), &LogicalDeviceAdmission::Active);
 

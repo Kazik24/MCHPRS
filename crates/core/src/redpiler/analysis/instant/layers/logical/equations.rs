@@ -766,6 +766,7 @@ mod tests {
             disabled_destinations: FxHashSet::default(),
             actors: FxHashSet::default(),
             registers: FxHashMap::default(),
+            expanded_components: FxHashSet::default(),
             inline_repeaters: false,
             stateful_repeaters: FxHashSet::default(),
             raw: LayerBuilder::new(monitor).unwrap(),

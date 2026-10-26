@@ -2,8 +2,8 @@
 use super::PassContext;
 use crate::redpiler::program_graph::{
     CompileGraph, CpuPowerQueryPlans, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy, InstantRegion, InstantResetPlan,
-    InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection,
-    WireQueryFacts,
+    InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, ScopedSettledDevice, SettledCircuit, SiteId, TurboCallbackIndex,
+    WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
@@ -46,7 +46,10 @@ pub(crate) enum PlanOutput {
     SignalChannels(crate::redpiler::program_graph::SignalChannels),
     StableInstantLogic(crate::redpiler::program_graph::StableInstantLogic),
     InstantValueRegions(InstantValueRegions),
-    SettledCircuit(SettledCircuit),
+    SettledDevices {
+        legacy: SettledCircuit,
+        devices: Vec<ScopedSettledDevice>,
+    },
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
@@ -82,11 +85,13 @@ impl PlanOutput {
                 graph.plans.instant.regions.clear();
                 graph.plans.instant.proxies.clear();
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_devices.clear();
                 graph.plans.logical_bud_owners.clear();
             }
             Self::Layers(layers) => {
                 graph.plans.instant.layers = Some(layers);
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_devices.clear();
                 graph.plans.logical_bud_owners.clear();
             }
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
@@ -95,7 +100,10 @@ impl PlanOutput {
             Self::SignalChannels(plans) => graph.plans.signal_channels = plans,
             Self::StableInstantLogic(plans) => graph.plans.stable_instant_logic = plans,
             Self::InstantValueRegions(plans) => graph.plans.instant_value_regions = plans,
-            Self::SettledCircuit(plan) => graph.plans.settled_circuit = Some(plan),
+            Self::SettledDevices { legacy, devices } => {
+                graph.plans.settled_circuit = Some(legacy);
+                graph.plans.logical_devices = devices;
+            }
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::WireCaptures(captures) => graph.plans.wire_captures = captures,
@@ -114,6 +122,7 @@ impl PlanOutput {
             Self::BudMemoryReads(reads) => {
                 graph.plans.bud_memory_reads = reads;
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_devices.clear();
             }
             Self::LogicalBudOwners(owners) => graph.plans.logical_bud_owners = owners,
             Self::InstantTransport(plan) => graph.plans.instant_transport = plan,
@@ -157,11 +166,13 @@ impl PlanOutput {
                 graph.plans.instant.regions = regions;
                 graph.plans.instant.proxies.clear();
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_devices.clear();
                 graph.plans.logical_bud_owners.clear();
             }
             Self::Proxies(proxies) => {
                 graph.plans.instant.proxies = proxies;
                 graph.plans.settled_circuit = None;
+                graph.plans.logical_devices.clear();
             }
         }
         Ok(change)
@@ -179,7 +190,7 @@ impl PlanOutput {
             Self::SignalChannels(_) => PlanChange::SignalChannels,
             Self::StableInstantLogic(_) => PlanChange::StableInstantLogic,
             Self::InstantValueRegions(_) => PlanChange::InstantValueRegions,
-            Self::SettledCircuit(_) => PlanChange::SettledCircuit,
+            Self::SettledDevices { .. } => PlanChange::SettledDevices,
             Self::ClassicNets(_) => PlanChange::ClassicNets,
             Self::TurboCallbacks(_) => PlanChange::TurboCallbacks,
             Self::DustPaths(_) => PlanChange::DustPaths,
@@ -266,6 +277,56 @@ impl PlanOutput {
                 });
             }
         }
+        if let Self::SettledDevices { devices, .. } = self {
+            let mut previous_component = None;
+            let mut globally_owned_nodes = rustc_hash::FxHashSet::default();
+            let mut globally_owned_sites = rustc_hash::FxHashSet::default();
+            let mut globally_owned_contacts = rustc_hash::FxHashSet::default();
+            let mut globally_owned_resources = rustc_hash::FxHashSet::default();
+            for scoped in devices {
+                scoped.circuit.validate().map_err(|_| GraphBuildError::InvalidInstantRegion {
+                    table: "scoped settled device",
+                    index: scoped.scope.component as usize,
+                })?;
+                if previous_component.is_some_and(|previous| previous >= scoped.scope.component)
+                    || !strictly_sorted(&scoped.scope.owned_nodes)
+                    || !strictly_sorted(&scoped.scope.owned_sites)
+                    || !strictly_sorted(&scoped.scope.owned_contacts)
+                    || !strictly_sorted(&scoped.scope.owned_resources)
+                    || !strictly_sorted(&scoped.scope.owned_source_routes)
+                    || scoped.circuit.timing.is_none()
+                    || scoped.scope.owned_nodes.iter().any(|node| node.index() >= graph.nodes.len())
+                    || scoped.scope.owned_sites.iter().any(|site| site.index() >= graph.sites.len())
+                    || scoped.scope.owned_contacts.iter().any(|contact| contact.index() >= graph.contacts.len())
+                    || scoped
+                        .scope
+                        .owned_resources
+                        .iter()
+                        .any(|resource| resource.index() >= graph.resources.len())
+                    || scoped.scope.owned_source_routes.iter().any(|route| {
+                        route.index() >= graph.routes.len() || scoped.scope.owned_nodes.binary_search(&graph.routes[route.index()].source).is_err()
+                    })
+                    || scoped.scope.owned_nodes.iter().any(|node| !globally_owned_nodes.insert(*node))
+                    || scoped.scope.owned_sites.iter().any(|site| !globally_owned_sites.insert(*site))
+                    || scoped
+                        .scope
+                        .owned_contacts
+                        .iter()
+                        .any(|contact| !globally_owned_contacts.insert(*contact))
+                    || scoped
+                        .scope
+                        .owned_resources
+                        .iter()
+                        .any(|resource| !globally_owned_resources.insert(*resource))
+                {
+                    return Err(GraphBuildError::InvalidInstantRegion {
+                        table: "scoped settled device ordering",
+                        index: scoped.scope.component as usize,
+                    });
+                }
+                previous_component = Some(scoped.scope.component);
+            }
+        }
         if let Self::WireCaptures(rows) = self {
             if !rows.is_empty() && rows.len() != graph.sites.len() {
                 return Err(GraphBuildError::StateTableLength {
@@ -305,4 +366,8 @@ impl PlanOutput {
         }
         Ok(())
     }
+}
+
+fn strictly_sorted<T: Ord>(items: &[T]) -> bool {
+    items.windows(2).all(|pair| pair[0] < pair[1])
 }

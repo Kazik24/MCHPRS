@@ -194,7 +194,7 @@ fn rilax_o6_main_quasi_power_queries_match_recursive_reads_at_each_cut() {
     general.set_test_recording(true);
     assert!(planned.fixed_classic.is_none(), "the sample must exercise the dynamic graph query path");
     assert!(
-        planned.logical_device.is_none(),
+        planned.logical_devices.is_empty(),
         "the ordinary Rilax memory graph must use native scheduler cuts"
     );
     let write_enable = ORIGIN + BlockPos::new(19, 12, 1);

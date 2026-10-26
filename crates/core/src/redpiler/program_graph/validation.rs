@@ -83,8 +83,9 @@ impl CircuitDraft {
             PlanChange::SignalChannels => Ok(None),
             PlanChange::StableInstantLogic => Ok(None),
             PlanChange::InstantValueRegions => Ok(None),
-            PlanChange::SettledCircuit => {
+            PlanChange::SettledDevices => {
                 self.validate_settled_circuit(monitor)?;
+                self.validate_scoped_settled_devices(monitor)?;
                 Ok(None)
             }
             PlanChange::Layers => self.validate_instant_layers(monitor),
@@ -378,6 +379,18 @@ impl CircuitDraft {
         }
         .map_err(|_| invalid())?;
         if *plan != expected {
+            return Err(invalid());
+        }
+        Ok(())
+    }
+
+    fn validate_scoped_settled_devices(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
+        let invalid = || GraphBuildError::InvalidInstantRegion {
+            table: "scoped settled devices",
+            index: 0,
+        };
+        let expected = crate::redpiler::analysis::instant::layers::logical::compile_scoped_devices(self, monitor).map_err(|_| invalid())?;
+        if self.plans.logical_devices != expected {
             return Err(invalid());
         }
         Ok(())

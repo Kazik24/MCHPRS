@@ -15,9 +15,13 @@ pub enum LogicalDeviceAdmission {
 }
 
 impl LogicalDeviceAdmission {
-    fn chat_summary_line(&self) -> String {
+    fn chat_summary_line(&self, logical_device_count: usize) -> String {
         match self {
             Self::NotApplicable => "Execution path: general Graph (no logical-device candidate).".into(),
+            Self::Active if logical_device_count > 0 => format!(
+                "Execution path: {logical_device_count} logical device{} active; remaining regions use general Graph.",
+                if logical_device_count == 1 { "" } else { "s" },
+            ),
             Self::Active => "Execution path: logical-device evaluator active.".into(),
             Self::Declined(reason) => {
                 let is_long = reason.chars().count() > 82;
@@ -351,6 +355,8 @@ pub struct CompileStatistics {
     pub graph: GraphStatistics,
     pub backend: BackendKind,
     pub backend_nodes: usize,
+    /// Number of independently installed logical-device evaluators at activation.
+    pub logical_device_count: usize,
     /// Runtime logical-device admission outcome captured when the backend was activated.
     pub logical_device_admission: LogicalDeviceAdmission,
     /// Structural ownership at activation; later deoptimization is visible through Compiler's live snapshot.
@@ -375,7 +381,7 @@ impl CompileStatistics {
         )];
         lines.extend(self.graph.chat_summary_lines());
         lines.extend(self.execution_coverage.chat_summary_lines());
-        lines.push(self.logical_device_admission.chat_summary_line());
+        lines.push(self.logical_device_admission.chat_summary_line(self.logical_device_count));
         lines
     }
 
@@ -391,7 +397,7 @@ impl CompileStatistics {
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(3));
         lines.extend(self.execution_coverage.summary_lines());
-        lines.push(self.logical_device_admission.chat_summary_line());
+        lines.push(self.logical_device_admission.chat_summary_line(self.logical_device_count));
         lines
     }
 }
@@ -451,6 +457,7 @@ mod chat_summary_tests {
             graph,
             backend: BackendKind::Graph,
             backend_nodes: 90,
+            logical_device_count: 0,
             logical_device_admission: LogicalDeviceAdmission::NotApplicable,
             execution_coverage: coverage,
             analysis_duration: Duration::from_millis(10),
@@ -476,18 +483,22 @@ mod chat_summary_tests {
     #[test]
     fn logical_device_admission_summary_is_explicit_and_bounded() {
         assert_eq!(
-            LogicalDeviceAdmission::Active.chat_summary_line(),
+            LogicalDeviceAdmission::Active.chat_summary_line(0),
             "Execution path: logical-device evaluator active."
         );
         assert_eq!(
-            LogicalDeviceAdmission::Declined("pending scheduled work at entry".into()).chat_summary_line(),
+            LogicalDeviceAdmission::Active.chat_summary_line(2),
+            "Execution path: 2 logical devices active; remaining regions use general Graph."
+        );
+        assert_eq!(
+            LogicalDeviceAdmission::Declined("pending scheduled work at entry".into()).chat_summary_line(0),
             "Execution path: general Graph; logical-device decline: pending scheduled work at entry."
         );
         assert_eq!(
-            LogicalDeviceAdmission::NotApplicable.chat_summary_line(),
+            LogicalDeviceAdmission::NotApplicable.chat_summary_line(0),
             "Execution path: general Graph (no logical-device candidate)."
         );
-        let line = LogicalDeviceAdmission::Declined("x".repeat(200)).chat_summary_line();
+        let line = LogicalDeviceAdmission::Declined("x".repeat(200)).chat_summary_line(0);
         assert!(line.chars().count() <= 140, "chat line too wide: {line}");
         assert!(line.ends_with("…."));
     }
