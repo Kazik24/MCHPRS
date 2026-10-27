@@ -190,6 +190,8 @@ pub(crate) enum LayerLifecyclePhase {
     DeferredResourceRestoration,
     /// This is an observer's later watched-base reset lifecycle route.
     ResetObserverLifecycle,
+    /// This is an exact payload/input-restoration notification or sample row for a non-observer reset.
+    ResetInputLifecycle,
     /// This is the reset observer's original output route after its accepted pull.
     ResetOutput,
     /// This is the piston actor's later far-contact shape route.
@@ -276,6 +278,8 @@ pub(crate) struct LayerUse {
 pub(crate) struct UseCause {
     /// These boundary Update deliveries are OR-sampled by this actor's input callback.
     pub(crate) boundary_occurrences: Box<[RouteOccurrence]>,
+    /// These exact earlier callbacks can synchronously enqueue this sampled request.
+    pub(crate) enqueue_triggers: Box<[RouteOccurrence]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

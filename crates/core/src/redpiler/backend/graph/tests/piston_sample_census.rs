@@ -18,6 +18,10 @@ struct Counts {
     repeated_qualifying_same_action: u64,
     repeated_no_action: u64,
     action_conflicts: u64,
+    /// Upper bound: same powered/action decision as the prior sample in a queue-only transport episode.
+    queue_only_same_decision: u64,
+    /// Diagnostic guardrail; stable power should imply stable action while actor state is fixed.
+    queue_only_same_power_different_action: u64,
 }
 
 #[derive(Default)]
@@ -27,10 +31,12 @@ struct Frame {
     first_any: FxHashMap<PistonId, Option<mchprs_world::PistonAction>>,
     seen_no_action: FxHashSet<PistonId>,
     first_qualifying: FxHashMap<PistonId, mchprs_world::PistonAction>,
+    /// Retained across wire writes; this is attribution only, never a correctness cache.
+    queue_only_last: FxHashMap<PistonId, (bool, Option<mchprs_world::PistonAction>)>,
 }
 
-/// Test-only attribution. Memoization is scoped to a queue-only episode segment;
-/// wire writes and nested episodes clear the actor memo before it can be reused.
+/// Test-only attribution. Legacy counts reset on wire writes; potential equal-decision counts
+/// persist only inside exact/replayed queue-only transport episodes and never skip execution.
 #[derive(Default)]
 pub(super) struct EpisodeSampleCensus {
     enabled: bool,
@@ -40,6 +46,8 @@ pub(super) struct EpisodeSampleCensus {
 
 impl EpisodeSampleCensus {
     pub(super) fn enable(&mut self) {
+        self.stack.clear();
+        self.counts = [Counts::default(); 4];
         self.enabled = true;
     }
 
@@ -51,6 +59,7 @@ impl EpisodeSampleCensus {
             parent.first_any.clear();
             parent.seen_no_action.clear();
             parent.first_qualifying.clear();
+            parent.queue_only_last.clear();
         }
         self.stack.push(Frame {
             kind,
@@ -68,6 +77,7 @@ impl EpisodeSampleCensus {
             parent.first_any.clear();
             parent.seen_no_action.clear();
             parent.first_qualifying.clear();
+            parent.queue_only_last.clear();
         }
     }
 
@@ -82,7 +92,7 @@ impl EpisodeSampleCensus {
         }
     }
 
-    pub(super) fn sample(&mut self, piston: PistonId, action: Option<mchprs_world::PistonAction>) {
+    pub(super) fn sample(&mut self, piston: PistonId, powered: bool, action: Option<mchprs_world::PistonAction>) {
         if !self.enabled {
             return;
         }
@@ -95,6 +105,16 @@ impl EpisodeSampleCensus {
         let kind = usize::from(frame.kind);
         let counts = &mut self.counts[kind];
         counts.samples += 1;
+        if matches!(frame.kind, EXACT | REPLAY) {
+            if let Some(&(previous_powered, previous_action)) = frame.queue_only_last.get(&piston) {
+                if previous_powered == powered && previous_action == action {
+                    counts.queue_only_same_decision += 1;
+                } else if previous_powered == powered {
+                    counts.queue_only_same_power_different_action += 1;
+                }
+            }
+            frame.queue_only_last.insert(piston, (powered, action));
+        }
         if let Some(&first) = frame.first_any.get(&piston) {
             counts.repeated_any += 1;
             if first != action {
@@ -139,6 +159,9 @@ impl EpisodeSampleCensus {
                     "repeated_qualifying_same_action": counts.repeated_qualifying_same_action,
                     "repeated_no_action": counts.repeated_no_action,
                     "action_conflicts": counts.action_conflicts,
+                    "queue_only_same_decision": counts.queue_only_same_decision,
+                    "queue_only_same_power_different_action": counts.queue_only_same_power_different_action,
+                    "queue_only_measurement": "consecutive identical powered/action observations across wire writes; upper bound only, no sample was skipped",
                 })
             })
             .collect::<Vec<_>>();
@@ -159,9 +182,9 @@ mod tests {
         let mut census = EpisodeSampleCensus::default();
         census.enable();
         census.begin(EXACT, true);
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Retract));
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), false, Some(mchprs_world::PistonAction::Retract));
         census.end();
         assert_eq!(census.counts[0].qualifying, 3);
         assert_eq!(census.counts[0].repeated_qualifying_same_action, 1);
@@ -173,9 +196,9 @@ mod tests {
         let mut census = EpisodeSampleCensus::default();
         census.enable();
         census.begin(EXACT, true);
-        census.sample(actor(0), None);
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), false, None);
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
         census.end();
         assert_eq!(census.counts[0].no_action, 1);
         assert_eq!(census.counts[0].qualifying, 2);
@@ -189,13 +212,36 @@ mod tests {
         census.enable();
         census.begin(EXACT, true);
         for _ in 0..2 {
-            census.sample(actor(0), None);
+            census.sample(actor(0), false, None);
         }
         census.invalidate();
-        census.sample(actor(0), None);
+        census.sample(actor(0), false, None);
         census.end();
         assert_eq!(census.counts[0].repeated_any, 1);
         assert_eq!(census.counts[0].repeated_no_action, 1);
+    }
+
+    #[test]
+    fn queue_only_upper_bound_survives_analog_writes_and_resets_on_nested_walks() {
+        let mut census = EpisodeSampleCensus::default();
+        census.enable();
+        census.begin(EXACT, true);
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
+        census.invalidate();
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
+        census.invalidate();
+        census.sample(actor(0), false, None);
+        census.invalidate();
+        census.sample(actor(0), false, None);
+        assert_eq!(census.counts[EXACT as usize].queue_only_same_decision, 2);
+        assert_eq!(census.counts[EXACT as usize].queue_only_same_power_different_action, 0);
+
+        census.begin(REPLAY, true);
+        census.sample(actor(0), false, None);
+        census.end();
+        census.sample(actor(0), false, None);
+        census.end();
+        assert_eq!(census.counts[EXACT as usize].queue_only_same_decision, 2);
     }
 
     #[test]
@@ -203,11 +249,11 @@ mod tests {
         let mut census = EpisodeSampleCensus::default();
         census.enable();
         census.begin(EXACT, true);
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
         census.begin(CHANNEL, false);
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
         census.end();
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
         census.end();
         assert_eq!(census.counts[0].qualifying, 2);
         assert_eq!(census.counts[0].repeated_qualifying_same_action, 0);
@@ -219,8 +265,8 @@ mod tests {
         let mut census = EpisodeSampleCensus::default();
         census.enable();
         census.begin(STABLE, true);
-        census.sample(actor(0), None);
-        census.sample(actor(0), None);
+        census.sample(actor(0), false, None);
+        census.sample(actor(0), false, None);
         census.end();
         assert_eq!(census.counts[3].repeated_any, 1);
         assert_eq!(census.counts[3].repeated_no_action, 1);
@@ -231,10 +277,10 @@ mod tests {
         let mut census = EpisodeSampleCensus::default();
         census.enable();
         census.begin(EXACT, true);
-        census.sample(actor(0), None);
-        census.sample(actor(0), Some(mchprs_world::PistonAction::Extend));
-        census.sample(actor(1), Some(mchprs_world::PistonAction::Retract));
-        census.sample(actor(1), None);
+        census.sample(actor(0), false, None);
+        census.sample(actor(0), true, Some(mchprs_world::PistonAction::Extend));
+        census.sample(actor(1), false, Some(mchprs_world::PistonAction::Retract));
+        census.sample(actor(1), false, None);
         census.end();
         assert_eq!(census.counts[0].repeated_any, 2);
         assert_eq!(census.counts[0].action_conflicts, 2);

@@ -247,6 +247,12 @@ impl GraphBackend {
         self.logical_device_owner.clear();
         self.native_action_clock_owner.fill(None);
         self.logical_input_callbacks.clear();
+        self.general_delivery_routes.fill(false);
+        self.active_frame_command_outputs.clear();
+        self.active_frame_retained_actors.clear();
+        self.active_frame_retained_nodes.clear();
+        self.active_frame_retained_routes.clear();
+        self.active_frame_power_inputs.clear();
         self.logical_device_admission = crate::redpiler::LogicalDeviceAdmission::NotApplicable;
         self.dirty.fill(false);
         self.contact_dirty.fill(false);

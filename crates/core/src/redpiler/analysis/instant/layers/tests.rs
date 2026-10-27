@@ -68,70 +68,6 @@ fn proof_budget_limits_are_inclusive_and_cancellation_stays_fatal() {
 }
 
 #[test]
-fn failure_guided_retry_cuts_only_the_exact_request_sample_wire_corridor() {
-    let link = power_link(0);
-    let mut graph = empty_graph(link);
-    graph.nodes.push(CircuitNodeDraft {
-        position: Some(BlockPos::new(0, 20, 0)),
-        raw_state: None,
-        kind: CircuitNodeKind::Wire(0),
-        state: ComponentState::Specialized,
-        output_route: None,
-    });
-    graph.sites.push(SiteSpec {
-        position: BlockPos::new(0, 20, 0),
-        source: SiteSource::Component(NodeId::new(0)),
-        source_strength: 0,
-    });
-    let catalog = BoundaryCatalog {
-        corridors: vec![WireCorridor {
-            wires: vec![NodeId::new(0)].into_boxed_slice(),
-            conductive_sites: Box::new([]),
-        }]
-        .into_boxed_slice(),
-        ..Default::default()
-    };
-    let component = RegionComponent {
-        cells: Box::new([]),
-        corridors: vec![0].into_boxed_slice(),
-        ports: Box::new([]),
-    };
-    let decline = |phase| LayerDecline {
-        cells: Box::new([]),
-        corridors: vec![0].into_boxed_slice(),
-        witness: LayerWitness::PowerAtCut {
-            actor: PistonId::new(0),
-            link,
-            phase,
-        },
-        reason: LayerDeclineReason::SignalArrivalUnproven,
-    };
-
-    assert_eq!(
-        failure_guided_corridor_cut(&graph, &catalog, &component, &decline(LayerInputRole::RequestSample)),
-        Some(0)
-    );
-    assert_eq!(
-        failure_guided_corridor_cut(&graph, &catalog, &component, &decline(LayerInputRole::AcceptanceRevalidation)),
-        None,
-        "acceptance-phase failures do not authorize a request-boundary cut"
-    );
-    assert_eq!(
-        failure_guided_corridor_cut(
-            &graph,
-            &catalog,
-            &RegionComponent {
-                corridors: Box::new([]),
-                ..component.clone()
-            },
-            &decline(LayerInputRole::RequestSample)
-        ),
-        None,
-        "a witness cannot cut a corridor outside its failed component"
-    );
-}
-
-#[test]
 fn retained_budget_failure_does_not_publish_an_input_or_hide_malformed_expressions() {
     let monitor = TaskMonitor::default();
     let mut builder = LayerBuilder::new(&monitor).unwrap();
@@ -415,6 +351,7 @@ pub(super) fn compile_synthetic_layer(attenuation: u8) -> LayeredRegion {
                 consumed_before,
                 consumed_after,
                 cause: UseCause {
+                    enqueue_triggers: events.clone().into(),
                     boundary_occurrences: events.into(),
                 },
             }]

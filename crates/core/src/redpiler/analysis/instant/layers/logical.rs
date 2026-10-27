@@ -74,6 +74,9 @@ struct Equations<'a> {
     stateful_repeaters: FxHashSet<NodeId>,
     raw: LayerBuilder<'a>,
     signal_memo: signals::SignalMemo,
+    /// Context-isolated traces for reset-excluded output roots. They contribute
+    /// live wire ownership, but are never reused as ordinary query cache entries.
+    reset_excluded_signal_memos: Vec<signals::SignalMemo>,
     reduced: LayerBuilder<'a>,
     expanded: FxHashMap<LayerExprId, LayerExprId>,
     sources: FxHashMap<LayerInputSource, LayerExprId>,
@@ -204,6 +207,7 @@ impl<'a> Equations<'a> {
                 .collect(),
             raw: LayerBuilder::new(monitor)?,
             signal_memo: signals::SignalMemo::default(),
+            reset_excluded_signal_memos: Vec::new(),
             reduced: LayerBuilder::new(monitor)?,
             expanded: FxHashMap::default(),
             sources: FxHashMap::default(),
@@ -244,6 +248,26 @@ impl<'a> Equations<'a> {
         }
         let raw = tracer.query(target, threshold, &mut self.raw);
         self.signal_memo = tracer.into_memo();
+        self.expand(raw?)
+    }
+
+    fn query_with_state_override(
+        &mut self,
+        target: PowerTarget,
+        threshold: u8,
+        test: StateTest,
+        value: bool,
+    ) -> Result<LayerExprId, ConstructionError> {
+        // State substitutions affect only the requested electrical trace. Restore
+        // the ordinary context before logical SourceAbove inputs are expanded.
+        let state = FxHashMap::from_iter([(test, self.raw.constant(value)?)]);
+        let mut tracer = signals::SignalTracer::new(self.graph, &self.power, &self.wires, &state, LayerInputRole::RequestSample)
+            .with_disabled_destinations(&self.disabled_destinations);
+        if self.stable_wire_modes {
+            tracer = tracer.with_stable_wire_modes();
+        }
+        let raw = tracer.query(target, threshold, &mut self.raw);
+        self.reset_excluded_signal_memos.push(tracer.into_memo());
         self.expand(raw?)
     }
 
@@ -750,7 +774,9 @@ impl<'a> Equations<'a> {
                 self.leaf(source)?
             }
             LayerInputSource::State(StateTest::PistonAvailability { piston, is }) => {
-                if self.actors.contains(&piston) || self.registers.values().any(|read| read.storage == piston) {
+                if self.resource_semantics.uses_one_shot_firing() {
+                    self.leaf(source)?
+                } else if self.actors.contains(&piston) || self.registers.values().any(|read| read.storage == piston) {
                     self.reduced.constant(is == PistonAvailability::Ready)?
                 } else {
                     self.leaf(source)?
@@ -828,7 +854,9 @@ impl<'a> Equations<'a> {
                 }
             }
             LayerInputSource::State(StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor)) => {
-                if let Some(read) = self.registers.values().find(|read| read.storage == actor).copied() {
+                if self.resource_semantics.uses_one_shot_firing() {
+                    self.leaf(source)?
+                } else if let Some(read) = self.registers.values().find(|read| read.storage == actor).copied() {
                     let value = self.leaf(LayerInputSource::State(StateTest::ResourceAt {
                         resource: read.resource,
                         contact: read.source,
@@ -905,6 +933,11 @@ impl<'a> Equations<'a> {
                         threshold: 0,
                     })?
                 } else if self.retain_classic && retained_state_source {
+                    self.leaf(source)?
+                } else if self.resource_semantics.uses_one_shot_firing() && matches!(kind, CircuitNodeKind::Wire(_)) && !self.wires.contains(&node) {
+                    // Saved-dot wires are deliberately outside the one-shot
+                    // equation region. Preserve the exact directional native
+                    // source (including Stored/weak/strong ports and threshold).
                     self.leaf(source)?
                 } else {
                     match self.graph.nodes[node.index()].kind {

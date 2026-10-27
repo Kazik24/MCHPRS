@@ -5,8 +5,8 @@ use crate::redpiler::analysis::AnalysisLimits;
 use crate::redpiler::backend::graph::GraphBackend;
 use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
-    CallbackEdgeRef, CellReset, ContactId, InputPort, LayerInputSource, LinkSpec, PowerPort, PowerTarget, ResourceId, SettledTarget, SiteSource,
-    StateTest,
+    BoundaryDirection, BoundaryOwner, BoundaryPortKind, CallbackEdgeRef, CellReset, ContactId, InputPort, LayerInputSource, LinkSpec, PowerPort,
+    PowerTarget, ResourceId, SettledCircuit, SettledTarget, SiteSource, StateTest,
 };
 use crate::redpiler::{CompilerOptions, LogicalDeviceAdmission, passes};
 use crate::world::World;
@@ -21,9 +21,17 @@ const INPUT_TICKS: usize = 64;
 const INITIAL_TICKS: usize = 1024;
 
 pub(super) fn fixture() -> (serde_json::Value, PlotWorld, (BlockPos, BlockPos)) {
+    fixture_from_descriptor(fixture_descriptor())
+}
+
+fn fixture_descriptor() -> serde_json::Value {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/piston-research/fixtures/fpu_legal.json");
     let mut descriptor: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     descriptor["origin"] = serde_json::json!([ORIGIN.x, ORIGIN.y, ORIGIN.z]);
+    descriptor
+}
+
+fn fixture_from_descriptor(descriptor: serde_json::Value) -> (serde_json::Value, PlotWorld, (BlockPos, BlockPos)) {
     let world = super::cpus::load_manifest(&descriptor).unwrap();
     let dimensions = &descriptor["dimensions"];
     let bounds = (
@@ -63,6 +71,120 @@ pub(super) fn set_lever(world: &mut PlotWorld, position: BlockPos, powered: bool
         LeverFace::Wall => lever.facing.opposite().block_face(),
     };
     crate::redstone::update_surrounding_blocks(world, position.offset(support));
+}
+
+fn assert_fpu_retained_cells(graph: &CompileGraph, circuit: &SettledCircuit) {
+    let catalog = graph.plans.instant.boundaries.as_ref().expect("FPU boundary catalog is present");
+    let mut output_actors = FxHashSet::default();
+    for effect in circuit.retained_effects.iter() {
+        let (BoundaryOwner::Cell(cell), BoundaryPortKind::Power { link }) = (effect.owner, effect.kind) else {
+            continue;
+        };
+        if effect.direction != BoundaryDirection::Output {
+            continue;
+        }
+        let Some(link) = graph.power_links.get(link as usize) else {
+            continue;
+        };
+        let PowerTarget::Input { node, port: InputPort::Main } = link.to else {
+            continue;
+        };
+        if !matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })) {
+            continue;
+        }
+        if let Some(contract) = catalog.cells.get(cell as usize) {
+            output_actors.extend(contract.uses.iter().map(|use_| use_.actor));
+        }
+    }
+    assert_eq!(output_actors.len(), 3, "the FPU must retain its three certified command-output cells");
+
+    let actual_actors = circuit.retained_cells.iter().map(|use_| use_.actor).collect::<FxHashSet<_>>();
+    assert!(
+        output_actors.is_subset(&actual_actors),
+        "all three certified command-output actors must remain Graph-owned"
+    );
+    assert_eq!(actual_actors.len(), circuit.retained_cells.len(), "an actor may be retained only once");
+
+    let feedback: FxHashSet<_> = circuit
+        .outputs
+        .iter()
+        .filter_map(|output| match output.target {
+            SettledTarget::ResourceState { resource, source } => Some((resource, source)),
+            _ => None,
+        })
+        .collect();
+    let catalog_owner_cells = |actor| {
+        catalog
+            .cells
+            .iter()
+            .enumerate()
+            .filter(|(_, cell)| cell.uses.iter().any(|use_| use_.actor == actor))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>()
+    };
+    let monitor = crate::redpiler::TaskMonitor::default();
+    for actor in actual_actors.difference(&output_actors).copied() {
+        assert!(!feedback.is_empty(), "an extra retained actor requires a ResourceState output");
+        let cells = catalog_owner_cells(actor);
+        assert_eq!(cells.len(), 1, "extra retained actor must map to one unique catalog cell");
+        let cell_index = cells[0];
+        let cell = &catalog.cells[cell_index];
+        assert_eq!(cell.uses.len(), 1, "feedback retention only admits single-use cells");
+        assert_eq!(cell.resources.len(), 1, "feedback retention only admits a private resource pin");
+        let use_ = &cell.uses[0];
+        let pin = &cell.resources[0];
+        let piston = &graph.pistons[actor.index()];
+        assert_eq!(use_.actor, actor);
+        assert_eq!(pin.owners.as_ref(), [actor]);
+        assert!(
+            feedback.contains(&(pin.resource, pin.source)),
+            "retained resource must have a matching feedback output"
+        );
+        assert_eq!(
+            catalog
+                .cells
+                .iter()
+                .filter(|candidate| candidate.resources.iter().any(|candidate_pin| candidate_pin.resource == pin.resource))
+                .count(),
+            1,
+            "the feedback resource must have one complete catalog owner cell"
+        );
+        let transfer = use_.retraction.transfer.expect("feedback cell has a certified transfer");
+        assert_eq!(
+            (transfer.resource, transfer.source, transfer.destination),
+            (pin.resource, pin.source, piston.near)
+        );
+        assert!(use_.reset.observer().is_some(), "the cell retains its reset observer");
+        assert!(!use_.activations.is_empty(), "the retained owner has certified activation routes");
+        assert!(piston.sticky && matches!(piston.lane, PistonLane::SingleResource { far } if far == pin.source));
+        let resource = &graph.resources[pin.resource.index()];
+        assert_eq!(resource.contacts.len(), 2, "private feedback uses an exact two-contact resource lane");
+        assert!(resource.contacts.contains(&pin.source) && resource.contacts.contains(&piston.near));
+
+        let closure = crate::redpiler::analysis::instant::ownership::close_seeded_ownership(graph, &[], &[actor], &monitor)
+            .expect("physical ownership closure for retained feedback actor");
+        let group_index = closure.actors[actor.index()].expect("retained actor has a physical ownership group");
+        let group = &closure.groups[group_index];
+        assert_eq!(group.actors.as_slice(), [actor], "feedback actor cannot share its physical group");
+        assert_eq!(
+            group.resources.as_slice(),
+            [pin.resource],
+            "feedback resource cannot share its physical group"
+        );
+
+        let output_effects = catalog
+            .ports
+            .iter()
+            .filter(|port| port.owner == BoundaryOwner::Cell(cell_index as u32) && port.direction == BoundaryDirection::Output)
+            .collect::<Vec<_>>();
+        assert!(!output_effects.is_empty(), "feedback cell must have certified output effects");
+        for effect in output_effects {
+            assert!(
+                circuit.retained_effects.contains(effect),
+                "all certified outputs of an extra feedback cell must remain native effects"
+            );
+        }
+    }
 }
 
 fn add_foreign_observer_reset_source(graph: &mut CompileGraph, circuit: &crate::redpiler::program_graph::SettledCircuit) {
@@ -205,7 +327,7 @@ fn evaluations_after_trigger_tick(
             .as_ref()
             .expect("positive control must rebuild the settled frame");
         assert!(frame.timing.is_some(), "positive control frame must retain timing");
-        assert_eq!(frame.retained_cells.len(), 3, "positive control must retain the three FPU output cells");
+        assert_fpu_retained_cells(graph, frame);
     }
     let (program, state) = graph.clone().lower().unwrap();
     let lowered = crate::redpiler::program_graph::LoweredCircuit {
@@ -296,7 +418,21 @@ fn compile_fpu_o6_stable_io_only() {
 #[test]
 #[ignore = "production O6 FPU readout-repeater frame regression"]
 fn compile_fpu_o6_terminal_repeater_readouts() {
-    let (descriptor, mut world, (min, max)) = fixture();
+    let (descriptor, world, bounds) = fixture();
+    run_fpu_o6_terminal_repeater_readouts(descriptor, world, bounds);
+}
+
+#[test]
+#[ignore = "production O6 FPU readout-repeater frame regression on the fixed saved schematic"]
+fn compile_fpu_o6_terminal_repeater_readouts_fixed_schematic() {
+    let mut descriptor = fixture_descriptor();
+    descriptor["fixture"] = serde_json::json!("target/fpu-fixed-investigation/Lord225@FPU_FIXED_INSTANT.schem");
+    descriptor["sha256"] = serde_json::json!("41d1cb4e5c3e5a2bd00d83ccf859969f9fe2ac7b1c0ab64070e685fa26388f33");
+    let (descriptor, world, bounds) = fixture_from_descriptor(descriptor);
+    run_fpu_o6_terminal_repeater_readouts(descriptor, world, bounds);
+}
+
+fn run_fpu_o6_terminal_repeater_readouts(descriptor: serde_json::Value, mut world: PlotWorld, (min, max): (BlockPos, BlockPos)) {
     let controls = descriptor["ports"]["light_blue_operand_inputs"]
         .as_array()
         .unwrap()
@@ -399,7 +535,7 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
     let circuit = super::settled::compile_device(graph, &monitor).expect("FPU readout frame extraction should complete");
     assert!(circuit.declines.is_empty(), "terminal repeater frame declined: {:#?}", circuit.declines);
     assert!(circuit.timing.is_some(), "FPU readout frame must retain its certified clock");
-    assert_eq!(circuit.retained_cells.len(), 3);
+    assert_fpu_retained_cells(graph, &circuit);
     assert!(
         circuit
             .outputs
@@ -438,7 +574,7 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
     // A lamp attached to the same public output makes this island own an
     // ordinary native electrical sink. The frame must decline the whole
     // interaction island rather than suppressing the lamp's update route.
-    let mut lamp_world = fixture().1;
+    let mut lamp_world = super::cpus::load_manifest(&descriptor).unwrap();
     lamp_world.set_block(readouts[0].offset(BlockFace::East), Block::RedstoneLamp { lit: false });
     let lamp_bounds = (min, max + BlockPos::new(1, 0, 0));
     let lamp_prepared = passes::rich::prepare(&lamp_world, lamp_bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
@@ -477,6 +613,29 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
         .copied()
         .chain(readouts.iter().map(|position| position.offset(BlockFace::East)))
         .collect();
+    let mut retained_native_positions = FxHashSet::default();
+    let mut retained_reset_nodes = FxHashSet::default();
+    for use_ in circuit.retained_cells.iter() {
+        let piston = &graph.pistons[use_.actor.index()];
+        retained_native_positions.insert(piston.position);
+        for contact in [piston.base, piston.near, piston.far] {
+            retained_native_positions.insert(graph.contacts[contact.index()].position);
+        }
+        if let Some(transfer) = use_.retraction.transfer {
+            for contact in [transfer.source, transfer.destination] {
+                retained_native_positions.insert(graph.contacts[contact.index()].position);
+            }
+            for &contact in graph.resources[transfer.resource.index()].contacts.iter() {
+                retained_native_positions.insert(graph.contacts[contact.index()].position);
+            }
+        }
+        if let CellReset::Observer { node, .. } = &use_.reset {
+            retained_reset_nodes.insert(*node);
+            if let Some(position) = graph.nodes[node.index()].position {
+                retained_native_positions.insert(position);
+            }
+        }
+    }
     let native_positions: FxHashSet<_> = graph
         .nodes
         .iter()
@@ -485,8 +644,10 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
         .filter_map(|(_, node)| node.position)
         .filter(|position| !output_positions.contains(position))
         .chain(control_positions.iter().copied())
+        .chain(retained_native_positions.iter().copied())
+        .filter(|position| !output_positions.contains(position))
         .collect();
-    let observer_positions = graph
+    let observer_nodes = graph
         .nodes
         .iter()
         .enumerate()
@@ -497,7 +658,14 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
                 CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
             )
         })
-        .filter_map(|(_, node)| node.position)
+        .map(|(index, _)| NodeId::new(index as u32))
+        .chain(retained_reset_nodes.iter().copied())
+        .collect::<FxHashSet<_>>();
+    let observer_positions = observer_nodes
+        .iter()
+        .filter_map(|node| graph.nodes[node.index()].position)
+        .collect::<FxHashSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
     assert!(
         !observer_positions.is_empty(),
@@ -523,7 +691,7 @@ fn compile_fpu_o6_terminal_repeater_readouts() {
     assert_eq!(backend.logical_device_admission(), &LogicalDeviceAdmission::Active);
 
     let mut backend = backend;
-    let mut physical_world = fixture().1;
+    let mut physical_world = super::cpus::load_manifest(&descriptor).unwrap();
     for position in &readouts {
         physical_world.set_block(
             position.offset(BlockFace::East),
@@ -1435,7 +1603,7 @@ fn fpu_production_device_matches_benchmark_frames_at_clock_edges() {
         .as_ref()
         .expect("FPU O6 pipeline must admit the settled frame");
     assert!(admitted_frame.timing.is_some(), "FPU frame must retain its inferred clock timing");
-    assert_eq!(admitted_frame.retained_cells.len(), 3, "FPU frame must retain the three output cells");
+    assert_fpu_retained_cells(&prepared.graph, admitted_frame);
     let mut shared_reset_graph = prepared.graph.clone();
     add_foreign_observer_reset_source(&mut shared_reset_graph, admitted_frame);
     assert_hybrid_falls_back(&mut shared_reset_graph, &prepared.entry, &options, &mut world, trigger, &monitor);

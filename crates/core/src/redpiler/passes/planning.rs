@@ -3,7 +3,7 @@ use super::PassContext;
 use crate::redpiler::program_graph::{
     CallbackReceiver, CompileGraph, CpuPowerQueryPlans, DeliveryKind, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy,
     InstantRegion, InstantResetPlan, InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, ScopedSettledDevice,
-    SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
+    SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts, WireShape,
 };
 
 pub(crate) trait PlanBuilder {
@@ -308,32 +308,11 @@ impl PlanOutput {
                     || scoped.scope.owned_source_routes.iter().any(|route| {
                         route.index() >= graph.routes.len() || scoped.scope.owned_nodes.binary_search(&graph.routes[route.index()].source).is_err()
                     })
-                    || scoped.scope.input_callbacks.iter().any(|occurrence| {
-                        let Some(route) = graph.routes.get(occurrence.route.index()) else {
-                            return true;
-                        };
-                        let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
-                            return true;
-                        };
-                        if scoped.scope.owned_nodes.binary_search(&route.source).is_ok() {
-                            return true;
-                        }
-                        let receiver = delivery
-                            .receiver
-                            .or_else(|| match (graph.sites.get(delivery.target.index())?.source, delivery.kind) {
-                                (crate::redpiler::program_graph::SiteSource::Component(node), DeliveryKind::Update { .. }) => {
-                                    Some(CallbackReceiver::Component(node))
-                                }
-                                _ => None,
-                            });
-                        let target = match receiver {
-                            Some(CallbackReceiver::Component(node)) => node,
-                            Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => graph.pistons[actor.index()].node,
-                            Some(CallbackReceiver::Contact(contact)) => graph.contacts[contact.index()].node,
-                            None => return true,
-                        };
-                        scoped.scope.owned_nodes.binary_search(&target).is_err()
-                    })
+                    || scoped
+                        .scope
+                        .input_callbacks
+                        .iter()
+                        .any(|&occurrence| !valid_scoped_input_callback(graph, &scoped.scope.owned_nodes, occurrence))
                     || scoped.scope.owned_nodes.iter().any(|node| !globally_owned_nodes.insert(*node))
                     || scoped.scope.owned_sites.iter().any(|site| !globally_owned_sites.insert(*site))
                     || scoped
@@ -350,7 +329,7 @@ impl PlanOutput {
                         .scope
                         .input_callbacks
                         .iter()
-                        .any(|occurrence| !globally_owned_input_callbacks.insert(*occurrence))
+                        .any(|&occurrence| !globally_owned_input_callbacks.insert(occurrence))
                 {
                     return Err(GraphBuildError::InvalidInstantRegion {
                         table: "scoped settled device ordering",
@@ -401,10 +380,134 @@ impl PlanOutput {
     }
 }
 
+fn valid_scoped_input_callback(
+    graph: &CompileGraph,
+    owned_nodes: &[crate::redpiler::program_graph::NodeId],
+    occurrence: crate::redpiler::program_graph::RouteOccurrence,
+) -> bool {
+    let Some(route) = graph.routes.get(occurrence.route.index()) else {
+        return false;
+    };
+    let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
+        return false;
+    };
+    if owned_nodes.binary_search(&route.source).is_ok() {
+        return false;
+    }
+    let receiver = delivery
+        .receiver
+        .or_else(|| match (graph.sites.get(delivery.target.index())?.source, delivery.kind) {
+            (crate::redpiler::program_graph::SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+            _ => None,
+        });
+    let target = match receiver {
+        Some(CallbackReceiver::Component(node)) => node,
+        Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => {
+            let Some(piston) = graph.pistons.get(actor.index()) else {
+                return false;
+            };
+            piston.node
+        }
+        Some(CallbackReceiver::Contact(contact)) => {
+            let Some(contact) = graph.contacts.get(contact.index()) else {
+                return false;
+            };
+            contact.node
+        }
+        None => return false,
+    };
+    if owned_nodes.binary_search(&target).is_err() {
+        return false;
+    }
+    match delivery.kind {
+        DeliveryKind::Update { .. } => true,
+        DeliveryKind::Shape { .. } => {
+            matches!(
+                graph.nodes.get(target.index()).map(|node| &node.kind),
+                Some(crate::redpiler::program_graph::CircuitNodeKind::Wire(_))
+            ) && WireShape::shape_callbacks_are_inert(graph, target)
+        }
+    }
+}
+
 fn strictly_sorted<T: Ord>(items: &[T]) -> bool {
     items.windows(2).all(|pair| pair[0] < pair[1])
 }
 
 fn strictly_sorted_by_key<T, K: Ord>(items: &[T], key: impl Fn(&T) -> K) -> bool {
     items.windows(2).all(|pair| key(&pair[0]) < key(&pair[1]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::redpiler::components::{NodeState, NodeType};
+    use crate::redpiler::program_graph::{CircuitNodeDraft, CircuitNodeKind, ComponentState, Guard, Route, RouteDelivery, RouteOccurrence};
+
+    fn callback_graph(kind: DeliveryKind) -> CompileGraph {
+        let source = crate::redpiler::program_graph::NodeId::new(0);
+        let target = crate::redpiler::program_graph::NodeId::new(1);
+        CompileGraph {
+            nodes: vec![source, target]
+                .into_iter()
+                .map(|_| CircuitNodeDraft {
+                    position: None,
+                    raw_state: None,
+                    kind: CircuitNodeKind::Electrical(NodeType::Constant),
+                    state: ComponentState::Electrical(NodeState::default()),
+                    output_route: None,
+                })
+                .collect(),
+            links: vec![],
+            power_links: vec![],
+            comparator_inputs: vec![],
+            profiles: vec![],
+            guards: vec![Guard::Always],
+            contacts: vec![],
+            routes: vec![Route {
+                source,
+                deliveries: vec![RouteDelivery {
+                    target: crate::redpiler::program_graph::SiteId::new(0),
+                    kind,
+                    guard: crate::redpiler::program_graph::GuardId::new(0),
+                    view: crate::redpiler::program_graph::OperandView::Live,
+                    sequence: 0,
+                    receiver: Some(CallbackReceiver::Component(target)),
+                }]
+                .into_boxed_slice(),
+            }],
+            wires: vec![],
+            wire_relations: vec![],
+            sites: vec![],
+            pistons: vec![],
+            resources: vec![],
+            initial_pistons: vec![],
+            initial_resources: vec![],
+            plans: Default::default(),
+        }
+    }
+
+    #[test]
+    fn scoped_callback_validation_keeps_updates_and_rejects_unproven_shape_rows() {
+        let occurrence = RouteOccurrence {
+            route: crate::redpiler::program_graph::RouteId::new(0),
+            ordinal: 0,
+        };
+        let owned = [crate::redpiler::program_graph::NodeId::new(1)];
+        assert!(valid_scoped_input_callback(
+            &callback_graph(DeliveryKind::Update { direction: None }),
+            &owned,
+            occurrence
+        ));
+        assert!(
+            !valid_scoped_input_callback(
+                &callback_graph(DeliveryKind::Shape {
+                    direction: mchprs_blocks::BlockFace::North,
+                }),
+                &owned,
+                occurrence
+            ),
+            "Shape rows to non-wire receivers are never certified as inert"
+        );
+    }
 }

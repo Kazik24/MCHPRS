@@ -2008,7 +2008,8 @@ mod security_tests {
             for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
                 plot.handle_redpiler_command(0, "analyze", &args);
                 plot.wait_for_redpiler_analysis();
-                let (lines, _) = messages("passes configured:", "yellow");
+                // Drain the timing footer too, so it cannot leak into the next response.
+                let (lines, _) = messages("Longest compile steps:", "yellow");
                 assert!(lines.len() <= 6, "graph analysis should stay compact: {lines:?}");
                 assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
                 let summary = lines.iter().find(|line| line.starts_with("Graph:")).unwrap();

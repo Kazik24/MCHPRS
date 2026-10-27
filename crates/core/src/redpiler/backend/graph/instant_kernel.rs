@@ -1,4 +1,4 @@
-//! Execute atomic pull waves or FIFO-local cell entries over authoritative graph state.
+//! Execute FIFO-local pull-wave steps or cell entries over authoritative graph state.
 use super::*;
 use std::sync::Arc;
 
@@ -12,8 +12,18 @@ pub(super) struct KernelExecution {
     pull_wave_by_actor: Box<[Option<usize>]>,
     /// This replaces only synchronous computation routes while a wave is committing.
     pub(super) active: Option<Arc<InstantKernel>>,
+    /// The active wave's evaluated roots are isolated from shared Event/CPU scratch.
+    active_values: Option<Arc<[bool]>>,
+    /// Continuation follows Graph's actual FIFO one popped request at a time.
+    continuation: Option<PullWaveContinuation>,
     /// This actor is inside its synchronous commit, before the next queued action runs.
     committing: Option<PistonId>,
+}
+
+struct PullWaveContinuation {
+    kernel: Arc<InstantKernel>,
+    values: Arc<[bool]>,
+    next_pull: usize,
 }
 
 struct PullWaveValues {
@@ -28,6 +38,8 @@ impl Default for KernelExecution {
             pull_wave_values: Vec::new(),
             pull_wave_by_actor: Box::new([]),
             active: None,
+            active_values: None,
+            continuation: None,
             committing: None,
             clause_matcher: crate::redpiler::program_graph::cpu_kernels::clause_matcher(),
         }
@@ -90,6 +102,30 @@ impl GraphBackend {
     }
 
     pub(super) fn run_instant_kernel(&mut self, request: PistonRequest) -> Result<bool, GraphExecutionError> {
+        if let Some(mut continuation) = self.instant_kernel.continuation.take() {
+            let KernelProgram::PullWave { pulls, .. } = &continuation.kernel.program else {
+                unreachable!("a PullWave continuation always retains its kernel program")
+            };
+            let next = pulls
+                .iter()
+                .enumerate()
+                .skip(continuation.next_pull)
+                .find(|(_, pull)| continuation.values[pull.requested.0 as usize])
+                .map(|(index, pull)| (index, pull.accepted));
+            if let Some((index, accepted_root)) = next
+                && request.action == mchprs_world::PistonAction::Retract
+                && pulls[index].actor == request.piston
+                && pulls[index].origin.source_matches(request.source)
+            {
+                continuation.next_pull = index + 1;
+                let kernel = continuation.kernel.clone();
+                let values = continuation.values.clone();
+                let accepted = values[accepted_root.0 as usize];
+                self.instant_kernel.continuation = Some(continuation);
+                return self.run_pull_wave_action(&kernel, &values, index, request, accepted);
+            }
+            // A foreign or unexpected request is authoritative; discard this wave suffix.
+        }
         if self.logical_bud_owner_by_actor.get(request.piston.index()).is_some_and(Option::is_some) {
             return Ok(false);
         }
@@ -111,6 +147,14 @@ impl GraphBackend {
         let KernelProgram::PullWave { program, stationary, pulls } = &kernel.program else {
             return self.run_instant_event(&kernel, event_entry, request);
         };
+        // Every region actor must be free of separately managed runtime owners.
+        if kernel.actors.iter().any(|actor| {
+            self.logical_bud_owner_by_actor.get(actor.index()).is_some_and(Option::is_some)
+                || self.native_action_clock_owner.get(actor.index()).is_some_and(Option::is_some)
+                || self.active_frame_retained_actors.contains(actor)
+        }) {
+            return Ok(false);
+        }
         let Some(entry) = request.source.filter(|entry| kernel.entries.binary_search(entry).is_ok()) else {
             #[cfg(test)]
             self.record_kernel_attempt(request.piston, if request.source.is_none() { 1 } else { 2 });
@@ -151,7 +195,16 @@ impl GraphBackend {
             None => program.evaluate(&mut scratch, |input| self.kernel_input(input, entry, request)),
         };
         let values = cached.as_ref().map_or(scratch.as_slice(), |values| values.evaluator.values());
-        let eligible = evaluated.is_ok() && values[stationary.0 as usize] && self.kernel_owns_queue(&kernel, pulls, values, request);
+        let first_pull = pulls.iter().position(|pull| {
+            pull.origin.is_boundary()
+                && values[pull.requested.0 as usize]
+                && pull.actor == request.piston
+                && request.action == mchprs_world::PistonAction::Retract
+                && pull.origin.source_matches(request.source)
+        });
+        let eligible = evaluated.is_ok()
+            && values[stationary.0 as usize]
+            && first_pull.is_some_and(|index| self.kernel_owns_queue(pulls, values, index, request));
         if !eligible {
             #[cfg(test)]
             self.record_kernel_attempt(request.piston, if evaluated.is_err() || !values[stationary.0 as usize] { 4 } else { 5 });
@@ -161,22 +214,21 @@ impl GraphBackend {
             self.instant_kernel.scratch = scratch;
             return Ok(false);
         }
-        // Nothing observable is changed until the full entry and queue ownership checks succeed.
-        if kernel.actors.len() != 1 {
-            self.future.piston_requests.clear();
-        }
-        self.instant_kernel.active = Some(kernel.clone());
-        let result = self.commit_kernel_pulls(pulls, values, entry);
-        self.instant_kernel.active = None;
+        // The first request starts a continuation; later requests must appear at the
+        // predicted point in Graph's own FIFO or the remaining suffix runs natively.
+        let first_pull = first_pull.unwrap();
+        let wave_values: Arc<[bool]> = Arc::from(values);
+        self.instant_kernel.continuation = Some(PullWaveContinuation {
+            kernel: kernel.clone(),
+            values: wave_values.clone(),
+            next_pull: first_pull + 1,
+        });
         if let Some(index) = cache_index {
             self.instant_kernel.pull_wave_values[index] = cached;
         }
         self.instant_kernel.scratch = scratch;
-        result?;
-        self.counts.instant_kernel_invocations += 1;
-        #[cfg(test)]
-        self.record_kernel_attempt(request.piston, 6);
-        Ok(true)
+        let accepted = wave_values[pulls[first_pull].accepted.0 as usize];
+        self.run_pull_wave_action(&kernel, &wave_values, first_pull, request, accepted)
     }
 
     #[cfg(test)]
@@ -186,41 +238,62 @@ impl GraphBackend {
         }
     }
 
-    fn kernel_owns_queue(&self, kernel: &InstantKernel, pulls: &[KernelPull], values: &[bool], first: PistonRequest) -> bool {
-        // A singleton replaces only the already-popped action; callbacks append behind
-        // the untouched queue exactly as Graph does. Multi-actor waves still own it all.
-        let mut actual = std::iter::once(first).chain(self.future.piston_requests.iter().copied());
-        let mut matched = 0;
-        for pull in pulls.iter().filter(|pull| pull.external && values[pull.requested.0 as usize]) {
-            let Some(request) = actual.next() else { return false };
-            if request.piston != pull.actor || request.action != mchprs_world::PistonAction::Retract || request.source != first.source {
+    fn kernel_owns_queue(&self, pulls: &[KernelPull], values: &[bool], first_index: usize, first: PistonRequest) -> bool {
+        // Verify all already-queued region requests in order while leaving unrelated
+        // FIFO entries in place. A foreign pop later cancels the predicted suffix.
+        let mut expected = pulls
+            .iter()
+            .enumerate()
+            .filter(|(_, pull)| pull.origin.is_boundary() && values[pull.requested.0 as usize]);
+        let Some((expected_index, first_expected)) = expected.next() else { return false };
+        if expected_index != first_index
+            || first_expected.actor != first.piston
+            || !first_expected.origin.source_matches(first.source)
+            || !pulls[first_index].origin.is_boundary()
+        {
+            return false;
+        }
+        let mut actual = self.future.piston_requests.iter().copied();
+        for (_, pull) in expected {
+            if actual
+                .find(|request| {
+                request.piston == pull.actor
+                    && request.action == mchprs_world::PistonAction::Retract
+                    && pull.origin.source_matches(request.source)
+                })
+                .is_none()
+            {
                 return false;
             }
-            matched += 1;
         }
-        if kernel.actors.len() == 1 {
-            matched == 1
-        } else {
-            actual.next().is_none()
-        }
+        true
     }
 
-    fn commit_kernel_pulls(&mut self, pulls: &[KernelPull], values: &[bool], entry: RouteId) -> Result<(), GraphExecutionError> {
-        for pull in pulls {
-            if values[pull.accepted.0 as usize] {
-                let extended = self.state.pistons[pull.actor.index()].extended;
-                self.retract_connections(pull.actor, false)?;
-                self.accepted(
-                    PistonRequest {
-                        piston: pull.actor,
-                        action: mchprs_world::PistonAction::Retract,
-                        source: Some(entry),
-                    },
-                    extended,
-                );
-            }
+    fn run_pull_wave_action(
+        &mut self,
+        kernel: &Arc<InstantKernel>,
+        values: &Arc<[bool]>,
+        pull_index: usize,
+        request: PistonRequest,
+        accepted: bool,
+    ) -> Result<bool, GraphExecutionError> {
+        let KernelProgram::PullWave { pulls, .. } = &kernel.program else {
+            unreachable!("PullWave action must use a PullWave program")
+        };
+        let pull = &pulls[pull_index];
+        if pull.actor != request.piston || !pull.origin.source_matches(request.source) {
+            return Ok(false);
         }
-        Ok(())
+        self.instant_kernel.active = Some(kernel.clone());
+        self.instant_kernel.active_values = Some(values.clone());
+        let result = self.accept_compiled_pull(request, accepted);
+        self.instant_kernel.active = None;
+        self.instant_kernel.active_values = None;
+        result?;
+        self.counts.instant_kernel_invocations += 1;
+        #[cfg(test)]
+        self.record_kernel_attempt(request.piston, 6);
+        Ok(true)
     }
 
     fn run_instant_event(&mut self, kernel: &InstantKernel, entry_index: usize, request: PistonRequest) -> Result<bool, GraphExecutionError> {
@@ -308,15 +381,48 @@ impl GraphBackend {
     }
 
     pub(super) fn deliver_kernel_route(&mut self, route: &KernelRoute) -> Result<(), GraphExecutionError> {
-        for &node in &route.clear_wires {
-            let mut wire = self.wire_state(node);
-            wire.power = 0;
-            self.set_wire(node, wire);
-        }
-        for &delivery in &route.deliveries {
-            self.deliver_callback(route.route, delivery, None, None)?;
+        for step in &route.steps {
+            match &step.kind {
+                KernelRouteStepKind::ClearWires(nodes) => {
+                    for &node in nodes.iter() {
+                        let mut wire = self.wire_state(node);
+                        wire.power = 0;
+                        self.set_wire(node, wire);
+                    }
+                }
+                KernelRouteStepKind::EnqueuePull(index) => {
+                    let kernel = self.instant_kernel.active.as_ref().expect("wave route has active kernel");
+                    let values = self.instant_kernel.active_values.as_ref().expect("wave route has active values");
+                    let KernelProgram::PullWave { pulls, .. } = &kernel.program else {
+                        unreachable!("active route kernel is not a PullWave")
+                    };
+                    let pull = &pulls[*index];
+                    if values[pull.requested.0 as usize] {
+                        self.enqueue_piston(PistonRequest {
+                            piston: pull.actor,
+                            action: mchprs_world::PistonAction::Retract,
+                            source: Some(pull.origin.internal_cause().expect("only internal pull recipes enqueue requests").route),
+                        });
+                    }
+                }
+                KernelRouteStepKind::Deliver(delivery) => {
+                    self.deliver_callback(
+                        route.route,
+                        *delivery,
+                        None,
+                        Some(RouteOccurrence {
+                            route: route.route,
+                            ordinal: step.ordinal,
+                        }),
+                    )?;
+                }
+            }
         }
         Ok(())
+    }
+
+    pub(super) fn cancel_pull_wave_continuation(&mut self) {
+        self.instant_kernel.continuation = None;
     }
 
     fn kernel_input(&self, input: LayerInput, entry: RouteId, first: PistonRequest) -> bool {

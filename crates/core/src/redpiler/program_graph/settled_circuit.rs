@@ -29,17 +29,17 @@ pub(crate) struct ScopedSettledDevice {
 pub(crate) struct SettledDeviceScope {
     /// Stable partition number assigned by the graph-derived interaction partition.
     pub(crate) component: u32,
-    /// Every mutable component node and virtual piston/contact node owned by this island.
+    /// Nodes whose state/events this device replaces; retained native cells are excluded.
     pub(crate) owned_nodes: Box<[NodeId]>,
-    /// Sites whose dynamic properties or powered conduit state are inside the island.
+    /// Sites whose dynamic properties or powered conduit state this device replaces.
     pub(crate) owned_sites: Box<[SiteId]>,
-    /// Movable geometry contacts shared by the island's components.
+    /// Movable geometry contacts owned by the device's complete physical groups.
     pub(crate) owned_contacts: Box<[ContactId]>,
-    /// Complete payload resources read or moved by the island.
+    /// Complete payload resources written by this device; sampled native resources are excluded.
     pub(crate) owned_resources: Box<[ResourceId]>,
-    /// Routes whose source node is owned by this interaction island.
+    /// Routes whose source node is owned by this device.
     pub(crate) owned_source_routes: Box<[RouteId]>,
-    /// Exact native-input callback occurrences that may cross into a frame-owned equation/clock node.
+    /// Exact represented Update callbacks and certified inert Shape callbacks consumed by this computation.
     pub(crate) input_callbacks: Box<[RouteOccurrence]>,
     /// The qualified event that advances this device's frame.
     pub(crate) clock_driver: SettledClockDriver,
@@ -57,6 +57,14 @@ pub(crate) enum SettledClockDriver {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettledTarget {
     Power(PowerTarget),
+    /// A retained actor's computed data input with one certified restoration
+    /// source removed; Graph supplies that exact contribution live at sampling.
+    ResetExcludedPower {
+        node: NodeId,
+        port: InputPort,
+        resource: ResourceId,
+        contact: ContactId,
+    },
     Register(BudMemoryRead),
     /// This is `!fired && Main == 0 && Quasi == 0`, not a route, request, or accepted action.
     InstantPowerEligible(PistonId),

@@ -69,16 +69,16 @@ impl GraphBackend {
             .iter()
             .find(|binding| binding.node == node && binding.port == port)
         {
-            let Some(reset_node) = binding.reset else {
+            let Some(reset_source) = binding.reset else {
                 return binding.data_strength;
             };
             let target = PowerTarget::Input { node, port };
-            let mut reset_strength = 0;
+            let mut reset_strength = 0u8;
             for link in self.program.power_links_to(target) {
                 if !self.guard_matches(link.guard, None) {
                     continue;
                 }
-                if matches!(self.program.sites()[link.from.index()].source, SiteSource::Component(source) if source == reset_node) {
+                if self.frame_reset_source_matches(reset_source, link) {
                     reset_strength = reset_strength.max(self.link_strength(link));
                     continue;
                 }
@@ -96,9 +96,7 @@ impl GraphBackend {
                     include_dust,
                 };
                 for reset_link in self.program.power_links_to(conductor) {
-                    if matches!(self.program.sites()[reset_link.from.index()].source, SiteSource::Component(source) if source == reset_node)
-                        && self.guard_matches(reset_link.guard, None)
-                    {
+                    if self.frame_reset_source_matches(reset_source, reset_link) && self.guard_matches(reset_link.guard, None) {
                         reset_strength = reset_strength.max(self.link_strength(reset_link).saturating_sub(link.attenuation));
                     }
                 }
@@ -124,6 +122,51 @@ impl GraphBackend {
                 .max(self.node_state(source).output_strength.saturating_sub(source_attenuation));
         }
         self.query_power(PowerTarget::Input { node, port })
+    }
+
+    /// Read the retained actor's data input with its certified reset contribution
+    /// removed. This is used only to seed the frame adapter; subsequent computes
+    /// replace it with the reset-excluded equation output.
+    pub(super) fn input_strength_without_frame_reset(&self, node: NodeId, port: InputPort, reset: super::logical_device::FrameResetSource) -> u8 {
+        let target = PowerTarget::Input { node, port };
+        let mut maximum = 0;
+        for link in self.program.power_links_to(target) {
+            if !self.guard_matches(link.guard, None) || self.frame_reset_source_matches(reset, link) {
+                continue;
+            }
+            if let PowerPort::Conducted { include_dust } = link.from_port {
+                let conductor = PowerTarget::Conductor {
+                    site: link.from,
+                    include_dust,
+                };
+                for reset_link in self.program.power_links_to(conductor) {
+                    if self.guard_matches(reset_link.guard, None) && !self.frame_reset_source_matches(reset, reset_link) {
+                        maximum = maximum.max(self.link_strength(reset_link).saturating_sub(link.attenuation));
+                    }
+                }
+            } else {
+                maximum = maximum.max(self.link_strength(link));
+            }
+        }
+        maximum
+    }
+
+    fn frame_reset_source_matches(&self, reset: super::logical_device::FrameResetSource, link: &PowerLink) -> bool {
+        match reset {
+            super::logical_device::FrameResetSource::Observer(node) => {
+                matches!(link.from_port, PowerPort::Output | PowerPort::Stored)
+                    && matches!(self.program.sites()[link.from.index()].source, SiteSource::Component(source) if source == node)
+            }
+            super::logical_device::FrameResetSource::InputRestoration { resource, contact } => {
+                let resource_state = self.state.resources[resource.index()];
+                resource_state.at == contact
+                    && self
+                        .program
+                        .sites()
+                        .get(link.from.index())
+                        .is_some_and(|site| site.source == SiteSource::Contact(contact))
+            }
+        }
     }
 
     /// Return the strongest allowed input after attenuation, or zero if there are none.

@@ -169,30 +169,55 @@ fn lower_region(
     let mut pulls = Vec::new();
     for (layer, frontier) in region.layers.iter().enumerate() {
         for (occurrence, use_) in frontier.uses.iter().enumerate() {
+            let causes = use_.cause.boundary_occurrences.as_ref();
+            let triggers = use_.cause.enqueue_triggers.as_ref();
+            let all_boundary_sources = !causes.is_empty()
+                && causes.iter().all(|event| entries.binary_search(&event.route).is_ok())
+                && causes == triggers;
+            let origin = if all_boundary_sources {
+                KernelPullOrigin::Boundary(causes.to_vec().into_boxed_slice())
+            } else {
+                // An internal request must retain one exact source occurrence and its
+                // recorded callback cuts. Never infer a producer from a global route search.
+                let [cause] = causes else { return Ok(None) };
+                if triggers.is_empty() {
+                    return Ok(None);
+                }
+                KernelPullOrigin::Internal {
+                    cause: *cause,
+                    enqueue_triggers: triggers.to_vec().into_boxed_slice(),
+                }
+            };
             pulls.push(KernelPull {
                 actor: use_.actor,
                 requested: root(LayerRoot::Requested { layer, occurrence })?,
                 accepted: root(LayerRoot::Accepted { layer, occurrence })?,
-                external: use_
-                    .cause
-                    .boundary_occurrences
-                    .iter()
-                    .any(|event| entries.binary_search(&event.route).is_ok()),
+                origin,
             });
         }
     }
-    let Some(routes) = lower_routes(graph, &actors, &resets, &wires, arrivals) else {
+    let Some(routes) = lower_routes(
+        graph,
+        &actors,
+        &resets,
+        &wires,
+        arrivals,
+        &pulls,
+    ) else {
         return Ok(None);
     };
-    let mut wire_levels: Vec<_> = wires
-        .into_iter()
-        .map(|node| {
-            let ComponentState::Wire(wire) = graph.nodes[node.index()].state else {
-                unreachable!("certified corridor is a wire")
-            };
-            (node, wire.power)
-        })
-        .collect();
+    let mut expected_wire_levels = FxHashMap::default();
+    for arrival in arrivals {
+        for &(node, expected) in arrival.expected_wire_levels.iter() {
+            if !arrival.wires.contains(&node) || expected_wire_levels.insert(node, expected).is_some_and(|old| old != expected) {
+                return Ok(None);
+            }
+        }
+    }
+    if expected_wire_levels.len() != wires.len() || expected_wire_levels.keys().any(|node| !wires.contains(node)) {
+        return Ok(None);
+    }
+    let mut wire_levels: Vec<_> = expected_wire_levels.into_iter().collect();
     wire_levels.sort_unstable_by_key(|&(node, _)| node);
     Ok(Some(InstantKernel {
         entries: entries.into(),
@@ -213,10 +238,49 @@ fn lower_routes(
     resets: &FxHashSet<NodeId>,
     wires: &FxHashSet<NodeId>,
     arrivals: &[composition::corridors::Arrival],
+    pulls: &[KernelPull],
 ) -> Option<Vec<KernelRoute>> {
     let owns = |node: NodeId| {
         wires.contains(&node) || matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Piston(actor) if actors.binary_search(&actor).is_ok())
     };
+    let mut enqueue_at = Vec::new();
+    for (pull_index, pull) in pulls.iter().enumerate().filter(|(_, pull)| !pull.origin.is_boundary()) {
+        let Some(cause) = pull.origin.internal_cause() else { return None };
+        let cause_delivery = *graph.routes.get(cause.route.index())?.deliveries.get(cause.ordinal as usize)?;
+        // Piston sampling is an Update callback. A shape row at the same target is
+        // not a valid recipe for creating the child request.
+        let direct_receiver = matches!(cause_delivery.kind, DeliveryKind::Update { .. }).then(|| {
+            cause_delivery.receiver.or_else(|| match graph.sites[cause_delivery.target.index()].source {
+                SiteSource::Component(node) => Some(CallbackReceiver::Component(node)),
+                _ => None,
+            })
+        }).flatten();
+        let target_actor = match direct_receiver {
+            Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => Some(actor),
+            Some(CallbackReceiver::Component(node)) => match graph.nodes[node.index()].kind {
+                CircuitNodeKind::Piston(actor) => Some(actor),
+                _ => None,
+            },
+            _ => None,
+        };
+        let direct = target_actor == Some(pull.actor)
+            && matches!(graph.nodes[graph.routes[cause.route.index()].source.index()].kind, CircuitNodeKind::Piston(source) if actors.binary_search(&source).is_ok());
+        let enqueue_triggers = pull.origin.enqueue_triggers();
+        if enqueue_triggers.is_empty() {
+            return None;
+        }
+        for &trigger in enqueue_triggers {
+            let direct_trigger = trigger == cause && direct;
+            let certified_arrival = arrivals.iter().any(|arrival| {
+                arrival.start == trigger
+                    && arrival.finishes.iter().any(|finish| finish.actor == pull.actor && finish.occurrence == cause)
+            });
+            if !direct_trigger && !certified_arrival {
+                return None;
+            }
+            enqueue_at.push((trigger, pull_index));
+        }
+    }
     let mut routes = Vec::new();
     for &actor in actors {
         let spec = graph.pistons[actor.index()];
@@ -224,14 +288,43 @@ fn lower_routes(
             .into_iter()
             .flatten()
         {
-            let mut deliveries = Vec::new();
-            for &delivery in &graph.routes[route.index()].deliveries {
-                let receiver = delivery.receiver.or_else(|| match graph.sites[delivery.target.index()].source {
-                    SiteSource::Component(node) => Some(CallbackReceiver::Component(node)),
-                    _ => None,
+            let mut steps = Vec::new();
+            for (ordinal, &delivery) in graph.routes[route.index()].deliveries.iter().enumerate() {
+                let occurrence = RouteOccurrence {
+                    route,
+                    ordinal: ordinal as u32,
+                };
+                let mut clear_wires: Vec<_> = arrivals
+                    .iter()
+                    .filter(|arrival| arrival.start == occurrence)
+                    .flat_map(|arrival| arrival.wires.iter().copied())
+                    .collect();
+                clear_wires.sort_unstable();
+                clear_wires.dedup();
+                if !clear_wires.is_empty() {
+                    steps.push(KernelRouteStep {
+                        ordinal: ordinal as u32,
+                        kind: KernelRouteStepKind::ClearWires(clear_wires.into()),
+                    });
+                }
+                let receiver = delivery.receiver.or_else(|| {
+                    matches!(delivery.kind, DeliveryKind::Update { .. })
+                        .then(|| match graph.sites[delivery.target.index()].source {
+                            SiteSource::Component(node) => Some(CallbackReceiver::Component(node)),
+                            _ => None,
+                        })
+                        .flatten()
                 });
                 match receiver {
-                    Some(CallbackReceiver::Component(node)) if resets.contains(&node) => deliveries.push(delivery),
+                    Some(CallbackReceiver::Component(node)) if resets.contains(&node) => {
+                        if delivery.view != OperandView::Live {
+                            return None;
+                        }
+                        steps.push(KernelRouteStep {
+                            ordinal: ordinal as u32,
+                            kind: KernelRouteStepKind::Deliver(delivery),
+                        });
+                    }
                     Some(CallbackReceiver::Component(node)) if owns(node) => {}
                     Some(CallbackReceiver::Component(node))
                         if matches!(
@@ -244,23 +337,30 @@ fn lower_routes(
                         ) => {}
                     Some(CallbackReceiver::PistonBase(other) | CallbackReceiver::PistonHead(other)) if actors.binary_search(&other).is_ok() => {}
                     None | Some(CallbackReceiver::Contact(_)) => {}
-                    // A singleton has no later owned action to invalidate. Keep its outside
-                    // handlers in place, including their synchronous feedback and captures.
-                    _ if actors.len() == 1 => deliveries.push(delivery),
+                    // A singleton has no later owned action to invalidate.
+                    _ if delivery.view == OperandView::Live
+                        && actors.len() == 1 =>
+                    {
+                        steps.push(KernelRouteStep {
+                            ordinal: ordinal as u32,
+                            kind: KernelRouteStepKind::Deliver(delivery),
+                        });
+                    }
                     // shortcut: multi-actor external feedback needs an inter-action proof.
                     _ => return None,
                 }
+                // The native wire update and its nested callbacks finish before
+                // the resulting piston request is appended to Graph's FIFO.
+                for &(_, pull_index) in enqueue_at.iter().filter(|(trigger, _)| *trigger == occurrence) {
+                    steps.push(KernelRouteStep {
+                        ordinal: ordinal as u32,
+                        kind: KernelRouteStepKind::EnqueuePull(pull_index),
+                    });
+                }
             }
-            let mut clear_wires: Vec<_> = arrivals
-                .iter()
-                .filter(|arrival| arrival.producer == actor && arrival.start.route == route)
-                .flat_map(|arrival| arrival.wires.iter().copied())
-                .collect();
-            clear_wires.sort_unstable();
             routes.push(KernelRoute {
                 route,
-                clear_wires: clear_wires.into(),
-                deliveries: deliveries.into(),
+                steps: steps.into(),
             });
         }
     }

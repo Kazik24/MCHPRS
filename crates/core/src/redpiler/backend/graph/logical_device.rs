@@ -42,6 +42,17 @@ struct FeedbackResource {
     source: ContactId,
     other: ContactId,
     output: usize,
+    retained_actors: Box<[PistonId]>,
+}
+
+fn retained_feedback_entry_is_ready(state: &CircuitState, feedback: &FeedbackResource) -> bool {
+    let resource = state.resources[feedback.resource.index()];
+    resource.enabled
+        && resource.at == feedback.source
+        && feedback.retained_actors.iter().all(|&actor| {
+            let piston = state.pistons[actor.index()];
+            piston.extended && piston.head_present && piston.availability == PistonAvailability::Ready
+        })
 }
 
 struct SettledFrame {
@@ -56,6 +67,7 @@ struct SettledFrame {
     retained_observers: Box<[NodeId]>,
     retained_commands: Box<[NodeId]>,
     retained_routes: Box<[RouteOccurrence]>,
+    retained_native_routes: Box<[RouteId]>,
     retained_resources: Box<[ResourceId]>,
     retained_power_inputs: Box<[FramePowerInput]>,
     terminal_repeater_inputs: Box<[FrameRepeaterInput]>,
@@ -137,8 +149,7 @@ fn retained_cell_observation_is_owned(
         BoundaryPortKind::ObserverWatch { observer, site } => {
             retained_observers.contains(&observer)
                 && retained_cells.iter().any(|use_| {
-                    use_.reset.observer() == Some(observer)
-                        && backend.program.sites()[site.index()].source == SiteSource::Contact(backend.program.pistons()[use_.actor.index()].base)
+                    backend.program.sites()[site.index()].source == SiteSource::Contact(backend.program.pistons()[use_.actor.index()].base)
                 })
         }
         BoundaryPortKind::GuardSite { site, .. } => match backend.program.sites()[site.index()].source {
@@ -157,7 +168,14 @@ struct FramePowerInput {
     node: NodeId,
     port: InputPort,
     output: usize,
-    reset: NodeId,
+    reset: FrameResetSource,
+    data_strength: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum FrameResetSource {
+    Observer(NodeId),
+    InputRestoration { resource: ResourceId, contact: ContactId },
 }
 
 #[derive(Clone, Copy)]
@@ -172,7 +190,7 @@ pub(super) struct ActiveFramePowerInput {
     pub(super) node: NodeId,
     pub(super) port: InputPort,
     pub(super) data_strength: u8,
-    pub(super) reset: Option<NodeId>,
+    pub(super) reset: Option<FrameResetSource>,
 }
 
 pub(super) struct LogicalDevice {
@@ -190,6 +208,7 @@ impl SettledFrame {
     fn new(
         backend: &GraphBackend,
         circuit: &SettledCircuit,
+        scope: &SettledDeviceScope,
         clock: Option<&LogicalClock>,
         native_timing: Option<&SettledTimingIsland>,
     ) -> Result<Self, String> {
@@ -218,16 +237,62 @@ impl SettledFrame {
             .retained_cells
             .iter()
             .map(|use_| {
-                use_.reset
-                    .observer()
-                    .map(|node| (use_.actor, node))
-                    .ok_or_else(|| "logical frame retained output cell has no observer reset".to_owned())
+                let reset = match &use_.reset {
+                    CellReset::Observer { node, .. } => FrameResetSource::Observer(*node),
+                    CellReset::InputRestoration { resource, contact, .. } => {
+                        if !backend
+                            .program
+                            .resources()
+                            .get(resource.index())
+                            .is_some_and(|spec| spec.contacts.contains(contact))
+                        {
+                            return Err("retained input-restoration reset contact is outside its resource".to_owned());
+                        }
+                        FrameResetSource::InputRestoration {
+                            resource: *resource,
+                            contact: *contact,
+                        }
+                    }
+                    CellReset::Payload { .. } => {
+                        return Err("logical frame retained output cell has an unsupported payload reset".to_owned());
+                    }
+                };
+                Ok((use_.actor, reset))
             })
-            .collect::<Result<_, _>>()?;
-        let mut retained_observers = retained_resets.values().copied().collect::<Vec<_>>();
+            .collect::<Result<_, String>>()?;
+        let mut retained_observers = retained_resets
+            .values()
+            .filter_map(|reset| match reset {
+                FrameResetSource::Observer(node) => Some(*node),
+                FrameResetSource::InputRestoration { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        for effect in &circuit.retained_effects {
+            let BoundaryPortKind::ObserverWatch { observer, site } = effect.kind else {
+                continue;
+            };
+            let Some(site_spec) = backend.program.sites().get(site.index()) else {
+                return Err("retained observer watch references a missing site".into());
+            };
+            let Some(node_spec) = backend.program.nodes().get(observer.index()) else {
+                return Err("retained observer watch references a missing node".into());
+            };
+            let watched_site = match node_spec.kind {
+                CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } => watched,
+                _ => return Err("retained observer watch references a non-observer node".into()),
+            };
+            let watches_retained_base = circuit
+                .retained_cells
+                .iter()
+                .any(|use_| site_spec.source == SiteSource::Contact(backend.program.pistons()[use_.actor.index()].base));
+            if watched_site != site || !watches_retained_base || scope.owned_nodes.binary_search(&observer).is_ok() {
+                return Err("retained observer watch is not a native observation of a retained cell base".into());
+            }
+            retained_observers.push(observer);
+        }
         retained_observers.sort_unstable();
         retained_observers.dedup();
-        let retained_contacts = retained_actors
+        let mut retained_contacts = retained_actors
             .iter()
             .flat_map(|actor| {
                 let spec = backend.program.pistons()[actor.index()];
@@ -242,12 +307,24 @@ impl SettledFrame {
             if let Some(transfer) = use_.retraction.transfer {
                 retained_resources.push(transfer.resource);
             }
+            match &use_.reset {
+                CellReset::InputRestoration { resource, contact, .. } => {
+                    retained_resources.push(*resource);
+                    retained_contacts.insert(*contact);
+                }
+                CellReset::Observer { .. } | CellReset::Payload { .. } => {}
+            }
         }
         retained_resources.sort_unstable();
         retained_resources.dedup();
         for (index, output) in circuit.outputs.iter().enumerate() {
             match output.target {
                 SettledTarget::Power(PowerTarget::Input { node, port }) => {
+                    if matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
+                        && scope.owned_nodes.binary_search(&node).is_err()
+                    {
+                        return Err("logical frame writes a wire outside its certified component scope".into());
+                    }
                     let retained_actor = backend
                         .program
                         .pistons()
@@ -259,13 +336,15 @@ impl SettledFrame {
                         if output.kind != SettledValueKind::Bool || !matches!(port, InputPort::Main | InputPort::Quasi) {
                             return Err("retained output cell power roots must be Boolean Main/Quasi queries".into());
                         }
-                        let reset = retained_resets[&actor];
-                        retained_power_inputs.push(FramePowerInput {
-                            node,
-                            port,
-                            output: index,
-                            reset,
-                        });
+                        if matches!(retained_resets[&actor], FrameResetSource::Observer(_)) {
+                            retained_power_inputs.push(FramePowerInput {
+                                node,
+                                port,
+                                output: index,
+                                reset: retained_resets[&actor],
+                                data_strength: backend.input_strength_without_frame_reset(node, port, retained_resets[&actor]),
+                            });
+                        }
                     } else if port == InputPort::Main
                         && matches!(
                             backend.program.nodes()[node.index()].kind,
@@ -308,6 +387,41 @@ impl SettledFrame {
                         return Err("logical frame resource has multiple next-state outputs".into());
                     }
                 }
+                SettledTarget::ResetExcludedPower {
+                    node,
+                    port,
+                    resource,
+                    contact,
+                } => {
+                    if output.kind != SettledValueKind::Bool || !matches!(port, InputPort::Main | InputPort::Quasi) {
+                        return Err("reset-excluded retained actor power roots must be Boolean Main/Quasi queries".into());
+                    }
+                    let actor = backend
+                        .program
+                        .pistons()
+                        .iter()
+                        .enumerate()
+                        .find_map(|(actor, spec)| (spec.node == node).then_some(PistonId::new(actor as u32)))
+                        .filter(|actor| retained_actors.contains(actor))
+                        .ok_or("reset-excluded power output does not target a retained actor")?;
+                    if retained_resets.get(&actor) != Some(&FrameResetSource::InputRestoration { resource, contact }) {
+                        return Err("reset-excluded power output does not match its retained input-restoration contract".into());
+                    }
+                    if retained_power_inputs.iter().any(|input| input.node == node && input.port == port) {
+                        return Err("retained actor has multiple compiled power roots for one input port".into());
+                    }
+                    retained_power_inputs.push(FramePowerInput {
+                        node,
+                        port,
+                        output: index,
+                        reset: FrameResetSource::InputRestoration { resource, contact },
+                        data_strength: backend.input_strength_without_frame_reset(
+                            node,
+                            port,
+                            FrameResetSource::InputRestoration { resource, contact },
+                        ),
+                    });
+                }
                 _ => return Err("logical frame has an unsupported output target".into()),
             }
         }
@@ -321,7 +435,7 @@ impl SettledFrame {
                     .program
                     .power_links_to(target)
                     .iter()
-                    .any(|link| retained_unbound_reset_source(&backend.program, reset, link))
+                    .any(|link| retained_unbound_reset_source(&backend.program, reset, link, &retained_observers))
                 {
                     return Err("retained output cell actor input has an unbound reset source".into());
                 }
@@ -334,7 +448,7 @@ impl SettledFrame {
                     .program
                     .power_links_to(PowerTarget::Input { node, port })
                     .iter()
-                    .any(|link| retained_reset_input_path_is_owned(&backend.program, actor, reset, link))
+                    .any(|link| retained_reset_input_path_is_owned(&backend.program, actor, reset, link, &retained_observers))
             }) {
                 return Err("retained output cell reset is not bound to its actor power ports".into());
             }
@@ -376,7 +490,13 @@ impl SettledFrame {
                     }
                     PowerTarget::Conductor { .. }
                         if retained_resets.iter().any(|(&actor, &reset)| {
-                            retained_reset_conductor_is_owned(&backend.program, actor, reset, backend.program.power_links()[link as usize])
+                            retained_reset_conductor_is_owned(
+                                &backend.program,
+                                actor,
+                                reset,
+                                &backend.program.power_links()[link as usize],
+                                &retained_observers,
+                            )
                         }) => {}
                     target => {
                         return Err(format!(
@@ -422,6 +542,7 @@ impl SettledFrame {
                 _ => None,
             })
             .collect();
+        retained_route_ids.extend(retained_output_callbacks.iter().map(|occurrence| occurrence.route));
         for use_ in &circuit.retained_cells {
             required_occurrences.extend(use_.activations.iter().copied());
             let spec = backend.program.pistons()[use_.actor.index()];
@@ -450,6 +571,14 @@ impl SettledFrame {
             if let Some(wake) = use_.reset.observer_wake() {
                 required_occurrences.extend(wake.on_base_changed.iter().copied());
                 required_occurrences.extend(wake.on_base_restored.iter().copied());
+            }
+            match &use_.reset {
+                CellReset::InputRestoration { notification, sample, .. } => {
+                    required_occurrences.extend([*notification, *sample]);
+                    retained_route_ids.extend([notification.route, sample.route]);
+                }
+                CellReset::Observer { .. } => {}
+                CellReset::Payload { .. } => return Err("logical frame has an unsupported payload reset contract".into()),
             }
             retained_route_ids.extend(routes);
         }
@@ -494,8 +623,16 @@ impl SettledFrame {
                 }));
             }
         }
+        for &observer in &retained_observers {
+            if let Some(route) = backend.program.nodes()[observer.index()].output_route {
+                retained_route_ids.insert(route);
+            }
+        }
+        let mut retained_native_routes = retained_route_ids.iter().copied().collect::<Vec<_>>();
+        retained_native_routes.sort_unstable();
+        retained_native_routes.dedup();
         let mut occurrences_to_classify = required_occurrences.clone();
-        for route in retained_route_ids {
+        for &route in &retained_native_routes {
             occurrences_to_classify.extend(backend.program.routes()[route.index()].deliveries.iter().enumerate().map(|(ordinal, _)| {
                 RouteOccurrence {
                     route,
@@ -541,13 +678,29 @@ impl SettledFrame {
                     route_position, receiver_position
                 )
             })?;
+            let input_restoration_boundary =
+                retained_input_restoration_callback_is_owned(&backend.program, &circuit.retained_cells, occurrence, delivery.kind, receiver);
             if matches!(receiver, Some(CallbackReceiver::Component(node)) if matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
                 && !retained_output_callbacks.contains(&occurrence)
                 && !matches!(receiver, Some(CallbackReceiver::Component(node)) if public_wire_outputs.contains(&node))
+                && !input_restoration_boundary
             {
                 return Err("retained output cell callback reaches an unowned wire outside its certified corridor".into());
             }
+            let native_wire_effect = retained_output_callbacks.contains(&occurrence)
+                && matches!(receiver, Some(CallbackReceiver::Component(node)) if {
+                    matches!(backend.program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_))
+                        && scope.owned_nodes.binary_search(&node).is_err()
+                });
             if owned {
+                retained_routes.insert(occurrence);
+            } else if input_restoration_boundary {
+                // Keep the exact native notification/sample row from the cataloged
+                // InputRestoration contract. Its source route is still dispatched by
+                // Graph; this merely prevents an owned-source route filter from
+                // dropping the certified row.
+                retained_routes.insert(occurrence);
+            } else if native_wire_effect {
                 retained_routes.insert(occurrence);
             } else if terminal_boundary_occurrences.contains(&occurrence) {
                 match receiver {
@@ -602,11 +755,24 @@ impl SettledFrame {
                     });
                     if feedback_seen.insert(resource) {
                         let other = contacts.iter().copied().find(|&candidate| candidate != source).unwrap();
+                        let mut retained_actors = circuit
+                            .retained_cells
+                            .iter()
+                            .filter_map(|use_| {
+                                use_.retraction
+                                    .transfer
+                                    .filter(|transfer| transfer.resource == resource && transfer.source == source)
+                                    .map(|_| use_.actor)
+                            })
+                            .collect::<Vec<_>>();
+                        retained_actors.sort_unstable();
+                        retained_actors.dedup();
                         feedback_resources.push(FeedbackResource {
                             resource,
                             source,
                             other,
                             output,
+                            retained_actors: retained_actors.into_boxed_slice(),
                         });
                     }
                 }
@@ -675,6 +841,7 @@ impl SettledFrame {
             retained_observers: retained_observers.into_boxed_slice(),
             retained_commands: retained_commands.into_boxed_slice(),
             retained_routes: retained_routes.into_boxed_slice(),
+            retained_native_routes: retained_native_routes.into_boxed_slice(),
             retained_resources: retained_resources.into_boxed_slice(),
             retained_power_inputs: retained_power_inputs.into_boxed_slice(),
             terminal_repeater_inputs: terminal_repeater_inputs.into_boxed_slice(),
@@ -711,13 +878,70 @@ fn inert_cell_contact(program: &CircuitProgram, contact: ContactId) -> bool {
         })
 }
 
-fn retained_reset_conductor_is_owned(program: &CircuitProgram, actor: PistonId, reset: NodeId, link: PowerLink) -> bool {
+fn retained_input_restoration_callback_is_owned(
+    program: &CircuitProgram,
+    retained_cells: &[CellUse],
+    occurrence: RouteOccurrence,
+    kind: DeliveryKind,
+    receiver: Option<CallbackReceiver>,
+) -> bool {
+    if !matches!(kind, DeliveryKind::Update { .. }) {
+        return false;
+    }
+    retained_cells.iter().any(|use_| {
+        let CellReset::InputRestoration { notification, sample, .. } = &use_.reset else {
+            return false;
+        };
+        let receiver_is_actor = matches!(
+            receiver,
+            Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) if actor == use_.actor
+        ) || matches!(
+            receiver,
+            Some(CallbackReceiver::Component(node)) if program.pistons()[use_.actor.index()].node == node
+        );
+        if occurrence == *sample {
+            return receiver_is_actor;
+        }
+        if occurrence != *notification {
+            return false;
+        }
+        if notification == sample {
+            return receiver_is_actor;
+        }
+        matches!(receiver, Some(CallbackReceiver::Component(node)) if matches!(program.nodes()[node.index()].kind, CircuitNodeKind::Wire(_)))
+    })
+}
+
+fn retained_reset_source_link_is_owned(program: &CircuitProgram, reset: FrameResetSource, link: &PowerLink) -> bool {
+    match reset {
+        FrameResetSource::Observer(node) => {
+            matches!(link.from_port, PowerPort::Output | PowerPort::Stored)
+                && matches!(program.sites()[link.from.index()].source, SiteSource::Component(source) if source == node)
+        }
+        FrameResetSource::InputRestoration { resource, contact } => {
+            program
+                .resources()
+                .get(resource.index())
+                .is_some_and(|spec| spec.contacts.contains(&contact))
+                && program
+                    .sites()
+                    .get(link.from.index())
+                    .is_some_and(|site| site.source == SiteSource::Contact(contact))
+        }
+    }
+}
+
+fn retained_reset_conductor_is_owned(
+    program: &CircuitProgram,
+    actor: PistonId,
+    reset: FrameResetSource,
+    link: &PowerLink,
+    retained_observers: &[NodeId],
+) -> bool {
     let PowerTarget::Conductor { site, include_dust } = link.to else {
         return false;
     };
-    if !matches!(link.from_port, PowerPort::Output | PowerPort::Stored)
-        || !matches!(program.sites()[link.from.index()].source, SiteSource::Component(node) if node == reset)
-    {
+    if !retained_reset_source_link_is_owned(program, reset, link) {
         return false;
     }
     let SiteSource::Constant(profile) = program.sites()[site.index()].source else {
@@ -727,24 +951,39 @@ fn retained_reset_conductor_is_owned(program: &CircuitProgram, actor: PistonId, 
     if !profile.solid || !profile.cube {
         return false;
     }
+    if let FrameResetSource::Observer(reset_node) = reset && program.power_links().iter().any(|candidate| {
+        matches!(candidate.to, PowerTarget::Conductor { site: candidate_site, include_dust: dust } if candidate_site == site && dust == include_dust)
+            && matches!(program.sites()[candidate.from.index()].source, SiteSource::Component(node) if node != reset_node)
+    }) {
+        return false;
+    }
+    if matches!(reset, FrameResetSource::InputRestoration { .. })
+        && program
+            .power_links_to(PowerTarget::Conductor { site, include_dust })
+            .iter()
+            .any(|candidate| retained_unbound_reset_source(program, reset, candidate, retained_observers))
+    {
+        return false;
+    }
     if !program.power_links().iter().any(|candidate| candidate.from == site) {
         return true;
     }
-    let foreign_dynamic_source = program.power_links().iter().any(|candidate| {
-        matches!(candidate.to, PowerTarget::Conductor { site: candidate_site, include_dust: dust } if candidate_site == site && dust == include_dust)
-            && matches!(program.sites()[candidate.from.index()].source, SiteSource::Component(node) if node != reset)
-    });
     let piston_node = program.pistons()[actor.index()].node;
-    !foreign_dynamic_source
-        && program.power_links().iter().any(|actor_link| {
-            actor_link.from == site
-                && matches!(actor_link.from_port, PowerPort::Conducted { include_dust: dust } if dust == include_dust)
-                && matches!(actor_link.to, PowerTarget::Input { node, port: InputPort::Main | InputPort::Quasi } if node == piston_node)
-        })
+    program.power_links().iter().any(|actor_link| {
+        actor_link.from == site
+            && matches!(actor_link.from_port, PowerPort::Conducted { include_dust: dust } if dust == include_dust)
+            && matches!(actor_link.to, PowerTarget::Input { node, port: InputPort::Main | InputPort::Quasi } if node == piston_node)
+    })
 }
 
-fn retained_reset_input_path_is_owned(program: &CircuitProgram, actor: PistonId, reset: NodeId, input: &PowerLink) -> bool {
-    if matches!(program.sites()[input.from.index()].source, SiteSource::Component(node) if node == reset) {
+fn retained_reset_input_path_is_owned(
+    program: &CircuitProgram,
+    actor: PistonId,
+    reset: FrameResetSource,
+    input: &PowerLink,
+    retained_observers: &[NodeId],
+) -> bool {
+    if retained_reset_source_link_is_owned(program, reset, input) {
         return true;
     }
     let SiteSource::Constant(profile) = program.sites()[input.from.index()].source else {
@@ -763,16 +1002,20 @@ fn retained_reset_input_path_is_owned(program: &CircuitProgram, actor: PistonId,
     program
         .power_links_to(conductor)
         .iter()
-        .any(|link| retained_reset_conductor_is_owned(program, actor, reset, *link))
+        .any(|link| retained_reset_conductor_is_owned(program, actor, reset, link, retained_observers))
 }
 
-fn retained_unbound_reset_source(program: &CircuitProgram, reset: NodeId, input: &PowerLink) -> bool {
+fn retained_unbound_reset_source(program: &CircuitProgram, reset: FrameResetSource, input: &PowerLink, retained_observers: &[NodeId]) -> bool {
     let is_other_reset = |node: NodeId| {
-        node != reset
-            && matches!(
-                program.nodes()[node.index()].kind,
-                CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
-            )
+        let is_observer = matches!(
+            program.nodes()[node.index()].kind,
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
+        );
+        is_observer
+            && match reset {
+                FrameResetSource::Observer(reset_node) => reset_node != node,
+                FrameResetSource::InputRestoration { .. } => !retained_observers.contains(&node),
+            }
     };
     if matches!(program.sites()[input.from.index()].source, SiteSource::Component(node) if is_other_reset(node)) {
         return true;
@@ -841,8 +1084,15 @@ impl GraphBackend {
                     for &node in &nodes {
                         self.logical_device_owner[node.index()] = Some(owner);
                     }
-                    self.logical_input_callbacks
-                        .extend(self.program.logical_devices()[program_index].scope.input_callbacks.iter().copied());
+                    for callback in self.program.logical_devices()[program_index].scope.input_callbacks.iter() {
+                        self.logical_input_callbacks.insert(*callback);
+                        self.general_delivery_routes[callback.route.index()] = true;
+                    }
+                    if let Some(frame) = &device.frame {
+                        for &route in &frame.retained_native_routes {
+                            self.general_delivery_routes[route.index()] = true;
+                        }
+                    }
                     self.logical_devices.push(device);
                     if let SettledClockDriver::NativeAction { clock } = clock_driver {
                         self.native_action_clock_owner[clock.index()] = Some(owner);
@@ -855,6 +1105,7 @@ impl GraphBackend {
                 }
             }
         }
+        self.activate_frame_context();
         Ok(if self.logical_devices.is_empty() {
             self.logical_device_owner.clear();
             LogicalDeviceAdmission::Declined(declines.join("; "))
@@ -881,24 +1132,25 @@ impl GraphBackend {
             SettledClockDriver::Logical => DeviceClockDriver::Logical(LogicalClock::new(&self.program, &self.state, timing)?),
             SettledClockDriver::NativeAction { clock } => self.prepare_native_action_clock(clock, timing)?,
         };
-        if circuit
-            .outputs
-            .iter()
-            .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
+        if matches!(scope.clock_driver, SettledClockDriver::NativeAction { .. })
+            || circuit
+                .outputs
+                .iter()
+                .any(|output| matches!(output.target, SettledTarget::ResourceState { .. }))
         {
             let logical_clock = match &clock_driver {
                 DeviceClockDriver::Logical(clock) => Some(clock),
                 DeviceClockDriver::NativeAction { .. } => None,
             };
-            let frame = SettledFrame::new(self, circuit, logical_clock, Some(timing))?;
+            let frame = SettledFrame::new(self, circuit, scope, logical_clock, Some(timing))?;
             if frame
-                .retained_routes
+                .feedback_resources
                 .iter()
-                .any(|occurrence| scope.owned_source_routes.binary_search(&occurrence.route).is_err())
-                || frame
-                    .feedback_resources
-                    .iter()
-                    .any(|feedback| scope.owned_resources.binary_search(&feedback.resource).is_err())
+                .any(|feedback| scope.owned_resources.binary_search(&feedback.resource).is_err() && feedback.retained_actors.is_empty())
+                || frame.retained_routes.iter().any(|occurrence| {
+                    scope.owned_source_routes.binary_search(&occurrence.route).is_err()
+                        && frame.retained_native_routes.binary_search(&occurrence.route).is_err()
+                })
             {
                 return Err("logical frame boundary escapes its certified scope".into());
             }
@@ -994,14 +1246,19 @@ impl GraphBackend {
         })
     }
 
-    pub(super) fn tick_logical_device<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
+    fn activate_frame_context(&mut self) {
         let mut devices = std::mem::take(&mut self.logical_devices);
+        self.rebuild_frame_context(&mut devices);
+        self.logical_devices = devices;
+    }
+
+    fn rebuild_frame_context(&mut self, devices: &mut [LogicalDevice]) {
         self.active_frame_command_outputs.clear();
         self.active_frame_retained_actors.clear();
         self.active_frame_retained_nodes.clear();
         self.active_frame_retained_routes.clear();
         self.active_frame_power_inputs.clear();
-        for device in &mut devices {
+        for device in devices {
             if let Some(frame) = &mut device.frame {
                 frame.power_input_offset = self.active_frame_power_inputs.len();
                 self.active_frame_retained_actors.extend_from_slice(&frame.retained_actors);
@@ -1037,6 +1294,11 @@ impl GraphBackend {
         self.active_frame_retained_routes
             .sort_unstable_by_key(|occurrence| (occurrence.route, occurrence.ordinal));
         self.active_frame_retained_routes.dedup();
+    }
+
+    pub(super) fn tick_logical_device<'h>(&mut self, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
+        let mut devices = std::mem::take(&mut self.logical_devices);
+        self.rebuild_frame_context(&mut devices);
         let result = self.tick_phases_with_hook(host, |backend, _| {
             let step_result = (|| {
                 for device in &mut devices {
@@ -1074,11 +1336,6 @@ impl GraphBackend {
             backend.logical_devices = std::mem::take(&mut devices);
             step_result
         });
-        self.active_frame_command_outputs.clear();
-        self.active_frame_retained_actors.clear();
-        self.active_frame_retained_nodes.clear();
-        self.active_frame_retained_routes.clear();
-        self.active_frame_power_inputs.clear();
         if !devices.is_empty() {
             self.logical_devices = devices;
         }
@@ -1181,7 +1438,7 @@ impl GraphBackend {
             .map(|input| ActiveFramePowerInput {
                 node: input.node,
                 port: input.port,
-                data_strength: if frame.evaluation.outputs()[input.output] != 0 { 15 } else { 0 },
+                data_strength: input.data_strength,
                 reset: Some(input.reset),
             })
             .chain(frame.terminal_repeater_inputs.iter().map(|input| ActiveFramePowerInput {
@@ -1241,6 +1498,13 @@ impl GraphBackend {
             };
             frame.inputs[slot] = value;
         }
+        if step.compute {
+            for feedback in frame.feedback_resources.iter().filter(|feedback| !feedback.retained_actors.is_empty()) {
+                if !retained_feedback_entry_is_ready(&self.state, feedback) {
+                    return Err(self.unsupported(device.trigger, "retained feedback cell is outside its certified stationary entry"));
+                }
+            }
+        }
         let operations = frame.evaluate().map_err(|kind| self.unsupported(device.trigger, kind))?;
         if step.compute {
             for input in frame.terminal_repeater_inputs.iter_mut() {
@@ -1268,6 +1532,9 @@ impl GraphBackend {
             }
         }
         if retained_path || (step.compute && !frame.terminal_repeater_inputs.is_empty()) {
+            for input in frame.retained_power_inputs.iter_mut() {
+                input.data_strength = if frame.evaluation.outputs()[input.output] != 0 { 15 } else { 0 };
+            }
             self.refresh_frame_power_inputs(frame);
             for &actor in frame.retained_actors.iter() {
                 self.sample_piston(actor)?;
@@ -1326,6 +1593,7 @@ mod tests {
             retained_observers: Box::new([]),
             retained_commands: Box::new([]),
             retained_routes: Box::new([]),
+            retained_native_routes: Box::new([]),
             retained_resources: Box::new([]),
             retained_power_inputs: Box::new([]),
             terminal_repeater_inputs: Box::new([]),
@@ -1347,6 +1615,46 @@ mod tests {
             declines: Box::new([]),
             timing: None,
         }
+    }
+
+    #[test]
+    fn retained_feedback_entry_guard_requires_stationary_ready_cell_each_cycle() {
+        let resource = ResourceId::new(0);
+        let actor = PistonId::new(0);
+        let source = ContactId::new(0);
+        let other = ContactId::new(1);
+        let feedback = FeedbackResource {
+            resource,
+            source,
+            other,
+            output: 0,
+            retained_actors: Box::new([actor]),
+        };
+        let mut state = CircuitState {
+            classic_signals: Box::new([]),
+            classic_active: Box::new([]),
+            components: Box::new([]),
+            pistons: Box::new([PistonState {
+                extended: true,
+                head_present: true,
+                availability: PistonAvailability::Ready,
+                revision: 0,
+            }]),
+            resources: Box::new([ResourceState {
+                at: source,
+                enabled: true,
+                revision: 0,
+            }]),
+        };
+
+        assert!(retained_feedback_entry_is_ready(&state, &feedback));
+        // The next compute must validate the live native result again; a stale
+        // fixed-point value cannot stand in for a token moved during a cycle.
+        state.resources[resource.index()].at = other;
+        assert!(!retained_feedback_entry_is_ready(&state, &feedback));
+        state.resources[resource.index()].at = source;
+        state.pistons[actor.index()].availability = PistonAvailability::HeadPending;
+        assert!(!retained_feedback_entry_is_ready(&state, &feedback));
     }
 
     #[test]

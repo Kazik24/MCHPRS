@@ -136,16 +136,6 @@ fn parser_admits_a_private_reset_cell_without_synthetic_contracts() {
     assert!(prepared.graph.wires.is_empty());
     prepared.graph.plans.instant.boundaries = Some(catalog);
     let plan = compile_layers(&prepared.graph, prepared.graph.plans.instant.boundaries.as_ref().unwrap(), &monitor).unwrap();
-    for decline in &plan.declines {
-        if let LayerWitness::Callback(occurrence) = decline.witness {
-            let delivery = prepared.graph.routes[occurrence.route.index()].deliveries[occurrence.ordinal as usize];
-            let source = prepared.graph.sites[delivery.target.index()].source;
-            eprintln!("unproved callback: {occurrence:?} {delivery:?}; target={source:?}");
-            if let SiteSource::Contact(contact) = source {
-                eprintln!("contact variants: {:?}", prepared.graph.contacts[contact.index()].variants);
-            }
-        }
-    }
     assert_eq!(
         plan.regions.len(),
         1,
@@ -398,7 +388,7 @@ fn downstream_reset_is_derived_from_restored_input_and_requires_its_update() {
     }
 }
 
-fn chain_world(dust: bool) -> PlotWorld {
+pub(super) fn chain_world(dust: bool) -> PlotWorld {
     let second = BlockPos::new(if dust { 13 } else { 11 }, 20, 8);
     let mut world = direct_cell_world();
     for (position, block) in [
@@ -585,7 +575,7 @@ fn four_cell_wave_executes_without_internal_turbo_and_preserves_reset() {
         native.tick_interpreted();
         check_boundary(&backend, &native, &mut projected, &positions, &format!("four-cell tick {tick}")).unwrap();
         if tick == 0 {
-            assert_eq!(backend.execution_counts().instant_kernel_invocations, 1);
+            assert_eq!(backend.execution_counts().instant_kernel_invocations, 4);
             assert_eq!(backend.execution_counts().piston_actions, 4);
             assert_eq!(backend.execution_counts().wire_walks, 0);
         }
@@ -627,7 +617,7 @@ fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins(
             },
         );
         if !trusted_origin {
-            backend.future.piston_requests.front_mut().expect("entry requested a pull").source = None;
+            backend.future.piston_requests.set_front_source(None);
         }
         let mut projected = world;
         for tick in 0..24 {
@@ -650,138 +640,57 @@ fn public_o4_pipeline_matches_native_with_trusted_and_unrelated_request_origins(
 }
 
 #[test]
-fn corridor_retry_recovers_supported_wire_boundary_and_preserves_native_observer_work() {
-    let mut recovered_unsettled_wire = false;
+fn hot_entry_arrival_or_native_fallback_preserves_observer_work() {
     for observer in [false, true] {
         let world = wire_arrival_world(observer);
         let monitor = TaskMonitor::default();
         let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
         let catalog = infer_boundaries(&prepared.graph, &monitor).unwrap();
-        let (baseline, baseline_context) =
-            crate::redpiler::analysis::instant::layers::compile_layers_without_failure_guided_cuts(&prepared.graph, &catalog, &monitor).unwrap();
-        assert!(
-            baseline.regions.is_empty(),
-            "the connected island remains unsupported without a certified cut"
-        );
-        assert_eq!(baseline.declines.len(), 1);
-
-        let (plan, context) = crate::redpiler::analysis::instant::layers::compile_layers_with_context(&prepared.graph, &catalog, &monitor).unwrap();
-        let lowered_pull_actors = |plan: &crate::redpiler::program_graph::LayeredInstantPlan,
-                                   context: &crate::redpiler::analysis::instant::layers::LayerCompilationContext| {
-            let mut candidate = prepared.graph.clone();
-            candidate.plans.instant.boundaries = Some(catalog.clone());
-            candidate.plans.instant.layers = Some(plan.clone());
-            crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&candidate, &monitor, Some(context))
-                .unwrap()
-                .into_iter()
-                .filter_map(|kernel| matches!(&kernel.program, KernelProgram::PullWave { .. }).then_some(kernel.actors.to_vec()))
-                .flatten()
-                .collect::<std::collections::BTreeSet<_>>()
-        };
-        let baseline_actors = lowered_pull_actors(&baseline, &baseline_context);
-        let retried_actors = lowered_pull_actors(&plan, &context);
-        let newly_lowered: Vec<_> = retried_actors.difference(&baseline_actors).copied().collect();
-
-        if !newly_lowered.is_empty() {
-            if !observer {
-                recovered_unsettled_wire = true;
-            }
-            prepared.graph.plans.instant.boundaries = Some(catalog);
-            prepared.graph.plans.instant.layers = Some(plan);
-            prepared.graph.validate().unwrap();
-            let (program, state) = prepared.graph.clone().lower().unwrap();
-            assert!(
-                program.instant_kernels().iter().any(|kernel| {
-                    matches!(&kernel.program, KernelProgram::PullWave { .. }) && kernel.actors.iter().any(|actor| newly_lowered.contains(actor))
-                }),
-                "the recovered actor must be installed in the executable"
-            );
-            let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
-            let mut native = wire_arrival_world(observer);
-            native_step(
-                &mut native,
-                Step::SetLever {
-                    position: CONTROL,
-                    powered: false,
-                },
-            );
+        let selected_plan = compile_layers(&prepared.graph, &catalog, &monitor).unwrap();
+        if observer {
+            assert!(selected_plan.regions.is_empty(), "the effectful observer keeps this component on Graph");
+        } else {
+            assert!(!selected_plan.regions.is_empty(), "the certified hot-entry cable compiles");
+        }
+        let label = if observer { "native observer fallback" } else { "hot-entry arrival" };
+        prepared.graph.plans.instant.boundaries = Some(catalog);
+        prepared.graph.plans.instant.layers = Some(selected_plan);
+        prepared.graph.validate().unwrap();
+        let (program, state) = prepared.graph.clone().lower().unwrap();
+        let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
+        let mut native = wire_arrival_world(observer);
+        let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
+        let mut projected = world;
+        for (phase, powered) in [("cold retract", false), ("warm extend", true), ("hot retract", false)] {
             backend.use_block(CONTROL).unwrap();
-            let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
-            let mut projected = world;
-            for tick in 0..32 {
+            native_step(&mut native, Step::SetLever { position: CONTROL, powered });
+            for tick in 0..24 {
                 backend.tick().unwrap();
                 native.tick_interpreted();
-                check_boundary(
-                    &backend,
-                    &native,
-                    &mut projected,
-                    &positions,
-                    &format!("failure-guided unsettled-wire retry tick {tick}"),
-                )
-                .unwrap();
-                if tick == 0 {
-                    assert!(backend.execution_counts().instant_kernel_invocations > 0);
-                }
+                check_boundary(&backend, &native, &mut projected, &positions, &format!("{label} {phase} tick {tick}")).unwrap();
             }
-            let mut handed_back = wire_arrival_world(observer);
-            backend.reset(&mut handed_back);
+        }
+        if !observer {
+            assert!(backend.execution_counts().instant_kernel_invocations > 0, "the valid hot cycle executes its PullWave");
+        }
+        let mut handed_back = wire_arrival_world(observer);
+        backend.reset(&mut handed_back);
+        assert_eq!(
+            first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
+            None,
+            "reset must hand pending work back without changing its FIFO-visible state"
+        );
+        for tick in 0..8 {
+            native.tick_interpreted();
+            handed_back.tick_interpreted();
             assert_eq!(
                 first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
                 None,
-                "reset must hand the recovered wave's pending work back without changing its FIFO-visible state"
+                "native continuation after reset tick {tick}"
             );
-            for tick in 0..8 {
-                native.tick_interpreted();
-                handed_back.tick_interpreted();
-                assert_eq!(
-                    first_difference(&future(&native, &positions), &future(&handed_back, &positions)),
-                    None,
-                    "native continuation after recovered-wave reset tick {tick}"
-                );
-            }
-        } else {
-            assert!(plan.regions.is_empty(), "a region without an executable PullWave is not a recovery");
-            assert_eq!(plan.declines.len(), 1);
-            prepared.graph.plans.instant.boundaries = Some(catalog);
-            prepared.graph.plans.instant.layers = Some(plan);
-            prepared.graph.validate().unwrap();
-            let (program, state) = prepared.graph.clone().lower().unwrap();
-            assert!(
-                !program
-                    .instant_kernels()
-                    .iter()
-                    .any(|kernel| matches!(&kernel.program, KernelProgram::PullWave { .. }))
-            );
-            let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
-            let mut native = wire_arrival_world(observer);
-            native_step(
-                &mut native,
-                Step::SetLever {
-                    position: CONTROL,
-                    powered: false,
-                },
-            );
-            backend.use_block(CONTROL).unwrap();
-            let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
-            let mut projected = wire_arrival_world(observer);
-            for tick in 0..32 {
-                backend.tick().unwrap();
-                native.tick_interpreted();
-                check_boundary(
-                    &backend,
-                    &native,
-                    &mut projected,
-                    &positions,
-                    &format!("native-owned observed-wire boundary tick {tick}"),
-                )
-                .unwrap();
-            }
         }
     }
-    assert!(
-        recovered_unsettled_wire,
-        "the unsettled-wire fixture must exercise a real recovered PullWave"
-    );
+
 }
 
 fn check_composed_chain(dust: bool) {
@@ -879,7 +788,7 @@ fn check_composed_chain(dust: bool) {
     backend.tick().unwrap();
     assert_eq!(
         backend.execution_counts().instant_kernel_invocations,
-        1,
+        predicted.len() as u64,
         "the reduced program must replace execution, not only predict it"
     );
     assert_eq!(backend.execution_counts().wire_walks, 0, "the covered computation must not run Turbo");

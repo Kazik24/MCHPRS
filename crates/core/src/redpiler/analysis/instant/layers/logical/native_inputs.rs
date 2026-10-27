@@ -12,18 +12,132 @@ pub(super) struct NativeInputOwnership {
     pub(super) sites: FxHashSet<SiteId>,
     pub(super) contacts: FxHashSet<ContactId>,
     pub(super) resources: FxHashSet<ResourceId>,
-    #[cfg(test)]
-    pub(super) diagnostic_parents: FxHashMap<NodeId, (Option<NodeId>, &'static str)>,
-    #[cfg(test)]
-    pub(super) diagnostic_trace_batches: Vec<DiagnosticTraceBatch>,
-    #[cfg(test)]
-    pub(super) diagnostic_trace_wire_batches: FxHashMap<NodeId, usize>,
 }
 
-#[cfg(test)]
-pub(super) struct DiagnosticTraceBatch {
-    pub(super) targets: Vec<PowerTarget>,
-    pub(super) origins: FxHashMap<PowerTarget, FxHashSet<NodeId>>,
+pub(super) struct RetainedCellBoundary {
+    pub(super) actors: FxHashSet<PistonId>,
+    pub(super) resources: FxHashSet<ResourceId>,
+    pub(super) contacts: FxHashSet<ContactId>,
+    pub(super) nodes: FxHashSet<NodeId>,
+    pub(super) activations: FxHashMap<RouteOccurrence, FxHashSet<PistonId>>,
+    pub(super) restoration_notifications: FxHashMap<RouteOccurrence, FxHashSet<PistonId>>,
+    pub(super) restoration_samples: FxHashMap<RouteOccurrence, FxHashSet<PistonId>>,
+}
+
+impl RetainedCellBoundary {
+    pub(super) fn contains_source(&self, source: SiteSource) -> bool {
+        match source {
+            SiteSource::Component(node) => self.nodes.contains(&node),
+            SiteSource::Contact(contact) => self.contacts.contains(&contact),
+            SiteSource::Constant(_) => false,
+        }
+    }
+}
+
+pub(super) fn retained_cell_boundary(
+    graph: &CompileGraph,
+    circuit: &SettledCircuit,
+    physical_ownership: &OwnershipClosure,
+    timing: &SettledTimingIsland,
+) -> Option<RetainedCellBoundary> {
+    let mut boundary = RetainedCellBoundary {
+        actors: FxHashSet::default(),
+        resources: FxHashSet::default(),
+        contacts: FxHashSet::default(),
+        nodes: FxHashSet::default(),
+        activations: FxHashMap::default(),
+        restoration_notifications: FxHashMap::default(),
+        restoration_samples: FxHashMap::default(),
+    };
+    let mut retained_observers = FxHashSet::default();
+    for use_ in circuit.retained_cells.iter() {
+        if !boundary.actors.insert(use_.actor) {
+            return None;
+        }
+        if let Some(transfer) = use_.retraction.transfer {
+            boundary.resources.insert(transfer.resource);
+            boundary.contacts.extend([transfer.source, transfer.destination]);
+        }
+        match &use_.reset {
+            CellReset::Observer { node, .. } => {
+                retained_observers.insert(*node);
+            }
+            CellReset::Payload { resource, .. } => {
+                boundary.resources.insert(*resource);
+            }
+            CellReset::InputRestoration { resource, contact, .. } => {
+                boundary.resources.insert(*resource);
+                boundary.contacts.insert(*contact);
+            }
+        }
+        for &occurrence in &use_.activations {
+            boundary.activations.entry(occurrence).or_default().insert(use_.actor);
+        }
+        if let CellReset::InputRestoration { notification, sample, .. } = &use_.reset {
+            boundary.restoration_notifications.entry(*notification).or_default().insert(use_.actor);
+            boundary.restoration_samples.entry(*sample).or_default().insert(use_.actor);
+        }
+    }
+
+    let mut resource_groups = vec![None; graph.resources.len()];
+    for (group_index, group) in physical_ownership.groups.iter().enumerate() {
+        for &resource in &group.resources {
+            *resource_groups.get_mut(resource.index())? = Some(group_index);
+        }
+    }
+    let mut pending_groups = Vec::new();
+    for &actor in &boundary.actors {
+        pending_groups.push(physical_ownership.actors.get(actor.index()).copied().flatten()?);
+    }
+    for &resource in &boundary.resources {
+        let group = resource_groups.get(resource.index()).copied().flatten()?;
+        pending_groups.push(group);
+    }
+    for &contact in &boundary.contacts {
+        let group = physical_ownership.contacts.get(contact.index()).copied().flatten()?;
+        pending_groups.push(group);
+    }
+    let mut groups = FxHashSet::default();
+    while let Some(group_index) = pending_groups.pop() {
+        if !groups.insert(group_index) {
+            continue;
+        }
+        let group = physical_ownership.groups.get(group_index)?;
+        if group.actors.iter().any(|actor| !boundary.actors.contains(actor))
+            || group.resources.iter().any(|resource| !boundary.resources.contains(resource))
+        {
+            return None;
+        }
+        for &actor in &group.actors {
+            let piston = graph.pistons.get(actor.index())?;
+            let node = piston.node;
+            if timing.nodes.contains(&node) || timing.actor_specs.iter().any(|spec| spec.node == node) {
+                return None;
+            }
+            let far = match piston.lane {
+                PistonLane::SingleResource { far } => far,
+                PistonLane::Empty => piston.near,
+            };
+            boundary.contacts.extend([piston.base, piston.near, far]);
+            boundary.nodes.insert(node);
+        }
+        for &resource in &group.resources {
+            boundary.contacts.extend(graph.resources.get(resource.index())?.contacts.iter().copied());
+        }
+    }
+    for observer in retained_observers {
+        if timing.nodes.contains(&observer) || timing.actor_specs.iter().any(|spec| spec.node == observer) {
+            return None;
+        }
+        if !matches!(
+            graph.nodes.get(observer.index())?.kind,
+            CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. }
+        ) {
+            return None;
+        }
+        boundary.nodes.insert(observer);
+    }
+    Some(boundary)
 }
 
 struct Builder<'a> {
@@ -31,6 +145,7 @@ struct Builder<'a> {
     island: &'a LogicalIsland,
     expanded_components: &'a FxHashSet<NodeId>,
     physical_ownership: &'a OwnershipClosure,
+    retained_cells: &'a RetainedCellBoundary,
     monitor: &'a TaskMonitor,
     ownership: NativeInputOwnership,
     resource_groups: Vec<Option<usize>>,
@@ -43,12 +158,6 @@ struct Builder<'a> {
     traced_targets: FxHashSet<PowerTarget>,
     pending_trace_targets: Vec<PowerTarget>,
     work: usize,
-    #[cfg(test)]
-    pending_trace_origins: FxHashMap<PowerTarget, FxHashSet<NodeId>>,
-    #[cfg(test)]
-    diagnostic_parent: Option<NodeId>,
-    #[cfg(test)]
-    diagnostic_reason: &'static str,
 }
 
 impl<'a> Builder<'a> {
@@ -57,6 +166,7 @@ impl<'a> Builder<'a> {
         island: &'a LogicalIsland,
         expanded_components: &'a FxHashSet<NodeId>,
         physical_ownership: &'a OwnershipClosure,
+        retained_cells: &'a RetainedCellBoundary,
         monitor: &'a TaskMonitor,
     ) -> Option<Self> {
         let mut resource_groups = vec![None; graph.resources.len()];
@@ -77,6 +187,7 @@ impl<'a> Builder<'a> {
             island,
             expanded_components,
             physical_ownership,
+            retained_cells,
             monitor,
             ownership: NativeInputOwnership::default(),
             resource_groups,
@@ -89,12 +200,6 @@ impl<'a> Builder<'a> {
             traced_targets: FxHashSet::default(),
             pending_trace_targets: Vec::new(),
             work: 0,
-            #[cfg(test)]
-            pending_trace_origins: FxHashMap::default(),
-            #[cfg(test)]
-            diagnostic_parent: None,
-            #[cfg(test)]
-            diagnostic_reason: "unclassified native ownership",
         })
     }
 
@@ -111,22 +216,9 @@ impl<'a> Builder<'a> {
 
     fn add_node(&mut self, node: NodeId) -> Option<()> {
         if self.island.nodes.binary_search(&node).is_err() {
-            #[cfg(test)]
-            eprintln!(
-                "native input decline: node {node:?} at {:?} is outside interaction island {}",
-                self.graph.nodes.get(node.index()).and_then(|node| node.position),
-                self.island.id
-            );
             return None;
         }
         if !self.checked_nodes.contains(&node) && self.ownership.nodes.insert(node) {
-            #[cfg(test)]
-            {
-                self.ownership
-                    .diagnostic_parents
-                    .entry(node)
-                    .or_insert((self.diagnostic_parent, self.diagnostic_reason));
-            }
             self.pending_nodes.push(node);
         }
         Some(())
@@ -170,16 +262,25 @@ impl<'a> Builder<'a> {
     }
 
     fn add_actor(&mut self, actor: PistonId) -> Option<()> {
+        if self.retained_cells.actors.contains(&actor) {
+            return Some(());
+        }
         let group_index = self.physical_ownership.actors.get(actor.index()).copied().flatten()?;
         self.add_group(group_index)
     }
 
     fn add_resource(&mut self, resource: ResourceId) -> Option<()> {
+        if self.retained_cells.resources.contains(&resource) {
+            return Some(());
+        }
         let group_index = self.resource_groups.get(resource.index()).copied().flatten()?;
         self.add_group(group_index)
     }
 
     fn add_contact(&mut self, contact: ContactId) -> Option<()> {
+        if self.retained_cells.contacts.contains(&contact) {
+            return Some(());
+        }
         let group_index = self.physical_ownership.contacts.get(contact.index()).copied().flatten();
         if let Some(group_index) = group_index {
             self.add_group(group_index)?;
@@ -190,10 +291,16 @@ impl<'a> Builder<'a> {
     fn add_site(&mut self, site: SiteId) -> Option<()> {
         match self.graph.sites.get(site.index())?.source {
             SiteSource::Component(node) => {
+                if self.retained_cells.nodes.contains(&node) {
+                    return Some(());
+                }
                 self.ownership.sites.insert(site);
                 self.add_source_node(node)
             }
             SiteSource::Contact(contact) => {
+                if self.retained_cells.contacts.contains(&contact) {
+                    return Some(());
+                }
                 self.ownership.sites.insert(site);
                 self.add_contact(contact)
             }
@@ -210,13 +317,7 @@ impl<'a> Builder<'a> {
             self.charge()?;
             match self.graph.guards.get(id.index())?.clone() {
                 Guard::Always => {}
-                Guard::State(StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor))
-                | Guard::State(StateTest::PistonAvailability { piston: actor, .. }) => self.add_actor(actor)?,
-                Guard::State(StateTest::ResourceAt { resource, contact }) => {
-                    self.add_resource(resource)?;
-                    self.add_contact(contact)?;
-                }
-                Guard::State(StateTest::ResourceEnabled(resource)) => self.add_resource(resource)?,
+                Guard::State(test) => self.add_state(test)?,
                 Guard::Site { site, .. } => self.add_site(site)?,
                 Guard::Not(child) => self.pending_guards.push(child),
                 Guard::All(children) | Guard::Any(children) => self.pending_guards.extend(children.iter().copied()),
@@ -238,45 +339,19 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn add_power_trace(&mut self, target: PowerTarget, origin: NodeId) -> Option<()> {
+    fn add_power_trace(&mut self, target: PowerTarget) -> Option<()> {
         if self.traced_targets.insert(target) {
             self.pending_trace_targets.push(target);
         }
-        #[cfg(test)]
-        self.pending_trace_origins.entry(target).or_default().insert(origin);
         Some(())
     }
 
     fn drain_power_traces(&mut self) -> Option<()> {
         let targets = std::mem::take(&mut self.pending_trace_targets);
-        #[cfg(test)]
-        let batch_origins = targets
-            .iter()
-            .filter_map(|target| self.pending_trace_origins.remove(target).map(|origins| (*target, origins)))
-            .collect::<FxHashMap<_, _>>();
         let trace = match super::trace_native_power_targets(self.graph, &targets, self.monitor) {
             Ok(trace) => trace,
-            Err(reason) => {
-                #[cfg(test)]
-                eprintln!(
-                    "native input decline: power trace for {} targets beginning {:?} failed: {reason}",
-                    targets.len(),
-                    &targets[..targets.len().min(8)]
-                );
-                return None;
-            }
+            Err(_) => return None,
         };
-        #[cfg(test)]
-        {
-            let batch_index = self.ownership.diagnostic_trace_batches.len();
-            for &wire in &trace.wires {
-                self.ownership.diagnostic_trace_wire_batches.entry(wire).or_insert(batch_index);
-            }
-            self.ownership.diagnostic_trace_batches.push(DiagnosticTraceBatch {
-                targets: targets.clone(),
-                origins: batch_origins,
-            });
-        }
         for site in trace.source_sites {
             self.add_site(site)?;
         }
@@ -287,11 +362,7 @@ impl<'a> Builder<'a> {
                     self.add_node(node)?;
                 }
                 LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => self.add_state(test)?,
-                unsupported => {
-                    #[cfg(test)]
-                    eprintln!("native input decline: unsupported power trace input {unsupported:?}");
-                    return None;
-                }
+                _ => return None,
             }
         }
         for node in trace.wires {
@@ -304,23 +375,26 @@ impl<'a> Builder<'a> {
     }
 
     fn add_source_node(&mut self, node: NodeId) -> Option<()> {
+        if self.retained_cells.nodes.contains(&node) {
+            return Some(());
+        }
         self.add_node(node)?;
         match self.graph.nodes.get(node.index())?.kind.clone() {
             CircuitNodeKind::Piston(actor) => self.add_actor(actor),
             CircuitNodeKind::Contact(contact) => self.add_contact(contact),
-            CircuitNodeKind::Wire(_) => self.add_power_trace(PowerTarget::Input { node, port: InputPort::Main }, node),
+            CircuitNodeKind::Wire(_) => self.add_power_trace(PowerTarget::Input { node, port: InputPort::Main }),
             CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } => Some(()),
             CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Constant) => Some(()),
             CircuitNodeKind::Electrical(_) => {
                 for port in [InputPort::Main, InputPort::Side, InputPort::Quasi] {
-                    self.add_power_trace(PowerTarget::Input { node, port }, node)?;
+                    self.add_power_trace(PowerTarget::Input { node, port })?;
                 }
                 Some(())
             }
         }
     }
 
-    fn add_delivery(&mut self, delivery: &RouteDelivery) -> Option<()> {
+    fn add_delivery(&mut self, occurrence: RouteOccurrence, delivery: &RouteDelivery) -> Option<()> {
         let receiver = delivery
             .receiver
             .or_else(|| match (self.graph.sites.get(delivery.target.index())?.source, delivery.kind) {
@@ -333,6 +407,86 @@ impl<'a> Builder<'a> {
             CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => self.graph.pistons.get(actor.index())?.node,
             CallbackReceiver::Contact(contact) => self.graph.contacts.get(contact.index())?.node,
         };
+        if matches!(delivery.kind, DeliveryKind::Shape { .. })
+            && matches!(&self.graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_))
+            && crate::redpiler::program_graph::WireShape::shape_callbacks_are_inert(self.graph, node)
+        {
+            return Some(());
+        }
+        if let Some(actors) = self.retained_cells.restoration_samples.get(&occurrence) {
+            if !matches!(delivery.kind, DeliveryKind::Update { .. }) {
+                return None;
+            }
+            let receiver_is_sampled_actor = match receiver {
+                CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => actors.contains(&actor),
+                CallbackReceiver::Component(node) => {
+                    matches!(self.graph.nodes.get(node.index())?.kind, CircuitNodeKind::Piston(actor) if actors.contains(&actor))
+                }
+                CallbackReceiver::Contact(_) => false,
+            };
+            if !receiver_is_sampled_actor {
+                return None;
+            }
+            self.add_guard(delivery.guard)?;
+            return Some(());
+        }
+        if let Some(actors) = self.retained_cells.restoration_notifications.get(&occurrence) {
+            if !matches!(delivery.kind, DeliveryKind::Update { .. }) {
+                return None;
+            }
+            let is_cell_sample = match receiver {
+                CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => actors.contains(&actor),
+                CallbackReceiver::Component(node) => {
+                    matches!(self.graph.nodes.get(node.index())?.kind, CircuitNodeKind::Piston(actor) if actors.contains(&actor))
+                }
+                CallbackReceiver::Contact(_) => false,
+            } && self
+                .retained_cells
+                .restoration_samples
+                .get(&occurrence)
+                .is_some_and(|samples| actors.iter().any(|actor| samples.contains(actor)));
+            let notification_is_wire =
+                matches!(receiver, CallbackReceiver::Component(wire) if matches!(self.graph.nodes.get(wire.index())?.kind, CircuitNodeKind::Wire(_)));
+            if !is_cell_sample && !notification_is_wire {
+                return None;
+            }
+            self.add_guard(delivery.guard)?;
+            if notification_is_wire {
+                self.add_source_node(node)?;
+            }
+            return Some(());
+        }
+        if let Some(actors) = self.retained_cells.activations.get(&occurrence) {
+            if !matches!(delivery.kind, DeliveryKind::Update { .. }) {
+                return None;
+            }
+            let certified_receiver = match receiver {
+                CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => actors.contains(&actor),
+                CallbackReceiver::Component(node) => {
+                    matches!(self.graph.nodes.get(node.index())?.kind, CircuitNodeKind::Piston(actor) if actors.contains(&actor))
+                }
+                CallbackReceiver::Contact(contact) => self.retained_cells.contacts.contains(&contact),
+            };
+            if !certified_receiver {
+                return None;
+            }
+            // This exact callback is a retained-cell activation. Graph still
+            // checks its guard/capture and samples the physical actor; only the
+            // typed cell contract authorizes stopping the ownership walk here.
+            self.add_guard(delivery.guard)?;
+            if let CallbackReceiver::Contact(contact) = receiver {
+                self.add_contact(contact)?;
+            }
+            return Some(());
+        }
+        let retained_receiver = match receiver {
+            CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => self.retained_cells.actors.contains(&actor),
+            CallbackReceiver::Component(node) => self.retained_cells.nodes.contains(&node),
+            CallbackReceiver::Contact(contact) => self.retained_cells.contacts.contains(&contact),
+        };
+        if retained_receiver {
+            return None;
+        }
         if !self.ownership.nodes.contains(&node) && matches!(delivery.kind, DeliveryKind::Update { .. }) && self.expanded_components.contains(&node) {
             // This exact Update is represented by a compiled equation input.
             // Graph consumes it without executing its guard, so that guard is
@@ -354,27 +508,14 @@ impl<'a> Builder<'a> {
         seed_states: &[StateTest],
         equation_clock_sites: &FxHashSet<SiteId>,
     ) -> Option<NativeInputOwnership> {
-        #[cfg(test)]
-        {
-            self.diagnostic_parent = None;
-            self.diagnostic_reason = "equation/source input seed";
-        }
         for &node in seeds {
             self.add_source_node(node)?;
-        }
-        #[cfg(test)]
-        {
-            self.diagnostic_reason = "equation/source site seed";
         }
         for &site in seed_sites {
             if equation_clock_sites.contains(&site) {
                 continue;
             }
             self.add_site(site)?;
-        }
-        #[cfg(test)]
-        {
-            self.diagnostic_reason = "equation/state seed";
         }
         for &state in seed_states {
             self.add_state(state)?;
@@ -384,11 +525,6 @@ impl<'a> Builder<'a> {
                 if !self.checked_nodes.insert(node) {
                     continue;
                 }
-                #[cfg(test)]
-                {
-                    self.diagnostic_parent = Some(node);
-                    self.diagnostic_reason = "native route, power, state, or owner closure";
-                }
                 self.charge()?;
                 match self.graph.nodes.get(node.index())?.kind.clone() {
                     CircuitNodeKind::Observer { watched, .. } | CircuitNodeKind::BuiltinReset { watched, .. } => {
@@ -397,34 +533,35 @@ impl<'a> Builder<'a> {
                     CircuitNodeKind::Piston(actor) => {
                         self.add_actor(actor)?;
                         for port in [InputPort::Main, InputPort::Quasi] {
-                            self.add_power_trace(PowerTarget::Input { node, port }, node)?;
+                            self.add_power_trace(PowerTarget::Input { node, port })?;
                         }
                     }
                     CircuitNodeKind::Contact(contact) => self.add_contact(contact)?,
-                    CircuitNodeKind::Wire(_) => self.add_power_trace(PowerTarget::Input { node, port: InputPort::Main }, node)?,
+                    CircuitNodeKind::Wire(_) => self.add_power_trace(PowerTarget::Input { node, port: InputPort::Main })?,
                     CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button | NodeType::PressurePlate | NodeType::Constant) => {}
                     CircuitNodeKind::Electrical(_) => {
                         for port in [InputPort::Main, InputPort::Side, InputPort::Quasi] {
-                            self.add_power_trace(PowerTarget::Input { node, port }, node)?;
+                            self.add_power_trace(PowerTarget::Input { node, port })?;
                         }
                     }
                 }
                 let routes = self.node_routes.get(node.index())?.clone();
                 for route_id in routes {
                     let deliveries = self.graph.routes.get(route_id.index())?.deliveries.to_vec();
-                    for delivery in deliveries {
+                    for (ordinal, delivery) in deliveries.into_iter().enumerate() {
                         self.charge()?;
-                        self.add_delivery(&delivery)?;
+                        self.add_delivery(
+                            RouteOccurrence {
+                                route: route_id,
+                                ordinal: u32::try_from(ordinal).ok()?,
+                            },
+                            &delivery,
+                        )?;
                     }
                 }
             }
             if self.pending_trace_targets.is_empty() {
                 break;
-            }
-            #[cfg(test)]
-            {
-                self.diagnostic_parent = None;
-                self.diagnostic_reason = "native power trace result";
             }
             self.drain_power_traces()?;
         }
@@ -437,11 +574,17 @@ pub(super) fn discover(
     island: &LogicalIsland,
     expanded_components: &FxHashSet<NodeId>,
     physical_ownership: &OwnershipClosure,
+    retained_cells: &RetainedCellBoundary,
     seeds: &FxHashSet<NodeId>,
     seed_sites: &[SiteId],
     seed_states: &[StateTest],
     equation_clock_sites: &FxHashSet<SiteId>,
     monitor: &TaskMonitor,
 ) -> Option<NativeInputOwnership> {
-    Builder::new(graph, island, expanded_components, physical_ownership, monitor)?.finish(seeds, seed_sites, seed_states, equation_clock_sites)
+    Builder::new(graph, island, expanded_components, physical_ownership, retained_cells, monitor)?.finish(
+        seeds,
+        seed_sites,
+        seed_states,
+        equation_clock_sites,
+    )
 }

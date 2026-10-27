@@ -70,7 +70,7 @@ pub(crate) struct InstantKernel {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum KernelProgram {
-    /// An atomic pull wave owns its queue and has a whole-wave entry predicate.
+    /// A composed pull wave accelerates only requests Graph actually pops in FIFO order.
     PullWave {
         program: ReducedLayerProgram,
         stationary: LayerExprId,
@@ -90,7 +90,7 @@ pub(crate) struct InstantEventEntry {
     pub(crate) valid: CellPinId,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KernelPull {
     /// This original actor owns all pose, token and deferred-publication state.
     pub(crate) actor: PistonId,
@@ -98,16 +98,71 @@ pub(crate) struct KernelPull {
     pub(crate) requested: LayerExprId,
     /// This root records live revalidation after the preceding conditional pulls.
     pub(crate) accepted: LayerExprId,
-    /// This marks requests already present in Graph's queue when the wave starts.
-    pub(crate) external: bool,
+    /// This states whether Graph already queued one of several boundary sources, or an exact
+    /// internal callback cut will enqueue the request with its original source.
+    pub(crate) origin: KernelPullOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum KernelPullOrigin {
+    /// These are alternative external callback routes that can supply this OR-sampled request.
+    Boundary(Box<[RouteOccurrence]>),
+    /// This callback source and its exact enqueue cuts recreate one internal request.
+    Internal {
+        cause: RouteOccurrence,
+        enqueue_triggers: Box<[RouteOccurrence]>,
+    },
+}
+
+impl KernelPullOrigin {
+    pub(crate) fn is_boundary(&self) -> bool {
+        matches!(self, Self::Boundary(_))
+    }
+
+    pub(crate) fn source_matches(&self, source: Option<RouteId>) -> bool {
+        let Some(source) = source else { return false };
+        match self {
+            Self::Boundary(alternatives) => alternatives.iter().any(|event| event.route == source),
+            Self::Internal { cause, .. } => cause.route == source,
+        }
+    }
+
+    pub(crate) fn internal_cause(&self) -> Option<RouteOccurrence> {
+        match self {
+            Self::Boundary(_) => None,
+            Self::Internal { cause, .. } => Some(*cause),
+        }
+    }
+
+    pub(crate) fn enqueue_triggers(&self) -> &[RouteOccurrence] {
+        match self {
+            Self::Boundary(_) => &[],
+            Self::Internal { enqueue_triggers, .. } => enqueue_triggers,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct KernelRouteStep {
+    /// This keeps effects at their original callback cut, including duplicate route rows.
+    pub(crate) ordinal: u32,
+    pub(crate) kind: KernelRouteStepKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum KernelRouteStepKind {
+    /// This certified source callback replaces only its private corridor's synchronous walk.
+    ClearWires(Box<[NodeId]>),
+    /// This is one internal request whose original callback source is its pull's internal cause.
+    EnqueuePull(usize),
+    /// This original row retains native callback guard, receiver and route occurrence behavior.
+    Deliver(RouteDelivery),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct KernelRoute {
     /// This is the original synchronous computation route being replaced.
     pub(crate) route: RouteId,
-    /// These private wires become unpowered when their certified source is removed.
-    pub(crate) clear_wires: Box<[NodeId]>,
-    /// These original rows retain reset scheduling and callback multiplicity.
-    pub(crate) deliveries: Box<[RouteDelivery]>,
+    /// These ordered operations preserve clear, request and callback effects at their source cut.
+    pub(crate) steps: Box<[KernelRouteStep]>,
 }

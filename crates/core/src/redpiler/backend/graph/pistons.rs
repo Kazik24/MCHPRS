@@ -1,6 +1,7 @@
 #[cfg(test)]
 use super::graph_test_trace;
 use super::*;
+use std::ops::Deref;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PistonRequest {
@@ -8,6 +9,72 @@ pub(super) struct PistonRequest {
     pub(super) action: mchprs_world::PistonAction,
     /// This identifies the actual callback route, when dispatch supplied one.
     pub(super) source: Option<RouteId>,
+}
+
+/// Native FIFO order and first-source retention for each `(piston, action)` pair.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(super) struct PistonRequestQueue {
+    fifo: VecDeque<PistonRequest>,
+}
+
+impl PistonRequestQueue {
+    pub(super) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn push_back_if_absent(&mut self, request: PistonRequest) -> bool {
+        if self
+            .fifo
+            .iter()
+            .any(|queued| queued.piston == request.piston && queued.action == request.action)
+        {
+            return false;
+        }
+        self.fifo.push_back(request);
+        true
+    }
+
+    pub(super) fn pop_front(&mut self) -> Option<PistonRequest> {
+        self.fifo.pop_front()
+    }
+    pub(super) fn clear(&mut self) {
+        self.fifo.clear();
+    }
+
+    #[cfg(test)]
+    pub(super) fn push_front(&mut self, request: PistonRequest) -> bool {
+        if self
+            .fifo
+            .iter()
+            .any(|queued| queued.piston == request.piston && queued.action == request.action)
+        {
+            return false;
+        }
+        self.fifo.push_front(request);
+        true
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_front_source(&mut self, source: Option<RouteId>) {
+        self.fifo.front_mut().expect("request queue front exists").source = source;
+    }
+}
+
+impl Deref for PistonRequestQueue {
+    type Target = VecDeque<PistonRequest>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.fifo
+    }
+}
+
+impl<'a> IntoIterator for &'a PistonRequestQueue {
+    type Item = &'a PistonRequest;
+    type IntoIter = std::collections::vec_deque::Iter<'a, PistonRequest>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.fifo.iter()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,8 +96,7 @@ pub(super) struct DeferredResourceEvent {
 impl GraphBackend {
     #[inline(always)]
     pub(super) fn sample_piston(&mut self, piston: PistonId) -> Result<(), GraphExecutionError> {
-        let result = self.sample_piston_inner(piston, None);
-        result
+        self.sample_piston_inner(piston, None)
     }
 
     pub(super) fn sample_piston_from(&mut self, piston: PistonId, route: RouteId) -> Result<(), GraphExecutionError> {
@@ -48,7 +114,7 @@ impl GraphBackend {
         if state.availability.base_pending() {
             return Ok(());
         }
-        let action = {
+        let (action, powered) = {
             if self.logical_bud_owner_by_actor.get(piston.index()).is_some_and(Option::is_some) {
                 self.counts.logical_bud_samples += 1;
             } else {
@@ -78,19 +144,22 @@ impl GraphBackend {
                     },
                 });
             }
-            match (powered, state.extended) {
+            let action = match (powered, state.extended) {
                 (true, false) if self.piston_lane_available(piston) => mchprs_world::PistonAction::Extend,
                 (false, true) if self.early_resource_retraction(piston) => mchprs_world::PistonAction::RetractWithoutPull,
                 (false, true) => mchprs_world::PistonAction::Retract,
                 _ => {
                     #[cfg(test)]
-                    self.test_recorder.piston_sample_census.sample(piston, None);
+                    self.test_recorder.piston_sample_census.sample(piston, powered, None);
                     return Ok(());
                 }
-            }
+            };
+            (action, powered)
         };
         #[cfg(test)]
-        self.test_recorder.piston_sample_census.sample(piston, Some(action));
+        self.test_recorder.piston_sample_census.sample(piston, powered, Some(action));
+        #[cfg(not(test))]
+        let _ = powered;
         self.enqueue_piston(PistonRequest { piston, action, source });
         Ok(())
     }
@@ -110,12 +179,7 @@ impl GraphBackend {
     }
 
     pub(super) fn enqueue_piston(&mut self, request: PistonRequest) {
-        if !self
-            .future
-            .piston_requests
-            .iter()
-            .any(|queued| queued.piston == request.piston && queued.action == request.action)
-        {
+        if self.future.piston_requests.push_back_if_absent(request) {
             #[cfg(test)]
             if self.test_recording {
                 self.test_recorder.observed_operations.push(GraphObservedOperation::Request {
@@ -127,23 +191,35 @@ impl GraphBackend {
             }
             #[cfg(test)]
             graph_test_trace!(self, format!("piston request {:?} {:?}", request.piston, request.action));
-            self.future.piston_requests.push_back(request);
         }
     }
 
     pub(super) fn drain_piston_actions(&mut self) -> Result<(), GraphExecutionError> {
-        while let Some(request) = self.future.piston_requests.pop_front() {
-            if self.logical_node_owned(self.program.pistons()[request.piston.index()].node)
-                && !self.active_frame_retained_actors.contains(&request.piston)
-            {
-                let node = self.program.pistons()[request.piston.index()].node;
-                return Err(self.unsupported(node, "logical frame received an unowned piston action"));
+        let result = (|| {
+            while let Some(request) = self.future.piston_requests.pop_front() {
+                #[cfg(test)]
+                if self.test_recorder.test_recording {
+                    self.test_recorder
+                        .popped_piston_requests
+                        .push((request.piston, request.action, request.source));
+                }
+                if self.logical_node_owned(self.program.pistons()[request.piston.index()].node)
+                    && !self.active_frame_retained_actors.contains(&request.piston)
+                {
+                    let node = self.program.pistons()[request.piston.index()].node;
+                    return Err(self.unsupported(node, "logical frame received an unowned piston action"));
+                }
+                if self.active_frame_retained_actors.contains(&request.piston) {
+                    self.cancel_pull_wave_continuation();
+                    self.accept_action(request)?;
+                } else if !self.run_instant_kernel(request)? {
+                    self.accept_action(request)?;
+                }
             }
-            if self.active_frame_retained_actors.contains(&request.piston) || !self.run_instant_kernel(request)? {
-                self.accept_action(request)?;
-            }
-        }
-        Ok(())
+            Ok(())
+        })();
+        self.cancel_pull_wave_continuation();
+        result
     }
 
     fn accept_action(&mut self, request: PistonRequest) -> Result<(), GraphExecutionError> {
@@ -505,6 +581,7 @@ impl GraphBackend {
         if state.enabled || state.at != contact {
             return None;
         }
+
         self.future.deferred_pistons.iter().find(|event| {
             event.extending
                 && self.program.pistons()[event.piston.index()].facing == facing
@@ -912,6 +989,78 @@ impl GraphBackend {
             self.deliver_route(route, None)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod request_queue_tests {
+    use super::*;
+
+    fn request(actor: u32, action: mchprs_world::PistonAction, source: Option<u32>) -> PistonRequest {
+        PistonRequest {
+            piston: PistonId::new(actor),
+            action,
+            source: source.map(RouteId::new),
+        }
+    }
+
+    #[test]
+    fn request_queue_deduplicates_only_the_piston_action_pair_and_keeps_first_source() {
+        use mchprs_world::PistonAction::{Extend, Retract, RetractWithoutPull};
+
+        let mut queue = PistonRequestQueue::new();
+        assert!(queue.push_back_if_absent(request(0, Retract, Some(7))));
+        assert!(!queue.push_back_if_absent(request(0, Retract, Some(8))));
+        assert!(queue.push_back_if_absent(request(0, Extend, Some(9))));
+        assert!(queue.push_back_if_absent(request(0, RetractWithoutPull, Some(10))));
+        assert!(queue.push_back_if_absent(request(1, Retract, Some(11))));
+
+        assert_eq!(
+            queue.iter().copied().collect::<Vec<_>>(),
+            vec![
+                request(0, Retract, Some(7)),
+                request(0, Extend, Some(9)),
+                request(0, RetractWithoutPull, Some(10)),
+                request(1, Retract, Some(11)),
+            ]
+        );
+    }
+
+    #[test]
+    fn request_queue_pop_clears_membership_before_callbacks_can_reenqueue() {
+        use mchprs_world::PistonAction::Retract;
+
+        let mut queue = PistonRequestQueue::new();
+        let first = request(0, Retract, Some(3));
+        assert!(queue.push_back_if_absent(first));
+        assert_eq!(queue.pop_front(), Some(first));
+        assert!(queue.push_back_if_absent(request(0, Retract, Some(4))));
+        assert_eq!(queue.front().copied(), Some(request(0, Retract, Some(4))));
+    }
+
+    #[test]
+    fn request_queue_test_mutations_and_clear_keep_membership_in_sync() {
+        use mchprs_world::PistonAction::Retract;
+
+        let mut queue = PistonRequestQueue::new();
+        let first = request(0, Retract, Some(2));
+        assert!(queue.push_back_if_absent(first));
+        let mut cloned = queue.clone();
+        queue.set_front_source(None);
+        assert_eq!(queue.front().copied(), Some(request(0, Retract, None)));
+        assert_eq!(cloned.front().copied(), Some(first));
+
+        let removed = cloned.pop_front().unwrap();
+        assert!(cloned.push_front(removed));
+        assert!(!cloned.push_back_if_absent(request(0, Retract, Some(9))));
+        assert!(cloned.push_back_if_absent(request(1, Retract, Some(10))));
+
+        queue.clear();
+        cloned.clear();
+        assert!(queue.is_empty());
+        assert!(cloned.is_empty());
+        assert!(queue.push_back_if_absent(request(0, Retract, Some(12))));
+        assert!(cloned.push_back_if_absent(request(0, Retract, Some(13))));
     }
 }
 

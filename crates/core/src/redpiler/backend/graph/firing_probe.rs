@@ -32,6 +32,9 @@ pub(crate) struct Report {
     pub(crate) total_accepted: u64,
     pub(crate) samples: u64,
     pub(crate) selected_accepts: u64,
+    pub(crate) accepted_eligibility_misses: u64,
+    pub(crate) first_eligibility_miss: Option<String>,
+    pub(crate) accepted_without_pull: u64,
     pub(crate) reset_publications: u64,
     pub(crate) main_matches: u64,
     pub(crate) quasi_matches: u64,
@@ -39,6 +42,7 @@ pub(crate) struct Report {
     pub(crate) quasi_mismatches: u64,
     pub(crate) combined_matches: u64,
     pub(crate) combined_mismatches: u64,
+    pub(crate) accepted_power_mismatches: u64,
     pub(crate) evaluation_errors: u64,
     pub(crate) last_error: Option<String>,
     pub(crate) records: Vec<Record>,
@@ -90,6 +94,10 @@ impl Probe {
                 InputPort::Side => continue,
             }] = Some(output.roots[0].0 as usize);
         }
+        let mut eligibility_by_actor = vec![None; backend.program.pistons().len()];
+        for use_ in circuit.firing.as_ref().into_iter().flat_map(|plan| plan.uses.iter()) {
+            eligibility_by_actor[use_.actor.index()] = Some(circuit.outputs[use_.power_eligible_output as usize].roots[0].0 as usize);
+        }
         let mut queries = Vec::new();
         let mut query_by_actor = vec![None; backend.program.pistons().len()];
         for (index, spec) in backend.program.pistons().iter().enumerate() {
@@ -97,13 +105,15 @@ impl Probe {
                 continue;
             };
             let actor = PistonId::new(index as u32);
+            let mut roots = vec![main_root, quasi_root];
+            roots.extend(eligibility_by_actor[index]);
             query_by_actor[index] = Some(queries.len());
             queries.push(PowerQuery {
                 actor,
                 node: spec.node,
                 main_root,
                 quasi_root,
-                input_slots: input_dependencies(&circuit.program, &[main_root, quasi_root]).into_boxed_slice(),
+                input_slots: input_dependencies(&circuit.program, &roots).into_boxed_slice(),
             });
         }
         if query_by_actor.get(actor.index()).copied().flatten().is_none() {
@@ -178,6 +188,9 @@ impl Probe {
                 total_accepted: 0,
                 samples: 0,
                 selected_accepts: 0,
+                accepted_eligibility_misses: 0,
+                first_eligibility_miss: None,
+                accepted_without_pull: 0,
                 reset_publications: 0,
                 main_matches: 0,
                 quasi_matches: 0,
@@ -185,6 +198,7 @@ impl Probe {
                 quasi_mismatches: 0,
                 combined_matches: 0,
                 combined_mismatches: 0,
+                accepted_power_mismatches: 0,
                 evaluation_errors: 0,
                 last_error: None,
                 records: Vec::new(),
@@ -243,33 +257,37 @@ impl Probe {
         self.report.combined_mismatches += u64::from(candidate_powered != actual_powered);
         match cut {
             Cut::Sample => self.report.samples += 1,
-            Cut::Accepted => self.report.selected_accepts += 1,
+            Cut::Accepted => {
+                self.report.selected_accepts += 1;
+                self.report.accepted_power_mismatches += u64::from(candidate_powered != actual_powered);
+            }
             Cut::ResetPublication => {}
         }
         let mismatched = candidate_main != (main > 0) || candidate_quasi != (quasi > 0);
-        let record = Record {
+        let cut = match cut {
+            Cut::Sample => "sample",
+            Cut::Accepted => "accepted",
+            Cut::ResetPublication => "reset-publication",
+        };
+        if !mismatched
+            || self.report.records.len() >= MAX_RECORDS
+            || self.report.records.iter().filter(|record| record.cut == cut).count() >= MAX_RECORDS / 3
+            || self.report.records.iter().any(|record| record.actor == actor && record.cut == cut)
+        {
+            return;
+        }
+        self.report.records.push(Record {
             tick: backend.future.clock.logical_tick,
             phase: phase_name(backend.future.clock.phase),
-            cut: match cut {
-                Cut::Sample => "sample",
-                Cut::Accepted => "accepted",
-                Cut::ResetPublication => "reset-publication",
-            },
+            cut,
             actor: query.actor,
             fired: self.fired[query.actor.index()],
             candidate_main,
             candidate_quasi,
             actual_main: main,
             actual_quasi: quasi,
-            mismatch_evidence: if mismatched {
-                mismatch_source_evidence(backend, query, &self.circuit, &self.changes)
-            } else {
-                String::new()
-            },
-        };
-        if mismatched && self.report.records.len() < MAX_RECORDS {
-            self.report.records.push(record);
-        }
+            mismatch_evidence: mismatch_source_evidence(backend, query, &self.circuit, &self.changes),
+        });
     }
 
     fn accepted(&mut self, backend: &GraphBackend, request: PistonRequest, accepted: bool) {
@@ -287,6 +305,27 @@ impl Probe {
         }
         if self.use_by_actor.get(request.piston.index()).copied().flatten().is_none() {
             return;
+        }
+        if request.action == mchprs_world::PistonAction::RetractWithoutPull {
+            self.report.accepted_without_pull += 1;
+        } else if self.query_by_actor[request.piston.index()].is_some() {
+            match self.evaluation.power_eligible(request.piston) {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.report.accepted_eligibility_misses += 1;
+                    self.report.first_eligibility_miss.get_or_insert_with(|| {
+                        format!(
+                            "actor={:?} tick={} phase={} fired={} state={:?}",
+                            request.piston,
+                            backend.future.clock.logical_tick,
+                            phase_name(backend.future.clock.phase),
+                            self.fired[request.piston.index()],
+                            backend.state.pistons[request.piston.index()],
+                        )
+                    });
+                }
+                Err(error) => self.fail(&error),
+            }
         }
         self.report.total_accepted += 1;
         if let Err(error) = self.evaluation.accept_notify(request.piston) {
@@ -391,8 +430,14 @@ impl Probe {
 fn mismatch_source_evidence(backend: &GraphBackend, query: &PowerQuery, circuit: &SettledCircuit, sampled_inputs: &[(LayerInputId, bool)]) -> String {
     const MAX_SOURCES: usize = 12;
     let actor = &backend.program.nodes()[query.node.index()];
-    let mut evidence = format!("actor={:?}@{:?} kind={:?}", query.actor, actor.position, actor.kind);
-    if let Some((net, attenuation, source_attenuation)) = backend.program.classic().input_by_node[query.node.index()] {
+    let mut evidence = format!(
+        "actor={:?}@{:?} kind={:?} state={:?}",
+        query.actor,
+        actor.position,
+        actor.kind,
+        backend.state.pistons[query.actor.index()]
+    );
+    if let Some((net, attenuation, source_attenuation)) = backend.program.classic().input_by_node.get(query.node.index()).copied().flatten() {
         let source = backend.program.classic().nets[net as usize].source;
         let source_state = match backend.state.components.get(source.index()) {
             Some(ComponentState::Electrical(state)) => format!("powered:{}, strength:{}", state.powered, state.output_strength),
@@ -405,6 +450,26 @@ fn mismatch_source_evidence(backend: &GraphBackend, query: &PowerQuery, circuit:
             backend.program.nodes()[source.index()].position,
             backend.program.nodes()[source.index()].kind,
         ));
+    }
+    for port in [InputPort::Main, InputPort::Quasi] {
+        let contributions = backend
+            .program
+            .power_links_to(PowerTarget::Input { node: query.node, port })
+            .iter()
+            .filter(|link| backend.guard_matches(link.guard, None))
+            .filter_map(|link| {
+                let strength = backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation);
+                (strength > 0).then(|| {
+                    let site = backend.program.sites()[link.from.index()];
+                    format!(
+                        "{:?}@{:?}/{:?} port={:?} strength={strength}",
+                        link.from, site.position, site.source, link.from_port
+                    )
+                })
+            })
+            .take(MAX_SOURCES)
+            .collect::<Vec<_>>();
+        evidence.push_str(&format!(" {port:?}_live=[{}]", contributions.join("; ")));
     }
     let mut sources = Vec::new();
     for &(input_id, sampled) in sampled_inputs {

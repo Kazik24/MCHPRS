@@ -2,6 +2,7 @@
 use super::*;
 use crate::redpiler::passes::PassContext;
 use crate::redpiler::passes::planning::PlanBuilder;
+use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
 
 fn prepare_hops(world: &PlotWorld) -> CompileGraph {
     passes::rich::prepare(world, BOUNDS, vec![], &TaskMonitor::default(), AnalysisLimits::default())
@@ -84,6 +85,64 @@ fn assert_walk_equivalent(general: &GraphBackend, compiled: &GraphBackend) {
     assert_eq!(compiled.observed_operations, general.observed_operations);
     assert_eq!(compiled.scheduled_ticks(), general.scheduled_ticks());
     assert_eq!(compiled.counts, general.counts);
+}
+
+fn nested_wire_piston_world() -> PlotWorld {
+    let mut world = empty_world();
+    let bulb = BlockPos::new(6, 21, 5);
+    let trigger = bulb.offset(BlockFace::East);
+    let outer_wire = bulb.offset(BlockFace::Bottom);
+    let north_piston = outer_wire.offset(BlockFace::North);
+    let south_piston = outer_wire.offset(BlockFace::South);
+    let foreign_piston = BlockPos::new(12, 20, 12);
+    let foreign_power = foreign_piston.offset(BlockFace::West);
+
+    world.set_block(trigger.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(trigger, lever(false));
+    world.set_block(outer_wire.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(bulb, Block::from_name("copper_bulb").unwrap());
+    world.set_block(
+        outer_wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::new(
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                0,
+            ),
+        },
+    );
+    world.set_block(foreign_power.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(foreign_power, lever(true));
+    for (position, facing) in [
+        (north_piston, BlockFace::North),
+        (south_piston, BlockFace::South),
+        (foreign_piston, BlockFace::East),
+    ] {
+        world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            position,
+            Block::Piston {
+                piston: mchprs_blocks::blocks::RedstonePiston {
+                    facing: facing.into(),
+                    sticky: false,
+                    extended: false,
+                },
+            },
+        );
+    }
+    world
+}
+
+fn actor_at(backend: &GraphBackend, position: BlockPos) -> PistonId {
+    backend
+        .program
+        .pistons()
+        .iter()
+        .enumerate()
+        .find_map(|(index, piston)| (piston.position == position).then_some(PistonId::new(index as u32)))
+        .unwrap_or_else(|| panic!("expected a piston actor at {position:?}"))
 }
 
 #[test]
@@ -245,5 +304,88 @@ fn compiled_hops_preserve_nested_walks_and_outer_continuation() {
         general.tick().unwrap();
         compiled.tick().unwrap();
         assert_walk_equivalent(&general, &compiled);
+    }
+}
+
+#[test]
+fn compiled_hops_preserve_nested_wire_updates_and_foreign_fifo_prefix() {
+    let world = nested_wire_piston_world();
+    let mut compiled = hop_backend(prepare_hops(&world), true);
+    let mut general = hop_backend(prepare_hops(&world), false);
+
+    let bulb = BlockPos::new(6, 21, 5);
+    let trigger = bulb.offset(BlockFace::East);
+    let outer_wire = bulb.offset(BlockFace::Bottom);
+    let north = actor_at(&compiled, outer_wire.offset(BlockFace::North));
+    let south = actor_at(&compiled, outer_wire.offset(BlockFace::South));
+    let foreign_pos = BlockPos::new(12, 20, 12);
+    let foreign = actor_at(&compiled, foreign_pos);
+    let outer_node = compiled.positions[&outer_wire];
+    let foreign_prefix = PistonRequest {
+        piston: foreign,
+        action: mchprs_world::PistonAction::Extend,
+        source: None,
+    };
+    compiled.enqueue_piston(foreign_prefix);
+    general.enqueue_piston(foreign_prefix);
+
+    compiled.use_block(trigger).unwrap();
+    general.use_block(trigger).unwrap();
+
+    assert!(compiled.wire_state(outer_node).power > 0, "the bulb callback changes the outer wire");
+    let north_powered = compiled.piston_powered(north);
+    let south_powered = compiled.piston_powered(south);
+    assert!(
+        north_powered && south_powered,
+        "the outer wire has strength {}, north piston powered={north_powered}, south piston powered={south_powered}",
+        compiled.wire_state(outer_node).power
+    );
+    assert!(
+        compiled.wire_walks.iter().any(|walk| walk.is_compiled()),
+        "compiled wire hops actually run"
+    );
+    assert_eq!(
+        compiled.future.piston_requests.front(),
+        Some(&foreign_prefix),
+        "the earlier foreign request stays at the FIFO head"
+    );
+    let callback_index = compiled
+        .observed_operations
+        .iter()
+        .position(|operation| matches!(operation, GraphObservedOperation::Callback { target, .. } if *target == outer_wire))
+        .expect("the bulb route callbacks into the outer wire");
+    for piston_pos in [outer_wire.offset(BlockFace::North), outer_wire.offset(BlockFace::South)] {
+        assert!(
+            compiled.observed_operations.iter().enumerate().any(|(index, operation)| {
+                index > callback_index && matches!(operation, GraphObservedOperation::Sample { actor, powered: true, .. } if *actor == piston_pos)
+            }),
+            "the {piston_pos:?} piston samples the updated wire after its callback"
+        );
+    }
+
+    compiled.assert_same_execution_state(&general);
+    assert_walk_equivalent(&general, &compiled);
+    assert_eq!(compiled.callback_order, general.callback_order);
+    assert_eq!(compiled.observed_operations, general.observed_operations);
+
+    let native_trace_start = compiled.native_piston_trace().len();
+    compiled.drain_piston_actions().unwrap();
+    general.drain_piston_actions().unwrap();
+    compiled.assert_same_execution_state(&general);
+    assert_eq!(compiled.native_piston_trace(), general.native_piston_trace());
+    assert_walk_equivalent(&general, &compiled);
+    assert!(
+        compiled.native_piston_trace()[native_trace_start..]
+            .iter()
+            .any(|entry| { matches!(entry.operation, crate::redstone::piston::trace::Operation::Sample { pos, .. } if pos == foreign_pos) }),
+        "the preexisting foreign request reaches native acceptance before later requests"
+    );
+
+    let mut compiled_world = nested_wire_piston_world();
+    let mut general_world = nested_wire_piston_world();
+    compiled.flush(&mut compiled_world, false);
+    general.flush(&mut general_world, false);
+    for position in [bulb, outer_wire, outer_wire.offset(BlockFace::North), outer_wire.offset(BlockFace::South)] {
+        assert_eq!(compiled_world.get_block(position), general_world.get_block(position));
     }
 }

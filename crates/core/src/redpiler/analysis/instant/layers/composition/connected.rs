@@ -140,6 +140,24 @@ fn compile(
         let pins = composition.pins(cell, actor, no)?;
         entry_roots.push(pins[catalog.cells[cell as usize].stationary_entry.index()]);
     }
+    let mut quiet_reset_sites = FxHashSet::default();
+    for arrival in &routes.arrivals {
+        quiet_reset_sites.extend(arrival.quiet_reset_sites.iter().copied());
+    }
+    let mut quiet_reset_sites: Vec<_> = quiet_reset_sites.into_iter().collect();
+    quiet_reset_sites.sort_unstable();
+    for site in quiet_reset_sites {
+        let powered = composition.builder.input(
+            LayerInputSource::SourceAbove {
+                site,
+                port: PowerPort::Output,
+                threshold: 0,
+            },
+            LayerInputRole::AcceptanceRevalidation,
+        )?;
+        let powered = composition.builder.input_expr(powered)?;
+        entry_roots.push(composition.builder.not(powered)?);
+    }
     let stationary_entry = composition.builder.all(entry_roots)?;
     // Only the actual entry route is active. Sorting keeps construction deterministic;
     // it does not prescribe an execution order between independent outside events.
@@ -212,23 +230,43 @@ fn lifecycle_occurrences(
                     }
                 }
             }
-            let Some(reset_node) = use_.reset.observer() else { continue };
-            let Some(wake) = use_.reset.observer_wake() else { continue };
-            for &occurrence in &wake.on_base_changed {
-                lifecycle.push(LayerLifecycleOccurrence {
-                    actor: use_.actor,
-                    occurrence,
-                    phase: LayerLifecyclePhase::ResetObserverLifecycle,
-                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
-                });
+            if let (Some(reset_node), Some(wake)) = (use_.reset.observer(), use_.reset.observer_wake()) {
+                for &occurrence in &wake.on_base_changed {
+                    lifecycle.push(LayerLifecycleOccurrence {
+                        actor: use_.actor,
+                        occurrence,
+                        phase: LayerLifecyclePhase::ResetObserverLifecycle,
+                        reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
+                    });
+                }
+                for &occurrence in &wake.on_base_restored {
+                    lifecycle.push(LayerLifecycleOccurrence {
+                        actor: wake.watched_actor,
+                        occurrence,
+                        phase: LayerLifecyclePhase::ResetObserverLifecycle,
+                        reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
+                    });
+                }
+                continue;
             }
-            for &occurrence in &wake.on_base_restored {
-                lifecycle.push(LayerLifecycleOccurrence {
-                    actor: wake.watched_actor,
-                    occurrence,
-                    phase: LayerLifecyclePhase::ResetObserverLifecycle,
-                    reason: LayerLifecycleReason::ResetObserverUpdate { observer: reset_node },
-                });
+            let reset_occurrences = match &use_.reset {
+                CellReset::Payload { notification, sample, .. } | CellReset::InputRestoration { notification, sample, .. } => {
+                    Some([*notification, *sample])
+                }
+                CellReset::Observer { .. } => None,
+            };
+            if let Some(occurrences) = reset_occurrences {
+                for occurrence in occurrences {
+                    let row = LayerLifecycleOccurrence {
+                        actor: use_.actor,
+                        occurrence,
+                        phase: LayerLifecyclePhase::ResetInputLifecycle,
+                        reason: LayerLifecycleReason::OrdinaryGraphLifecycle,
+                    };
+                    if !lifecycle.contains(&row) {
+                        lifecycle.push(row);
+                    }
+                }
             }
         }
     }
@@ -275,12 +313,12 @@ impl Routes<'_> {
                 .iter()
                 .find(|use_| use_.actor == actor)
                 .expect("owned use");
-            self.emit(use_.retraction.routes.base_changed, accepted, &ancestors, composition)?;
+            self.emit(use_.retraction.routes.base_changed, actor, accepted, &ancestors, composition)?;
             let transfer = composition.finish_base(acceptance)?;
             if let Some(route) = use_.retraction.routes.far_changed {
-                self.emit(route, transfer, &ancestors, composition)?;
+                self.emit(route, actor, transfer, &ancestors, composition)?;
             }
-            self.emit(use_.retraction.routes.near_changed, accepted, &ancestors, composition)?;
+            self.emit(use_.retraction.routes.near_changed, actor, accepted, &ancestors, composition)?;
         }
         Ok(())
     }
@@ -389,12 +427,19 @@ impl Routes<'_> {
                 .builder
                 .input(LayerInputSource::BoundaryEvent { port, occurrence }, LayerInputRole::ActivationEvent)?;
             let event = composition.builder.input_expr(input)?;
-            self.delivery(occurrence, event, &FxHashSet::default(), composition)?;
+            self.delivery(occurrence, None, event, &FxHashSet::default(), composition)?;
         }
         Ok(())
     }
 
-    fn emit(&mut self, route: RouteId, when: LayerExprId, ancestors: &FxHashSet<PistonId>, composition: &mut Composition<'_>) -> Result<(), Failure> {
+    fn emit(
+        &mut self,
+        route: RouteId,
+        emitter: PistonId,
+        when: LayerExprId,
+        ancestors: &FxHashSet<PistonId>,
+        composition: &mut Composition<'_>,
+    ) -> Result<(), Failure> {
         if matches!(composition.builder.expression(when)?, LayerExpr::Constant(false)) {
             return Ok(());
         }
@@ -404,6 +449,7 @@ impl Routes<'_> {
                     route,
                     ordinal: ordinal as u32,
                 },
+                Some(emitter),
                 when,
                 ancestors,
                 composition,
@@ -415,6 +461,7 @@ impl Routes<'_> {
     fn delivery(
         &mut self,
         occurrence: RouteOccurrence,
+        emitter: Option<PistonId>,
         when: LayerExprId,
         ancestors: &FxHashSet<PistonId>,
         composition: &mut Composition<'_>,
@@ -449,29 +496,57 @@ impl Routes<'_> {
             Some(CallbackReceiver::Component(node)) => match self.graph.nodes[node.index()].kind {
                 CircuitNodeKind::Piston(actor) => Some(actor),
                 CircuitNodeKind::Wire(_) => {
-                    if let Some(arrival) = self.arrivals.iter().find(|arrival| arrival.wires.contains(&node)) {
-                        if occurrence == arrival.start {
+                    if self.arrivals.iter().any(|arrival| arrival.wires.contains(&node)) {
+                        if let Some(arrival) = self
+                            .arrivals
+                            .iter()
+                            .find(|arrival| arrival.wires.contains(&node) && occurrence == arrival.start && emitter == Some(arrival.producer))
+                        {
                             if !ancestors.contains(&arrival.producer) {
                                 return Err(Failure::Invalid("corridor arrival has no accepted source provenance".into()));
                             }
-                            composition.sample_after(
-                                self.actors[&arrival.consumer],
-                                arrival.consumer,
-                                when,
-                                vec![arrival.finish].into(),
-                                ancestors,
-                            )?;
+                            for finish in arrival.finishes.iter() {
+                                let Some(callback_guard) = composition.captured_guard(finish.guard)? else {
+                                    return Err(Failure::Unsupported(
+                                        LayerWitness::Callback(finish.occurrence),
+                                        LayerDeclineReason::CallbackSemanticsUnsupported,
+                                    ));
+                                };
+                                let mut callback_terms = Vec::with_capacity(finish.prior_guards.len() + 2);
+                                callback_terms.push(when);
+                                for &prior in finish.prior_guards.iter() {
+                                    let Some(prior_guard) = composition.captured_guard(prior)? else {
+                                        return Err(Failure::Unsupported(
+                                            LayerWitness::Callback(finish.occurrence),
+                                            LayerDeclineReason::CallbackSemanticsUnsupported,
+                                        ));
+                                    };
+                                    callback_terms.push(composition.builder.not(prior_guard)?);
+                                }
+                                callback_terms.push(callback_guard);
+                                let callback_when = composition.builder.all(callback_terms)?;
+                                // Each captured target chooses its first guard-qualified row.
+                                // `sample_after` then preserves piston request de-duplication
+                                // across the repeated Turbo directions.
+                                composition.sample_after_from(
+                                    self.actors[&finish.actor],
+                                    finish.actor,
+                                    callback_when,
+                                    vec![finish.occurrence].into(),
+                                    vec![arrival.start].into(),
+                                    ancestors,
+                                )?;
+                            }
                         }
                         return Ok(());
                     }
-                    if self.actors.len() != 1 {
+                    if self.actors.len() > 1 {
                         return Err(Failure::Unsupported(
                             LayerWitness::Callback(occurrence),
                             LayerDeclineReason::SignalArrivalUnproven,
                         ));
                     }
-                    // A singleton retains the outside walk; no later owned action can
-                    // observe an unmodelled synchronous feedback change.
+                    // A singleton retains the outside walk on Graph.
                     None
                 }
                 _ => None,

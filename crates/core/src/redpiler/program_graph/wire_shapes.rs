@@ -7,6 +7,8 @@ use mchprs_blocks::{BlockDirection, blocks::RedstoneWireSide};
 pub(crate) struct WireShape {
     /// Packed N/S/E/W raw connections when every side is fixed.
     pub(crate) raw: Option<u8>,
+    /// Possible side ids in N/S/E/W order, preserving ambiguity for exact proofs.
+    raw_outcomes: [u8; 4],
     /// Directions whose regulated connectivity is fixed for both dot and non-dot inputs.
     pub(crate) emitted_known: u8,
     /// Connected directions among the known emission bits, in N/S/E/W order.
@@ -23,12 +25,83 @@ pub(crate) struct WireShape {
 }
 
 impl WireShape {
+    /// Prove that no native shape callback direction can change this canonical wire.
+    ///
+    /// The raw-side inference ranges over every selectable contact variant. Every
+    /// Cartesian raw shape must preserve the canonical entry and each callback
+    /// direction must leave all legal strengths unchanged.
+    /// Callers must still retain any distinct Update/Turbo deliveries for this
+    /// wire; this certificate suppresses only Shape occurrences.
+    pub(crate) fn shape_callbacks_are_inert(graph: &CompileGraph, node: NodeId) -> bool {
+        let Some(node_spec) = graph.nodes.get(node.index()) else {
+            return false;
+        };
+        let CircuitNodeKind::Wire(wire_index) = &node_spec.kind else {
+            return false;
+        };
+        let ComponentState::Wire(saved) = &node_spec.state else {
+            return false;
+        };
+        let Some(wire_plan) = graph.wires.get(*wire_index).filter(|plan| plan.node == node) else {
+            return false;
+        };
+        let Some(shape) = Self::infer(graph, wire_plan) else {
+            return false;
+        };
+        if shape.raw_outcomes.contains(&0) {
+            return false;
+        }
+
+        let directions = [
+            BlockFace::Top,
+            BlockFace::Bottom,
+            BlockFace::North,
+            BlockFace::South,
+            BlockFace::East,
+            BlockFace::West,
+        ];
+        let mut saw_raw_pattern = false;
+        for pattern in 0..81 {
+            let mut value = pattern;
+            let sides: [u8; 4] = std::array::from_fn(|_| {
+                let side = (value % 3) as u8;
+                value /= 3;
+                side
+            });
+            if sides.iter().zip(shape.raw_outcomes).any(|(&side, outcomes)| outcomes & (1 << side) == 0) {
+                continue;
+            }
+            saw_raw_pattern = true;
+            let raw_shape = RedstoneWire::new(
+                RedstoneWireSide::from_id(sides[0].into()),
+                RedstoneWireSide::from_id(sides[1].into()),
+                RedstoneWireSide::from_id(sides[2].into()),
+                RedstoneWireSide::from_id(sides[3].into()),
+                saved.power,
+            );
+            if crate::redstone::wire::regulate_sides(*saved, raw_shape) != *saved {
+                return false;
+            }
+            for direction in directions {
+                for power in 0..=15 {
+                    let current = RedstoneWire { power, ..*saved };
+                    let raw = RedstoneWire { power, ..raw_shape };
+                    if crate::redstone::wire::on_neighbor_changed_from(current, raw, direction) != current {
+                        return false;
+                    }
+                }
+            }
+        }
+        saw_raw_pattern
+    }
+
     pub(crate) fn infer(graph: &CompileGraph, wire: &WirePlan) -> Option<Self> {
         let property = |slot: usize, test: fn(Block) -> bool| possible(graph, wire.canonical_neighbors[slot], test);
         let up = property(3, |block| block.is_solid());
         let mut outcomes = [0u8; 4];
         let mut result = Self {
             raw: None,
+            raw_outcomes: [0; 4],
             emitted_known: 0,
             emitted: 0,
             solid_known: 0,
@@ -60,6 +133,7 @@ impl WireShape {
             record_property(connects, index, &mut result.connects_known, &mut result.connects);
             outcomes[index] = side_outcomes(connects, up, above, solid, below);
         }
+        result.raw_outcomes = outcomes;
         let raw = outcomes.iter().all(|mask| mask.count_ones() == 1).then(|| {
             outcomes
                 .iter()
@@ -233,6 +307,90 @@ fn side_outcomes(connects: u8, up: u8, above: u8, solid: u8, below: u8) -> u8 {
 mod tests {
     use super::*;
 
+    use crate::plot::PlotWorld;
+    use crate::redpiler::passes;
+    use crate::world::World;
+    use crate::world::storage::Chunk;
+
+    const ROOT: BlockPos = BlockPos::new(8, 20, 8);
+
+    fn fixed_dot_graph() -> CompileGraph {
+        graph_with_neighbor_wires(&[])
+    }
+
+    fn graph_with_neighbor_wires(neighbors: &[BlockFace]) -> CompileGraph {
+        let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+        world.set_block(
+            ROOT,
+            Block::RedstoneWire {
+                wire: RedstoneWire::default(),
+            },
+        );
+        world.set_block(ROOT.offset(BlockFace::Bottom), Block::Stone {});
+        for &face in neighbors {
+            let position = ROOT.offset(face);
+            world.set_block(
+                position,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
+            world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+        }
+        passes::rich::prepare(
+            &world,
+            (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+            vec![],
+            &crate::redpiler::TaskMonitor::default(),
+            crate::redpiler::analysis::AnalysisLimits::default(),
+        )
+        .unwrap()
+        .graph
+    }
+
+    fn root_node(graph: &CompileGraph) -> NodeId {
+        graph
+            .wires
+            .iter()
+            .find(|wire| graph.nodes[wire.node.index()].position == Some(ROOT))
+            .unwrap()
+            .node
+    }
+
+    fn test_profile(graph: &mut CompileGraph, block: Block) -> ProfileId {
+        let profile = ProfileId::new(graph.profiles.len() as u32);
+        graph.profiles.push(Profile {
+            raw_state: block.get_id(),
+            registry_type: block.registry_id(),
+            solid: block.is_solid(),
+            transparent: block.is_transparent(),
+            cube: block.is_cube(),
+            electrical: ProfileElectrical::None,
+        });
+        profile
+    }
+
+    fn set_contact_variants(graph: &mut CompileGraph, site: SiteId, blocks: &[Block]) {
+        let position = graph.sites[site.index()].position;
+        let variants = blocks
+            .iter()
+            .copied()
+            .map(|block| ContactVariant {
+                when: GuardId::new(0),
+                profile: test_profile(graph, block),
+                receiver: None,
+            })
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let contact = ContactId::new(graph.contacts.len() as u32);
+        graph.contacts.push(ContactSpec {
+            node: NodeId::new(graph.nodes.len() as u32),
+            position,
+            variants,
+        });
+        graph.sites[site.index()].source = SiteSource::Contact(contact);
+    }
+
     #[test]
     fn conservative_side_masks_match_all_concrete_combinations() {
         for connects in 1..=3 {
@@ -268,5 +426,131 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn fixed_dot_shape_callbacks_are_inert_for_every_direction_and_wire_power() {
+        let graph = fixed_dot_graph();
+        let node = root_node(&graph);
+        let shape = WireShape::infer(
+            &graph,
+            &graph.wires[match &graph.nodes[node.index()].kind {
+                CircuitNodeKind::Wire(index) => *index,
+                _ => unreachable!(),
+            }],
+        )
+        .unwrap();
+        assert!(shape.raw.is_some());
+        assert!(WireShape::shape_callbacks_are_inert(&graph, node));
+    }
+
+    #[test]
+    fn fixed_straight_and_corner_shape_callbacks_are_inert() {
+        for (neighbors, expected_sides) in [
+            (
+                vec![BlockFace::North, BlockFace::South],
+                [
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::None,
+                    RedstoneWireSide::None,
+                ],
+            ),
+            (
+                vec![BlockFace::North, BlockFace::East],
+                [
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::None,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::None,
+                ],
+            ),
+        ] {
+            let mut graph = graph_with_neighbor_wires(&neighbors);
+            let node = root_node(&graph);
+            let CircuitNodeKind::Wire(wire_index) = &graph.nodes[node.index()].kind else {
+                unreachable!();
+            };
+            let raw = WireShape::infer(&graph, &graph.wires[*wire_index])
+                .and_then(|shape| shape.raw_wire(0))
+                .expect("fixed neighbor wires determine all raw sides");
+            assert_eq!(
+                [raw.north, raw.south, raw.east, raw.west],
+                expected_sides,
+                "the fixture should cover a canonical straight or corner",
+            );
+            graph.nodes[node.index()].state = ComponentState::Wire(raw);
+            assert!(WireShape::shape_callbacks_are_inert(&graph, node));
+        }
+    }
+
+    #[test]
+    fn variable_raw_side_can_be_inert_after_regulation() {
+        let mut graph = graph_with_neighbor_wires(&[BlockFace::East]);
+        let node = root_node(&graph);
+        let CircuitNodeKind::Wire(wire_index) = &graph.nodes[node.index()].kind else {
+            unreachable!();
+        };
+        let wire_index = *wire_index;
+        let west = graph.wires[wire_index].canonical_neighbors[0];
+        set_contact_variants(
+            &mut graph,
+            west,
+            &[
+                Block::Air {},
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            ],
+        );
+        graph.nodes[node.index()].state = ComponentState::Wire(RedstoneWire::new(
+            RedstoneWireSide::None,
+            RedstoneWireSide::None,
+            RedstoneWireSide::Side,
+            RedstoneWireSide::Side,
+            0,
+        ));
+
+        let shape = WireShape::infer(&graph, &graph.wires[wire_index]).unwrap();
+        assert!(shape.raw.is_none(), "the west raw side varies by contact alternative");
+        assert_eq!(
+            shape.raw_outcomes[3],
+            (1 << RedstoneWireSide::Side.get_id()) | (1 << RedstoneWireSide::None.get_id()),
+            "the ambiguous side should include both disconnected and connected forms",
+        );
+        assert!(WireShape::shape_callbacks_are_inert(&graph, node));
+    }
+
+    #[test]
+    fn shape_callback_declines_variable_contact_geometry_and_stale_entry_sides() {
+        let mut graph = fixed_dot_graph();
+        let node = root_node(&graph);
+        let CircuitNodeKind::Wire(wire_index) = &graph.nodes[node.index()].kind else {
+            unreachable!();
+        };
+        let wire_index = *wire_index;
+        let neighbor = graph.wires[wire_index].canonical_neighbors[1];
+        set_contact_variants(
+            &mut graph,
+            neighbor,
+            &[
+                Block::Air {},
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            ],
+        );
+        assert!(!WireShape::shape_callbacks_are_inert(&graph, node));
+
+        let mut stale = fixed_dot_graph();
+        let stale_node = root_node(&stale);
+        let ComponentState::Wire(saved) = &stale.nodes[stale_node.index()].state else {
+            unreachable!();
+        };
+        stale.nodes[stale_node.index()].state = ComponentState::Wire(RedstoneWire {
+            west: RedstoneWireSide::Side,
+            ..*saved
+        });
+        assert!(!WireShape::shape_callbacks_are_inert(&stale, stale_node));
     }
 }

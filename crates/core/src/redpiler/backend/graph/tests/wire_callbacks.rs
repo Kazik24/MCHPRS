@@ -181,6 +181,60 @@ fn logical_input_callback_ports_are_exact_and_preserve_native_lamp_callbacks() {
     assert!(backend.logical_input_callbacks.is_empty(), "reset clears persistent input callback ports");
 }
 
+#[test]
+fn marked_kernel_route_uses_general_delivery_with_an_active_kernel() {
+    // A certified route marker must preserve ordinary callback behavior.
+    let world = super::adder_tests::composed_chain_world(true);
+    let bounds = (BlockPos::new(2, 17, 2), BlockPos::new(15, 24, 15));
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let catalog = crate::redpiler::analysis::instant::boundaries::infer_boundaries(&prepared.graph, &monitor).unwrap();
+    let plan = crate::redpiler::analysis::instant::layers::compile_layers(&prepared.graph, &catalog, &monitor).unwrap();
+    assert!(!plan.regions.is_empty(), "fixture must produce an installed instant kernel");
+    prepared.graph.plans.instant.boundaries = Some(catalog);
+    prepared.graph.plans.instant.layers = Some(plan);
+    let (program, state) = prepared.graph.lower().unwrap();
+    let mut baseline = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(program.clone(), state, 0).unwrap();
+    let (kernel, route, kernel_deliveries) = program
+        .instant_kernels()
+        .iter()
+        .find_map(|kernel| {
+            kernel.routes.iter().find_map(|row| {
+                let original_count = program.routes()[row.route.index()].deliveries.len();
+                let delivered_count = row
+                    .steps
+                    .iter()
+                    .filter(|step| matches!(&step.kind, crate::redpiler::program_graph::KernelRouteStepKind::Deliver(_)))
+                    .count();
+                (delivered_count < original_count).then_some((kernel.clone(), row.route, delivered_count))
+            })
+        })
+        .expect("fixture contains an optimized route with a reduced callback tape");
+    let original_deliveries = program.routes()[route.index()].deliveries.len();
+    assert!(
+        kernel_deliveries < original_deliveries,
+        "the optimized row omits callbacks from the original route"
+    );
+    candidate.instant_kernel.active = Some(kernel);
+    candidate.general_delivery_routes[route.index()] = true;
+    let baseline_capture = (0..program.sites().len())
+        .map(|index| baseline.observe_site(SiteId::new(index as u32)))
+        .collect::<Vec<_>>();
+    let candidate_capture = (0..program.sites().len())
+        .map(|index| candidate.observe_site(SiteId::new(index as u32)))
+        .collect::<Vec<_>>();
+    baseline.deliver_route(route, Some(&baseline_capture)).unwrap();
+    candidate.deliver_route(route, Some(&candidate_capture)).unwrap();
+    assert_eq!(candidate.state, baseline.state, "marked route executes its original callbacks");
+    assert_eq!(
+        candidate.future.piston_requests, baseline.future.piston_requests,
+        "marked route preserves native queued piston work"
+    );
+    assert_eq!(candidate.counts.callbacks, baseline.counts.callbacks);
+}
+
 fn compile(graph: &mut CompileGraph) {
     let monitor = TaskMonitor::default();
     let options = Default::default();

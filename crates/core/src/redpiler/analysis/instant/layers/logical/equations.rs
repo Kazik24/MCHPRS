@@ -771,6 +771,7 @@ mod tests {
             stateful_repeaters: FxHashSet::default(),
             raw: LayerBuilder::new(monitor).unwrap(),
             signal_memo: signals::SignalMemo::default(),
+            reset_excluded_signal_memos: Vec::new(),
             reduced: LayerBuilder::new(monitor).unwrap(),
             expanded: FxHashMap::default(),
             sources: FxHashMap::default(),

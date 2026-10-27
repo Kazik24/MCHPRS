@@ -2,6 +2,7 @@
 //! Callers must supply source-proven callback order. Settled corridor equations alone
 //! cannot authorize a sample. Base callbacks run before the conditional Far transfer.
 use super::*;
+use mchprs_blocks::blocks::Block;
 use rustc_hash::FxHashSet;
 use std::collections::VecDeque;
 
@@ -18,6 +19,8 @@ struct Request {
     requested: LayerExprId,
     /// These source occurrences justify the qualifying callback.
     causes: Box<[RouteOccurrence]>,
+    /// These earlier original callbacks are the cuts that can create this request.
+    enqueue_triggers: Box<[RouteOccurrence]>,
     /// These actors are consumed whenever this particular event predicate is true.
     ancestors: FxHashSet<PistonId>,
 }
@@ -109,6 +112,108 @@ impl<'a> Composition<'a> {
         Ok(value)
     }
 
+    /// Build a callback guard at the current composed FIFO prefix, including
+    /// captured site variants. Wire-arrival callbacks use this rather than the
+    /// ordinary electrical tracer, which correctly has no captured-site view.
+    pub(super) fn captured_guard(&mut self, id: GuardId) -> Result<Option<LayerExprId>, ConstructionError> {
+        self.captured_guard_inner(id, 0)
+    }
+
+    fn captured_guard_inner(&mut self, id: GuardId, depth: usize) -> Result<Option<LayerExprId>, ConstructionError> {
+        self.builder.visit()?;
+        if depth >= 128 {
+            return Err(ConstructionError::BudgetExceeded);
+        }
+        match self.graph.guards[id.index()].clone() {
+            Guard::Always => self.builder.constant(true).map(Some),
+            Guard::State(test) => self.state(test).map(Some),
+            Guard::Site { view: OperandView::Live, .. } => {
+                let mut tracer = signals::SignalTracer::new(self.graph, self.power, &self.wires, &self.state, LayerInputRole::RequestSample);
+                match tracer.guard(id, &mut self.builder) {
+                    Ok(value) => Ok(Some(value)),
+                    Err(ConstructionError::Unsupported(_)) => Ok(None),
+                    Err(error) => Err(error),
+                }
+            }
+            Guard::Site {
+                site,
+                view: OperandView::Captured,
+                test,
+            } => self.captured_site_test(site, test, depth + 1),
+            Guard::Not(child) => {
+                let Some(value) = self.captured_guard_inner(child, depth + 1)? else {
+                    return Ok(None);
+                };
+                self.builder.not(value).map(Some)
+            }
+            Guard::All(children) | Guard::Any(children) => {
+                let is_all = matches!(self.graph.guards[id.index()], Guard::All(_));
+                let mut values = Vec::with_capacity(children.len());
+                for child in children.iter().copied() {
+                    let Some(value) = self.captured_guard_inner(child, depth + 1)? else {
+                        return Ok(None);
+                    };
+                    values.push(value);
+                }
+                if is_all {
+                    self.builder.all(values).map(Some)
+                } else {
+                    self.builder.any(values).map(Some)
+                }
+            }
+        }
+    }
+
+    fn captured_site_test(&mut self, site: SiteId, test: SiteTest, depth: usize) -> Result<Option<LayerExprId>, ConstructionError> {
+        match self.graph.sites[site.index()].source {
+            SiteSource::Constant(profile) => self
+                .builder
+                .constant(signals::profile_matches(self.graph.profiles[profile.index()], Some(profile), test))
+                .map(Some),
+            SiteSource::Component(node) => {
+                // GraphBackend exposes component profile identity as None even
+                // when the component has a saved raw state.
+                if matches!(test, SiteTest::Profile(_)) {
+                    return self.builder.constant(false).map(Some);
+                }
+                let spec = &self.graph.nodes[node.index()];
+                let block = match spec.state {
+                    ComponentState::Wire(wire) => Some(Block::RedstoneWire { wire }),
+                    _ => spec.raw_state.map(Block::from_id),
+                };
+                let Some(block) = block else {
+                    return Ok(None);
+                };
+                let value = match test {
+                    SiteTest::Solid => block.is_solid(),
+                    SiteTest::Transparent => block.is_transparent(),
+                    SiteTest::IsWire => matches!(block, Block::RedstoneWire { .. }),
+                    // GraphBackend resolves component profile identity as None.
+                    SiteTest::Profile(_) => false,
+                };
+                self.builder.constant(value).map(Some)
+            }
+            SiteSource::Contact(contact) => {
+                let variants = self.graph.contacts[contact.index()].variants.clone();
+                let mut terms = Vec::new();
+                let mut unmatched = self.builder.constant(true)?;
+                for variant in variants.iter() {
+                    self.builder.visit()?;
+                    let Some(condition) = self.captured_guard_inner(variant.when, depth + 1)? else {
+                        return Ok(None);
+                    };
+                    let selected = self.builder.all([unmatched, condition])?;
+                    if signals::profile_matches(self.graph.profiles[variant.profile.index()], Some(variant.profile), test) {
+                        terms.push(selected);
+                    }
+                    let not_condition = self.builder.not(condition)?;
+                    unmatched = self.builder.all([unmatched, not_condition])?;
+                }
+                self.builder.any(terms).map(Some)
+            }
+        }
+    }
+
     fn pins(&mut self, cell: u32, actor: PistonId, event: LayerExprId) -> Result<Vec<LayerExprId>, ConstructionError> {
         for pin in &self.catalog.cells[cell as usize].pins {
             if let CellPin::Read(CellRead::State(test)) = pin {
@@ -157,8 +262,21 @@ impl<'a> Composition<'a> {
         causes: Box<[RouteOccurrence]>,
         ancestors: &FxHashSet<PistonId>,
     ) -> Result<(), ConstructionError> {
+        self.sample_after_from(cell, actor, event, causes.clone(), causes, ancestors)
+    }
+
+    /// Record the earlier parent callback that generated a sampled child callback.
+    pub(super) fn sample_after_from(
+        &mut self,
+        cell: u32,
+        actor: PistonId,
+        event: LayerExprId,
+        causes: Box<[RouteOccurrence]>,
+        enqueue_triggers: Box<[RouteOccurrence]>,
+        ancestors: &FxHashSet<PistonId>,
+    ) -> Result<(), ConstructionError> {
         let use_ = self.use_(cell, actor)?;
-        if causes.is_empty() || causes.iter().any(|cause| !use_.activations.contains(cause)) {
+        if causes.is_empty() || enqueue_triggers.is_empty() || causes.iter().any(|cause| !use_.activations.contains(cause)) {
             return Err("sample has no original actor callback witness".into());
         }
         // This event implies prior acceptance; a failed sample never adds an ancestor.
@@ -167,7 +285,7 @@ impl<'a> Composition<'a> {
         }
         let requested_pin = use_.requested;
         let values = self.pins(cell, actor, event)?;
-        self.push_request(cell, actor, values[requested_pin.index()], causes, ancestors)
+        self.push_request(cell, actor, values[requested_pin.index()], causes, enqueue_triggers, ancestors)
     }
 
     /// The original callback already sampled this request; acceptance still reads live state.
@@ -181,7 +299,7 @@ impl<'a> Composition<'a> {
         if !self.use_(cell, actor)?.activations.contains(&cause) {
             return Err("queued request has no original actor callback witness".into());
         }
-        self.push_request(cell, actor, requested, vec![cause].into(), &FxHashSet::default())
+        self.push_request(cell, actor, requested, vec![cause].into(), vec![cause].into(), &FxHashSet::default())
     }
 
     fn push_request(
@@ -190,11 +308,18 @@ impl<'a> Composition<'a> {
         actor: PistonId,
         sampled: LayerExprId,
         causes: Box<[RouteOccurrence]>,
+        enqueue_triggers: Box<[RouteOccurrence]>,
         ancestors: &FxHashSet<PistonId>,
     ) -> Result<(), ConstructionError> {
         let pending = self.pending.get(&actor).copied().unwrap_or(self.builder.constant(false)?);
         let not_pending = self.builder.not(pending)?;
         let requested = self.builder.all([sampled, not_pending])?;
+        // A statically false sample cannot create a native FIFO request or any
+        // later acceptance/resource effects. Drop it before expanding its
+        // callback paths; keep every nonconstant sample for live revalidation.
+        if matches!(self.builder.expression(requested)?, LayerExpr::Constant(false)) {
+            return Ok(());
+        }
         let pending_after = self.builder.any([pending, requested])?;
         self.pending.insert(actor, pending_after);
         self.requests.push_back(Request {
@@ -202,6 +327,7 @@ impl<'a> Composition<'a> {
             actor,
             requested,
             causes,
+            enqueue_triggers,
             ancestors: ancestors.clone(),
         });
         Ok(())
@@ -243,6 +369,7 @@ impl<'a> Composition<'a> {
                 consumed_after: after,
                 cause: UseCause {
                     boundary_occurrences: request.causes,
+                    enqueue_triggers: request.enqueue_triggers,
                 },
             }]
             .into(),

@@ -24,7 +24,7 @@ impl SettledMachine {
             let (resource, source) = match output.target {
                 SettledTarget::Register(read) => (read.resource, read.source),
                 SettledTarget::ResourceState { resource, source } => (resource, source),
-                SettledTarget::Power(_) | SettledTarget::InstantPowerEligible(_) => continue,
+                SettledTarget::Power(_) | SettledTarget::ResetExcludedPower { .. } | SettledTarget::InstantPowerEligible(_) => continue,
             };
             if output.kind != SettledValueKind::Bool {
                 return Err("logical register output must be Boolean".into());

@@ -1,6 +1,6 @@
 //! Cold inspection tables for the experimental boundary catalog; no runtime state is copied.
 use super::*;
-use crate::redpiler::program_graph::{BoundaryDirection, BoundaryOwner, BoundaryPortKind, CellDeclineReason, ComparatorPortRole, FixedReadRole};
+use crate::redpiler::program_graph::{BoundaryDirection, BoundaryOwner, BoundaryPortKind, CellDeclineReason, CellReset, ComparatorPortRole, FixedReadRole};
 use serde_json::{Value, json};
 
 #[derive(Default)]
@@ -32,10 +32,15 @@ pub(super) fn export(graph: &CompileGraph) -> Tables {
             let mut resets: Vec<_> = cell.uses.iter().filter_map(|use_| use_.reset.observer()).collect();
             resets.sort_unstable();
             resets.dedup();
-            json!({"id":typed_id("instant_cell",index),
+            let mut row = json!({"id":typed_id("instant_cell",index),
                 "actors":cell.uses.iter().map(|use_|typed_id("piston",use_.actor.index())).collect::<Vec<_>>(),
                 "resources":cell.resources.iter().map(|resource|typed_id("resource",resource.resource.index())).collect::<Vec<_>>(),
-                "resets":resets.iter().map(|reset|typed_id("node",reset.index())).collect::<Vec<_>>()})
+                "resets":resets.iter().map(|reset|typed_id("node",reset.index())).collect::<Vec<_>>()});
+            let reset_lifecycle = reset_lifecycle(cell);
+            if !reset_lifecycle.is_empty() {
+                row["reset_lifecycle"] = json!(reset_lifecycle);
+            }
+            row
         }).collect(),
         corridors: catalog.corridors.iter().enumerate().map(|(index, corridor)| json!({
             "id":typed_id("instant_corridor",index),
@@ -54,6 +59,24 @@ pub(super) fn export(graph: &CompileGraph) -> Tables {
             "reason":decline_reason(decline.reason)
         })).collect(),
     }
+}
+
+fn reset_lifecycle(cell: &crate::redpiler::program_graph::CellContract) -> Vec<Value> {
+    let mut rows = Vec::new();
+    for use_ in &cell.uses {
+        let (kind, notification, sample) = match &use_.reset {
+            CellReset::Observer { .. } => continue,
+            CellReset::Payload { notification, sample, .. } => ("payload", *notification, *sample),
+            CellReset::InputRestoration { notification, sample, .. } => ("input_restoration", *notification, *sample),
+        };
+        rows.push(json!({
+            "actor":typed_id("piston",use_.actor.index()),
+            "kind":kind,
+            "occurrence":occurrence(notification),
+        }));
+        rows.push(json!({"actor":typed_id("piston",use_.actor.index()),"kind":kind,"occurrence":occurrence(sample)}));
+    }
+    rows
 }
 
 fn occurrence(value: crate::redpiler::program_graph::RouteOccurrence) -> Value {

@@ -191,6 +191,73 @@ fn completed_signal_memo_reuses_queries_without_changing_roots() {
 }
 
 #[test]
+fn native_power_trace_does_not_retain_a_dead_wire_through_an_aliased_query_root() {
+    let monitor = TaskMonitor::default();
+    let mut graph = empty_graph(link(0, 0, 0, 0));
+    graph.power_links.clear();
+
+    let mut add_component = |position: i32, kind: CircuitNodeKind, block: Block| {
+        let node = NodeId::new(graph.nodes.len() as u32);
+        graph.nodes.push(CircuitNodeDraft {
+            position: Some(BlockPos::new(position, 20, 0)),
+            raw_state: Some(block.get_id()),
+            state: match &kind {
+                CircuitNodeKind::Wire(_) => ComponentState::Wire(RedstoneWire::default()),
+                _ => ComponentState::Electrical(NodeState::default()),
+            },
+            kind,
+            output_route: None,
+        });
+        let site = SiteId::new(graph.sites.len() as u32);
+        graph.sites.push(SiteSpec {
+            position: BlockPos::new(position, 20, 0),
+            source: SiteSource::Component(node),
+            source_strength: 15,
+        });
+        (node, site)
+    };
+
+    let wire_block = Block::RedstoneWire {
+        wire: RedstoneWire::default(),
+    };
+    let (wire, wire_site) = add_component(0, CircuitNodeKind::Wire(0), wire_block);
+    let (_, first_sink) = add_component(1, CircuitNodeKind::Electrical(NodeType::Constant), Block::Stone {});
+    let (_, second_sink) = add_component(2, CircuitNodeKind::Electrical(NodeType::Constant), Block::Stone {});
+    let (_, lever_site) = add_component(
+        3,
+        CircuitNodeKind::Electrical(NodeType::Lever),
+        Block::Lever { lever: Default::default() },
+    );
+    graph.profiles.push(profile(Block::RedstoneBlock {}, ProfileElectrical::RedstoneSource));
+    let literal_site = SiteId::new(graph.sites.len() as u32);
+    graph.sites.push(SiteSpec {
+        position: BlockPos::new(4, 20, 0),
+        source: SiteSource::Constant(ProfileId::new(0)),
+        source_strength: 15,
+    });
+
+    graph.power_links.extend([
+        link(lever_site.index() as u32, wire.index() as u32, 0, 0),
+        link(wire_site.index() as u32, first_sink.index() as u32, 0, 0),
+        link(literal_site.index() as u32, first_sink.index() as u32, 0, 0),
+        link(lever_site.index() as u32, second_sink.index() as u32, 0, 0),
+    ]);
+
+    let trace = trace_native_power_targets(&graph, &[target(first_sink.index() as u32), target(second_sink.index() as u32)], &monitor).unwrap();
+
+    assert!(trace.inputs.contains(&LayerInputSource::SourceAbove {
+        site: lever_site,
+        port: PowerPort::Output,
+        threshold: 0,
+    }));
+    assert!(!trace.wires.contains(&wire), "wireA only contributes to the first, constant-true query");
+    assert!(
+        !trace.source_sites.contains(&wire_site),
+        "wireA's aliased equation root is not a live source site"
+    );
+}
+
+#[test]
 fn failed_query_does_not_export_visiting_entries_in_signal_memo() {
     let monitor = TaskMonitor::default();
     let (mut graph, internal) = line(0, false);

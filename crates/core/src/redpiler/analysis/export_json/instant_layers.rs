@@ -29,7 +29,7 @@ pub(super) fn export(graph: &CompileGraph) -> Tables {
 }
 
 fn region(value: &LayeredRegion, graph: &CompileGraph) -> Value {
-    json!({
+    let row = json!({
         "id": typed_id("instant_layer_region", value.id.0 as usize),
         "stationary_entry": value.stationary_entry.0,
         "cells": value.cells.iter().map(|cell| typed_id("instant_cell", *cell as usize)).collect::<Vec<_>>(),
@@ -52,7 +52,8 @@ fn region(value: &LayeredRegion, graph: &CompileGraph) -> Value {
             "value": pin.value.0,
         })).collect::<Vec<_>>(),
         "layers": value.layers.iter().map(layer).collect::<Vec<_>>(),
-    })
+    });
+    row
 }
 
 fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
@@ -145,10 +146,14 @@ fn layer(value: &CausalLayer) -> Value {
 }
 
 fn cause(value: &UseCause) -> Value {
-    json!({
+    let mut result = json!({
         "kind":"boundary",
         "occurrences":value.boundary_occurrences.iter().map(|occurrence|occurrence_dto(*occurrence)).collect::<Vec<_>>()
-    })
+    });
+    if value.enqueue_triggers != value.boundary_occurrences {
+        result["enqueue_triggers"] = json!(value.enqueue_triggers.iter().map(|occurrence|occurrence_dto(*occurrence)).collect::<Vec<_>>());
+    }
+    result
 }
 
 fn resource_output(value: &LayerResourceOutput) -> Value {
@@ -191,6 +196,7 @@ fn lifecycle_phase(value: LayerLifecyclePhase) -> &'static str {
         LayerLifecyclePhase::DeferredHeadRestoration => "deferred_head_restoration",
         LayerLifecyclePhase::DeferredResourceRestoration => "deferred_resource_restoration",
         LayerLifecyclePhase::ResetObserverLifecycle => "reset_observer_lifecycle",
+        LayerLifecyclePhase::ResetInputLifecycle => "reset_input_lifecycle",
         LayerLifecyclePhase::ResetOutput => "reset_output",
         LayerLifecyclePhase::ResetFarShapeChange => "reset_far_shape_change",
     }
@@ -672,7 +678,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
             if !region_actors.contains(actor) || !pistons.contains(actor) {
                 return Err(invalid("lifecycle actor is outside its cells"));
             }
-            let (route, _) = occurrence(&lifecycle["occurrence"], &routes)?;
+            let (route, ordinal) = occurrence(&lifecycle["occurrence"], &routes)?;
             let phase = lifecycle["phase"].as_str().ok_or_else(|| invalid("lifecycle row has no phase"))?;
             let reason = lifecycle["reason"]["kind"]
                 .as_str()
@@ -681,6 +687,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
             let valid_reason = match phase {
                 "retraction_base_changed" | "retraction_far_changed" | "retraction_near_changed" => reason == "inert_cell_callback",
                 "reset_observer_lifecycle" => reset_reason,
+                "reset_input_lifecycle" => reason == "ordinary_graph_lifecycle",
                 "reset_output" | "reset_far_shape_change" => reason == "ordinary_graph_lifecycle",
                 "deferred_base_restoration" | "deferred_head_restoration" | "deferred_resource_restoration" => reason == "ordinary_graph_lifecycle",
                 _ => false,
@@ -745,6 +752,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
                         })
                     })
                 }),
+                "reset_input_lifecycle" => reset_input_lifecycle_matches(&region_cells, actor, &route, ordinal, &cell_rows)?,
                 _ => false,
             };
             if !route_matches {
@@ -779,6 +787,32 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
         validate_witness(&row["witness"], &actors, &wires, &nodes, &routes, &graph.power_links)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod reset_lifecycle_tests {
+    use super::reset_input_lifecycle_matches;
+    use serde_json::json;
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn reset_input_lifecycle_requires_the_exact_catalog_occurrence() {
+        let cell = json!({
+            "actors":["piston:2"],
+            "reset_lifecycle":[{
+                "actor":"piston:2",
+                "kind":"input_restoration",
+                "occurrence":{"route":"route:9","ordinal":0}
+            }]
+        });
+        let cell_rows = HashMap::from([("instant_cell:1", &cell)]);
+        let region_cells = HashSet::from(["instant_cell:1"]);
+
+        assert!(reset_input_lifecycle_matches(&region_cells, "piston:2", "route:9", 0, &cell_rows).unwrap());
+        assert!(!reset_input_lifecycle_matches(&region_cells, "piston:2", "route:10", 0, &cell_rows).unwrap());
+        assert!(!reset_input_lifecycle_matches(&region_cells, "piston:2", "route:9", 1, &cell_rows).unwrap());
+        assert!(!reset_input_lifecycle_matches(&region_cells, "piston:3", "route:9", 0, &cell_rows).unwrap());
+    }
 }
 
 fn queued_receiver_matches(
@@ -914,6 +948,33 @@ fn occurrence<'a>(value: &Value, routes: &HashMap<&'a str, &'a RouteDto>) -> Res
         return Err(invalid("route occurrence is outside its delivery table"));
     }
     Ok((route.to_owned(), ordinal))
+}
+
+fn reset_input_lifecycle_matches(
+    cells: &HashSet<&str>,
+    actor: &str,
+    route: &str,
+    ordinal: u64,
+    cell_rows: &HashMap<&str, &Value>,
+) -> Result<bool, ExportError> {
+    for cell_id in cells {
+        let cell = cell_rows[*cell_id];
+        if !array(cell, "actors")?.iter().any(|candidate| candidate.as_str() == Some(actor)) {
+            continue;
+        }
+        for reset_row in array(cell, "reset_lifecycle")? {
+            if reset_row["actor"].as_str() != Some(actor)
+                || !matches!(reset_row["kind"].as_str(), Some("payload" | "input_restoration"))
+            {
+                continue;
+            }
+            let occurrence = &reset_row["occurrence"];
+            if occurrence["route"].as_str() == Some(route) && occurrence["ordinal"].as_u64() == Some(ordinal) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 fn validate_witness(

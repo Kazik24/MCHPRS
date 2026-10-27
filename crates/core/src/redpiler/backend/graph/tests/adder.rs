@@ -18,6 +18,10 @@ mod instant_contract_tests;
 mod instant_event_tests;
 #[path = "instant_layers.rs"]
 mod instant_layer_tests;
+
+pub(super) fn composed_chain_world(dust: bool) -> crate::plot::PlotWorld {
+    instant_layer_tests::composed_chain_world(dust)
+}
 #[path = "instant_proxy.rs"]
 mod instant_proxy_tests;
 #[path = "instant_recognition.rs"]
@@ -350,11 +354,31 @@ pub(super) fn first_difference(expected: &Future, actual: &Future) -> Option<Str
     }
     differs!(tick);
     differs!(phase);
-    differs!(cells);
-    differs!(entities);
-    differs!(scheduled);
-    differs!(events);
-    differs!(motions);
+    macro_rules! differs_sequence {
+        ($field:ident) => {
+            if expected.$field != actual.$field {
+                let index = expected
+                    .$field
+                    .iter()
+                    .zip(&actual.$field)
+                    .position(|(native, graph)| native != graph)
+                    .unwrap_or(expected.$field.len().min(actual.$field.len()));
+                return Some(format!(
+                    "{} at index {index} (native length {}, graph length {}): native {:?}; graph {:?}",
+                    stringify!($field),
+                    expected.$field.len(),
+                    actual.$field.len(),
+                    expected.$field.get(index),
+                    actual.$field.get(index),
+                ));
+            }
+        };
+    }
+    differs_sequence!(cells);
+    differs_sequence!(entities);
+    differs_sequence!(scheduled);
+    differs_sequence!(events);
+    differs_sequence!(motions);
     None
 }
 

@@ -9,28 +9,26 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 const MAX_LAYER_BYTES: usize = MAX_GRAPH_PREPARATION_BYTES / 8;
 const MAX_LAYER_WORK: usize = 8 * 1024 * 1024;
-/// At most eight selected cuts bound full owner/perimeter/proof rebuilds to nine passes.
-const MAX_FAILURE_GUIDED_CUTS: usize = 8;
 
 /// SignalTracer evidence for a set of outside power reads, retained only while validating a native input cone.
 pub(crate) struct NativePowerTrace {
     /// Only boundary reads reachable from at least one independent query root.
     pub(crate) inputs: FxHashSet<LayerInputSource>,
-    /// Only wire queries whose non-constant equation is used by a live query root.
+    /// Wire components that are actual live SourceAbove leaves for native queries.
     pub(crate) wires: FxHashSet<NodeId>,
-    /// Only source queries whose non-constant equation is used by a live query root.
+    /// Exact SourceAbove sites that are actual live leaves for native queries.
     pub(crate) source_sites: FxHashSet<SiteId>,
 }
 
-/// Trace native input roots with the same directed power/guard semantics used by settled equations.
+/// Trace native input roots to their immediate stored-value boundary.
+///
+/// Wires are ordinary Graph-owned state in this analysis, not combinational
+/// equations to inline. Stopping at each wire lets the caller close over that
+/// wire's own Main query independently, preserving the actual stored wire
+/// value and avoiding expression interning across unrelated query roots.
 pub(crate) fn trace_native_power_targets(graph: &CompileGraph, targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<NativePowerTrace, String> {
     let power = index_power(graph);
-    let internal_wires: FxHashSet<_> = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .filter_map(|(index, node)| matches!(node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32)))
-        .collect();
+    let internal_wires = FxHashSet::default();
     let state = FxHashMap::default();
     let mut builder = LayerBuilder::new(monitor).map_err(|error| format!("native input trace builder: {error:?}"))?;
     let mut tracer = signals::SignalTracer::new(graph, &power, &internal_wires, &state, LayerInputRole::RequestSample).with_stable_wire_modes();
@@ -45,27 +43,34 @@ pub(crate) fn trace_native_power_targets(graph: &CompileGraph, targets: &[PowerT
                 .map_err(|error| format!("native input power trace declined: {error:?}"))?,
         );
     }
-    let (inputs, live_nonconstant) = reachable_trace_inputs(&builder, &roots, monitor)?;
-    Ok(NativePowerTrace {
-        inputs,
-        wires: tracer.queried_wire_nodes_in(&live_nonconstant),
-        source_sites: tracer.queried_source_sites_in(&live_nonconstant),
-    })
+    let inputs = reachable_trace_inputs(&builder, &roots, monitor)?;
+    let source_sites = inputs
+        .iter()
+        .filter_map(|input| match input {
+            LayerInputSource::SourceAbove { site, .. } => Some(*site),
+            _ => None,
+        })
+        .collect::<FxHashSet<_>>();
+    let wires = source_sites
+        .iter()
+        .filter_map(|site| {
+            let SiteSource::Component(node) = graph.sites.get(site.index())?.source else {
+                return None;
+            };
+            matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)).then_some(node)
+        })
+        .collect();
+    Ok(NativePowerTrace { inputs, wires, source_sites })
 }
 
 /// Keep each query root separate while retaining only the expression/input slice
 /// that can affect at least one root. The tracer's memo maps include visited
 /// branches later folded away by a constant guard.
-fn reachable_trace_inputs(
-    builder: &LayerBuilder<'_>,
-    roots: &[LayerExprId],
-    monitor: &TaskMonitor,
-) -> Result<(FxHashSet<LayerInputSource>, FxHashSet<LayerExprId>), String> {
+fn reachable_trace_inputs(builder: &LayerBuilder<'_>, roots: &[LayerExprId], monitor: &TaskMonitor) -> Result<FxHashSet<LayerInputSource>, String> {
     if monitor.cancelled() {
         return Err("cancelled while reducing native power trace roots".into());
     }
     let mut live = FxHashSet::default();
-    let mut live_nonconstant = FxHashSet::default();
     let mut inputs = FxHashSet::default();
     let mut pending = roots.to_vec();
     let mut work = 0usize;
@@ -86,21 +91,18 @@ fn reachable_trace_inputs(
         {
             LayerExpr::Constant(_) => {}
             LayerExpr::Input(input) => {
-                live_nonconstant.insert(id);
                 let binding = builder.inputs.get(input.0 as usize).ok_or("native power trace input is missing")?;
                 inputs.insert(binding.source);
             }
             LayerExpr::Not(child) => {
-                live_nonconstant.insert(id);
                 pending.push(*child);
             }
             LayerExpr::All(children) | LayerExpr::Any(children) => {
-                live_nonconstant.insert(id);
                 pending.extend(children.iter().copied());
             }
         }
     }
-    Ok((inputs, live_nonconstant))
+    Ok(inputs)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -137,6 +139,7 @@ pub(crate) use kernels::lower_with_context as lower_kernels_with_context;
 pub(crate) use reduction::reduce as lower_region;
 
 /// A region and the optional arrival evidence already used to establish its causal order.
+#[derive(Clone)]
 struct CompiledRegion {
     /// The cold layer description later checked and reduced into runtime roots.
     region: LayeredRegion,
@@ -155,13 +158,8 @@ pub(crate) struct LayerCompilationContext {
 }
 
 impl LayerCompilationContext {
-    fn prepare_with_corridor_cuts(
-        graph: &CompileGraph,
-        catalog: &BoundaryCatalog,
-        monitor: &TaskMonitor,
-        cut_corridors: &[u32],
-    ) -> Result<Self, String> {
-        let partition = partition::partition_with_corridor_cuts(graph, catalog, monitor, cut_corridors)?;
+    fn prepare(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<Self, String> {
+        let partition = partition::partition(graph, catalog, monitor)?;
         let arrivals = (0..partition.regions.len()).map(|_| None).collect();
         Ok(Self {
             partition,
@@ -181,72 +179,32 @@ pub(crate) fn compile_layers_with_context(
     catalog: &BoundaryCatalog,
     monitor: &TaskMonitor,
 ) -> Result<(LayeredInstantPlan, LayerCompilationContext), String> {
-    compile_layers_with_cut_budget(graph, catalog, monitor, MAX_FAILURE_GUIDED_CUTS)
-}
-
-/// Reproduce the original whole-island census for tests without adding a production option.
-#[cfg(test)]
-pub(crate) fn compile_layers_without_failure_guided_cuts(
-    graph: &CompileGraph,
-    catalog: &BoundaryCatalog,
-    monitor: &TaskMonitor,
-) -> Result<(LayeredInstantPlan, LayerCompilationContext), String> {
-    compile_layers_with_cut_budget(graph, catalog, monitor, 0)
-}
-
-fn compile_layers_with_cut_budget(
-    graph: &CompileGraph,
-    catalog: &BoundaryCatalog,
-    monitor: &TaskMonitor,
-    max_failure_guided_cuts: usize,
-) -> Result<(LayeredInstantPlan, LayerCompilationContext), String> {
     check_cancelled(monitor)?;
-    let mut cut_corridors = Vec::new();
-    let (context, mut compiled, mut declined) = loop {
+    let mut context = LayerCompilationContext::prepare(graph, catalog, monitor)?;
+    let partition = &context.partition;
+    let perimeters = regions::perimeters(graph, partition, monitor)?;
+    let mut compiled = Vec::new();
+    let mut declined = Vec::new();
+    for (region_index, component) in partition.regions.iter().enumerate() {
         check_cancelled(monitor)?;
-        let mut context = LayerCompilationContext::prepare_with_corridor_cuts(graph, catalog, monitor, &cut_corridors)?;
-        let partition = &context.partition;
-        let perimeters = regions::perimeters(graph, partition, monitor)?;
-        let power_index = &context.power;
-        let mut compiled = Vec::new();
-        let mut declined = Vec::new();
-        let mut proposed_cuts = FxHashSet::default();
-        for (region_index, component) in partition.regions.iter().enumerate() {
-            check_cancelled(monitor)?;
-            let result = compile_component(
-                graph,
-                catalog,
-                component,
-                region_index,
-                partition,
-                power_index,
-                &perimeters[region_index],
-                monitor,
-            );
-            match component_result(graph, catalog, component, result)? {
-                Ok(result) => {
-                    context.arrivals[region_index] = result.arrivals;
-                    compiled.push(result.region);
-                }
-                Err(decline) => {
-                    if let Some(corridor) = failure_guided_corridor_cut(graph, catalog, component, &decline)
-                        && !cut_corridors.contains(&corridor)
-                    {
-                        proposed_cuts.insert(corridor);
-                    }
-                    declined.push(decline);
-                }
+        let result = compile_component(
+            graph,
+            catalog,
+            component,
+            region_index,
+            partition,
+            &context.power,
+            &perimeters[region_index],
+            monitor,
+        );
+        match component_result(graph, catalog, component, result)? {
+            Ok(result) => {
+                context.arrivals[region_index] = result.arrivals;
+                compiled.push(result.region);
             }
+            Err(decline) => declined.push(decline),
         }
-        if proposed_cuts.is_empty() || cut_corridors.len() >= max_failure_guided_cuts {
-            break (context, compiled, declined);
-        }
-        let mut proposed_cuts: Vec<_> = proposed_cuts.into_iter().collect();
-        proposed_cuts.sort_unstable();
-        let remaining = max_failure_guided_cuts - cut_corridors.len();
-        cut_corridors.extend(proposed_cuts.into_iter().take(remaining));
-        cut_corridors.sort_unstable();
-    };
+    }
     compiled.sort_unstable_by_key(|region| region.id);
     declined.sort_unstable_by_key(|decline| decline.cells.first().copied().unwrap_or(u32::MAX));
     let programs = compiled
@@ -293,19 +251,6 @@ fn compile_component(
     perimeter: &rustc_hash::FxHashSet<(BoundaryDirection, BoundaryPortKind)>,
     monitor: &TaskMonitor,
 ) -> Result<Result<CompiledRegion, LayerDecline>, ConstructionError> {
-    if let Some(use_) = component
-        .cells
-        .iter()
-        .flat_map(|&cell| catalog.cells[cell as usize].uses.iter())
-        .find(|use_| use_.reset.observer().is_none())
-    {
-        // Payload-reset cells have boundaries; their lifecycle adapter is not lowered yet.
-        return Ok(Err(decline(
-            component,
-            LayerWitness::Actor(use_.actor),
-            LayerDeclineReason::BoundaryEffectUnsupported,
-        )));
-    }
     if component.cells.len() != 1 || !component.corridors.is_empty() {
         if !component.cells.is_empty() {
             return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
@@ -344,7 +289,7 @@ fn compile_component(
     let Some(cell) = catalog.cells.get(cell_id as usize) else {
         return Err("instant region references a missing cell contract".into());
     };
-    if cell.uses.len() != 1 || cell.resources.len() != 1 {
+    if cell.uses.len() != 1 || cell.resources.len() != 1 || cell.uses[0].reset.observer().is_none() {
         return composition::compile_connected(graph, catalog, component, region_index, partition, power_index, perimeter, monitor);
     }
     let use_ = &cell.uses[0];
@@ -503,6 +448,7 @@ fn compile_component(
             consumed_before,
             consumed_after,
             cause: UseCause {
+                enqueue_triggers: activations.boundary.clone().into_boxed_slice(),
                 boundary_occurrences: activations.boundary.into_boxed_slice(),
             },
         }]
@@ -572,38 +518,6 @@ fn first_unproven_power(
     }
     check_cancelled(monitor)?;
     Ok(None)
-}
-
-/// Return only the corridor named by an exact request-sample arrival failure.
-/// The caller cuts this owner and then reruns the complete proof pipeline; this
-/// predicate never treats a witness as proof that its boundary is safe.
-fn failure_guided_corridor_cut(graph: &CompileGraph, catalog: &BoundaryCatalog, component: &RegionComponent, decline: &LayerDecline) -> Option<u32> {
-    if decline.reason != LayerDeclineReason::SignalArrivalUnproven {
-        return None;
-    }
-    let LayerWitness::PowerAtCut {
-        actor: _,
-        link,
-        phase: LayerInputRole::RequestSample,
-    } = decline.witness
-    else {
-        return None;
-    };
-    if !graph.power_links.contains(&link) {
-        return None;
-    }
-    let SiteSource::Component(node) = graph.sites.get(link.from.index())?.source else {
-        return None;
-    };
-    if !matches!(graph.nodes.get(node.index())?.kind, CircuitNodeKind::Wire(_)) {
-        return None;
-    }
-    component.corridors.iter().copied().find(|&corridor| {
-        catalog
-            .corridors
-            .get(corridor as usize)
-            .is_some_and(|candidate| candidate.wires.contains(&node))
-    })
 }
 
 fn source_is_internal_wire(
@@ -1500,6 +1414,8 @@ impl<'a> LayerBuilder<'a> {
             match self.expression(value)? {
                 LayerExpr::Constant(value) if *value == absorbing => return self.constant(absorbing),
                 LayerExpr::Constant(value) if *value == identity => {}
+                LayerExpr::All(children) if all => pending.extend(children.iter().copied()),
+                LayerExpr::Any(children) if !all => pending.extend(children.iter().copied()),
                 LayerExpr::Not(child) if seen.contains(child) => return self.constant(absorbing),
                 _ => operands.push(value),
             }

@@ -47,7 +47,7 @@ impl CircuitDraft {
         for (index, kernel) in kernels.iter().enumerate() {
             match &kernel.program {
                 KernelProgram::PullWave { pulls, .. } => {
-                    for pull in pulls.iter().filter(|pull| pull.external) {
+                    for pull in pulls.iter().filter(|pull| pull.origin.is_boundary()) {
                         kernel_by_actor[pull.actor.index()] = Some((index as u32, 0));
                         if self.plans.settled_circuit.is_some() && !cpu_by_actor.is_empty() {
                             cpu_by_actor[pull.actor.index()] = u32::MAX;

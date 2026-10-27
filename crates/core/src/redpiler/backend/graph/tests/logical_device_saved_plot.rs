@@ -5,6 +5,7 @@ use crate::redpiler::{CompilerOptions, LogicalDeviceAdmission};
 use crate::world::storage::Chunk;
 use mchprs_save_data::plot_data::PlotData;
 use std::sync::Arc;
+use std::time::Instant;
 
 const MIN: BlockPos = BlockPos::new(-273, 50, -253);
 const MAX: BlockPos = BlockPos::new(-102, 92, -147);
@@ -18,6 +19,10 @@ fn saved_world() -> PlotWorld {
     let path = std::env::var_os("MCHPRS_SAVED_PLOT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/build-audit-tps/prod/p-1,-1"));
+    saved_world_from(path)
+}
+
+fn saved_world_from(path: std::path::PathBuf) -> PlotWorld {
     let data = PlotData::<PLOT_SECTIONS>::load_from_file(path, false).expect("read-only saved production plot");
     assert_eq!(
         data.chunk_data.len(),
@@ -87,8 +92,12 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             "the source trigger control must remain native Graph work"
         );
         assert!(
-            backend.logical_node_owned(clock_node),
-            "the certified logical clock piston must belong to the admitted device"
+            !backend.logical_node_owned(clock_node),
+            "the native-action clock piston remains Graph-owned"
+        );
+        assert!(
+            backend.native_action_clock_owner.get(timing.clock.index()).is_some_and(Option::is_some),
+            "the admitted frame must bind its certified clock to the native action hook"
         );
 
         let owned_nodes: FxHashSet<_> = backend
@@ -347,4 +356,595 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
             );
         }
     }
+}
+
+#[test]
+#[ignore = "release-only changing-input profile of the saved FPU plot and neighboring Divider"]
+fn saved_fpu_neighbor_graph_fallback_profile() {
+    let optimization_level = std::env::var("MCHPRS_PROFILE_OPT_LEVEL")
+        .ok()
+        .map(|value| value.parse::<usize>().expect("MCHPRS_PROFILE_OPT_LEVEL must be an integer"))
+        .unwrap_or(6);
+    assert!((3..=6).contains(&optimization_level), "saved-plot profile supports O3 through O6");
+    let snapshot_path = std::env::var_os("MCHPRS_SAVED_PLOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/build-audit-tps/prod/p-1,-1-goal-start"));
+    let mut world = saved_world_from(snapshot_path.clone());
+    let bounds = world.get_corners();
+    let options = CompilerOptions {
+        optimization_level: Some(optimization_level),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        ..Default::default()
+    };
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.set_budget_multiplier(8);
+    let compile_start = Instant::now();
+    let ticks = world.scheduler().iter_entries().collect();
+    let prepared = crate::redpiler::passes::rich::prepare(&world, bounds, ticks, &monitor, crate::redpiler::analysis::AnalysisLimits::for_budget(8))
+        .expect("prepare full saved plot for fallback profile");
+    let pipeline = crate::redpiler::passes::default_graph_pipeline(&options);
+    let validated = prepared
+        .run_passes(&options, &pipeline, &monitor)
+        .expect("run full saved-plot Graph pipeline");
+    let graph = validated.graph();
+    let clock_census_start = Instant::now();
+    let timing = crate::redpiler::analysis::instant::layers::logical::timing::candidate_clocks(graph, &monitor)
+        .expect("enumerate source-qualified clock candidates")
+        .into_iter()
+        .filter_map(|clock| crate::redpiler::analysis::instant::layers::logical::timing::infer_for_clock(graph, clock, &monitor).ok())
+        .find(|timing| graph.nodes[timing.trigger.index()].position == Some(TRIGGER))
+        .expect("find the source-qualified timing island attached to the saved FPU trigger");
+    let clock_census_seconds = clock_census_start.elapsed().as_secs_f64();
+    let (trigger_node, clock_piston) = (timing.trigger, timing.clock);
+    let lowered = validated.lower(&monitor).expect("lower Graph fallback after timing census");
+    let oracle_lowered = crate::redpiler::program_graph::LoweredCircuit {
+        program: lowered.program.clone(),
+        state: lowered.state.clone(),
+        logical_tick: lowered.logical_tick,
+        imported_ticks: lowered.imported_ticks.clone(),
+        positions: lowered.positions.clone(),
+    };
+    let mut backend = GraphBackend::from_lowered(lowered, &monitor).expect("construct full saved-plot Graph backend");
+    world.clear_scheduled_ticks();
+    let compile_seconds = compile_start.elapsed().as_secs_f64();
+    let compilation_statistics = monitor.graph_statistics();
+    assert_eq!(backend.program.nodes()[trigger_node.index()].position, Some(TRIGGER));
+    let initial_clock_state = backend.state.pistons[clock_piston.index()];
+    assert!(
+        initial_clock_state.extended && initial_clock_state.head_present,
+        "profile requires the stationary extended FPU clock"
+    );
+    assert_eq!(initial_clock_state.availability, PistonAvailability::Ready);
+
+    let mut fpu_inputs = backend
+        .program
+        .nodes()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            let position = node.position?;
+            (inside_fpu(position) && position != TRIGGER && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lever)))
+                .then_some((position, NodeId::new(index as u32)))
+        })
+        .collect::<Vec<_>>();
+    fpu_inputs.sort_unstable_by_key(|(position, _)| (position.x, position.y, position.z));
+    assert_eq!(fpu_inputs.len(), 35, "profile must drive all FPU input levers in stable coordinate order");
+    assert!(
+        matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered),
+        "profile starts from the saved stopped-clock entry"
+    );
+    let output_lamps = backend
+        .program
+        .nodes()
+        .iter()
+        .filter_map(|node| node.position.filter(|position| inside_fpu(*position)))
+        .filter(|&position| matches!(world.get_block(position), Block::RedstoneLamp { .. }))
+        .collect::<Vec<_>>();
+    assert_eq!(output_lamps.len(), 35, "profile must include the saved FPU's native indicator outputs");
+    let readout_positions = (-221..=-161).step_by(4).map(|z| BlockPos::new(-102, 55, z)).collect::<Vec<_>>();
+    assert_eq!(readout_positions.len(), 16);
+    assert!(
+        readout_positions
+            .iter()
+            .all(|&position| matches!(world.get_block(position), Block::RedstoneRepeater { .. })),
+        "saved FPU's 16 readout repeaters must be present"
+    );
+
+    let neighbor_controls = backend
+        .program
+        .nodes()
+        .iter()
+        .filter_map(|node| node.position.filter(|position| !inside_fpu(*position)))
+        .filter(|&position| matches!(world.get_block(position), Block::Lever { .. }))
+        .take(24)
+        .collect::<Vec<_>>();
+    assert!(!neighbor_controls.is_empty(), "saved plot must expose neighboring Divider controls");
+
+    let frames = std::env::var("MCHPRS_PROFILE_FRAMES")
+        .ok()
+        .map(|value| value.parse::<usize>().expect("MCHPRS_PROFILE_FRAMES must be an integer"))
+        .unwrap_or(96);
+    assert!(frames > 0, "profile frame count must be positive");
+
+    // Prepare the first input vector before starting the real clock, then warm the
+    // running plot before taking measured-window counters.
+    let mut random = 0x4d43_4850_5253_2026u64;
+    let mask = (1u64 << fpu_inputs.len()) - 1;
+    let entry_word = fpu_inputs.iter().enumerate().fold(0u64, |word, (bit, (position, _))| {
+        word | (u64::from(matches!(world.get_block(*position), Block::Lever { lever } if lever.powered)) << bit)
+    });
+    let mut previous_word = entry_word;
+    let mut first_word = next_profile_word(&mut random, mask, previous_word);
+    for (bit, (position, _)) in fpu_inputs.iter().enumerate() {
+        if (previous_word ^ first_word) & (1 << bit) != 0 {
+            backend.use_block(*position).unwrap();
+        }
+    }
+    previous_word = first_word;
+    // LogicalClock::advance_sticky_observer defines powered trigger as STOP and
+    // schedules the sticky retract/extend loop while it is unpowered.
+    backend.use_block(TRIGGER).unwrap();
+    let clock_revision_before_warmup = backend.state.pistons[clock_piston.index()].revision;
+    for _ in 0..24 {
+        backend.tick_with_world(&mut world).unwrap();
+    }
+    backend.flush(&mut world, false);
+    assert!(
+        matches!(world.get_block(TRIGGER), Block::Lever { lever } if !lever.powered),
+        "warmup must leave the saved FPU clock running"
+    );
+    let clock_revision_after_warmup = backend.state.pistons[clock_piston.index()].revision;
+    assert!(
+        clock_revision_after_warmup > clock_revision_before_warmup,
+        "the source-qualified FPU clock must advance during warmup"
+    );
+
+    let mut saw_neighbor_activity = false;
+    let neighbor_nodes = backend
+        .program
+        .nodes()
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| node.position.filter(|position| !inside_fpu(*position)).map(|_| NodeId::new(index as u32)))
+        .collect::<Vec<_>>();
+    let neighbor_before = neighbor_nodes
+        .iter()
+        .map(|node| backend.state.components[node.index()].clone())
+        .collect::<Vec<_>>();
+    let command_count_before = world.command_output().count();
+    let counts_before = backend.execution_counts();
+    let clock_revision_before = backend.state.pistons[clock_piston.index()].revision;
+    let clock_state_before = backend.state.pistons[clock_piston.index()];
+    let trigger_powered_before = matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered);
+    let mut control_seconds = 0.0f64;
+    let mut tick_seconds = 0.0f64;
+    let mut flush_seconds = 0.0f64;
+    let mut input_lever_updates = 0u64;
+    let mut neighbor_lever_updates = 0u64;
+    let mut output_words = FxHashSet::default();
+    let mut saw_output_transition = false;
+    let mut prior_output = None;
+    let mut readout_words = FxHashSet::default();
+    let mut readout_trace = Vec::with_capacity(frames);
+    let mut saw_readout_transition = false;
+    let mut prior_readout = None;
+    let mut saw_readout_high = false;
+    let total_start = Instant::now();
+
+    for frame in 0..frames {
+        first_word = next_profile_word(&mut random, mask, previous_word);
+        let control_start = Instant::now();
+        for (bit, (position, _)) in fpu_inputs.iter().enumerate() {
+            if (previous_word ^ first_word) & (1 << bit) != 0 {
+                backend.use_block(*position).unwrap();
+                input_lever_updates += 1;
+            }
+        }
+        // Exercise the neighboring Divider using the same outside-lever ordering
+        // as the native-vs-Graph correctness replay.
+        for (index, &position) in neighbor_controls.iter().enumerate() {
+            if frame == index * 2 {
+                backend.use_block(position).unwrap();
+                neighbor_lever_updates += 1;
+            }
+        }
+        control_seconds += control_start.elapsed().as_secs_f64();
+        previous_word = first_word;
+
+        let tick_start = Instant::now();
+        for _ in 0..6 {
+            backend.tick_with_world(&mut world).unwrap();
+        }
+        tick_seconds += tick_start.elapsed().as_secs_f64();
+
+        let flush_start = Instant::now();
+        backend.flush(&mut world, false);
+        flush_seconds += flush_start.elapsed().as_secs_f64();
+
+        let output = output_lamps.iter().enumerate().fold(0u64, |word, (bit, position)| {
+            word | (u64::from(matches!(world.get_block(*position), Block::RedstoneLamp { lit: true })) << bit)
+        });
+        output_words.insert(output);
+        saw_output_transition |= prior_output.is_some_and(|previous| previous != output);
+        prior_output = Some(output);
+        let readout = readout_positions.iter().enumerate().fold(0u16, |word, (bit, position)| {
+            word | (u16::from(matches!(world.get_block(*position), Block::RedstoneRepeater { repeater } if repeater.powered)) << bit)
+        });
+        readout_words.insert(readout);
+        readout_trace.push(readout);
+        saw_readout_transition |= prior_readout.is_some_and(|previous| previous != readout);
+        saw_readout_high |= readout != 0;
+        prior_readout = Some(readout);
+        saw_neighbor_activity |= neighbor_nodes
+            .iter()
+            .zip(&neighbor_before)
+            .any(|(node, initial)| backend.state.components[node.index()] != *initial);
+    }
+    let wall_seconds = total_start.elapsed().as_secs_f64();
+    let counts_after = backend.execution_counts();
+    let clock_revision_after = backend.state.pistons[clock_piston.index()].revision;
+    let clock_state_after = backend.state.pistons[clock_piston.index()];
+    let trigger_powered_after = matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered);
+    let command_count_after = world.command_output().count();
+    let work = serde_json::json!({
+        "instant_wire_node_invocations": counts_after.instant_wire_node_invocations - counts_before.instant_wire_node_invocations,
+        "instant_transport_invocations": counts_after.instant_transport_invocations - counts_before.instant_transport_invocations,
+        "instant_transport_wire_visits": counts_after.instant_transport_wire_visits - counts_before.instant_transport_wire_visits,
+        "instant_transport_compact_captures": counts_after.instant_transport_compact_captures - counts_before.instant_transport_compact_captures,
+        "instant_transition_hits": counts_after.instant_transition_hits - counts_before.instant_transition_hits,
+        "instant_transition_misses": counts_after.instant_transition_misses - counts_before.instant_transition_misses,
+        "instant_transition_programs": counts_after.instant_transition_programs - counts_before.instant_transition_programs,
+        "instant_transition_operations": counts_after.instant_transition_operations - counts_before.instant_transition_operations,
+        "instant_transition_wire_visits_elided": counts_after.instant_transition_wire_visits_elided - counts_before.instant_transition_wire_visits_elided,
+        "instant_value_region_solves": counts_after.instant_value_region_solves - counts_before.instant_value_region_solves,
+        "instant_value_region_cache_hits": counts_after.instant_value_region_cache_hits - counts_before.instant_value_region_cache_hits,
+        "instant_value_region_inert_visits": counts_after.instant_value_region_inert_visits - counts_before.instant_value_region_inert_visits,
+        "signal_channel_invocations": counts_after.signal_channel_invocations - counts_before.signal_channel_invocations,
+        "signal_channel_fallbacks": counts_after.signal_channel_fallbacks - counts_before.signal_channel_fallbacks,
+        "signal_channel_operations": counts_after.signal_channel_operations - counts_before.signal_channel_operations,
+        "stable_logic_invocations": counts_after.stable_logic_invocations - counts_before.stable_logic_invocations,
+        "stable_logic_fallbacks": counts_after.stable_logic_fallbacks - counts_before.stable_logic_fallbacks,
+        "stable_logic_wire_values": counts_after.stable_logic_wire_values - counts_before.stable_logic_wire_values,
+        "stable_logic_boundary_calls": counts_after.stable_logic_boundary_calls - counts_before.stable_logic_boundary_calls,
+        "classic_net_invocations": counts_after.classic_net_invocations - counts_before.classic_net_invocations,
+        "classic_receiver_ops": counts_after.classic_receiver_ops - counts_before.classic_receiver_ops,
+        "ticks": counts_after.ticks - counts_before.ticks,
+        "scheduled_ticks": counts_after.scheduled_ticks - counts_before.scheduled_ticks,
+        "callbacks": counts_after.callbacks - counts_before.callbacks,
+        "wire_walks": counts_after.wire_walks - counts_before.wire_walks,
+        "dust_path_power_samples_elided": counts_after.dust_path_power_samples_elided - counts_before.dust_path_power_samples_elided,
+        "instant_kernel_invocations": counts_after.instant_kernel_invocations - counts_before.instant_kernel_invocations,
+        "logical_kernel_evaluations": counts_after.logical_kernel_evaluations - counts_before.logical_kernel_evaluations,
+        "logical_kernel_operations": counts_after.logical_kernel_operations - counts_before.logical_kernel_operations,
+        "piston_samples": counts_after.piston_samples - counts_before.piston_samples,
+        "piston_actions": counts_after.piston_actions - counts_before.piston_actions,
+        "deferred_publications": counts_after.deferred_publications - counts_before.deferred_publications,
+        "logical_bud_samples": counts_after.logical_bud_samples - counts_before.logical_bud_samples,
+        "logical_bud_accepts": counts_after.logical_bud_accepts - counts_before.logical_bud_accepts,
+        "logical_bud_publications": counts_after.logical_bud_publications - counts_before.logical_bud_publications,
+    });
+    let admission = backend.logical_device_admission();
+    let mut oracle_report = replay_saved_fpu_native_oracle(
+        &oracle_lowered,
+        snapshot_path.clone(),
+        &monitor,
+        &fpu_inputs.iter().map(|(position, _)| *position).collect::<Vec<_>>(),
+        &neighbor_controls,
+        entry_word,
+        mask,
+        &readout_positions,
+        frames,
+        0,
+    );
+    // A frame-aligned handoff alone can hide stale intermediate piston poses.
+    let other_handoff_phases = (1..6)
+        .map(|phase| {
+            replay_saved_fpu_native_oracle(
+                &oracle_lowered,
+                snapshot_path.clone(),
+                &monitor,
+                &fpu_inputs.iter().map(|(position, _)| *position).collect::<Vec<_>>(),
+                &neighbor_controls,
+                entry_word,
+                mask,
+                &readout_positions,
+                frames.min(16),
+                phase,
+            )
+        })
+        .collect::<Vec<_>>();
+    oracle_report["other_handoff_phases"] = serde_json::json!(other_handoff_phases);
+    let mut report = serde_json::json!({
+        "measurement_kind": format!("saved_plot_o{optimization_level}_changing_inputs"),
+        "snapshot": snapshot_path,
+        "optimization_level": optimization_level,
+        "plan_coverage": {
+            "proxy_regions": backend.program.instant_proxies().len(),
+            "proxy_routes": backend.program.instant_proxies().iter().map(|proxy| proxy.routes.len()).sum::<usize>(),
+            "proxy_sample_steps": backend.program.instant_proxies().iter().flat_map(|proxy| proxy.routes.iter()).flat_map(|route| route.steps.iter()).filter(|step| matches!(step.kind, InstantStepKind::Sample(_))).count(),
+            "proxy_reset_steps": backend.program.instant_proxies().iter().flat_map(|proxy| proxy.routes.iter()).flat_map(|route| route.steps.iter()).filter(|step| matches!(step.kind, InstantStepKind::ArmReset(_))).count(),
+            "cpu_power_query_actors": backend.program.cpu_power_queries().entries.len(),
+            "event_actors": backend.program.instant_kernels().iter().map(|kernel| match &kernel.program { KernelProgram::Events(entries) => entries.len(), _ => 0 }).sum::<usize>(),
+            "pull_wave_actors": backend.program.instant_kernels().iter().filter(|kernel| matches!(&kernel.program, KernelProgram::PullWave { .. })).map(|kernel| kernel.actors.len()).sum::<usize>(),
+        },
+        "compile_seconds": compile_seconds - clock_census_seconds,
+        "compilation_passes": compilation_statistics.passes.iter().map(|pass| serde_json::json!({
+            "name": pass.name,
+            "seconds": pass.duration.as_secs_f64(),
+            "validation_seconds": pass.validation_duration.as_secs_f64(),
+        })).collect::<Vec<_>>(),
+        "kernel_lowering_seconds": compilation_statistics.kernel_lowering_duration.as_secs_f64(),
+        "program_lowering_seconds": compilation_statistics.program_lowering_duration.as_secs_f64(),
+        "compile_seconds_including_profile_clock_census": compile_seconds,
+        "source_clock_census_seconds": clock_census_seconds,
+        "stable_instant_inputs": true,
+        "frames": frames,
+        "input_levers": fpu_inputs.len(),
+        "input_lever_updates": input_lever_updates,
+        "neighbor_lever_updates": neighbor_lever_updates,
+        "input_order": "ascending x,y,z coordinate order; raw changing masks, not an arithmetic oracle",
+        "clock_trigger_position": backend.program.nodes()[trigger_node.index()].position,
+        "clock_trigger_powered_at_entry": true,
+        "clock_trigger_powered_before_measurement": trigger_powered_before,
+        "clock_trigger_powered_after_measurement": trigger_powered_after,
+        "clock_trigger_semantics": "source-qualified sticky clock: powered means STOP; unpowered runs the retract/extend cycle",
+        "clock_piston": clock_piston.index(),
+        "clock_piston_state_before_measurement": format!("{clock_state_before:?}"),
+        "clock_piston_state_after_measurement": format!("{clock_state_after:?}"),
+        "clock_piston_revision_before_measurement": clock_revision_before,
+        "clock_piston_revision_after_measurement": clock_revision_after,
+        "clock_piston_revision_delta": clock_revision_after - clock_revision_before,
+        "game_ticks": frames * 6,
+        "scope": "full saved PlotWorld; inputs and neighbor lever actions, all Graph ticks, flushes, per-frame lamp observation, and neighbor activity checks included; commands execute natively",
+        "warmup_ticks_excluded": 24,
+        "logical_device_admission": format!("{admission:?}"),
+        "logical_devices": backend.logical_devices_count(),
+    });
+    report.as_object_mut().unwrap().extend(serde_json::json!({
+        "wall_seconds": wall_seconds,
+        "controls_seconds": control_seconds,
+        "tick_seconds": tick_seconds,
+        "flush_seconds": flush_seconds,
+        "game_ticks_per_second": (frames * 6) as f64 / wall_seconds,
+        "native_command_outputs": command_count_after - command_count_before,
+        "native_oracle": oracle_report,
+        "unique_indicator_words": output_words.len(),
+        "indicator_transition": saw_output_transition,
+        "fpu_readout_positions": readout_positions,
+        "fpu_readout_words": readout_trace,
+        "unique_fpu_readout_words": readout_words.len(),
+        "fpu_readout_transition": saw_readout_transition,
+        "fpu_readout_nonzero": saw_readout_high,
+        "neighbor_activity": saw_neighbor_activity,
+        "execution_counts_scope": "measured interval only: after stopped-entry input setup and 24 running warmup ticks; through all measured frames",
+        "work": work,
+    }).as_object().unwrap().clone());
+    eprintln!("saved FPU+Divider profile: {report:#}");
+    assert!(
+        clock_revision_after > clock_revision_before,
+        "FPU clock must perform real piston actions in the measured window"
+    );
+    assert!(
+        saw_readout_transition && readout_words.len() > 1 && saw_readout_high,
+        "profile must exercise the 16-bit FPU readout bus"
+    );
+    assert!(
+        saw_neighbor_activity,
+        "neighboring Divider must perform real work during the measured window"
+    );
+    assert_eq!(counts_after.ticks - counts_before.ticks, (frames * 6) as u64);
+}
+
+fn replay_saved_fpu_native_oracle(
+    lowered: &crate::redpiler::program_graph::LoweredCircuit,
+    snapshot_path: std::path::PathBuf,
+    monitor: &TaskMonitor,
+    input_positions: &[BlockPos],
+    neighbor_controls: &[BlockPos],
+    entry_word: u64,
+    mask: u64,
+    readout_positions: &[BlockPos],
+    oracle_frames: usize,
+    handoff_phase: usize,
+) -> serde_json::Value {
+    assert!(handoff_phase < 6, "handoff phase must be within the six-tick input frame");
+    let mut graph_world = saved_world_from(snapshot_path.clone());
+    let mut native_world = saved_world_from(snapshot_path);
+    let mut graph = GraphBackend::from_lowered(
+        crate::redpiler::program_graph::LoweredCircuit {
+            program: lowered.program.clone(),
+            state: lowered.state.clone(),
+            logical_tick: lowered.logical_tick,
+            imported_ticks: lowered.imported_ticks.clone(),
+            positions: lowered.positions.clone(),
+        },
+        monitor,
+    )
+    .expect("rebuild saved-plot Graph for native oracle");
+    // Production activation transfers scheduled work into Graph and clears the host queue.
+    graph_world.clear_scheduled_ticks();
+    let command_positions = graph
+        .program
+        .command_blocks()
+        .iter()
+        .filter_map(|plan| graph.program.nodes()[plan.node.index()].position)
+        .collect::<Vec<_>>();
+    let mut observable_positions = graph
+        .program
+        .nodes()
+        .iter()
+        .filter_map(|node| node.position)
+        .filter(|&position| {
+            matches!(
+                graph_world.get_block(position),
+                Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }
+            )
+        })
+        .collect::<Vec<_>>();
+    observable_positions.sort_unstable_by_key(|position| (position.x, position.y, position.z));
+    observable_positions.dedup();
+    let comparator_positions = observable_positions
+        .iter()
+        .copied()
+        .filter(|&position| matches!(graph_world.get_block(position), Block::RedstoneComparator { .. }))
+        .collect::<Vec<_>>();
+    let mut random = 0x4d43_4850_5253_2026u64;
+    let mut previous_word = entry_word;
+    let mut word = next_profile_word(&mut random, mask, previous_word);
+    for (bit, &position) in input_positions.iter().enumerate() {
+        if (previous_word ^ word) & (1 << bit) != 0 {
+            graph.use_block(position).unwrap();
+            native_use_lever(&mut native_world, position);
+        }
+    }
+    previous_word = word;
+    graph.use_block(TRIGGER).unwrap();
+    native_use_lever(&mut native_world, TRIGGER);
+
+    let mut ticks_compared = 0usize;
+    let mut native_command_outputs = 0usize;
+    let mut readout_words = FxHashSet::default();
+    let mut physical_positions = graph.program.nodes().iter().filter_map(|node| node.position).collect::<Vec<_>>();
+    physical_positions.extend(graph.program.contacts().iter().map(|contact| contact.position));
+    physical_positions.sort_unstable_by_key(|position| (position.x, position.y, position.z));
+    physical_positions.dedup();
+    let assert_physical_state = |graph_world: &PlotWorld, native_world: &PlotWorld, cut: &str| {
+        for &position in &physical_positions {
+            assert_eq!(
+                graph_world.get_block(position),
+                native_world.get_block(position),
+                "native physical block {cut}, phase {handoff_phase}, at {position:?}"
+            );
+            assert_eq!(
+                graph_world.get_block_entity(position).map(bincode::serialize).transpose().unwrap(),
+                native_world.get_block_entity(position).map(bincode::serialize).transpose().unwrap(),
+                "native block entity {cut}, phase {handoff_phase}, at {position:?}"
+            );
+        }
+    };
+    let graph_ticks = 24 + oracle_frames * 6 + handoff_phase;
+    let continuation_ticks = 16;
+    for step in 0..(graph_ticks + continuation_ticks) {
+        if step >= 24 && step < graph_ticks && step % 6 == 0 {
+            let frame = (step - 24) / 6;
+            word = next_profile_word(&mut random, mask, previous_word);
+            for (bit, &position) in input_positions.iter().enumerate() {
+                if (previous_word ^ word) & (1 << bit) != 0 {
+                    graph.use_block(position).unwrap();
+                    native_use_lever(&mut native_world, position);
+                }
+            }
+            for (index, &position) in neighbor_controls.iter().enumerate() {
+                if frame == index * 2 {
+                    graph.use_block(position).unwrap();
+                    native_use_lever(&mut native_world, position);
+                }
+            }
+            previous_word = word;
+        }
+        if step == graph_ticks {
+            graph.reset(&mut graph_world);
+            assert_physical_state(&graph_world, &native_world, "at running-clock handoff");
+            assert_eq!(
+                super::adder_tests::first_difference(
+                    &super::adder_tests::future(&native_world, &[]),
+                    &super::adder_tests::future(&graph_world, &[]),
+                ),
+                None,
+                "native scheduler, requests, and motions at running-clock handoff"
+            );
+        }
+        if step < graph_ticks {
+            graph.tick_with_world(&mut graph_world).unwrap();
+        } else {
+            graph_world.tick_interpreted();
+        }
+        native_world.tick_interpreted();
+        if step < graph_ticks {
+            graph.flush(&mut graph_world, false);
+        } else {
+            assert_eq!(
+                super::adder_tests::first_difference(
+                    &super::adder_tests::future(&native_world, &[]),
+                    &super::adder_tests::future(&graph_world, &[]),
+                ),
+                None,
+                "native scheduler, requests, and motions after handoff at tick {step}"
+            );
+        }
+
+        for &position in &observable_positions {
+            assert_eq!(
+                graph_world.get_block(position),
+                native_world.get_block(position),
+                "native plot lamp/repeater/comparator at tick {step}, {position:?}"
+            );
+        }
+        for &position in &comparator_positions {
+            assert_eq!(
+                graph_world.get_block_entity(position).map(bincode::serialize).transpose().unwrap(),
+                native_world.get_block_entity(position).map(bincode::serialize).transpose().unwrap(),
+                "native comparator block entity at tick {step}, {position:?}"
+            );
+        }
+        for &position in &command_positions {
+            assert_eq!(
+                graph_world.get_block_entity(position).map(bincode::serialize).transpose().unwrap(),
+                native_world.get_block_entity(position).map(bincode::serialize).transpose().unwrap(),
+                "native command-block entity at tick {step}, {position:?}"
+            );
+        }
+        let graph_output = graph_world.command_output().collect::<Vec<_>>();
+        let native_output = native_world.command_output().collect::<Vec<_>>();
+        assert_eq!(graph_output, native_output, "native command output at tick {step}");
+        native_command_outputs = native_output.len();
+        let readout_word = readout_positions.iter().enumerate().fold(0u16, |word, (bit, &position)| {
+            word | (u16::from(matches!(graph_world.get_block(position), Block::RedstoneRepeater { repeater } if repeater.powered)) << bit)
+        });
+        readout_words.insert(readout_word);
+        ticks_compared += 1;
+    }
+    assert_physical_state(&graph_world, &native_world, "after interpreter continuation");
+    serde_json::json!({
+        "oracle": "native PlotWorld::tick_interpreted versus GraphBackend from the same validated program",
+        "frames": oracle_frames,
+        "handoff_phase_within_input_frame": handoff_phase,
+        "ticks_compared": ticks_compared,
+        "graph_ticks_compared": graph_ticks,
+        "native_continuation_ticks": continuation_ticks,
+        "physical_positions_compared_at_handoff": physical_positions.len(),
+        "physical_positions_compared_after_continuation": physical_positions.len(),
+        "plot_output_comparison": format!(
+            "{} lamps, repeaters, and comparators compared after every game tick, including clock warmup; {} comparator block entities also compared",
+            observable_positions.len(), comparator_positions.len()
+        ),
+        "command_effect_comparison": "all compiled command-block entities and command-output history compared after every game tick",
+        "command_outputs_observed": native_command_outputs,
+        "distinct_readout_words": readout_words.len(),
+    })
+}
+
+fn native_use_lever(world: &mut PlotWorld, position: BlockPos) {
+    let Block::Lever { mut lever } = world.get_block(position) else {
+        panic!("oracle input {position:?} is not a lever")
+    };
+    lever.powered = !lever.powered;
+    world.set_block(position, Block::Lever { lever });
+    crate::redstone::update_surrounding_blocks(world, position);
+    let attachment = match lever.face {
+        mchprs_blocks::blocks::LeverFace::Floor => mchprs_blocks::BlockFace::Bottom,
+        mchprs_blocks::blocks::LeverFace::Ceiling => mchprs_blocks::BlockFace::Top,
+        mchprs_blocks::blocks::LeverFace::Wall => lever.facing.opposite().block_face(),
+    };
+    crate::redstone::update_surrounding_blocks(world, position.offset(attachment));
+}
+
+fn next_profile_word(random: &mut u64, mask: u64, previous: u64) -> u64 {
+    *random ^= *random << 13;
+    *random ^= *random >> 7;
+    *random ^= *random << 17;
+    let word = *random & mask;
+    if word == previous { word ^ 1 } else { word }
 }

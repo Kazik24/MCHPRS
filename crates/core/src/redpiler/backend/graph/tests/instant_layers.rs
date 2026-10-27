@@ -9,6 +9,10 @@ use std::collections::BTreeSet;
 #[path = "instant_layer_entry.rs"]
 mod entry_tests;
 
+pub(super) fn composed_chain_world(dust: bool) -> crate::plot::PlotWorld {
+    entry_tests::chain_world(dust)
+}
+
 fn prepare_layers(id: &'static str) -> passes::rich::PreparedGraph {
     let circuit = boundary_contract_tests::load_mechanism(id);
     let monitor = TaskMonitor::default();

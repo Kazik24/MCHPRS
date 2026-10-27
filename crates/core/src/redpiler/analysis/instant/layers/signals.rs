@@ -152,36 +152,6 @@ impl<'a> SignalTracer<'a> {
             .collect()
     }
 
-    /// Return only wire target equations in the observable expression slice.
-    pub(super) fn queried_wire_nodes_in(&self, live_nonconstant: &FxHashSet<LayerExprId>) -> FxHashSet<NodeId> {
-        self.targets
-            .iter()
-            .filter_map(|((target, _), root)| {
-                if !live_nonconstant.contains(root) {
-                    return None;
-                }
-                let node = match target {
-                    PowerTarget::Input { node, .. } => *node,
-                    PowerTarget::Conductor { site, .. } => {
-                        let SiteSource::Component(node) = self.graph.sites[site.index()].source else {
-                            return None;
-                        };
-                        node
-                    }
-                };
-                matches!(self.graph.nodes[node.index()].kind, CircuitNodeKind::Wire(_)).then_some(node)
-            })
-            .collect()
-    }
-
-    /// Return only source-site equations in the observable expression slice.
-    pub(super) fn queried_source_sites_in(&self, live_nonconstant: &FxHashSet<LayerExprId>) -> FxHashSet<SiteId> {
-        self.sources
-            .iter()
-            .filter_map(|((site, _, _), root)| live_nonconstant.contains(root).then_some(*site))
-            .collect()
-    }
-
     pub(super) fn contribution(&mut self, link: PowerLink, threshold: u8, builder: &mut LayerBuilder<'_>) -> Result<LayerExprId, ConstructionError> {
         builder.visit()?;
         let threshold = threshold.saturating_add(link.attenuation);

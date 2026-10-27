@@ -43,6 +43,149 @@ lowering and runtime admission succeed. Logical plans are optional: each has to
 bind its inputs, outputs, owned state, and any callbacks or events it consumes.
 The original graph remains available to execute work outside that contract.
 
+Finite-layer compilation partitions the catalog once, indexes power once, and
+tries each independent region once. Its lowering context retains the successful
+arrival proofs. Unsupported regions stay on Graph; cancellation and invalid
+graphs still fail compilation. There is no failure-guided repartition/recompile
+loop: the removed loop repeatedly rebuilt global ownership and perimeters
+without demonstrating a useful throughput gain on the saved plot.
+
+An interaction island is a conservative envelope of mutable dependencies, not
+proof that all its components belong to one computation. Computation-frame
+ownership is selected positively from equation support and published targets;
+unrelated components in the same island remain on Graph. Clocked Counter
+devices retain their separate, complete device contract. The current candidate
+selector still requires one recognized clock per interaction island; connecting
+two otherwise supported clocked devices does not yet establish a supported
+combined frame.
+
+Native callback closure can stop at a wire Shape occurrence only when the
+shared geometry proof shows that every possible handler leaves the full wire
+state unchanged. This proof covers all inferred contact variants, callback
+directions and power levels. Update and Turbo callbacks remain separate
+obligations. In the saved FPU plus Divider, the remaining native closure still
+overlaps 22,626 of 23,042 equation-support nodes. Removing its one optional
+terminal-wire output cannot recover that frame; execution boundaries need an
+ordered transition contract, not weaker ownership validation.
+
+Retaining a physical cell does not transfer its lifecycle to the frame. Its
+piston, resource, reset observer, guards, and callback order remain Graph-owned.
+The frame supplies only the certified data queries. Exact retained native
+routes bypass incompatible route shortcuts, while callbacks represented by
+compiled equation inputs are consumed only at their certified occurrences.
+Resource ownership must cover a complete physical owner group; a next-state
+equation alone is insufficient. Retained same-wave feedback additionally checks
+its canonical resource position and ready piston pose before each computation.
+It is not an interface for arbitrary persistent native memory.
+
+The computation frame does not currently own general inlined piston actors.
+It has no transition or handoff materializer for their poses, moved resources,
+or pending publications. Their native callbacks therefore keep those actors
+and their power dependencies on Graph. Masking their nodes would lose state;
+relaxing a scope check cannot replace the missing transition contract.
+Acceleration across that boundary needs an ordered state/effect transaction,
+with native callbacks observing preceding writes and a continuation that uses
+the actual state left by any nested callback. The archived symbolic compiler's
+final-write-then-effect runtime did not satisfy this requirement.
+
+The saved FPU exposed a concrete missing cut: route 87788 emits a live Shape
+callback from piston 2168 to wire 45540. That wire's Main query reads resource
+1378 at contact 6058 and neighboring wire node 43278 (wire-table index 3144).
+A later ownership diagnostic establishes that both wires remain on Graph,
+outside the candidate's corridors. Their callbacks reach foreign piston 697,
+the currently committing actor 2168, and a reset. These handlers update outside
+wires and queue requests; they do not synchronously accept piston actions or
+move resources. Native retraction already publishes its resource pose before
+the far-contact callback. This witness therefore does not establish a missing
+owned-wire materializer. At the FIFO foundation checkpoint, connected composition
+and PullWave lowering still decline it: they lack a transitive effect/read
+certificate for that outside callback and cannot yet preserve a continuation
+through independent foreign work.
+
+The region already records causal request/acceptance layers and conditional
+resource transfers, but `Composition::wires` is only a set of substituted wire
+nodes; it has no per-cut strengths. `Arrival::expected_wire_levels` describes
+the stationary entry only. Lowering now emits ordered `KernelRouteStep`s at
+original callback ordinals: clear a certified corridor, enqueue an internal
+request, or deliver a retained native callback. Native acceptance still updates
+each actor's pose, resource and deferred state. The runtime leaves Graph's FIFO
+intact and commits one matching popped request at a time. Evaluated roots live
+in a shared immutable snapshot, separate from Event/CPU scratch. A foreign or
+unexpected action cancels the suffix; draining the queue also clears it.
+
+The FIFO foundation passes the 760-test release Redpiler suite. A shared-wire
+fixture checks the actual first-tick request order and sources, compiled child
+execution in a closed wave, and native child fallback after an intervening
+foreign action. Both cases match Graph/native state for 24 ticks. This does
+not establish saved-plot admission or throughput. The fixture exposed another
+distinction: the native request source is the final Turbo
+callback, but its enqueue cut is the producer's original callback. Two producers
+can reach the same finish, so lowering cannot reconstruct that cut from the
+finish alone. Composition now retains it separately in `UseCause.enqueue_triggers`;
+lowering checks it against the corresponding arrival certificate. The JSON
+export omits this field when it equals the existing source occurrences.
+
+The foundation's closed-wave rules exclude that external callback. Wire arrivals
+require distinct producer and consumer actors, so the singleton exception for
+outside handlers cannot coexist with a wire clear. Retained reset-observer
+notifications only inspect their own state and schedule a later tick; their
+guards do not inspect wire strength. No reachable reordering defect was found
+under those rules. Broader eligibility additionally needs the exterior
+callback's effect/read proof; ordered steps alone do not supply it.
+
+The experimental transitive exterior callback certificate was removed during
+cleanup. It added compilation work while removing only about 0.05% of callbacks
+in the saved-plot replay. Multi-actor regions with uncertified exterior wire
+callbacks now remain on Graph. The existing singleton boundary, closed-wave
+arrival certificates, FIFO continuation and constant-false request pruning stay.
+Entry-state specialization and the queue's additional membership index were
+also removed. Request deduplication uses the native FIFO's `(piston, action)`
+pairs and preserves the first source.
+
+A cycle's `InstantFired` latch is not a physical resource-position input at
+every callback cut. Retraction sets the latch before the base-change callbacks
+and before moving the resource; restoration publishes the far contact before
+clearing the latch. Another actor reading `!InstantFired` as source presence
+can therefore observe a future or stale pose. Connected actor execution must
+preserve live resource reads at these cuts or prove that no dependent query
+can run there. The same requirement applies to intermediate wire strengths.
+
+Stable inputs do not make output callbacks order-independent. Publishing all
+final wire values before notifying a piston can omit a transient sample that
+would have queued a request; sorting or deduplicating deliveries can also change
+request provenance and FIFO order. Bulk wire equations therefore need a separate
+boundary-effect proof. A queue-only receiver is still an observable effect.
+The current max-plus compiler therefore declines nets with external effectful
+callbacks before equation expansion. Only statically inert Update handlers can
+cross that bulk boundary; pistons, observers, delayed components, command blocks,
+and unknown receivers keep the exact ordered transport path.
+
+Shared payloads use the finite event-layer compiler, whose accepted uses retain
+FIFO request order and one-use-per-wave state. Direct observer-reset groups can
+join neighboring cells when their resource owners exactly match their uses.
+Isolated single-wire corridors can join certified cells, including complete
+shared groups. The arrival proof preserves native Turbo visitation and first
+matching receiver rows, with each source occurrence bound to its actual emitting
+actor. A reset notification can be omitted only when proven inert; captured
+directionless notifications to a cell's built-in reset require an observer-off
+entry guard. Other observer effects remain on Graph.
+
+Wire entry levels come from the certified source and attenuation, rather than
+the schematic's saved power. Runtime requires both the stationary cell contract
+and those wire levels before execution. A cold saved input vector can therefore
+compile without permitting a kernel to execute against stale wire state.
+Other shared wire corridors remain boundaries until their arrival semantics are
+certified. Whole-frame
+next-state equations inferred from lane geometry remain candidates and cannot
+claim those shared resources without a complete lifecycle contract.
+
+A PullWave can commit several actors without going through the individual
+action handlers. Its runtime entry therefore checks every actor for a conflicting
+BUD, native clock, or retained-frame owner before evaluating or changing state.
+Any overlap leaves the request and remaining FIFO work to Graph. Multi-actor
+waves still require ownership of the complete pending piston queue; independent
+islands alone do not justify reordering scheduled ticks or command effects.
+
 Production activation goes through `GraphBackend::from_lowered`: it imports
 pending ticks, admits logical runtimes, and schedules initial command work.
 `new_unactivated` deliberately constructs only the underlying Graph executor;
@@ -122,6 +265,8 @@ was excluded from TPS. Run `cargo bench -p mchprs_core --bench instant --locked
 to repeat the original workload. Reports are in
 `target/architecture-cleanup-fpu-{original,fixed}.json`; the executable SHA-256 is
 `94abca940aab260bcd235868f63728dea1434dd038ce0be474c40bf80e8bff89`.
+
+These are historical measurements, not validated throughput for complete FPU behavior. They did not establish preservation of the input indicator lamps and observer pulses; stricter current admission declines the frame while its native boundaries are completed. See the [completeness correction and live server evidence](REDPILER_BUILD_REPORT_2026-10-25.md#independent-logical-devices-26-october).
 
 The production regression checks data outputs against the accepted computation
 frame and independently checks native command power, execution, repeated pulses,

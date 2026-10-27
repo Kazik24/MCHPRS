@@ -8,7 +8,6 @@ fn occurrence(actor: u32) -> RouteOccurrence {
         ordinal: 0,
     }
 }
-
 fn cell(actor: u32, resource: u32, power: Option<PowerLink>) -> CellContract {
     let actor = PistonId::new(actor);
     let mut pins = vec![
@@ -165,6 +164,65 @@ fn evaluated(composition: &Composition<'_>, roots: &[LayerExprId]) -> Vec<bool> 
 }
 
 #[test]
+fn combine_flattens_nested_boolean_operators_without_expanding_shared_subtrees() {
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let input = |id| LayerInputSource::BoundaryEvent {
+        port: id,
+        occurrence: RouteOccurrence {
+            route: RouteId::new(id),
+            ordinal: 0,
+        },
+    };
+    let a_input = builder.input(input(0), LayerInputRole::ActivationEvent).unwrap();
+    let a = builder.input_expr(a_input).unwrap();
+    let b_input = builder.input(input(1), LayerInputRole::ActivationEvent).unwrap();
+    let b = builder.input_expr(b_input).unwrap();
+    let c_input = builder.input(input(2), LayerInputRole::ActivationEvent).unwrap();
+    let c = builder.input_expr(c_input).unwrap();
+    let not_a = builder.not(a).unwrap();
+    let nested_all = builder.all([b, not_a]).unwrap();
+    let nested_any = builder.any([b, a]).unwrap();
+
+    let contradiction = builder.all([a, nested_all]).unwrap();
+    let tautology = builder.any([not_a, nested_any]).unwrap();
+    assert_eq!(builder.expression(contradiction).unwrap(), &LayerExpr::Constant(false));
+    assert_eq!(builder.expression(tautology).unwrap(), &LayerExpr::Constant(true));
+
+    let shared = builder.all([a, b]).unwrap();
+    let through_shared = builder.all([shared, c, shared]).unwrap();
+    let flat = builder.all([c, a, b]).unwrap();
+    assert_eq!(through_shared, flat, "flattening preserves hash-consed shared operands");
+    assert_eq!(builder.expression(flat).unwrap(), &LayerExpr::All(vec![a, b, c].into()));
+}
+
+#[test]
+fn flattened_boolean_walk_keeps_cancellation_and_work_limits() {
+    let monitor = TaskMonitor::default();
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    let input = builder
+        .input(
+            LayerInputSource::BoundaryEvent {
+                port: 0,
+                occurrence: occurrence(0),
+            },
+            LayerInputRole::ActivationEvent,
+        )
+        .unwrap();
+    let a = builder.input_expr(input).unwrap();
+    let yes = builder.constant(true).unwrap();
+    let nested = builder.all([a, yes]).unwrap();
+    builder.budget.work = MAX_LAYER_WORK;
+    assert_eq!(builder.all([nested]), Err(ConstructionError::BudgetExceeded));
+
+    let cancelled = TaskMonitor::default();
+    let mut cancelled_builder = LayerBuilder::new(&cancelled).unwrap();
+    let input = cancelled_builder.constant(true).unwrap();
+    cancelled.cancel();
+    assert!(cancelled_builder.all([input]).is_err());
+}
+
+#[test]
 fn queued_entry_preserves_the_sampled_request_and_revalidates_live_power() {
     let (graph, catalog, component) = fixture(false);
     let monitor = TaskMonitor::default();
@@ -179,10 +237,8 @@ fn queued_entry_preserves_the_sampled_request_and_revalidates_live_power() {
 
     let no = composition.builder.constant(false).unwrap();
     composition.queued_sample(0, PistonId::new(0), no, occurrence(0)).unwrap();
-    let acceptance = composition.begin_next().unwrap().unwrap();
-    composition.finish_base(acceptance).unwrap();
-    let use_ = &composition.layers[1].uses[0];
-    assert_eq!(evaluated(&composition, &[use_.requested, use_.accepted]), [false, false]);
+    assert!(composition.begin_next().unwrap().is_none());
+    assert_eq!(composition.layers.len(), 1, "a statically false queued request creates no causal layer");
 }
 
 #[test]
@@ -227,10 +283,14 @@ fn failed_samples_can_retry_after_a_causal_resource_change_without_burning_the_u
         composition.finish_base(next).unwrap();
     }
     let accepted: Vec<_> = composition.layers.iter().map(|layer| layer.uses[0].accepted).collect();
-    assert_eq!(evaluated(&composition, &accepted), vec![true, false, false, true]);
+    assert_eq!(
+        evaluated(&composition, &accepted),
+        vec![true, false, true],
+        "the statically false retry is omitted; the later live retry still gets its turn"
+    );
     assert_eq!(
         evaluated(&composition, &composition.resources.iter().map(|r| r.transfer_when).collect::<Vec<_>>()),
-        vec![true, false, false, true]
+        vec![true, false, true]
     );
 }
 
@@ -276,6 +336,11 @@ fn queued_duplicates_and_feedback_cannot_accept_an_actor_twice() {
     for event in [no, yes, yes] {
         composition.sample(0, PistonId::new(0), event, vec![occurrence(0)].into()).unwrap();
     }
+    assert_eq!(
+        composition.requests.len(),
+        1,
+        "the false request and an already-pending duplicate are pruned"
+    );
     while let Some(next) = composition.begin_next().unwrap() {
         composition.finish_base(next).unwrap();
     }
@@ -287,6 +352,6 @@ fn queued_duplicates_and_feedback_cannot_accept_an_actor_twice() {
             &composition,
             &composition.layers.iter().map(|layer| layer.uses[0].accepted).collect::<Vec<_>>()
         ),
-        vec![false, true, false, false]
+        vec![true, false]
     );
 }

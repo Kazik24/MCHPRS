@@ -4,11 +4,9 @@
 //! that can reach every member wire: each internal wire edge costs one signal
 //! level, so paths of length 15 or more contribute zero. This is valid only
 //! under the `--stable-instant-inputs` contract; values are sampled afresh for
-//! every net invocation. Runtime materializes stable wire values, then samples
-//! distinct external outputs and retains typed reset/memory commit helpers.
-//! Internal queues and transients can differ from physical Turbo ordering, so
-//! RAM, output, and future continuation remain correctness observables that
-//! require validation; corridor closure alone is not a semantic proof.
+//! every net invocation. Runtime materializes stable wire values only when
+//! external captured receivers are statically inert. Effectful outputs stay
+//! on exact transport because bulk writes cannot preserve callback ordering.
 //!
 //! Inputs are interned by `(DriveSource, condition)` once per net. Each wire
 //! expression stores compact `(input, attenuation)` terms, allowing the runtime
@@ -174,6 +172,12 @@ fn compile_net(
     if count < 2 || net.ordered_receivers {
         return Ok(None);
     }
+    let Some(compiled_outputs) = compile_outputs(graph, net)? else {
+        return Ok(None);
+    };
+    if !compiled_outputs.is_empty() {
+        return Ok(None);
+    }
 
     let mut driver_exprs = Vec::with_capacity(count);
     for wire in net.wires.iter() {
@@ -328,10 +332,7 @@ fn compile_net(
     if inputs.len() > term_budget || terms.len() > term_budget {
         return Ok(None);
     }
-    let Some(outputs) = compile_outputs(graph, net)? else {
-        return Ok(None);
-    };
-    let output_candidates = outputs.iter().map(|output| output.candidates.len()).sum::<usize>();
+    let output_candidates = compiled_outputs.iter().map(|output| output.candidates.len()).sum::<usize>();
     let worst_index_bytes = inputs
         .len()
         .checked_mul(std::mem::size_of::<std::ops::Range<u32>>())
@@ -347,7 +348,7 @@ fn compile_net(
     let base_bytes = expressions.len() * std::mem::size_of::<DriveExpr>()
         + inputs.len() * std::mem::size_of::<StableLogicInput>()
         + terms.len() * std::mem::size_of::<StableLogicTerm>()
-        + outputs
+        + compiled_outputs
             .iter()
             .map(|output| std::mem::size_of::<StableLogicOutput>() + output.candidates.len() * std::mem::size_of::<StableLogicDelivery>())
             .sum::<usize>();
@@ -358,7 +359,7 @@ fn compile_net(
     if base_bytes.saturating_add(worst_index_bytes).saturating_add(index_build_scratch) > byte_budget {
         return Ok(None);
     }
-    let Some(indices) = build_dependency_indices(&expressions, &terms, inputs.len(), &outputs, count) else {
+    let Some(indices) = build_dependency_indices(&expressions, &terms, inputs.len(), &compiled_outputs, count) else {
         return Ok(None);
     };
     let bytes = base_bytes
@@ -375,7 +376,7 @@ fn compile_net(
         terms: terms.into_boxed_slice(),
         input_users: indices.input_users,
         input_user_expressions: indices.input_user_expressions,
-        outputs: outputs.into_boxed_slice(),
+        outputs: compiled_outputs.into_boxed_slice(),
         wire_outputs: indices.wire_outputs,
         wire_output_indices: indices.wire_output_indices,
     };
@@ -471,11 +472,11 @@ fn compile_outputs(graph: &CompileGraph, net: &TransportNet) -> Result<Option<Ve
                 continue;
             }
             let Some(&site) = net.sites.get(site_local as usize) else { continue };
-            let has_receiver = route
+            let has_effectful_receiver = route
                 .deliveries
                 .iter()
-                .any(|delivery| delivery.target == site && delivery.view == OperandView::Captured && delivery.receiver.is_some());
-            if !has_receiver {
+                .any(|delivery| delivery.target == site && callback_has_effect(graph, delivery));
+            if !has_effectful_receiver {
                 continue;
             }
             let admission = selection.and_then(|selection| ((selection.known & (1 << slot)) != 0).then_some((selection.admitted & (1 << slot)) != 0));
@@ -498,6 +499,34 @@ fn compile_outputs(graph: &CompileGraph, net: &TransportNet) -> Result<Option<Ve
             })
             .collect(),
     ))
+}
+
+fn callback_has_effect(graph: &CompileGraph, delivery: &RouteDelivery) -> bool {
+    if !matches!(delivery.kind, DeliveryKind::Update { .. }) {
+        return true;
+    }
+    // These Update handlers are no-ops in GraphBackend; every other receiver
+    // may mutate state, queue work, or synchronously trigger more callbacks.
+    let receiver = delivery
+        .receiver
+        .or_else(|| match (graph.sites[delivery.target.index()].source, delivery.kind) {
+            (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
+            _ => None,
+        });
+    match receiver {
+        Some(CallbackReceiver::Contact(_)) => false,
+        Some(CallbackReceiver::Component(node)) => !matches!(
+            graph.nodes[node.index()].kind,
+            CircuitNodeKind::Electrical(
+                crate::redpiler::components::NodeType::Lever
+                    | crate::redpiler::components::NodeType::Button
+                    | crate::redpiler::components::NodeType::PressurePlate
+                    | crate::redpiler::components::NodeType::Constant
+            )
+        ),
+        Some(CallbackReceiver::PistonBase(_) | CallbackReceiver::PistonHead(_)) => true,
+        None => false,
+    }
 }
 
 #[cfg(test)]

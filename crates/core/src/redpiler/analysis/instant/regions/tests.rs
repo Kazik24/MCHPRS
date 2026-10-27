@@ -85,3 +85,64 @@ fn unsupported_owners_and_observations_are_cuts_without_erasing_port_rows() {
     assert_ne!(sets.root(1), sets.root(3), "an observation remains a boundary dependency");
     assert_eq!(ports, original_ports, "cutting composition never erases its source obligations");
 }
+
+#[test]
+fn cutting_one_cell_keeps_other_joinable_regions_and_all_port_rows() {
+    let monitor = TaskMonitor::default();
+    let graph = CompileGraph {
+        nodes: vec![],
+        links: vec![],
+        power_links: vec![],
+        comparator_inputs: vec![],
+        profiles: vec![],
+        guards: vec![],
+        contacts: vec![],
+        routes: vec![],
+        wires: vec![],
+        wire_relations: vec![],
+        sites: vec![],
+        pistons: vec![],
+        resources: vec![],
+        initial_pistons: vec![],
+        initial_resources: vec![],
+        plans: ExecutionPlans::default(),
+    };
+    let empty_cell = || CellContract {
+        uses: Box::new([]),
+        pins: Box::new([]),
+        stationary_entry: CellPinId(0),
+        resources: Box::new([]),
+    };
+    let dependency = |link| BoundaryPortKind::Power { link };
+    let catalog = BoundaryCatalog {
+        cells: (0..5).map(|_| empty_cell()).collect::<Vec<_>>().into_boxed_slice(),
+        ports: vec![
+            row(BoundaryOwner::Cell(0), BoundaryDirection::Output, dependency(0)),
+            row(BoundaryOwner::Cell(1), BoundaryDirection::Output, dependency(0)),
+            row(BoundaryOwner::Cell(2), BoundaryDirection::Input, dependency(0)),
+            row(BoundaryOwner::Cell(3), BoundaryDirection::Output, dependency(1)),
+            row(BoundaryOwner::Cell(4), BoundaryDirection::Input, dependency(1)),
+        ]
+        .into_boxed_slice(),
+        ..Default::default()
+    };
+
+    let partition = super::partition_with_cuts(&graph, &catalog, &monitor, &[false, true, true, true, true], |_| true).unwrap();
+    assert_ne!(
+        partition.owner_region[0], partition.owner_region[1],
+        "the rejected source owner stays separate"
+    );
+    assert_eq!(
+        partition.owner_region[1], partition.owner_region[2],
+        "the unaffected neighbor pair still composes"
+    );
+    assert_eq!(
+        partition.owner_region[3], partition.owner_region[4],
+        "an unrelated valid pair still composes"
+    );
+    assert_ne!(partition.owner_region[1], partition.owner_region[3]);
+    assert_eq!(
+        partition.regions.iter().map(|region| region.ports.len()).sum::<usize>(),
+        catalog.ports.len()
+    );
+}

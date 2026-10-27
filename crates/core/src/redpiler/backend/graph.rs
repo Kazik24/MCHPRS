@@ -80,7 +80,7 @@ pub(crate) mod transport;
 mod unchecked_classic_anpu;
 mod wire;
 
-use pistons::{DeferredPistonEvent, PistonRequest};
+use pistons::{DeferredPistonEvent, PistonRequest, PistonRequestQueue};
 use sites::ResolvedSiteView;
 
 use super::TickScheduler;
@@ -273,6 +273,8 @@ pub(crate) struct TestRecorder {
     callback_order: Vec<(BlockPos, DeliveryKind)>,
     comparator_updates: Vec<BlockPos>,
     observed_operations: Vec<GraphObservedOperation>,
+    /// Actual FIFO requests popped during normal tick phases, including their original source route.
+    popped_piston_requests: Vec<(PistonId, mchprs_world::PistonAction, Option<RouteId>)>,
     /// Native-format sample/applied trace at the same live request and acceptance cuts.
     native_piston_trace: Vec<crate::redstone::piston::trace::Entry>,
     /// Executed typed dispatch paths for logical BUD transition occurrences.
@@ -472,6 +474,8 @@ pub(crate) struct GraphBackend {
     native_action_clock_owner: Vec<Option<usize>>,
     /// Exact native callback occurrences replaced by certified logical-device inputs.
     logical_input_callbacks: FxHashSet<RouteOccurrence>,
+    /// Routes with typed input ports must retain per-occurrence native dispatch.
+    general_delivery_routes: Vec<bool>,
     logical_device_admission: crate::redpiler::LogicalDeviceAdmission,
     active_frame_command_outputs: Vec<NodeId>,
     active_frame_retained_actors: Vec<PistonId>,
@@ -508,7 +512,7 @@ struct GraphFuture {
     pending: FxHashMap<PendingNodeTick, usize>,
     /// Exact multiplicity of canonical typed ticks, indexed by immutable component ID.
     pending_nodes: Box<[usize]>,
-    piston_requests: VecDeque<PistonRequest>,
+    piston_requests: PistonRequestQueue,
     deferred_pistons: VecDeque<DeferredPistonEvent>,
     clock: Clock,
 }
@@ -847,6 +851,7 @@ impl GraphBackend {
             }
         }
         let node_count = program.nodes().len();
+        let route_count = program.routes().len();
         let (contacts_by_piston, contacts_by_resource, always_dirty_contacts) = projection::contact_projection_dependencies(&program);
         let contact_count = program.contacts().len();
         let full_contact_projection = program.contacts().iter().map(|contact| contact.position).collect::<FxHashSet<_>>().len() != contact_count;
@@ -917,6 +922,7 @@ impl GraphBackend {
             logical_device_owner: Vec::new(),
             native_action_clock_owner,
             logical_input_callbacks: FxHashSet::default(),
+            general_delivery_routes: vec![false; route_count],
             logical_device_admission: crate::redpiler::LogicalDeviceAdmission::NotApplicable,
             active_frame_command_outputs: Vec::new(),
             active_frame_retained_actors: Vec::new(),
@@ -929,7 +935,7 @@ impl GraphBackend {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
                 pending_nodes: vec![0; node_count].into_boxed_slice(),
-                piston_requests: VecDeque::new(),
+                piston_requests: PistonRequestQueue::new(),
                 deferred_pistons: VecDeque::new(),
                 clock: Clock {
                     logical_tick,
@@ -1970,7 +1976,11 @@ impl GraphBackend {
     fn fire_route(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         if let Some(program) = &self.fixed_classic {
             let route = program.nodes[node.index()].output_route;
-            return route.map_or(Ok(()), |route| self.fixed_classic_route(route, None));
+            if let Some(route) = route
+                && !self.requires_general_route_delivery(route)
+            {
+                return self.fixed_classic_route(route, None);
+            }
         }
         let route = self.program.nodes()[node.index()].output_route;
         if let Some(route) = route {
@@ -2008,7 +2018,10 @@ impl GraphBackend {
     /// The general path keeps duplicate notifications. A callback can run another route.
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        if self.fixed_classic.is_some() && !self.logical_node_owned(self.program.routes()[route.index()].source) {
+        if self.fixed_classic.is_some()
+            && !self.logical_node_owned(self.program.routes()[route.index()].source)
+            && !self.requires_general_route_delivery(route)
+        {
             return self.fixed_classic_route(route, captured);
         }
         let result = self.deliver_route_inner(route, captured);
@@ -2027,9 +2040,11 @@ impl GraphBackend {
         }
         let has_logical_sample = self.logical_bud_samples_by_route.get(route.index()).is_some_and(Option::is_some);
         let has_logical_firing = self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_route(route));
+        let requires_general_delivery = self.requires_general_route_delivery(route);
         if !retained_frame
             && !has_logical_sample
             && !has_logical_firing
+            && !requires_general_delivery
             && let Some(kernel) = self.instant_kernel.active.clone()
             && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
         {
@@ -2038,6 +2053,7 @@ impl GraphBackend {
         if !retained_frame
             && !has_logical_sample
             && !has_logical_firing
+            && !requires_general_delivery
             && let Some(binding) = self.program.instant_route_binding(route)
         {
             return self.deliver_instant_route(route, binding, captured);
@@ -2046,7 +2062,7 @@ impl GraphBackend {
         let classic_range = self.program.classic().route_ranges.get(route.index()).cloned().unwrap_or(0..0);
         let mut classic_cursor = classic_range.start;
         for index in 0..delivery_count {
-            if !retained_frame && classic_cursor < classic_range.end {
+            if !retained_frame && !requires_general_delivery && classic_cursor < classic_range.end {
                 let binding = self.program.classic().route_entries[classic_cursor];
                 if binding.ordinal as usize == index {
                     classic_cursor += 1;
@@ -2071,6 +2087,11 @@ impl GraphBackend {
             self.deliver_callback(route, delivery, captured, Some(occurrence))?;
         }
         Ok(())
+    }
+
+    #[inline(always)]
+    fn requires_general_route_delivery(&self, route: RouteId) -> bool {
+        self.general_delivery_routes.get(route.index()).copied().unwrap_or(false)
     }
 
     /// Deliver one original callback occurrence bound to a logical BUD transition cut.
@@ -2101,15 +2122,16 @@ impl GraphBackend {
             });
         };
         let classic_range = self.program.classic().route_ranges.get(occurrence.route.index()).cloned().unwrap_or(0..0);
-        if let Some(binding) = self
-            .program
-            .classic()
-            .route_entries
-            .get(classic_range)
-            .unwrap_or(&[])
-            .iter()
-            .find(|binding| binding.ordinal == occurrence.ordinal)
-            .copied()
+        if !self.requires_general_route_delivery(occurrence.route)
+            && let Some(binding) = self
+                .program
+                .classic()
+                .route_entries
+                .get(classic_range)
+                .unwrap_or(&[])
+                .iter()
+                .find(|binding| binding.ordinal == occurrence.ordinal)
+                .copied()
             && self.run_classic_entry(binding.entry as usize)
         {
             return Ok(());

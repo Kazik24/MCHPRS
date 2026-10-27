@@ -1,33 +1,70 @@
 //! Couple executable computation; retain reset, geometry and unsupported owners as boundaries.
 use super::*;
 
-/// Rebuild the same certified owner partition after rejecting selected wire corridors.
-/// Cell/resource owners remain indivisible and all original port rows stay available as
-/// perimeter evidence; only the selected corridor may stop coupling neighboring owners.
-pub(super) fn partition_with_corridor_cuts(
-    graph: &CompileGraph,
-    catalog: &BoundaryCatalog,
-    monitor: &TaskMonitor,
-    cut_corridors: &[u32],
-) -> Result<regions::RegionPartition, String> {
-    let cells = catalog.cells.iter().map(|cell| private_observer_cell(graph, cell));
+/// Partition computation once; unsupported regions retain their complete Graph boundary.
+pub(super) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<regions::RegionPartition, String> {
+    let mut corridor_ports: FxHashMap<(BoundaryPortKind, BoundaryDirection), FxHashSet<u32>> = FxHashMap::default();
+    for (index, port) in catalog.ports.iter().enumerate() {
+        if index & 0x3ff == 0 && monitor.cancelled() {
+            return Err("cancelled while checking shared-cell corridor boundaries".into());
+        }
+        if let BoundaryOwner::Corridor(corridor) = port.owner {
+            corridor_ports.entry((port.kind, port.direction)).or_default().insert(corridor);
+        }
+    }
     let candidates = computation_corridors(graph, catalog, monitor)?;
-    let corridors = catalog.corridors.iter().zip(candidates).map(|(corridor, candidate)| {
+    let direct_shared: Vec<_> = catalog.cells.iter().map(|cell| direct_shared_observer_cell(graph, cell)).collect();
+    let mut cell_has_edge = vec![false; catalog.cells.len()];
+    let mut shared_cell_has_candidate = vec![false; catalog.cells.len()];
+    let mut shared_cell_has_unsupported_edge = vec![false; catalog.cells.len()];
+    let mut shared_source_corridors = vec![false; catalog.corridors.len()];
+
+    // The full arrival proof authorizes shared-cell edges. This pass only admits
+    // one-wire candidates with a known computation path or an adjacent movable
+    // RedstoneBlock source. Private cells retain the established unconditional
+    // partition ownership and use their existing strict arrival proof.
+    for (index, port) in catalog.ports.iter().enumerate() {
+        if index & 0x3ff == 0 && monitor.cancelled() {
+            return Err("cancelled while checking shared-cell corridor boundaries".into());
+        }
+        let BoundaryOwner::Cell(cell_id) = port.owner else { continue };
+        let cell = cell_id as usize;
+        let opposite = match port.direction {
+            BoundaryDirection::Input => BoundaryDirection::Output,
+            BoundaryDirection::Output => BoundaryDirection::Input,
+        };
+        let Some(corridors) = corridor_ports.get(&(port.kind, opposite)) else {
+            continue;
+        };
+        cell_has_edge[cell] = true;
+        if direct_shared[cell] {
+            for &corridor_id in corridors {
+                let corridor = corridor_id as usize;
+                let source_candidate = catalog.corridors[corridor].wires.len() == 1
+                    && composition::corridors::may_join_single_wire_shared_arrival(graph, &catalog.cells[cell], &catalog.corridors[corridor]);
+                if catalog.corridors[corridor].wires.len() == 1 && (candidates[corridor] || source_candidate) {
+                    shared_cell_has_candidate[cell] = true;
+                    shared_source_corridors[corridor] |= source_candidate;
+                } else if matches!(port.kind, BoundaryPortKind::Power { .. }) {
+                    shared_cell_has_unsupported_edge[cell] = true;
+                }
+            }
+        }
+    }
+
+    let mut shared_single_wire_cells = vec![false; catalog.cells.len()];
+    for cell in 0..catalog.cells.len() {
+        shared_single_wire_cells[cell] = shared_cell_has_candidate[cell] && !shared_cell_has_unsupported_edge[cell];
+    }
+    let cells = catalog.cells.iter().enumerate().map(|(index, cell)| {
+        private_observer_cell(graph, cell) || (direct_shared_observer_cell(graph, cell) && (!cell_has_edge[index] || shared_single_wire_cells[index]))
+    });
+    let corridors = catalog.corridors.iter().enumerate().map(|(index, corridor)| {
+        let candidate = candidates[index] || shared_source_corridors[index];
         let wires = corridor.wires.iter().copied().collect();
         candidate && composition::corridors::closed_straight_cable(graph, &wires)
     });
-    let mut joinable: Vec<_> = cells.chain(corridors).collect();
-    for &corridor in cut_corridors {
-        let owner = catalog
-            .cells
-            .len()
-            .checked_add(corridor as usize)
-            .ok_or("instant corridor owner index overflow")?;
-        let Some(joinable) = joinable.get_mut(owner) else {
-            return Err("failure-guided cut references a missing wire corridor".into());
-        };
-        *joinable = false;
-    }
+    let joinable: Vec<_> = cells.chain(corridors).collect();
     regions::partition_with_cuts(graph, catalog, monitor, &joinable, |kind| computation_dependency(graph, kind))
 }
 
@@ -87,6 +124,43 @@ pub(super) fn private_observer_cell(graph: &CompileGraph, cell: &CellContract) -
     resource.owners.as_ref() == [use_.actor]
         && use_.reset.observer_wake().is_some_and(|wake| wake.watched_actor == use_.actor)
         && mchprs_blocks::blocks::Block::from_id(material.raw_state) == mchprs_blocks::blocks::Block::RedstoneBlock
+}
+
+/// Direct shared-token composition is certified by the full cell contract. Keep it
+/// separate from the single-owner corridor arrival proof below.
+pub(super) fn direct_shared_observer_cell(graph: &CompileGraph, cell: &CellContract) -> bool {
+    if cell.uses.len() < 2 || cell.resources.len() != 1 {
+        return false;
+    }
+    let pin = &cell.resources[0];
+    let Some(resource) = graph.resources.get(pin.resource.index()) else {
+        return false;
+    };
+    let Some(material) = graph.profiles.get(resource.material.index()) else {
+        return false;
+    };
+    if mchprs_blocks::blocks::Block::from_id(material.raw_state) != mchprs_blocks::blocks::Block::RedstoneBlock {
+        return false;
+    }
+
+    let mut use_actors = cell.uses.iter().map(|use_| use_.actor).collect::<Vec<_>>();
+    use_actors.sort_unstable();
+    use_actors.dedup();
+    let original_owner_count = pin.owners.len();
+    let mut pin_owners = pin.owners.to_vec();
+    pin_owners.sort_unstable();
+    pin_owners.dedup();
+    if use_actors.len() != cell.uses.len() || pin_owners.len() != original_owner_count || use_actors != pin_owners {
+        return false;
+    }
+    cell.uses.iter().all(|use_| {
+        !use_.activations.is_empty()
+            && use_
+                .retraction
+                .transfer
+                .is_some_and(|transfer| transfer.resource == pin.resource && transfer.source == pin.source)
+            && use_.reset.observer_wake().is_some_and(|wake| wake.watched_actor == use_.actor)
+    })
 }
 
 fn computation_dependency(graph: &CompileGraph, kind: BoundaryPortKind) -> bool {

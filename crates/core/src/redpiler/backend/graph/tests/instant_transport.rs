@@ -483,8 +483,88 @@ fn three_wire_input_graph(stable_inputs: bool, second_input: bool) -> CompileGra
     prepared.graph
 }
 
+fn two_piston_opposite_input_graph(stable_inputs: bool) -> CompileGraph {
+    let mut world = empty_world();
+    for x in 42..=46 {
+        world.set_block(BlockPos::new(x, 33, 42), Block::Stone {});
+        if x >= 43 {
+            world.set_block(BlockPos::new(x, 34, 42), Block::RedstoneWire { wire: Default::default() });
+        }
+    }
+    world.set_block(BlockPos::new(46, 33, 43), Block::Stone {});
+    world.set_block(BlockPos::new(46, 34, 43), Block::Lever { lever: Default::default() });
+
+    for (base, facing, head, payload) in [
+        (
+            BlockPos::new(42, 34, 42),
+            mchprs_blocks::BlockFacing::West,
+            BlockPos::new(41, 34, 42),
+            BlockPos::new(40, 34, 42),
+        ),
+        (
+            BlockPos::new(47, 34, 42),
+            mchprs_blocks::BlockFacing::East,
+            BlockPos::new(48, 34, 42),
+            BlockPos::new(49, 34, 42),
+        ),
+    ] {
+        world.set_block(
+            base,
+            Block::Piston {
+                piston: mchprs_blocks::blocks::RedstonePiston {
+                    facing,
+                    sticky: true,
+                    extended: true,
+                },
+            },
+        );
+        world.set_block(
+            head,
+            Block::PistonHead {
+                head: mchprs_blocks::blocks::RedstonePistonHead {
+                    facing,
+                    sticky: true,
+                    short: false,
+                },
+            },
+        );
+        world.set_block(payload, Block::RedstoneBlock);
+        world.set_block(
+            base.offset(mchprs_blocks::BlockFacing::Up.into()),
+            Block::Observer {
+                observer: mchprs_blocks::blocks::RedstoneObserver {
+                    facing: mchprs_blocks::BlockFacing::Down,
+                    powered: false,
+                },
+            },
+        );
+        world.set_block(
+            base.offset(mchprs_blocks::BlockFacing::Up.into())
+                .offset(mchprs_blocks::BlockFacing::Up.into()),
+            Block::Stone {},
+        );
+    }
+
+    let monitor = TaskMonitor::default();
+    let mut options = CompilerOptions::parse("-O5").unwrap();
+    options.stable_instant_inputs = stable_inputs;
+    let bounds = (BlockPos::new(38, 29, 38), BlockPos::new(52, 39, 50));
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    assert_eq!(prepared.graph.plans.instant_transport.nets.len(), 1);
+    assert_eq!(prepared.graph.plans.instant_transport.nets[0].wires.len(), 4);
+    prepared.graph
+}
+
 #[test]
-fn stable_logic_adder11_preserves_all_pinned_output_windows() {
+fn instant_transport_adder11_preserves_all_pinned_output_windows() {
     let circuit = load_adder("adder_11bits", ORIGIN, None);
     let world = circuit.build();
     let monitor = TaskMonitor::default();
@@ -498,7 +578,7 @@ fn stable_logic_adder11_preserves_all_pinned_output_windows() {
         &monitor,
     )
     .unwrap();
-    assert!(prepared.graph.plans.stable_instant_logic.stats.admitted > 0);
+    assert_eq!(prepared.graph.plans.stable_instant_logic.stats.admitted, 0);
     let (program, initial) = prepared.graph.lower().unwrap();
     let manifest: Value =
         serde_json::from_slice(&std::fs::read(root().join("test_data/instant-pistons-io/fixtures/adder_11bits.json")).unwrap()).unwrap();
@@ -535,101 +615,53 @@ fn stable_logic_adder11_preserves_all_pinned_output_windows() {
 }
 
 #[test]
-fn stable_logic_evaluates_independent_inputs_as_one_combinational_program() {
+fn stable_logic_declines_effectful_outputs_before_expanding() {
     let graph = three_wire_input_graph(true, true);
-    assert_eq!(graph.plans.stable_instant_logic.stats.admitted, 1);
-    assert_eq!(graph.plans.stable_instant_logic.stats.wires, 3);
-    assert!(graph.plans.stable_instant_logic.stats.inputs >= 2);
+    assert_eq!(graph.plans.instant_transport.nets.len(), 1);
+    assert!(graph.plans.stable_instant_logic.nets[0].is_none());
+    assert_eq!(graph.plans.stable_instant_logic.stats.admitted, 0);
+    assert_eq!(graph.plans.stable_instant_logic.stats.work, 0);
+}
+
+#[test]
+fn stable_logic_preserves_fifo_for_pistons_at_opposite_transport_ends() {
+    let graph = two_piston_opposite_input_graph(true);
+    assert!(graph.plans.stable_instant_logic.nets[0].is_none());
+    let mut exact_graph = graph.clone();
+    exact_graph.plans.stable_instant_logic = Default::default();
     let net = graph.plans.instant_transport.nets[0].clone();
     let (program, initial) = graph.lower().unwrap();
-    let sources = [BlockPos::new(42, 34, 42), BlockPos::new(44, 34, 43)].map(|position| program.position_index()[&position]);
-    for a in [false, true] {
-        for b in [false, true] {
-            let mut backend = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
-            for (source, powered) in sources.into_iter().zip([a, b]) {
-                let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
-                    unreachable!()
-                };
-                state.powered = powered;
-                state.output_strength = 7;
-            }
-            let root = if a {
-                0
-            } else if b {
-                1
-            } else {
-                0
+    let (exact_program, exact_initial) = exact_graph.lower().unwrap();
+    let source = program.position_index()[&BlockPos::new(46, 34, 43)];
+    let root = net
+        .wires
+        .iter()
+        .find(|wire| program.nodes()[wire.node.index()].position == Some(BlockPos::new(46, 34, 42)))
+        .expect("the drive enters at the right end of the corridor")
+        .node;
+    let mut bulk = GraphBackend::new_unactivated(program, initial, 0).unwrap();
+    let mut exact = GraphBackend::new_unactivated(exact_program, exact_initial, 0).unwrap();
+
+    for powered in [true, false] {
+        for backend in [&mut bulk, &mut exact] {
+            let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
+                unreachable!()
             };
-            backend.evaluate_seed(net.wires[root].node, None).unwrap();
-            let strengths = [
-                (u8::from(a) * 15).max((u8::from(b) * 15).saturating_sub(1)),
-                (u8::from(b) * 15).max((u8::from(a) * 15).saturating_sub(1)),
-                (u8::from(a) * 15).saturating_sub(2).max((u8::from(b) * 15).saturating_sub(1)),
-            ];
-            let actual: Vec<_> = net.wires.iter().map(|wire| backend.wire_state(wire.node).power).collect();
-            assert_eq!(actual, strengths, "inputs {a} {b}");
-            assert_eq!(backend.execution_counts().stable_logic_invocations, 1);
-            assert_eq!(backend.execution_counts().wire_walks, 0);
-            assert_eq!(backend.execution_counts().instant_transport_wire_visits, 0);
-            let before = backend.execution_counts().stable_logic_wire_values;
-            backend.evaluate_seed(net.wires[root].node, None).unwrap();
-            assert_eq!(
-                backend.execution_counts().stable_logic_wire_values - before,
-                1,
-                "unchanged input must evaluate only its entry expression"
-            );
+            state.powered = powered;
+            state.output_strength = if powered { 15 } else { 0 };
+            backend.evaluate_seed(root, None).unwrap();
         }
+        bulk.assert_same_execution_state(&exact);
+        assert_eq!(bulk.future.piston_requests, exact.future.piston_requests, "source powered={powered}");
     }
-    let ordinary = three_wire_input_graph(false, true);
-    assert!(
-        ordinary.plans.stable_instant_logic.nets.is_empty(),
-        "the input-hold contract must be explicit"
-    );
+
+    let requests = bulk.future.piston_requests.iter().collect::<Vec<_>>();
+    assert_eq!(requests.len(), 2, "both extended endpoint pistons should request retraction");
+    assert_ne!(requests[0].piston, requests[1].piston, "the pending FIFO must retain both receivers");
 }
 
 #[test]
-fn stable_logic_cached_updates_match_full_solves_and_invalidate_on_wire_writes() {
-    let graph = three_wire_input_graph(true, true);
-    let net = graph.plans.instant_transport.nets[0].clone();
-    let (program, initial) = graph.lower().unwrap();
-    let sources = [BlockPos::new(42, 34, 42), BlockPos::new(44, 34, 43)].map(|position| program.position_index()[&position]);
-    let mut cached = GraphBackend::new_unactivated(program.clone(), initial.clone(), 0).unwrap();
-    let mut full = GraphBackend::new_unactivated(program, initial, 0).unwrap();
-    cached.set_test_recording(true);
-    full.set_test_recording(true);
-    for step in 0..128usize {
-        for backend in [&mut cached, &mut full] {
-            for (bit, source) in sources.iter().enumerate() {
-                let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
-                    unreachable!()
-                };
-                state.powered = (step >> bit) & 1 != 0;
-            }
-            if step % 7 == 0 {
-                let wire = net.wires[(step / 7) % net.wires.len()].node;
-                let mut value = backend.wire_state(wire);
-                value.power = (step % 16) as u8;
-                backend.set_wire(wire, value);
-            }
-        }
-        full.stable_logic_cache.clear();
-        let node = net.wires[(step / 4) % net.wires.len()].node;
-        cached.evaluate_seed(node, None).unwrap();
-        full.evaluate_seed(node, None).unwrap();
-        cached.assert_same_execution_state(&full);
-        assert_eq!(cached.observed_operations, full.observed_operations, "step {step}");
-    }
-    let mut stale = cached.observe_site(cached.component_sites[net.wires[0].node.index()].unwrap()).unwrap();
-    let ObservedProperties::Wire(wire) = &mut stale.properties else {
-        unreachable!()
-    };
-    wire.power = (wire.power + 1) % 16;
-    assert!(!cached.try_stable_instant_logic(net.wires[0].node, Some(&stale)).unwrap());
-    assert!(!cached.stable_logic_cache[0].valid);
-}
-
-#[test]
-fn stable_logic_changes_only_expressions_reachable_from_changed_inputs() {
+fn stable_logic_declines_effectful_outputs_for_long_corridors() {
     let mut world = empty_world();
     for x in 42..=75 {
         world.set_block(BlockPos::new(x, 33, 42), Block::Stone {});
@@ -691,33 +723,10 @@ fn stable_logic_changes_only_expressions_reachable_from_changed_inputs() {
         &monitor,
     )
     .unwrap();
-    assert_eq!(
-        prepared.graph.plans.stable_instant_logic.stats.admitted, 1,
-        "{:?}",
-        prepared.graph.plans.instant_transport.stats
-    );
-    assert_eq!(prepared.graph.plans.stable_instant_logic.stats.wires, 32);
-    let (program, initial) = prepared.graph.lower().unwrap();
-    let source = program.position_index()[&BlockPos::new(42, 34, 42)];
-    let root = program.position_index()[&BlockPos::new(43, 34, 42)];
-    let mut backend = GraphBackend::new_unactivated(program, initial, 0).unwrap();
-    for powered in [true, false, true, false] {
-        let ComponentState::Electrical(state) = &mut backend.state.components[source.index()] else {
-            unreachable!()
-        };
-        state.powered = powered;
-        let before = backend.execution_counts().stable_logic_wire_values;
-        backend.evaluate_seed(root, None).unwrap();
-        let evaluated = backend.execution_counts().stable_logic_wire_values - before;
-        assert_eq!(evaluated, if before == 0 { 32 } else { 15 });
-        for x in 43..=74 {
-            let node = backend.program.position_index()[&BlockPos::new(x, 34, 42)];
-            assert_eq!(
-                backend.wire_state(node).power,
-                if powered { 15u8.saturating_sub((x - 43) as u8) } else { 0 }
-            );
-        }
-    }
+    assert_eq!(prepared.graph.plans.instant_transport.nets.len(), 1);
+    assert!(prepared.graph.plans.stable_instant_logic.nets[0].is_none());
+    assert_eq!(prepared.graph.plans.stable_instant_logic.stats.admitted, 0);
+    assert_eq!(prepared.graph.plans.stable_instant_logic.stats.work, 0);
 }
 
 #[test]
