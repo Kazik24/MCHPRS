@@ -309,6 +309,9 @@ fn run_graph_pipeline_with_analysis(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
+    if let Some(example) = crate::redpiler::analysis::diagnostics::cell_decline_example(graph) {
+        monitor.record_cell_decline_example(example);
+    }
     // Entry and every enabled output have already passed their required validation.
     monitor.set_final_graph(GraphCounts::of(graph));
     Ok(layers)

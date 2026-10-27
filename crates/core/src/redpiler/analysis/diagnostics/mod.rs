@@ -17,6 +17,22 @@ pub(crate) fn summary(graph: &CompileGraph) -> String {
     )
 }
 
+pub(crate) fn cell_decline_example(graph: &CompileGraph) -> Option<String> {
+    // A singleton without a recognized reset is also synthesized for every ordinary piston.
+    let decline = graph.plans.instant.boundaries.as_ref()?.declines.iter().find(|decline| {
+        decline.actors.len() > 1 || !matches!(decline.reason, CellDeclineReason::UnrecognizedActor(_))
+    })?;
+    let actor = match decline.reason {
+        CellDeclineReason::UnrecognizedActor(actor) | CellDeclineReason::MissingDeferredWake(actor) => actor,
+        _ => *decline.actors.first()?,
+    };
+    let pos = graph.pistons.get(actor.index())?.position;
+    Some(format!(
+        "Instant pull-cell recognition at ({}, {}, {}): {}. Ordinary pistons may not need this; other acceleration may apply. Reset, aim at the piston, then use /rp inspect.",
+        pos.x, pos.y, pos.z, decline_reason(decline.reason)
+    ))
+}
+
 pub(crate) fn inspect(graph: &CompileGraph, position: BlockPos, monitor: &TaskMonitor) -> Result<Vec<String>, String> {
     if monitor.cancelled() {
         return Err("inspection cancelled".into());
@@ -217,4 +233,30 @@ mod tests {
         assert!(summary.contains("local instant evidence 0; remaining 2"));
         assert!(summary.contains("not a complete lifecycle proof"));
     }
+
+    #[test]
+    fn cell_decline_example_is_local_and_links_a_real_witness() {
+        let mut graph = graph();
+        assert!(cell_decline_example(&graph).is_none());
+        graph.plans.instant.boundaries = Some(
+            crate::redpiler::analysis::instant::boundaries::infer_boundaries(&graph, &TaskMonitor::default()).unwrap(),
+        );
+        assert!(cell_decline_example(&graph).is_none(), "ordinary unrecognized pistons are not candidate warnings");
+        let catalog = graph.plans.instant.boundaries.as_mut().unwrap();
+        let actors = catalog.declines.iter().flat_map(|decline| decline.actors.iter().copied()).collect::<Vec<_>>();
+        let witness = actors[1];
+        catalog.declines = vec![crate::redpiler::program_graph::CellDecline {
+            reason: CellDeclineReason::UnrecognizedActor(witness),
+            actors,
+        }].into_boxed_slice();
+        let message = cell_decline_example(&graph).unwrap();
+        assert!(message.contains("reset not recognized"));
+        assert!(message.contains("Ordinary pistons"));
+        assert!(message.contains("other acceleration may apply"));
+        let component = crate::player::diagnostic_component(&message);
+        let position = graph.pistons[witness.index()].position;
+        let expected = format!("/hl {} {} {}", position.x, position.y, position.z);
+        assert!(component["extra"].as_array().unwrap().iter().any(|part| part["click_event"]["command"] == expected));
+    }
+
 }

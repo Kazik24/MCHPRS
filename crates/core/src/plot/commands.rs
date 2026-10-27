@@ -514,6 +514,7 @@ impl Plot {
         if command == "/waveform" {
             match self.handle_waveform(player, &args) {
                 Ok(text) if args == ["list"] => self.players[player].send_raw_system_message(crate::player::diagnostic_component(&text).to_string()),
+                Ok(text) if args == ["web"] => self.players[player].send_raw_system_message(super::waveform::viewer_link(&text).to_string()),
                 Ok(text) => self.players[player].send_system_message(&text),
                 Err(error) => self.players[player].send_error_message(&error),
             };

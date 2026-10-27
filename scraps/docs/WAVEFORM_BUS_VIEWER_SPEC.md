@@ -151,7 +151,9 @@ Session membership resolves against the current capture and plot exactly as
 existing sessions do. Capture replacement invalidates derived bus transitions.
 
 VCD download continues exporting the original physical probes and their ordered
-changes at 50 ms/tick. Browser grouping, number formats and inverted display
+changes at 50 ms/tick. A `command_output` string signal carries command-block
+messages grouped by tick using the string extension supported by VaporView/Wellen
+and GTKWave. Browser grouping, number formats and inverted display
 must not rewrite physical truth or add synthetic bus declarations in this first
 version. Viewer-session files preserve bus presentation separately. Existing
 WaveDrom export should include a visible bus once, with formatted settled values,

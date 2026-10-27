@@ -13,6 +13,7 @@ pub struct TaskMonitor {
     budget_multiplier: AtomicUsize,
     graph_statistics: Mutex<GraphStatistics>,
     warnings: Mutex<Vec<String>>,
+    cell_decline_example: Mutex<Option<String>>,
 }
 
 #[cfg(test)]
@@ -38,18 +39,36 @@ mod tests {
             monitor.record_warning(warning.into());
         }
         assert_eq!(monitor.warnings().last().unwrap(), "whole-plot budget decline");
+        monitor.record_cell_decline_example("cell example".into());
+        monitor.record_cell_decline_example("another example".into());
+        assert_eq!(monitor.warnings().len(), 5);
+        assert_eq!(monitor.warnings()[3], "whole-plot budget decline");
+        assert_eq!(monitor.warnings()[4], "cell example");
+        monitor.clear_graph_statistics();
+        assert!(monitor.warnings().is_empty());
     }
 }
 
 impl TaskMonitor {
     pub fn warnings(&self) -> Vec<String> {
-        self.warnings.lock().unwrap().clone()
+        let mut warnings = self.warnings.lock().unwrap().clone();
+        if let Some(example) = self.cell_decline_example.lock().unwrap().as_ref() {
+            warnings.push(example.clone());
+        }
+        warnings
     }
 
     pub(crate) fn record_warning(&self, warning: String) {
         let mut warnings = self.warnings.lock().unwrap();
         if warnings.len() < 4 && !warnings.contains(&warning) {
             warnings.push(warning);
+        }
+    }
+
+    pub(crate) fn record_cell_decline_example(&self, warning: String) {
+        let mut example = self.cell_decline_example.lock().unwrap();
+        if example.is_none() {
+            *example = Some(warning);
         }
     }
 
@@ -60,6 +79,7 @@ impl TaskMonitor {
     pub(crate) fn clear_graph_statistics(&self) {
         *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
         self.warnings.lock().unwrap().clear();
+        *self.cell_decline_example.lock().unwrap() = None;
     }
 
     pub(crate) fn begin_graph_statistics(&self) {

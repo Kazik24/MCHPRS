@@ -451,7 +451,17 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     run_saved_plot_profile(false);
 }
 
+#[test]
+#[ignore = "release-only saved FPU changing-input command and six-phase native handoff oracle"]
+fn saved_fpu_changing_inputs_refire_commands_with_six_handoffs() {
+    run_saved_plot_profile_with_protocol(false, true);
+}
+
 pub(crate) fn run_saved_plot_profile(server: bool) {
+    run_saved_plot_profile_with_protocol(server, false);
+}
+
+fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
     let optimization_level = std::env::var("MCHPRS_PROFILE_OPT_LEVEL")
         .ok()
         .map(|value| value.parse::<usize>().expect("MCHPRS_PROFILE_OPT_LEVEL must be an integer"))
@@ -609,6 +619,7 @@ pub(crate) fn run_saved_plot_profile(server: bool) {
         .map(|value| value.parse::<usize>().expect("MCHPRS_PROFILE_FRAMES must be an integer"))
         .unwrap_or(96);
     assert!(frames > 0, "profile frame count must be positive");
+    if command_witness { assert!(frames >= 4, "command witness needs at least four frames"); }
 
     #[cfg(feature = "saved-plot-bench")]
     if server {
@@ -698,10 +709,12 @@ pub(crate) fn run_saved_plot_profile(server: bool) {
     let input_positions = fpu_inputs.iter().map(|(position, _)| *position).collect::<Vec<_>>();
     for frame in 0..frames {
         let control_start = Instant::now();
-        let (word, input_updates, neighbor_updates) = drive_profile_frame(
-            &mut random, mask, previous_word, &input_positions, &neighbor_controls, frame,
-            |position| backend.use_block(position).unwrap(),
-        );
+        let (word, input_updates, neighbor_updates) = if command_witness {
+            let word = if frame % 2 == 0 { 0 } else { witness_word };
+            drive_profile_word(word, previous_word, &input_positions, &neighbor_controls, frame, |position| backend.use_block(position).unwrap())
+        } else {
+            drive_profile_frame(&mut random, mask, previous_word, &input_positions, &neighbor_controls, frame, |position| backend.use_block(position).unwrap())
+        };
         first_word = word;
         input_lever_updates += input_updates;
         neighbor_lever_updates += neighbor_updates;
@@ -743,6 +756,9 @@ pub(crate) fn run_saved_plot_profile(server: bool) {
     let clock_state_after = backend.state.pistons[clock_piston.index()];
     let trigger_powered_after = matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered);
     let command_count_after = world.command_output().count();
+    if command_witness {
+        assert!(command_count_after > command_count_before, "changing inputs must refire commands during measurement");
+    }
     let command_entities_after = command_block_census(&backend);
     let command_execution_changes = command_entities_before
         .iter()
@@ -800,6 +816,7 @@ pub(crate) fn run_saved_plot_profile(server: bool) {
         &readout_positions,
         frames,
         0,
+        command_witness,
     );
     // A frame-aligned handoff alone can hide stale intermediate piston poses.
     #[cfg(test)]
@@ -816,6 +833,7 @@ pub(crate) fn run_saved_plot_profile(server: bool) {
                 &readout_positions,
                 frames.min(16),
                 phase,
+                command_witness,
             )
         })
         .collect::<Vec<_>>();
@@ -858,7 +876,7 @@ pub(crate) fn run_saved_plot_profile(server: bool) {
         "manifest_input_port_positions": declared_input_positions,
         "input_lever_updates": input_lever_updates,
         "neighbor_lever_updates": neighbor_lever_updates,
-        "input_order": "ascending x,y,z coordinate order; raw changing masks, not an arithmetic oracle",
+        "input_order": if command_witness { "alternating zero and manifest-derived command witness" } else { "ascending x,y,z coordinate order; raw changing masks, not an arithmetic oracle" },
         "clock_trigger_position": backend.program.nodes()[trigger_node.index()].position,
         "clock_trigger_powered_at_entry": true,
         "clock_trigger_powered_before_measurement": trigger_powered_before,
@@ -932,6 +950,7 @@ fn replay_saved_fpu_native_oracle(
     readout_positions: &[BlockPos],
     oracle_frames: usize,
     handoff_phase: usize,
+    command_witness: bool,
 ) -> serde_json::Value {
     assert!(handoff_phase < 6, "handoff phase must be within the six-tick input frame");
     let mut graph_world = saved_world_from(snapshot_path.clone());
@@ -992,6 +1011,7 @@ fn replay_saved_fpu_native_oracle(
     let mut ticks_compared = 0usize;
     let mut native_command_outputs = 0usize;
     let mut warmup_command_outputs = 0usize;
+    let mut measured_command_outputs = 0usize;
     let initial_native_command_outputs = native_world.command_output().count();
     let mut readout_words = FxHashSet::default();
     let mut physical_positions = graph.program.nodes().iter().filter_map(|node| node.position).collect::<Vec<_>>();
@@ -1017,7 +1037,11 @@ fn replay_saved_fpu_native_oracle(
     for step in 0..(graph_ticks + continuation_ticks) {
         if step >= 24 && step < graph_ticks && step % 6 == 0 {
             let frame = (step - 24) / 6;
-            word = next_profile_word(&mut random, mask, previous_word);
+            word = if command_witness {
+                if frame % 2 == 0 { 0 } else { witness_word }
+            } else {
+                next_profile_word(&mut random, mask, previous_word)
+            };
             for (bit, &position) in input_positions.iter().enumerate() {
                 if (previous_word ^ word) & (1 << bit) != 0 {
                     graph.use_block(position).unwrap();
@@ -1088,6 +1112,7 @@ fn replay_saved_fpu_native_oracle(
         let native_output = native_world.command_output().collect::<Vec<_>>();
         assert_eq!(graph_output, native_output, "native command output at tick {step}");
         native_command_outputs = native_output.len() - initial_native_command_outputs;
+        if step + 1 == graph_ticks { measured_command_outputs = native_command_outputs; }
         if step == 23 {
             warmup_command_outputs = native_command_outputs;
             assert!(warmup_command_outputs > 0, "native selector-011 warmup must exercise the FPU command outputs");
@@ -1099,6 +1124,9 @@ fn replay_saved_fpu_native_oracle(
         ticks_compared += 1;
     }
     assert_physical_state(&graph_world, &native_world, "after interpreter continuation");
+    if command_witness {
+        assert!(measured_command_outputs > warmup_command_outputs, "changing inputs must refire native commands before handoff");
+    }
     serde_json::json!({
         "oracle": "native PlotWorld::tick_interpreted versus GraphBackend from the same validated program",
         "frames": oracle_frames,
@@ -1115,6 +1143,7 @@ fn replay_saved_fpu_native_oracle(
         ),
         "command_effect_comparison": "all compiled command-block entities and command-output history compared after every game tick",
         "warmup_command_outputs": warmup_command_outputs,
+        "command_outputs_before_handoff": measured_command_outputs,
         "command_outputs_observed": native_command_outputs,
         "distinct_readout_words": readout_words.len(),
     })
@@ -1138,9 +1167,16 @@ fn native_use_lever(world: &mut PlotWorld, position: BlockPos) {
 
 fn drive_profile_frame(
     random: &mut u64, mask: u64, previous: u64, inputs: &[BlockPos], neighbors: &[BlockPos],
-    frame: usize, mut use_block: impl FnMut(BlockPos),
+    frame: usize, use_block: impl FnMut(BlockPos),
 ) -> (u64, u64, u64) {
     let word = next_profile_word(random, mask, previous);
+    drive_profile_word(word, previous, inputs, neighbors, frame, use_block)
+}
+
+fn drive_profile_word(
+    word: u64, previous: u64, inputs: &[BlockPos], neighbors: &[BlockPos],
+    frame: usize, mut use_block: impl FnMut(BlockPos),
+) -> (u64, u64, u64) {
     let mut input_updates = 0;
     let mut neighbor_updates = 0;
     for (bit, &position) in inputs.iter().enumerate() {

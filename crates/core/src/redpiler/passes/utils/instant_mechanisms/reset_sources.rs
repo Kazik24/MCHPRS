@@ -153,7 +153,10 @@ fn may_conduct(graph: &CompileGraph, site: SiteId) -> bool {
     match graph.sites[site.index()].source {
         SiteSource::Constant(profile) => conducts(profile),
         SiteSource::Contact(contact) => graph.contacts[contact.index()].variants.iter().any(|variant| conducts(variant.profile)),
-        SiteSource::Component(_) => false,
+        SiteSource::Component(node) => graph.nodes[node.index()].raw_state.is_some_and(|raw| {
+            let block = Block::from_id(raw);
+            block.is_solid() && block.is_cube() && !block.is_transparent()
+        }),
     }
 }
 

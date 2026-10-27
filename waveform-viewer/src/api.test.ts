@@ -57,7 +57,12 @@ test("snapshot pagination preserves u64 ticks, same-tick order, text, and exact 
   const repeated = applyPage(finished, next, [3, -2]);
   assert.deepEqual(repeated.trace, finished.trace);
   const vcd = toVcd(finished.trace);
-  assert.ok(vcd.includes("#50\n1s0\n0s0"));
+  assert.ok(
+    vcd.includes(String.raw`#50
+1s0
+s(4,\04065,\0406)\040<b>hello</b>\012world s1
+0s0`),
+  );
   assert.ok(vcd.includes("#100\nxs0"));
 });
 

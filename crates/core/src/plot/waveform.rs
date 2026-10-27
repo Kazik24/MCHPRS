@@ -7,6 +7,15 @@ const ACTIONS: [&str; 12] = [
     "on", "off", "status", "add", "addbulk", "cancel", "remove", "list", "clear", "reset", "web", "help",
 ];
 
+pub(super) fn viewer_link(url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "text": url,
+        "color": "aqua",
+        "underlined": true,
+        "click_event": { "action": "open_url", "url": url }
+    })
+}
+
 fn permission_action(action: &str) -> &str {
     match action {
         "on" => "enable",
@@ -612,6 +621,34 @@ mod tests {
             plot.world.set_block(pos, Block::from_name("lever").unwrap());
         }
         (plot, peer, positions)
+    }
+
+    #[test]
+    fn waveform_web_link_survives_system_chat_packet_encoding() {
+        use mchprs_network::packets::PacketDecoderExt;
+        use mchprs_network::test_support::read_frame;
+
+        for compressed in [false, true] {
+            let (plot, mut peer) = super::super::client_sync_tests::fixture(compressed);
+            let url = "https://redstonefun.pl/waveform/?x=3&y=-2";
+            plot.players[0].send_raw_system_message(viewer_link(url).to_string());
+            let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
+            assert_eq!(id, 0x72);
+            assert_eq!(frame.read_unsigned_byte().unwrap(), 10);
+            let mut named = vec![10, 0, 0];
+            named.extend(frame.read_to_end().unwrap());
+            let mut reader = std::io::Cursor::new(named);
+            let component = nbt::Blob::from_reader(&mut reader).unwrap();
+            assert_eq!(component.get("text"), Some(&nbt::Value::String(url.into())));
+            assert_eq!(component.get("color"), Some(&nbt::Value::String("aqua".into())));
+            let Some(nbt::Value::Compound(click)) = component.get("click_event") else {
+                panic!("missing link")
+            };
+            assert_eq!(click.get("action"), Some(&nbt::Value::String("open_url".into())));
+            assert_eq!(click.get("url"), Some(&nbt::Value::String(url.into())));
+            assert!(!reader.read_bool().unwrap());
+            assert_eq!(reader.position() as usize, reader.get_ref().len());
+        }
     }
 
     #[test]

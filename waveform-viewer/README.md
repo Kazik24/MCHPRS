@@ -28,7 +28,7 @@ show only the combined waveform; hiding a child does not remove its bit.
 **Remove from Group** removes that bit from the bus without removing the watch.
 Formats, bit order and layout are saved per plot in the browser and in viewer
 session files. Missing probes keep their bit slots as X. VCD exports physical
-signals; WaveDrom uses the visible rows and selected bus formats.
+signals and command output; WaveDrom uses visible rows and selected bus formats.
 
 The bottom-left **Zero tick** field sets the absolute tick displayed as zero.
 Apply with Enter or by leaving the field. Ruler, cursors, event previews and
@@ -161,10 +161,12 @@ events and capture changes reload the snapshot after one second. Changing plots
 or modes aborts pending requests and closes the old stream. Live view follows the
 latest tick while positioned at the end; panning away keeps the inspected range.
 
-Export VCD downloads all captured probes, including hidden rows, using a standard
-`1 ms` timescale. Each tick advances the file by 50 ms (20 ticks/second). Same-tick
-transitions retain sequence order at a common timestamp. Session JSON remains a
-separate presentation-only export, while VCD contains the actual waveform data.
+Export VCD downloads all captured probes, including hidden rows, with a `1 ms`
+timescale. Each tick advances the file by 50 ms (20 ticks/second). Command-block
+output appears in a `command_output` string signal, with block coordinates and
+all messages from the same tick combined in order. The string signal uses a VCD
+extension supported by VaporView/Wellen and GTKWave; some VCD readers may not
+support it. Session JSON remains a separate presentation-only export.
 
 ## Limits
 
@@ -172,7 +174,7 @@ The API is public and read-only; capture commands and permissions belong to the
 Minecraft server. Production Docker hosting remains separate. Bus decoding and
 the upstream extension's complete feature set are outside this binary viewer.
 The expanded event list covers the visible time range rather than the entire
-retained buffer. VCD exports binary signals, not command output. Mouse/trackpad hardware feel still needs
+retained buffer. Mouse/trackpad hardware feel still needs
 human review even though the scroll mappings have automated checks.
 
 See the [viewer specification](../scraps/docs/VAPORVIEW_VIEWER_SPEC.md),

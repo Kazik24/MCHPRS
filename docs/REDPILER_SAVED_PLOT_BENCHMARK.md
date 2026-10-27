@@ -85,3 +85,54 @@ Its 16-frame server smoke passed native output and ordered command comparisons;
 invocations, zero kernel wire walks elided, 13,518 transition hits, 545,396
 transition operations and 364,311 transition wire visits elided. These are
 smoke-workload counts and should not be scaled to the 192-frame samples.
+
+### Furnace reset recognition check, 27 October 2026
+
+A fresh isolated copy of workspace HEAD `e650513c6802d4b211e5901616c9ee818b2a5b11`
+with its then-current dirty changes, including the furnace reset-recognition and
+warning changes, was built with Rust 1.98.1. Only the copy used `PLOT_SCALE=5`;
+the workspace retained scale 4. Release LTO and incremental compilation were
+disabled. The snapshot and manifest matched the pinned hashes above. The
+reset-recognition source SHA-256 was
+`4B13AF614B2AFDC617728CC83EBE13F9BBE85E28A6D18B6C5D3BD10679763D66`.
+
+The 192-frame native oracle passed. Its main run compared 1,192 ticks including
+16 interpreted continuation ticks; every tick compared 1,186 lamps, repeaters
+and comparators, 1,066 comparator entities, all compiled command-block entities,
+and command-output history. The warmup produced eight command outputs. All six
+handoff offsets compared 70,649 physical positions at handoff and after
+continuation; the five other offsets used 16-frame histories. The report says
+logical-device admission was declined and zero logical devices were installed.
+
+Three sequential bounded-batch server samples passed their per-frame indicator
+and readout comparisons and ordered eight-command client-output checks. They
+measured **352.41, 381.68 and 388.92 game ticks/s** (median **381.68**);
+including final delivery: 352.32, 381.56 and 388.87 ticks/s. Compilation took
+49.59–49.87 seconds separately. Each sample recorded 13,313,250 callbacks,
+233,331 instant-kernel invocations, 79 kernel wire walks elided, 1,769 logical
+evaluations and 431,823 piston actions. The earlier 361.56 median used a
+separate executable and unpaired run; the broad timing spread and differing
+conditions do not establish a speedup or production logical-device activation.
+The server comparison does not compare command emission tick timing; its
+bounded batches and non-mutating frame observations remain part of the scope
+described above.
+
+From `E:/codex-builds/divider-furnace-saved-bench`, the commands were:
+
+```powershell
+$env:CARGO_TARGET_DIR = 'E:/codex-builds/warning-island-target'
+$env:CARGO_PROFILE_RELEASE_LTO = 'false'
+$env:CARGO_INCREMENTAL = '0'
+$env:MCHPRS_SAVED_PLOT = 'F:/rustrepos/MCHPRS/target/build-audit-tps/prod/p-1,-1-goal-start'
+$env:MCHPRS_PROFILE_FRAMES = '192'
+cargo test -p mchprs_core --locked --release --lib redpiler::backend::graph::logical_device_saved_plot_tests::saved_fpu_neighbor_graph_fallback_profile -- --ignored --exact --test-threads=1 --nocapture
+cargo bench -p mchprs_core --locked --features saved-plot-bench --bench instant --no-run
+& 'E:/codex-builds/warning-island-target/release/deps/instant-82e83835fd95208b.exe' --saved-plot-server
+```
+
+The final command ran three times sequentially. The oracle executable SHA-256
+was `D87D3F5BD17276E4CE427878FDFC9CCF0BBECD4D3D10FA3ED8BA24BE2547AED8`;
+the benchmark executable SHA-256 was
+`3FC8CA887A2AF03AAA3DD8A8723C3E802B0F68AC92E6FD42914AF1A5692C8A26`.
+Logs are `E:/codex-builds/divider-furnace-saved-native.log` and
+`E:/codex-builds/divider-furnace-server-{1,2,3}.log`.

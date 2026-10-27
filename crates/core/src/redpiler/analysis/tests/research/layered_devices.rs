@@ -337,6 +337,9 @@ fn check_manifest_device_mode(name: &str, fixture: &Value, budget: usize, events
             project(&backend, &mut projected);
             pc_counter_contract::compare_checkpoint(&native, &projected, bounds, &format!("{name} {} operation {step}", case["id"]));
         }
+        if events && name == "divider_event_kernel" && case["id"] == "enable-falling" {
+            assert!(backend.execution_counts().instant_kernel_invocations > 0, "Divider history must execute its event kernel");
+        }
         check_handoff(&mut native, &mut backend, &mut projected, bounds, &format!("{name} {}", case["id"]));
         println!("{name}: native differential history {} passed", case["id"]);
     }

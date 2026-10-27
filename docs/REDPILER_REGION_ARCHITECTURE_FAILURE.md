@@ -123,9 +123,14 @@ quasi input. Both links have unconditional guards, and both base-change
 routes notify the observer. The furnace is represented as a constant component
 because it has a comparator override; reset power tracing currently refuses to
 traverse all component conductors. The other shared-payload piston's reset
-also passes through a furnace component. A general correction must preserve
-comparator reads and prove shared-resource behavior, not merely recognize the
-observer.
+also passes through a furnace component. Reset tracing now allows an immutable
+component to conduct when its block is a solid, opaque cube. In an isolated
+comparison, this recognized a 20-actor, 10-resource group and increased the
+Divider event plan from 2,034 to 2,054 actors. All 11 fixture histories passed
+native comparisons and handoff, with instrumented event entries observed for
+the nine matching west-facing actors. This did not activate or benchmark the
+saved plot's logical executor; comparator behavior, the complete boundary and
+saved-plot acceleration still need the broader acceptance checks.
 
 In an isolated scoped-only output-selection experiment, omitting wires with no
 power fanout moved the first crop rejection from the highlighted dead wire to
@@ -133,6 +138,168 @@ an equation-support/native-ownership overlap at `(-109,52,-217)`. No logical
 device was admitted. This does not establish safe directed ownership or
 accelerated execution; native callback, power, conductor, guard and observer
 read crossings still require proof.
+
+A later isolated directed-fan experiment follows every power and callback
+output of a reached catalog owner. On the saved crop it reaches the Divider
+group and reports 164 comparator, 32 lamp and 1,207 unrecognized-piston power
+link occurrences. These are possible links, not executed components or proof
+that the Divider blocks FPU admission. The traversal does not prove which
+activation changes which output; it can still merge independent work through
+read dependencies. A sound cut needs source-qualified activation occurrences,
+certified transitions and their actual effects, with unsupported work left
+native. The experiment has not been integrated.
+
+Graph's piston request FIFO keeps the first source route when it deduplicates
+by piston and action. Existing layered execution treats that route as an
+ordered episode, so route-only identity is not by itself a demonstrated bug.
+A finer residual cut would additionally need the winning delivery occurrence
+and any captures made before native callbacks. A saved-plot static census
+found 73,719 actor/route activation groups and 10,513 layer route groups with
+multiple delivery ordinals; these are possible alternatives, not executed
+event counts. See `E:/codex-builds/source-region-fpu-occurrence.log`.
+An instrumented 16-frame changing-input saved replay observed 32,799 popped
+requests in the FPU bounds: 32,359 had multiple possible catalog ordinals for
+their actor and first-source route, 121 had one, and 319 had no catalog match.
+It delivered 1,026,705 callbacks in 96 measured ticks. The replay passed its
+native oracle and six handoffs with zero logical devices; the instrumentation
+was not timed. See `E:/codex-builds/source-region-saved-request-census.log`.
+
+An isolated cut inventory selected 5,452 cells and 2,775 complete wire
+corridors by spatial bounds for measurement only. In the 96 measured ticks,
+the instrumented source/receiver census observed 550,805 internal callbacks,
+153,714 outgoing and 5,228 incoming; internal wire walks and callbacks without
+source provenance were excluded. Outgoing callbacks included 122,154 to
+observers or reset machinery. This is not a source-derived candidate or a
+proof those effects can be collapsed. The fallback oracle passed six handoffs;
+its eight command outputs occurred in warmup, not the measured interval. See
+`E:/codex-builds/observation-cuts-saved-corridors.log`.
+Of those 122,154 observer/reset callbacks, 12,624 scheduled a first tick,
+27,325 qualified while one was already pending, and 82,205 had an unpowered
+captured update that could not schedule. Preserving the first scheduling
+position and live pending state remains necessary. These counts alone cannot
+justify skipping callbacks or deliver the throughput target.
+
+The existing equation builder can construct the saved FPU's 16 declared
+repeater inputs, 35 indicator-lamp inputs and three command inputs in 4,045
+Boolean expressions, with 53 live controls (36 levers and 17 buttons) and 15
+resource-state feedback inputs and outputs. This is a value-equation census,
+not a certified device. All three command roots are constant false despite
+eight native tellraw outputs during warmup, so settled values omit command
+pulses and cannot replace native execution. See
+`E:/codex-builds/functional-saved-inputs.log`.
+
+An isolated saved-plot replay alternated a native command witness with zero
+each frame. Two command blocks repeatedly powered at frame phase 2 and emitted
+at phase 3; all six handoffs and Graph/interpreter tick comparisons passed,
+with at least 24 total command outputs in each comparison including eight
+warmup outputs. The third command did not fire for this witness. Existing
+event-boundary roots for the three command inputs are also false, while
+feedback-aware source lowering declines. See
+`E:/codex-builds/command-transition-saved.log`.
+
+The one-shot boundary extractor instead produced three nonconstant command
+roots in 45 expressions. In 120 sampled Graph ticks their predicted power
+matched all three live command inputs, including the observed pulses; Graph
+command history also matched the interpreter. This is snapshot evidence, not
+a proof of intra-tick effect ordering or a complete compiled transition. See
+`E:/codex-builds/command-transition-oneshot-live.log`.
+
+A test-only six-tick synchronous shadow transition failed against the saved
+plot: across 16 samples per phase, power-root mismatches were `[0, 0, 416,
+416, 0, 8]` and resource-state mismatches were `[0, 0, 0, 120, 120, 120]`.
+The model misses transient and restoration phases. At 168 actual command
+callback cuts per handoff phase, the three one-shot roots matched Graph power;
+that observation does not prove the complete transition. Graph remained
+authoritative. See `E:/codex-builds/functional-shadow-transition.log`.
+The lamp mismatch comes from a reset observer powering the same solid
+conductor as an input lever during phases 2–3. A traced feedback payload moves
+to Near during retraction, is enabled in phase 2, moves back disabled in phase
+3, and is enabled at its source in phase 5; revision-checked deferred events
+accompany both movements. A single settled feedback bit does not represent
+that lifecycle. The full one-shot extraction of 54 outputs constructed 115,386
+expressions, with thousands of live state and fired inputs; it remains neither
+validated nor an executable FPU device. See
+`E:/codex-builds/functional-shadow-resource-trace.log` and
+`E:/codex-builds/functional-full-one-shot.log`.
+Reducing that one-shot program to the 54 power roots leaves 246 expressions
+and 136 inputs. A shadow comparison matched live Graph power for every output
+at 96 phase snapshots when `InstantFired` was assumed to mean retracted or not
+ready and all other inputs were sampled from Graph. That assumption is not
+certified and the input sampling retains native work; the measured equation
+evaluation alone is not throughput. See
+`E:/codex-builds/functional-oneshot-lifecycle.log`.
+Those 70 electrical inputs classify as 35 levers and 35 observers, with no
+direct wire sources. Following the 32 referenced actors through their
+eligibility roots reaches 7,828 actors and 115,346 expressions, including
+thousands of comparator and observer bindings; the compact output slice is
+therefore not a self-contained FPU calculation. These are typed dependencies,
+not counts of executed events. See
+`E:/codex-builds/functional-oneshot-closure.log`.
+An experimental assumption that all 35 relevant observers are powered during
+phases 2–3 matched the sampled output powers but mispredicted nine observer
+bindings on every sampled frame, so it cannot preserve state or handoff.
+Trying to synthesize steady power for all 32 output-dependent actors also hit
+the existing source-nesting bound. See
+`E:/codex-builds/functional-virtual-observer.log`.
+The 35 watched indicator actors' 70 Main/Quasi power roots reduce to 36
+expressions over 36 lever inputs. A test-only virtual observer model using
+those roots matched all 35 observer inputs and 54 power outputs across 96
+alternating-input phase snapshots without reading Graph actor revisions after
+seeding. Other actor/resource state remained native; this is not a complete
+transition or acceleration. See
+`E:/codex-builds/functional-control-actor-clock.log`.
+
+An isolated iterative feedback experiment uses a bounded cycle scan and cuts
+only canonical Far resource states. It built the output and actor-input roots
+without the recursive depth failure and matched 54 power roots and the 15
+feedback roots shared with the recursive builder over 96 sampled phases. The
+64 actor power roots were not checked in that run. It also introduces 30
+additional state inputs, whose physical
+transitions have not been proved, and reads live Graph state. The broader
+initial cut was rejected because it could incorrectly replace a live Near
+state with false. The corrected experiment is not integrated; cumulative
+budgets, cancellation, ownership and full handoff remain open. See
+`E:/codex-builds/feedback-scc-safe-saved.log`.
+An isolated self-contained shadow then assumed simultaneous feedback updates
+and Far restoration at phase 3, seeded once and driven by random controls. At
+handoff phase zero it mismatched 182 of 720 resource checks in each of phases
+0–2, and actor power mismatches by phase were `[105, 105, 225, 227, 107, 29]`
+out of 1,024 checks per phase. The Graph/native oracle passed; the shadow did
+not. The assumption is insufficient for a compiled device.
+On an identical random-input Graph snapshot, both the 54- and 118-target
+iterative circuits agree with each other but differ from the 54-target
+recursive circuit on a public root and a shared feedback root. The divergence
+is therefore between the builders, not evidence that adding targets caused
+it. The SCC experiment is not a proven drop-in builder.
+Against the same random-input Graph snapshots, recursive and iterative
+repeater-root errors per phase were `[22,22,22,104,107,22]` and
+`[7,7,7,104,107,22]`, respectively, out of 256 checks per phase. Both missed
+`[0,0,298,298,0,0]` of 560 lamp checks per phase. Command snapshots matched
+but do not capture their within-tick pulses. Neither settled model is an
+equivalent replacement. See `E:/codex-builds/feedback-physical-comparison.log`.
+
+An isolated one-shot shadow assumed plan-order activations, phase-5 rearm and
+frozen unmodeled native inputs. It exceeded its 250,000 eligibility-visit cap
+in the second random-input frame. In its only complete frame, 71 of 6,453
+resource positions disagreed in phases 3 and 4 despite matching sampled power
+and actor lifecycle roots. It retained 23,187 frozen non-control predicates and
+176 unmapped observer slots. This assumption is insufficient and the model was
+not activated. See `E:/codex-builds/virtual-firing-random.log`.
+An affected-expression worklist reduced the first two frames to 15,736 and
+18,051 actor visits, and separate location/enablement removed the initial
+phase-3/4 location errors. But assuming every eligible actor fires produced
+2,413 predicted firings in the second random frame, including actors with no
+native request; state, revision and power comparisons then diverged. The
+prototype still froze many native inputs and did not materialize a virtual
+FIFO or handoff. See `E:/codex-builds/virtual-firing-worklist-random.log`.
+
+A guarded lamp-receiver experiment made the real 84-wire clock branch eligible
+for exact transport while preserving its ordered native lamp callbacks. The
+96-tick saved replay and six handoffs passed. Against the same-binary
+baseline it replaced 544 wire walks and elided 25,104 wire visits, but kept
+318,014 piston samples and zero logical devices; one offline timing was 295
+versus 288 ticks/s. No speedup is established and the experiment was not
+integrated. See `E:/codex-builds/guarded-lamp-same-source-candidate.log`.
 
 ## First boundary slice: correct but insufficient
 
