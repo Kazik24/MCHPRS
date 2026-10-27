@@ -61,9 +61,9 @@ The [capture API](WAVEFORM_API_SPEC.md) continues sending physical binary probes
   existing red trace color; retain the existing Color and Row Height menus.
   Changing the bus color does not recolor its physical children.
 
-**Format Values** contains eight checked choices: Binary, Octal, Decimal,
-Hexadecimal, then their four **Inverted** variants. Store radix and inversion
-separately, although the menu presents eight choices. Reopening the menu must
+**Format Values** contains ten checked choices: Binary, Octal, Decimal,
+Decimal U2 and Hexadecimal, then their five **Inverted** variants. Store radix,
+signed-decimal mode and inversion separately. Reopening the menu must
 show the active choice. For mixed selections apply only to bus rows; single-bit
 rows keep their current binary display. No new global toolbar is needed.
 
@@ -88,11 +88,15 @@ unknown. Neither formatting nor inversion modifies recorded values or API data.
 | Hexadecimal | `0x` plus ceil(N/4) digits, uppercase A-F; a digit containing an unknown real bit is `x`. |
 | Octal | `0o` plus ceil(N/3) digits; a digit containing an unknown real bit is `x`. |
 | Decimal | Unsigned integer without padding; if any bit is unknown, show the full binary representation. |
+| Decimal U2 | Signed two's-complement integer at the bus width; if any bit is unknown, show the full binary representation. |
 
 Pad Binary/Hex/Oct to the declared width. Unused positions in a partial leading
 hex/octal digit are zero, never invented inverted bits. For example an inverted
-five-bit zero is `0x1F`, not `0xFF`. Decimal is never signed/two's-complement in
-this scope. Label a decimal unknown fallback as `0b...` so it is unambiguous.
+five-bit zero is `0x1F`, not `0xFF`. Decimal U2 interprets the sign bit after
+logic inversion, using the declared bus width; normal Decimal stays unsigned.
+For four bits, `1111` is -1 in U2; inverted `0000` is also -1. Label a decimal
+unknown fallback as `0b...` so it is unambiguous. Older saved formats without
+the optional signed flag stay unsigned.
 
 Build combined transitions from the union of member changes ordered by tick,
 then existing exact `seq` comparison. Start with member initial states, apply
@@ -182,5 +186,5 @@ segments, long decimal labels, immediate hover and mouse/touchpad scrolling.
 
 Proposed defaults needing no backend decision: opt-in bus mode, Hexadecimal,
 unsigned decimal, first child as bit zero and independent bus color. Automatic
-grouping of bulk probes, signed values, arbitrary expression signals and synthetic
+grouping of bulk probes, arbitrary expression signals and synthetic
 VCD buses are deferred. This scope changes no commands, permissions or deployment.

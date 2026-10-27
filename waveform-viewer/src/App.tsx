@@ -652,12 +652,13 @@ export default function App() {
               {
                 label: "Format Values",
                 children: [false, true].flatMap((inverted) =>
-                  busFormats.map(({ radix, label }) => ({
+                  busFormats.map(({ radix, label, signed }) => ({
                     label: (inverted ? "Inverted " : "") + label,
                     checked:
                       activeRow.bus!.radix === radix &&
+                      (activeRow.bus!.signed ?? false) === signed &&
                       activeRow.bus!.inverted === inverted,
-                    action: () => patchBuses({ radix, inverted }),
+                    action: () => patchBuses({ radix, inverted, signed }),
                   })),
                 ),
               },

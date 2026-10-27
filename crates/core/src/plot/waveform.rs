@@ -391,7 +391,7 @@ impl Plot {
                 }
                 let ticks = match args.get(1) {
                     Some(text) => text.parse::<u64>().map_err(|_| "Ticks must be a positive whole number.")?,
-                    None => limit as u64,
+                    None => limit.min(1000) as u64,
                 };
                 if ticks == 0 {
                     return Err("Tick count must be at least 1.".into());

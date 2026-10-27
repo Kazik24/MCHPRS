@@ -157,6 +157,7 @@ export function parseSession(text: string, trace: Trace): Session {
           !row.bus ||
           ![2, 8, 10, 16].includes(row.bus.radix) ||
           typeof row.bus.inverted !== "boolean" ||
+          (row.bus.signed !== undefined && typeof row.bus.signed !== "boolean") ||
           !Array.isArray(row.bus.members) ||
           row.bus.members.length < 1 ||
           row.bus.members.length > 1024 ||

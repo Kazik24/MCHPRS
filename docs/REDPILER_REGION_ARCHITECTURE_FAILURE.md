@@ -107,8 +107,25 @@ shares a possible payload contact with the piston at `(-116,60,-212)`; cell
 discovery rejects their entire group because it cannot find a reset witness for
 the first piston. This is a recognition failure, not proof that the circuit is
 invalid. Both lie within the replay crop, so the crop cannot establish that
-the Divider was excluded. The exact schematic mapping and reset behavior are
-still being investigated.
+the Divider was excluded. A 5×5×5 saved-block comparison matches repeated
+rotated schematic neighborhoods in 124 of 125 block names; the remaining
+position is air in the snapshot and glowstone in the compared schematic. The
+user confirms that they intentionally removed the glowstone and it has no
+effect on the build. The comparison does not uniquely identify the bit.
+The target's downward-facing observer watches its own base; the furnace is
+the solid cap above it. The other shared-payload piston has a side observer
+watching its base. Their complete native reset and callback behavior still
+requires verification.
+
+For the first piston, the saved graph contains the zero-attenuation reset path
+from the observer's strong output through the furnace conductor to the piston
+quasi input. Both links have unconditional guards, and both base-change
+routes notify the observer. The furnace is represented as a constant component
+because it has a comparator override; reset power tracing currently refuses to
+traverse all component conductors. The other shared-payload piston's reset
+also passes through a furnace component. A general correction must preserve
+comparator reads and prove shared-resource behavior, not merely recognize the
+observer.
 
 In an isolated scoped-only output-selection experiment, omitting wires with no
 power fanout moved the first crop rejection from the highlighted dead wire to

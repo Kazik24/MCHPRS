@@ -22,7 +22,7 @@ also open `http://localhost:8443/?x=3&y=-2`. Y is the plot index corresponding t
 Minecraft Z, not block height. The viewer always uses the live API.
 
 Select signals and press G to group them, then right-click the group and enable
-**Show as Bus**. **Format Values** offers Binary, Octal, Decimal and Hexadecimal,
+**Show as Bus**. **Format Values** offers Binary, Octal, Decimal, Decimal U2 (signed two's complement) and Hexadecimal,
 plus inverted-logic versions. The first child is bit 0. Collapse the group to
 show only the combined waveform; hiding a child does not remove its bit.
 **Remove from Group** removes that bit from the bus without removing the watch.
@@ -39,6 +39,8 @@ is saved per plot and in viewer sessions. VCD timing and recordings stay physica
 In Minecraft, `/waveform clear` empties captured history/events and keeps watches
 and recording. `/waveform reset` only warns; `/waveform reset confirm` removes
 all watches and history and stops recording.
+`/waveform on` defaults to 1,000 ticks, capped by your allowance; pass an explicit
+tick count to select a different permitted window.
 
 The Vite development server proxies `/api` to `http://127.0.0.1:8091`. Set
 `WAVEFORM_API_URL` before starting Vite if the Rust server uses another address.

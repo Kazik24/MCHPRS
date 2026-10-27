@@ -124,7 +124,7 @@ permission does not synthesize numeric grants.
 | `/waveform clear` | `commands.waveform.clear` | Erase history/events in place; keep watches, recording state, tick window and reserved buffer. |
 | `/waveform reset` | `commands.waveform.reset` | Warn without changing anything. |
 | `/waveform reset confirm` | `commands.waveform.reset` | Disable, remove all watches/events/history, cancel selections and release storage. |
-| `/waveform on [ticks]` | `commands.waveform.enable` | Enable a fresh capture, including zero-probe text-only recording; optional ticks selects window. |
+| `/waveform on [ticks]` | `commands.waveform.enable` | Enable a fresh capture, including zero-probe text-only recording; default 1,000 ticks capped by the actor's allowance; optional ticks selects another permitted window. |
 | `/waveform off` | `commands.waveform.disable` | Disable instrumentation, discard history/events, release capture buffer; keep small watchlist. |
 | `/waveform [status]` | `commands.waveform.status` | State, limits, usage, retained range and reason for stop. |
 | `/waveform web` | `commands.waveform.web` | Show public viewer URL with this plot selected; no credential. |

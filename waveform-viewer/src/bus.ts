@@ -5,6 +5,7 @@ import type { Row } from "./state.ts";
 export interface BusSettings {
   radix: 2 | 8 | 10 | 16;
   inverted: boolean;
+  signed?: boolean;
   members: string[];
 }
 export interface BusValue {
@@ -17,10 +18,11 @@ export interface Bus {
   changes: { tick: number; seq: number | string; value: BusValue }[];
 }
 export const busFormats = [
-  { radix: 2, label: "Binary" },
-  { radix: 8, label: "Octal" },
-  { radix: 10, label: "Decimal" },
-  { radix: 16, label: "Hexadecimal" },
+  { radix: 2, label: "Binary", signed: false },
+  { radix: 8, label: "Octal", signed: false },
+  { radix: 10, label: "Decimal", signed: false },
+  { radix: 10, label: "Decimal U2", signed: true },
+  { radix: 16, label: "Hexadecimal", signed: false },
 ] as const;
 
 export function memberKeys(rows: Row[], group: string, trace: Trace): string[] {
@@ -111,7 +113,8 @@ export function formatBus(value: BusValue, settings: BusSettings): string {
     (settings.inverted ? value.bits ^ mask : value.bits) & value.known & mask;
   const radix =
     settings.radix === 10 && (value.known & mask) !== mask ? 2 : settings.radix;
-  if (radix === 10) return bits.toString(10);
+  if (radix === 10)
+    return (settings.signed ? BigInt.asIntN(width, bits) : bits).toString(10);
   const size = radix === 16 ? 4 : radix === 8 ? 3 : 1;
   let result = "";
   for (let offset = 0; offset < width; offset += size) {

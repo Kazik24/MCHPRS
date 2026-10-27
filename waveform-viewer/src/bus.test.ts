@@ -133,6 +133,68 @@ test("64-bit and 1024-bit unsigned values stay exact", () => {
   }
 });
 
+test("Decimal U2 interprets the declared sign bit after logic inversion", () => {
+  const options = { ...settings, radix: 10 as const, signed: true };
+  for (const [bits, normal, inverted] of [
+    [0n, "0", "-1"],
+    [7n, "7", "-8"],
+    [8n, "-8", "7"],
+    [15n, "-1", "0"],
+  ] as const) {
+    assert.equal(formatBus({ bits, known: 15n }, options), normal);
+    assert.equal(
+      formatBus({ bits, known: 15n }, { ...options, inverted: true }),
+      inverted,
+    );
+  }
+  assert.equal(
+    formatBus({ bits: 1n, known: 1n }, { ...options, members: ["one"] }),
+    "-1",
+  );
+  assert.equal(formatBus({ bits: 1n, known: 13n }, options), "0b00x1");
+  assert.equal(
+    formatBus({ bits: 1n, known: 13n }, { ...options, inverted: true }),
+    "0b11x0",
+  );
+  for (const width of [64, 1024]) {
+    const known = (1n << BigInt(width)) - 1n;
+    const sign = 1n << BigInt(width - 1);
+    const wide = {
+      ...options,
+      members: Array.from({ length: width }, (_, bit) => String(bit)),
+    };
+    assert.equal(formatBus({ bits: known, known }, wide), "-1");
+    assert.equal(formatBus({ bits: sign, known }, wide), (-sign).toString());
+    assert.equal(
+      formatBus({ bits: sign - 1n, known }, wide),
+      (sign - 1n).toString(),
+    );
+  }
+});
+
+test("signed and inverted decimal settings survive browser and session saves", () => {
+  const rows = makeRows();
+  rows[0] = {
+    ...rows[0],
+    bus: { ...settings, radix: 10, signed: true, inverted: true },
+  };
+  const restored = decodeLayout(
+    encodeLayout({ ...defaultOptions, rows }, trace),
+    trace,
+  );
+  assert.deepEqual(restored.rows[0].bus, rows[0].bus);
+  const session = parseSession(
+    JSON.stringify({
+      version: 1,
+      traceId: trace.id,
+      ...initialSession(trace),
+      rows,
+    }),
+    trace,
+  );
+  assert.equal(session.rows[0].bus!.signed, true);
+});
+
 test("merged transitions preserve exact sequence order, settled sampling and returning glitches", () => {
   const first = {
     ...signals[0],
@@ -262,6 +324,7 @@ test("malformed bus settings are rejected without affecting older ordinary group
     null,
     { ...settings, radix: 3 },
     { ...settings, inverted: 1 },
+    { ...settings, signed: "true" },
     { ...settings, members: [] },
     { ...settings, members: ["a", "a"] },
     { ...settings, members: Array(1025).fill("a") },
