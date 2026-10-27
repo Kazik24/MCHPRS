@@ -9,6 +9,7 @@ fn configuration_skin_settings_reach_the_player_before_the_first_spawn() {
         let (network, _peer) = mchprs_network::test_support::handshaking_connection(false).unwrap();
         let (plot_sender, receiver) = mpsc::channel();
         let mut server = MinecraftServer {
+            waveform_api: None,
             network,
             broadcaster: Bus::new(4),
             receiver,

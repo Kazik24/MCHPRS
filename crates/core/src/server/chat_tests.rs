@@ -7,6 +7,7 @@ fn native_chat_controls_public_output_without_losing_player_list_removal() {
     let mut broadcaster = Bus::new(8);
     let mut messages = broadcaster.add_rx();
     let mut server = MinecraftServer {
+        waveform_api: None,
         network,
         broadcaster,
         receiver,

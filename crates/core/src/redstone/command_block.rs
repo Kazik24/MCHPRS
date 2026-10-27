@@ -25,7 +25,7 @@ fn condition_met(world: &impl World, pos: BlockPos) -> bool {
         && matches!(world.get_block_entity(previous), Some(BlockEntity::CommandBlock(entity)) if entity.success_count > 0)
 }
 
-fn plain_text(value: &serde_json::Value) -> String {
+pub(crate) fn plain_text(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(text) => text.clone(),
         serde_json::Value::Array(values) => values.iter().map(plain_text).collect(),
@@ -89,7 +89,7 @@ fn execute(world: &mut impl World, pos: BlockPos, notify: bool) -> bool {
     entity.success_count = 0;
     if entity.condition_met && !entity.command.trim().is_empty() {
         let source = command_source(&entity.custom_name);
-        match world.execute_command_block(&entity.command, &source) {
+        match world.execute_command_block_at(pos, &entity.command, &source) {
             Ok(()) => {
                 entity.success_count = 1;
                 if entity.track_output {

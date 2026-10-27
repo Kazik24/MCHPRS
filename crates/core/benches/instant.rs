@@ -119,6 +119,12 @@ fn check_workloads() {
 }
 
 fn main() -> Result<()> {
+    #[cfg(feature = "saved-plot-bench")]
+    if std::env::args().any(|arg| arg == "--saved-plot" || arg == "--saved-plot-server") {
+        let server = std::env::args().any(|arg| arg == "--saved-plot-server");
+        mchprs_core::redpiler::saved_plot_benchmark(server);
+        return Ok(());
+    }
     if std::env::args().any(|arg| arg == "--kernel-wave") {
         return instant_wave::run();
     }

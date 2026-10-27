@@ -19,7 +19,8 @@ mod git;
 mod help;
 mod history;
 mod interpreter_cache;
-mod memory_budget;
+pub(crate) mod memory_budget;
+mod waveform;
 mod monitor;
 mod neighbors;
 mod packet_handlers;
@@ -134,6 +135,7 @@ pub struct Plot {
     last_redbox_state: Instant,
     neighbor_views: neighbors::Views,
     neighbor_source: Option<neighbors::LiveSource>,
+    waveform_source: Option<crate::waveform::api::Source>,
     git: git::State,
     wire_cursor: usize,
 }
@@ -161,6 +163,7 @@ pub struct PlotWorld {
     command_output_bytes: usize,
     command_output_limits_enabled: bool,
     history: history::TickHistory,
+    waveform: crate::waveform::Recorder,
     update_stats: UpdateStats,
     bulb_light: block_light::BulbLight,
 }
@@ -204,6 +207,7 @@ impl PlotWorld {
             command_output_bytes: 0,
             command_output_limits_enabled: true,
             history: Default::default(),
+            waveform: Default::default(),
             update_stats: Default::default(),
             bulb_light: Default::default(),
         };
@@ -430,6 +434,7 @@ impl PlotWorld {
     }
 
     fn invalidate_interpreter_caches(&mut self) {
+        self.reset_waveform();
         self.rebuild_bulb_light();
         self.tick_index.invalidate();
         self.piston_index.get_mut().invalidate();
@@ -438,6 +443,7 @@ impl PlotWorld {
     }
 
     fn clear_interpreter_caches(&mut self) {
+        self.reset_waveform();
         self.rebuild_bulb_light();
         self.tick_index = Default::default();
         *self.piston_index.get_mut() = Default::default();
@@ -453,6 +459,7 @@ impl PlotWorld {
             match self.piston_state.phase {
                 AdvancePhase::BetweenTicks => {
                     self.piston_state.logical_tick += 1;
+                    self.waveform.tick(self.piston_state.logical_tick, true);
                     self.piston_state.scheduled_advanced = false;
                     self.piston_state.phase = AdvancePhase::ScheduledTicks;
                 }
@@ -485,6 +492,7 @@ impl PlotWorld {
                     self.piston_state.movement_work.clear();
                     self.piston_state.movement_cursor = 0;
                     self.piston_state.phase = AdvancePhase::BetweenTicks;
+                    self.waveform.tick(self.piston_state.logical_tick, false);
                     return false;
                 }
             }
@@ -569,6 +577,9 @@ impl PlotWorld {
 
 impl World for PlotWorld {
     fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {
+        self.execute_command_block_at(BlockPos::new(0, 0, 0), command, source)
+    }
+    fn execute_command_block_at(&mut self, pos: BlockPos, command: &str, source: &str) -> Result<(), String> {
         if self.command_output_window.elapsed() >= Duration::from_secs(1) {
             self.command_output_window = Instant::now();
             self.command_output_count = 0;
@@ -586,6 +597,7 @@ impl World for PlotWorld {
         }
         self.command_output_count += 1;
         self.command_output_bytes += message.message.len();
+        self.waveform.text(pos, &message.message, self.piston_state.logical_tick);
         self.command_messages.push(message);
         Ok(())
     }
@@ -644,6 +656,7 @@ impl World for PlotWorld {
             }
         }
         if changed {
+            self.record_waveform_change(pos);
             self.track_bulb_light(pos, old, new);
             if !self.instant_pistons.is_empty() {
                 self.instant_pistons.block_changed(pos, old, new);
@@ -677,6 +690,7 @@ impl World for PlotWorld {
         };
         let chunk = &mut self.chunks[chunk_index];
         chunk.delete_block_entity(BlockPos::new(pos.x & 0xF, pos.y, pos.z & 0xF));
+        self.record_waveform_change(pos);
     }
 
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
@@ -811,6 +825,7 @@ impl World for PlotWorld {
         }
         let chunk = &mut self.chunks[chunk_index];
         chunk.set_block_entity(BlockPos::new(pos.x & 0xF, pos.y, pos.z & 0xF), block_entity);
+        self.record_waveform_change(pos);
     }
 
     fn get_chunk(&self, x: i32, z: i32) -> Option<&Chunk> {
@@ -1337,6 +1352,7 @@ impl Plot {
     fn leave_plot(&mut self, uuid: u128) -> Player {
         let player_idx = self.players.iter().position(|p| p.uuid == uuid).unwrap();
         self.clear_wire_tool(player_idx);
+        self.players[player_idx].redstone_tools.waveform = None;
         self.hide_git(player_idx, true);
         self.close_open_container(player_idx);
         self.world.packet_senders.remove(player_idx);
@@ -1377,6 +1393,7 @@ impl Plot {
     }
 
     fn disable_empty_plot_history(&mut self) {
+        if self.players.is_empty() { self.world.waveform.stop("empty_plot"); }
         if self.players.is_empty() && self.world.history.enabled() {
             let bytes = self.world.history.disable();
             debug!(
@@ -1679,6 +1696,7 @@ impl Plot {
     fn interpreter_idle(&self) -> bool {
         !self.redpiler.is_active()
             && !self.world.history.enabled()
+            && !self.world.waveform.enabled()
             && self.world.piston_state.phase == AdvancePhase::BetweenTicks
             && self.world.piston_state.events.is_empty()
             && self.world.piston_state.motions.is_empty()
@@ -1686,6 +1704,14 @@ impl Plot {
     }
 
     fn update(&mut self) {
+        if let Some(source) = &mut self.waveform_source { source.poll(&self.world.waveform, self.redpiler.is_active() || self.compilation.is_some(), self.owner); }
+        if self.world.waveform.take_overflow_notice() {
+            for player in &mut self.players {
+                if player.can_edit_plot(self.owner, (self.world.x, self.world.z)) {
+                    player.send_error_message("Waveform buffer full; recording stopped. Captured history is still available. Use /waveform on to restart.");
+                }
+            }
+        }
         let update_started = Instant::now();
         self.update_git();
         self.handle_messages();
@@ -1737,6 +1763,8 @@ impl Plot {
                 // 50_000 (= 3.33 MHz) here is arbitrary.
                 // We just need a number that's not too high so we actually get around to sending block updates.
                 let batch_size = batch_size.min(50_000) as u32;
+                #[cfg(feature = "saved-plot-bench")]
+                let batch_size = batch_size.min(benchmark::tick_cap());
                 let slice = if self.wire_tools_active() {
                     Duration::from_millis(5)
                 } else {
@@ -1768,6 +1796,7 @@ impl Plot {
             }
 
             if self.auto_redpiler
+                && !self.world.waveform.enabled()
                 && !idle
                 && self.compilation.is_none()
                 && !self.git_checkout_locked()
@@ -1937,6 +1966,14 @@ impl Plot {
         }
 
         let mut world = PlotWorld::from_chunks(x, z, chunks, plot_data.pending_ticks.into_iter().collect());
+        let probes = database::waveform_probes(x, z).expect("Cannot load saved waveform definitions");
+        assert!(probes.len() <= 1024, "Saved waveform definition exceeds the hard signal limit");
+        let mut names = HashSet::new();
+        let mut positions = HashSet::new();
+        assert!(probes.iter().all(|p| crate::waveform::Probe::valid_name(&p.name)
+            && Self::in_plot_bounds(x,z,p.pos.x,p.pos.z) && (0..PLOT_BLOCK_HEIGHT).contains(&p.pos.y)
+            && names.insert(p.name.as_str()) && positions.insert(p.pos)), "Invalid saved waveform definitions");
+        world.waveform.replace(probes);
         if plot_data.piston_state.logical_tick != 0
             || plot_data.piston_state.next_identity != 0
             || !plot_data.piston_state.events.is_empty()
@@ -1980,6 +2017,7 @@ impl Plot {
             last_redbox_state: Instant::now(),
             neighbor_views: Default::default(),
             neighbor_source: None,
+            waveform_source: None,
             git: Default::default(),
             wire_cursor: 0,
             world,
@@ -2007,6 +2045,9 @@ impl Plot {
     }
 
     fn run(&mut self, initial_player: Option<Player>) {
+        if CONFIG.waveform_enabled {
+            self.waveform_source = Some(crate::waveform::api::Source::register((self.world.x, self.world.z)).expect("Cannot register waveform source"));
+        }
         let _guard = self.async_rt.enter();
 
         if CONFIG.neighbor_update_interval_ms != 0 {

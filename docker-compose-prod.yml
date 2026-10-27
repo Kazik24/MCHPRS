@@ -34,6 +34,19 @@ services:
           create_host_path: false
       - /home/minecraft/redstonefun_server/plugins/WorldEdit/schematics:/data/schems/rf:ro
 
+  waveform-viewer:
+    image: mroww-waveform-viewer:latest
+    build:
+      context: ./waveform-viewer
+    restart: unless-stopped
+    environment:
+      WAVEFORM_BACKEND: mroww:8091
+    ports:
+      - "127.0.0.1:8092:8080"
+    networks:
+      - backend
+      - redstonefun
+
 networks:
   backend:
     internal: true

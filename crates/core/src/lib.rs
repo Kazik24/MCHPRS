@@ -22,6 +22,7 @@ pub mod server;
 mod signed_velocity;
 mod sound;
 mod velocity;
+mod waveform;
 pub mod world;
 
 #[macro_use]

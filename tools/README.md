@@ -16,6 +16,7 @@ for Redpiler checks and admission limits.
 | `capture_piston_research.py`, `summarize_piston_research.py` | Capture and summarize larger declared protocols. |
 | `redpiler_graph/` | Validate and inspect graph exports from the command line (`py -m tools.redpiler_graph`). |
 | `redpiler-graph-viewer/` | Open a local interactive Cytoscape viewer for graph exports; see its README. |
+| [`../waveform-viewer/`](../waveform-viewer/README.md) | React waveform viewer with public HTTP/SSE, command-output events, mock mode and Docker frontend. |
 
 The protocol modules define each piston pack's actions and observation ports.
 The [CPU reference guide](../test_data/cpu-references/README.md) covers frozen

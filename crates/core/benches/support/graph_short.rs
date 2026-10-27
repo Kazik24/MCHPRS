@@ -42,6 +42,7 @@ const CPU_COUNTS: GraphExecutionCounts = GraphExecutionCounts {
     stable_logic_wire_values: 0,
     stable_logic_boundary_calls: 0,
     instant_kernel_invocations: 0,
+    instant_kernel_wire_walks_elided: 0,
     logical_kernel_evaluations: 0,
     logical_kernel_operations: 0,
     logical_bud_samples: 0,
@@ -361,7 +362,7 @@ fn toggle(compiler: &mut Option<Compiler>, world: &mut PlotWorld, pos: BlockPos)
 }
 
 fn counts(value: GraphExecutionCounts) -> Value {
-    json!({"instant_wire_node_invocations":value.instant_wire_node_invocations,"instant_transport_invocations":value.instant_transport_invocations,"instant_transport_wire_visits":value.instant_transport_wire_visits,"instant_value_region_solves":value.instant_value_region_solves,"instant_value_region_cache_hits":value.instant_value_region_cache_hits,"instant_transport_compact_captures":value.instant_transport_compact_captures,"instant_value_region_inert_visits":value.instant_value_region_inert_visits,"signal_channel_invocations":value.signal_channel_invocations,"signal_channel_fallbacks":value.signal_channel_fallbacks,"signal_channel_operations":value.signal_channel_operations,"instant_kernel_invocations":value.instant_kernel_invocations,"logical_kernel_evaluations":value.logical_kernel_evaluations,"logical_kernel_operations":value.logical_kernel_operations,"logical_bud_samples":value.logical_bud_samples,"logical_bud_accepts":value.logical_bud_accepts,"logical_bud_publications":value.logical_bud_publications,"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
+    json!({"instant_wire_node_invocations":value.instant_wire_node_invocations,"instant_transport_invocations":value.instant_transport_invocations,"instant_transport_wire_visits":value.instant_transport_wire_visits,"instant_value_region_solves":value.instant_value_region_solves,"instant_value_region_cache_hits":value.instant_value_region_cache_hits,"instant_transport_compact_captures":value.instant_transport_compact_captures,"instant_value_region_inert_visits":value.instant_value_region_inert_visits,"signal_channel_invocations":value.signal_channel_invocations,"signal_channel_fallbacks":value.signal_channel_fallbacks,"signal_channel_operations":value.signal_channel_operations,"instant_kernel_invocations":value.instant_kernel_invocations,"instant_kernel_wire_walks_elided":value.instant_kernel_wire_walks_elided,"logical_kernel_evaluations":value.logical_kernel_evaluations,"logical_kernel_operations":value.logical_kernel_operations,"logical_bud_samples":value.logical_bud_samples,"logical_bud_accepts":value.logical_bud_accepts,"logical_bud_publications":value.logical_bud_publications,"classic_net_invocations":value.classic_net_invocations,"classic_receiver_ops":value.classic_receiver_ops,
         "stable_logic_invocations":value.stable_logic_invocations,"stable_logic_fallbacks":value.stable_logic_fallbacks,
         "instant_transition_hits":value.instant_transition_hits,"instant_transition_misses":value.instant_transition_misses,
         "instant_transition_programs":value.instant_transition_programs,"instant_transition_operations":value.instant_transition_operations,
@@ -394,6 +395,7 @@ fn window_counts(before: GraphExecutionCounts, after: GraphExecutionCounts) -> V
         stable_logic_wire_values: after.stable_logic_wire_values - before.stable_logic_wire_values,
         stable_logic_boundary_calls: after.stable_logic_boundary_calls - before.stable_logic_boundary_calls,
         instant_kernel_invocations: after.instant_kernel_invocations - before.instant_kernel_invocations,
+        instant_kernel_wire_walks_elided: after.instant_kernel_wire_walks_elided - before.instant_kernel_wire_walks_elided,
         logical_kernel_evaluations: after.logical_kernel_evaluations - before.logical_kernel_evaluations,
         logical_kernel_operations: after.logical_kernel_operations - before.logical_kernel_operations,
         logical_bud_samples: after.logical_bud_samples - before.logical_bud_samples,

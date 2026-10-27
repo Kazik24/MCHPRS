@@ -254,20 +254,7 @@ impl GraphBackend {
         if self.apply_logical_firing_action(request)?.is_some() {
             return Ok(());
         }
-        let accepted = compiled.unwrap_or_else(|| {
-            let powered = self.piston_powered(request.piston);
-            match request.action {
-                mchprs_world::PistonAction::Extend => {
-                    powered && !state.extended && state.availability == PistonAvailability::Ready && self.piston_lane_available(request.piston)
-                }
-                mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull => {
-                    !powered
-                        && state.extended
-                        && !state.availability.base_pending()
-                        && self.piston_retraction_available(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)
-                }
-            }
-        });
+        let accepted = compiled.unwrap_or_else(|| self.native_action_accepted(request));
         #[cfg(test)]
         self.record_accepted_boundary_probe(request, accepted);
         #[cfg(test)]
@@ -343,6 +330,22 @@ impl GraphBackend {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn native_action_accepted(&self, request: PistonRequest) -> bool {
+        let state = self.state.pistons[request.piston.index()];
+        let powered = self.piston_powered(request.piston);
+        match request.action {
+            mchprs_world::PistonAction::Extend => {
+                powered && !state.extended && state.availability == PistonAvailability::Ready && self.piston_lane_available(request.piston)
+            }
+            mchprs_world::PistonAction::Retract | mchprs_world::PistonAction::RetractWithoutPull => {
+                !powered
+                    && state.extended
+                    && !state.availability.base_pending()
+                    && self.piston_retraction_available(request.piston, request.action == mchprs_world::PistonAction::RetractWithoutPull)
+            }
+        }
     }
 
     fn apply_logical_bud_action(&mut self, request: PistonRequest) -> Result<(), GraphExecutionError> {

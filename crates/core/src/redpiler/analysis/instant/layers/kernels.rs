@@ -317,9 +317,6 @@ fn lower_routes(
                 });
                 match receiver {
                     Some(CallbackReceiver::Component(node)) if resets.contains(&node) => {
-                        if delivery.view != OperandView::Live {
-                            return None;
-                        }
                         steps.push(KernelRouteStep {
                             ordinal: ordinal as u32,
                             kind: KernelRouteStepKind::Deliver(delivery),
@@ -337,17 +334,20 @@ fn lower_routes(
                         ) => {}
                     Some(CallbackReceiver::PistonBase(other) | CallbackReceiver::PistonHead(other)) if actors.binary_search(&other).is_ok() => {}
                     None | Some(CallbackReceiver::Contact(_)) => {}
-                    // A singleton has no later owned action to invalidate.
-                    _ if delivery.view == OperandView::Live
-                        && actors.len() == 1 =>
-                    {
+                    // No later owned actor can observe a changed read in a singleton wave.
+                    _ if actors.len() == 1 => {
                         steps.push(KernelRouteStep {
                             ordinal: ordinal as u32,
                             kind: KernelRouteStepKind::Deliver(delivery),
                         });
                     }
-                    // shortcut: multi-actor external feedback needs an inter-action proof.
-                    _ => return None,
+                    // Later reads may observe this callback's immediate writes.
+                    _ => {
+                        steps.push(KernelRouteStep {
+                            ordinal: ordinal as u32,
+                            kind: KernelRouteStepKind::NativeHandoff(delivery),
+                        });
+                    }
                 }
                 // The native wire update and its nested callbacks finish before
                 // the resulting piston request is appended to Graph's FIFO.

@@ -5,6 +5,9 @@ use crate::redpiler::program_graph::*;
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
+mod fan;
+use fan::PortEndpoints;
+
 /// Rescan with merged region owners so internal cell/corridor witnesses are not kernel outputs.
 pub(crate) fn perimeters(
     graph: &CompileGraph,
@@ -154,25 +157,10 @@ fn connect_selected_ports(
     joinable: &[bool],
     couples: impl Fn(BoundaryPortKind) -> bool,
 ) -> Result<(), String> {
-    let owner_count = sets.parents.len();
-    let mut endpoints = FxHashMap::<BoundaryPortKind, PortEndpoints>::default();
-    for port in ports {
-        budget.visit()?;
-        let owner = owner_index(port.owner, cell_count)?;
-        if owner >= owner_count {
-            return Err("instant boundary port references a missing owner".into());
-        }
-        if !joinable[owner] || !couples(port.kind) {
-            continue;
-        }
-        budget.retain_bytes(std::mem::size_of::<usize>())?;
-        let endpoints = endpoints.entry(port.kind).or_default();
-        match port.direction {
-            BoundaryDirection::Input => endpoints.inputs.push(owner),
-            BoundaryDirection::Output => endpoints.outputs.push(owner),
-        }
-    }
-    for endpoints in endpoints.values() {
+    let fans = fan::index(cell_count, sets.parents.len(), ports, budget, |owner, kind| {
+        joinable[owner] && couples(kind)
+    })?;
+    for endpoints in fans.values() {
         budget.visit()?;
         connect_owned_endpoints(sets, endpoints, budget)?;
     }
@@ -196,14 +184,6 @@ fn connect_owned_endpoints(sets: &mut DisjointSets, endpoints: &PortEndpoints, b
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Default)]
-struct PortEndpoints {
-    /// These catalog input rows read the exact source dependency represented by the key.
-    inputs: Vec<usize>,
-    /// These catalog output rows produce the exact source dependency represented by the key.
-    outputs: Vec<usize>,
-}
 
 #[derive(Default)]
 struct RegionBuilder {

@@ -432,6 +432,23 @@ fn compile_fpu_o6_terminal_repeater_readouts_fixed_schematic() {
     run_fpu_o6_terminal_repeater_readouts(descriptor, world, bounds);
 }
 
+#[test]
+fn declined_scoped_frame_warning_links_its_source() {
+    let (descriptor, mut world, (min, max)) = fixture();
+    let readout = pos(&descriptor["observations"]["output"][0]);
+    world.set_block(readout.offset(BlockFace::East), Block::RedstoneLamp { lit: false });
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions { optimization_level: Some(6), budget_multiplier: 8, stable_instant_inputs: true, io_only: true, ..Default::default() };
+    let prepared = passes::rich::prepare(&world, (min, max + BlockPos::new(1, 0, 0)), vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let validated = prepared.run_passes(&options, &passes::default_graph_pipeline(&options), &monitor).unwrap();
+    let warnings = monitor.warnings();
+    let example = warnings.iter().find(|warning| warning.starts_with("Instant circuit candidate at (")).expect("candidate warning has a physical source");
+    let message = crate::player::diagnostic_component(example);
+    assert!(message["extra"].as_array().unwrap().iter().any(|part| part["click_event"]["command"].as_str().is_some_and(|command| command.starts_with("/hl "))));
+    assert!(!validated.graph().nodes.is_empty());
+}
+
 fn run_fpu_o6_terminal_repeater_readouts(descriptor: serde_json::Value, mut world: PlotWorld, (min, max): (BlockPos, BlockPos)) {
     let controls = descriptor["ports"]["light_blue_operand_inputs"]
         .as_array()

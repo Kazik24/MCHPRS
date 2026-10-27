@@ -104,6 +104,7 @@ impl Plot {
     }
 
     pub(super) fn start_redpiler(&mut self, options: CompilerOptions) {
+        if self.world.waveform.enabled() { for player in &self.players { player.send_error_message("Disable waveform capture before compiling Redpiler"); } return; }
         // Keep cancelled workers until they finish so repeated requests cannot multiply large jobs.
         if self.compilation.is_some() || self.analysis.is_some() {
             for player in &self.players {
@@ -204,6 +205,7 @@ impl Plot {
                         )];
                         lines.push(crate::redpiler::analysis::diagnostics::summary(&candidate.graph));
                         lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
+                        lines.extend(worker_monitor.warnings());
                         lines
                     };
                     debug!(report = %serde_json::to_string(&candidate.report).unwrap(), "Redpiler candidate graph prepared");
@@ -222,7 +224,8 @@ impl Plot {
                     let mut lines = vec![report.summary()];
                     debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
                     let mut compiler = Compiler::default();
-                    let error = compiler.compile(&world, world.get_corners(), options, ticks, worker_monitor).err();
+                    let error = compiler.compile(&world, world.get_corners(), options, ticks, worker_monitor.clone()).err();
+                    lines.extend(worker_monitor.warnings());
                     let error = error.map(|error| format!("Redpiler: {error}"));
                     if error.is_none() {
                         if let Some(stats) = compiler.stats() {
@@ -301,6 +304,11 @@ impl Plot {
                 return;
             }
         };
+        for line in job.monitor.warnings() {
+            for player in &self.players {
+                player.send_raw_system_message(crate::player::diagnostic_component(&line).to_string());
+            }
+        }
         if let Err(error) = output.result {
             if let Some(piston) = rejected_piston(&error, &output.world) {
                 for player in 0..self.players.len() {

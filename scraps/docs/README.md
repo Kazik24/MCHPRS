@@ -137,3 +137,12 @@ Commit: `70f6fcdba037875cfdd23a10897723f092bd3521`.
 ## Storage
 
 `scraps/` is ignored by Git in this repository. The collection exists locally; it will need explicit inclusion if it is intended to be versioned.
+
+## Waveform viewer
+
+- [Grouped bus values and inverted formats](WAVEFORM_BUS_VIEWER_SPEC.md)
+- [WAVEFORM ANALYZER DESIGN](WAVEFORM_ANALYZER_DESIGN.md)
+- [WAVEFORM ANALYZER PLAN](WAVEFORM_ANALYZER_PLAN.md)
+- [WAVEFORM API SPEC](WAVEFORM_API_SPEC.md)
+- [WAVEFORM DEPLOYMENT](WAVEFORM_DEPLOYMENT.md)
+- [VAPORVIEW VIEWER SPEC](VAPORVIEW_VIEWER_SPEC.md)

@@ -1,6 +1,44 @@
 # Redpiler build compilation and throughput report
 
+The user identifies the highlighted wire at `(-201,82,-244)` as part of an
+unconnected dead adder. It lies inside the saved plot's so-called FPU crop, and
+the same wire exists in the standalone schematic at fixture-local `(72,32,9)`.
+Therefore the historical crop and standalone rejection below do **not** prove
+that the offending adder was absent. The compiler currently selects this wire
+as a terminal output and joins possible interactions conservatively; the
+actual dependency boundary remains under investigation.
+
+The active replacement contract and explanation of the failed ownership model are
+in [Why the settled-frame architecture failed](REDPILER_REGION_ARCHITECTURE_FAILURE.md).
+It explicitly separates measured fallback correctness from unvalidated acceleration.
+
+The reviewed [Luna6 High implementation plan](REDPILER_INSTANT_COMPILER_IMPLEMENTATION_PLAN.md)
+defines the replacement scope, staged migrations and correctness/performance gates.
+The corrected saved-plot selector-011 witness now emits eight tellraw outputs and
+matches native history through all six handoffs and continuation. The failure
+document links its pinned executable and oracle; this adds command coverage,
+not useful acceleration. Earlier zero-command results below describe older
+input histories.
+
+The subsequent conservative route-boundary slice passes the 192-frame native
+oracle and all six handoffs, but measures only **372.90 TPS**, with 79 bypassed
+wire walks and 13,358,924 callbacks. It does not provide useful saved-plot
+acceleration. The latest requested implementation plan targets **COUNTER at least
+1M game TPS, the actual saved FPU around 10–40k game TPS, and correct ADDERS**.
+See the failure document for
+the pinned executable, source snapshot, commands and complete measurements.
+
 Current cleanup status, 27 October: **saved-plot compilation takes 55.04 seconds, versus 114.47 seconds before cleanup; FPU frame admission remains unresolved.** Including the benchmark's separate clock census, those figures are 60.60 versus 119.97 seconds. The saved FPU plus neighboring Divider replay passes the full 192-frame native oracle and all six handoff offsets, including physical state and native continuation. The default-scale release suite passes **764 tests, zero failures, 96 ignored**. These are local no-LTO release checks, not a server deployment.
+
+The 27 October follow-up on cleanup commit `d5de6100` confirms that the fast standalone result is not currently reproduced. Both `cargo bench -p mchprs_core --locked --bench instant -- --component fpu_legal --device-frame --tier 6 --episodes 192 --iterations 1` and the same command with `--manifest target/fpu-tps-fixed-manifest.json` stop with `logical device did not execute once per six-game-tick frame`; neither reports TPS. Their logs are [standalone](../target/build-audit-tps/prod/fpu-investigation-cleanup-standalone-bench.log) and [fixed schematic](../target/build-audit-tps/prod/fpu-investigation-cleanup-fixed-bench.log). The existing 192-frame saved-plot profile for this checkpoint is Graph-only: 274.26 TPS, zero logical evaluations, 9,838 Event actors, zero PullWave actors, and 13,358,912 callbacks. It passes the full native output/physical-state oracle, but it does not demonstrate compiled FPU execution. [Profile artifact](../target/build-audit-tps/prod/graph-cleanup-profile-192.json).
+
+The current scale-5 saved-crop boundary test also declines admission before its full-plot pass: 70,474 nodes and 8,100 pistons, `Declined("no independently certified logical device")`. Its pinned test executable SHA-256 is `4792301B4D3B99E60FB17D3362CAFA4D2D36211F024C21C5888D357CDB2D039D`; the check was run from commit `d5de6100` as `target/build-audit-tps/prod/graph-cleanup-scale5-tests.exe redpiler::backend::graph::logical_device_saved_plot_tests::saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries --ignored --nocapture --exact` and failed its expected-Active assertion. A one-frame saved-profile smoke check on the same executable also had zero logical evaluations; it is not a valid throughput sample and failed the harness's distinct-readout requirement. The older `saved-plot-after.log` crop admission result predates this cleanup checkpoint and does not describe current behavior.
+
+The saved-frame decline is an ownership-contract gap, not a missing endpoint. `native_inputs::discover` closes source reads through native power traces and recursively includes callback receivers and guards; `positive_computation_nodes` then rejects equation support that overlaps that native closure. Runtime publication suppresses notifications for frame-owned outputs, while Graph ignores the certified input callback occurrences. Connected PullWave execution has the same authority split: `Composition` stores roots sampled for the wave, and `KernelRouteStep` preserves ordered `ClearWires`, `EnqueuePull`, and `Deliver` operations. Graph already cancels a predicted FIFO suffix when an unexpected request is popped, but the compiled roots are not resampled after an external callback changes live reads; the route step also lacks a captured-site snapshot for resuming a native route suffix. Adding external `Deliver` steps for multi-actor waves would therefore risk stale acceptance predicates and skipped or duplicated callback effects. A safe extension needs a source-validated per-cut read/effect continuation that rebases on Graph's actual state and queue. No such runtime contract or useful speedup was established in this follow-up.
+
+The scoped failure occurs before lowering or runtime activation. The full plot's separate legacy whole-plot attempt also reports `BudgetExceeded` for Main input NodeId 42154; that is not the scoped rejection. `logical/islands.rs::partition` deliberately merges read and callback interactions without direction, and `settled.rs::compile_scoped_devices_with_plan` permits only one candidate clock per island. That interaction envelope is therefore still stronger than the requested independently owned execution regions. A general cut must keep shared mutable resource owners together, bind reads at their actual phases, preserve original callback captures and FIFO sources, and either rebase the remaining computation after native effects or prove its remaining reads unaffected. Independent clocks must remain on Graph's scheduler. These are missing implementation obligations, not grounds for deleting the existing overlap checks.
+
+The saved-plot oracle records **zero command outputs at every tested handoff phase**. Its successful fallback replay is not command-emission coverage for an accelerated frame. Compiler behavior was not changed by this follow-up; the requested saved-plot acceleration and its native-equivalence validation remain unfinished. Source `PLOT_SCALE` remains 4.
 
 Cleanup removes failure-guided global repartition/recompile retries, the transitive exterior-wire certificate, entry-state specialization, the extra piston-queue membership index, profiling ablations and ownership tracing. Independent regions still compile independently; unsupported regions retain Graph ownership and native callbacks. FIFO continuation, command outputs and source-derived correctness checks remain. The saved plot now has zero PullWave actors and 9,838 Event actors. Runtime measures 274.26 TPS versus the preceding 290.24 TPS single run; runtime neutrality is not established and the 10k TPS goal is not achieved. The large callback workload still needs a certified execution boundary. [Cleanup profile and full native oracle](../target/build-audit-tps/prod/graph-cleanup-profile-192.json), [pre-cleanup profile](../target/build-audit-tps/prod/goal-entry-facts-scale5-profile-192.json), [default-scale regression suite](../target/build-audit-tps/prod/graph-cleanup-final-default4-suite.log).
 

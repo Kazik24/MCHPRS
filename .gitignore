@@ -16,6 +16,8 @@ scraps/*
 !scraps/docs/
 scraps/docs/*
 !scraps/docs/README.md
+!scraps/docs/WAVEFORM_*.md
+!scraps/docs/VAPORVIEW_VIEWER_SPEC.md
 !scraps/docs/notes/
 scraps/docs/notes/*
 !scraps/docs/notes/REDPILER_PLAYER_ANALYSIS_PLAN.md

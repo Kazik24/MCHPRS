@@ -4,6 +4,18 @@ use super::*;
 const MAX_RETAINED_FEEDBACK_OWNERS: usize = 64;
 const MAX_FEEDBACK_OWNER_CLOSURE_WORK: usize = 2 * 1024 * 1024;
 
+fn diagnostic_position(position: Option<mchprs_blocks::BlockPos>) -> String {
+    position.map_or_else(|| "position unavailable".into(), |pos| format!("({}, {}, {})", pos.x, pos.y, pos.z))
+}
+
+fn computation_output_error(position: Option<mchprs_blocks::BlockPos>, error: ConstructionError) -> String {
+    let reason = match error {
+        ConstructionError::BudgetExceeded => "equation construction exceeded its budget".to_owned(),
+        error => format!("{error:?}"),
+    };
+    format!("equation output at {}: {reason}", diagnostic_position(position))
+}
+
 pub(crate) fn compile_device(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     let plan = compile_settled(graph, monitor)?;
     compile_device_with_plan(graph, plan, monitor)
@@ -90,11 +102,22 @@ fn compile_scoped_devices_with_plan(
     };
 
     let mut devices = Vec::new();
+    let mut declined = 0usize;
+    let mut examples = Vec::new();
     for (index, island) in partition.islands.iter().enumerate() {
         if monitor.cancelled() {
             return Err("cancelled while compiling scoped logical devices".into());
         }
         if clocks_by_island[index].len() != 1 {
+            if clocks_by_island[index].len() > 1 {
+                declined += 1;
+                if examples.len() < 2 {
+                    let clock = clocks_by_island[index][0];
+                    let node = graph.pistons[clock.index()].node;
+                    tracing::debug!(island = island.id, ?clock, count = clocks_by_island[index].len(), "scoped logical candidate declined: multiple clocks");
+                    examples.push(format!("Instant circuit candidate at {}: {} clocks share an island; exactly one is required.", diagnostic_position(graph.nodes[node.index()].position), clocks_by_island[index].len()));
+                }
+            }
             #[cfg(test)]
             if island.nodes.len() >= 1_000 {
                 eprintln!(
@@ -108,7 +131,15 @@ fn compile_scoped_devices_with_plan(
         let Some(physical_ownership) = physical_ownership.as_ref() else {
             return Err("scoped native ownership closure was not prepared".into());
         };
-        let Some(device) = try_scoped_device_for_island(graph, island, clocks_by_island[index][0], settled_plan, physical_ownership, monitor) else {
+        let mut reason = String::new();
+        let Some(device) = try_scoped_device_for_island(graph, island, clocks_by_island[index][0], settled_plan, physical_ownership, monitor, &mut reason) else {
+            declined += 1;
+            if examples.len() < 2 {
+                let clock = clocks_by_island[index][0];
+                let node = graph.pistons[clock.index()].node;
+                tracing::debug!(island = island.id, ?clock, %reason, "scoped logical candidate declined");
+                examples.push(format!("Instant circuit candidate at {}: {}.", diagnostic_position(graph.nodes[node.index()].position), if reason.is_empty() { "the required safety proof was unavailable" } else { &reason }));
+            }
             #[cfg(test)]
             eprintln!(
                 "scoped logical device decline: island {} clock {:?} failed a scoped admission gate",
@@ -117,6 +148,12 @@ fn compile_scoped_devices_with_plan(
             continue;
         };
         devices.push(device);
+    }
+    if declined > 0 {
+        monitor.record_warning(format!("Instant circuit acceleration: {} candidates certified, {declined} declined. If compilation succeeds, declined candidates use Graph unless another proven path handles them. Certification does not imply execution.", devices.len()));
+        for example in examples {
+            monitor.record_warning(example);
+        }
     }
     Ok(devices)
 }
@@ -133,13 +170,15 @@ fn try_scoped_device_for_island(
     settled_plan: &SettledCircuit,
     physical_ownership: &crate::redpiler::analysis::instant::ownership::OwnershipClosure,
     monitor: &TaskMonitor,
+    reason: &mut String,
 ) -> Option<ScopedSettledDevice> {
     let timing = match super::timing::infer_for_clock_in_island(graph, clock, island, monitor) {
         Ok(timing) => timing,
-        Err(reason) => {
+        Err(error) => {
+            *reason = format!("timing inference: {error}");
             #[cfg(test)]
             eprintln!(
-                "scoped logical device decline: timing inference for island {} clock {:?}: {reason}",
+                "scoped logical device decline: timing inference for island {} clock {:?}: {error}",
                 island.id, clock
             );
             return None;
@@ -147,6 +186,7 @@ fn try_scoped_device_for_island(
     };
     let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
     if timing.nodes.iter().any(|node| !owns_node(*node)) || timing.actor_specs.iter().any(|actor| !owns_node(actor.node)) {
+        *reason = "timing actors or nodes escape the island".into();
         #[cfg(test)]
         eprintln!("scoped logical device decline: island {} timing actors/nodes escape island", island.id);
         return None;
@@ -170,25 +210,29 @@ fn try_scoped_device_for_island(
         let (circuit, expanded_components) = match try_computation_frame_with_timing(graph, Some(island), timing, monitor) {
             Some(result) => result,
             None => {
+                *reason = "computation-frame compilation did not certify a frame".into();
                 #[cfg(test)]
                 eprintln!("scoped logical device decline: computation-frame compile failed for island {}", island.id);
                 return None;
             }
         };
-        let scope = match scoped_computation_device_scope(graph, island, &circuit, &expanded_components, physical_ownership, monitor) {
+        let scope = match scoped_computation_device_scope(graph, island, &circuit, &expanded_components, physical_ownership, monitor, reason) {
             Some(scope) => scope,
             None => {
+                if reason.is_empty() { *reason = "ownership/scope proof unavailable".into(); }
                 #[cfg(test)]
                 eprintln!("scoped logical device decline: ownership/scope proof failed for island {}", island.id);
                 return None;
             }
         };
         if !scoped_frame_power_sinks_supported(graph, &scope, &circuit, &expanded_components) {
+            *reason = "frame power sink is unsupported".into();
             #[cfg(test)]
             eprintln!("scoped logical device decline: unsupported frame power sink in island {}", island.id);
             return None;
         }
         if !scoped_frame_outputs_are_closed(graph, &scope, &circuit) {
+            *reason = "frame outputs are not closed".into();
             #[cfg(test)]
             eprintln!("scoped logical device decline: frame outputs are not closed in island {}", island.id);
             return None;
@@ -199,6 +243,7 @@ fn try_scoped_device_for_island(
         timing.actor_specs.iter().find(|actor| actor.piston == timing.clock)?.lane,
         PistonLane::Empty
     ) {
+        *reason = "BUD reads require an empty clock lane".into();
         #[cfg(test)]
         eprintln!(
             "scoped logical device decline: island {} has BUD reads and non-empty clock lane",
@@ -560,6 +605,7 @@ fn scoped_computation_device_scope(
     expanded_components: &FxHashSet<NodeId>,
     physical_ownership: &crate::redpiler::analysis::instant::ownership::OwnershipClosure,
     monitor: &TaskMonitor,
+    reason: &mut String,
 ) -> Option<SettledDeviceScope> {
     let Some(timing) = circuit.timing.as_ref() else {
         #[cfg(test)]
@@ -567,6 +613,7 @@ fn scoped_computation_device_scope(
         return None;
     };
     let Some(retained_cells) = super::native_inputs::retained_cell_boundary(graph, circuit, physical_ownership, timing) else {
+        *reason = "retained output-cell boundary proof unavailable".into();
         if let Some((resource, source)) = unretained_resource_output(circuit, &FxHashSet::default()) {
             tracing::debug!(
                 island = island.id,
@@ -591,6 +638,7 @@ fn scoped_computation_device_scope(
     let owned_state = match computation_owned_state(circuit, graph, &retained_cells, island) {
         Some(state) => state,
         None => {
+            *reason = "computation state ownership proof unavailable".into();
             if let Some((resource, source)) = unretained_resource_output(circuit, &retained_cells.resources) {
                 tracing::debug!(
                     island = island.id,
@@ -665,6 +713,7 @@ fn scoped_computation_device_scope(
             }
             // Computation-frame runtime has no native ownership proof for the other layer boundaries.
             unsupported => {
+                *reason = format!("unsupported equation input {unsupported:?}");
                 #[cfg(test)]
                 eprintln!("logical frame decline: unsupported equation input {unsupported:?}");
                 return None;
@@ -687,9 +736,10 @@ fn scoped_computation_device_scope(
     if !trace_targets.is_empty() {
         let trace = match super::trace_native_power_targets(graph, &trace_targets, monitor) {
             Ok(trace) => trace,
-            Err(reason) => {
+            Err(error) => {
+                *reason = format!("native power source trace failed: {error}");
                 #[cfg(test)]
-                eprintln!("native input decline: lamp/wire source trace failed: {reason}");
+                eprintln!("native input decline: lamp/wire source trace failed: {error}");
                 return None;
             }
         };
@@ -737,6 +787,7 @@ fn scoped_computation_device_scope(
                 }
                 LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => trace_source_states.push(test),
                 unsupported => {
+                    *reason = format!("unsupported power trace input {unsupported:?}");
                     #[cfg(test)]
                     eprintln!("native input decline: unsupported power trace input {unsupported:?}");
                     return None;
@@ -773,6 +824,7 @@ fn scoped_computation_device_scope(
         monitor,
     );
     let Some(mut native) = native else {
+        *reason = "physical source/callback ownership closure was not proven".into();
         #[cfg(test)]
         eprintln!("native input decline: complete physical source/callback ownership closure could not be proven");
         return None;
@@ -793,6 +845,13 @@ fn scoped_computation_device_scope(
             }
         };
         if overlaps_native {
+            let node = match output.target {
+                SettledTarget::Power(PowerTarget::Input { node, .. }) | SettledTarget::ResetExcludedPower { node, .. } => Some(node),
+                SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).map(|piston| piston.node),
+                _ => None,
+            };
+            tracing::debug!(island = island.id, target = ?output.target, "output overlaps native ownership");
+            *reason = format!("output at {} overlaps native ownership; exclusive ownership is unproved", diagnostic_position(node.and_then(|node| graph.nodes.get(node.index()).and_then(|node| node.position))));
             return None;
         }
     }
@@ -801,12 +860,19 @@ fn scoped_computation_device_scope(
         || native.resources.iter().any(|resource| island.resources.binary_search(resource).is_err())
         || native.sites.iter().any(|site| island.sites.binary_search(site).is_err())
     {
+        *reason = "native input closure escapes the interaction island".into();
         #[cfg(test)]
         eprintln!("logical frame decline: native input cone escaped its interaction island");
         return None;
     }
 
-    let owned_nodes = computation_owned_nodes(graph, island, circuit, expanded_components, &native_nodes, &retained_cells, &timing)?;
+    let owned_nodes = match computation_owned_nodes(graph, island, circuit, expanded_components, &native_nodes, &retained_cells, &timing, reason) {
+        Some(nodes) => nodes,
+        None => {
+            if reason.is_empty() { *reason = "computation node ownership proof unavailable".into(); }
+            return None;
+        }
+    };
     let owned_set: FxHashSet<_> = owned_nodes.iter().copied().collect();
     let timing_nodes: FxHashSet<_> = timing
         .nodes
@@ -850,6 +916,8 @@ fn scoped_computation_device_scope(
                     && (!timing_nodes.contains(&target) || route.source != timing.trigger)
                     && !inert_wire_shape)
             {
+                tracing::debug!(?route_id, ordinal, source = ?route.source, ?target, kind = ?delivery.kind, "callback lacks a supported ownership boundary");
+                *reason = format!("callback from {} to {} lacks a supported ownership boundary", diagnostic_position(graph.nodes.get(route.source.index()).and_then(|node| node.position)), diagnostic_position(graph.nodes.get(target.index()).and_then(|node| node.position)));
                 #[cfg(test)]
                 eprintln!(
                     "logical frame decline: native input callback {:?}/{} from {:?} at {:?} targets unsupported owned node {:?} at {:?} ({:?})",
@@ -909,6 +977,7 @@ fn computation_owned_nodes(
     native_nodes: &FxHashSet<NodeId>,
     retained_cells: &super::native_inputs::RetainedCellBoundary,
     timing: &SettledTimingIsland,
+    reason: &mut String,
 ) -> Option<Vec<NodeId>> {
     let mut retained = retained_cells.nodes.clone();
     retained.extend(timing.nodes.iter().copied());
@@ -939,7 +1008,23 @@ fn computation_owned_nodes(
             output_nodes.insert(node);
         }
     }
+    if let Some(node) = first_native_overlap(&island.nodes, equation_support, &output_nodes, &retained, native_nodes) {
+        tracing::debug!(island = island.id, ?node, "equation support overlaps native ownership");
+        *reason = format!("equation support at {} overlaps native ownership; exclusive ownership is unproved", diagnostic_position(graph.nodes.get(node.index()).and_then(|node| node.position)));
+    }
     positive_computation_nodes(&island.nodes, equation_support, &output_nodes, &retained, native_nodes)
+}
+
+fn first_native_overlap(
+    island_nodes: &[NodeId],
+    equation_support: &FxHashSet<NodeId>,
+    output_nodes: &FxHashSet<NodeId>,
+    retained_nodes: &FxHashSet<NodeId>,
+    native_nodes: &FxHashSet<NodeId>,
+) -> Option<NodeId> {
+    equation_support.iter().chain(output_nodes)
+        .filter(|node| island_nodes.binary_search(node).is_ok() && !retained_nodes.contains(node) && native_nodes.contains(node))
+        .copied().min()
 }
 
 fn positive_computation_nodes(
@@ -1192,6 +1277,9 @@ fn try_computation_frame_with_timing(
                 match compile_computation_with_reset_exclusions(graph, &targets, &reset_excluded_targets, monitor) {
                     Ok(computation) => computation,
                     Err(reason) => {
+                        if island.is_none() && !monitor.cancelled() {
+                            monitor.record_warning(format!("Whole-plot instant equation attempt declined: {reason}. Other acceleration or Graph may still run if compilation succeeds."));
+                        }
                         #[cfg(test)]
                         eprintln!(
                             "computation-frame decline: equation compilation failed for island {:?}: {reason}",
@@ -3135,7 +3223,13 @@ fn compile_computation_with_reset_exclusions(
                 None => equations.query(target, threshold),
             })
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| format!("logical computation output {target:?}: {error:?}"))?;
+            .map_err(|error| {
+                let position = match target {
+                    PowerTarget::Input { node, .. } => graph.nodes.get(node.index()).and_then(|node| node.position),
+                    _ => None,
+                };
+                computation_output_error(position, error)
+            })?;
         let settled_target = match reset_exclusion {
             Some((resource, contact)) => {
                 let PowerTarget::Input { node, port } = target else {
@@ -3898,6 +3992,22 @@ mod positive_scope_ownership_tests {
     use super::*;
 
     #[test]
+    fn diagnostic_positions_link_each_known_block() {
+        let source = diagnostic_position(Some(mchprs_blocks::BlockPos::new(-1, 2, 3)));
+        let target = diagnostic_position(Some(mchprs_blocks::BlockPos::new(4, 5, 6)));
+        assert_eq!(diagnostic_position(None), "position unavailable");
+        let component = crate::player::diagnostic_component(&format!("{source} to {target}"));
+        let parts = component["extra"].as_array().unwrap();
+        assert_eq!(parts[1]["click_event"]["command"], "/hl -1 2 3");
+        assert_eq!(parts[3]["click_event"]["command"], "/hl 4 5 6");
+    }
+
+    #[test]
+    fn whole_plot_budget_failure_identifies_the_output() {
+        assert_eq!(computation_output_error(Some(mchprs_blocks::BlockPos::new(-1, 2, 3)), ConstructionError::BudgetExceeded), "equation output at (-1, 2, 3): equation construction exceeded its budget");
+    }
+
+    #[test]
     fn computation_scope_does_not_claim_unrelated_island_members() {
         let island_nodes = [NodeId::new(1), NodeId::new(2), NodeId::new(3), NodeId::new(4)];
         let equation_support = [NodeId::new(1)].into_iter().collect();
@@ -3921,6 +4031,17 @@ mod positive_scope_ownership_tests {
         let native_nodes = [NodeId::new(1)].into_iter().collect();
 
         assert!(positive_computation_nodes(&island_nodes, &equation_support, &output_nodes, &retained_nodes, &native_nodes).is_none());
+        assert_eq!(first_native_overlap(&island_nodes, &equation_support, &output_nodes, &retained_nodes, &native_nodes), Some(NodeId::new(1)));
+    }
+
+    #[test]
+    fn overlap_witness_is_deterministic_and_excludes_retained_nodes() {
+        let island = [NodeId::new(1), NodeId::new(2), NodeId::new(3)];
+        let support = [NodeId::new(3), NodeId::new(1)].into_iter().collect();
+        let outputs = [NodeId::new(2)].into_iter().collect();
+        let native = island.into_iter().collect();
+        let retained = [NodeId::new(1)].into_iter().collect();
+        assert_eq!(first_native_overlap(&island, &support, &outputs, &retained, &native), Some(NodeId::new(2)));
     }
 
     #[test]

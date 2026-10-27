@@ -12,15 +12,54 @@ pub struct TaskMonitor {
     message: Mutex<Option<Arc<String>>>,
     budget_multiplier: AtomicUsize,
     graph_statistics: Mutex<GraphStatistics>,
+    warnings: Mutex<Vec<String>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TaskMonitor;
+
+    #[test]
+    fn warnings_are_bounded_and_cleared_for_the_next_compilation() {
+        let monitor = TaskMonitor::default();
+        monitor.record_warning("warning 0".into());
+        for i in 0..10 {
+            monitor.record_warning(format!("warning {i}"));
+        }
+        assert_eq!(monitor.warnings(), ["warning 0", "warning 1", "warning 2", "warning 3"]);
+        monitor.clear_graph_statistics();
+        assert!(monitor.warnings().is_empty());
+        monitor.record_warning("overlap at (1, 2, 3)".into());
+        monitor.record_warning("overlap at (1, 2, 3)".into());
+        monitor.record_warning("overlap at (4, 5, 6)".into());
+        assert_eq!(monitor.warnings(), ["overlap at (1, 2, 3)", "overlap at (4, 5, 6)"]);
+        monitor.clear_graph_statistics();
+        for warning in ["scoped summary", "candidate 1", "candidate 2", "whole-plot budget decline"] {
+            monitor.record_warning(warning.into());
+        }
+        assert_eq!(monitor.warnings().last().unwrap(), "whole-plot budget decline");
+    }
 }
 
 impl TaskMonitor {
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.lock().unwrap().clone()
+    }
+
+    pub(crate) fn record_warning(&self, warning: String) {
+        let mut warnings = self.warnings.lock().unwrap();
+        if warnings.len() < 4 && !warnings.contains(&warning) {
+            warnings.push(warning);
+        }
+    }
+
     pub fn graph_statistics(&self) -> GraphStatistics {
         self.graph_statistics.lock().unwrap().clone()
     }
 
     pub(crate) fn clear_graph_statistics(&self) {
         *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
+        self.warnings.lock().unwrap().clear();
     }
 
     pub(crate) fn begin_graph_statistics(&self) {

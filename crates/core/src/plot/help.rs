@@ -21,6 +21,7 @@ pub(super) fn page(topic: Option<&str>) -> Option<&'static str> {
         "chat" | "commands" | "commandblocks" | "command_blocks" | "say" | "tellraw" => messages::HELP_CHAT,
         "redpiler" | "rp" => messages::HELP_REDPILER,
         "git" => messages::HELP_GIT,
+        "waveform" => super::waveform::HELP,
         _ => return None,
     })
 }

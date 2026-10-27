@@ -7,6 +7,7 @@ pub fn with_client(mut world: PlotWorld, player: Player, tps: Tps) -> Plot {
     let (_, priv_message_receiver) = std::sync::mpsc::channel();
     Plot {
         transient_test_fixture: true,
+        waveform_source: None,
         world,
         players: vec![player],
         redpiler: Default::default(),
@@ -87,4 +88,36 @@ pub fn player(client: mchprs_network::PlayerConn) -> Player {
     player.last_chunk_x = 2;
     player.last_chunk_z = 2;
     player
+}
+
+#[cfg(feature = "saved-plot-bench")]
+thread_local! {
+    static TICK_CAP: std::cell::Cell<u32> = const { std::cell::Cell::new(u32::MAX) };
+}
+
+#[cfg(feature = "saved-plot-bench")]
+pub(super) fn tick_cap() -> u32 {
+    TICK_CAP.with(|cap| cap.get())
+}
+
+/// Advance an exact number of ticks through Plot::update with a bounded final batch.
+#[cfg(feature = "saved-plot-bench")]
+pub fn run_ticks(plot: &mut Plot, ticks: u32) {
+    let target = plot.world.update_stats.simulated_ticks + u64::from(ticks);
+    let handle = plot.async_rt.handle().clone();
+    let _entered = handle.enter();
+    while plot.world.update_stats.simulated_ticks < target {
+        TICK_CAP.with(|cap| cap.set((target - plot.world.update_stats.simulated_ticks) as u32));
+        plot.update();
+        assert_eq!(plot.players.len(), 1, "benchmark client disconnected or left the plot");
+        assert!(plot.redpiler.is_active(), "compiled execution stopped");
+    }
+    TICK_CAP.with(|cap| cap.set(u32::MAX));
+}
+
+#[cfg(feature = "saved-plot-bench")]
+pub fn reset_timings(plot: &mut Plot) {
+    plot.world.update_stats = Default::default();
+    plot.last_update_time = Instant::now();
+    plot.last_world_send_time = Instant::now();
 }

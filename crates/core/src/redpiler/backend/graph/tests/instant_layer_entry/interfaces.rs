@@ -3,6 +3,9 @@ use super::super::super::logical_device::{ActiveFramePowerInput, FrameResetSourc
 use super::*;
 use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
 
+#[path = "region_boundary.rs"]
+mod region_boundary;
+
 fn add_control(world: &mut PlotWorld, position: BlockPos) {
     world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(
@@ -217,7 +220,12 @@ fn captured_wire_request_executes_a_kernel_and_rechecks_restored_power() {
             );
         }
         check_ticks(&mut backend, &mut native, &mut world, "captured request");
-        assert!(backend.execution_counts().instant_kernel_invocations > 0);
+        let counts = backend.execution_counts();
+        if restore {
+            assert_eq!(counts.instant_kernel_invocations, 0, "powered revalidation keeps the queued request native");
+        } else {
+            assert!(counts.instant_kernel_invocations > 0, "the unpowered singleton request executes its compiled route");
+        }
     }
 }
 

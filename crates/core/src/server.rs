@@ -171,6 +171,7 @@ struct WhitelistEntry {
 
 /// This represents a minecraft server
 pub struct MinecraftServer {
+    waveform_api: Option<crate::waveform::api::ApiServer>,
     network: NetworkServer,
     broadcaster: Bus<BroadcastMessage>,
     receiver: Receiver<Message>,
@@ -228,7 +229,10 @@ impl MinecraftServer {
         }
 
         // Create server struct
+        let waveform_api = CONFIG.waveform_enabled.then(|| crate::waveform::api::ApiServer::start(&CONFIG.waveform_bind_address).expect("Cannot start waveform API"));
+        if let Some(api) = &waveform_api { info!(address = %api.address, "Waveform API ready"); }
         let mut server = MinecraftServer {
+            waveform_api,
             network: NetworkServer::new(bind_addr),
             broadcaster: bus,
             receiver: server_rx,
@@ -266,6 +270,7 @@ impl MinecraftServer {
     }
 
     fn graceful_shutdown(&mut self) {
+        drop(self.waveform_api.take());
         info!("Commencing graceful shutdown...");
         self.broadcaster.broadcast(BroadcastMessage::Shutdown);
         // Wait for all plots to save and unload

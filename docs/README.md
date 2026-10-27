@@ -13,6 +13,11 @@ compatibility, logical execution, and individual fixture results are separate cl
 | [Optimization levels](REDPILER_OPTIMIZATION_LEVELS.md) | O0–O6 selection, stable-input policy, and graph inspection. |
 | [Development plan](REDPILER_DEVELOPMENT.md) | Consolidated compiler direction, unfinished work, and acceptance gates. |
 | [Permissions](MCHPRS_PERMISSIONS.md) | Permission checks, configurable limits, and rank metadata. |
+| [Waveform analyzer design](../scraps/docs/WAVEFORM_ANALYZER_DESIGN.md) | Interpreter capture, binary probes, public HTTP/SSE API and React viewer. |
+| [Waveform analyzer plan](../scraps/docs/WAVEFORM_ANALYZER_PLAN.md) | Implementation sequence and acceptance gates. |
+| [Waveform API specification](../scraps/docs/WAVEFORM_API_SPEC.md) | Public loaded-plot reads, compact signal/text events, command permissions and rank limits. |
+| [Waveform viewer specification](../scraps/docs/VAPORVIEW_VIEWER_SPEC.md) | Screenshot layout, context menus, tick navigation and VaporView scrolling behavior. |
+| [Waveform deployment](../scraps/docs/WAVEFORM_DEPLOYMENT.md) | Separate Docker frontend, private backend routing and proposed redstonefun.pl integration. |
 
 For compiler work, read the architecture and development plan alongside the
 physical models. The architecture and tier guide distinguish tagged v0.6.0 from

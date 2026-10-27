@@ -290,6 +290,8 @@ pub struct GraphExecutionCounts {
     pub stable_logic_boundary_calls: u64,
     /// Reduced instant pull waves actually executed after entry and FIFO checks.
     pub instant_kernel_invocations: u64,
+    /// Certified closed-wire walks replaced by compiled pull-wave route steps.
+    pub instant_kernel_wire_walks_elided: u64,
     /// Incremental logical evaluations at an admitted kernel's original sample cut.
     pub logical_kernel_evaluations: u64,
     /// Boolean expressions revisited by those evaluations, including entry vetoes.
@@ -312,6 +314,12 @@ pub struct GraphExecutionCounts {
     pub logical_bud_accepts: u64,
     /// Logical BUD delayed state publications processed at Graph's deferred phase.
     pub logical_bud_publications: u64,
+}
+
+/// Run the opt-in saved-plot direct Graph benchmark. Native parity is a separate test.
+#[cfg(feature = "saved-plot-bench")]
+pub fn saved_plot_benchmark(server: bool) {
+    backend::graph::logical_device_saved_plot_tests::run_saved_plot_profile(server);
 }
 
 #[derive(Default)]

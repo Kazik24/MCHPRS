@@ -18,6 +18,8 @@ pub(super) struct KernelExecution {
     continuation: Option<PullWaveContinuation>,
     /// This actor is inside its synchronous commit, before the next queued action runs.
     committing: Option<PistonId>,
+    /// At least one route was actually replaced by a compiled route during this action.
+    compiled_route: bool,
 }
 
 struct PullWaveContinuation {
@@ -41,6 +43,7 @@ impl Default for KernelExecution {
             active_values: None,
             continuation: None,
             committing: None,
+            compiled_route: false,
             clause_matcher: crate::redpiler::program_graph::cpu_kernels::clause_matcher(),
         }
     }
@@ -284,13 +287,26 @@ impl GraphBackend {
         if pull.actor != request.piston || !pull.origin.source_matches(request.source) {
             return Ok(false);
         }
-        self.instant_kernel.active = Some(kernel.clone());
-        self.instant_kernel.active_values = Some(values.clone());
-        let result = self.accept_compiled_pull(request, accepted);
+        let live_accepted = self.native_action_accepted(request);
+        if live_accepted != accepted {
+            // A cut changed since the wave snapshot; let Graph own this action and its suffix.
+            self.instant_kernel.continuation = None;
+            self.instant_kernel.active = None;
+            self.instant_kernel.active_values = None;
+        } else {
+            self.instant_kernel.active = Some(kernel.clone());
+            self.instant_kernel.active_values = Some(values.clone());
+        }
+        self.instant_kernel.compiled_route = false;
+        self.instant_kernel.committing = live_accepted.then_some(request.piston);
+        let result = self.accept_action_using(request, None);
+        self.instant_kernel.committing = None;
         self.instant_kernel.active = None;
         self.instant_kernel.active_values = None;
         result?;
-        self.counts.instant_kernel_invocations += 1;
+        if live_accepted == accepted && self.instant_kernel.compiled_route {
+            self.counts.instant_kernel_invocations += 1;
+        }
         #[cfg(test)]
         self.record_kernel_attempt(request.piston, 6);
         Ok(true)
@@ -380,10 +396,27 @@ impl GraphBackend {
         }
     }
 
-    pub(super) fn deliver_kernel_route(&mut self, route: &KernelRoute) -> Result<(), GraphExecutionError> {
+    pub(super) fn deliver_kernel_route(
+        &mut self,
+        route: &KernelRoute,
+        captured: Option<&[Option<ObservedSite>]>,
+    ) -> Result<(), GraphExecutionError> {
+        if route
+            .steps
+            .iter()
+            .any(|step| matches!(&step.kind, KernelRouteStepKind::NativeHandoff(_)))
+        {
+            // A callback can change later reads; preserve the whole route's native prefix.
+            self.instant_kernel.continuation = None;
+            self.instant_kernel.active = None;
+            self.instant_kernel.active_values = None;
+            return self.deliver_route(route.route, captured);
+        }
+        self.instant_kernel.compiled_route = true;
         for step in &route.steps {
             match &step.kind {
                 KernelRouteStepKind::ClearWires(nodes) => {
+                    self.counts.instant_kernel_wire_walks_elided += 1;
                     for &node in nodes.iter() {
                         let mut wire = self.wire_state(node);
                         wire.power = 0;
@@ -409,13 +442,14 @@ impl GraphBackend {
                     self.deliver_callback(
                         route.route,
                         *delivery,
-                        None,
+                        captured,
                         Some(RouteOccurrence {
                             route: route.route,
                             ordinal: step.ordinal,
                         }),
                     )?;
                 }
+                KernelRouteStepKind::NativeHandoff(_) => unreachable!("routes with native cuts hand off before executing compiled steps"),
             }
         }
         Ok(())

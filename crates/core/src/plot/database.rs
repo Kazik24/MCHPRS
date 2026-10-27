@@ -29,6 +29,49 @@ fn init_warps(conn: &Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn init_waveform(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS plot_waveform_settings(
+        plot_x INTEGER NOT NULL, plot_z INTEGER NOT NULL, probes TEXT NOT NULL,
+        PRIMARY KEY(plot_x, plot_z))",
+        [],
+    )?;
+    Ok(())
+}
+
+pub(crate) fn waveform_probes(x: i32, z: i32) -> rusqlite::Result<Vec<crate::waveform::Probe>> {
+    waveform_probes_in(&lock(), x, z)
+}
+
+fn waveform_probes_in(conn: &Connection, x: i32, z: i32) -> rusqlite::Result<Vec<crate::waveform::Probe>> {
+    let json: Option<String> = conn
+        .query_row(
+            "SELECT probes FROM plot_waveform_settings WHERE plot_x=?1 AND plot_z=?2",
+            params![x, z],
+            |row| row.get(0),
+        )
+        .optional()?;
+    json.map(|json| {
+        serde_json::from_str(&json).map_err(|error| rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(error)))
+    })
+    .transpose()
+    .map(Option::unwrap_or_default)
+}
+
+pub(crate) fn set_waveform_probes(x: i32, z: i32, probes: &[crate::waveform::Probe]) -> rusqlite::Result<()> {
+    set_waveform_probes_in(&lock(), x, z, probes)
+}
+
+fn set_waveform_probes_in(conn: &Connection, x: i32, z: i32, probes: &[crate::waveform::Probe]) -> rusqlite::Result<()> {
+    let json = serde_json::to_string(probes).map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+    conn.execute(
+        "INSERT INTO plot_waveform_settings(plot_x, plot_z, probes) VALUES(?1,?2,?3)
+        ON CONFLICT(plot_x, plot_z) DO UPDATE SET probes=excluded.probes",
+        params![x, z, json],
+    )?;
+    Ok(())
+}
+
 pub fn set_warp(name: &str, warp: Warp) -> rusqlite::Result<()> {
     lock().execute(
         "INSERT INTO warp(name, x, y, z, yaw, pitch) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
@@ -394,6 +437,7 @@ pub fn init() {
         .expect("Could not set plot database timeout");
 
     init_warps(&conn).expect("Could not initialize saved warps");
+    init_waveform(&conn).expect("Could not initialize waveform definitions");
 
     conn.execute(
         "CREATE TABLE IF NOT EXISTS plot_visual_settings(
@@ -463,6 +507,33 @@ pub fn init() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn waveform_definitions_survive_reopening_without_recorded_data() {
+        let path = std::env::temp_dir().join(format!("mchprs-waveform-{}.db", rand::random::<u64>()));
+        let probes = vec![crate::waveform::Probe {
+            name: "clock".into(),
+            pos: mchprs_blocks::BlockPos::new(-5, 64, 6),
+        }];
+        {
+            let conn = Connection::open(&path).unwrap();
+            init_waveform(&conn).unwrap();
+            set_waveform_probes_in(&conn, -1, 0, &probes).unwrap();
+            assert!(waveform_probes_in(&conn, 0, 0).unwrap().is_empty());
+        }
+        {
+            let conn = Connection::open(&path).unwrap();
+            assert!(waveform_probes_in(&conn, -1, 0).unwrap() == probes);
+            conn.execute_batch("CREATE TRIGGER fail_save BEFORE UPDATE ON plot_waveform_settings BEGIN SELECT RAISE(ABORT, 'failure'); END;")
+                .unwrap();
+            assert!(set_waveform_probes_in(&conn, -1, 0, &[]).is_err());
+            assert!(waveform_probes_in(&conn, -1, 0).unwrap() == probes);
+            conn.execute_batch("DROP TRIGGER fail_save").unwrap();
+            set_waveform_probes_in(&conn, -1, 0, &[]).unwrap();
+            assert!(waveform_probes_in(&conn, -1, 0).unwrap().is_empty());
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 
     fn set_warp_in(conn: &Connection, name: &str, warp: Warp) -> rusqlite::Result<()> {
         conn.execute(

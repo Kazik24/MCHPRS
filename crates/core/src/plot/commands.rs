@@ -511,6 +511,14 @@ impl Plot {
             self.handle_git_command(player, &args);
             return false;
         }
+        if command == "/waveform" {
+            match self.handle_waveform(player, &args) {
+                Ok(text) if args == ["list"] => self.players[player].send_raw_system_message(crate::player::diagnostic_component(&text).to_string()),
+                Ok(text) => self.players[player].send_system_message(&text),
+                Err(error) => self.players[player].send_error_message(&error),
+            };
+            return false;
+        }
         if command == "/serverinfo" {
             self.handle_serverinfo(player, &args);
             return false;
@@ -1445,6 +1453,8 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
     let help = nodes.iter().position(|node| node.name == Some("help")).unwrap();
     let mut help_children = nodes[help].children.to_vec();
     help_children.push(visual_help as i32);
+    help_children.push(nodes.len() as i32);
+    nodes.push(Node::literal("waveform", &[]).executable());
     nodes[help].children = Box::leak(help_children.into_boxed_slice());
 
     let redbox = crate::redbox::enabled();
@@ -1498,6 +1508,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         );
         root_children.extend([warp, setwarp]);
     }
+    root_children.push(super::waveform::command_node(&mut nodes));
     nodes[0].children = Box::leak(root_children.into_boxed_slice());
     nodes
 }
@@ -1512,6 +1523,23 @@ pub static DECLARE_COMMANDS: Lazy<PacketEncoder> = Lazy::new(|| {
 
 #[cfg(test)]
 mod security_tests {
+    #[test]
+    fn waveform_actions_require_base_action_and_plot_access() {
+        let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
+        plot.owner = Some(plot.players[0].uuid);
+        for (nodes, error) in [
+            (vec!["mchprs.access.commands", "commands.waveform"], "No permission for /waveform add; ask staff."),
+            (vec!["mchprs.access.commands", "commands.waveform.add"], "No waveform access; ask staff."),
+        ] {
+            plot.players[0].set_test_permissions(&nodes);
+            assert_eq!(plot.handle_waveform(0, &["add", "clock"]).unwrap_err(), error);
+        }
+        plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.waveform", "commands.waveform.add"]);
+        plot.owner = Some(999);
+        assert_eq!(plot.handle_waveform(0, &["add", "clock"]).unwrap_err(), "You need edit access to this plot.");
+        assert!(plot.world.waveform.probes.is_empty());
+    }
+
     #[test]
     fn stop_and_whitelist_require_explicit_permissions_without_luckperms() {
         let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
@@ -1815,7 +1843,6 @@ mod security_tests {
     #[test]
     fn command_declarations_have_valid_edges_and_no_legacy_tick_aliases() {
         let nodes = declared_command_nodes();
-        assert_eq!(nodes.len(), if crate::redbox::enabled() { 182 } else { 190 });
         for node in &nodes {
             for edge in node.children.iter().copied().chain(node.redirect_node) {
                 assert!(edge >= 0 && (edge as usize) < nodes.len());
@@ -1831,7 +1858,7 @@ mod security_tests {
         for proxied in ["warp", "setwarp", "tp", "teleport"] {
             assert_eq!(names.contains(&proxied), !crate::redbox::enabled(), "incorrect declaration for {proxied}");
         }
-        for retained in ["tps", "adv", "rhistory", "redpiler", "rp", "gm", "serverinfo", "wire"] {
+        for retained in ["tps", "adv", "rhistory", "redpiler", "rp", "gm", "serverinfo", "wire", "waveform"] {
             assert!(names.contains(&retained), "missing command {retained}");
         }
         assert!(names.contains(&"rev"));

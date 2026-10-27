@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 /// Session state only: none of these preferences or caches alter player saves.
 #[derive(Default)]
 pub(crate) struct PlayerTools {
+    pub waveform: Option<super::waveform::Selection>,
     pub wire: Option<wire::Session>,
     /// Explicit opt-out survives route cleanup until an enabling command succeeds.
     wire_disabled: bool,

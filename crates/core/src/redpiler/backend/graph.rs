@@ -49,9 +49,9 @@ mod logical_device_frame_tests;
 #[cfg(test)]
 #[path = "graph/tests/logical_device_islands.rs"]
 mod logical_device_island_tests;
-#[cfg(test)]
+#[cfg(any(test, feature = "saved-plot-bench"))]
 #[path = "graph/tests/logical_device_saved_plot.rs"]
-mod logical_device_saved_plot_tests;
+pub(crate) mod logical_device_saved_plot_tests;
 mod logical_firing;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
@@ -2048,7 +2048,7 @@ impl GraphBackend {
             && let Some(kernel) = self.instant_kernel.active.clone()
             && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
         {
-            return self.deliver_kernel_route(&kernel.routes[index]);
+            return self.deliver_kernel_route(&kernel.routes[index], captured);
         }
         if !retained_frame
             && !has_logical_sample

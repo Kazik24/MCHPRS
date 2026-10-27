@@ -104,6 +104,7 @@ waive its plot or packet validation.
 | `/rhistory` | `mchprs.commands.rhistory` plus the requested subcommand node |
 | `/rev` | `mchprs.commands.rback` |
 | `/git` | `mchprs.commands.git` |
+| `/waveform` | `mchprs.commands.waveform` plus `.enable`, `.disable`, `.status`, `.add`, `.addbulk`, `.remove`, `.list`, `.clear`, `.reset`, or `.web` |
 
 Command spelling and permission spelling are separate: `/tps`, `/adv`, and
 `/rev` retain the legacy permission-node names above. `/rtps`, `/radv`,
@@ -143,11 +144,46 @@ configuring a smaller cap.
 | `mchprs.plots.admin.rewind.unlimited` | Remove the permission-based history tick ceiling. |
 | `mchprs.plots.admin.rewind.memory` | Change the shared history memory limit. |
 | `mchprs.git.storage.<MiB>` | Plot owner's disk allowance, bounded by server Git limits. |
+| `mchprs.waveform.signals.limit.<count>` | Explicit numeric signal allowance; also capped by the actor's rank profile and server limits. |
+| `mchprs.waveform.ticks.limit.<ticks>` | Explicit numeric capture-window allowance, with the same ceilings. |
 
 Resource validation, work budgets, and allocation failures still apply to
 unlimited permission holders. History recording clears when the last player
 leaves the plot. The Git allowance follows the plot owner even when a member
 operates on the plot.
+
+Every `/waveform` action requires command access, the family permission, its
+action permission and plot edit access. `/waveform on` maps to `.enable`; `off`
+maps to `.disable`. HTTP reads are public, including targeted command-block
+`tellraw` output; they need no Minecraft permissions. Recordings capture plain
+text only. `off` discards history/events and keeps probes. `clear` empties history
+and keeps probes/recording; `reset` only warns, and `reset confirm` removes both
+and stops recording. Both reset forms require the `.reset` action permission.
+`addbulk <name> <bits>` selects probes with left clicks from low to high, then
+saves them together. `cancel` only drops the caller's pending selection. Clicks
+recheck permissions, plot access and quotas; leaving the plot cancels selection.
+
+The deployed waveform policy grants the family permission, its action wildcard
+and explicit signal/tick numeric nodes to these existing groups, scoped to
+`server=mchprs`:
+
+| Rank / existing group | Signals | Ticks |
+| --- | ---: | ---: |
+| Default / `default` | 16 | 100 |
+| B / `builder` | 16 | 100 |
+| Z / `advanced` | 64 | 1,000 |
+| E / `expert` | 1,024 | 1,000 |
+| I / `engineer` | 1,024 | 1,000 |
+| M / `moderator` | 1,024 | 10,000 |
+| A / `admin` | 1,024 | 10,000 |
+
+Plot editing rights remain required; these grants do not bypass ownership or
+build access. Builder's configured profile ceiling is 16 signals/100 ticks; the
+other-rank profile ceiling is 1,024/10,000. Numeric grants set each group's lower
+allowance. Missing numeric grants admit zero, and stale/unknown external rank
+metadata denies new allocation. Dedicated mode uses `mchprs.`; legacy mode omits
+that prefix. Standalone servers without a permission provider use the configured
+other-rank ceiling. Permission-cache refresh can take up to 30 seconds.
 
 [Rank](../crates/core/src/permissions/rank.rs) also selects a compilation-budget
 multiplier when valid rank metadata is enabled:

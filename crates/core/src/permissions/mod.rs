@@ -248,6 +248,7 @@ pub struct PlayerPermissionsCache {
     nodes: Vec<PermissionNode>,
     plotsquared_compat: bool,
     pub rank_profile: Option<RankProfile>,
+    waveform_rank: Option<Rank>,
     rank_budget_expiry: i64,
     mchprs_permissions: bool,
     valid_until: Option<Instant>,
@@ -318,6 +319,7 @@ impl PlayerPermissionsCache {
             nodes,
             plotsquared_compat,
             rank_profile: None,
+            waveform_rank: Rank::from_group(&group),
             rank_budget_expiry: 0,
             mchprs_permissions,
             valid_until: Some(Instant::now() + Duration::from_secs(30)),
@@ -330,6 +332,23 @@ impl PlayerPermissionsCache {
             });
         }
         result
+    }
+
+    pub(crate) fn waveform_rank(&self) -> Option<Rank> {
+        if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now()) || self.valid_until.is_none_or(|until| Instant::now() >= until) { return None; }
+        self.waveform_rank
+    }
+
+    pub(crate) fn waveform_limits(&self, config: &crate::config::ServerConfig) -> Result<(usize, usize), String> {
+        let rank = self.waveform_rank().ok_or("Rank unavailable; rejoin and try again.")?;
+        let (signals, ticks) = if rank == Rank::Builder {
+            (config.waveform_builder_signals, config.waveform_builder_ticks)
+        } else {
+            (config.waveform_other_signals, config.waveform_other_ticks)
+        };
+        let prefix = if config.luckperms.as_ref().is_some_and(|c| c.mchprs_permissions) { "mchprs." } else { "" };
+        Ok(((signals.min(config.waveform_max_signals) as usize).min(self.numeric_limit(&format!("{prefix}waveform.signals.limit.")).unwrap_or(0)),
+            (ticks.min(config.waveform_max_ticks) as usize).min(self.numeric_limit(&format!("{prefix}waveform.ticks.limit.")).unwrap_or(0))))
     }
 
     pub fn compilation_budget_multiplier(&self) -> usize {
@@ -421,6 +440,7 @@ impl PlayerPermissionsCache {
             rank_profile: None,
             rank_budget_expiry: 0,
             mchprs_permissions: config.mchprs_permissions,
+            waveform_rank: None,
             valid_until: Some(Instant::now() + Duration::from_secs(30)),
         };
         let mut add = |node: &RawNode, direct: bool, depth: usize, weight: i64, expiry: i64| {
@@ -481,15 +501,14 @@ impl PlayerPermissionsCache {
                 }
             }
         }
+        result.waveform_rank = visited.keys().filter_map(|group| Rank::from_group(group)).max();
+        if let Some(rank) = result.waveform_rank {
+            result.rank_budget_expiry = visited.get(rank.group()).map_or(0, |paths| {
+                if paths.iter().any(|&(_, expiry)| expiry == 0) { 0 } else { paths.iter().map(|&(_, expiry)| expiry).max().unwrap_or(0) }
+            });
+        }
         if config.redstonefun_ranks {
             let rank = visited.keys().filter_map(|group| Rank::from_group(group)).max().unwrap_or_default();
-            result.rank_budget_expiry = visited.get(rank.group()).map_or(0, |paths| {
-                if paths.iter().any(|&(_, expiry)| expiry == 0) {
-                    0
-                } else {
-                    paths.iter().map(|&(_, expiry)| expiry).max().unwrap_or(0)
-                }
-            });
             let prefix = grouped
                 .get(rank.group())
                 .into_iter()
@@ -604,6 +623,31 @@ mod tests {
             vec![("mchprs.history.limit.200".into(), true), ("mchprs.history.limit.50".into(), true)],
         );
         assert_eq!(limits.numeric_limit("mchprs.history.limit."), Some(200));
+    }
+
+    #[test]
+    fn waveform_limits_cap_inherited_grants_and_fail_closed_on_expiry() {
+        let mut permissions = config();
+        permissions.mchprs_permissions = true;
+        let mut server: crate::config::ServerConfig = serde_json::from_value(serde_json::to_value(&*crate::config::CONFIG).unwrap()).unwrap();
+        server.luckperms = Some(permissions.clone());
+        server.waveform_builder_signals = 16;
+        server.waveform_builder_ticks = 100;
+        let grants = vec![node("default", "mchprs.waveform.signals.limit.1024", true),
+            node("default", "mchprs.waveform.ticks.limit.10000", true),
+            node("builder", "group.default", true), node("advanced", "group.builder", true)];
+        for (group, expected) in [("builder", (16,100)), ("advanced", (1024,10000)), ("default", (1024,10000))] {
+            let mut cache = PlayerPermissionsCache::resolve(vec![node("", &format!("group.{group}"), true)], grants.clone(), &permissions, now());
+            assert_eq!(cache.waveform_limits(&server).unwrap(), expected);
+            cache.valid_until = Some(Instant::now() - Duration::from_secs(1));
+            assert!(cache.waveform_limits(&server).is_err());
+        }
+        let missing = PlayerPermissionsCache::from_proxy("builder".into(), String::new(), vec![]);
+        assert_eq!(missing.waveform_limits(&server).unwrap(), (0,0));
+        let unknown = PlayerPermissionsCache::from_proxy("unknown".into(), String::new(), vec![]);
+        assert!(unknown.waveform_limits(&server).is_err());
+        let denied = PlayerPermissionsCache::resolve(vec![node("", "group.builder", true), node("", "mchprs.waveform.signals.limit.1024", false)], grants, &permissions, now());
+        assert_eq!(denied.waveform_limits(&server).unwrap(), (0,100));
     }
 
     #[test]

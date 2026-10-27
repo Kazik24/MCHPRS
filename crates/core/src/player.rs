@@ -1025,6 +1025,12 @@ impl Player {
             .map_or(1, PlayerPermissionsCache::compilation_budget_multiplier)
     }
 
+    pub(crate) fn waveform_limits(&self) -> Result<(usize, usize), String> {
+        let c = &*CONFIG;
+        if c.luckperms.is_none() { return Ok((c.waveform_other_signals.min(c.waveform_max_signals) as usize, c.waveform_other_ticks.min(c.waveform_max_ticks) as usize)); }
+        self.permissions_cache.as_ref().ok_or("Permissions unavailable; rejoin and try again.")?.waveform_limits(c)
+    }
+
     pub fn can_edit_plot(&self, owner: Option<u128>, plot: (i32, i32)) -> bool {
         if permissions::dedicated_permissions() && !self.has_permission("mchprs.build") {
             return false;

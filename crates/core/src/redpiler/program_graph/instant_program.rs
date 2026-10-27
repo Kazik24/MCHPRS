@@ -157,6 +157,8 @@ pub(crate) enum KernelRouteStepKind {
     EnqueuePull(usize),
     /// This original row retains native callback guard, receiver and route occurrence behavior.
     Deliver(RouteDelivery),
+    /// This callback can change later reads; Graph resumes the whole original route here.
+    NativeHandoff(RouteDelivery),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

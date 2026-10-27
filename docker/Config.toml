@@ -24,6 +24,24 @@ command_work_time_ms = 250
 worldedit_max_blocks = 67108864
 worldedit_history_blocks = 134217728
 
+# Optional public waveform API. Keep private and proxy /api/ from the viewer origin.
+# Listen on the private Docker network; port 8091 is not published on the host.
+waveform_enabled = true
+waveform_bind_address = "0.0.0.0:8091"
+waveform_public_url = "https://redstonefun.pl/waveform/"
+waveform_builder_signals = 16
+waveform_builder_ticks = 100
+waveform_other_signals = 1024
+waveform_other_ticks = 10000
+waveform_max_signals = 1024
+waveform_max_ticks = 10000
+waveform_plot_memory_mib = 32
+waveform_memory_mib = 256
+waveform_work_memory_mib = 64
+waveform_max_records = 500000
+waveform_max_text_events = 10000
+waveform_text_memory_mib = 4
+
 # Plot Git resource limits (MiB), diff markers and confirmation timeout (seconds).
 git_work_memory_mib = 1024
 git_plot_storage_mib = 1024

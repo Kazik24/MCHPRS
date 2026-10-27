@@ -208,7 +208,7 @@ fn marked_kernel_route_uses_general_delivery_with_an_active_kernel() {
                     .iter()
                     .filter(|step| matches!(&step.kind, crate::redpiler::program_graph::KernelRouteStepKind::Deliver(_)))
                     .count();
-                (delivered_count < original_count).then_some((kernel.clone(), row.route, delivered_count))
+                (delivered_count > 0 && delivered_count < original_count).then_some((kernel.clone(), row.route, delivered_count))
             })
         })
         .expect("fixture contains an optimized route with a reduced callback tape");

@@ -1,7 +1,9 @@
 //! Opt-in replay of the production snapshot, including the neighboring Divider.
 use super::*;
 use crate::plot::{NUM_CHUNKS, PLOT_SCALE, PLOT_SECTIONS, PLOT_WIDTH, PlotWorld};
-use crate::redpiler::{CompilerOptions, LogicalDeviceAdmission};
+use crate::redpiler::CompilerOptions;
+#[cfg(test)]
+use crate::redpiler::LogicalDeviceAdmission;
 use crate::world::storage::Chunk;
 use mchprs_save_data::plot_data::PlotData;
 use std::sync::Arc;
@@ -15,6 +17,87 @@ fn inside_fpu(p: BlockPos) -> bool {
     p.x >= MIN.x && p.x <= MAX.x && p.y >= MIN.y && p.y <= MAX.y && p.z >= MIN.z && p.z <= MAX.z
 }
 
+fn manifest_position(value: &serde_json::Value) -> BlockPos {
+    let coordinates = value.as_array().expect("manifest position triple");
+    assert_eq!(coordinates.len(), 3, "manifest positions use x/y/z triples");
+    BlockPos::new(
+        MIN.x + coordinates[0].as_i64().expect("manifest x coordinate") as i32,
+        MIN.y + coordinates[1].as_i64().expect("manifest y coordinate") as i32,
+        MIN.z + coordinates[2].as_i64().expect("manifest z coordinate") as i32,
+    )
+}
+
+fn manifest_positions(value: &serde_json::Value) -> Vec<BlockPos> {
+    value.as_array().expect("manifest position list").iter().map(manifest_position).collect()
+}
+
+fn saved_fpu_manifest() -> serde_json::Value {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let path = root.join("test_data/piston-research/fixtures/fpu_legal.json");
+    serde_json::from_slice(&std::fs::read(path).expect("read saved FPU port manifest"))
+        .expect("parse saved FPU port manifest")
+}
+
+fn sorted_positions(mut positions: Vec<BlockPos>) -> Vec<BlockPos> {
+    positions.sort_unstable_by_key(|position| (position.x, position.y, position.z));
+    positions
+}
+
+fn known_command_witness_word(manifest: &serde_json::Value, positions: &[BlockPos]) -> u64 {
+    let ports = &manifest["ports"];
+    let mut assignments = manifest_positions(&ports["light_blue_operand_inputs"])
+        .into_iter()
+        .map(|position| (position, false))
+        .chain(manifest_positions(&ports["red_operand_inputs"]).into_iter().map(|position| (position, true)))
+        .collect::<Vec<_>>();
+    assignments.extend(
+        manifest_positions(&ports["opcode_levers_by_sign_weight_4_2_1"])
+            .into_iter()
+            .zip([false, true, true]),
+    );
+    assert_eq!(
+        sorted_positions(assignments.iter().map(|(position, _)| *position).collect()),
+        sorted_positions(positions.to_vec()),
+        "known witness assignments must cover exactly the declared controls"
+    );
+    positions.iter().enumerate().fold(0u64, |word, (bit, position)| {
+        let powered = assignments
+            .iter()
+            .find_map(|(assigned_position, powered)| (assigned_position == position).then_some(*powered))
+            .expect("every witness input position has a manifest assignment");
+        word | (u64::from(powered) << bit)
+    })
+}
+
+fn command_block_census(backend: &GraphBackend) -> Vec<serde_json::Value> {
+    backend
+        .program
+        .command_blocks()
+        .iter()
+        .map(|plan| {
+            let position = backend.program.nodes()[plan.node.index()]
+                .position
+                .expect("saved command block has a physical position");
+            let ComponentState::Electrical(state) = &backend.state.components[plan.node.index()] else {
+                panic!("saved command block retains electrical state at {position:?}");
+            };
+            let entity = state
+                .command_entity
+                .as_deref()
+                .expect("saved command block retains its entity");
+            serde_json::json!({
+                "position": position,
+                "command": entity.command,
+                "powered": entity.powered,
+                "last_execution": entity.last_execution,
+                "automatic": entity.automatic,
+                "track_output": entity.track_output,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
 fn saved_world() -> PlotWorld {
     let path = std::env::var_os("MCHPRS_SAVED_PLOT")
         .map(std::path::PathBuf::from)
@@ -23,6 +106,10 @@ fn saved_world() -> PlotWorld {
 }
 
 fn saved_world_from(path: std::path::PathBuf) -> PlotWorld {
+    saved_world_from_with_limits(path, false)
+}
+
+fn saved_world_from_with_limits(path: std::path::PathBuf, limits: bool) -> PlotWorld {
     let data = PlotData::<PLOT_SECTIONS>::load_from_file(path, false).expect("read-only saved production plot");
     assert_eq!(
         data.chunk_data.len(),
@@ -43,7 +130,7 @@ fn saved_world_from(path: std::path::PathBuf) -> PlotWorld {
         .collect();
     let mut world = PlotWorld::from_chunks(-1, -1, chunks, data.pending_ticks.into_iter().collect());
     *world.piston_state_mut() = data.piston_state;
-    world.disable_command_output_limits_for_replay();
+    if !limits { world.disable_command_output_limits_for_replay(); }
     world
 }
 
@@ -361,6 +448,10 @@ fn saved_fpu_readouts_and_neighbor_keep_their_execution_boundaries() {
 #[test]
 #[ignore = "release-only changing-input profile of the saved FPU plot and neighboring Divider"]
 fn saved_fpu_neighbor_graph_fallback_profile() {
+    run_saved_plot_profile(false);
+}
+
+pub(crate) fn run_saved_plot_profile(server: bool) {
     let optimization_level = std::env::var("MCHPRS_PROFILE_OPT_LEVEL")
         .ok()
         .map(|value| value.parse::<usize>().expect("MCHPRS_PROFILE_OPT_LEVEL must be an integer"))
@@ -369,7 +460,11 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     let snapshot_path = std::env::var_os("MCHPRS_SAVED_PLOT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/build-audit-tps/prod/p-1,-1-goal-start"));
-    let mut world = saved_world_from(snapshot_path.clone());
+    use sha2::{Digest, Sha256};
+    assert_eq!(PLOT_SCALE, 5, "saved production snapshot requires PLOT_SCALE=5");
+    let snapshot_hash = format!("{:x}", Sha256::digest(std::fs::read(&snapshot_path).expect("read saved snapshot for hashing")));
+    assert_eq!(snapshot_hash, "426d2395869062817fa698dca1b7a101c3594728cd440389970a4e6004f06d17", "saved production snapshot hash mismatch");
+    let mut world = saved_world_from_with_limits(snapshot_path.clone(), server);
     let bounds = world.get_corners();
     let options = CompilerOptions {
         optimization_level: Some(optimization_level),
@@ -388,6 +483,9 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     let validated = prepared
         .run_passes(&options, &pipeline, &monitor)
         .expect("run full saved-plot Graph pipeline");
+    for warning in monitor.warnings() {
+        println!("Redpiler warning: {warning}");
+    }
     let graph = validated.graph();
     let clock_census_start = Instant::now();
     let timing = crate::redpiler::analysis::instant::layers::logical::timing::candidate_clocks(graph, &monitor)
@@ -399,6 +497,7 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     let clock_census_seconds = clock_census_start.elapsed().as_secs_f64();
     let (trigger_node, clock_piston) = (timing.trigger, timing.clock);
     let lowered = validated.lower(&monitor).expect("lower Graph fallback after timing census");
+    #[cfg(test)]
     let oracle_lowered = crate::redpiler::program_graph::LoweredCircuit {
         program: lowered.program.clone(),
         state: lowered.state.clone(),
@@ -431,6 +530,26 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         .collect::<Vec<_>>();
     fpu_inputs.sort_unstable_by_key(|(position, _)| (position.x, position.y, position.z));
     assert_eq!(fpu_inputs.len(), 35, "profile must drive all FPU input levers in stable coordinate order");
+    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/piston-research/fixtures/fpu_legal.json");
+    let manifest_hash = format!("{:x}", Sha256::digest(std::fs::read(manifest_path).expect("read manifest for hashing")));
+    assert_eq!(manifest_hash, "981109d849cadaf13a059c295a6d78444d0626a21c72683cf425eb6344b68227", "saved FPU manifest hash mismatch");
+    let manifest = saved_fpu_manifest();
+    let manifest_ports = &manifest["ports"];
+    assert_eq!(manifest_position(&manifest_ports["trigger"]), TRIGGER, "manifest MIN offset maps its clock trigger");
+    let mut declared_input_positions = [
+        manifest_positions(&manifest_ports["light_blue_operand_inputs"]),
+        manifest_positions(&manifest_ports["red_operand_inputs"]),
+        manifest_positions(&manifest_ports["opcode_levers_by_sign_weight_4_2_1"]),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    declared_input_positions = sorted_positions(declared_input_positions);
+    let scanned_input_positions = sorted_positions(fpu_inputs.iter().map(|(position, _)| *position).collect());
+    assert_eq!(
+        declared_input_positions, scanned_input_positions,
+        "the saved-plot input controls must exactly match the manifest's 32 operand and 3 opcode ports"
+    );
     assert!(
         matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered),
         "profile starts from the saved stopped-clock entry"
@@ -451,6 +570,29 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
             .all(|&position| matches!(world.get_block(position), Block::RedstoneRepeater { .. })),
         "saved FPU's 16 readout repeaters must be present"
     );
+    let terminal_dust_positions = manifest_positions(&manifest["observations"]["output"]);
+    let terminal_readout_positions = sorted_positions(
+        terminal_dust_positions
+            .iter()
+            .map(|position| position.offset(BlockFace::East))
+            .collect(),
+    );
+    assert_eq!(terminal_dust_positions.len(), 16, "manifest declares sixteen far-side dust terminals");
+    assert_eq!(
+        terminal_readout_positions,
+        sorted_positions(readout_positions.clone()),
+        "the native readout repeaters must be directly east of the manifest's far-side dust terminals"
+    );
+    for &position in &terminal_dust_positions {
+        assert!(
+            matches!(world.get_block(position), Block::RedstoneWire { wire } if !wire.east.is_none()),
+            "manifest output dust at {position:?} must connect east into its native readout repeater"
+        );
+        assert!(
+            matches!(world.get_block(position.offset(BlockFace::East)), Block::RedstoneRepeater { .. }),
+            "native readout repeater must be adjacent east of FPU terminal {position:?}"
+        );
+    }
 
     let neighbor_controls = backend
         .program
@@ -468,21 +610,31 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         .unwrap_or(96);
     assert!(frames > 0, "profile frame count must be positive");
 
-    // Prepare the first input vector before starting the real clock, then warm the
-    // running plot before taking measured-window counters.
+    #[cfg(feature = "saved-plot-bench")]
+    if server {
+        return server_profile::run(world, backend, options, snapshot_path, manifest, fpu_inputs, neighbor_controls, output_lamps, readout_positions, clock_piston, frames, compile_seconds - clock_census_seconds);
+    }
+    #[cfg(not(feature = "saved-plot-bench"))]
+    assert!(!server);
+
+    // Exercise the fixture's known command witness during warmup, then keep the
+    // measured random input sequence unchanged and outside warmup accounting.
     let mut random = 0x4d43_4850_5253_2026u64;
     let mask = (1u64 << fpu_inputs.len()) - 1;
     let entry_word = fpu_inputs.iter().enumerate().fold(0u64, |word, (bit, (position, _))| {
         word | (u64::from(matches!(world.get_block(*position), Block::Lever { lever } if lever.powered)) << bit)
     });
-    let mut previous_word = entry_word;
-    let mut first_word = next_profile_word(&mut random, mask, previous_word);
+    let witness_word = known_command_witness_word(&manifest, &scanned_input_positions);
+    let _discarded_entry_word = next_profile_word(&mut random, mask, entry_word);
+    let mut previous_word = witness_word;
+    let mut first_word = witness_word;
+    let warmup_command_count_before = world.command_output().count();
+    let warmup_command_entities_before = command_block_census(&backend);
     for (bit, (position, _)) in fpu_inputs.iter().enumerate() {
-        if (previous_word ^ first_word) & (1 << bit) != 0 {
+        if (entry_word ^ first_word) & (1 << bit) != 0 {
             backend.use_block(*position).unwrap();
         }
     }
-    previous_word = first_word;
     // LogicalClock::advance_sticky_observer defines powered trigger as STOP and
     // schedules the sticky retract/extend loop while it is unpowered.
     backend.use_block(TRIGGER).unwrap();
@@ -491,6 +643,15 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         backend.tick_with_world(&mut world).unwrap();
     }
     backend.flush(&mut world, false);
+    let warmup_command_count_after = world.command_output().count();
+    let warmup_command_entities_after = command_block_census(&backend);
+    let warmup_command_execution_changes = warmup_command_entities_before
+        .iter()
+        .zip(&warmup_command_entities_after)
+        .filter(|(before, after)| before["last_execution"] != after["last_execution"])
+        .count();
+    assert!(warmup_command_count_after > warmup_command_count_before, "the selector-011 warmup must emit real FPU commands");
+    assert!(warmup_command_execution_changes > 0, "the command witness must execute native command entities");
     assert!(
         matches!(world.get_block(TRIGGER), Block::Lever { lever } if !lever.powered),
         "warmup must leave the saved FPU clock running"
@@ -514,6 +675,7 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         .map(|node| backend.state.components[node.index()].clone())
         .collect::<Vec<_>>();
     let command_count_before = world.command_output().count();
+    let command_entities_before = command_block_census(&backend);
     let counts_before = backend.execution_counts();
     let clock_revision_before = backend.state.pistons[clock_piston.index()].revision;
     let clock_state_before = backend.state.pistons[clock_piston.index()];
@@ -533,23 +695,16 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     let mut saw_readout_high = false;
     let total_start = Instant::now();
 
+    let input_positions = fpu_inputs.iter().map(|(position, _)| *position).collect::<Vec<_>>();
     for frame in 0..frames {
-        first_word = next_profile_word(&mut random, mask, previous_word);
         let control_start = Instant::now();
-        for (bit, (position, _)) in fpu_inputs.iter().enumerate() {
-            if (previous_word ^ first_word) & (1 << bit) != 0 {
-                backend.use_block(*position).unwrap();
-                input_lever_updates += 1;
-            }
-        }
-        // Exercise the neighboring Divider using the same outside-lever ordering
-        // as the native-vs-Graph correctness replay.
-        for (index, &position) in neighbor_controls.iter().enumerate() {
-            if frame == index * 2 {
-                backend.use_block(position).unwrap();
-                neighbor_lever_updates += 1;
-            }
-        }
+        let (word, input_updates, neighbor_updates) = drive_profile_frame(
+            &mut random, mask, previous_word, &input_positions, &neighbor_controls, frame,
+            |position| backend.use_block(position).unwrap(),
+        );
+        first_word = word;
+        input_lever_updates += input_updates;
+        neighbor_lever_updates += neighbor_updates;
         control_seconds += control_start.elapsed().as_secs_f64();
         previous_word = first_word;
 
@@ -588,6 +743,12 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     let clock_state_after = backend.state.pistons[clock_piston.index()];
     let trigger_powered_after = matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered);
     let command_count_after = world.command_output().count();
+    let command_entities_after = command_block_census(&backend);
+    let command_execution_changes = command_entities_before
+        .iter()
+        .zip(&command_entities_after)
+        .filter(|(before, after)| before["last_execution"] != after["last_execution"])
+        .count();
     let work = serde_json::json!({
         "instant_wire_node_invocations": counts_after.instant_wire_node_invocations - counts_before.instant_wire_node_invocations,
         "instant_transport_invocations": counts_after.instant_transport_invocations - counts_before.instant_transport_invocations,
@@ -616,6 +777,7 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         "wire_walks": counts_after.wire_walks - counts_before.wire_walks,
         "dust_path_power_samples_elided": counts_after.dust_path_power_samples_elided - counts_before.dust_path_power_samples_elided,
         "instant_kernel_invocations": counts_after.instant_kernel_invocations - counts_before.instant_kernel_invocations,
+        "instant_kernel_wire_walks_elided": counts_after.instant_kernel_wire_walks_elided - counts_before.instant_kernel_wire_walks_elided,
         "logical_kernel_evaluations": counts_after.logical_kernel_evaluations - counts_before.logical_kernel_evaluations,
         "logical_kernel_operations": counts_after.logical_kernel_operations - counts_before.logical_kernel_operations,
         "piston_samples": counts_after.piston_samples - counts_before.piston_samples,
@@ -626,6 +788,7 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         "logical_bud_publications": counts_after.logical_bud_publications - counts_before.logical_bud_publications,
     });
     let admission = backend.logical_device_admission();
+    #[cfg(test)]
     let mut oracle_report = replay_saved_fpu_native_oracle(
         &oracle_lowered,
         snapshot_path.clone(),
@@ -639,6 +802,7 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         0,
     );
     // A frame-aligned handoff alone can hide stale intermediate piston poses.
+    #[cfg(test)]
     let other_handoff_phases = (1..6)
         .map(|phase| {
             replay_saved_fpu_native_oracle(
@@ -655,10 +819,16 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
             )
         })
         .collect::<Vec<_>>();
-    oracle_report["other_handoff_phases"] = serde_json::json!(other_handoff_phases);
+    #[cfg(test)]
+    { oracle_report["other_handoff_phases"] = serde_json::json!(other_handoff_phases); }
+    #[cfg(not(test))]
+    let oracle_report = serde_json::json!({"status": "not run; use the separate ignored native oracle test"});
     let mut report = serde_json::json!({
         "measurement_kind": format!("saved_plot_o{optimization_level}_changing_inputs"),
         "snapshot": snapshot_path,
+        "snapshot_sha256": snapshot_hash,
+        "manifest_sha256": manifest_hash,
+        "measurement_scope": "direct Graph replay, not server TPS; offline command output limits disabled",
         "optimization_level": optimization_level,
         "plan_coverage": {
             "proxy_regions": backend.program.instant_proxies().len(),
@@ -682,6 +852,10 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         "stable_instant_inputs": true,
         "frames": frames,
         "input_levers": fpu_inputs.len(),
+        "warmup_input_word": witness_word,
+        "warmup_input_protocol": "manifest-derived A=0, B=0xffff, opcode sign weights 2+1 (selector 011); fixture native tellraw witness",
+        "input_lever_positions": scanned_input_positions,
+        "manifest_input_port_positions": declared_input_positions,
         "input_lever_updates": input_lever_updates,
         "neighbor_lever_updates": neighbor_lever_updates,
         "input_order": "ascending x,y,z coordinate order; raw changing masks, not an arithmetic oracle",
@@ -709,10 +883,19 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
         "flush_seconds": flush_seconds,
         "game_ticks_per_second": (frames * 6) as f64 / wall_seconds,
         "native_command_outputs": command_count_after - command_count_before,
+        "warmup_command_outputs": warmup_command_count_after - warmup_command_count_before,
+        "warmup_command_execution_changes": warmup_command_execution_changes,
+        "warmup_command_entities_before": warmup_command_entities_before,
+        "warmup_command_entities_after": warmup_command_entities_after,
+        "command_execution_changes": command_execution_changes,
+        "command_entities_before_measurement": command_entities_before,
+        "command_entities_after_measurement": command_entities_after,
         "native_oracle": oracle_report,
         "unique_indicator_words": output_words.len(),
         "indicator_transition": saw_output_transition,
         "fpu_readout_positions": readout_positions,
+        "manifest_terminal_dust_positions": terminal_dust_positions,
+        "terminal_to_readout_mapping": "each declared output dust terminal connects east to the saved native repeater at the corresponding z",
         "fpu_readout_words": readout_trace,
         "unique_fpu_readout_words": readout_words.len(),
         "fpu_readout_transition": saw_readout_transition,
@@ -737,6 +920,7 @@ fn saved_fpu_neighbor_graph_fallback_profile() {
     assert_eq!(counts_after.ticks - counts_before.ticks, (frames * 6) as u64);
 }
 
+#[cfg(test)]
 fn replay_saved_fpu_native_oracle(
     lowered: &crate::redpiler::program_graph::LoweredCircuit,
     snapshot_path: std::path::PathBuf,
@@ -790,21 +974,25 @@ fn replay_saved_fpu_native_oracle(
         .copied()
         .filter(|&position| matches!(graph_world.get_block(position), Block::RedstoneComparator { .. }))
         .collect::<Vec<_>>();
+    let manifest = saved_fpu_manifest();
+    let witness_word = known_command_witness_word(&manifest, input_positions);
     let mut random = 0x4d43_4850_5253_2026u64;
-    let mut previous_word = entry_word;
-    let mut word = next_profile_word(&mut random, mask, previous_word);
+    let _discarded_entry_word = next_profile_word(&mut random, mask, entry_word);
+    let mut previous_word = witness_word;
+    let mut word = witness_word;
     for (bit, &position) in input_positions.iter().enumerate() {
-        if (previous_word ^ word) & (1 << bit) != 0 {
+        if (entry_word ^ word) & (1 << bit) != 0 {
             graph.use_block(position).unwrap();
             native_use_lever(&mut native_world, position);
         }
     }
-    previous_word = word;
     graph.use_block(TRIGGER).unwrap();
     native_use_lever(&mut native_world, TRIGGER);
 
     let mut ticks_compared = 0usize;
     let mut native_command_outputs = 0usize;
+    let mut warmup_command_outputs = 0usize;
+    let initial_native_command_outputs = native_world.command_output().count();
     let mut readout_words = FxHashSet::default();
     let mut physical_positions = graph.program.nodes().iter().filter_map(|node| node.position).collect::<Vec<_>>();
     physical_positions.extend(graph.program.contacts().iter().map(|contact| contact.position));
@@ -899,7 +1087,11 @@ fn replay_saved_fpu_native_oracle(
         let graph_output = graph_world.command_output().collect::<Vec<_>>();
         let native_output = native_world.command_output().collect::<Vec<_>>();
         assert_eq!(graph_output, native_output, "native command output at tick {step}");
-        native_command_outputs = native_output.len();
+        native_command_outputs = native_output.len() - initial_native_command_outputs;
+        if step == 23 {
+            warmup_command_outputs = native_command_outputs;
+            assert!(warmup_command_outputs > 0, "native selector-011 warmup must exercise the FPU command outputs");
+        }
         let readout_word = readout_positions.iter().enumerate().fold(0u16, |word, (bit, &position)| {
             word | (u16::from(matches!(graph_world.get_block(position), Block::RedstoneRepeater { repeater } if repeater.powered)) << bit)
         });
@@ -911,6 +1103,7 @@ fn replay_saved_fpu_native_oracle(
         "oracle": "native PlotWorld::tick_interpreted versus GraphBackend from the same validated program",
         "frames": oracle_frames,
         "handoff_phase_within_input_frame": handoff_phase,
+        "warmup_input_word": witness_word,
         "ticks_compared": ticks_compared,
         "graph_ticks_compared": graph_ticks,
         "native_continuation_ticks": continuation_ticks,
@@ -921,11 +1114,13 @@ fn replay_saved_fpu_native_oracle(
             observable_positions.len(), comparator_positions.len()
         ),
         "command_effect_comparison": "all compiled command-block entities and command-output history compared after every game tick",
+        "warmup_command_outputs": warmup_command_outputs,
         "command_outputs_observed": native_command_outputs,
         "distinct_readout_words": readout_words.len(),
     })
 }
 
+#[cfg(any(test, feature = "saved-plot-bench"))]
 fn native_use_lever(world: &mut PlotWorld, position: BlockPos) {
     let Block::Lever { mut lever } = world.get_block(position) else {
         panic!("oracle input {position:?} is not a lever")
@@ -940,6 +1135,32 @@ fn native_use_lever(world: &mut PlotWorld, position: BlockPos) {
     };
     crate::redstone::update_surrounding_blocks(world, position.offset(attachment));
 }
+
+fn drive_profile_frame(
+    random: &mut u64, mask: u64, previous: u64, inputs: &[BlockPos], neighbors: &[BlockPos],
+    frame: usize, mut use_block: impl FnMut(BlockPos),
+) -> (u64, u64, u64) {
+    let word = next_profile_word(random, mask, previous);
+    let mut input_updates = 0;
+    let mut neighbor_updates = 0;
+    for (bit, &position) in inputs.iter().enumerate() {
+        if (previous ^ word) & (1 << bit) != 0 {
+            use_block(position);
+            input_updates += 1;
+        }
+    }
+    for (index, &position) in neighbors.iter().enumerate() {
+        if frame == index * 2 {
+            use_block(position);
+            neighbor_updates += 1;
+        }
+    }
+    (word, input_updates, neighbor_updates)
+}
+
+#[cfg(feature = "saved-plot-bench")]
+#[path = "saved_plot_server.rs"]
+mod server_profile;
 
 fn next_profile_word(random: &mut u64, mask: u64, previous: u64) -> u64 {
     *random ^= *random << 13;
