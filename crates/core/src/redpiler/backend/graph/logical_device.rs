@@ -1414,7 +1414,6 @@ impl GraphBackend {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(super) fn run_native_action_clock_step(&mut self, clock: PistonId, _action: mchprs_world::PistonAction) -> Result<(), GraphExecutionError> {
         let Some(owner) = self.native_action_clock_owner.get(clock.index()).copied().flatten() else {
             return Err(self.unsupported(self.program.pistons()[clock.index()].node, "unbound native-action clock"));
@@ -1579,6 +1578,8 @@ impl GraphBackend {
             let mut wire = self.wire_state(node);
             wire.power = strength;
             self.set_wire(node, wire);
+        } else if matches!(self.program.nodes()[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Lamp)) {
+            self.set_node(node, strength != 0, 0, None, false)?;
         } else if matches!(
             self.program.nodes()[node.index()].kind,
             CircuitNodeKind::Electrical(NodeType::CommandBlock { .. })
@@ -1589,6 +1590,93 @@ impl GraphBackend {
         }
         Ok(())
     }
+}
+
+#[cfg(feature = "native-clock-test-support")]
+#[doc(hidden)]
+pub fn native_clock_test_support<W: crate::world::World>(world: &W, bounds: (mchprs_blocks::BlockPos, mchprs_blocks::BlockPos)) -> (u64, u64, u64) {
+    use crate::redpiler::program_graph::{LayerExpr, ReducedLayerProgram, SettledCircuit};
+    let options = crate::redpiler::CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let (mut backend, _) = crate::redpiler::Compiler::prepare_graph_backend(world, bounds, vec![], &options, &monitor, None).unwrap();
+    let mut device = backend.logical_devices.pop().expect("counter logical device");
+    let timing = backend.program.logical_devices()[0].circuit.timing.as_ref().unwrap();
+    let trigger = timing.trigger;
+    for state in &mut backend.state.components {
+        match state {
+            ComponentState::Electrical(state) => {
+                state.powered = false;
+                state.output_strength = 0;
+            }
+            ComponentState::Wire(wire) => wire.power = 0,
+            ComponentState::Specialized => {}
+        }
+    }
+    backend.state.classic_signals.fill(0);
+    let clock = (0..backend.program.pistons().len())
+        .map(|index| PistonId::new(index as u32))
+        .find(|&actor| !backend.piston_powered(actor) && backend.piston_retraction_available(actor, true))
+        .expect("counter has an unpowered native piston");
+    let circuit = SettledCircuit {
+        program: ReducedLayerProgram {
+            inputs: Box::new([]),
+            expressions: vec![LayerExpr::Constant(false)].into_boxed_slice(),
+            roots: Box::new([]),
+        },
+        outputs: Box::new([]),
+        retained_cells: Box::new([]),
+        retained_effects: Box::new([]),
+        declines: Box::new([]),
+        timing: None,
+    };
+    device.frame = Some(SettledFrame {
+        evaluation: SettledEvaluation::new(&circuit).unwrap(),
+        inputs: Box::new([]),
+        boundaries: Box::new([]),
+        feedback_slots: Box::new([]),
+        feedback_resources: Box::new([]),
+        outputs: Box::new([]),
+        button_nodes: Box::new([]),
+        retained_actors: Box::new([]),
+        retained_observers: Box::new([]),
+        retained_commands: Box::new([]),
+        retained_routes: Box::new([]),
+        retained_native_routes: Box::new([]),
+        retained_resources: Box::new([]),
+        retained_power_inputs: Box::new([]),
+        terminal_repeater_inputs: Box::new([]),
+        power_input_offset: 0,
+    });
+    device.machine = None;
+    backend.logical_bud_owner_by_actor[clock.index()] = None;
+    device.clock_driver = DeviceClockDriver::NativeAction {
+        clock,
+        last_trigger: backend.node_state(trigger).powered,
+    };
+    device.trigger = trigger;
+    backend.native_action_clock_owner[clock.index()] = Some(0);
+    backend.logical_devices.push(device);
+    let request = super::PistonRequest {
+        piston: clock,
+        action: mchprs_world::PistonAction::RetractWithoutPull,
+        source: None,
+    };
+    let before = backend.counts.logical_kernel_evaluations;
+    backend.state.pistons[clock.index()].extended = false;
+    assert!(!backend.native_action_accepted(request));
+    backend.accept_action_using(request, None).unwrap();
+    let rejected = backend.counts.logical_kernel_evaluations;
+    backend.state.pistons[clock.index()].extended = true;
+    backend.state.pistons[clock.index()].head_present = true;
+    backend.state.pistons[clock.index()].availability = PistonAvailability::Ready;
+    assert!(backend.native_action_accepted(request), "fixture clock must accept the retraction");
+    backend.accept_action_using(request, None).unwrap();
+    (before, rejected, backend.counts.logical_kernel_evaluations)
 }
 
 #[cfg(test)]
@@ -1650,6 +1738,57 @@ mod tests {
             declines: Box::new([]),
             timing: None,
         }
+    }
+
+    #[test]
+    fn settled_frame_publishes_lamp_input() {
+        let (mut world, bounds) = super::super::adder_tests::counter_world();
+        let lamp_position = bounds.1 + mchprs_blocks::BlockPos::new(2, 0, 0);
+        world.set_block(lamp_position, Block::RedstoneLamp { lit: false });
+        let bounds = (bounds.0, lamp_position);
+        let options = CompilerOptions {
+            optimization_level: Some(6),
+            budget_multiplier: 8,
+            ..Default::default()
+        };
+        let mut backend =
+            GraphBackend::compile_with_options(&world, bounds, world.scheduler().iter_entries().collect(), &options, Arc::default()).unwrap();
+        let mut device = backend.logical_devices.pop().expect("counter logical device");
+        let lamp = backend.positions[&lamp_position];
+        let circuit = SettledCircuit {
+            program: ReducedLayerProgram {
+                inputs: Box::new([]),
+                expressions: Box::new([LayerExpr::Constant(true)]),
+                roots: Box::new([(LayerRoot::Output(0), LayerExprId(0))]),
+            },
+            outputs: Box::new([SettledOutput {
+                target: SettledTarget::Power(PowerTarget::Input {
+                    node: lamp,
+                    port: InputPort::Main,
+                }),
+                kind: SettledValueKind::Bool,
+                roots: Box::new([LayerExprId(0)]),
+            }]),
+            retained_cells: Box::new([]),
+            retained_effects: Box::new([]),
+            declines: Box::new([]),
+            timing: None,
+        };
+        let mut frame = constant_frame(&circuit);
+        frame.outputs = Box::new([(lamp, 0, SettledValueKind::Bool)]);
+        device.frame = Some(frame);
+        backend
+            .run_frame_step(
+                &mut device,
+                super::super::logical_clock::ClockStep {
+                    compute: true,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(backend.node_state(lamp).powered);
+        assert_eq!(backend.node_state(lamp).output_strength, 0);
+        assert_eq!(backend.counts.logical_kernel_evaluations, 1);
     }
 
     #[test]

@@ -5,6 +5,8 @@ use rustc_hash::FxHashSet;
 #[cfg(test)]
 mod controller;
 #[cfg(test)]
+mod boundary_report_tests;
+#[cfg(test)]
 mod counter;
 #[cfg(test)]
 pub(crate) use controller::controller_support;

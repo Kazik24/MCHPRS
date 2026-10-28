@@ -144,8 +144,13 @@ fn evaluate_sum(graph: &CompileGraph, world: &crate::plot::PlotWorld, output_pos
         .iter()
         .map(|input| power_value(graph, input.source, world))
         .collect::<Result<Vec<_>, _>>()?;
+    evaluate_sum_from_inputs(graph, &inputs, output_positions)
+}
+
+fn evaluate_sum_from_inputs(graph: &CompileGraph, inputs: &[bool], output_positions: &[BlockPos]) -> Result<u16, String> {
+    let circuit = graph.plans.settled_circuit.as_ref().ok_or("O6 did not publish a settled circuit")?;
     let mut evaluation = SettledEvaluation::new(circuit)?;
-    evaluation.evaluate(&inputs).map_err(str::to_owned)?;
+    evaluation.evaluate(inputs).map_err(str::to_owned)?;
     let mut sum = 0u16;
     for (bit, &position) in output_positions.iter().enumerate() {
         let node = graph
@@ -343,6 +348,87 @@ fn adder_11bits_settled_dag_matches_native_carry_and_overflow_vectors() {
         let expected = (a + b) & 0x07ff;
         assert_eq!(native_sum, expected, "native vector {a}+{b}");
         assert_eq!(logical_sum, native_sum, "settled DAG vector {a}+{b}");
+    }
+}
+
+#[test]
+fn adder_11bits_settled_dag_matches_consecutive_triggered_frames() {
+    let (manifest, _, graph) = prepare_adder();
+    let a_positions = manifest_positions(&manifest, "A");
+    let b_positions = manifest_positions(&manifest, "B");
+    let outputs = manifest_outputs(&manifest);
+    let trigger = super::cpus::manifest_origin(&manifest) + super::cpus::manifest_position(&manifest["ports"]["inputs"]["trigger"]);
+    let vectors = [(0u16, 0u16), (31, 1), (1023, 1), (2047, 1), (1365, 682), (0, 0)];
+    let circuit = graph.plans.settled_circuit.as_ref().unwrap();
+    let declared = a_positions.iter().chain(&b_positions).copied().chain([trigger]).collect::<Vec<_>>();
+    let bindings = circuit
+        .program
+        .inputs
+        .iter()
+        .map(|input| {
+            let LayerInputSource::SourceAbove {
+                site,
+                port: PowerPort::Output,
+                threshold: 0,
+            } = input.source
+            else {
+                panic!("unexpected settled input {:?}", input.source);
+            };
+            let SiteSource::Component(node) = graph.sites[site.index()].source else {
+                panic!("settled input is not a component");
+            };
+            assert!(matches!(graph.nodes[node.index()].kind, CircuitNodeKind::Electrical(NodeType::Lever)));
+            let position = graph.nodes[node.index()].position.unwrap();
+            declared
+                .iter()
+                .position(|&candidate| candidate == position)
+                .expect("settled input is not a declared lever")
+        })
+        .collect::<Vec<_>>();
+    let mut unique = bindings.clone();
+    unique.sort_unstable();
+    assert_eq!(unique, (0..declared.len()).collect::<Vec<_>>());
+
+    for _ in 0..2 {
+        let mut native = super::cpus::load_manifest(&manifest).unwrap();
+        for (a, b) in vectors {
+            for (bit, &position) in a_positions.iter().enumerate() {
+                set_lever(&mut native, position, a & (1 << bit) == 0);
+            }
+            for (bit, &position) in b_positions.iter().enumerate() {
+                set_lever(&mut native, position, b & (1 << bit) == 0);
+            }
+            set_lever(&mut native, trigger, true);
+            for _ in 0..32 {
+                native.tick_interpreted();
+            }
+            set_lever(&mut native, trigger, false);
+            for _ in 0..24 {
+                native.tick_interpreted();
+            }
+            let native_sum = outputs.iter().enumerate().fold(0u16, |sum, (bit, &position)| {
+                let Block::RedstoneRepeater { repeater } = native.get_block(position) else {
+                    panic!("sum output repeater disappeared at {position:?}")
+                };
+                sum | (u16::from(!repeater.powered) << bit)
+            });
+            let expected = (a + b) & 0x07ff;
+            assert_eq!(native_sum, expected, "native frame {a}+{b}");
+            let inputs = bindings
+                .iter()
+                .map(|&index| match index {
+                    0..=10 => a & (1 << index) == 0,
+                    11..=21 => b & (1 << (index - 11)) == 0,
+                    22 => false,
+                    _ => unreachable!(),
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                evaluate_sum_from_inputs(&graph, &inputs, &outputs).unwrap(),
+                native_sum,
+                "settled frame {a}+{b}"
+            );
+        }
     }
 }
 

@@ -471,6 +471,23 @@ impl Compiler {
         self.options = Default::default();
     }
 
+    /// Experimental handoff for a proven isolated region. The caller restores its entry snapshot afterward.
+    pub(crate) fn reset_selected<W: World>(
+        &mut self,
+        world: &mut W,
+        positions: &std::collections::HashSet<BlockPos>,
+    ) -> Result<(), &'static str> {
+        if self.options.update {
+            return Err("selected reset does not support whole-plot updates");
+        }
+        if let Some(backend) = self.backend.as_mut() {
+            backend.reset_selected(world, positions)?;
+            self.backend = None;
+        }
+        self.options = Default::default();
+        Ok(())
+    }
+
     fn backend(&mut self) -> &mut GraphBackend {
         self.backend.as_mut().expect("tried to get redpiler backend when inactive")
     }
@@ -773,3 +790,7 @@ mod tests {
         assert_eq!(compiler.stats().unwrap().total_duration, total_duration);
     }
 }
+
+#[cfg(feature = "native-clock-test-support")]
+#[doc(hidden)]
+pub use backend::graph::logical_device::native_clock_test_support;

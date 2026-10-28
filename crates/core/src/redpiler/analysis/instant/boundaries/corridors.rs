@@ -1,11 +1,26 @@
-//! Connected non-classic wire corridors seeded by admitted local cells.
+//! Connected non-classic wire components for boundary catalogs and transport.
 use super::{Budget, MAX_BOUNDARY_BYTES, OwnerMap};
 use crate::redpiler::TaskMonitor;
 use crate::redpiler::program_graph::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-pub(super) fn discover_corridors(graph: &CompileGraph, owners: &OwnerMap, monitor: &TaskMonitor) -> Result<Vec<WireCorridor>, String> {
-    let mut budget = Budget::bounded(monitor);
+pub(super) fn discover_corridors(
+    graph: &CompileGraph,
+    owners: &OwnerMap,
+    monitor: &TaskMonitor,
+    extra_seeds: &[NodeId],
+    all_wires: bool,
+) -> Result<Vec<WireCorridor>, String> {
+    discover_corridors_with_budget(graph, owners, extra_seeds, all_wires, Budget::bounded(monitor))
+}
+
+pub(super) fn discover_corridors_with_budget(
+    graph: &CompileGraph,
+    owners: &OwnerMap,
+    extra_seeds: &[NodeId],
+    all_wires: bool,
+    mut budget: Budget<'_>,
+) -> Result<Vec<WireCorridor>, String> {
     let classic: FxHashSet<_> = graph
         .plans
         .classic_nets
@@ -138,11 +153,28 @@ pub(super) fn discover_corridors(graph: &CompileGraph, owners: &OwnerMap, monito
         }
     }
 
+    for &wire in extra_seeds {
+        budget.visit()?;
+        mark_wire_seed(&wire_vertices, &mut parents, &mut seeded, wire);
+    }
+    if all_wires {
+        for &wire in &wire_nodes {
+            budget.visit()?;
+            mark_wire_seed(&wire_vertices, &mut parents, &mut seeded, wire);
+        }
+    }
+
     let mut groups: FxHashMap<usize, (Vec<NodeId>, Vec<SiteId>)> = FxHashMap::default();
     for (index, &wire) in wire_nodes.iter().enumerate() {
         budget.visit()?;
         let root = component_root(&mut parents, index);
         if seeded.contains(&root) {
+            if all_wires {
+                budget.retain(&wire)?;
+                if !groups.contains_key(&root) {
+                    budget.retain_bytes(std::mem::size_of::<(usize, (Vec<NodeId>, Vec<SiteId>))>())?;
+                }
+            }
             groups.entry(root).or_default().0.push(wire);
         }
     }
@@ -150,6 +182,9 @@ pub(super) fn discover_corridors(graph: &CompileGraph, owners: &OwnerMap, monito
         budget.visit()?;
         let root = component_root(&mut parents, site_vertices[&site]);
         if seeded.contains(&root) {
+            if all_wires {
+                budget.retain(&site)?;
+            }
             groups.entry(root).or_default().1.push(site);
         }
     }

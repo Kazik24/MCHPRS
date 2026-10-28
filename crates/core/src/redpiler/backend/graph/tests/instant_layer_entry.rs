@@ -854,6 +854,36 @@ fn check_composed_chain(dust: bool) {
         backend.tick().unwrap();
         check_boundary(&backend, &native, &mut projected, &positions, &format!("composed reset tick {tick}")).unwrap();
     }
+    backend.use_block(CONTROL).unwrap();
+    native_step(
+        &mut native,
+        Step::SetLever {
+            position: CONTROL,
+            powered: true,
+        },
+    );
+    for tick in 0..16 {
+        native.tick_interpreted();
+        backend.tick().unwrap();
+        check_boundary(&backend, &native, &mut projected, &positions, &format!("composed rearm tick {tick}")).unwrap();
+    }
+    let before = backend.execution_counts().instant_kernel_invocations;
+    backend.use_block(CONTROL).unwrap();
+    native_step(
+        &mut native,
+        Step::SetLever {
+            position: CONTROL,
+            powered: false,
+        },
+    );
+    native.tick_interpreted();
+    backend.tick().unwrap();
+    check_boundary(&backend, &native, &mut projected, &positions, "composed second pull").unwrap();
+    assert_eq!(
+        backend.execution_counts().instant_kernel_invocations - before,
+        2,
+        "both actors fire again after rearm"
+    );
     let export = crate::redpiler::analysis::export_json::from_graph(&prepared.report, &prepared.graph).unwrap();
     let directory = root().join("target/layered-instant-layers");
     std::fs::create_dir_all(&directory).unwrap();

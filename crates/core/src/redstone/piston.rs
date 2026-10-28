@@ -102,6 +102,8 @@ pub fn update_piston_state(world: &mut impl World, piston: RedstonePiston, pos: 
     };
     #[cfg(test)]
     trace::detail(world, pos, trace::Stage::Request, Some(event), extending);
+    #[cfg(test)]
+    super::instant_piston_tests::record_request(world, event);
     world.enqueue_piston_event(event);
 }
 

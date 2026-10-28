@@ -34,7 +34,7 @@ mod instant_proxy;
 #[path = "graph/tests/logical_bud_runtime.rs"]
 mod logical_bud_runtime_tests;
 mod logical_clock;
-mod logical_device;
+pub(crate) mod logical_device;
 #[cfg(test)]
 #[path = "graph/tests/logical_device_author_profiles.rs"]
 mod logical_device_author_profile_tests;

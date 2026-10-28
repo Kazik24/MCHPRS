@@ -89,6 +89,36 @@ struct MotionProjection {
 impl MotionProjection {}
 
 impl GraphBackend {
+    /// The caller must prove the selected positions are an exclusive circuit closure.
+    pub(crate) fn reset_selected<W: World>(&mut self, world: &mut W, positions: &std::collections::HashSet<BlockPos>) -> Result<(), &'static str> {
+        if self.future.clock.phase != GraphPhase::BetweenTicks
+            || world.piston_state().phase != mchprs_world::AdvancePhase::BetweenTicks
+            || !world.piston_state().motions.is_empty()
+            || !world.piston_state().events.is_empty()
+            || !self.future.deferred_pistons.is_empty()
+        {
+            return Err("selected reset requires a stationary tick boundary");
+        }
+
+        let mut scheduler = TickScheduler::default();
+        for (tick, delay, priority) in self.future.scheduler.iter() {
+            if !positions.contains(&tick.position) {
+                scheduler.schedule_half_tick(*tick, delay, priority);
+            }
+        }
+        self.future.scheduler = scheduler;
+        let mut requests = PistonRequestQueue::new();
+        for request in &self.future.piston_requests {
+            let piston = &self.program.pistons()[request.piston.index()];
+            if !positions.contains(&self.program.contacts()[piston.base.index()].position) {
+                requests.push_back_if_absent(*request);
+            }
+        }
+        self.future.piston_requests = requests;
+        self.reset(world);
+        Ok(())
+    }
+
     fn is_io(&self, node: NodeId) -> bool {
         matches!(
             self.program.nodes()[node.index()].kind,

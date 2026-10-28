@@ -45,6 +45,10 @@ will also be unrecognized; use the circuit's intended behavior and an
 interpreter comparison to decide whether anything needs repair. The corrected
 saved plot and its user-provided piston fixes were the basis for the experiments
 below; these measurements do not establish that the remaining circuit is faulty.
+The plot author has confirmed that the pistons highlighted by the current
+warnings are valid ordinary pistons, including pistons near repeaters. Treat
+those reports as compiler recognition or boundary limitations, not defects in
+the circuit.
 
 ## Fixture and measurements
 
@@ -104,6 +108,74 @@ clocks and native readers must not be absorbed merely because they are read.
 An experimental deterministic event ordering may be used under the agreed
 idealized timing contract, but needs settled-output validation and an explicit
 handoff policy.
+
+### Correction to the Divider ingress witness
+
+The recorded first unbound occurrence, route 5631 ordinal 20, targets the
+observer at `(-108, 73, -319)`, not a wire. Ordinal means an index into the
+route's delivery list. In the corrected snapshot, toggling its source lever
+`(-108, 75, -319)` on and off, with 16 native game ticks after each edge,
+produced observer and wire callbacks but no piston request. The observer stayed
+unpowered and the nearby wire at `(-109, 73, -319)` stayed at power 12.
+This history does not establish a lever-to-wire-to-piston activation path.
+The earlier experiment still demonstrates missed ingress and a frozen Divider,
+but a different witness or initial state is needed to reproduce its activation.
+The plot author identified `(-108, 75, -319)` as an input lever and confirmed
+`(-113, 75, -278)` as the Divider trigger.
+
+The recorded changing-input protocol does contain an active neighboring path:
+after its 24-tick warmup, toggling the lever at `(-113, 75, -278)` sends
+updates through wires at `(-113, 73, -278)` and `(-112, 73, -278)` and
+requests a retract of the sticky piston at `(-111, 73, -279)`. Native execution
+accepts and applies the retract on the next tick and extends the piston three
+ticks later; its quasi-power source is the torch at `(-111, 74, -278)`.
+A nearby observer pulses during that interval, but its causal relationship to
+this piston has not been established. This is a trace of one input history,
+not yet a certified or accelerated region. A full-plot O6 replay found neither
+of the two witness wires in an instant-transport or signal-channel plan. The
+trigger caused one ordinary Graph wire walk and no channel or transport calls;
+native and Graph both requested the retract, and their queued work and local
+state matched through handoff and eight native continuation ticks.
+
+The production clock retraction dispatch has been restored. Its integration
+test runs the non-test library and checks both rejected and accepted requests;
+it installs a synthetic frame and clock, so it does not prove real-world clock
+admission. A three-wire fixture also executes the existing compiled signal
+channel and matches Graph and native continuation for repeated input pulses.
+Its observer/piston circuit keeps oscillating after deassertion: it does not
+establish the requested settled Divider boundary, and the piston remains
+Graph-owned. The experimental event-netlist executor remains disabled.
+
+After the clock fix, the standalone Counter benchmark matched its frozen native
+progression for three 1,000,002-tick samples. Median wall throughput was
+5,412,010 game TPS; median timed throughput was 6,787,152 game TPS. This is a
+local engine benchmark, not a server measurement. Its report is
+`E:\codex-builds\counter-clock-dispatch-20261028.json`.
+
+The separate `fpu_divider` schematic was also tested with 16 random input pairs
+and 256 game ticks per pair, following eight warmup inputs. O6 matched the
+interpreter's ten repeater readouts at every tick in the untimed validation;
+the readouts varied during the trace, while the recorded timed phase-boundary
+words were all zero. There is no independent arithmetic oracle or evidence here
+of varied settled results. Three timed samples reached a median
+4,757 game TPS. Each run's counters, including setup and warmup, recorded 9,849
+signal-channel invocations, 91,041 instant-kernel invocations, 2,945,194
+elided wire visits and 6,171,100 Graph callbacks. These counters do not establish
+logical-device frame activation. The native reference and O6 report are
+`E:\codex-builds\divider-native-16-20261028.json` and
+`E:\codex-builds\divider-o6-counted-16-20261028.json`. This standalone
+measurement is not the saved FPU-plus-Divider plot.
+
+An eight-frame replay of the corrected saved plot after the dispatch fix used
+the normal O6 Graph pipeline with an 8x budget and changing inputs. It admitted
+zero logical devices and measured 255 game TPS in one 48-tick sample, with
+536,691 Graph callbacks, 17,638 signal-channel invocations and 7,572 instant
+kernel invocations in the measured interval. This direct replay is not server
+TPS. It passed the native output and physical-state comparison, including all
+six handoff offsets and 16 ticks of native continuation. Eight commands were
+observed during warmup; this run does not demonstrate commands firing during
+the measured interval. The report is
+`E:\codex-builds\saved-divider-clock-dispatch-8-20261028.log`.
 
 The bounded corridor and live-state tests exercise pieces of this model; they
 do not yet implement that full worklist on the saved plot. When developing it,

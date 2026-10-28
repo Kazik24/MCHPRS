@@ -150,8 +150,45 @@ pub(crate) fn bind_owners(
     }
 }
 
+/// Discover physical wire components for transport without assigning cell or corridor ownership.
+pub(crate) fn discover_transport_corridors(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<Vec<WireCorridor>, String> {
+    let owners = bind_owners(
+        graph,
+        vec![None; graph.pistons.len()],
+        vec![None; graph.resources.len()],
+        vec![None; graph.contacts.len()],
+        &[],
+    );
+    corridors::discover_corridors(graph, &owners, monitor, &[], true)
+}
+#[cfg(test)]
+pub(crate) fn discover_transport_corridors_with_work_limit(
+    graph: &CompileGraph,
+    monitor: &TaskMonitor,
+    max_work: usize,
+) -> Result<Vec<WireCorridor>, String> {
+    let owners = bind_owners(
+        graph,
+        vec![None; graph.pistons.len()],
+        vec![None; graph.resources.len()],
+        vec![None; graph.contacts.len()],
+        &[],
+    );
+    let mut budget = Budget::bounded(monitor);
+    budget.max_work = Some(max_work);
+    corridors::discover_corridors_with_budget(graph, &owners, &[], true, budget)
+}
 /// Derive admitted cell owners, non-classic wire corridors, and all typed crossings once.
 pub(crate) fn infer_boundaries(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<BoundaryCatalog, String> {
+    infer_boundaries_seeded(graph, monitor, &[])
+}
+
+#[cfg(test)]
+pub(crate) fn infer_boundaries_with_test_seeds(graph: &CompileGraph, monitor: &TaskMonitor, seeds: &[NodeId]) -> Result<BoundaryCatalog, String> {
+    infer_boundaries_seeded(graph, monitor, seeds)
+}
+
+fn infer_boundaries_seeded(graph: &CompileGraph, monitor: &TaskMonitor, seeds: &[NodeId]) -> Result<BoundaryCatalog, String> {
     let discovery = cells::discover_cells(graph, monitor)?;
 
     let mut declines = discovery.declined.clone();
@@ -181,7 +218,7 @@ pub(crate) fn infer_boundaries(graph: &CompileGraph, monitor: &TaskMonitor) -> R
         }
     }
     let mut owners = bind_owners(graph, actors, resources, contacts, &resets);
-    let corridors = corridors::discover_corridors(graph, &owners, monitor)?;
+    let corridors = corridors::discover_corridors(graph, &owners, monitor, seeds, false)?;
     let mut corridor_wire_owners = FxHashMap::default();
     for (corridor_index, corridor) in corridors.iter().enumerate() {
         let owner = cell_count + corridor_index;

@@ -28,6 +28,7 @@ mod picking;
 mod piston_tests;
 mod preview;
 mod redpiler_compilation;
+mod region_snapshot;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;

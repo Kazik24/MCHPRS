@@ -100,12 +100,52 @@ pub(crate) fn infer_guarded(graph: &CompileGraph, monitor: &crate::redpiler::Tas
     infer_mode(graph, monitor, true)
 }
 
+#[cfg(test)]
+pub(crate) fn infer_guarded_with_test_corridors(
+    graph: &CompileGraph,
+    monitor: &crate::redpiler::TaskMonitor,
+    corridors: Vec<WireCorridor>,
+) -> Result<InstantTransport, String> {
+    infer_mode_with_discovery(graph, monitor, true, |_, _| Ok(corridors))
+}
 fn infer_mode(graph: &CompileGraph, monitor: &crate::redpiler::TaskMonitor, guarded: bool) -> Result<InstantTransport, String> {
+    infer_mode_with_discovery(
+        graph,
+        monitor,
+        guarded,
+        crate::redpiler::analysis::instant::boundaries::discover_transport_corridors,
+    )
+}
+
+fn infer_mode_with_discovery(
+    graph: &CompileGraph,
+    monitor: &crate::redpiler::TaskMonitor,
+    guarded: bool,
+    discover: impl FnOnce(&CompileGraph, &crate::redpiler::TaskMonitor) -> Result<Vec<WireCorridor>, String>,
+) -> Result<InstantTransport, String> {
     if monitor.cancelled() {
         return Err("cancelled while compiling instant transport".into());
     }
-    let Some(catalog) = &graph.plans.instant.boundaries else {
-        return Ok(InstantTransport::default());
+    let corridors = match discover(graph, monitor) {
+        Ok(corridors) => corridors,
+        Err(error)
+            if !monitor.cancelled()
+                && matches!(
+                    error.as_str(),
+                    "instant-boundary work budget overflow"
+                        | "instant-boundary work budget exceeded"
+                        | "instant-boundary byte budget overflow"
+                        | "instant-boundary retained-table budget exceeded"
+                        | "wire-corridor index exceeds the bounded preparation allocation"
+                ) =>
+        {
+            monitor.record_warning(format!("transport discovery declined: {error}"));
+            return Ok(InstantTransport {
+                guarded,
+                ..Default::default()
+            });
+        }
+        Err(error) => return Err(error),
     };
     let mut output = InstantTransport::default();
     output.guarded = guarded;
@@ -135,7 +175,7 @@ fn infer_mode(graph: &CompileGraph, monitor: &crate::redpiler::TaskMonitor, guar
             excluded_wires.insert(wire.node);
         }
     }
-    for corridor in catalog.corridors.iter() {
+    for corridor in &corridors {
         output.stats.corridors += 1;
         if monitor.cancelled() {
             return Err("cancelled while compiling instant transport".into());
@@ -339,7 +379,11 @@ fn infer_mode(graph: &CompileGraph, monitor: &crate::redpiler::TaskMonitor, guar
                 + canonical_repeaters.len() * std::mem::size_of::<NodeId>(),
         );
         if bytes > crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES / 8 {
-            return Err("instant transport tables exceed preparation memory bound".into());
+            monitor.record_warning("transport discovery declined: transport tables exceed preparation memory bound".into());
+            return Ok(InstantTransport {
+                guarded,
+                ..Default::default()
+            });
         }
         output.nets.push(TransportNet {
             wires: wires.into_boxed_slice(),
@@ -594,9 +638,11 @@ fn site_receiver_nodes(graph: &CompileGraph, site: SiteId) -> Vec<NodeId> {
 #[cfg(test)]
 impl CompileGraph {
     pub(crate) fn instant_transport_rejection_report(&self) -> serde_json::Value {
-        let Some(catalog) = &self.plans.instant.boundaries else {
-            return serde_json::json!({"error": "missing boundary catalog"});
-        };
+        let corridors =
+            match crate::redpiler::analysis::instant::boundaries::discover_transport_corridors(self, &crate::redpiler::TaskMonitor::default()) {
+                Ok(corridors) => corridors,
+                Err(error) => return serde_json::json!({"error": error}),
+            };
         let mut totals = FxHashMap::<String, (usize, usize)>::default();
         let mut subreason_totals = FxHashMap::<String, (usize, usize)>::default();
         let mut receiver_totals = FxHashMap::<String, (usize, usize)>::default();
@@ -635,7 +681,7 @@ impl CompileGraph {
             }
         }
 
-        for (corridor_index, corridor) in catalog.corridors.iter().enumerate() {
+        for (corridor_index, corridor) in corridors.iter().enumerate() {
             if corridor.wires.iter().all(|node| admitted_nodes.contains(node)) {
                 continue;
             }
@@ -796,11 +842,11 @@ impl CompileGraph {
         largest_nets.sort_unstable_by_key(|(index, net)| (std::cmp::Reverse(net.wires.len()), *index));
         serde_json::json!({
             "guarded": guarded,
-            "candidate_corridors": catalog.corridors.len(),
-            "candidate_wires": catalog.corridors.iter().map(|corridor| corridor.wires.len()).sum::<usize>(),
+            "candidate_corridors": corridors.len(),
+            "candidate_wires": corridors.iter().map(|corridor| corridor.wires.len()).sum::<usize>(),
             "admitted_corridors": self.plans.instant_transport.stats.admitted,
             "admitted_wires": admitted_nodes.len(),
-            "rejected_corridors": catalog.corridors.len().saturating_sub(self.plans.instant_transport.stats.admitted),
+            "rejected_corridors": corridors.len().saturating_sub(self.plans.instant_transport.stats.admitted),
             "compiler_stats": format!("{:?}", self.plans.instant_transport.stats),
             "rejected": reason_totals,
             "rejected_subreasons": subreason_totals,
@@ -1192,6 +1238,33 @@ mod tests {
         )
         .unwrap();
         prepared.graph
+    }
+
+    #[test]
+    fn transport_discovery_budget_declines_without_partial_plan() {
+        let graph = graph();
+        let monitor = TaskMonitor::default();
+        let plan = infer_mode_with_discovery(&graph, &monitor, true, |graph, monitor| {
+            crate::redpiler::analysis::instant::boundaries::discover_transport_corridors_with_work_limit(graph, monitor, 0)
+        })
+        .unwrap();
+        assert!(plan.nets.is_empty());
+        assert!(
+            monitor
+                .warnings()
+                .iter()
+                .any(|warning| warning.contains("transport discovery declined") && warning.contains("budget"))
+        );
+        let error = infer_mode_with_discovery(&graph, &monitor, true, |_, _| Err("invalid budget metadata".into())).unwrap_err();
+        assert_eq!(error, "invalid budget metadata");
+        monitor.cancel();
+        assert!(
+            infer_mode_with_discovery(&graph, &monitor, true, |graph, monitor| {
+                crate::redpiler::analysis::instant::boundaries::discover_transport_corridors_with_work_limit(graph, monitor, 0)
+            })
+            .unwrap_err()
+            .contains("cancelled")
+        );
     }
 
     #[test]

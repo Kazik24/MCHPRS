@@ -53,6 +53,9 @@ pub(super) struct Composition<'a> {
     pending: FxHashMap<PistonId, LayerExprId>,
     /// These flags permit at most one accepted computation per actor per wave.
     consumed: FxHashMap<PistonId, LayerExprId>,
+    /// Experimental whole-wave mode consumes a movable resource once per cycle.
+    #[cfg(test)]
+    resource_consumed: Option<FxHashMap<ResourceId, LayerExprId>>,
     /// These potentially queued requests keep their source FIFO order.
     requests: VecDeque<Request>,
     /// This prevents accepting a nested action before the open action's Far/Near cut.
@@ -86,12 +89,60 @@ impl<'a> Composition<'a> {
             state: FxHashMap::default(),
             pending: FxHashMap::default(),
             consumed: FxHashMap::default(),
+            #[cfg(test)]
+            resource_consumed: None,
             requests: VecDeque::new(),
             open: None,
             builder: LayerBuilder::new(monitor)?,
             layers: Vec::new(),
             resources: Vec::new(),
         })
+    }
+
+    #[cfg(test)]
+    fn new_resource_wave(
+        graph: &'a CompileGraph,
+        catalog: &'a BoundaryCatalog,
+        power: &'a PowerIndex,
+        component: &RegionComponent,
+        monitor: &'a TaskMonitor,
+    ) -> Result<Self, ConstructionError> {
+        let mut actors = FxHashMap::default();
+        for &cell in &component.cells {
+            let cell = catalog.cells.get(cell as usize).ok_or("resource wave references a missing cell")?;
+            for use_ in &cell.uses {
+                let transfer = use_
+                    .retraction
+                    .transfer
+                    .ok_or("resource wave requires a modeled transfer for every actor")?;
+                let mut candidates = cell.resources.iter().filter(|resource| resource.owners.contains(&use_.actor));
+                let candidate = candidates.next().ok_or("resource wave actor has no source resource contract")?;
+                if candidates.next().is_some()
+                    || candidate.resource != transfer.resource
+                    || candidate.source != transfer.source
+                    || candidate.present != transfer.when_at_source
+                {
+                    return Err("resource wave actor has ambiguous source resources".into());
+                }
+                let resource = graph
+                    .resources
+                    .get(transfer.resource.index())
+                    .ok_or("resource wave references a missing resource")?;
+                if transfer.source == transfer.destination
+                    || !resource.contacts.contains(&transfer.source)
+                    || !resource.contacts.contains(&transfer.destination)
+                    || transfer.when_at_source.index() >= cell.pins.len()
+                {
+                    return Err("resource wave transfer is outside its modeled resource".into());
+                }
+                if actors.insert(use_.actor, transfer.resource).is_some() {
+                    return Err("resource wave actor has multiple uses".into());
+                }
+            }
+        }
+        let mut composition = Self::new(graph, catalog, power, component, monitor)?;
+        composition.resource_consumed = Some(FxHashMap::default());
+        Ok(composition)
     }
 
     fn use_(&self, cell: u32, actor: PistonId) -> Result<&CellUse, ConstructionError> {
@@ -344,10 +395,40 @@ impl<'a> Composition<'a> {
         let use_ = self.use_(request.cell, request.actor)?.clone();
         let active = self.builder.constant(true)?;
         let values = self.pins(request.cell, request.actor, active)?;
+        #[cfg(test)]
+        let resource = use_.retraction.transfer.map(|transfer| transfer.resource);
+        #[cfg(test)]
+        let before = if let Some(consumed) = &self.resource_consumed {
+            let resource = resource.ok_or("resource wave requires a modeled transfer")?;
+            consumed.get(&resource).copied().unwrap_or(self.builder.constant(false)?)
+        } else {
+            self.consumed.get(&request.actor).copied().unwrap_or(self.builder.constant(false)?)
+        };
+        #[cfg(not(test))]
         let before = self.consumed.get(&request.actor).copied().unwrap_or(self.builder.constant(false)?);
         let not_consumed = self.builder.not(before)?;
+        #[cfg(test)]
+        let accepted = if self.resource_consumed.is_some() {
+            let transfer = use_.retraction.transfer.ok_or("resource wave requires a modeled transfer")?;
+            self.builder.all([
+                request.requested,
+                values[use_.valid.index()],
+                values[transfer.when_at_source.index()],
+                not_consumed,
+            ])?
+        } else {
+            self.builder.all([request.requested, values[use_.valid.index()], not_consumed])?
+        };
+        #[cfg(not(test))]
         let accepted = self.builder.all([request.requested, values[use_.valid.index()], not_consumed])?;
         let after = self.builder.any([before, accepted])?;
+        #[cfg(test)]
+        if let Some(consumed) = &mut self.resource_consumed {
+            consumed.insert(resource.ok_or("resource wave requires a modeled transfer")?, after);
+        } else {
+            self.consumed.insert(request.actor, after);
+        }
+        #[cfg(not(test))]
         self.consumed.insert(request.actor, after);
         let pending = self.pending.get(&request.actor).copied().unwrap_or(self.builder.constant(false)?);
         let not_requested = self.builder.not(request.requested)?;

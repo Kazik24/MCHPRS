@@ -470,8 +470,7 @@ fn main() -> Result<()> {
                 }
             }
         }
-        if changing_inputs && component == "fpu_legal" {
-            let total_ticks = 1024 + ((8 + episodes) * input_every) as u32;
+        if changing_inputs {
             if let Some(compiler) = compiler.as_ref() {
                 let counts = compiler.graph_execution_counts().context("missing Graph execution counters")?;
                 sample["graph_execution_counts"] = json!({
@@ -491,6 +490,9 @@ fn main() -> Result<()> {
                 });
                 sample["graph_execution_count_scope"] = json!("includes setup, eight warm vectors, and measured vectors");
             }
+        }
+        if changing_inputs && component == "fpu_legal" {
+            let total_ticks = 1024 + ((8 + episodes) * input_every) as u32;
             if let Some(compiler) = compiler.as_mut() {
                 let bounds = world.get_corners();
                 compiler.reset(&mut world, bounds);

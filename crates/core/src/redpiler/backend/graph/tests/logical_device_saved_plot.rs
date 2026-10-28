@@ -113,6 +113,691 @@ fn saved_world_from(path: std::path::PathBuf) -> PlotWorld {
     saved_world_from_with_limits(path, false)
 }
 
+fn corrected_saved_world() -> PlotWorld {
+    use sha2::{Digest, Sha256};
+    let path = std::env::var_os("MCHPRS_SAVED_PLOT")
+        .map(std::path::PathBuf::from)
+        .expect("set MCHPRS_SAVED_PLOT");
+    assert_eq!(
+        format!("{:x}", Sha256::digest(std::fs::read(&path).unwrap())),
+        "261e7c67467d788023b0b809f439cf390e09d0e449ab103fcc5c75be75bcf319"
+    );
+    assert_eq!(PLOT_SCALE, 5);
+    saved_world_from(path)
+}
+
+#[test]
+#[ignore = "native compatibility baseline requires the corrected saved production snapshot"]
+fn corrected_fpu_native_frame_baseline() {
+    use sha2::{Digest, Sha256};
+
+    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/piston-research/fixtures/fpu_legal.json");
+    assert_eq!(
+        format!("{:x}", Sha256::digest(std::fs::read(manifest_path).unwrap())),
+        "981109d849cadaf13a059c295a6d78444d0626a21c72683cf425eb6344b68227"
+    );
+    let manifest = saved_fpu_manifest();
+    let ports = &manifest["ports"];
+    let inputs = ["light_blue_operand_inputs", "red_operand_inputs", "opcode_levers_by_sign_weight_4_2_1"]
+        .into_iter()
+        .flat_map(|key| manifest_positions(&ports[key]))
+        .collect::<Vec<_>>();
+    assert_eq!(inputs.len(), 35);
+    assert_eq!(manifest_position(&ports["trigger"]), TRIGGER);
+    let outputs = manifest_positions(&ports["output_by_label_bit_15_to_0"])
+        .into_iter()
+        .map(|position| position.offset(BlockFace::East))
+        .collect::<Vec<_>>();
+    assert_eq!(outputs.len(), 16);
+    let vectors = [
+        0,
+        0x3_ffff_0000,
+        0x4_1234_5678,
+        0x7_abcd_ef01,
+        0x1_0000_ffff,
+        0x6_ffff_0000,
+        0x2_5555_aaaa,
+        0x5_aaaa_5555,
+    ];
+    let replay = || {
+        let mut world = corrected_saved_world();
+        assert!(matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered));
+        let mut previous = inputs.iter().enumerate().fold(0u64, |word, (bit, &position)| {
+            let Block::Lever { lever } = world.get_block(position) else {
+                panic!("missing input lever {position:?}")
+            };
+            word | (u64::from(lever.powered) << bit)
+        });
+        for (bit, &position) in inputs.iter().enumerate() {
+            if (previous ^ vectors[0]) & (1 << bit) != 0 {
+                native_use_lever(&mut world, position);
+            }
+        }
+        previous = vectors[0];
+        native_use_lever(&mut world, TRIGGER);
+        for _ in 0..24 {
+            world.tick_interpreted();
+        }
+        vectors
+            .into_iter()
+            .map(|word| {
+                for (bit, &position) in inputs.iter().enumerate() {
+                    if (previous ^ word) & (1 << bit) != 0 {
+                        native_use_lever(&mut world, position);
+                    }
+                }
+                previous = word;
+                for _ in 0..6 {
+                    world.tick_interpreted();
+                }
+                let output = outputs.iter().enumerate().fold(0u16, |value, (bit, &position)| {
+                    let Block::RedstoneRepeater { repeater } = world.get_block(position) else {
+                        panic!("missing output repeater {position:?}")
+                    };
+                    value | (u16::from(repeater.powered) << (15 - bit))
+                });
+                (word, output)
+            })
+            .collect::<Vec<_>>()
+    };
+    let first = replay();
+    let second = replay();
+    assert_eq!(first, second, "fresh snapshot must reproduce the native frame trace");
+    // Input masks follow manifest order (blue, red, opcode); outputs follow labels 15 to 0.
+    assert_eq!(
+        first.iter().map(|entry| entry.1).collect::<Vec<_>>(),
+        [0xffff, 0x0000, 0x8800, 0xffff, 0x7fff, 0x7fff, 0x0a80, 0x2aaa]
+    );
+    assert!(first.iter().any(|entry| entry.1 != first[0].1), "native readout must vary");
+    println!("native compatibility baseline (port-order masks, not an arithmetic oracle): {first:016x?}");
+}
+
+#[test]
+#[ignore = "requires corrected saved production snapshot"]
+fn saved_divider_lever_native_ingress_trace() {
+    use crate::world::World;
+    use mchprs_blocks::blocks::{Block, LeverFace};
+    let mut world = corrected_saved_world();
+    let pos = BlockPos::new(-108, 75, -319);
+    let observer_pos = BlockPos::new(-108, 73, -319);
+    let wire_pos = BlockPos::new(-109, 73, -319);
+    let Block::Lever { mut lever } = world.get_block(pos) else {
+        panic!("missing Divider lever")
+    };
+    assert!(!lever.powered);
+    let initial = Block::Lever { lever };
+    let observer = world.get_block(observer_pos);
+    let wire = world.get_block(wire_pos);
+    assert!(matches!(observer, Block::Observer { observer } if !observer.powered));
+    assert!(matches!(wire, Block::RedstoneWire { wire } if wire.power == 12));
+    let support = match lever.face {
+        LeverFace::Floor => BlockFace::Bottom,
+        LeverFace::Ceiling => BlockFace::Top,
+        LeverFace::Wall => lever.facing.opposite().block_face(),
+    };
+    for edge in 0..2 {
+        let entries = crate::redstone::instant_piston_tests::capture_all(|| {
+            lever.powered = !lever.powered;
+            world.set_block(pos, Block::Lever { lever });
+            crate::redstone::update_surrounding_blocks(&mut world, pos);
+            crate::redstone::update_surrounding_blocks(&mut world, pos.offset(support));
+            for _ in 0..16 {
+                world.tick_interpreted();
+                assert_eq!(world.get_block(observer_pos), observer);
+                assert_eq!(world.get_block(wire_pos), wire);
+            }
+        });
+        assert!(!entries.iter().any(|entry| entry["kind"] == "event_request"), "edge {edge}");
+        for (position, block) in [(observer_pos, "observer"), (wire_pos, "redstone_wire")] {
+            assert!(
+                entries.iter().any(|entry| entry["kind"] == "callback"
+                    && entry["data"]["block"] == block
+                    && entry["data"]["pos"] == serde_json::json!(position)
+                    && entry["data"]["dir"] == "Top"),
+                "edge {edge}: {block}"
+            );
+        }
+    }
+    assert_eq!(world.get_block(pos), initial);
+}
+
+#[test]
+#[ignore = "requires corrected saved production snapshot"]
+fn saved_divider_lever_route_lookup() {
+    use crate::redpiler::program_graph::{CallbackReceiver, CircuitNodeKind, DeliveryKind, Guard, OperandView};
+    let world = corrected_saved_world();
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(
+        &world,
+        world.get_corners(),
+        world.scheduler().iter_entries().collect(),
+        &monitor,
+        crate::redpiler::analysis::AnalysisLimits::for_budget(8),
+    )
+    .unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let position = BlockPos::new(-108, 75, -319);
+    let node = graph.nodes.iter().find(|node| node.position == Some(position)).expect("lever node");
+    let route_id = node.output_route.expect("lever route");
+    assert_eq!(route_id.index(), 5631);
+    let route = &graph.routes[route_id.index()];
+    let delivery = route.deliveries.get(20).expect("ordinal 20");
+    assert_eq!(graph.sites[delivery.target.index()].position, BlockPos::new(-108, 73, -319));
+    assert_eq!(
+        delivery.kind,
+        DeliveryKind::Update {
+            direction: Some(BlockFace::Top)
+        }
+    );
+    assert_eq!(delivery.view, OperandView::Live);
+    assert_eq!(graph.guards[delivery.guard.index()], Guard::Always);
+    assert_eq!(delivery.sequence, 21);
+    let Some(CallbackReceiver::Component(receiver)) = delivery.receiver else {
+        panic!("observer component receiver")
+    };
+    assert!(matches!(
+        graph.nodes[receiver.index()].kind,
+        CircuitNodeKind::Observer { .. } | CircuitNodeKind::Electrical(NodeType::Observer { .. })
+    ));
+}
+
+#[test]
+#[ignore = "requires corrected saved plot; full-plot 8x O6 witness attribution"]
+fn saved_divider_witness_compiled_transport_attribution() {
+    let mut native = corrected_saved_world();
+    let mut graph_world = corrected_saved_world();
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        ..Default::default()
+    };
+    let bounds = graph_world.get_corners();
+    let ticks = graph_world.scheduler().iter_entries().collect();
+    let prepared = passes::rich::prepare(
+        &graph_world,
+        bounds,
+        ticks,
+        &monitor,
+        crate::redpiler::analysis::AnalysisLimits::for_budget(8),
+    )
+    .unwrap();
+    let validated = prepared
+        .run_passes(&options, &passes::default_graph_pipeline(&options), &monitor)
+        .unwrap();
+    let graph = validated.graph();
+    let witness_actor = graph
+        .pistons
+        .iter()
+        .enumerate()
+        .find_map(|(index, piston)| {
+            (graph.nodes[piston.node.index()].position == Some(BlockPos::new(-111, 73, -279))).then_some(PistonId::new(index as u32))
+        })
+        .unwrap();
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    eprintln!(
+        "witness actor {witness_actor:?}: cells={:?}, declines={:?}",
+        catalog
+            .cells
+            .iter()
+            .enumerate()
+            .filter_map(|(id, cell)| cell.uses.iter().any(|use_| use_.actor == witness_actor).then_some(id))
+            .collect::<Vec<_>>(),
+        catalog
+            .declines
+            .iter()
+            .filter(|decline| decline.actors.contains(&witness_actor))
+            .collect::<Vec<_>>()
+    );
+    let rejection_report = graph.instant_transport_rejection_report();
+    for position in [BlockPos::new(-112, 73, -278), BlockPos::new(-113, 73, -278)] {
+        let node = graph
+            .nodes
+            .iter()
+            .enumerate()
+            .find_map(|(id, node)| (node.position == Some(position)).then_some(id))
+            .unwrap();
+        let net = graph
+            .plans
+            .instant_transport
+            .nets
+            .iter()
+            .enumerate()
+            .find(|(_, net)| net.wires.iter().any(|wire| wire.node.index() == node));
+        let corridor = graph.plans.instant.boundaries.as_ref().and_then(|catalog| {
+            catalog
+                .corridors
+                .iter()
+                .enumerate()
+                .find(|(_, corridor)| corridor.wires.iter().any(|wire| wire.index() == node))
+        });
+        let reason = corridor.and_then(|(id, _)| rejection_report["witnesses"].as_array().unwrap().iter().find(|row| row["corridor"] == id));
+        let direct = graph.routes.iter().enumerate().filter(|(_, route)| route.source.index() == node).flat_map(|(route, row)| row.deliveries.iter().enumerate().filter_map(move |(ordinal, delivery)| matches!(delivery.receiver, Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) if actor == witness_actor).then_some((route, ordinal, delivery.kind, delivery.guard)))).collect::<Vec<_>>();
+        eprintln!("witness direct piston callbacks: {direct:?}");
+        let wire = match graph.nodes[node].kind {
+            CircuitNodeKind::Wire(id) => &graph.wires[id],
+            _ => panic!("expected witness wire"),
+        };
+        eprintln!(
+            "witness wire {position:?}: node={node}, corridor={:?}, rejection={reason:?}, instant_reset={}, instant_node={}, classic_owned={}, transport={:?}, signal_channel={}",
+            corridor.map(|(id, c)| (id, c.wires.len())),
+            wire.execution.instant_reset.is_some(),
+            wire.execution.instant_node.is_some(),
+            graph
+                .plans
+                .classic_nets
+                .iter()
+                .any(|net| net.wires.iter().any(|wire| wire.node.index() == node)),
+            net.map(|(id, _)| id),
+            net.is_some_and(|(id, _)| graph.plans.signal_channels.channels.get(id).is_some_and(Option::is_some))
+        );
+    }
+    let experiment_start = Instant::now();
+    let seed = NodeId::new(
+        graph
+            .nodes
+            .iter()
+            .position(|node| node.position == Some(BlockPos::new(-112, 73, -278)))
+            .unwrap() as u32,
+    );
+    let mut experiment = graph.clone();
+    let seeded = crate::redpiler::analysis::instant::boundaries::infer_boundaries_with_test_seeds(&experiment, &monitor, &[seed]).unwrap();
+    let (seed_corridor, component) = seeded
+        .corridors
+        .iter()
+        .enumerate()
+        .find(|(_, corridor)| corridor.wires.contains(&seed))
+        .unwrap();
+    eprintln!(
+        "seed experiment: baseline corridors={}, seeded corridors={}, target corridor={}, wires={}, conductive sites={}",
+        catalog.corridors.len(),
+        seeded.corridors.len(),
+        seed_corridor,
+        component.wires.len(),
+        component.conductive_sites.len()
+    );
+    let isolated_component = component.clone();
+    experiment.plans.instant.boundaries = Some(seeded);
+    experiment.plans.instant_transport = infer_guarded_with_test_corridors(&experiment, &monitor, vec![isolated_component]).unwrap();
+    let admitted = experiment
+        .plans
+        .instant_transport
+        .nets
+        .iter()
+        .enumerate()
+        .find(|(_, net)| net.wires.iter().any(|wire| wire.node == seed));
+    eprintln!(
+        "seed experiment: transport={:?}, stats={:?}, seconds={:.3}",
+        admitted.map(|(id, _)| id),
+        experiment.plans.instant_transport.stats,
+        experiment_start.elapsed().as_secs_f64()
+    );
+    let certified_net = admitted.expect("seeded witness passes unchanged guarded transport checks").1.clone();
+    let all_start = Instant::now();
+    let all_seeds: Vec<_> = graph.wires.iter().map(|wire| wire.node).collect();
+    let all = crate::redpiler::analysis::instant::boundaries::infer_boundaries_with_test_seeds(&experiment, &monitor, &all_seeds).unwrap();
+    let all_wire_count: usize = all.corridors.iter().map(|corridor| corridor.wires.len()).sum();
+    eprintln!(
+        "all-component census: corridors={}, wires={}, discovery_seconds={:.3}",
+        all.corridors.len(),
+        all_wire_count,
+        all_start.elapsed().as_secs_f64()
+    );
+    experiment.plans.instant.boundaries = Some(all);
+    let all_guarded = infer_guarded_instant_transport(&experiment, &monitor).unwrap();
+    eprintln!(
+        "all-component census: guarded={:?}, total_seconds={:.3}",
+        all_guarded.stats,
+        all_start.elapsed().as_secs_f64()
+    );
+    drop(experiment);
+    let lowered = validated.lower(&monitor).unwrap();
+    let mut candidate_lowered = crate::redpiler::program_graph::LoweredCircuit {
+        program: lowered.program.clone(),
+        state: lowered.state.clone(),
+        logical_tick: lowered.logical_tick,
+        imported_ticks: lowered.imported_ticks.clone(),
+        positions: lowered.positions.clone(),
+    };
+    let mut reference_lowered = crate::redpiler::program_graph::LoweredCircuit {
+        program: lowered.program.clone(),
+        state: lowered.state.clone(),
+        logical_tick: lowered.logical_tick,
+        imported_ticks: lowered.imported_ticks.clone(),
+        positions: lowered.positions.clone(),
+    };
+    reference_lowered.program.unbind_matching_test_transport(&certified_net);
+    let mut reference_world = corrected_saved_world();
+    let mut reference = GraphBackend::from_lowered(reference_lowered, &monitor).unwrap();
+    candidate_lowered.program.unbind_matching_test_transport(&certified_net);
+    candidate_lowered.program.inject_certified_test_transport(certified_net);
+    let mut candidate_world = corrected_saved_world();
+    let mut candidate = GraphBackend::from_lowered(candidate_lowered, &monitor).unwrap();
+    let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
+    let manifest = saved_fpu_manifest();
+    let ports = &manifest["ports"];
+    let inputs = sorted_positions(
+        [
+            manifest_positions(&ports["light_blue_operand_inputs"]),
+            manifest_positions(&ports["red_operand_inputs"]),
+            manifest_positions(&ports["opcode_levers_by_sign_weight_4_2_1"]),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+    );
+    let witness = known_command_witness_word(&manifest, &inputs);
+    let entry = inputs.iter().enumerate().fold(0u64, |word, (bit, &pos)| {
+        word | (u64::from(matches!(native.get_block(pos), Block::Lever { lever } if lever.powered)) << bit)
+    });
+    for (bit, &pos) in inputs.iter().enumerate() {
+        if (entry ^ witness) & (1 << bit) != 0 {
+            native_use_lever(&mut native, pos);
+            backend.use_block(pos).unwrap();
+            candidate.use_block(pos).unwrap();
+            reference.use_block(pos).unwrap();
+        }
+    }
+    native_use_lever(&mut native, TRIGGER);
+    backend.use_block(TRIGGER).unwrap();
+    reference.use_block(TRIGGER).unwrap();
+    candidate.use_block(TRIGGER).unwrap();
+    for _ in 0..24 {
+        native.tick_interpreted();
+        backend.tick_with_world(&mut graph_world).unwrap();
+        candidate.tick_with_world(&mut candidate_world).unwrap();
+        reference.tick_with_world(&mut reference_world).unwrap();
+    }
+    let mut random = 0x4d43_4850_5253_2026u64;
+    let mask = (1u64 << inputs.len()) - 1;
+    let _ = next_profile_word(&mut random, mask, entry);
+    let word = next_profile_word(&mut random, mask, witness);
+    for (bit, &pos) in inputs.iter().enumerate() {
+        if (witness ^ word) & (1 << bit) != 0 {
+            native_use_lever(&mut native, pos);
+            backend.use_block(pos).unwrap();
+            candidate.use_block(pos).unwrap();
+            reference.use_block(pos).unwrap();
+        }
+    }
+    let lever = BlockPos::new(-113, 75, -278);
+    let actor = BlockPos::new(-111, 73, -279);
+    let trace = crate::redstone::instant_piston_tests::capture_all(|| native_use_lever(&mut native, lever));
+    assert!(trace.iter().any(|entry| entry["kind"] == "event_request"
+        && entry["data"]["pos"]["x"] == actor.x
+        && entry["data"]["pos"]["y"] == actor.y
+        && entry["data"]["pos"]["z"] == actor.z
+        && entry["data"]["source"]["x"] == -112
+        && entry["data"]["source"]["y"] == 73
+        && entry["data"]["source"]["z"] == -278
+        && entry["data"]["event"]["action"] == "Retract"));
+    backend.set_test_recording(true);
+    candidate.set_test_recording(true);
+    reference.set_test_recording(true);
+    let before = backend.execution_counts();
+    backend.use_block(lever).unwrap();
+    let reference_before = reference.execution_counts();
+    reference.use_block(lever).unwrap();
+    assert!(reference.execution_counts().wire_walks > reference_before.wire_walks);
+    let candidate_before = candidate.execution_counts();
+    candidate.use_block(lever).unwrap();
+    let candidate_after = candidate.execution_counts();
+    assert!(candidate_after.instant_transport_invocations > candidate_before.instant_transport_invocations);
+    assert!(candidate_after.instant_transport_wire_visits > candidate_before.instant_transport_wire_visits);
+    assert_eq!(candidate_after.wire_walks, candidate_before.wire_walks);
+    candidate.assert_same_execution_state(&backend);
+    candidate.assert_same_execution_state(&reference);
+    assert_eq!(candidate.future.piston_requests, backend.future.piston_requests);
+    assert_eq!(candidate.future.piston_requests, reference.future.piston_requests);
+    let after = backend.execution_counts();
+    assert!(
+        after.instant_transport_invocations > before.instant_transport_invocations
+            || after.signal_channel_invocations > before.signal_channel_invocations,
+        "normal discovery must execute compiled transport"
+    );
+    assert_eq!(after.wire_walks, before.wire_walks);
+    eprintln!(
+        "witness action: signal invocations={} ops={}, transport invocations={} visits={}, wire walks={}",
+        after.signal_channel_invocations - before.signal_channel_invocations,
+        after.signal_channel_operations - before.signal_channel_operations,
+        after.instant_transport_invocations - before.instant_transport_invocations,
+        after.instant_transport_wire_visits - before.instant_transport_wire_visits,
+        after.wire_walks - before.wire_walks
+    );
+    assert!(
+        backend
+            .observed_operations
+            .iter()
+            .any(|op| matches!(op, GraphObservedOperation::Request { actor: pos, action: mchprs_world::PistonAction::Retract } if *pos == actor))
+    );
+    let positions = [
+        lever,
+        actor,
+        BlockPos::new(-111, 73, -280),
+        BlockPos::new(-111, 73, -281),
+        BlockPos::new(-111, 74, -278),
+        BlockPos::new(-111, 74, -283),
+        BlockPos::new(-112, 73, -278),
+        BlockPos::new(-113, 73, -278),
+    ];
+    for _ in 0..8 {
+        native.tick_interpreted();
+        backend.tick_with_world(&mut graph_world).unwrap();
+        candidate.tick_with_world(&mut candidate_world).unwrap();
+        reference.tick_with_world(&mut reference_world).unwrap();
+        candidate.assert_same_execution_state(&backend);
+        candidate.assert_same_execution_state(&reference);
+    }
+    for action in [mchprs_world::PistonAction::Retract, mchprs_world::PistonAction::Extend] {
+        assert!(
+            candidate
+                .observed_operations
+                .iter()
+                .any(|op| matches!(op, GraphObservedOperation::Accepted { actor: pos, action: a } if *pos == actor && *a == action)),
+            "first {action:?} was not accepted"
+        );
+    }
+    assert!(matches!(native.get_block(actor), Block::Piston { piston } if piston.extended));
+    let observer = BlockPos::new(-111, 74, -283);
+    assert!(matches!(native.get_block(observer), Block::Observer { observer } if !observer.powered));
+    native_use_lever(&mut native, lever);
+    backend.use_block(lever).unwrap();
+    candidate.use_block(lever).unwrap();
+    reference.use_block(lever).unwrap();
+    for _ in 0..8 {
+        native.tick_interpreted();
+        backend.tick_with_world(&mut graph_world).unwrap();
+        candidate.tick_with_world(&mut candidate_world).unwrap();
+        reference.tick_with_world(&mut reference_world).unwrap();
+        candidate.assert_same_execution_state(&backend);
+        candidate.assert_same_execution_state(&reference);
+    }
+    assert!(matches!(native.get_block(actor), Block::Piston { piston } if piston.extended));
+    assert!(matches!(native.get_block(observer), Block::Observer { observer } if !observer.powered));
+    let second = crate::redstone::instant_piston_tests::capture_all(|| native_use_lever(&mut native, lever));
+    assert!(
+        second.iter().any(|entry| entry["kind"] == "event_request"
+            && entry["data"]["pos"]["x"] == actor.x
+            && entry["data"]["pos"]["y"] == actor.y
+            && entry["data"]["pos"]["z"] == actor.z
+            && entry["data"]["source"]["x"] == -112
+            && entry["data"]["source"]["y"] == 73
+            && entry["data"]["source"]["z"] == -278
+            && entry["data"]["event"]["action"] == "Retract"),
+        "second native retract request missing"
+    );
+    backend.use_block(lever).unwrap();
+    let reference_before = reference.execution_counts();
+    reference.use_block(lever).unwrap();
+    assert!(reference.execution_counts().wire_walks > reference_before.wire_walks);
+    let candidate_before = candidate.execution_counts();
+    candidate.use_block(lever).unwrap();
+    let candidate_after = candidate.execution_counts();
+    assert!(candidate_after.instant_transport_invocations > candidate_before.instant_transport_invocations);
+    assert_eq!(candidate_after.wire_walks, candidate_before.wire_walks);
+    candidate.assert_same_execution_state(&backend);
+    candidate.assert_same_execution_state(&reference);
+    assert_eq!(candidate.future.piston_requests, backend.future.piston_requests);
+    assert_eq!(candidate.future.piston_requests, reference.future.piston_requests);
+    for _ in 0..8 {
+        native.tick_interpreted();
+        backend.tick_with_world(&mut graph_world).unwrap();
+        candidate.tick_with_world(&mut candidate_world).unwrap();
+        reference.tick_with_world(&mut reference_world).unwrap();
+        candidate.assert_same_execution_state(&backend);
+        candidate.assert_same_execution_state(&reference);
+    }
+    let accepted_retractions = candidate
+        .observed_operations
+        .iter()
+        .filter(|op| matches!(op, GraphObservedOperation::Accepted { actor: pos, action: mchprs_world::PistonAction::Retract } if *pos == actor))
+        .count();
+    assert!(accepted_retractions >= 2, "second retraction was not accepted");
+    assert_eq!(
+        candidate.test_recorder.popped_piston_requests,
+        backend.test_recorder.popped_piston_requests
+    );
+    assert_eq!(
+        candidate.test_recorder.popped_piston_requests,
+        reference.test_recorder.popped_piston_requests
+    );
+    backend.reset(&mut graph_world);
+    candidate.reset(&mut candidate_world);
+    reference.reset(&mut reference_world);
+    assert_eq!(
+        super::adder_tests::first_difference(
+            &super::adder_tests::future(&native, &positions),
+            &super::adder_tests::future(&reference_world, &positions)
+        ),
+        None
+    );
+    assert_eq!(
+        super::adder_tests::first_difference(
+            &super::adder_tests::future(&native, &positions),
+            &super::adder_tests::future(&candidate_world, &positions)
+        ),
+        None
+    );
+    assert_eq!(
+        super::adder_tests::first_difference(
+            &super::adder_tests::future(&native, &positions),
+            &super::adder_tests::future(&graph_world, &positions)
+        ),
+        None
+    );
+    for _ in 0..8 {
+        native.tick_interpreted();
+        graph_world.tick_interpreted();
+        candidate_world.tick_interpreted();
+        reference_world.tick_interpreted();
+        assert_eq!(
+            super::adder_tests::first_difference(
+                &super::adder_tests::future(&native, &positions),
+                &super::adder_tests::future(&reference_world, &positions)
+            ),
+            None
+        );
+        assert_eq!(
+            super::adder_tests::first_difference(
+                &super::adder_tests::future(&native, &positions),
+                &super::adder_tests::future(&candidate_world, &positions)
+            ),
+            None
+        );
+        assert_eq!(
+            super::adder_tests::first_difference(
+                &super::adder_tests::future(&native, &positions),
+                &super::adder_tests::future(&graph_world, &positions)
+            ),
+            None
+        );
+    }
+}
+#[test]
+#[ignore = "requires corrected saved production snapshot; native neighboring control witness"]
+fn saved_divider_active_neighbor_ingress_trace() {
+    let mut world = corrected_saved_world();
+    let manifest = saved_fpu_manifest();
+    let ports = &manifest["ports"];
+    let inputs = sorted_positions(
+        [
+            manifest_positions(&ports["light_blue_operand_inputs"]),
+            manifest_positions(&ports["red_operand_inputs"]),
+            manifest_positions(&ports["opcode_levers_by_sign_weight_4_2_1"]),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
+    );
+    let witness = known_command_witness_word(&manifest, &inputs);
+    let entry = inputs.iter().enumerate().fold(0u64, |word, (bit, &pos)| {
+        word | (u64::from(matches!(world.get_block(pos), Block::Lever { lever } if lever.powered)) << bit)
+    });
+    for (bit, &pos) in inputs.iter().enumerate() {
+        if (entry ^ witness) & (1 << bit) != 0 {
+            native_use_lever(&mut world, pos);
+        }
+    }
+    native_use_lever(&mut world, TRIGGER);
+    for _ in 0..24 {
+        world.tick_interpreted();
+    }
+    let mut random = 0x4d43_4850_5253_2026u64;
+    let mask = (1u64 << inputs.len()) - 1;
+    let _ = next_profile_word(&mut random, mask, entry);
+    let word = next_profile_word(&mut random, mask, witness);
+    for (bit, &pos) in inputs.iter().enumerate() {
+        if (witness ^ word) & (1 << bit) != 0 {
+            native_use_lever(&mut world, pos);
+        }
+    }
+    let actor = BlockPos::new(-111, 73, -279);
+    let source = BlockPos::new(-112, 73, -278);
+    let lever = BlockPos::new(-113, 75, -278);
+    let entries = crate::redstone::instant_piston_tests::capture_all(|| native_use_lever(&mut world, lever));
+    assert!(
+        entries.iter().any(|entry| {
+            entry["kind"] == "event_request"
+                && entry["data"]["pos"] == serde_json::json!(actor)
+                && entry["data"]["source"] == serde_json::json!(source)
+                && entry["data"]["event"]["action"] == "Retract"
+        }),
+        "wire callback must request the witness piston"
+    );
+    let detailed = crate::redstone::piston::trace::capture_detailed(&[actor], || {
+        for _ in 0..16 {
+            world.tick_interpreted();
+        }
+    });
+    for action in [mchprs_world::PistonAction::Retract, mchprs_world::PistonAction::Extend] {
+        assert!(
+            detailed.iter().any(|entry| {
+                entry.stage == crate::redstone::piston::trace::Stage::Applied && entry.event.is_some_and(|event| event.action == action)
+            }),
+            "native witness must apply {action:?}"
+        );
+    }
+}
+
 fn saved_world_from_with_limits(path: std::path::PathBuf, limits: bool) -> PlotWorld {
     let data = PlotData::<PLOT_SECTIONS>::load_from_file(path, false).expect("read-only saved production plot");
     assert_eq!(
@@ -1417,3 +2102,6 @@ fn saved_fpu_research_greedy_discovers_source_regions() {
         boundary.aggregate_targets.len()
     );
 }
+
+#[path = "saved_plot_frame_probe.rs"]
+mod frame_probe;

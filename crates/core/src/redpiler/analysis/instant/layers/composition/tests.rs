@@ -46,6 +46,10 @@ fn cell(actor: u32, resource: u32, power: Option<PowerLink>) -> CellContract {
         kind: CellGateKind::All,
         inputs: vec![CellPinId(0), CellPinId(1), CellPinId(7)].into(),
     });
+    pins.push(CellPin::Gate {
+        kind: CellGateKind::Invert,
+        inputs: vec![CellPinId(5)].into(),
+    });
     let mut use_ = super::super::tests::use_with_activations(vec![occurrence(actor.index() as u32)].into(), RouteId::new(0), RouteId::new(0), None);
     use_.actor = actor;
     use_.requested = CellPinId(8);
@@ -62,7 +66,14 @@ fn cell(actor: u32, resource: u32, power: Option<PowerLink>) -> CellContract {
         uses: vec![use_].into(),
         pins: pins.into(),
         stationary_entry: CellPinId(0),
-        resources: Box::new([]),
+        resources: Box::new([CellResourcePin {
+            resource: ResourceId::new(resource),
+            source: ContactId::new(0),
+            present: CellPinId(5),
+            absent: CellPinId(10),
+            owners: Box::new([actor]),
+            selection: CellTokenSelection::FirstAcceptedPullRequestInFifo,
+        }]),
     }
 }
 
@@ -353,5 +364,148 @@ fn queued_duplicates_and_feedback_cannot_accept_an_actor_twice() {
             &composition.layers.iter().map(|layer| layer.uses[0].accepted).collect::<Vec<_>>()
         ),
         vec![true, false]
+    );
+}
+
+#[test]
+fn resource_wave_consumes_shared_block_once_and_rearms_next_cycle() {
+    let (graph, catalog, component) = fixture(true);
+    let monitor = TaskMonitor::default();
+    let power = index_power(&graph);
+    let mut wave = Composition::new_resource_wave(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let yes = wave.builder.constant(true).unwrap();
+    wave.sample(0, PistonId::new(0), yes, vec![occurrence(0)].into()).unwrap();
+    let first = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(first).unwrap();
+    wave.write(StateTest::ResourceEnabled(ResourceId::new(0)), true, yes).unwrap();
+    wave.write(
+        StateTest::ResourceAt {
+            resource: ResourceId::new(0),
+            contact: ContactId::new(0),
+        },
+        true,
+        yes,
+    )
+    .unwrap();
+    wave.write(
+        StateTest::ResourceAt {
+            resource: ResourceId::new(0),
+            contact: ContactId::new(1),
+        },
+        false,
+        yes,
+    )
+    .unwrap();
+    wave.sample(1, PistonId::new(1), yes, vec![occurrence(1)].into()).unwrap();
+    let second = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(second).unwrap();
+    assert_eq!(
+        evaluated(&wave, &wave.layers.iter().map(|layer| layer.uses[0].accepted).collect::<Vec<_>>()),
+        [true, false]
+    );
+    assert_eq!(
+        evaluated(&wave, &wave.resources.iter().map(|output| output.transfer_when).collect::<Vec<_>>()),
+        [true, false]
+    );
+
+    let mut next = Composition::new_resource_wave(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let yes = next.builder.constant(true).unwrap();
+    next.sample(1, PistonId::new(1), yes, vec![occurrence(1)].into()).unwrap();
+    let accepted = next.begin_next().unwrap().unwrap();
+    next.finish_base(accepted).unwrap();
+    assert_eq!(evaluated(&next, &[next.layers[0].uses[0].accepted]), [true]);
+
+    let mut unsupported = catalog.clone();
+    unsupported.cells[0].uses[0].retraction.transfer = None;
+    assert!(Composition::new_resource_wave(&graph, &unsupported, &power, &component, &monitor).is_err());
+    let mut ambiguous = catalog.clone();
+    ambiguous.cells[1].uses[0].actor = PistonId::new(0);
+    assert!(Composition::new_resource_wave(&graph, &ambiguous, &power, &component, &monitor).is_err());
+    let mut multiple_sources = catalog.clone();
+    let mut resources = multiple_sources.cells[0].resources.to_vec();
+    let mut second = resources[0].clone();
+    second.resource = ResourceId::new(1);
+    resources.push(second);
+    multiple_sources.cells[0].resources = resources.into_boxed_slice();
+    assert!(Composition::new_resource_wave(&graph, &multiple_sources, &power, &component, &monitor).is_err());
+    let mut invalid = catalog.clone();
+    invalid.cells[0].uses[0].retraction.transfer.as_mut().unwrap().destination = ContactId::new(99);
+    assert!(Composition::new_resource_wave(&graph, &invalid, &power, &component, &monitor).is_err());
+}
+
+#[test]
+fn resource_wave_needs_activation_and_failed_request_does_not_consume() {
+    let (graph, catalog, component) = fixture(true);
+    let monitor = TaskMonitor::default();
+    let power = index_power(&graph);
+    let mut wave = Composition::new_resource_wave(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let no = wave.builder.constant(false).unwrap();
+    let yes = wave.builder.constant(true).unwrap();
+
+    wave.sample(0, PistonId::new(0), no, vec![occurrence(0)].into()).unwrap();
+    assert!(wave.begin_next().unwrap().is_none(), "an unpowered actor needs a qualifying event");
+    assert!(wave.resource_consumed.as_ref().unwrap().is_empty());
+
+    wave.write(StateTest::PistonExtended(PistonId::new(0)), false, yes).unwrap();
+    wave.queued_sample(0, PistonId::new(0), yes, occurrence(0)).unwrap();
+    let failed = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(failed).unwrap();
+    wave.sample(1, PistonId::new(1), yes, vec![occurrence(1)].into()).unwrap();
+    let successful = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(successful).unwrap();
+
+    assert_eq!(
+        evaluated(&wave, &wave.layers.iter().map(|layer| layer.uses[0].accepted).collect::<Vec<_>>()),
+        [false, true]
+    );
+    assert_eq!(
+        evaluated(&wave, &wave.resources.iter().map(|output| output.transfer_when).collect::<Vec<_>>()),
+        [false, true]
+    );
+}
+
+#[test]
+fn resource_wave_missing_block_does_not_consume_it() {
+    let (graph, catalog, component) = fixture(true);
+    let monitor = TaskMonitor::default();
+    let power = index_power(&graph);
+    let mut wave = Composition::new_resource_wave(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let yes = wave.builder.constant(true).unwrap();
+    wave.write(StateTest::ResourceEnabled(ResourceId::new(0)), false, yes).unwrap();
+    wave.queued_sample(0, PistonId::new(0), yes, occurrence(0)).unwrap();
+    let failed = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(failed).unwrap();
+    wave.write(StateTest::ResourceEnabled(ResourceId::new(0)), true, yes).unwrap();
+    wave.sample(1, PistonId::new(1), yes, vec![occurrence(1)].into()).unwrap();
+    let successful = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(successful).unwrap();
+    assert_eq!(
+        evaluated(&wave, &wave.layers.iter().map(|layer| layer.uses[0].accepted).collect::<Vec<_>>()),
+        [false, true]
+    );
+    assert_eq!(
+        evaluated(&wave, &wave.resources.iter().map(|output| output.transfer_when).collect::<Vec<_>>()),
+        [false, true]
+    );
+}
+
+#[test]
+fn resource_wave_allows_different_blocks_in_one_cycle() {
+    let (graph, catalog, component) = fixture(false);
+    let monitor = TaskMonitor::default();
+    let power = index_power(&graph);
+    let mut wave = Composition::new_resource_wave(&graph, &catalog, &power, &component, &monitor).unwrap();
+    let yes = wave.builder.constant(true).unwrap();
+    wave.write(StateTest::ResourceEnabled(ResourceId::new(1)), false, yes).unwrap();
+    wave.sample(0, PistonId::new(0), yes, vec![occurrence(0)].into()).unwrap();
+    let first = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(first).unwrap();
+    wave.write(StateTest::ResourceEnabled(ResourceId::new(1)), true, yes).unwrap();
+    wave.sample(1, PistonId::new(1), yes, vec![occurrence(1)].into()).unwrap();
+    let second = wave.begin_next().unwrap().unwrap();
+    wave.finish_base(second).unwrap();
+    assert_eq!(
+        evaluated(&wave, &wave.resources.iter().map(|output| output.transfer_when).collect::<Vec<_>>()),
+        [true, true]
     );
 }

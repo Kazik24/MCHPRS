@@ -84,6 +84,8 @@ pub(crate) use instant_layers::*;
 pub(crate) use instant_program::*;
 pub(crate) use instant_transport::infer as infer_instant_transport;
 pub(crate) use instant_transport::infer_guarded as infer_guarded_instant_transport;
+#[cfg(test)]
+pub(crate) use instant_transport::infer_guarded_with_test_corridors;
 pub(crate) use instant_transport::*;
 pub(crate) use logical_values::LogicalValues;
 pub(crate) use mixed_classic::*;
@@ -971,6 +973,28 @@ pub(crate) struct CircuitProgram {
 }
 
 impl CircuitProgram {
+    #[cfg(test)]
+    pub(crate) fn unbind_matching_test_transport(&mut self, net: &TransportNet) {
+        for wire in &net.wires {
+            if let Some((old, _)) = self.transport_wire_by_node[wire.node.index()] {
+                assert_eq!(*self.instant_transport[old as usize], *net);
+                self.transport_wire_by_node[wire.node.index()] = None;
+            }
+        }
+    }
+    #[cfg(test)]
+    pub(crate) fn inject_certified_test_transport(&mut self, net: TransportNet) {
+        let index = self.instant_transport.len() as u32;
+        let mut bindings = self.transport_wire_by_node.to_vec();
+        for (local, wire) in net.wires.iter().enumerate() {
+            assert!(bindings[wire.node.index()].is_none());
+            bindings[wire.node.index()] = Some((index, local as u32));
+        }
+        let mut nets = self.instant_transport.to_vec();
+        nets.push(std::sync::Arc::new(net));
+        self.instant_transport = nets.into_boxed_slice();
+        self.transport_wire_by_node = bindings.into_boxed_slice();
+    }
     pub(crate) fn settled_circuit(&self) -> Option<&SettledCircuit> {
         self.settled_circuit.as_ref()
     }

@@ -1413,6 +1413,58 @@ fn report_fpu_computation_native_tick_trace() {
 }
 
 #[test]
+#[ignore = "isolated FPU lamp boundary compilation probe"]
+fn fpu_lamp_inputs_have_complete_settled_outputs() {
+    let (_, world, bounds) = fixture();
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let lamps = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, node)| {
+            matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp)).then_some(PowerTarget::Input {
+                node: NodeId::new(index as u32),
+                port: InputPort::Main,
+            })
+        })
+        .collect::<Vec<_>>();
+    assert!(!lamps.is_empty());
+    let targets = super::settled::selected_frame_power_targets(graph);
+    let circuit = compile_computation(graph, &targets, &monitor).unwrap();
+    assert!(circuit.declines.is_empty(), "{:?}", circuit.declines);
+    assert!(super::settled::unsupported_computation_frame_inputs(graph, &circuit).is_empty());
+    for target in &lamps {
+        assert!(
+            circuit.outputs.iter().any(|output| output.target == SettledTarget::Power(*target)),
+            "missing lamp target {target:?}"
+        );
+    }
+    println!(
+        "compiled {} lamp inputs with {} total outputs and {} inputs",
+        lamps.len(),
+        circuit.outputs.len(),
+        circuit.program.inputs.len()
+    );
+}
+
+#[test]
 #[ignore = "focused O6 FPU production-admission diagnostic; reports graph-derived targets and compiler declines"]
 fn report_fpu_production_admission() {
     let (_descriptor, _world, bounds) = fixture();

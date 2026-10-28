@@ -253,7 +253,6 @@ impl GraphBackend {
         let accepted = compiled.unwrap_or_else(|| self.native_action_accepted(request));
         #[cfg(test)]
         self.record_accepted_boundary_probe(request, accepted);
-        #[cfg(test)]
         if accepted
             && matches!(
                 request.action,

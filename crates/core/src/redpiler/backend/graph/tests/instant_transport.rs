@@ -2,6 +2,94 @@
 use super::*;
 use crate::redpiler::CompilerOptions;
 
+#[test]
+fn ordinary_piston_corridor_is_discovered_without_cell_ownership() {
+    let mut world = three_wire_world(false);
+    world.set_block(BlockPos::new(46, 35, 42), Block::Air);
+    let monitor = TaskMonitor::default();
+    let options = CompilerOptions::parse("-O5").unwrap();
+    let bounds = (BlockPos::new(40, 30, 40), BlockPos::new(51, 38, 49));
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let source = graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(BlockPos::new(45, 34, 42)))
+        .unwrap();
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    assert!(
+        catalog
+            .corridors
+            .iter()
+            .all(|corridor| corridor.wires.iter().all(|wire| wire.index() != source))
+    );
+    assert!(
+        graph
+            .plans
+            .instant_transport
+            .nets
+            .iter()
+            .any(|net| net.wires.iter().any(|wire| wire.node.index() == source))
+    );
+    let mut detached = graph.clone();
+    detached.plans.instant.boundaries = None;
+    let transport = infer_guarded_instant_transport(&detached, &monitor).unwrap();
+    assert!(transport.nets.iter().any(|net| net.wires.iter().any(|wire| wire.node.index() == source)));
+}
+#[test]
+fn independent_transport_rejects_effectful_receiver_and_keeps_native_walk() {
+    let mut world = three_wire_world(false);
+    world.set_block(BlockPos::new(46, 35, 42), Block::Air);
+    world.set_block(BlockPos::new(44, 34, 43), Block::RedstoneLamp { lit: false });
+    let monitor = TaskMonitor::default();
+    let options = CompilerOptions::parse("-O5").unwrap();
+    let bounds = (BlockPos::new(40, 30, 40), BlockPos::new(51, 38, 49));
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::default_graph_pipeline(&options),
+        &monitor,
+    )
+    .unwrap();
+    let graph = prepared.graph;
+    let source = graph
+        .nodes
+        .iter()
+        .position(|node| node.position == Some(BlockPos::new(45, 34, 42)))
+        .unwrap();
+    assert!(
+        graph
+            .plans
+            .instant_transport
+            .nets
+            .iter()
+            .all(|net| net.wires.iter().all(|wire| wire.node.index() != source))
+    );
+    let mut ordinary = graph.clone();
+    ordinary.clear_execution_plans();
+    let (reference_program, initial) = ordinary.lower().unwrap();
+    let (candidate_program, _) = graph.lower().unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial.clone(), 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, initial, 0).unwrap();
+    let step = Step::SetLever {
+        position: BlockPos::new(42, 34, 42),
+        powered: true,
+    };
+    graph_step(&mut reference, step, true).unwrap();
+    graph_step(&mut candidate, step, true).unwrap();
+    candidate.assert_same_execution_state(&reference);
+    assert!(candidate.execution_counts().wire_walks > 0);
+}
 fn three_wire_graph() -> CompileGraph {
     three_wire_input_graph(false, false)
 }
@@ -393,7 +481,7 @@ fn compact_wire_captures_require_all_inbound_slot_proofs_and_preserve_full_captu
     assert_eq!(candidate.execution_counts().instant_transport_compact_captures, 0);
 }
 
-fn three_wire_input_graph(stable_inputs: bool, second_input: bool) -> CompileGraph {
+fn three_wire_world(second_input: bool) -> PlotWorld {
     let mut world = empty_world();
     let source = BlockPos::new(42, 34, 42);
     world.set_block(source, Block::Lever { lever: Default::default() });
@@ -438,6 +526,11 @@ fn three_wire_input_graph(stable_inputs: bool, second_input: bool) -> CompileGra
         },
     );
     world.set_block(BlockPos::new(46, 36, 42), Block::Stone {});
+    world
+}
+
+fn three_wire_input_graph(stable_inputs: bool, second_input: bool) -> CompileGraph {
+    let world = three_wire_world(second_input);
     let monitor = TaskMonitor::default();
     let mut options = CompilerOptions::parse("-O5").unwrap();
     options.stable_instant_inputs = stable_inputs;
@@ -801,6 +894,131 @@ fn signal_channels_execute_exact_ordered_transitions_and_reject_stale_entries() 
     assert_eq!(candidate.execution_counts().signal_channel_fallbacks, 1);
 }
 
+#[test]
+fn signal_channel_replays_repeated_boundary_pulses_and_native_handoff() {
+    let graph = three_wire_graph();
+    assert!(graph.plans.signal_channels.channels[0].is_some());
+    let mut ordinary = graph.clone();
+    ordinary.clear_execution_plans();
+    let (reference_program, initial) = ordinary.lower().unwrap();
+    let (candidate_program, _) = graph.lower().unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial.clone(), 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, initial, 0).unwrap();
+    reference.set_test_recording(true);
+    candidate.set_test_recording(true);
+    let source = BlockPos::new(42, 34, 42);
+    let mut native = three_wire_world(false);
+    let mut projected = three_wire_world(false);
+    let positions: Vec<_> = (40..=51)
+        .flat_map(|x| (30..=38).flat_map(move |y| (40..=49).map(move |z| BlockPos::new(x, y, z))))
+        .collect();
+    for powered in [true, false, true, false] {
+        let step = Step::SetLever { position: source, powered };
+        native_step(&mut native, step);
+        graph_step(&mut reference, step, true).unwrap();
+        graph_step(&mut candidate, step, true).unwrap();
+        candidate.assert_same_execution_state(&reference);
+        check_boundary(&candidate, &native, &mut projected, &positions, "pulse").unwrap();
+        assert_eq!(candidate.observed_operations, reference.observed_operations);
+    }
+    let counts = candidate.execution_counts();
+    assert!(counts.signal_channel_invocations >= 4);
+    assert!(counts.signal_channel_operations > 0);
+    assert_eq!(counts.instant_transport_wire_visits, 0);
+    assert_eq!(counts.wire_walks, 0);
+    let mut resumed = three_wire_world(false);
+    candidate.reset(&mut resumed);
+    for _ in 0..16 {
+        resumed.tick_interpreted();
+        native.tick_interpreted();
+        assert_eq!(first_difference(&future(&native, &positions), &future(&resumed, &positions)), None);
+    }
+}
+
+#[test]
+fn signal_channel_short_pulses_rearm_observer_and_piston() {
+    let graph = three_wire_graph();
+    assert!(graph.plans.signal_channels.channels[0].is_some());
+    let mut ordinary = graph.clone();
+    ordinary.clear_execution_plans();
+    let (reference_program, initial) = ordinary.lower().unwrap();
+    let (candidate_program, _) = graph.lower().unwrap();
+    let mut reference = GraphBackend::new_unactivated(reference_program, initial.clone(), 0).unwrap();
+    let mut candidate = GraphBackend::new_unactivated(candidate_program, initial, 0).unwrap();
+    let mut native = three_wire_world(false);
+    let mut projected = three_wire_world(false);
+    candidate.set_test_recording(true);
+    reference.set_test_recording(true);
+    let source = BlockPos::new(42, 34, 42);
+    let positions: Vec<_> = (40..=51)
+        .flat_map(|x| (30..=38).flat_map(move |y| (40..=49).map(move |z| BlockPos::new(x, y, z))))
+        .collect();
+    let drive = |powered, native: &mut PlotWorld, reference: &mut GraphBackend, candidate: &mut GraphBackend| {
+        let step = Step::SetLever { position: source, powered };
+        native_step(native, step);
+        graph_step(reference, step, true).unwrap();
+        graph_step(candidate, step, true).unwrap();
+    };
+    drive(true, &mut native, &mut reference, &mut candidate);
+    for cycle in 0..2 {
+        let before = candidate.execution_counts();
+        drive(false, &mut native, &mut reference, &mut candidate);
+        let after = candidate.execution_counts();
+        assert!(after.signal_channel_invocations > before.signal_channel_invocations);
+        assert!(after.signal_channel_operations > before.signal_channel_operations);
+        assert_eq!(after.instant_transport_wire_visits, before.instant_transport_wire_visits);
+        assert_eq!(after.wire_walks, before.wire_walks);
+        native_step(&mut native, Step::Tick);
+        graph_step(&mut reference, Step::Tick, false).unwrap();
+        graph_step(&mut candidate, Step::Tick, false).unwrap();
+        let retractions = candidate
+            .observed_operations
+            .iter()
+            .filter(|op| {
+                matches!(
+                    op,
+                    GraphObservedOperation::Accepted {
+                        action: mchprs_world::PistonAction::Retract,
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert!(retractions > cycle, "cycle {cycle} had no accepted retraction");
+        drive(true, &mut native, &mut reference, &mut candidate);
+        let mut quiet = 0;
+        for _ in 0..128 {
+            native_step(&mut native, Step::Tick);
+            graph_step(&mut reference, Step::Tick, false).unwrap();
+            graph_step(&mut candidate, Step::Tick, false).unwrap();
+            candidate.assert_same_execution_state(&reference);
+            check_boundary(&candidate, &native, &mut projected, &positions, "short pulse rearm").unwrap();
+            let state = future(&native, &positions);
+            if state.motions.is_empty() && state.events.is_empty() && state.scheduled.is_empty() {
+                quiet += 1;
+            } else {
+                quiet = 0;
+            }
+            if quiet == 16 {
+                break;
+            }
+        }
+        assert_eq!(quiet, 16, "cycle {cycle} did not settle");
+        assert!(matches!(native.get_block(BlockPos::new(46, 34, 42)), Block::Piston { piston } if piston.extended));
+        assert!(matches!(native.get_block(BlockPos::new(46, 35, 42)), Block::Observer { observer } if !observer.powered));
+    }
+    assert_eq!(
+        candidate.test_recorder.popped_piston_requests,
+        reference.test_recorder.popped_piston_requests
+    );
+    let mut resumed = three_wire_world(false);
+    candidate.reset(&mut resumed);
+    for _ in 0..16 {
+        resumed.tick_interpreted();
+        native.tick_interpreted();
+        assert_eq!(first_difference(&future(&native, &positions), &future(&resumed, &positions)), None);
+    }
+}
 #[test]
 fn signal_channel_plans_reject_forgery_and_cancel_before_publication() {
     let mut graph = three_wire_graph();

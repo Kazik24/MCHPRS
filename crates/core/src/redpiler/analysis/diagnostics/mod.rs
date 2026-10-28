@@ -41,7 +41,7 @@ pub(crate) fn cell_decline_example(graph: &CompileGraph) -> Option<String> {
         && let Some(source) = fixed_redstone_input(graph, actor)
     {
         return Some(format!(
-            "Instant cell at ({}, {}, {}): reset not recognized. Redstone block at ({}, {}, {}) may be intentionally holding it. Check its reset and power sources. This does not prove a circuit fault.",
+            "Instant optimization at ({}, {}, {}): reset not recognized. Redstone block at ({}, {}, {}) may intentionally hold this piston. An ordinary piston is valid; this is a compiler limitation.",
             pos.x, pos.y, pos.z, source.x, source.y, source.z
         ));
     }
@@ -325,7 +325,8 @@ fn decline_reason(reason: CellDeclineReason) -> &'static str {
 
 fn cell_decline_guidance(reason: CellDeclineReason) -> &'static str {
     match reason {
-        CellDeclineReason::UnrecognizedActor(_) | CellDeclineReason::MissingDeferredWake(_) => "Inspect the piston reset and its power sources.",
+        CellDeclineReason::UnrecognizedActor(_) => "This can be an ordinary piston; the compiler did not recognize an instant reset.",
+        CellDeclineReason::MissingDeferredWake(_) => "The compiler could not verify the reset update path.",
         CellDeclineReason::DifferentPullSources(_) | CellDeclineReason::NoPullSource(_) => "Inspect the shared payload and its piston pull paths.",
         CellDeclineReason::ConflictingSourceContact(_) => "Inspect the payload positions and their piston owners.",
         CellDeclineReason::UnsupportedMaterial(_) => "Inspect the payload material and piston movement path.",
@@ -449,7 +450,7 @@ mod tests {
         .into_boxed_slice();
         let message = cell_decline_example(&graph).unwrap();
         assert!(message.contains("reset not recognized"));
-        assert!(message.contains("Inspect the piston reset and its power sources"));
+        assert!(message.contains("This can be an ordinary piston"));
         assert!(message.contains("does not prove a circuit fault"));
         let component = crate::player::diagnostic_component(&message);
         let position = graph.pistons[witness.index()].position;
@@ -491,7 +492,8 @@ mod tests {
             guard,
         });
         let message = cell_decline_example(&graph).unwrap();
-        assert!(message.contains("may be intentionally holding it"));
+        assert!(message.contains("may intentionally hold this piston"));
+        assert!(message.contains("ordinary piston is valid"));
         let source_command = format!("/hl {} {} {}", source_position.x, source_position.y, source_position.z);
         let component = crate::player::diagnostic_component(&message);
         assert!(
@@ -503,7 +505,7 @@ mod tests {
         );
         graph.power_links.last_mut().unwrap().from_port = PowerPort::Strong(BlockFace::Top);
         assert!(
-            !cell_decline_example(&graph).unwrap().contains("intentionally holding"),
+            !cell_decline_example(&graph).unwrap().contains("intentionally hold"),
             "redstone blocks do not emit strong power"
         );
         graph.power_links.last_mut().unwrap().from_port = PowerPort::Weak(BlockFace::Top);
@@ -512,7 +514,7 @@ mod tests {
         };
         state.output_strength = 0;
         assert!(
-            !cell_decline_example(&graph).unwrap().contains("intentionally holding"),
+            !cell_decline_example(&graph).unwrap().contains("intentionally hold"),
             "a zero source strength is not proof of power"
         );
     }

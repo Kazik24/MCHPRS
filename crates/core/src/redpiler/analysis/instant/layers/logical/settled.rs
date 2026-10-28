@@ -1492,7 +1492,7 @@ fn frame_retained_output_cells(graph: &CompileGraph, island: Option<&LogicalIsla
     let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
         return None;
     };
-    let mut targets = island.map_or_else(|| frame_power_targets(graph), |island| frame_power_targets_in(graph, Some(island)));
+    let mut targets = island.map_or_else(|| frame_power_targets(graph), |island| frame_power_targets_in(graph, Some(island), false));
     let mut retained_cells = Vec::<CellUse>::new();
     let mut retained_effects = Vec::<BoundaryPort>::new();
     let command_nodes = graph
@@ -1997,10 +1997,15 @@ mod scoped_feedback_input_tests {
 
 /// Compile terminal wires, safe terminal-repeater inputs, and command-block power as public frame outputs.
 pub(super) fn frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
-    frame_power_targets_in(graph, None)
+    frame_power_targets_in(graph, None, false)
 }
 
-fn frame_power_targets_in(graph: &CompileGraph, island: Option<&LogicalIsland>) -> Vec<PowerTarget> {
+#[cfg(test)]
+pub(super) fn selected_frame_power_targets(graph: &CompileGraph) -> Vec<PowerTarget> {
+    frame_power_targets_in(graph, None, true)
+}
+
+fn frame_power_targets_in(graph: &CompileGraph, island: Option<&LogicalIsland>, include_lamps: bool) -> Vec<PowerTarget> {
     let owns_node = |node: NodeId| island.is_none_or(|island| island.nodes.binary_search(&node).is_ok());
     let outgoing_components: FxHashSet<_> = graph
         .power_links
@@ -2084,7 +2089,8 @@ fn frame_power_targets_in(graph: &CompileGraph, island: Option<&LogicalIsland>) 
             let terminal_wire =
                 matches!(node.kind, CircuitNodeKind::Wire(_)) && (!outgoing_components.contains(&id) || repeater_input_wires.contains(&id));
             let command_output = matches!(node.kind, CircuitNodeKind::Electrical(NodeType::CommandBlock { .. }));
-            (terminal_wire || command_output).then_some(PowerTarget::Input {
+            let lamp_output = include_lamps && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp));
+            (terminal_wire || command_output || lamp_output).then_some(PowerTarget::Input {
                 node: id,
                 port: InputPort::Main,
             })

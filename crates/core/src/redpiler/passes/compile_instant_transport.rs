@@ -39,12 +39,6 @@ impl PlanBuilder for CompileInstantTransport {
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String> {
         let plan = crate::redpiler::program_graph::infer_instant_transport(graph, context.monitor)?;
         let covered_wires = plan.nets.iter().map(|net| net.wires.len()).sum::<usize>();
-        let candidates = graph
-            .plans
-            .instant
-            .boundaries
-            .as_ref()
-            .map_or(0, |catalog| catalog.corridors.iter().map(|corridor| corridor.wires.len()).sum());
         let bytes = plan
             .nets
             .iter()
@@ -59,7 +53,7 @@ impl PlanBuilder for CompileInstantTransport {
             .record_preparation_tables(vec![crate::redpiler::PreparationTableStatistics {
                 stage: "instant transport",
                 table: format!(
-                    "dense wire corridors ({covered_wires}/{candidates} wires; {}/{} corridors admitted, too_small={}, owner_overlap={}, no_route_or_facts={}, conditional_input={}, no_dust_dependency={}, unsafe_receiver={}, unsafe_input={}, unsupported={})",
+                    "dense wire corridors ({covered_wires} wires; {}/{} corridors admitted, too_small={}, owner_overlap={}, no_route_or_facts={}, conditional_input={}, no_dust_dependency={}, unsafe_receiver={}, unsafe_input={}, unsupported={})",
                     stats.admitted,
                     stats.corridors,
                     stats.too_small,

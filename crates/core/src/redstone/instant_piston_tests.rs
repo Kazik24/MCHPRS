@@ -25,6 +25,7 @@ thread_local! {
 struct Recorder {
     entries: Vec<Value>,
     positions: Option<Vec<BlockPos>>,
+    requests: bool,
     depth: usize,
     action: usize,
     operation: usize,
@@ -88,9 +89,20 @@ pub(crate) fn callback(world: &impl World, block: Block, pos: BlockPos, dir: Opt
 pub(crate) fn record_event(world: &impl World, kind: &str, event: PistonEvent) {
     record_operation(world, kind, json!(event));
 }
+pub(crate) fn record_request(world: &impl World, event: PistonEvent) {
+    let context = RECORDER.with(|r| r.borrow().as_ref().filter(|r| r.requests).map(|r| (r.parents.clone(), r.source)));
+    if let Some((parents, source)) = context {
+        record_operation(
+            world,
+            "event_request",
+            json!({"pos":event.pos,"event":event,"parents":parents,"source":source}),
+        );
+    }
+}
 pub(crate) fn record_operation(world: &impl World, kind: &str, data: Value) {
     RECORDER.with(|r| {
         if let Some(r) = r.borrow_mut().as_mut() {
+            assert!(!r.requests || r.entries.len() < 100_000, "unfiltered trace exceeded 100,000 entries");
             if let Some(positions) = &r.positions {
                 let pos = data
                     .get("pos")
@@ -107,6 +119,12 @@ pub(crate) fn record_operation(world: &impl World, kind: &str, data: Value) {
 }
 
 pub(crate) fn capture_at(positions: &[BlockPos], f: impl FnOnce()) -> Vec<Value> {
+    capture_selected(Some(positions.to_vec()), f)
+}
+pub(crate) fn capture_all(f: impl FnOnce()) -> Vec<Value> {
+    capture_selected(None, f)
+}
+fn capture_selected(positions: Option<Vec<BlockPos>>, f: impl FnOnce()) -> Vec<Value> {
     struct Guard;
     impl Drop for Guard {
         fn drop(&mut self) {
@@ -117,13 +135,32 @@ pub(crate) fn capture_at(positions: &[BlockPos], f: impl FnOnce()) -> Vec<Value>
         let mut recorder = r.borrow_mut();
         assert!(recorder.is_none(), "nested callback capture");
         *recorder = Some(Recorder {
-            positions: Some(positions.to_vec()),
+            requests: positions.is_none(),
+            positions,
             ..Default::default()
         });
     });
     let _guard = Guard;
     f();
     take_callbacks()
+}
+#[test]
+fn piston_request_trace_is_only_enabled_for_explicit_full_capture() {
+    let world = empty();
+    let event = PistonEvent {
+        pos: BlockPos::new(1, 2, 3),
+        sticky: true,
+        facing: BlockFace::North,
+        action: mchprs_world::PistonAction::Retract,
+    };
+    RECORDER.with(|r| *r.borrow_mut() = Some(Recorder::default()));
+    record_request(&world, event);
+    assert!(take_callbacks().is_empty());
+    RECORDER.with(|r| *r.borrow_mut() = None);
+    let entries = capture_all(|| record_request(&world, event));
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["kind"], "event_request");
+    assert_eq!(entries[0]["data"]["event"]["action"], "Retract");
 }
 fn context(action: usize, operation: usize) {
     RECORDER.with(|r| {
