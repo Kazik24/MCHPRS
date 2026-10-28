@@ -113,10 +113,6 @@ fn input_source(value: LayerInputSource, graph: &CompileGraph) -> Value {
             "kind":"state",
             "test":serde_json::to_value(state_test_dto(test)).expect("state test DTO serialization is infallible"),
         }),
-        LayerInputSource::InstantFired { actor } => json!({
-            "kind":"instant_fired",
-            "actor":typed_id("piston", actor.index()),
-        }),
     }
 }
 
@@ -151,7 +147,13 @@ fn cause(value: &UseCause) -> Value {
         "occurrences":value.boundary_occurrences.iter().map(|occurrence|occurrence_dto(*occurrence)).collect::<Vec<_>>()
     });
     if value.enqueue_triggers != value.boundary_occurrences {
-        result["enqueue_triggers"] = json!(value.enqueue_triggers.iter().map(|occurrence|occurrence_dto(*occurrence)).collect::<Vec<_>>());
+        result["enqueue_triggers"] = json!(
+            value
+                .enqueue_triggers
+                .iter()
+                .map(|occurrence| occurrence_dto(*occurrence))
+                .collect::<Vec<_>>()
+        );
     }
     result
 }
@@ -275,6 +277,7 @@ fn witness(value: LayerWitness, graph: &CompileGraph) -> Value {
 
 fn decline_reason(value: LayerDeclineReason) -> &'static str {
     match value {
+        LayerDeclineReason::NoUsefulEventPath => "no_useful_event_path",
         LayerDeclineReason::ProofBudgetExceeded => "proof_budget_exceeded",
         LayerDeclineReason::SignalArrivalUnproven => "signal_arrival_unproven",
         LayerDeclineReason::CallbackSemanticsUnsupported => "callback_semantics_unsupported",
@@ -777,6 +780,7 @@ pub(super) fn validate(graph: &GraphTablesDto) -> Result<(), ExportError> {
         if !matches!(
             reason,
             "signal_arrival_unproven"
+                | "no_useful_event_path"
                 | "callback_semantics_unsupported"
                 | "shared_owner_order_unknown"
                 | "boundary_effect_unsupported"
@@ -963,9 +967,7 @@ fn reset_input_lifecycle_matches(
             continue;
         }
         for reset_row in array(cell, "reset_lifecycle")? {
-            if reset_row["actor"].as_str() != Some(actor)
-                || !matches!(reset_row["kind"].as_str(), Some("payload" | "input_restoration"))
-            {
+            if reset_row["actor"].as_str() != Some(actor) || !matches!(reset_row["kind"].as_str(), Some("payload" | "input_restoration")) {
                 continue;
             }
             let occurrence = &reset_row["occurrence"];

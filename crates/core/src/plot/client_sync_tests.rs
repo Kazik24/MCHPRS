@@ -411,7 +411,8 @@ fn redbox_teleport_restores_exact_position_and_facing_and_transfers_out_of_plots
         assert!(receiver.try_recv().is_err());
 
         plot.locked_players.insert(plot.players[0].entity_id);
-        let remote = PlayerPos::new(-512.125, 64.25, 1024.5);
+        let width = PLOT_BLOCK_WIDTH as f64;
+        let remote = PlayerPos::new(-2.0 * width - 0.125, 64.25, 4.0 * width + 0.5);
         assert!(plot.teleport_player_to(0, remote, 123.5, -20.25));
         assert!(plot.players.is_empty());
         assert!(plot.locked_players.is_empty());

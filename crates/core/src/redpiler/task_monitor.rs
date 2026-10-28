@@ -13,7 +13,9 @@ pub struct TaskMonitor {
     budget_multiplier: AtomicUsize,
     graph_statistics: Mutex<GraphStatistics>,
     warnings: Mutex<Vec<String>>,
+    omitted_warnings: AtomicUsize,
     cell_decline_example: Mutex<Option<String>>,
+    layer_decline_example: Mutex<Option<String>>,
 }
 
 #[cfg(test)]
@@ -24,10 +26,14 @@ mod tests {
     fn warnings_are_bounded_and_cleared_for_the_next_compilation() {
         let monitor = TaskMonitor::default();
         monitor.record_warning("warning 0".into());
-        for i in 0..10 {
+        for i in 0..40 {
             monitor.record_warning(format!("warning {i}"));
         }
-        assert_eq!(monitor.warnings(), ["warning 0", "warning 1", "warning 2", "warning 3"]);
+        let warnings = monitor.warnings();
+        assert_eq!(warnings.len(), 33);
+        assert_eq!(warnings[0], "warning 0");
+        assert_eq!(warnings[31], "warning 31");
+        assert!(warnings[32].contains("8 additional warnings omitted"));
         monitor.clear_graph_statistics();
         assert!(monitor.warnings().is_empty());
         monitor.record_warning("overlap at (1, 2, 3)".into());
@@ -44,6 +50,9 @@ mod tests {
         assert_eq!(monitor.warnings().len(), 5);
         assert_eq!(monitor.warnings()[3], "whole-plot budget decline");
         assert_eq!(monitor.warnings()[4], "cell example");
+        monitor.record_layer_decline_example("region example".into());
+        monitor.record_layer_decline_example("another region".into());
+        assert_eq!(monitor.warnings()[5], "region example");
         monitor.clear_graph_statistics();
         assert!(monitor.warnings().is_empty());
     }
@@ -52,7 +61,14 @@ mod tests {
 impl TaskMonitor {
     pub fn warnings(&self) -> Vec<String> {
         let mut warnings = self.warnings.lock().unwrap().clone();
+        let omitted = self.omitted_warnings.load(Ordering::Relaxed);
+        if omitted > 0 {
+            warnings.push(format!("{omitted} additional warnings omitted. Use /rp inspect for block details."));
+        }
         if let Some(example) = self.cell_decline_example.lock().unwrap().as_ref() {
+            warnings.push(example.clone());
+        }
+        if let Some(example) = self.layer_decline_example.lock().unwrap().as_ref() {
             warnings.push(example.clone());
         }
         warnings
@@ -60,13 +76,25 @@ impl TaskMonitor {
 
     pub(crate) fn record_warning(&self, warning: String) {
         let mut warnings = self.warnings.lock().unwrap();
-        if warnings.len() < 4 && !warnings.contains(&warning) {
+        if warnings.contains(&warning) {
+            return;
+        }
+        if warnings.len() < 32 {
             warnings.push(warning);
+        } else {
+            self.omitted_warnings.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     pub(crate) fn record_cell_decline_example(&self, warning: String) {
         let mut example = self.cell_decline_example.lock().unwrap();
+        if example.is_none() {
+            *example = Some(warning);
+        }
+    }
+
+    pub(crate) fn record_layer_decline_example(&self, warning: String) {
+        let mut example = self.layer_decline_example.lock().unwrap();
         if example.is_none() {
             *example = Some(warning);
         }
@@ -79,7 +107,9 @@ impl TaskMonitor {
     pub(crate) fn clear_graph_statistics(&self) {
         *self.graph_statistics.lock().unwrap() = GraphStatistics::default();
         self.warnings.lock().unwrap().clear();
+        self.omitted_warnings.store(0, Ordering::Relaxed);
         *self.cell_decline_example.lock().unwrap() = None;
+        *self.layer_decline_example.lock().unwrap() = None;
     }
 
     pub(crate) fn begin_graph_statistics(&self) {

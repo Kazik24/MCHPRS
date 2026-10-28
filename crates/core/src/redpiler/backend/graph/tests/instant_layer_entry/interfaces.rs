@@ -222,9 +222,15 @@ fn captured_wire_request_executes_a_kernel_and_rechecks_restored_power() {
         check_ticks(&mut backend, &mut native, &mut world, "captured request");
         let counts = backend.execution_counts();
         if restore {
-            assert_eq!(counts.instant_kernel_invocations, 0, "powered revalidation keeps the queued request native");
+            assert_eq!(
+                counts.instant_kernel_invocations, 0,
+                "powered revalidation keeps the queued request native"
+            );
         } else {
-            assert!(counts.instant_kernel_invocations > 0, "the unpowered singleton request executes its compiled route");
+            assert!(
+                counts.instant_kernel_invocations > 0,
+                "the unpowered singleton request executes its compiled route"
+            );
         }
     }
 }
@@ -1567,4 +1573,1588 @@ fn pull_wave_declines_when_an_internal_actor_has_a_native_owner() {
             _ => backend.logical_bud_owner_by_actor[internal.index()] = None,
         };
     }
+}
+
+#[test]
+fn event_netlist_shared_payload_and_foreign_cell_keep_distinct_owners() {
+    use crate::redpiler::analysis::instant::event_netlist::{callback_sources, candidate_boundary, cut_unsupported_resources, discover};
+    let world = shared_payload_with_foreign_fifo_cell_world();
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let (cell_index, cell) = catalog
+        .cells
+        .iter()
+        .enumerate()
+        .find(|(_, cell)| cell.resources.iter().any(|r| r.owners.len() >= 2))
+        .expect("shared physical payload");
+    let foreign = catalog
+        .cells
+        .iter()
+        .enumerate()
+        .find(|(_, cell)| {
+            cell.uses
+                .iter()
+                .any(|use_| graph.pistons[use_.actor.index()].position == BlockPos::new(13, 20, 13))
+        })
+        .expect("independent physical cell")
+        .0;
+    let count = catalog.cells.len() + catalog.corridors.len();
+    assert!(discover(graph, catalog, &vec![true; count.saturating_sub(1)], &monitor).is_err());
+    let cancelled = TaskMonitor::default();
+    cancelled.cancel();
+    assert!(discover(graph, catalog, &vec![true; count], &cancelled).is_err());
+    let all = discover(graph, catalog, &vec![true; count], &monitor).unwrap();
+    assert!(
+        all.selected[cell_index] && all.selected[foreign],
+        "both supported physical groups should be reached"
+    );
+    for pin in cell.resources.iter().filter(|r| r.owners.len() >= 2) {
+        assert_eq!(all.partition.owners.resources[pin.resource.index()], Some(cell_index));
+        for actor in &pin.owners {
+            assert_eq!(all.partition.owners.actors[actor.index()], Some(cell_index));
+        }
+    }
+    assert_ne!(all.partition.owner_region[cell_index], all.partition.owner_region[foreign]);
+    let region = all.partition.owner_region[cell_index];
+    let boundary = candidate_boundary(graph, catalog, &all, region, &monitor).unwrap();
+    let callback_sources = callback_sources(graph, &boundary, &monitor).unwrap();
+    assert!(
+        boundary
+            .scan
+            .ports
+            .iter()
+            .any(|port| port.direction == BoundaryDirection::Output && matches!(port.kind, BoundaryPortKind::Callback { .. })),
+        "physical boundary must contain callback rows"
+    );
+    assert!(
+        callback_sources.is_empty(),
+        "receiverless and inert fixture callbacks should not become notifications"
+    );
+    for source in &callback_sources {
+        assert_eq!(boundary.owners.nodes[source.node.index()], Some(0));
+        assert!(
+            source
+                .occurrences
+                .iter()
+                .all(|occurrence| graph.routes[occurrence.route.index()].source == source.node)
+        );
+    }
+    let mut wire_native = vec![true; count];
+    wire_native[catalog.cells.len()..].fill(false);
+    let separated = discover(graph, catalog, &wire_native, &monitor).unwrap();
+    let exposed = candidate_boundary(graph, catalog, &separated, separated.partition.owner_region[cell_index], &monitor).unwrap();
+    assert!(boundary.groups.iter().any(|group| cell.resources.iter().any(|pin| {
+        pin.owners.len() >= 2 && group.resources.contains(&pin.resource) && pin.owners.iter().all(|actor| group.actors.contains(actor))
+    })));
+    for use_ in catalog.cells[foreign].uses.iter() {
+        assert_eq!(boundary.owners.actors[use_.actor.index()], None, "independent actors remain native");
+    }
+    for target in &boundary.aggregate_targets {
+        let owner = match *target {
+            PowerTarget::Input { node, .. } => boundary.owners.nodes[node.index()],
+            PowerTarget::Conductor { site, .. } => boundary.owners.sites[site.index()],
+        };
+        assert_eq!(owner, None, "aggregate targets cross to a native owner");
+    }
+    assert!(candidate_boundary(graph, catalog, &all, region, &cancelled).is_err());
+    let shared = cell.resources.iter().find(|pin| pin.owners.len() >= 2).unwrap();
+    let (contact_program, _) = crate::redpiler::analysis::instant::layers::logical::compile_candidate_state_computation(
+        graph,
+        &[],
+        &[(shared.resource, shared.source)],
+        &boundary.owners,
+        &monitor,
+    )
+    .unwrap();
+    for &contact in graph.resources[shared.resource.index()].contacts.iter() {
+        assert!(contact_program.outputs.iter().any(|output| matches!(output.target,
+            SettledTarget::ResourceState { resource, source } if resource == shared.resource && source == contact)));
+    }
+    let mut incomplete = boundary.owners.clone();
+    incomplete.actors[shared.owners[0].index()] = None;
+    let error = crate::redpiler::analysis::instant::layers::logical::compile_global_boundary_computation(
+        graph,
+        &[],
+        &[(shared.resource, shared.source)],
+        &[],
+        &incomplete,
+        &monitor,
+    )
+    .unwrap_err();
+    assert!(error.contains("actor outside its owner"), "incomplete shared group must decline: {error}");
+    assert!(
+        exposed.direct_resource_reads.iter().any(|(resource, _)| *resource == shared.resource),
+        "the fixture must expose the shared resource at its candidate boundary"
+    );
+    let cut_result = cut_unsupported_resources(graph, catalog, &wire_native, &monitor).unwrap();
+    assert!(
+        cut_result.candidates.selected[cell_index],
+        "representable shared ownership remains a single candidate"
+    );
+    assert!(cut_result.candidates.selected[foreign], "unrelated circuit remains eligible");
+    let mut eligible = vec![true; count];
+    eligible[cell_index] = false;
+    let cut = discover(graph, catalog, &eligible, &monitor).unwrap();
+    assert!(!cut.selected[cell_index], "unsupported shared group stays native as a unit");
+    assert!(cut.selected[foreign], "an unrelated supported group remains reachable");
+    for pin in cell.resources.iter().filter(|r| r.owners.len() >= 2) {
+        assert_eq!(cut.partition.owners.resources[pin.resource.index()], Some(cell_index));
+        for actor in &pin.owners {
+            assert_eq!(cut.partition.owners.actors[actor.index()], Some(cell_index));
+        }
+    }
+}
+
+#[test]
+fn event_netlist_external_power_read_keeps_native_source_owner() {
+    use crate::redpiler::analysis::instant::event_netlist::{PortRole, discover};
+    let world = direct_cell_world();
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let candidates = discover(graph, catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    let reads = candidates
+        .ports
+        .iter()
+        .filter_map(|port| {
+            if port.role != PortRole::Read {
+                return None;
+            }
+            let BoundaryPortKind::Power { link } = catalog.ports[port.row as usize].kind else {
+                return None;
+            };
+            let site = graph.power_links[link as usize].from;
+            (graph.sites[site.index()].position == CONTROL).then_some(site)
+        })
+        .collect::<Vec<_>>();
+    assert!(!reads.is_empty(), "source lever must remain a typed external read");
+    for site in reads {
+        assert_eq!(
+            candidates.partition.owners.sites[site.index()],
+            None,
+            "reading a native source does not claim ownership"
+        );
+    }
+}
+
+#[test]
+fn event_netlist_two_wire_corridor_retains_source_actor_and_guards() {
+    use crate::redpiler::analysis::instant::event_netlist::{CandidateFrame, WireStrengthChange, candidate_boundary, corridor_events, discover};
+    use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
+    let mut world = wire_controlled_cell_world();
+    let middle_wire = CONTROL.offset(BlockFace::West);
+    let first_wire = middle_wire.offset(BlockFace::West);
+    let lever = first_wire.offset(BlockFace::West);
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(first_wire.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(lever, world.get_block(middle_wire));
+    world.set_block(
+        first_wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::new(
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                15,
+            ),
+        },
+    );
+    world.set_block(
+        middle_wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::new(
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                14,
+            ),
+        },
+    );
+    let Block::RedstoneWire { mut wire } = world.get_block(CONTROL) else {
+        unreachable!()
+    };
+    wire.power = 13;
+    world.set_block(CONTROL, Block::RedstoneWire { wire });
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let candidates = discover(graph, catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    let actor = graph.pistons.iter().position(|piston| piston.position == BASE).unwrap();
+    let owner = candidates.partition.owners.actors[actor].unwrap();
+    let region = candidates.partition.owner_region[owner];
+    let events = corridor_events(graph, catalog, &candidates, region, &monitor).unwrap();
+    let (probe_program, probe_state) = graph.clone().lower().unwrap();
+    let mut probe = GraphBackend::new_unactivated(probe_program, probe_state, 0).unwrap();
+    probe.use_block(lever).unwrap();
+    let native_source = probe
+        .future
+        .piston_requests
+        .iter()
+        .find(|request| request.piston == PistonId::new(actor as u32))
+        .and_then(|request| request.source)
+        .expect("native actor request must retain its source route");
+    let event = events
+        .iter()
+        .find(|event| {
+            event.actor == PistonId::new(actor as u32)
+                && event.entry_wire != event.source_wire
+                && !event.links.is_empty()
+                && event.notification.route == native_source
+                && graph.nodes[graph.routes[event.entry.route.index()].source.index()].position == Some(lever)
+        })
+        .expect("the original lever occurrence must reach the piston through owned dust");
+    assert_ne!(event.entry_wire, event.source_wire);
+    assert!(!event.links.is_empty());
+    assert!(
+        catalog.cells[event.cell as usize]
+            .uses
+            .iter()
+            .any(|use_| use_.actor == event.actor && use_.activations.contains(&event.notification))
+    );
+    let transfer = catalog.cells[event.cell as usize]
+        .uses
+        .iter()
+        .find(|use_| use_.actor == event.actor)
+        .unwrap()
+        .retraction
+        .transfer
+        .unwrap();
+    for &link in &event.links {
+        assert!(
+            graph.power_links.get(link as usize).is_some(),
+            "original link and guard must remain addressable"
+        );
+    }
+    let boundary = candidate_boundary(graph, catalog, &candidates, region, &monitor).unwrap();
+    let target = PowerTarget::Input {
+        node: event.source_wire,
+        port: InputPort::Main,
+    };
+    let (circuit, _) = crate::redpiler::analysis::instant::layers::logical::compile_candidate_live_computation(
+        graph,
+        &[target],
+        &[(transfer.resource, transfer.source)],
+        &boundary.owners,
+        &monitor,
+    )
+    .unwrap();
+    let mut frame = CandidateFrame::new_live_states(graph, &boundary.owners, &circuit).unwrap();
+    let (program, state) = graph.clone().lower().unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
+    frame
+        .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+        .unwrap();
+    let before = frame.outputs()[0];
+    assert_eq!(before, backend.wire_state(event.source_wire).power);
+    backend.use_block(lever).unwrap();
+    frame
+        .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+        .unwrap();
+    let after = frame.outputs()[0];
+    assert_eq!(after, backend.wire_state(event.source_wire).power);
+    assert_ne!(before, after, "the physical source must change the exit wire");
+    let change = WireStrengthChange {
+        node: event.source_wire,
+        before,
+        after,
+    };
+    let captured = graph
+        .sites
+        .iter()
+        .enumerate()
+        .map(|(index, _)| backend.observe_site(SiteId::new(index as u32)))
+        .collect::<Vec<_>>();
+    let event = events
+        .iter()
+        .find(|candidate| {
+            candidate.actor == event.actor
+                && candidate.entry == event.entry
+                && candidate.source_wire == event.source_wire
+                && candidate.notification.route == native_source
+                && candidate
+                    .activates(graph, candidate.entry, change, Some(&captured), |guard, view| {
+                        backend.guard_matches(guard, view)
+                    })
+                    .unwrap_or(false)
+        })
+        .expect("native source route must contain an enabled captured actor occurrence");
+    if graph.routes[event.notification.route.index()].deliveries[event.notification.ordinal as usize].view == OperandView::Captured {
+        assert!(
+            event.activates(graph, event.entry, change, None, |_, _| true).is_err(),
+            "missing captured data must decline"
+        );
+    }
+    assert!(
+        event
+            .activates(graph, event.entry, change, Some(&captured), |guard, view| backend
+                .guard_matches(guard, view))
+            .unwrap()
+    );
+    assert!(
+        !event
+            .activates(
+                graph,
+                event.entry,
+                WireStrengthChange {
+                    node: event.source_wire,
+                    before,
+                    after: before
+                },
+                Some(&captured),
+                |_, _| true
+            )
+            .unwrap(),
+        "unchanged exit emits no actor activation"
+    );
+    assert!(
+        event
+            .activates(
+                graph,
+                event.entry,
+                WireStrengthChange {
+                    node: event.entry_wire,
+                    before,
+                    after
+                },
+                Some(&captured),
+                |_, _| true
+            )
+            .is_err(),
+        "entry changes must not masquerade as exit changes"
+    );
+    assert!(
+        !event.activates(graph, event.entry, change, Some(&captured), |_, _| false).unwrap(),
+        "a blocked original path guard emits no activation"
+    );
+    assert!(
+        backend
+            .future
+            .piston_requests
+            .iter()
+            .any(|request| request.piston == event.actor && request.source == Some(event.notification.route)),
+        "native Graph must queue the same actor from the same wire route"
+    );
+    let accepted = event
+        .transition(
+            graph,
+            catalog,
+            event.entry,
+            change,
+            Some(&captured),
+            |guard, view| backend.guard_matches(guard, view),
+            |source| match source {
+                CellRead::Contribution(link) => {
+                    backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
+                }
+                CellRead::State(test) => backend.sample_settled_input(LayerInputSource::State(test)).unwrap(),
+                CellRead::Activation(_) => unreachable!(),
+            },
+        )
+        .unwrap()
+        .expect("qualified corridor event must request the actual token transfer");
+    assert_eq!(accepted, transfer);
+    let (virtual_program, virtual_state) = graph.clone().lower().unwrap();
+    let mut virtual_backend = GraphBackend::new_unactivated(virtual_program, virtual_state, 0).unwrap();
+    virtual_backend.set_resource_contact(transfer.resource, transfer.destination, false);
+    frame
+        .evaluate(
+            |site, port| virtual_backend.site_power(site, port),
+            |source| virtual_backend.sample_settled_input(source),
+        )
+        .unwrap();
+    let near_output = circuit
+        .outputs
+        .iter()
+        .position(|output| {
+            matches!(output.target,
+        SettledTarget::ResourceState { resource, source } if resource == transfer.resource && source == transfer.destination)
+        })
+        .unwrap();
+    assert_eq!(
+        frame.outputs()[near_output],
+        1,
+        "the resource write must remain visible to the following solve"
+    );
+    backend.drain_piston_actions().unwrap();
+    let actual = backend.state.resources[transfer.resource.index()];
+    let modeled = virtual_backend.state.resources[transfer.resource.index()];
+    assert_eq!(
+        (actual.at, actual.enabled),
+        (modeled.at, modeled.enabled),
+        "the compiled token transition must match native acceptance"
+    );
+    let (global_live, _) = crate::redpiler::analysis::instant::layers::logical::compile_global_live_computation(
+        graph,
+        &[target],
+        &[(transfer.resource, transfer.source)],
+        &[],
+        &boundary.owners,
+        &monitor,
+    )
+    .unwrap();
+    let mut global_frame = CandidateFrame::new_live_states(graph, &boundary.owners, &global_live).unwrap();
+    global_frame
+        .evaluate(
+            |site, port| virtual_backend.site_power(site, port),
+            |source| virtual_backend.sample_settled_input(source),
+        )
+        .unwrap();
+    let global_near = global_live
+        .outputs
+        .iter()
+        .position(|output| {
+            matches!(output.target,
+        SettledTarget::ResourceState { resource, source } if resource == transfer.resource && source == transfer.destination)
+        })
+        .unwrap();
+    assert_eq!(
+        global_frame.outputs()[global_near],
+        1,
+        "global read-cone lowering must retain live resource state"
+    );
+    let cancelled = TaskMonitor::default();
+    cancelled.cancel();
+    assert!(corridor_events(graph, catalog, &candidates, region, &cancelled).is_err());
+    let covered = crate::redpiler::analysis::instant::event_netlist::cut_uncovered_callbacks(
+        graph,
+        catalog,
+        &vec![true; catalog.cells.len() + catalog.corridors.len()],
+        &monitor,
+    )
+    .unwrap();
+    assert!(covered.rounds >= 1);
+    for (owner, occurrence) in &covered.cut_owners {
+        assert!(!covered.resources.candidates.selected[*owner]);
+        assert!(
+            catalog
+                .ports
+                .iter()
+                .any(|port| matches!(port.kind, BoundaryPortKind::Callback { occurrence: value } if value == *occurrence))
+        );
+    }
+    for event in &covered.corridor_events {
+        assert!(covered.resources.candidates.selected[event.cell as usize]);
+    }
+    assert!(
+        crate::redpiler::analysis::instant::event_netlist::cut_uncovered_callbacks(
+            graph,
+            catalog,
+            &vec![true; catalog.cells.len() + catalog.corridors.len()],
+            &cancelled,
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn event_netlist_corridor_uses_notification_wire_not_changed_entry() {
+    use crate::redpiler::analysis::instant::event_netlist::{WireStrengthChange, corridor_events, discover};
+    use mchprs_blocks::blocks::{RedstoneWire, RedstoneWireSide};
+    let mut world = wire_controlled_cell_world();
+    let middle = CONTROL.offset(BlockFace::West);
+    let first = middle.offset(BlockFace::West);
+    let lever = first.offset(BlockFace::West);
+    let second = middle.offset(BlockFace::North);
+    for position in [lever, first, second] {
+        world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+    }
+    let powered_lever = world.get_block(middle);
+    world.set_block(lever, powered_lever);
+    world.set_block(second, powered_lever);
+    for (position, power) in [(first, 15), (middle, 15), (CONTROL, 14)] {
+        world.set_block(
+            position,
+            Block::RedstoneWire {
+                wire: RedstoneWire::new(
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    power,
+                ),
+            },
+        );
+    }
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let candidates = discover(graph, catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    let actor = graph.pistons.iter().position(|piston| piston.position == BASE).unwrap();
+    let owner = candidates.partition.owners.actors[actor].unwrap();
+    let events = corridor_events(graph, catalog, &candidates, candidates.partition.owner_region[owner], &monitor).unwrap();
+    let event = events
+        .iter()
+        .find(|event| {
+            event.actor.index() == actor
+                && graph.nodes[event.entry_wire.index()].position == Some(first)
+                && graph.nodes[event.source_wire.index()].position == Some(CONTROL)
+                && graph.nodes[graph.routes[event.entry.route.index()].source.index()].position == Some(lever)
+        })
+        .expect("lever must have a source-qualified corridor path to the actor");
+    let (program, state) = graph.clone().lower().unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
+    let entry_before = backend.wire_state(event.entry_wire).power;
+    let source_before = backend.wire_state(event.source_wire).power;
+    backend.use_block(lever).unwrap();
+    let entry_after = backend.wire_state(event.entry_wire).power;
+    let source_after = backend.wire_state(event.source_wire).power;
+    assert_ne!(entry_before, entry_after, "the changed source must change the entry dust");
+    assert_eq!(source_before, source_after, "the independent source keeps exit dust powered");
+    let change = WireStrengthChange {
+        node: event.source_wire,
+        before: source_before,
+        after: source_after,
+    };
+    assert!(!event.activates(graph, event.entry, change, None, |_, _| true).unwrap());
+    let wrong_wire = WireStrengthChange {
+        node: event.entry_wire,
+        before: entry_before,
+        after: entry_after,
+    };
+    assert!(event.activates(graph, event.entry, wrong_wire, None, |_, _| true).is_err());
+}
+
+#[test]
+fn event_netlist_grows_only_directly_reached_comparator() {
+    use crate::redpiler::analysis::instant::event_netlist::{actor_ingress, candidate_boundary, discover, grow_comparators};
+    use mchprs_blocks::blocks::{ComparatorMode, RedstoneComparator};
+    let mut world = direct_cell_world();
+    let reached = BASE.offset(BlockFace::North);
+    let unrelated = BlockPos::new(13, 20, 13);
+    for position in [reached, unrelated] {
+        world.set_block(position.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            position,
+            Block::RedstoneComparator {
+                comparator: RedstoneComparator::new(BlockDirection::North, ComparatorMode::Compare, false),
+            },
+        );
+        world.set_block_entity(position, BlockEntity::Comparator { output_strength: 0 });
+    }
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let candidates = discover(graph, catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    let actor = graph.pistons.iter().position(|piston| piston.position == BASE).unwrap();
+    let owner = candidates.partition.owners.actors[actor].unwrap();
+    let region = candidates.partition.owner_region[owner];
+    let mut boundary = candidate_boundary(graph, catalog, &candidates, region, &monitor).unwrap();
+    let (ingress, unresolved) = actor_ingress(graph, catalog, &boundary, &monitor).unwrap();
+    assert!(unresolved > 0, "dynamic contact deliveries must remain an explicit native boundary");
+    assert!(
+        ingress.iter().any(|entry| entry.actor == PistonId::new(actor as u32)
+            && graph.nodes[graph.routes[entry.occurrence.route.index()].source.index()].position == Some(CONTROL)),
+        "the direct lever callback must retain its actor and original source occurrence"
+    );
+    let cancelled = TaskMonitor::default();
+    cancelled.cancel();
+    assert!(grow_comparators(graph, &candidates, &mut boundary, &cancelled).is_err());
+    let grown = grow_comparators(graph, &candidates, &mut boundary, &monitor).unwrap();
+    let reached_node = graph.nodes.iter().position(|node| node.position == Some(reached)).unwrap();
+    let unrelated_node = graph.nodes.iter().position(|node| node.position == Some(unrelated)).unwrap();
+    assert!(grown.contains(&NodeId::new(reached_node as u32)));
+    assert_eq!(boundary.owners.nodes[reached_node], Some(0));
+    assert_eq!(boundary.owners.nodes[unrelated_node], None, "independent comparator remains native");
+}
+
+#[test]
+fn event_netlist_native_wire_cut_preserves_original_power_link() {
+    use crate::redpiler::analysis::instant::event_netlist::{
+        CandidateFrame, CutSource, SourceCut, SourceOwner, candidate_boundary, discover, source_cuts,
+    };
+    let world = wire_controlled_cell_world();
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let mut eligible = vec![true; catalog.cells.len() + catalog.corridors.len()];
+    eligible[catalog.cells.len()..].fill(false);
+    let candidates = discover(graph, catalog, &eligible, &monitor).unwrap();
+    let cuts: Vec<SourceCut> = source_cuts(graph, catalog, &candidates, &monitor).unwrap();
+    let wires = cuts
+        .iter()
+        .filter_map(|cut| match cut.source {
+            CutSource::Wire { node, link } if cut.owner == SourceOwner::Native => Some((cut, node, link)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(!wires.is_empty(), "native wire source must remain an explicit live cut");
+    let &(cut, _, link) = wires
+        .iter()
+        .find(|(_, _, link)| matches!(graph.power_links[*link as usize].to, PowerTarget::Input { .. }))
+        .expect("native wire must feed a component input");
+    let boundary = candidate_boundary(graph, catalog, &candidates, cut.region, &monitor).unwrap();
+    let edge = graph.power_links[link as usize];
+    let (circuit, _) =
+        crate::redpiler::analysis::instant::layers::logical::compile_candidate_computation(graph, &[edge.to], &boundary.owners, &monitor).unwrap();
+    assert!(
+        circuit.program.inputs.iter().any(|input| matches!(input.source,
+        LayerInputSource::SourceAbove { site, .. } if site == edge.from)),
+        "candidate lowering must read the original native wire rather than claim its state"
+    );
+    let pin = catalog
+        .cells
+        .iter()
+        .flat_map(|cell| cell.resources.iter())
+        .find(|pin| {
+            boundary.owners.resources[pin.resource.index()].is_some()
+                && pin.owners.len() == 1
+                && graph.resources[pin.resource.index()].contacts.len() == 2
+        })
+        .unwrap();
+    let (with_state, _) = crate::redpiler::analysis::instant::layers::logical::compile_candidate_state_computation(
+        graph,
+        &[edge.to],
+        &[(pin.resource, pin.source)],
+        &boundary.owners,
+        &monitor,
+    )
+    .unwrap();
+    assert!(with_state.outputs.iter().any(|output| matches!(output.target,
+        SettledTarget::ResourceState { resource, source } if resource == pin.resource && source == pin.source)));
+    CandidateFrame::new(graph, &boundary.owners, &with_state).unwrap();
+    let (expanded, _) = crate::redpiler::analysis::instant::layers::logical::compile_candidate_with_native_wires(
+        graph,
+        &[edge.to],
+        &[(pin.resource, pin.source)],
+        &boundary.owners,
+        &monitor,
+    )
+    .unwrap();
+    let (live, _) = crate::redpiler::analysis::instant::layers::logical::compile_candidate_live_computation(
+        graph,
+        &[edge.to],
+        &[(pin.resource, pin.source)],
+        &boundary.owners,
+        &monitor,
+    )
+    .unwrap();
+    assert_eq!(boundary.owners.sites[edge.from.index()], None, "expanded native wire remains Graph-owned");
+    let mut conflicting = boundary.owners.clone();
+    conflicting.sites[edge.from.index()] = Some(0);
+    assert!(
+        CandidateFrame::new(graph, &conflicting, &circuit).is_err(),
+        "an internally owned producer cannot be silently treated as a native input"
+    );
+    let (program, state) = graph.clone().lower().unwrap();
+    let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
+    let mut live_frame = CandidateFrame::new_live_states(graph, &boundary.owners, &live).unwrap();
+    let destination = graph.resources[pin.resource.index()]
+        .contacts
+        .iter()
+        .copied()
+        .find(|contact| *contact != pin.source)
+        .unwrap();
+    let source_output = live
+        .outputs
+        .iter()
+        .position(
+            |output| matches!(output.target, SettledTarget::ResourceState { resource, source } if resource == pin.resource && source == pin.source),
+        )
+        .unwrap();
+    let destination_output = live
+        .outputs
+        .iter()
+        .position(
+            |output| matches!(output.target, SettledTarget::ResourceState { resource, source } if resource == pin.resource && source == destination),
+        )
+        .unwrap();
+    live_frame
+        .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+        .unwrap();
+    assert_eq!((live_frame.outputs()[source_output], live_frame.outputs()[destination_output]), (1, 0));
+    backend.set_resource_contact(pin.resource, destination, true);
+    live_frame
+        .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+        .unwrap();
+    assert_eq!(
+        (live_frame.outputs()[source_output], live_frame.outputs()[destination_output]),
+        (0, 1),
+        "solving must retain the applied virtual resource transition"
+    );
+    backend.set_resource_contact(pin.resource, pin.source, true);
+    live_frame
+        .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+        .unwrap();
+    assert_eq!((live_frame.outputs()[source_output], live_frame.outputs()[destination_output]), (1, 0));
+    let mut evaluation = CandidateFrame::new(graph, &boundary.owners, &circuit).unwrap();
+    let mut expanded_evaluation = CandidateFrame::new(graph, &boundary.owners, &expanded).unwrap();
+    let PowerTarget::Input { node, port } = edge.to else { unreachable!() };
+    for _ in 0..4 {
+        backend.use_block(CONTROL.offset(BlockFace::West)).unwrap();
+        for _ in 0..7 {
+            evaluation
+                .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+                .unwrap();
+            let expected = backend.input_strength(node, port);
+            let actual = evaluation.outputs()[0];
+            assert_eq!(actual > 0, expected > 0, "candidate cut must follow native wire changes");
+            expanded_evaluation
+                .evaluate(|site, port| backend.site_power(site, port), |source| backend.sample_settled_input(source))
+                .unwrap();
+            assert_eq!(
+                expanded_evaluation.outputs()[0] > 0,
+                expected > 0,
+                "read-only expanded native wire must follow its independent Graph source"
+            );
+            backend.tick().unwrap();
+        }
+    }
+    for (cut, node, link) in wires {
+        assert_eq!(catalog.ports[cut.row as usize].kind, BoundaryPortKind::Power { link });
+        let edge = graph.power_links[link as usize];
+        assert!(matches!(graph.sites[edge.from.index()].source,SiteSource::Component(source) if source == node));
+        assert_eq!(
+            candidates.partition.owners.nodes[node.index()].map(|owner| candidates.selected[owner]),
+            Some(false)
+        );
+    }
+    let cancelled = TaskMonitor::default();
+    cancelled.cancel();
+    assert!(source_cuts(graph, catalog, &candidates, &cancelled).is_err());
+}
+
+#[test]
+fn event_netlist_common_native_wire_does_not_merge_consumers() {
+    use crate::redpiler::analysis::instant::event_netlist::{CutSource, SourceOwner, discover, source_cuts};
+    let mut world = wire_controlled_cell_world();
+    let offset = BlockPos::new(0, 0, 5);
+    for position in [
+        BASE,
+        BASE.offset(BlockFace::East),
+        BASE.offset(BlockFace::East).offset(BlockFace::East),
+        BASE.offset(BlockFace::Top),
+        BASE.offset(BlockFace::Top).offset(BlockFace::Top),
+        CONTROL,
+        CONTROL.offset(BlockFace::Bottom),
+    ] {
+        world.set_block(position + offset, world.get_block(position));
+    }
+    for z in 9..13 {
+        let wire = BlockPos::new(7, 20, z);
+        world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            wire,
+            Block::RedstoneWire {
+                wire: RedstoneWire::new(
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    RedstoneWireSide::Side,
+                    15,
+                ),
+            },
+        );
+    }
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let shared = catalog
+        .cells
+        .iter()
+        .position(|cell| cell.uses.iter().any(|use_| graph.pistons[use_.actor.index()].position == BASE))
+        .unwrap();
+    let other = catalog
+        .cells
+        .iter()
+        .position(|cell| cell.uses.iter().any(|use_| graph.pistons[use_.actor.index()].position == BASE + offset))
+        .unwrap();
+    let mut eligible = vec![true; catalog.cells.len() + catalog.corridors.len()];
+    eligible[catalog.cells.len()..].fill(false);
+    let candidates = discover(graph, catalog, &eligible, &monitor).unwrap();
+    assert!(
+        candidates.selected[shared] && candidates.selected[other],
+        "both consumers must actually be discovered"
+    );
+    assert_ne!(
+        candidates.partition.owner_region[shared], candidates.partition.owner_region[other],
+        "common native wire is a read, not shared ownership"
+    );
+    let cuts = source_cuts(graph, catalog, &candidates, &monitor).unwrap();
+    let native = cuts
+        .iter()
+        .filter_map(|cut| match cut.source {
+            CutSource::Wire { node, .. } if cut.owner == SourceOwner::Native => Some((cut.region, node)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(native.iter().any(|(region, _)| *region == candidates.partition.owner_region[shared]));
+    assert!(native.iter().any(|(region, _)| *region == candidates.partition.owner_region[other]));
+}
+
+#[test]
+fn event_netlist_batched_native_wire_reads_match_live_graph_samples() {
+    use crate::redpiler::analysis::instant::layers::compile_native_power_cuts;
+    let world = wire_controlled_cell_world();
+    let monitor = TaskMonitor::default();
+    let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let graph = &prepared.graph;
+    let actor = graph.pistons.iter().find(|piston| piston.position == BASE).unwrap();
+    let mut targets = Vec::new();
+    for port in [InputPort::Main, InputPort::Quasi] {
+        for threshold in 0..15 {
+            targets.push((PowerTarget::Input { node: actor.node, port }, threshold));
+        }
+    }
+    let program = compile_native_power_cuts(graph, &targets, &monitor).unwrap();
+    assert!(
+        program
+            .inputs
+            .iter()
+            .any(|input| matches!(input.source,LayerInputSource::SourceAbove { site,.. } if graph.sites[site.index()].position == CONTROL)),
+        "the wire must remain a live source input"
+    );
+    let (lowered, state) = graph.clone().lower().unwrap();
+    let mut backend = GraphBackend::new_unactivated(lowered, state, 0).unwrap();
+    let mut scratch = vec![false; program.expressions.len()];
+    for cycle in 0..4 {
+        backend.use_block(CONTROL.offset(BlockFace::West)).unwrap();
+        for tick in 0..7 {
+            program
+                .evaluate(&mut scratch, |input| backend.sample_settled_input(input.source).unwrap())
+                .unwrap();
+            for (index, (_, root)) in program.roots.iter().enumerate() {
+                let (PowerTarget::Input { node, port }, threshold) = targets[index] else {
+                    unreachable!()
+                };
+                assert_eq!(
+                    scratch[root.0 as usize],
+                    backend.input_strength(node, port) > threshold,
+                    "live power cycle {cycle} tick {tick} root {index}"
+                );
+            }
+            backend.tick().unwrap();
+        }
+    }
+}
+
+/// Experimental idealized private NOT frame. The only native output is the
+/// lamp; owned actuator/reset state is held at its quiescent entry pose.
+#[test]
+fn event_netlist_idealized_private_not_frame_executes_and_materializes() {
+    use crate::redpiler::analysis::instant::layers::compile_native_power_cuts;
+    let output = BlockPos::new(10, 20, 9);
+    let data = BASE.offset(BlockFace::North);
+    let build = || {
+        let mut world = direct_cell_world();
+        world.set_block(output, Block::RedstoneLamp { lit: true });
+        world.set_block(data.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(
+            data,
+            Block::Lever {
+                lever: Lever {
+                    face: LeverFace::Floor,
+                    facing: BlockDirection::North,
+                    powered: false,
+                },
+            },
+        );
+        world
+    };
+    let world = build();
+    let monitor = TaskMonitor::default();
+    let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let graph = &prepared.graph;
+    assert_eq!(graph.pistons.len(), 1, "multi-actor ownership is outside this frame");
+    assert_eq!(graph.resources.len(), 1, "shared or unrelated resources remain native");
+    let catalog = infer_boundaries(graph, &monitor).unwrap();
+    assert_eq!(catalog.cells.len(), 1, "frame declines unrecognized or interacting cells");
+    let cell = &catalog.cells[0];
+    assert_eq!(cell.uses.len(), 1);
+    assert_eq!(cell.resources.len(), 1);
+    let gate_use = &cell.uses[0];
+    let pin = &cell.resources[0];
+    assert_eq!(&*pin.owners, &[gate_use.actor], "resource ownership must be exclusive");
+    assert!(gate_use.reset.observer().is_some(), "only the private observer-reset shape is admitted");
+    let spec = graph.pistons[gate_use.actor.index()];
+    assert!(matches!(spec.lane,PistonLane::SingleResource { far } if far == pin.source));
+    let lamp = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(output)).unwrap() as u32);
+    let candidates = crate::redpiler::analysis::instant::event_netlist::discover(
+        graph,
+        &catalog,
+        &vec![true; catalog.cells.len() + catalog.corridors.len()],
+        &monitor,
+    )
+    .unwrap();
+    let plan: crate::redpiler::analysis::instant::event_netlist::PrivateNot =
+        crate::redpiler::analysis::instant::event_netlist::lower_private_not(graph, &catalog, &candidates.partition.owners, lamp, &monitor).unwrap();
+    assert_eq!(plan.actor, gate_use.actor);
+    assert_eq!(plan.resource, pin.resource);
+    assert_eq!(plan.far, pin.source);
+    assert_eq!(plan.observer, gate_use.reset.observer().unwrap());
+    let far = spec.routes.far_changed.expect("native Far boundary route");
+    assert_eq!(plan.route, far);
+    let deliveries = graph.routes[far.index()]
+        .deliveries
+        .iter()
+        .enumerate()
+        .filter(|(_, delivery)| delivery.receiver == Some(CallbackReceiver::Component(lamp)))
+        .map(|(ordinal, delivery)| (ordinal, *delivery))
+        .collect::<Vec<_>>();
+    assert!(!deliveries.is_empty(), "the physical output must receive an original Far notification");
+    assert_eq!(plan.deliveries.len(), deliveries.len());
+    assert_eq!(&*plan.activations, &*gate_use.activations);
+    assert!(
+        deliveries.iter().all(|(_, delivery)| delivery.view == OperandView::Live),
+        "captured egress stays native"
+    );
+    for route in [spec.routes.base_changed, spec.routes.near_changed] {
+        assert!(
+            graph.routes[route.index()]
+                .deliveries
+                .iter()
+                .all(|delivery| delivery.receiver != Some(CallbackReceiver::Component(lamp))),
+            "skipped actuator effects must not reach the native lamp"
+        );
+    }
+    let power = compile_native_power_cuts(
+        graph,
+        &[
+            (
+                PowerTarget::Input {
+                    node: spec.node,
+                    port: InputPort::Main,
+                },
+                0,
+            ),
+            (
+                PowerTarget::Input {
+                    node: spec.node,
+                    port: InputPort::Quasi,
+                },
+                0,
+            ),
+        ],
+        &monitor,
+    )
+    .unwrap();
+    assert_eq!(plan.power, power);
+    let (program, state) = graph.clone().lower().unwrap();
+    let mut frame = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+    let mut high_input = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+    let mut native = GraphBackend::new_unactivated(program, state, 0).unwrap();
+    high_input.use_block(data).unwrap();
+    high_input.use_block(CONTROL).unwrap();
+    let mut high_values = vec![false; power.expressions.len()];
+    power
+        .evaluate(&mut high_values, |input| high_input.sample_settled_input(input.source).unwrap())
+        .unwrap();
+    assert!(
+        power.roots.iter().any(|(_, root)| high_values[root.0 as usize]),
+        "true data input inhibits the idealized NOT pulse"
+    );
+    assert!(
+        high_input.future.piston_requests.is_empty(),
+        "the independent trigger must not queue an inhibited piston"
+    );
+    for _ in 0..6 {
+        high_input.tick().unwrap();
+    }
+    assert!(high_input.node_state(lamp).powered, "true data input emits no falling output");
+    let mut initial = vec![false; power.expressions.len()];
+    power
+        .evaluate(&mut initial, |input| frame.sample_settled_input(input.source).unwrap())
+        .unwrap();
+    assert!(
+        power.roots.iter().any(|(_, root)| initial[root.0 as usize]),
+        "true input produces no NOT pulse"
+    );
+    frame.use_block(CONTROL).unwrap();
+    native.use_block(CONTROL).unwrap();
+    assert_eq!(frame.future.piston_requests.len(), 1, "only one source-qualified event is admitted");
+    let request = frame.future.piston_requests.front().copied().unwrap();
+    assert_eq!(request.piston, gate_use.actor);
+    assert_eq!(request.action, PistonAction::Retract);
+    assert!(
+        gate_use.activations.iter().any(|occurrence| Some(occurrence.route) == request.source),
+        "event must retain its source route"
+    );
+    assert_eq!(frame.state.pistons[gate_use.actor.index()].availability, PistonAvailability::Ready);
+    assert!(frame.state.pistons[gate_use.actor.index()].extended && frame.state.pistons[gate_use.actor.index()].head_present);
+    assert!(frame.future.deferred_pistons.is_empty(), "pending owned reset remains native");
+    let state = frame.state.resources[pin.resource.index()];
+    assert!(state.enabled && state.at == pin.source, "quiescent source entry");
+    let mut scratch = vec![false; power.expressions.len()];
+    power
+        .evaluate(&mut scratch, |input| frame.sample_settled_input(input.source).unwrap())
+        .unwrap();
+    let input_powered = power.roots.iter().any(|(_, root)| scratch[root.0 as usize]);
+    let output_event = !input_powered;
+    assert!(output_event, "false input produces the idealized NOT pulse");
+    frame.future.piston_requests.pop_front();
+    let emit = |frame: &mut GraphBackend| {
+        for &(ordinal, delivery) in &deliveries {
+            frame
+                .deliver_callback(
+                    far,
+                    delivery,
+                    None,
+                    Some(RouteOccurrence {
+                        route: far,
+                        ordinal: ordinal as u32,
+                    }),
+                )
+                .unwrap();
+        }
+    };
+    frame.set_resource_contact(pin.resource, pin.source, false).unwrap();
+    emit(&mut frame);
+    for _ in 0..6 {
+        frame.tick().unwrap();
+        native.tick().unwrap();
+    }
+    println!(
+        "IDEALIZED_PRIVATE_NOT pulse frame={:?} native={:?}",
+        frame.state.components[lamp.index()],
+        native.state.components[lamp.index()]
+    );
+    assert!(
+        !frame.node_state(lamp).powered,
+        "the false input must publish an observable falling output"
+    );
+    frame.set_resource_contact(pin.resource, pin.source, true).unwrap();
+    emit(&mut frame);
+    frame.use_block(CONTROL).unwrap();
+    native.use_block(CONTROL).unwrap();
+    for _ in 0..24 {
+        frame.tick().unwrap();
+        native.tick().unwrap();
+    }
+    assert_eq!(frame.state.resources[pin.resource.index()].at, pin.source);
+    assert!(frame.state.resources[pin.resource.index()].enabled);
+    assert!(
+        frame.future.piston_requests.is_empty() && frame.future.deferred_pistons.is_empty(),
+        "frame handoff is quiescent"
+    );
+    let (ComponentState::Electrical(frame_lamp), ComponentState::Electrical(native_lamp)) =
+        (&frame.state.components[lamp.index()], &native.state.components[lamp.index()])
+    else {
+        panic!("lamp state");
+    };
+    assert_eq!(frame_lamp.powered, native_lamp.powered, "native lamp settles to the same visible output");
+    println!(
+        "IDEALIZED_PRIVATE_NOT lamp_internal_strength frame={} native={}",
+        frame_lamp.output_strength, native_lamp.output_strength
+    );
+    assert_eq!(frame_lamp, native_lamp, "native lamp state must materialize exactly at handoff");
+    assert_eq!(
+        frame.state.pistons[gate_use.actor.index()].extended,
+        native.state.pistons[gate_use.actor.index()].extended
+    );
+    assert_eq!(
+        frame.state.pistons[gate_use.actor.index()].head_present,
+        native.state.pistons[gate_use.actor.index()].head_present
+    );
+    let observer = gate_use.reset.observer().unwrap();
+    assert_eq!(
+        frame.state.components[observer.index()],
+        native.state.components[observer.index()],
+        "observer state at handoff"
+    );
+    assert_eq!(
+        frame.future.scheduler.iter().collect::<Vec<_>>(),
+        native.future.scheduler.iter().collect::<Vec<_>>(),
+        "native scheduled work at handoff"
+    );
+    assert_eq!(frame.execution_counts().piston_actions, 0, "frame must replace the interior actor work");
+    assert!(
+        native.execution_counts().piston_actions > 0,
+        "native reference must exercise real piston work"
+    );
+    for _ in 0..24 {
+        frame.tick().unwrap();
+        native.tick().unwrap();
+        assert_eq!(
+            frame.state.components[lamp.index()],
+            native.state.components[lamp.index()],
+            "native lamp continuation"
+        );
+        assert_eq!(
+            frame.state.components[observer.index()],
+            native.state.components[observer.index()],
+            "native observer continuation"
+        );
+    }
+    for repetition in 0..2 {
+        frame.use_block(data).unwrap();
+        native.use_block(data).unwrap();
+        frame.use_block(CONTROL).unwrap();
+        native.use_block(CONTROL).unwrap();
+        if repetition == 0 {
+            assert!(frame.future.piston_requests.is_empty(), "true data inhibits the independent trigger");
+            power
+                .evaluate(&mut scratch, |input| frame.sample_settled_input(input.source).unwrap())
+                .unwrap();
+            assert!(power.roots.iter().any(|(_, root)| scratch[root.0 as usize]), "true data sample");
+            for _ in 0..6 {
+                frame.tick().unwrap();
+                native.tick().unwrap();
+            }
+            assert!(frame.node_state(lamp).powered, "true data emits no falling output");
+            frame.use_block(CONTROL).unwrap();
+            native.use_block(CONTROL).unwrap();
+            for _ in 0..24 {
+                frame.tick().unwrap();
+                native.tick().unwrap();
+            }
+            assert_eq!(
+                frame.state.components[lamp.index()],
+                native.state.components[lamp.index()],
+                "true-input handoff"
+            );
+            continue;
+        }
+        assert_eq!(frame.future.piston_requests.len(), 1, "one new trigger is required");
+        let request = frame.future.piston_requests.pop_front().unwrap();
+        assert_eq!(request.piston, gate_use.actor);
+        assert!(gate_use.activations.iter().any(|occurrence| Some(occurrence.route) == request.source));
+        power
+            .evaluate(&mut scratch, |input| frame.sample_settled_input(input.source).unwrap())
+            .unwrap();
+        assert!(!power.roots.iter().any(|(_, root)| scratch[root.0 as usize]), "NOT input {repetition}");
+        frame.set_resource_contact(pin.resource, pin.source, false).unwrap();
+        emit(&mut frame);
+        for _ in 0..6 {
+            frame.tick().unwrap();
+            native.tick().unwrap();
+        }
+        frame.set_resource_contact(pin.resource, pin.source, true).unwrap();
+        emit(&mut frame);
+        frame.use_block(CONTROL).unwrap();
+        native.use_block(CONTROL).unwrap();
+        for _ in 0..24 {
+            frame.tick().unwrap();
+            native.tick().unwrap();
+        }
+        assert_eq!(
+            frame.state.components[lamp.index()],
+            native.state.components[lamp.index()],
+            "native lamp at frame {repetition}"
+        );
+        assert_eq!(
+            frame.state.components[observer.index()],
+            native.state.components[observer.index()],
+            "observer at frame {repetition}"
+        );
+        assert!(
+            frame.future.piston_requests.is_empty() && frame.future.deferred_pistons.is_empty(),
+            "quiescent frame {repetition}"
+        );
+    }
+    // Continuous experiment: four input changes at six-tick intervals, with
+    // no native reset wait between frames. Only the private gate stays owned.
+    for index in 0..4 {
+        frame.use_block(data).unwrap();
+        native.use_block(data).unwrap();
+        frame.use_block(CONTROL).unwrap();
+        native.use_block(CONTROL).unwrap();
+        power
+            .evaluate(&mut scratch, |input| frame.sample_settled_input(input.source).unwrap())
+            .unwrap();
+        let high = power.roots.iter().any(|(_, root)| scratch[root.0 as usize]);
+        assert_eq!(high, index % 2 == 0, "changing data input at frame {index}");
+        if high {
+            assert!(frame.future.piston_requests.is_empty(), "high input must inhibit the private gate");
+        } else {
+            assert_eq!(frame.future.piston_requests.len(), 1, "one source-qualified trigger");
+            let request = frame.future.piston_requests.pop_front().unwrap();
+            assert_eq!(request.piston, gate_use.actor);
+            assert!(gate_use.activations.iter().any(|occurrence| Some(occurrence.route) == request.source));
+            frame.set_resource_contact(pin.resource, pin.source, false).unwrap();
+            emit(&mut frame);
+        }
+        for _ in 0..6 {
+            frame.tick().unwrap();
+            native.tick().unwrap();
+        }
+        assert_eq!(frame.node_state(lamp).powered, high, "idealized NOT output at frame {index}");
+        if !high {
+            frame.set_resource_contact(pin.resource, pin.source, true).unwrap();
+            emit(&mut frame);
+        }
+        frame.use_block(CONTROL).unwrap();
+        native.use_block(CONTROL).unwrap();
+        assert!(
+            frame.future.piston_requests.is_empty() && frame.future.deferred_pistons.is_empty(),
+            "owned work at frame {index}"
+        );
+    }
+    for _ in 0..24 {
+        frame.tick().unwrap();
+        native.tick().unwrap();
+    }
+    assert_eq!(
+        frame.state.components[lamp.index()],
+        native.state.components[lamp.index()],
+        "lamp after six-tick re-entry"
+    );
+    assert_eq!(
+        frame.state.components[observer.index()],
+        native.state.components[observer.index()],
+        "observer after six-tick re-entry"
+    );
+    assert_eq!(
+        frame.future.scheduler.iter().collect::<Vec<_>>(),
+        native.future.scheduler.iter().collect::<Vec<_>>(),
+        "scheduled work after six-tick re-entry"
+    );
+    println!(
+        "IDEALIZED_PRIVATE_NOT frame={:?} native={:?}",
+        frame.execution_counts(),
+        native.execution_counts()
+    );
+}
+
+#[test]
+fn event_netlist_selected_power_producer_and_consumer_grow_together() {
+    use crate::redpiler::analysis::instant::event_netlist::{candidate_boundary, discover};
+    let world = shared_payload_single_wire_multiconsumer_world();
+    let monitor = TaskMonitor::default();
+    let mut prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let options = crate::redpiler::CompilerOptions::parse("-O6").unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let first = catalog
+        .cells
+        .iter()
+        .position(|cell| cell.resources.iter().any(|resource| resource.owners.len() >= 2))
+        .unwrap();
+    let second = catalog
+        .cells
+        .iter()
+        .position(|cell| {
+            cell.uses
+                .iter()
+                .any(|use_| graph.pistons[use_.actor.index()].position == BlockPos::new(9, 20, 9))
+        })
+        .unwrap();
+    assert!(
+        catalog.ports.iter().any(|a| a.owner == BoundaryOwner::Cell(first as u32)
+            && a.direction == BoundaryDirection::Output
+            && matches!(a.kind, BoundaryPortKind::Power { .. })
+            && catalog
+                .ports
+                .iter()
+                .any(|b| b.owner == BoundaryOwner::Cell(second as u32) && b.direction == BoundaryDirection::Input && a.kind == b.kind)),
+        "fixture needs an original producer-to-consumer power link"
+    );
+    let candidates = discover(graph, catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    assert!(candidates.selected[first] && candidates.selected[second]);
+    assert!(
+        candidates
+            .edges
+            .iter()
+            .any(|edge| edge.source == first && edge.target == second && matches!(edge.kind, BoundaryPortKind::Power { .. })),
+        "the reached producer must change the consumer's power source"
+    );
+    assert_eq!(candidates.partition.owner_region[first], candidates.partition.owner_region[second]);
+    let boundary = candidate_boundary(graph, catalog, &candidates, candidates.partition.owner_region[first], &monitor).unwrap();
+    let internal = candidates
+        .edges
+        .iter()
+        .find(|edge| edge.source == first && edge.target == second && matches!(edge.kind, BoundaryPortKind::Power { .. }))
+        .unwrap();
+    assert!(
+        !boundary
+            .scan
+            .ports
+            .iter()
+            .any(|port| port.direction == BoundaryDirection::Output && port.kind == internal.kind),
+        "a selected producer-to-consumer edge is internal to the whole-region cut"
+    );
+}
+
+/// Test-only runtime: unsupported entry stays in the original Graph FIFO.
+struct AutomaticPrivateNot {
+    plan: crate::redpiler::analysis::instant::event_netlist::PrivateNot,
+    remaining: u8,
+    executions: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PrivateNotTrigger {
+    Started,
+    Native,
+    Busy,
+}
+
+impl AutomaticPrivateNot {
+    fn trigger(&mut self, backend: &mut GraphBackend, position: BlockPos) -> Result<PrivateNotTrigger, GraphExecutionError> {
+        // The caller must retain this input until the private frame completes.
+        if self.remaining != 0 {
+            return Ok(PrivateNotTrigger::Busy);
+        }
+        backend.use_block(position)?;
+        if backend.future.piston_requests.len() != 1 || !backend.future.deferred_pistons.is_empty() {
+            return Ok(PrivateNotTrigger::Native);
+        }
+        let request = backend.future.piston_requests.front().copied().unwrap();
+        let state = backend.state.pistons[self.plan.actor.index()];
+        let resource = backend.state.resources[self.plan.resource.index()];
+        let source_matches = request.source.is_some_and(|route| self.plan.ingress_routes.binary_search(&route).is_ok());
+        if request.piston != self.plan.actor
+            || request.action != PistonAction::Retract
+            || !source_matches
+            || !state.extended
+            || !state.head_present
+            || state.availability != PistonAvailability::Ready
+            || !resource.enabled
+            || resource.at != self.plan.far
+            || backend.is_pending(self.plan.observer)
+        {
+            return Ok(PrivateNotTrigger::Native);
+        }
+        let inputs = match self
+            .plan
+            .power
+            .inputs
+            .iter()
+            .map(|input| backend.sample_settled_input(input.source))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(inputs) => inputs,
+            Err(_) => return Ok(PrivateNotTrigger::Native),
+        };
+        let mut scratch = vec![false; self.plan.power.expressions.len()];
+        if self
+            .plan
+            .power
+            .evaluate(&mut scratch, |input| {
+                let index = self.plan.power.inputs.iter().position(|slot| *slot == input).expect("validated input");
+                inputs[index]
+            })
+            .is_err()
+        {
+            return Ok(PrivateNotTrigger::Native);
+        }
+        if self.plan.power.roots.iter().any(|(_, root)| scratch[root.0 as usize]) {
+            return Ok(PrivateNotTrigger::Native);
+        }
+        backend.future.piston_requests.pop_front();
+        backend.set_resource_contact(self.plan.resource, self.plan.near, false).unwrap();
+        self.emit(backend)?;
+        self.remaining = 6;
+        self.executions += 1;
+        Ok(PrivateNotTrigger::Started)
+    }
+
+    fn tick(&mut self, backend: &mut GraphBackend) -> Result<(), GraphExecutionError> {
+        backend.tick()?;
+        if self.remaining > 0 {
+            self.remaining -= 1;
+            if self.remaining == 0 {
+                backend.set_resource_contact(self.plan.resource, self.plan.far, true).unwrap();
+                self.emit(backend)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn emit(&self, backend: &mut GraphBackend) -> Result<(), GraphExecutionError> {
+        for &(ordinal, delivery) in &self.plan.deliveries {
+            backend.deliver_callback(
+                self.plan.route,
+                delivery,
+                None,
+                Some(RouteOccurrence {
+                    route: self.plan.route,
+                    ordinal,
+                }),
+            )?;
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn event_netlist_automatic_private_not_executes_six_tick_frames() {
+    use crate::redpiler::analysis::instant::event_netlist::{discover, lower_private_not};
+    let output = BlockPos::new(10, 20, 9);
+    let data = BASE.offset(BlockFace::North);
+    let mut world = direct_cell_world();
+    world.set_block(output, Block::RedstoneLamp { lit: true });
+    world.set_block(data.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        data,
+        Block::Lever {
+            lever: Lever {
+                face: LeverFace::Floor,
+                facing: BlockDirection::North,
+                powered: false,
+            },
+        },
+    );
+    let monitor = TaskMonitor::default();
+    let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let graph = &prepared.graph;
+    let catalog = infer_boundaries(graph, &monitor).unwrap();
+    let candidates = discover(graph, &catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    let lamp = NodeId::new(graph.nodes.iter().position(|node| node.position == Some(output)).unwrap() as u32);
+    let plan = lower_private_not(graph, &catalog, &candidates.partition.owners, lamp, &monitor).expect("isolated private gate admission");
+    let trigger_node = graph.nodes.iter().position(|node| node.position == Some(CONTROL)).unwrap();
+    let trigger_route = graph.nodes[trigger_node].output_route.unwrap();
+    assert!(plan.ingress_routes.contains(&trigger_route));
+    let ambiguous_event = plan.activations.iter().find(|event| event.route == trigger_route).copied().unwrap();
+    let mut ambiguous = graph.clone();
+    ambiguous.routes[trigger_route.index()].deliveries[ambiguous_event.ordinal as usize].view = OperandView::Captured;
+    let cut = lower_private_not(&ambiguous, &catalog, &candidates.partition.owners, lamp, &monitor);
+    assert!(
+        !cut.as_ref().is_ok_and(|plan| plan.ingress_routes.contains(&trigger_route)),
+        "captured or ambiguous source must remain native"
+    );
+    let (program, state) = graph.clone().lower().unwrap();
+    let mut frame = GraphBackend::new_unactivated(program.clone(), state.clone(), 0).unwrap();
+    let mut native = GraphBackend::new_unactivated(program, state, 0).unwrap();
+    let mut runtime = AutomaticPrivateNot {
+        plan,
+        remaining: 0,
+        executions: 0,
+    };
+    let mut timing_mismatches = 0usize;
+    for index in 0..4 {
+        if index != 0 {
+            frame.use_block(data).unwrap();
+            native.use_block(data).unwrap();
+        }
+        let expected_high = index % 2 == 1;
+        let executed = runtime.trigger(&mut frame, CONTROL).unwrap();
+        native.use_block(CONTROL).unwrap();
+        assert_eq!(
+            executed,
+            if expected_high {
+                PrivateNotTrigger::Native
+            } else {
+                PrivateNotTrigger::Started
+            },
+            "only an actual unpowered request starts a frame at {index}"
+        );
+        if executed == PrivateNotTrigger::Started {
+            let trigger_node = frame.positions[&CONTROL];
+            let before = frame.node_state(trigger_node).powered;
+            assert_eq!(runtime.trigger(&mut frame, CONTROL).unwrap(), PrivateNotTrigger::Busy);
+            assert_eq!(frame.node_state(trigger_node).powered, before, "busy input remains with the caller");
+        }
+        let mut saw_falling = false;
+        for _ in 0..6 {
+            runtime.tick(&mut frame).unwrap();
+            native.tick().unwrap();
+            saw_falling |= !frame.node_state(lamp).powered;
+            timing_mismatches += usize::from(frame.node_state(lamp).powered != native.node_state(lamp).powered);
+        }
+        assert_eq!(saw_falling, !expected_high, "observable Boolean pulse at frame {index}");
+        assert_eq!(runtime.remaining, 0);
+        frame.use_block(CONTROL).unwrap();
+        native.use_block(CONTROL).unwrap();
+    }
+    for _ in 0..24 {
+        runtime.tick(&mut frame).unwrap();
+        native.tick().unwrap();
+    }
+    assert_eq!(
+        frame.state.components[lamp.index()],
+        native.state.components[lamp.index()],
+        "native lamp at handoff"
+    );
+    assert_eq!(
+        frame.state.components[runtime.plan.observer.index()],
+        native.state.components[runtime.plan.observer.index()],
+        "native observer at handoff"
+    );
+    assert_eq!(
+        frame.future.scheduler.iter().collect::<Vec<_>>(),
+        native.future.scheduler.iter().collect::<Vec<_>>(),
+        "native scheduler at handoff"
+    );
+    assert!(frame.future.piston_requests.is_empty() && frame.future.deferred_pistons.is_empty());
+    assert_eq!(runtime.executions, 2, "automatic source triggers execute the private frame");
+    assert_eq!(frame.execution_counts().piston_actions, 0);
+    assert!(native.execution_counts().piston_actions > 0);
+    println!(
+        "AUTOMATIC_PRIVATE_NOT frames=4 executions={} timing_mismatches={} callbacks={} native_callbacks={} native_actions={}",
+        runtime.executions,
+        timing_mismatches,
+        frame.execution_counts().callbacks,
+        native.execution_counts().callbacks,
+        native.execution_counts().piston_actions
+    );
 }

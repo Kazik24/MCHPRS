@@ -7,6 +7,13 @@ use crate::redpiler::program_graph::{SettledEvaluation, SettledValueKind};
 
 const MAX_FRAME_PASSES: usize = 128;
 
+fn report_activation_decline(monitor: &TaskMonitor, index: usize, witness: Option<mchprs_blocks::BlockPos>, reason: &str) {
+    let location = witness.map(|pos| format!(" at ({}, {}, {})", pos.x, pos.y, pos.z)).unwrap_or_default();
+    monitor.record_warning(format!(
+        "Fast device {index}{location} could not start: {reason}. Its work may run on Graph or another device."
+    ));
+}
+
 struct Register {
     storage: PistonId,
     resource: ResourceId,
@@ -1051,7 +1058,7 @@ impl GraphBackend {
         self.logical_device_owner.get(node.index()).is_some_and(Option::is_some)
     }
 
-    pub(super) fn install_logical_device(&mut self) -> Result<LogicalDeviceAdmission, String> {
+    pub(super) fn install_logical_device(&mut self, monitor: &TaskMonitor) -> Result<LogicalDeviceAdmission, String> {
         let count = self.program.logical_devices().len();
         self.native_action_clock_owner.fill(None);
         if count == 0 {
@@ -1066,16 +1073,27 @@ impl GraphBackend {
         for program_index in 0..count {
             let nodes = self.program.logical_devices()[program_index].scope.owned_nodes.clone();
             let clock_driver = self.program.logical_devices()[program_index].scope.clock_driver;
+            let witness = match clock_driver {
+                SettledClockDriver::NativeAction { clock } => self.program.pistons().get(clock.index()).map(|actor| actor.node),
+                _ => nodes.first().copied(),
+            }
+            .and_then(|node| self.program.nodes().get(node.index()).and_then(|node| node.position));
+            let report_decline = |reason: &str| {
+                report_activation_decline(monitor, program_index, witness, reason);
+            };
             if nodes.iter().any(|&node| self.logical_node_owned(node)) {
-                declines.push("overlapping logical-device scopes".to_owned());
+                let reason = "overlapping logical-device scopes";
+                report_decline(reason);
+                declines.push(reason.to_owned());
                 continue;
             }
             if let SettledClockDriver::NativeAction { clock } = clock_driver
                 && (self.native_action_clock_owner.get(clock.index()).is_none_or(Option::is_some)
-                    || self.logical_bud_owner_by_actor.get(clock.index()).is_some_and(Option::is_some)
-                    || self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_actor(clock)))
+                    || self.logical_bud_owner_by_actor.get(clock.index()).is_some_and(Option::is_some))
             {
-                declines.push(format!("native-action clock {clock:?} has a conflicting or intercepted owner"));
+                let reason = format!("native-action clock {clock:?} has a conflicting or intercepted owner");
+                report_decline(&reason);
+                declines.push(reason);
                 continue;
             }
             match self.prepare_logical_device(program_index) {
@@ -1101,6 +1119,7 @@ impl GraphBackend {
                 Err(reason) => {
                     #[cfg(test)]
                     eprintln!("logical device {program_index} declined: {reason}");
+                    report_decline(&reason);
                     declines.push(reason);
                 }
             }
@@ -1234,9 +1253,7 @@ impl GraphBackend {
         if !clock_state.extended || !clock_state.head_present || clock_state.availability != PistonAvailability::Ready {
             return Err("native-action frame requires an extended stationary clock piston".into());
         }
-        if self.logical_bud_owner_by_actor.get(clock.index()).is_some_and(Option::is_some)
-            || self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_actor(clock))
-        {
+        if self.logical_bud_owner_by_actor.get(clock.index()).is_some_and(Option::is_some) {
             return Err("native-action frame clock is intercepted by a logical piston owner".into());
         }
         let powered = self.node_state(timing.trigger).powered;
@@ -1397,6 +1414,7 @@ impl GraphBackend {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) fn run_native_action_clock_step(&mut self, clock: PistonId, _action: mchprs_world::PistonAction) -> Result<(), GraphExecutionError> {
         let Some(owner) = self.native_action_clock_owner.get(clock.index()).copied().flatten() else {
             return Err(self.unsupported(self.program.pistons()[clock.index()].node, "unbound native-action clock"));
@@ -1580,6 +1598,24 @@ mod tests {
     use crate::redpiler::program_graph::{LayerExpr, ReducedLayerProgram, SettledCircuit};
     use std::sync::Arc;
 
+    #[test]
+    fn activation_decline_keeps_reason_and_clickable_witness() {
+        let monitor = TaskMonitor::default();
+        report_activation_decline(&monitor, 2, Some(mchprs_blocks::BlockPos::new(-7, 64, 12)), "pending scheduled work");
+        let warnings = monitor.warnings();
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("pending scheduled work"));
+        assert!(warnings[0].contains("may run on Graph"));
+        let component = crate::player::diagnostic_component(&warnings[0]);
+        assert!(
+            component["extra"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|part| part["click_event"]["command"] == "/hl -7 64 12")
+        );
+    }
+
     fn constant_frame(circuit: &SettledCircuit) -> SettledFrame {
         SettledFrame {
             evaluation: SettledEvaluation::new(circuit).unwrap(),
@@ -1609,7 +1645,6 @@ mod tests {
                 roots: Box::new([]),
             },
             outputs: Box::new([]),
-            firing: None,
             retained_cells: Box::new([]),
             retained_effects: Box::new([]),
             declines: Box::new([]),

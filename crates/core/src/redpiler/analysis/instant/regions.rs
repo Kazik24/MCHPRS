@@ -6,7 +6,6 @@ use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
 
 mod fan;
-use fan::PortEndpoints;
 
 /// Rescan with merged region owners so internal cell/corridor witnesses are not kernel outputs.
 pub(crate) fn perimeters(
@@ -61,7 +60,7 @@ pub(crate) struct RegionPartition {
 /// Bind source graph entities to catalog owners and connect only paired owned dependencies.
 pub(crate) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<RegionPartition, String> {
     let owner_count = catalog.cells.len() + catalog.corridors.len();
-    partition_with_cuts(graph, catalog, monitor, &vec![true; owner_count], |_| true)
+    partition_with_cuts(graph, catalog, monitor, &vec![true; owner_count], 0, |_| true)
 }
 
 /// A cut changes composition ownership, never the retained read/effect evidence.
@@ -70,9 +69,47 @@ pub(crate) fn partition_with_cuts(
     catalog: &BoundaryCatalog,
     monitor: &TaskMonitor,
     joinable: &[bool],
+    retained_bytes: usize,
     couples: impl Fn(BoundaryPortKind) -> bool,
 ) -> Result<RegionPartition, String> {
+    partition_with_connector(graph, catalog, monitor, joinable, retained_bytes, |sets, budget| {
+        connect_selected_ports(sets, catalog.cells.len(), &catalog.ports, budget, joinable, couples)
+    })
+}
+
+/// Partition only the owner pairs reached by the event worklist. Reads and
+/// potential edges not present in the witness stay on the boundary.
+#[cfg(test)]
+pub(crate) fn partition_with_event_edges(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &TaskMonitor,
+    joinable: &[bool],
+    retained_bytes: usize,
+    edges: &[EventEdge],
+) -> Result<RegionPartition, String> {
+    partition_with_connector(graph, catalog, monitor, joinable, retained_bytes, |sets, budget| {
+        for edge in edges {
+            budget.visit()?;
+            if !joinable.get(edge.source).copied().unwrap_or(false) || !joinable.get(edge.target).copied().unwrap_or(false) {
+                return Err("instant event edge references an unselected owner".into());
+            }
+            sets.join(edge.source, edge.target);
+        }
+        Ok(())
+    })
+}
+
+fn partition_with_connector(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &TaskMonitor,
+    joinable: &[bool],
+    retained_bytes: usize,
+    connect: impl FnOnce(&mut DisjointSets, &mut WorkBudget<'_>) -> Result<(), String>,
+) -> Result<RegionPartition, String> {
     let mut budget = WorkBudget::new(monitor);
+    budget.retain_bytes(retained_bytes)?;
     let owners = build_owner_map(graph, catalog, &mut budget)?;
     let owner_count = catalog
         .cells
@@ -83,7 +120,7 @@ pub(crate) fn partition_with_cuts(
         return Err("instant-region cut table has stale owner dimensions".into());
     }
     let mut sets = DisjointSets::new(owner_count, &mut budget)?;
-    connect_selected_ports(&mut sets, catalog.cells.len(), &catalog.ports, &mut budget, joinable, couples)?;
+    connect(&mut sets, &mut budget)?;
 
     budget.retain_bytes(
         owner_count
@@ -157,30 +194,55 @@ fn connect_selected_ports(
     joinable: &[bool],
     couples: impl Fn(BoundaryPortKind) -> bool,
 ) -> Result<(), String> {
-    let fans = fan::index(cell_count, sets.parents.len(), ports, budget, |owner, kind| {
-        joinable[owner] && couples(kind)
-    })?;
-    for endpoints in fans.values() {
+    // Only opposite-side representatives are needed for union. Retaining all
+    // fan rows here needlessly duplicates a large portion of the catalog.
+    let mut representatives = FxHashMap::<BoundaryPortKind, (Option<usize>, Option<usize>)>::default();
+    for port in ports {
         budget.visit()?;
-        connect_owned_endpoints(sets, endpoints, budget)?;
+        let owner = owner_index(port.owner, cell_count)?;
+        if owner >= sets.parents.len() {
+            return Err("instant boundary port references a missing owner".into());
+        }
+        if !joinable[owner] || !couples(port.kind) {
+            continue;
+        }
+        if !representatives.contains_key(&port.kind) {
+            budget.retain_bytes(2 * std::mem::size_of::<(BoundaryPortKind, (Option<usize>, Option<usize>))>())?;
+        }
+        let endpoints = representatives.entry(port.kind).or_default();
+        match port.direction {
+            BoundaryDirection::Input => {
+                endpoints.0.get_or_insert(owner);
+            }
+            BoundaryDirection::Output => {
+                endpoints.1.get_or_insert(owner);
+            }
+        }
     }
-    Ok(())
-}
-
-/// Union every owner of a dependency in linear work when both producer and reader sides exist.
-fn connect_owned_endpoints(sets: &mut DisjointSets, endpoints: &PortEndpoints, budget: &mut WorkBudget<'_>) -> Result<(), String> {
-    if endpoints.outputs.is_empty() || endpoints.inputs.is_empty() {
-        return Ok(());
-    }
-    let representative = endpoints.outputs[0];
-    for &owner in endpoints.outputs.iter().chain(&endpoints.inputs) {
+    for port in ports {
         budget.visit()?;
-        if owner != representative {
-            sets.join(representative, owner);
+        let owner = owner_index(port.owner, cell_count)?;
+        if !joinable[owner] || !couples(port.kind) {
+            continue;
+        }
+        let endpoints = representatives[&port.kind];
+        let opposite = match port.direction {
+            BoundaryDirection::Input => endpoints.1,
+            BoundaryDirection::Output => endpoints.0,
+        };
+        if let Some(opposite) = opposite {
+            sets.join(owner, opposite);
         }
     }
     Ok(())
 }
+
+mod greedy;
+pub(crate) use greedy::greedy_event_owners;
+#[cfg(test)]
+pub(crate) use greedy::{EventEdge, greedy_event_pairs};
+#[cfg(test)]
+use greedy::{EventIndex, EventPhase};
 
 #[cfg(test)]
 mod tests;
@@ -337,17 +399,26 @@ struct WorkBudget<'a> {
     work: usize,
     /// This counts retained table payload before allocation.
     bytes: usize,
+    max_work: usize,
+    max_bytes: usize,
 }
 
 impl<'a> WorkBudget<'a> {
     fn new(monitor: &'a TaskMonitor) -> Self {
-        Self { monitor, work: 0, bytes: 0 }
+        let multiplier = monitor.budget_multiplier();
+        Self {
+            monitor,
+            work: 0,
+            bytes: 0,
+            max_work: MAX_REGION_WORK.saturating_mul(multiplier),
+            max_bytes: (crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES / 4).saturating_mul(multiplier),
+        }
     }
 
     fn visit(&mut self) -> Result<(), String> {
         self.check_cancelled()?;
         self.work = self.work.checked_add(1).ok_or("instant-region work counter overflow")?;
-        if self.work > MAX_REGION_WORK {
+        if self.work > self.max_work {
             return Err("instant-region work budget exceeded".into());
         }
         Ok(())
@@ -356,7 +427,7 @@ impl<'a> WorkBudget<'a> {
     fn retain_bytes(&mut self, bytes: usize) -> Result<(), String> {
         self.check_cancelled()?;
         self.bytes = self.bytes.checked_add(bytes).ok_or("instant-region retained byte counter overflow")?;
-        if self.bytes > crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES / 4 {
+        if self.bytes > self.max_bytes {
             return Err("instant-region retained-row budget exceeded".into());
         }
         Ok(())

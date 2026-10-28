@@ -26,10 +26,10 @@ fn compile_device_with_plan(graph: &CompileGraph, plan: SettledCircuit, monitor:
         if let Some(computation) = try_computation_frame(graph, monitor) {
             return Ok(computation);
         }
-        return compile_one_shot_device(graph, plan, monitor);
+        return Ok(plan);
     }
     let Ok(timing) = super::timing::infer(graph, monitor) else {
-        return compile_one_shot_device(graph, plan, monitor);
+        return Ok(plan);
     };
     let mut targets = Vec::new();
     for output in &plan.outputs {
@@ -51,7 +51,7 @@ fn compile_device_with_plan(graph: &CompileGraph, plan: SettledCircuit, monitor:
         }
     }
     if targets.is_empty() {
-        return compile_one_shot_device(graph, plan, monitor);
+        return Ok(plan);
     }
     let mut compact = compile_public_boundary(graph, &targets, &graph.plans.bud_memory_reads, monitor)?;
     compact.timing = Some(timing);
@@ -111,11 +111,20 @@ fn compile_scoped_devices_with_plan(
         if clocks_by_island[index].len() != 1 {
             if clocks_by_island[index].len() > 1 {
                 declined += 1;
-                if examples.len() < 2 {
+                if examples.len() < 24 {
                     let clock = clocks_by_island[index][0];
                     let node = graph.pistons[clock.index()].node;
-                    tracing::debug!(island = island.id, ?clock, count = clocks_by_island[index].len(), "scoped logical candidate declined: multiple clocks");
-                    examples.push(format!("Instant circuit candidate at {}: {} clocks share an island; exactly one is required.", diagnostic_position(graph.nodes[node.index()].position), clocks_by_island[index].len()));
+                    tracing::debug!(
+                        island = island.id,
+                        ?clock,
+                        count = clocks_by_island[index].len(),
+                        "scoped logical candidate declined: multiple clocks"
+                    );
+                    examples.push(format!(
+                        "Instant circuit candidate at {}: {} clocks share an island; exactly one is required.",
+                        diagnostic_position(graph.nodes[node.index()].position),
+                        clocks_by_island[index].len()
+                    ));
                 }
             }
             #[cfg(test)]
@@ -132,13 +141,29 @@ fn compile_scoped_devices_with_plan(
             return Err("scoped native ownership closure was not prepared".into());
         };
         let mut reason = String::new();
-        let Some(device) = try_scoped_device_for_island(graph, island, clocks_by_island[index][0], settled_plan, physical_ownership, monitor, &mut reason) else {
+        let Some(device) = try_scoped_device_for_island(
+            graph,
+            island,
+            clocks_by_island[index][0],
+            settled_plan,
+            physical_ownership,
+            monitor,
+            &mut reason,
+        ) else {
             declined += 1;
-            if examples.len() < 2 {
+            if examples.len() < 24 {
                 let clock = clocks_by_island[index][0];
                 let node = graph.pistons[clock.index()].node;
                 tracing::debug!(island = island.id, ?clock, %reason, "scoped logical candidate declined");
-                examples.push(format!("Instant circuit candidate at {}: {}.", diagnostic_position(graph.nodes[node.index()].position), if reason.is_empty() { "the required safety proof was unavailable" } else { &reason }));
+                examples.push(format!(
+                    "Instant circuit candidate at {}: {}.",
+                    diagnostic_position(graph.nodes[node.index()].position),
+                    if reason.is_empty() {
+                        "the required safety proof was unavailable"
+                    } else {
+                        &reason
+                    }
+                ));
             }
             #[cfg(test)]
             eprintln!(
@@ -150,7 +175,11 @@ fn compile_scoped_devices_with_plan(
         devices.push(device);
     }
     if declined > 0 {
-        monitor.record_warning(format!("Instant circuit acceleration: {} candidates certified, {declined} declined. If compilation succeeds, declined candidates use Graph unless another proven path handles them. Certification does not imply execution.", devices.len()));
+        monitor.record_warning(format!(
+            "Fast devices: {} prepared, {declined} skipped; showing {} reasons. Prepared does not mean running.",
+            devices.len(),
+            examples.len()
+        ));
         for example in examples {
             monitor.record_warning(example);
         }
@@ -219,7 +248,9 @@ fn try_scoped_device_for_island(
         let scope = match scoped_computation_device_scope(graph, island, &circuit, &expanded_components, physical_ownership, monitor, reason) {
             Some(scope) => scope,
             None => {
-                if reason.is_empty() { *reason = "ownership/scope proof unavailable".into(); }
+                if reason.is_empty() {
+                    *reason = "ownership/scope proof unavailable".into();
+                }
                 #[cfg(test)]
                 eprintln!("scoped logical device decline: ownership/scope proof failed for island {}", island.id);
                 return None;
@@ -292,10 +323,11 @@ fn try_scoped_device_for_island(
     let mut compact = compile_public_boundary(graph, &targets, &local_bud_reads, monitor).ok()?;
     compact.timing = Some(timing);
     if compact.outputs.iter().any(|output| match output.target {
+        #[cfg(test)]
+        SettledTarget::ComponentOutput(_) => true,
         SettledTarget::ResetExcludedPower { .. } => true,
         SettledTarget::Power(PowerTarget::Input { node, .. }) => !owns_node(node),
         SettledTarget::Power(PowerTarget::Conductor { site, .. }) => island.sites.binary_search(&site).is_err(),
-        SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).is_none_or(|piston| !owns_node(piston.node)),
         SettledTarget::ResourceState { resource, .. } => island.resources.binary_search(&resource).is_err(),
         SettledTarget::Register(read) => island.resources.binary_search(&read.resource).is_err(),
     }) {
@@ -352,14 +384,6 @@ fn scoped_frame_power_sinks_supported(
         covered_power.insert(link.to);
     }
     let retained_actors = circuit.retained_cells.iter().map(|use_| use_.actor).collect::<FxHashSet<_>>();
-    let eligible_actors = circuit
-        .outputs
-        .iter()
-        .filter_map(|output| match output.target {
-            SettledTarget::InstantPowerEligible(actor) => Some(actor),
-            _ => None,
-        })
-        .collect::<FxHashSet<_>>();
     let catalog_actors = graph
         .plans
         .instant
@@ -395,7 +419,7 @@ fn scoped_frame_power_sinks_supported(
             expanded_components.contains(&node) && expanded_component_routes_supported(graph, scope, node, &catalog_actors, &catalog_resets);
         let actor_certified = matches!(
             &draft.kind,
-            CircuitNodeKind::Piston(actor) if retained_actors.contains(actor) || eligible_actors.contains(actor) || catalog_actors.contains(actor)
+            CircuitNodeKind::Piston(actor) if retained_actors.contains(actor) || catalog_actors.contains(actor)
         ) || matches!(&draft.kind, CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } if catalog_resets.contains(&node))
             || value_component_certified;
         let invariant_comparator_side = matches!(
@@ -833,13 +857,14 @@ fn scoped_computation_device_scope(
 
     for output in &circuit.outputs {
         let overlaps_native = match output.target {
+            #[cfg(test)]
+            SettledTarget::ComponentOutput(_) => true,
             SettledTarget::Power(PowerTarget::Input { node, .. }) => native_nodes.contains(&node),
             SettledTarget::ResetExcludedPower { node, .. } => native_nodes.contains(&node),
             SettledTarget::Power(PowerTarget::Conductor { site, .. }) => {
                 native.sites.contains(&site)
                     || matches!(graph.sites.get(site.index()).map(|site| site.source), Some(SiteSource::Contact(contact)) if native.contacts.contains(&contact))
             }
-            SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).is_some_and(|piston| native_nodes.contains(&piston.node)),
             SettledTarget::ResourceState { resource, .. } | SettledTarget::Register(BudMemoryRead { resource, .. }) => {
                 native.resources.contains(&resource)
             }
@@ -847,11 +872,13 @@ fn scoped_computation_device_scope(
         if overlaps_native {
             let node = match output.target {
                 SettledTarget::Power(PowerTarget::Input { node, .. }) | SettledTarget::ResetExcludedPower { node, .. } => Some(node),
-                SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).map(|piston| piston.node),
                 _ => None,
             };
             tracing::debug!(island = island.id, target = ?output.target, "output overlaps native ownership");
-            *reason = format!("output at {} overlaps native ownership; exclusive ownership is unproved", diagnostic_position(node.and_then(|node| graph.nodes.get(node.index()).and_then(|node| node.position))));
+            *reason = format!(
+                "output at {} is shared with normal simulation; fast control could not be verified",
+                diagnostic_position(node.and_then(|node| graph.nodes.get(node.index()).and_then(|node| node.position)))
+            );
             return None;
         }
     }
@@ -866,10 +893,21 @@ fn scoped_computation_device_scope(
         return None;
     }
 
-    let owned_nodes = match computation_owned_nodes(graph, island, circuit, expanded_components, &native_nodes, &retained_cells, &timing, reason) {
+    let owned_nodes = match computation_owned_nodes(
+        graph,
+        island,
+        circuit,
+        expanded_components,
+        &native_nodes,
+        &retained_cells,
+        &timing,
+        reason,
+    ) {
         Some(nodes) => nodes,
         None => {
-            if reason.is_empty() { *reason = "computation node ownership proof unavailable".into(); }
+            if reason.is_empty() {
+                *reason = "computation node ownership proof unavailable".into();
+            }
             return None;
         }
     };
@@ -917,7 +955,11 @@ fn scoped_computation_device_scope(
                     && !inert_wire_shape)
             {
                 tracing::debug!(?route_id, ordinal, source = ?route.source, ?target, kind = ?delivery.kind, "callback lacks a supported ownership boundary");
-                *reason = format!("callback from {} to {} lacks a supported ownership boundary", diagnostic_position(graph.nodes.get(route.source.index()).and_then(|node| node.position)), diagnostic_position(graph.nodes.get(target.index()).and_then(|node| node.position)));
+                *reason = format!(
+                    "callback from {} to {} lacks a supported ownership boundary",
+                    diagnostic_position(graph.nodes.get(route.source.index()).and_then(|node| node.position)),
+                    diagnostic_position(graph.nodes.get(target.index()).and_then(|node| node.position))
+                );
                 #[cfg(test)]
                 eprintln!(
                     "logical frame decline: native input callback {:?}/{} from {:?} at {:?} targets unsupported owned node {:?} at {:?} ({:?})",
@@ -996,9 +1038,10 @@ fn computation_owned_nodes(
     let mut output_nodes = FxHashSet::default();
     for output in &circuit.outputs {
         let node = match output.target {
+            #[cfg(test)]
+            SettledTarget::ComponentOutput(node) => Some(node),
             SettledTarget::Power(PowerTarget::Input { node, .. }) => Some(node),
             SettledTarget::ResetExcludedPower { node, .. } => Some(node),
-            SettledTarget::InstantPowerEligible(actor) => Some(graph.pistons.get(actor.index())?.node),
             SettledTarget::Power(PowerTarget::Conductor { .. }) | SettledTarget::ResourceState { .. } | SettledTarget::Register(_) => None,
         };
         if let Some(node) = node {
@@ -1010,7 +1053,10 @@ fn computation_owned_nodes(
     }
     if let Some(node) = first_native_overlap(&island.nodes, equation_support, &output_nodes, &retained, native_nodes) {
         tracing::debug!(island = island.id, ?node, "equation support overlaps native ownership");
-        *reason = format!("equation support at {} overlaps native ownership; exclusive ownership is unproved", diagnostic_position(graph.nodes.get(node.index()).and_then(|node| node.position)));
+        *reason = format!(
+            "block at {} is shared with normal simulation; fast control could not be verified",
+            diagnostic_position(graph.nodes.get(node.index()).and_then(|node| node.position))
+        );
     }
     positive_computation_nodes(&island.nodes, equation_support, &output_nodes, &retained, native_nodes)
 }
@@ -1022,9 +1068,12 @@ fn first_native_overlap(
     retained_nodes: &FxHashSet<NodeId>,
     native_nodes: &FxHashSet<NodeId>,
 ) -> Option<NodeId> {
-    equation_support.iter().chain(output_nodes)
+    equation_support
+        .iter()
+        .chain(output_nodes)
         .filter(|node| island_nodes.binary_search(node).is_ok() && !retained_nodes.contains(node) && native_nodes.contains(node))
-        .copied().min()
+        .copied()
+        .min()
 }
 
 fn positive_computation_nodes(
@@ -1063,6 +1112,8 @@ fn computation_owned_state(
     let resources = FxHashSet::default();
     for output in &circuit.outputs {
         match output.target {
+            #[cfg(test)]
+            SettledTarget::ComponentOutput(_) => return None,
             SettledTarget::Power(PowerTarget::Conductor { site, .. }) => {
                 if island.sites.binary_search(&site).is_err() || site.index() >= graph.sites.len() {
                     return None;
@@ -1083,7 +1134,7 @@ fn computation_owned_state(
                     return None;
                 }
             }
-            SettledTarget::Power(PowerTarget::Input { .. }) | SettledTarget::ResetExcludedPower { .. } | SettledTarget::InstantPowerEligible(_) => {}
+            SettledTarget::Power(PowerTarget::Input { .. }) | SettledTarget::ResetExcludedPower { .. } => {}
         }
     }
     if sites.iter().any(|site| island.sites.binary_search(site).is_err())
@@ -1278,7 +1329,7 @@ fn try_computation_frame_with_timing(
                     Ok(computation) => computation,
                     Err(reason) => {
                         if island.is_none() && !monitor.cancelled() {
-                            monitor.record_warning(format!("Whole-plot instant equation attempt declined: {reason}. Other acceleration or Graph may still run if compilation succeeds."));
+                            monitor.record_warning(format!("Whole-plot fast circuit skipped: {reason}. Other regions may still compile."));
                         }
                         #[cfg(test)]
                         eprintln!(
@@ -1375,10 +1426,11 @@ fn try_computation_frame_with_timing(
     if let Some(island) = island {
         let owns_node = |node: NodeId| island.nodes.binary_search(&node).is_ok();
         if computation.outputs.iter().any(|output| match output.target {
+            #[cfg(test)]
+            SettledTarget::ComponentOutput(_) => true,
             SettledTarget::Power(PowerTarget::Input { node, .. }) => !owns_node(node),
             SettledTarget::ResetExcludedPower { node, .. } => !owns_node(node),
             SettledTarget::Power(PowerTarget::Conductor { site, .. }) => island.sites.binary_search(&site).is_err(),
-            SettledTarget::InstantPowerEligible(actor) => graph.pistons.get(actor.index()).is_none_or(|piston| !owns_node(piston.node)),
             SettledTarget::ResourceState { resource, .. } => !island.resources.contains(&resource),
             SettledTarget::Register(read) => !island.resources.contains(&read.resource),
         }) {
@@ -2050,201 +2102,6 @@ fn terminal_repeater_receiver_is_safe(receiver: CallbackReceiver, repeater: Node
     }
 }
 
-fn compile_one_shot_device(graph: &CompileGraph, fallback: SettledCircuit, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
-    let Some(actor) = first_single_lamp_candidate(graph)? else {
-        return Ok(fallback);
-    };
-    check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-    if let Some(piston) = graph.pistons.get(actor.index()) {
-        let targets = [
-            PowerTarget::Input {
-                node: piston.node,
-                port: InputPort::Main,
-            },
-            PowerTarget::Input {
-                node: piston.node,
-                port: InputPort::Quasi,
-            },
-        ];
-        if let Ok(candidate) = compile_one_shot_boundary(graph, &targets, &[], monitor) {
-            if supports_single_lamp_cell(graph, &candidate, actor) {
-                return Ok(candidate);
-            }
-        } else {
-            check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-        }
-    }
-    Ok(fallback)
-}
-
-pub(super) fn first_single_lamp_candidate(graph: &CompileGraph) -> Result<Option<PistonId>, String> {
-    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
-        return Ok(None);
-    };
-    let mut ports_by_owner = FxHashMap::<BoundaryOwner, Vec<BoundaryPort>>::default();
-    for port in catalog.ports.iter().copied() {
-        ports_by_owner.entry(port.owner).or_default().push(port);
-    }
-    let mut candidate = None;
-    for (cell_index, cell) in catalog.cells.iter().enumerate() {
-        if cell.uses.len() != 1 {
-            continue;
-        }
-        let use_ = &cell.uses[0];
-        if use_.reset.observer().is_none() || use_.retraction.transfer.is_none() {
-            continue;
-        }
-        let owner = BoundaryOwner::Cell(u32::try_from(cell_index).map_err(|_| "too many catalog cells")?);
-        let owner_ports = ports_by_owner.get(&owner).map_or(&[][..], Vec::as_slice);
-        let lamp_occurrences: FxHashSet<_> = owner_ports
-            .iter()
-            .filter_map(|port| match port.kind {
-                BoundaryPortKind::Callback { occurrence }
-                    if port.owner == owner && port.direction == BoundaryDirection::Output && callback_targets_lamp(graph, occurrence) =>
-                {
-                    Some(occurrence)
-                }
-                _ => None,
-            })
-            .collect();
-        if lamp_occurrences.is_empty() {
-            continue;
-        }
-        let has_owned_corridor = catalog.ports.iter().any(
-            |port| matches!(port.kind, BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) && port.owner != owner),
-        );
-        if !has_owned_corridor {
-            candidate = Some(use_.actor);
-            break;
-        }
-    }
-    Ok(candidate)
-}
-
-pub(super) fn callback_targets_lamp(graph: &CompileGraph, occurrence: RouteOccurrence) -> bool {
-    let Some(route) = graph.routes.get(occurrence.route.index()) else {
-        return false;
-    };
-    let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
-        return false;
-    };
-    let Some(CallbackReceiver::Component(node)) = delivery.receiver else {
-        return false;
-    };
-    graph
-        .nodes
-        .get(node.index())
-        .is_some_and(|node| matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lamp)))
-}
-
-fn supports_single_lamp_cell(graph: &CompileGraph, circuit: &SettledCircuit, actor: PistonId) -> bool {
-    let Some(firing) = circuit.firing.as_ref() else {
-        return false;
-    };
-    if firing.uses.len() != 1 || firing.uses[0].actor != actor || firing.uses[0].effect.transfer.is_none() {
-        return false;
-    }
-    if firing.uses[0].reset.observer().is_none() {
-        return false;
-    }
-    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
-        return false;
-    };
-    let Some((cell_index, _)) = catalog
-        .cells
-        .iter()
-        .enumerate()
-        .find(|(_, cell)| cell.uses.iter().any(|use_| use_.actor == actor))
-    else {
-        return false;
-    };
-    let owner = BoundaryOwner::Cell(cell_index as u32);
-    let lamp_occurrences: FxHashSet<_> = circuit
-        .retained_effects
-        .iter()
-        .filter_map(|port| match port.kind {
-            BoundaryPortKind::Callback { occurrence }
-                if port.owner == owner && port.direction == BoundaryDirection::Output && callback_targets_lamp(graph, occurrence) =>
-            {
-                Some(occurrence)
-            }
-            _ => None,
-        })
-        .collect();
-    if lamp_occurrences.is_empty() {
-        return false;
-    }
-    for port in circuit.retained_effects.iter() {
-        if port.owner != owner || port.direction != BoundaryDirection::Output {
-            return false;
-        }
-        match port.kind {
-            BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) => {}
-            BoundaryPortKind::Power { link } => {
-                let Some(link) = graph.power_links.get(link as usize) else {
-                    return false;
-                };
-                let PowerTarget::Input { node, port: InputPort::Main } = link.to else {
-                    return false;
-                };
-                if !matches!(
-                    graph.nodes.get(node.index()).map(|node| &node.kind),
-                    Some(CircuitNodeKind::Electrical(NodeType::Lamp))
-                ) {
-                    return false;
-                }
-            }
-            BoundaryPortKind::GuardState { guard, .. } => {
-                if !lamp_occurrences.iter().any(|occurrence| {
-                    let Some(delivery) = graph
-                        .routes
-                        .get(occurrence.route.index())
-                        .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
-                    else {
-                        return false;
-                    };
-                    guard_contains(graph, delivery.guard, guard)
-                }) {
-                    return false;
-                }
-            }
-            BoundaryPortKind::ContactAlternative { contact, .. } => {
-                if !lamp_occurrences.iter().any(|occurrence| {
-                    graph
-                        .routes
-                        .get(occurrence.route.index())
-                        .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
-                        .and_then(|delivery| graph.sites.get(delivery.target.index()))
-                        .is_some_and(|site| site.source == SiteSource::Contact(contact))
-                }) {
-                    return false;
-                }
-            }
-            _ => return false,
-        }
-    }
-    true
-}
-
-fn guard_contains(graph: &CompileGraph, root: GuardId, needle: GuardId) -> bool {
-    let mut pending = vec![root];
-    let mut seen = FxHashSet::default();
-    while let Some(guard) = pending.pop() {
-        if guard == needle {
-            return true;
-        }
-        if !seen.insert(guard) {
-            continue;
-        }
-        match graph.guards.get(guard.index()) {
-            Some(Guard::Not(child)) => pending.push(*child),
-            Some(Guard::All(children) | Guard::Any(children)) => pending.extend(children.iter().copied()),
-            Some(Guard::Always | Guard::State(_) | Guard::Site { .. }) | None => {}
-        }
-    }
-    false
-}
-
 pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
@@ -2341,7 +2198,6 @@ pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Re
     let circuit = SettledCircuit {
         program,
         outputs: outputs.into_boxed_slice(),
-        firing: None,
         retained_cells: Box::new([]),
         retained_effects: retained_effects.into_boxed_slice(),
         declines: declines.into_boxed_slice(),
@@ -2352,8 +2208,7 @@ pub(crate) fn compile_settled(graph: &CompileGraph, monitor: &TaskMonitor) -> Re
 }
 
 /// Select the complete, stably ordered power-query boundary for a settled
-/// artifact. One-shot candidates use these same roots so they cannot silently
-/// narrow the public/effect boundary compared with the legacy compiler.
+/// artifact.
 fn select_settled_boundary_targets(
     graph: &CompileGraph,
     equations: &Equations<'_>,
@@ -2416,18 +2271,6 @@ pub(crate) fn compile_public_boundary(
     monitor: &TaskMonitor,
 ) -> Result<SettledCircuit, String> {
     compile_boundary(graph, power_targets, register_reads, BoundaryKind::Settled, &[], monitor)
-}
-
-/// Compile selected power/register roots with explicit per-actor fired-state cuts.
-/// The artifact exposes power eligibility only; Graph remains authoritative for
-/// callback delivery, FIFO acceptance, action execution, and reset completion.
-pub(crate) fn compile_one_shot_boundary(
-    graph: &CompileGraph,
-    power_targets: &[PowerTarget],
-    register_reads: &[BudMemoryRead],
-    monitor: &TaskMonitor,
-) -> Result<SettledCircuit, String> {
-    compile_boundary(graph, power_targets, register_reads, BoundaryKind::OneShot, &[], monitor)
 }
 
 /// Diagnostic counterpart to `compile_public_boundary` that leaves repeaters
@@ -2724,7 +2567,6 @@ enum BoundaryKind {
     Settled,
     #[cfg(test)]
     Event,
-    OneShot,
 }
 
 fn compile_boundary(
@@ -2741,36 +2583,13 @@ fn compile_boundary(
     }
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
     equations.retain_classic = true;
-    // Event and one-shot queries observe the repeater's current state; delayed
-    // propagation remains owned by the ordinary graph event path. Settled
+    // Event queries observe the repeater's current state; delayed propagation
+    // remains owned by the ordinary graph event path. Settled
     // boundaries inline repeaters to model the sampled settled cut.
     equations.inline_repeaters = kind == BoundaryKind::Settled;
     equations.stable_wire_modes = kind == BoundaryKind::Settled;
     equations.defer_sources = true;
-    {
-        equations.resource_semantics = if kind == BoundaryKind::OneShot {
-            ResourceSemantics::OneShot
-        } else {
-            ResourceSemantics::Settled
-        };
-        if equations.resource_semantics.uses_one_shot_firing() {
-            // Disabled Near facts only describe a settled transfer/restoration
-            // cut. One-shot event boundaries must observe Near occupancy live.
-            equations.disabled_destinations.clear();
-            // Directional output from an initially saved dot depends on its live
-            // cross/dot mode at this event prefix. Keep that wire Graph-owned and
-            // expose its exact SourceAbove port as a native input below.
-            equations.wires.retain(|&node| {
-                !matches!(
-                    &graph.nodes[node.index()].state,
-                    ComponentState::Wire(wire) if crate::redstone::wire::is_dot(*wire)
-                )
-            });
-            // Reset pulses remain live boundary inputs until the event adapter proves
-            // the exact completion edge that rearms each actor.
-            equations.resets.clear();
-        }
-    }
+    equations.resource_semantics = ResourceSemantics::Settled;
     if !retained_resources.is_empty() {
         equations
             .retain_cells_touching(retained_resources, &[])
@@ -2836,125 +2655,7 @@ fn compile_boundary_equations(
         });
     }
 
-    {
-        if equations.resource_semantics.uses_one_shot_firing() {
-            // Lower once to discover the feedback owners reachable from the requested
-            // roots. Each eligibility batch can itself reveal another layer of owners,
-            // so lower the complete root set again after every batch before deciding
-            // that discovery has reached a fixed point.
-            let mut emitted = FxHashSet::default();
-            loop {
-                lower_output_roots(equations, &mut outputs, monitor)?;
-                let mut actors: Vec<_> = equations.fired_inputs.keys().copied().filter(|actor| !emitted.contains(actor)).collect();
-                actors.sort_unstable();
-                if actors.is_empty() {
-                    break;
-                }
-                equations.defer_sources = true;
-                equations.expanded.clear();
-                equations.sources.clear();
-                equations.pending.clear();
-                equations.pending_repeaters.clear();
-                for actor in actors {
-                    check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-                    emitted.insert(actor);
-                    let fired = equations
-                        .fired_leaf(actor)
-                        .map_err(|error| format!("one-shot fired input for {actor:?}: {error:?}"))?;
-                    let node = graph.pistons[actor.index()].node;
-                    let main = equations
-                        .input_power(node, InputPort::Main)
-                        .map_err(|error| format!("one-shot Main eligibility for {actor:?}: {error:?}"))?;
-                    let quasi = equations
-                        .input_power(node, InputPort::Quasi)
-                        .map_err(|error| format!("one-shot Quasi eligibility for {actor:?}: {error:?}"))?;
-                    let not_fired = equations
-                        .reduced
-                        .not(fired)
-                        .map_err(|error| format!("one-shot eligibility for {actor:?}: {error:?}"))?;
-                    let not_main = equations
-                        .reduced
-                        .not(main)
-                        .map_err(|error| format!("one-shot eligibility for {actor:?}: {error:?}"))?;
-                    let not_quasi = equations
-                        .reduced
-                        .not(quasi)
-                        .map_err(|error| format!("one-shot eligibility for {actor:?}: {error:?}"))?;
-                    let eligible = equations
-                        .reduced
-                        .all([not_fired, not_main, not_quasi])
-                        .map_err(|error| format!("one-shot eligibility for {actor:?}: {error:?}"))?;
-                    outputs.push(SettledOutput {
-                        target: SettledTarget::InstantPowerEligible(actor),
-                        kind: SettledValueKind::Bool,
-                        roots: Box::new([eligible]),
-                    });
-                }
-                // The lowered arena has to be queried afresh for the next batch: source
-                // memo entries and expression IDs belong to the previous builder.
-            }
-        } else {
-            lower_output_roots(equations, &mut outputs, monitor)?;
-        }
-    }
-    let mut firing = if equations.resource_semantics.uses_one_shot_firing() && !equations.fired_inputs.is_empty() {
-        let catalog = graph.plans.instant.boundaries.as_ref().ok_or("missing one-shot cell boundaries")?;
-        let mut actors: Vec<_> = equations.fired_inputs.keys().copied().collect();
-        actors.sort_unstable();
-        let mut uses = Vec::with_capacity(actors.len());
-        let mut use_indices = FxHashMap::default();
-        for actor in actors {
-            let mut matching = catalog.cells.iter().flat_map(|cell| cell.uses.iter()).filter(|use_| use_.actor == actor);
-            let use_ = matching.next().ok_or_else(|| format!("fired actor {actor:?} has no catalog use"))?;
-            if matching.next().is_some() {
-                return Err(format!("fired actor {actor:?} has ambiguous catalog uses"));
-            }
-            let power_eligible_output = outputs
-                .iter()
-                .position(|output| output.target == SettledTarget::InstantPowerEligible(actor))
-                .and_then(|index| u32::try_from(index).ok())
-                .ok_or_else(|| format!("fired actor {actor:?} has no power eligibility root"))?;
-            let use_index = u32::try_from(uses.len()).map_err(|_| "too many one-shot uses")?;
-            use_indices.insert(actor, use_index);
-            uses.push(LogicalFireUse {
-                actor,
-                fired_input: equations.fired_inputs[&actor],
-                power_eligible_output,
-                reset: use_.reset.clone(),
-                activation_routes: use_.activations.clone(),
-                effect: use_.retraction.clone(),
-            });
-        }
-        let mut resources = equations
-            .firing_resources
-            .iter()
-            .map(|(&resource, &(source, ref owners))| {
-                let mut owner_indices = owners
-                    .iter()
-                    .map(|owner| {
-                        use_indices
-                            .get(owner)
-                            .copied()
-                            .ok_or_else(|| format!("firing resource {resource:?} has unbound owner {owner:?}"))
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                owner_indices.sort_unstable();
-                owner_indices.dedup();
-                Ok(LogicalFireResource {
-                    resource,
-                    source,
-                    owners: owner_indices.into_boxed_slice(),
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        resources.sort_unstable_by_key(|row| row.resource);
-        Some(LogicalFiringPlan {
-            uses: uses.into_boxed_slice(),
-            resources: resources.into_boxed_slice(),
-        })
-    } else {
-        None
-    };
+    lower_output_roots(equations, &mut outputs, monitor)?;
     let roots = outputs
         .iter()
         .flat_map(|output| output.roots.iter().copied())
@@ -2968,165 +2669,16 @@ fn compile_boundary_equations(
             *root = mapped.next().ok_or("missing reduced public-boundary root")?.1;
         }
     }
-    if let Some(firing) = &mut firing {
-        for use_ in &mut firing.uses {
-            use_.fired_input = program
-                .inputs
-                .iter()
-                .position(|input| input.source == LayerInputSource::InstantFired { actor: use_.actor })
-                .and_then(|index| u32::try_from(index).ok().map(LayerInputId))
-                .ok_or_else(|| format!("reduced program lost fired input for {:?}", use_.actor))?;
-        }
-    }
-    let retained_effects = if equations.resource_semantics.uses_one_shot_firing() {
-        firing
-            .as_ref()
-            .map(|plan| logical_action_retained_effects(graph, plan, &equations.wires, monitor))
-            .transpose()?
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
     let circuit = SettledCircuit {
         program,
         outputs: outputs.into_boxed_slice(),
-        firing,
         retained_cells: Box::new([]),
-        retained_effects: retained_effects.into_boxed_slice(),
+        retained_effects: Box::new([]),
         declines: Box::new([]),
         timing: None,
     };
     circuit.validate()?;
     Ok(circuit)
-}
-
-/// Keep only catalogued outputs that leave the one-shot cell/corridor closure.
-/// Internal callback rows remain represented by their original source-derived
-/// activation/retraction records and are omitted from the external effect list.
-pub(super) fn logical_action_retained_effects(
-    graph: &CompileGraph,
-    firing: &LogicalFiringPlan,
-    equation_wires: &FxHashSet<NodeId>,
-    monitor: &TaskMonitor,
-) -> Result<Vec<BoundaryPort>, String> {
-    let catalog = graph
-        .plans
-        .instant
-        .boundaries
-        .as_ref()
-        .ok_or("one-shot actions require the source boundary catalog")?;
-    let active_actors: FxHashSet<_> = firing.uses.iter().map(|use_| use_.actor).collect();
-    let mut active_cells = FxHashSet::default();
-    for (index, cell) in catalog.cells.iter().enumerate() {
-        if cell.uses.iter().any(|use_| active_actors.contains(&use_.actor)) {
-            active_cells.insert(BoundaryOwner::Cell(u32::try_from(index).map_err(|_| "too many catalog cells")?));
-        }
-    }
-
-    // A shared occurrence is an exact source-derived connection between catalog
-    // owners. Corridors may bridge several actor cells; unrelated cells stay outside.
-    let mut occurrence_owners = FxHashMap::<RouteOccurrence, Vec<(BoundaryOwner, BoundaryDirection)>>::default();
-    for port in catalog.ports.iter() {
-        if let BoundaryPortKind::Callback { occurrence } = port.kind {
-            occurrence_owners.entry(occurrence).or_default().push((port.owner, port.direction));
-        }
-    }
-    let allowed = |owner: BoundaryOwner| match owner {
-        BoundaryOwner::Cell(_) => active_cells.contains(&owner),
-        BoundaryOwner::Corridor(index) => catalog
-            .corridors
-            .get(index as usize)
-            .is_some_and(|corridor| corridor.wires.iter().all(|wire| equation_wires.contains(wire))),
-    };
-    let mut adjacency = FxHashMap::<BoundaryOwner, FxHashSet<BoundaryOwner>>::default();
-    for owners in occurrence_owners.values_mut() {
-        owners.sort_unstable_by_key(|(owner, direction)| {
-            let owner = match owner {
-                BoundaryOwner::Cell(index) => (0, *index),
-                BoundaryOwner::Corridor(index) => (1, *index),
-            };
-            (owner, *direction as u8)
-        });
-        owners.dedup();
-        let outputs: Vec<_> = owners
-            .iter()
-            .filter_map(|(owner, direction)| (*direction == BoundaryDirection::Output && allowed(*owner)).then_some(*owner))
-            .collect();
-        let inputs: Vec<_> = owners
-            .iter()
-            .filter_map(|(owner, direction)| (*direction == BoundaryDirection::Input && allowed(*owner)).then_some(*owner))
-            .collect();
-        for &output in &outputs {
-            for &input in &inputs {
-                if output != input {
-                    adjacency.entry(output).or_default().insert(input);
-                    adjacency.entry(input).or_default().insert(output);
-                }
-            }
-        }
-    }
-    let mut owners = active_cells.clone();
-    let mut pending: Vec<_> = active_cells.iter().copied().collect();
-    while let Some(owner) = pending.pop() {
-        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-        for &next in adjacency.get(&owner).into_iter().flatten() {
-            if owners.insert(next) {
-                pending.push(next);
-            }
-        }
-    }
-
-    let mut owned_nodes = FxHashSet::default();
-    for owner in &owners {
-        match *owner {
-            BoundaryOwner::Cell(index) => {
-                let cell = catalog.cells.get(index as usize).ok_or("one-shot owner references a missing cell")?;
-                for use_ in cell.uses.iter() {
-                    let actor = graph.pistons.get(use_.actor.index()).ok_or("one-shot cell references a missing piston")?;
-                    owned_nodes.insert(actor.node);
-                    if let Some(reset) = use_.reset.observer() {
-                        owned_nodes.insert(reset);
-                    }
-                    for contact in [actor.base, actor.near, actor.far] {
-                        if let Some(contact) = graph.contacts.get(contact.index()) {
-                            owned_nodes.insert(contact.node);
-                        }
-                    }
-                }
-                for pin in cell.resources.iter() {
-                    if let Some(contact) = graph.contacts.get(pin.source.index()) {
-                        owned_nodes.insert(contact.node);
-                    }
-                }
-            }
-            BoundaryOwner::Corridor(index) => {
-                let corridor = catalog
-                    .corridors
-                    .get(index as usize)
-                    .ok_or("one-shot owner references a missing corridor")?;
-                owned_nodes.extend(corridor.wires.iter().copied());
-                owned_nodes.extend(corridor.conductive_sites.iter().filter_map(|site| {
-                    graph.sites.get(site.index()).and_then(|site| match site.source {
-                        SiteSource::Component(node) => Some(node),
-                        SiteSource::Contact(contact) => graph.contacts.get(contact.index()).map(|contact| contact.node),
-                        SiteSource::Constant(_) => None,
-                    })
-                }));
-            }
-        }
-    }
-    let external_guards = externally_used_guards(graph, &owned_nodes, monitor)?;
-    let external_contact_reads = externally_read_contacts(graph, catalog, &owned_nodes, &external_guards);
-    Ok(catalog
-        .ports
-        .iter()
-        .filter(|port| {
-            port.direction == BoundaryDirection::Output
-                && owners.contains(&port.owner)
-                && externally_observed(graph, port.kind, &owned_nodes, &external_guards, &external_contact_reads)
-        })
-        .copied()
-        .collect())
 }
 
 fn lower_output_roots(equations: &mut Equations<'_>, outputs: &mut [SettledOutput], monitor: &TaskMonitor) -> Result<(), String> {
@@ -3150,7 +2702,6 @@ fn declined_settled(monitor: &TaskMonitor, retained_effects: Vec<BoundaryPort>, 
     let circuit = SettledCircuit {
         program,
         outputs: Box::new([]),
-        firing: None,
         retained_cells: Box::new([]),
         retained_effects: retained_effects.into_boxed_slice(),
         declines: declines.into_boxed_slice(),
@@ -3163,10 +2714,20 @@ fn declined_settled(monitor: &TaskMonitor, retained_effects: Vec<BoundaryPort>, 
 /// Compile requested stable outputs with explicit state bits for recognized
 /// shared-Far payload feedback. Unlike BUD registers, these are ordinary
 /// cell resources whose current source location closes a combinational cycle.
+#[cfg(test)]
 pub(crate) fn compile_computation(graph: &CompileGraph, power_targets: &[PowerTarget], monitor: &TaskMonitor) -> Result<SettledCircuit, String> {
     compile_computation_with_support(graph, power_targets, monitor).map(|(circuit, _)| circuit)
 }
 
+#[cfg(test)]
+pub(crate) fn computation_support(
+    graph: &CompileGraph,
+    power_targets: &[PowerTarget],
+    monitor: &TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_computation_with_support(graph, power_targets, monitor)
+}
+#[cfg(test)]
 fn compile_computation_with_support(
     graph: &CompileGraph,
     power_targets: &[PowerTarget],
@@ -3181,8 +2742,177 @@ fn compile_computation_with_reset_exclusions(
     reset_excluded_targets: &FxHashMap<PowerTarget, (ResourceId, ContactId)>,
     monitor: &TaskMonitor,
 ) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_computation_with_scope(graph, power_targets, reset_excluded_targets, &[], &[], monitor, None, false, false)
+}
+
+/// Experimental lowering for one closed owner region. Unowned reads stay live Graph leaves.
+#[cfg(test)]
+pub(crate) fn compile_candidate_computation<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_computation_with_scope(graph, power_targets, &FxHashMap::default(), &[], &[], monitor, Some(owners), false, false)
+}
+
+/// Add candidate Far-state roots for explicitly exposed, unambiguous resources.
+/// These equations do not prove that a qualifying source event reached the actor.
+#[cfg(test)]
+pub(crate) fn compile_candidate_state_computation<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    resource_roots: &[(ResourceId, ContactId)],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_computation_with_scope(
+        graph,
+        power_targets,
+        &FxHashMap::default(),
+        resource_roots,
+        &[],
+        monitor,
+        Some(owners),
+        false,
+        false,
+    )
+}
+
+/// Keep selected resource and actor state live across an event transition.
+#[cfg(test)]
+pub(crate) fn compile_candidate_live_computation<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    resource_roots: &[(ResourceId, ContactId)],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_computation_with_scope(
+        graph,
+        power_targets,
+        &FxHashMap::default(),
+        resource_roots,
+        &[],
+        monitor,
+        Some(owners),
+        false,
+        true,
+    )
+}
+
+/// Experiment: derive native wire values without transferring their ownership.
+#[cfg(test)]
+pub(crate) fn compile_candidate_with_native_wires<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    resource_roots: &[(ResourceId, ContactId)],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_computation_with_scope(
+        graph,
+        power_targets,
+        &FxHashMap::default(),
+        resource_roots,
+        &[],
+        monitor,
+        Some(owners),
+        true,
+        false,
+    )
+}
+
+/// Idealized global read cone with explicit state outputs for a closed region.
+/// This grants no ownership over the external dependencies it evaluates.
+#[cfg(test)]
+pub(crate) fn compile_global_boundary_computation<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    resource_roots: &[(ResourceId, ContactId)],
+    component_roots: &[NodeId],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_global_boundary_with_state(graph, power_targets, resource_roots, component_roots, owners, monitor, false)
+}
+
+/// Experimental global read cone whose actor and resource state is supplied by
+/// the batched event executor instead of synthesized from steady power.
+#[cfg(test)]
+pub(crate) fn compile_global_live_computation<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    resource_roots: &[(ResourceId, ContactId)],
+    component_roots: &[NodeId],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    compile_global_boundary_with_state(graph, power_targets, resource_roots, component_roots, owners, monitor, true)
+}
+
+#[cfg(test)]
+fn compile_global_boundary_with_state<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    resource_roots: &[(ResourceId, ContactId)],
+    component_roots: &[NodeId],
+    owners: &'a crate::redpiler::analysis::instant::boundaries::OwnerMap,
+    monitor: &'a TaskMonitor,
+    live_states: bool,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
+    for &(resource, source) in resource_roots {
+        let owner = owners
+            .resources
+            .get(resource.index())
+            .copied()
+            .flatten()
+            .ok_or_else(|| format!("exposed resource {resource:?} is outside the candidate"))?;
+        let spec = graph.resources.get(resource.index()).ok_or("missing exposed resource")?;
+        if spec
+            .contacts
+            .iter()
+            .any(|contact| owners.contacts.get(contact.index()).copied().flatten() != Some(owner))
+        {
+            return Err(format!("exposed resource {resource:?} has a contact outside its owner"));
+        }
+        if graph.pistons.iter().enumerate().any(|(index, piston)| {
+            piston.sticky && piston.lane == (PistonLane::SingleResource { far: source }) && owners.actors.get(index).copied().flatten() != Some(owner)
+        }) {
+            return Err(format!("exposed resource {resource:?} has an actor outside its owner"));
+        }
+    }
+    for &node in component_roots {
+        if owners.nodes.get(node.index()).copied().flatten().is_none() {
+            return Err(format!("component {node:?} is outside the candidate"));
+        }
+    }
+    compile_computation_with_scope(
+        graph,
+        power_targets,
+        &FxHashMap::default(),
+        resource_roots,
+        component_roots,
+        monitor,
+        None,
+        false,
+        live_states,
+    )
+}
+
+fn compile_computation_with_scope<'a>(
+    graph: &'a CompileGraph,
+    power_targets: &[PowerTarget],
+    reset_excluded_targets: &FxHashMap<PowerTarget, (ResourceId, ContactId)>,
+    resource_roots: &[(ResourceId, ContactId)],
+    component_roots: &[NodeId],
+    monitor: &'a TaskMonitor,
+    owners: Option<&'a crate::redpiler::analysis::instant::boundaries::OwnerMap>,
+    expand_native_wires: bool,
+    live_states: bool,
+) -> Result<(SettledCircuit, FxHashSet<NodeId>), String> {
     check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
-    if power_targets.is_empty() {
+    if power_targets.is_empty() && resource_roots.is_empty() && component_roots.is_empty() {
         return Err("logical computation requires at least one public output".into());
     }
     let mut equations = Equations::new(graph, monitor).map_err(|error| format!("{error:?}"))?;
@@ -3192,12 +2922,63 @@ fn compile_computation_with_reset_exclusions(
         reject_unrepresented_destinations: true,
     };
     equations.stable_wire_modes = true;
-    assume_computation_frame_observers_off(&mut equations);
+    #[cfg(test)]
+    {
+        equations.candidate_contact_states = !resource_roots.is_empty() && !live_states;
+        equations.candidate_live_states = live_states;
+    }
+    #[cfg(test)]
+    if let Some(owners) = owners {
+        equations.candidate_owners = Some(owners);
+        equations.wires.retain(|node| owners.nodes.get(node.index()).copied().flatten().is_some());
+        if expand_native_wires {
+            equations.wires.extend(
+                graph
+                    .nodes
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, node)| matches!(node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32))),
+            );
+        }
+        equations
+            .resets
+            .retain(|node| owners.nodes.get(node.index()).copied().flatten().is_some());
+        equations
+            .actors
+            .retain(|actor| owners.actors.get(actor.index()).copied().flatten().is_some());
+        equations
+            .cells
+            .retain(|resource, _| owners.resources.get(resource.index()).copied().flatten().is_some());
+        equations
+            .unique_cell_resources
+            .retain(|resource| owners.resources.get(resource.index()).copied().flatten().is_some());
+        equations
+            .disabled_destinations
+            .retain(|(resource, _)| owners.resources.get(resource.index()).copied().flatten().is_some());
+        equations
+            .registers
+            .retain(|resource, _| owners.resources.get(resource.index()).copied().flatten().is_some());
+    } else {
+        assume_computation_frame_observers_off(&mut equations);
+    }
+    #[cfg(not(test))]
+    let _ = expand_native_wires;
+    #[cfg(not(test))]
+    let _ = live_states;
+    #[cfg(not(test))]
+    {
+        let _ = owners;
+        assume_computation_frame_observers_off(&mut equations);
+    }
     // This test-only extractor deliberately asks whether the local stationary lane
     // is enough to form a candidate state equation. It does not grant production
     // lifecycle/reset admission to the inferred owner.
     for (index, resource) in graph.resources.iter().enumerate() {
         let id = ResourceId::new(index as u32);
+        #[cfg(test)]
+        if owners.is_some_and(|owners| owners.resources.get(index).copied().flatten().is_none()) {
+            continue;
+        }
         if equations.cells.contains_key(&id) {
             continue;
         }
@@ -3251,11 +3032,97 @@ fn compile_computation_with_reset_exclusions(
         });
     }
 
+    let mut explicit_resources = FxHashSet::default();
+    #[cfg(test)]
+    for &node in component_roots {
+        if !matches!(
+            graph.nodes.get(node.index()).map(|spec| &spec.kind),
+            Some(CircuitNodeKind::Electrical(NodeType::Comparator { .. }))
+        ) {
+            return Err(format!("component {node:?} is not a comparator"));
+        }
+        let roots = (0..15)
+            .map(|threshold| equations.comparator_source(node, threshold))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("component {node:?} output: {error:?}"))?;
+        outputs.push(SettledOutput {
+            target: SettledTarget::ComponentOutput(node),
+            kind: SettledValueKind::Strength,
+            roots: roots.into_boxed_slice(),
+        });
+    }
+    #[cfg(not(test))]
+    let _ = component_roots;
+    let mut explicit_contacts = FxHashSet::default();
+    for &(resource, source) in resource_roots {
+        check_cancelled(monitor).map_err(|error| format!("{error:?}"))?;
+        if !explicit_resources.insert(resource) {
+            return Err(format!("duplicate exposed resource {resource:?}"));
+        }
+        if owners.is_some_and(|owners| owners.resources.get(resource.index()).copied().flatten().is_none()) {
+            return Err(format!("exposed resource {resource:?} is outside the candidate"));
+        }
+        #[cfg(test)]
+        if live_states {
+            let spec = graph.resources.get(resource.index()).ok_or("missing live candidate resource")?;
+            if !spec.contacts.contains(&source) {
+                return Err(format!("resource {resource:?} source is not a contact"));
+            }
+            for &contact in spec.contacts.iter() {
+                let root = equations
+                    .leaf(LayerInputSource::State(StateTest::ResourceAt { resource, contact }))
+                    .map_err(|error| format!("live resource {resource:?} state: {error:?}"))?;
+                explicit_contacts.insert((resource, contact));
+                outputs.push(SettledOutput {
+                    target: SettledTarget::ResourceState { resource, source: contact },
+                    kind: SettledValueKind::Bool,
+                    roots: Box::new([root]),
+                });
+            }
+            continue;
+        }
+        let (canonical, actors) = equations
+            .feedback_resource_contract(resource)
+            .ok_or_else(|| format!("exposed resource {resource:?} lacks a complete source lane"))?;
+        if canonical != source {
+            return Err(format!("exposed resource {resource:?} has a mismatched source contact"));
+        }
+        #[cfg(test)]
+        if equations.candidate_contact_states {
+            for &contact in graph.resources[resource.index()].contacts.iter() {
+                let root = equations.candidate_contact_presence(resource, contact)?;
+                explicit_contacts.insert((resource, contact));
+                outputs.push(SettledOutput {
+                    target: SettledTarget::ResourceState { resource, source: contact },
+                    kind: SettledValueKind::Bool,
+                    roots: Box::new([root]),
+                });
+            }
+            continue;
+        }
+        if actors.len() != 1 || graph.resources[resource.index()].contacts.len() != 2 {
+            return Err(format!("exposed resource {resource:?} has ambiguous destination ownership"));
+        }
+        let root = equations
+            .shared_far_presence(&actors)
+            .map_err(|error| format!("exposed resource {resource:?} state: {error:?}"))?;
+        explicit_contacts.insert((resource, source));
+        outputs.push(SettledOutput {
+            target: SettledTarget::ResourceState { resource, source },
+            kind: SettledValueKind::Bool,
+            roots: Box::new([root]),
+        });
+    }
+
     // Only feedback inputs reachable from requested outputs, or from an update
     // that is itself reachable, need a synthesized next-state output. Equation
     // construction may discover leaves in branches that later reduce away.
     let requested_roots = outputs.iter().flat_map(|output| output.roots.iter().copied()).collect::<Vec<_>>();
     let feedback_updates = reachable_feedback_updates(&mut equations, &requested_roots, monitor, |equations, resource, source| {
+        #[cfg(test)]
+        if equations.candidate_contact_states {
+            return equations.candidate_contact_presence(resource, source);
+        }
         let (canonical, owners) = equations
             .feedback_resource_contract(resource)
             .ok_or_else(|| format!("feedback resource {resource:?} lacks a bounded shared-Far state contract"))?;
@@ -3270,6 +3137,9 @@ fn compile_computation_with_reset_exclusions(
             .map_err(|error| format!("feedback resource {resource:?} update: {error:?}"))
     })?;
     for (resource, source, next_state) in feedback_updates {
+        if explicit_contacts.contains(&(resource, source)) {
+            continue;
+        }
         outputs.push(SettledOutput {
             target: SettledTarget::ResourceState { resource, source },
             kind: SettledValueKind::Bool,
@@ -3304,7 +3174,6 @@ fn compile_computation_with_reset_exclusions(
     let circuit = SettledCircuit {
         program,
         outputs: outputs.into_boxed_slice(),
-        firing: None,
         retained_cells: Box::new([]),
         retained_effects: Box::new([]),
         declines: Box::new([]),
@@ -4004,7 +3873,10 @@ mod positive_scope_ownership_tests {
 
     #[test]
     fn whole_plot_budget_failure_identifies_the_output() {
-        assert_eq!(computation_output_error(Some(mchprs_blocks::BlockPos::new(-1, 2, 3)), ConstructionError::BudgetExceeded), "equation output at (-1, 2, 3): equation construction exceeded its budget");
+        assert_eq!(
+            computation_output_error(Some(mchprs_blocks::BlockPos::new(-1, 2, 3)), ConstructionError::BudgetExceeded),
+            "equation output at (-1, 2, 3): equation construction exceeded its budget"
+        );
     }
 
     #[test]
@@ -4031,7 +3903,10 @@ mod positive_scope_ownership_tests {
         let native_nodes = [NodeId::new(1)].into_iter().collect();
 
         assert!(positive_computation_nodes(&island_nodes, &equation_support, &output_nodes, &retained_nodes, &native_nodes).is_none());
-        assert_eq!(first_native_overlap(&island_nodes, &equation_support, &output_nodes, &retained_nodes, &native_nodes), Some(NodeId::new(1)));
+        assert_eq!(
+            first_native_overlap(&island_nodes, &equation_support, &output_nodes, &retained_nodes, &native_nodes),
+            Some(NodeId::new(1))
+        );
     }
 
     #[test]
@@ -4041,7 +3916,10 @@ mod positive_scope_ownership_tests {
         let outputs = [NodeId::new(2)].into_iter().collect();
         let native = island.into_iter().collect();
         let retained = [NodeId::new(1)].into_iter().collect();
-        assert_eq!(first_native_overlap(&island, &support, &outputs, &retained, &native), Some(NodeId::new(2)));
+        assert_eq!(
+            first_native_overlap(&island, &support, &outputs, &retained, &native),
+            Some(NodeId::new(2))
+        );
     }
 
     #[test]

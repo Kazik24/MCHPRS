@@ -39,6 +39,7 @@ fn proof_budget_limits_are_inclusive_and_cancellation_stays_fatal() {
     let mut budget = LayerBudget {
         bytes: MAX_LAYER_BYTES - 1,
         work: MAX_LAYER_WORK - 1,
+        multiplier: 1,
     };
     budget.retain(1).unwrap();
     budget.visit(&monitor).unwrap();
@@ -65,6 +66,21 @@ fn proof_budget_limits_are_inclusive_and_cancellation_stays_fatal() {
             Err(error) if error == message
         ));
     }
+}
+
+#[test]
+fn explicit_layer_budget_scales_limits_without_ignoring_cancellation() {
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(4);
+    let mut builder = LayerBuilder::new(&monitor).unwrap();
+    builder.budget.bytes = MAX_LAYER_BYTES * 4 - 1;
+    builder.budget.work = MAX_LAYER_WORK * 4 - 1;
+    builder.budget.retain(1).unwrap();
+    builder.budget.visit(&monitor).unwrap();
+    assert_eq!(builder.budget.retain(1), Err(ConstructionError::BudgetExceeded));
+    assert_eq!(builder.budget.visit(&monitor), Err(ConstructionError::BudgetExceeded));
+    monitor.cancel();
+    assert!(matches!(builder.budget.visit(&monitor), Err(ConstructionError::Invalid(message)) if message.contains("cancel")));
 }
 
 #[test]

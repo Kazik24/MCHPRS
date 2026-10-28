@@ -6,6 +6,7 @@ use crate::plot::data::sleep_time_for_tps;
 use crate::profile::PlayerProfile;
 use crate::redpiler::CompilerOptions;
 use crate::server::Message;
+use mchprs_blocks::BlockPos;
 use mchprs_network::PlayerPacketSender;
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::{
@@ -49,7 +50,7 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         return None;
     }
     let analyze = match words.get(1) {
-        Some(&"compile" | &"c") => false,
+        Some(&"compile" | &"c" | &"inspect" | &"i") => false,
         Some(&"analyze") => true,
         _ => return None,
     };
@@ -88,6 +89,23 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         length: prefix.encode_utf16().count() as i32,
         matches,
     })
+}
+
+fn inspect_options(args: &[&str], budget_multiplier: usize) -> Result<CompilerOptions, String> {
+    let mut options = CompilerOptions::parse(&format!("-O6 {}", args.join(" ")))?;
+    options.budget_multiplier = budget_multiplier;
+    Ok(options)
+}
+
+fn inspect_arguments(args: &[&str], budget_multiplier: usize) -> Result<(Option<BlockPos>, CompilerOptions), String> {
+    if args.first().is_some_and(|arg| arg.parse::<i32>().is_ok()) {
+        let coordinates = args.get(..3).ok_or("Use /rp inspect [x y z] [compiler flags].")?;
+        let x = coordinates[0].parse::<i32>().map_err(|_| "Invalid inspection x coordinate.")?;
+        let y = coordinates[1].parse::<i32>().map_err(|_| "Invalid inspection y coordinate.")?;
+        let z = coordinates[2].parse::<i32>().map_err(|_| "Invalid inspection z coordinate.")?;
+        return Ok((Some(BlockPos::new(x, y, z)), inspect_options(&args[3..], budget_multiplier)?));
+    }
+    Ok((None, inspect_options(args, budget_multiplier)?))
 }
 
 impl RelativeCoordinate for f64 {
@@ -451,15 +469,19 @@ impl Plot {
                     self.players[player].send_error_message("Reset Redpiler before inspecting live geometry.");
                     return;
                 }
+                let (position, options) = match inspect_arguments(args, self.players[player].compilation_budget_multiplier()) {
+                    Ok(arguments) => arguments,
+                    Err(error) => {
+                        self.players[player].send_error_message(&error);
+                        return;
+                    }
+                };
                 let viewer = &self.players[player];
-                let pos = worldedit::ray_trace_block(&self.world, viewer.eye_position(), viewer.pitch as f64, viewer.yaw as f64, 10.0);
+                let pos =
+                    position.or_else(|| worldedit::ray_trace_block(&self.world, viewer.eye_position(), viewer.pitch as f64, viewer.yaw as f64, 10.0));
                 let Some(pos) = pos else {
                     viewer.send_error_message(messages::BLOCK_TRACE_FAILED);
                     return;
-                };
-                let options = CompilerOptions {
-                    budget_multiplier: self.players[player].compilation_budget_multiplier(),
-                    ..CompilerOptions::default()
                 };
                 self.start_redpiler_analysis(player, options, false, Some(pos));
             }
@@ -1264,7 +1286,7 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // /redpiler compile
         Node::literal("compile", &[129]).executable(),
         // /redpiler inspect
-        Node::literal("inspect", &[]).executable(),
+        Node::literal("inspect", &[129]).executable(),
         // /redpiler reset
         Node::literal("reset", &[]).executable(),
         // /worldsendrate
@@ -1529,7 +1551,10 @@ mod security_tests {
         let (mut plot, _peer) = super::super::client_sync_tests::fixture(false);
         plot.owner = Some(plot.players[0].uuid);
         for (nodes, error) in [
-            (vec!["mchprs.access.commands", "commands.waveform"], "No permission for /waveform add; ask staff."),
+            (
+                vec!["mchprs.access.commands", "commands.waveform"],
+                "No permission for /waveform add; ask staff.",
+            ),
             (vec!["mchprs.access.commands", "commands.waveform.add"], "No waveform access; ask staff."),
         ] {
             plot.players[0].set_test_permissions(&nodes);
@@ -1537,7 +1562,10 @@ mod security_tests {
         }
         plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.waveform", "commands.waveform.add"]);
         plot.owner = Some(999);
-        assert_eq!(plot.handle_waveform(0, &["add", "clock"]).unwrap_err(), "You need edit access to this plot.");
+        assert_eq!(
+            plot.handle_waveform(0, &["add", "clock"]).unwrap_err(),
+            "You need edit access to this plot."
+        );
         assert!(plot.world.waveform.probes.is_empty());
     }
 
@@ -1718,7 +1746,7 @@ mod security_tests {
         assert!(!changes_plot("/tp", &["33.5", "21.5", "35.5", "--highlight"]));
         let nodes = declared_command_nodes();
         let inspect = nodes.iter().find(|node| node.name == Some("inspect")).unwrap();
-        assert!(inspect.children.is_empty());
+        assert!(inspect.children.iter().any(|&id| nodes[id as usize].name == Some("options")));
     }
 
     #[test]
@@ -2084,10 +2112,26 @@ mod security_tests {
             plot.handle_command(0, "/rp", vec!["inspect"]);
             plot.wait_for_redpiler_analysis();
             let (lines, links) = messages("Structural inspection only", "yellow");
-            assert!(lines.len() <= 8, "{lines:?}");
-            assert!(lines.iter().any(|line| line.contains("Local instant evidence")), "{lines:?}");
+            assert!(lines.iter().any(|line| line.contains("Inspection mode: O6")), "{lines:?}");
+            assert!(lines.iter().any(|line| line.to_ascii_lowercase().contains("instant")), "{lines:?}");
             assert!(lines.iter().any(|line| line.starts_with("Incoming callbacks:")));
             assert!(links.iter().any(|(label, command)| label == "(38, 21, 32)" && command == "/hl 38 21 32"));
+            plot.handle_command(0, "/rp", vec!["inspect", "37", "25", "32", "-O0"]);
+            plot.wait_for_redpiler_analysis();
+            let (coordinate_lines, coordinate_links) = messages("Structural inspection only", "yellow");
+            assert!(
+                coordinate_lines.iter().any(|line| line.contains("Inspection mode: O0")),
+                "{coordinate_lines:?}"
+            );
+            assert!(
+                coordinate_lines.iter().any(|line| line.contains("No compiled component")),
+                "{coordinate_lines:?}"
+            );
+            assert!(
+                coordinate_links
+                    .iter()
+                    .any(|(label, command)| label == "(37, 25, 32)" && command == "/hl 37 25 32")
+            );
             assert_eq!(plot.world.get_block(witness), Block::from_name("piston").unwrap());
             assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
             assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
@@ -2103,12 +2147,23 @@ mod security_tests {
 
     #[test]
     fn redpiler_flags_complete_aliases_prefixes_and_multiple_options() {
+        assert_eq!(inspect_options(&[], 8).unwrap().optimization_label(), "O6");
+        assert_eq!(inspect_options(&["--io-only"], 8).unwrap().optimization_label(), "O6");
+        let inspected = inspect_options(&["-O3", "--stable-instant-inputs"], 4).unwrap();
+        assert_eq!(inspected.optimization_label(), "O3 stable");
+        assert_eq!(inspected.budget_multiplier, 4);
+        assert!(inspect_options(&["--unknown"], 1).is_err());
+        let (position, options) = inspect_arguments(&["-201", "82", "-244", "-O3"], 8).unwrap();
+        assert_eq!(position, Some(BlockPos::new(-201, 82, -244)));
+        assert_eq!(options.optimization_label(), "O3");
+        assert!(inspect_arguments(&["1", "2"], 1).is_err());
+        assert!(inspect_arguments(&["1", "nope", "3"], 1).is_err());
         assert!(CompilerOptions::parse("--export-json").is_err());
         for flag in ["--updates", "--timing", "--unproven", "--verify", "--repro"] {
             assert!(CompilerOptions::parse(flag).is_err(), "removed flag {flag} must not be a compiler option");
         }
         let nodes = declared_command_nodes();
-        for command in ["compile", "analyze"] {
+        for command in ["compile", "analyze", "inspect"] {
             let node = nodes.iter().find(|n| n.name == Some(command)).unwrap();
             assert!(
                 node.children
@@ -2146,6 +2201,8 @@ mod security_tests {
                 ],
             ),
             ("/rp analyze --ex", vec![]),
+            ("/rp inspect -O", vec!["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "-O6"]),
+            ("/rp i --sta", vec!["--stable-instant-inputs"]),
             ("/rp compile --stable", vec!["--stable-instant-inputs"]),
             ("/rp compile --unknown", vec![]),
         ] {

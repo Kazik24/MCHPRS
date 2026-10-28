@@ -74,6 +74,7 @@ impl WireInputs {
         selected
     }
 
+    #[cfg(test)]
     pub(crate) fn valid(self) -> bool {
         const DIAGONALS: u32 = (1 << 7) | (1 << 8) | (1 << 12) | (1 << 13) | (1 << 17) | (1 << 18) | (1 << 20) | (1 << 21);
         self.direct & !(DIAGONALS | 0b111111) == 0 && self.direct & self.conditional == 0 && self.conditional & !DIAGONALS == 0
@@ -166,6 +167,7 @@ impl WireQueryFacts {
         Some(RedstoneWire::new(side(0), side(2), side(4), side(6), power))
     }
 
+    #[cfg(test)]
     pub(crate) fn raw_sides_valid(self) -> bool {
         self.raw_sides
             .is_none_or(|bits| self.known == (1 << 24) - 1 && (0..4).all(|index| (bits >> (2 * index)) & 3 != 3))

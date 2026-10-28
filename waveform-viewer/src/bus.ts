@@ -55,6 +55,7 @@ export function syncBusMembership(
     return {
       ...row,
       bus: members.length ? { ...row.bus, members } : undefined,
+      clockEdge: members.length ? row.clockEdge : undefined,
     };
   });
 }
@@ -126,6 +127,19 @@ export function formatBus(value: BusValue, settings: BusSettings): string {
         : "x") + result;
   }
   return (radix === 16 ? "0x" : radix === 8 ? "0o" : "0b") + result;
+}
+
+export function numericBus(
+  value: BusValue,
+  settings: BusSettings,
+): bigint | null {
+  const width = settings.members.length;
+  const mask = (1n << BigInt(width)) - 1n;
+  if ((value.known & mask) !== mask) return null;
+  const bits = (settings.inverted ? value.bits ^ mask : value.bits) & mask;
+  return settings.radix === 10 && settings.signed
+    ? BigInt.asIntN(width, bits)
+    : bits;
 }
 
 export function nextBusEdge(

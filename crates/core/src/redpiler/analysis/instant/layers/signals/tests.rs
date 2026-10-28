@@ -790,3 +790,69 @@ fn stable_wire_mode_honors_saved_dot_and_cross_without_weakening_legacy_queries(
         assert_eq!(actual, expected, "native wire={native:?}, connected={neighbor_connected}");
     }
 }
+
+#[test]
+fn symbolic_wire_modes_match_native_for_every_raw_side_mask() {
+    use crate::redstone::wire::{get_current_side, get_raw_sides_from_neighbors, regulate_sides};
+    use mchprs_blocks::blocks::RedstoneWireSide;
+
+    let monitor = TaskMonitor::default();
+    let dot = RedstoneWire::default();
+    let cross = RedstoneWire::new(
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        RedstoneWireSide::Side,
+        15,
+    );
+    for mask in 0..16 {
+        let mut neighbors = [Block::Air; 24];
+        for (bit, slot) in [4, 5, 1, 0].into_iter().enumerate() {
+            if mask & (1 << bit) != 0 {
+                neighbors[slot] = Block::RedstoneWire { wire: cross };
+            }
+        }
+        let (mut graph, _) = line(0, false);
+        graph.nodes[0].kind = CircuitNodeKind::Wire(0);
+        graph.nodes[0].state = ComponentState::Wire(dot);
+        graph.profiles = neighbors.iter().map(|&block| profile(block, ProfileElectrical::None)).collect();
+        graph.sites = (0..24)
+            .map(|index| SiteSpec {
+                position: BlockPos::new(index, 20, 0),
+                source: SiteSource::Constant(ProfileId::new(index as u32)),
+                source_strength: 0,
+            })
+            .collect();
+        graph.wires.push(WirePlan {
+            node: NodeId::new(0),
+            canonical_neighbors: std::array::from_fn(|index| SiteId::new(index as u32)),
+            shape_route: None,
+            turbo_route: None,
+            execution: Default::default(),
+        });
+        let power = index_power(&graph);
+        let internal = FxHashSet::default();
+        let state = FxHashMap::default();
+        let mut builder = LayerBuilder::new(&monitor).unwrap();
+        let mut tracer = SignalTracer::new(&graph, &power, &internal, &state, LayerInputRole::RequestSample).with_stable_wire_modes();
+        for face in BlockFace::values() {
+            let root = tracer.wire_emits(NodeId::new(0), PowerPort::Weak(face), &mut builder).unwrap();
+            for (wire, dot_mode) in [(dot, true), (cross, false)] {
+                let native = regulate_sides(wire, get_raw_sides_from_neighbors(wire, &neighbors));
+                let expected = match face {
+                    BlockFace::Top => true,
+                    BlockFace::Bottom => false,
+                    _ => !get_current_side(native, face.unwrap_direction().opposite()).is_none(),
+                };
+                let actual = evaluate(&builder, root, |input| match input.source {
+                    LayerInputSource::WireDot { node } => {
+                        assert_eq!(node, NodeId::new(0));
+                        dot_mode
+                    }
+                    _ => panic!("constant geometry has no other live input"),
+                });
+                assert_eq!(actual, expected, "mask={mask:04b}, dot={dot_mode}, face={face:?}");
+            }
+        }
+    }
+}

@@ -312,6 +312,9 @@ fn run_graph_pipeline_with_analysis(
     if let Some(example) = crate::redpiler::analysis::diagnostics::cell_decline_example(graph) {
         monitor.record_cell_decline_example(example);
     }
+    if let Some(example) = crate::redpiler::analysis::diagnostics::layer_decline_example(graph) {
+        monitor.record_layer_decline_example(example);
+    }
     // Entry and every enabled output have already passed their required validation.
     monitor.set_final_graph(GraphCounts::of(graph));
     Ok(layers)
@@ -433,6 +436,15 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         enabled: level >= 6,
     });
     pipeline
+}
+
+/// Research baseline for the event-domain compiler: preserve Graph and discover boundaries.
+#[cfg(test)]
+pub(crate) fn event_domain_research_pipeline() -> PassPipeline {
+    PassPipeline::new(vec![PassEntry {
+        pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
+        enabled: true,
+    }])
 }
 
 /// Inspection-only replacement for the old region/proxy builders; public tiers stay unchanged.

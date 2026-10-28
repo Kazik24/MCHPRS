@@ -555,7 +555,6 @@ fn leaf_kind(graph: &CompileGraph, equations: &Equations<'_>, source: LayerInput
             format!("State::PistonHeadPresent({})", owner_kind(register, cell))
         }
         LayerInputSource::State(StateTest::PistonAvailability { .. }) => "State::PistonAvailability".into(),
-        LayerInputSource::InstantFired { .. } => "InstantFired".into(),
         LayerInputSource::BoundaryEvent { .. } => "BoundaryEvent".into(),
         LayerInputSource::BoundaryRequest { .. } => "BoundaryRequest".into(),
         LayerInputSource::BoundaryState { .. } => "BoundaryState".into(),

@@ -5,8 +5,6 @@ use super::*;
 pub(crate) struct SettledCircuit {
     pub(crate) program: ReducedLayerProgram,
     pub(crate) outputs: Box<[SettledOutput]>,
-    /// Optional one-shot firing/reset bindings over roots in this same program.
-    pub(crate) firing: Option<LogicalFiringPlan>,
     /// Source-certified local cells whose event timing remains owned by Graph.
     pub(crate) retained_cells: Box<[CellUse]>,
     /// These observations/effects still require a boundary adapter; they are never discarded as resets.
@@ -56,6 +54,9 @@ pub(crate) enum SettledClockDriver {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettledTarget {
+    /// Idealized component output for the test-only receiver-growth experiment.
+    #[cfg(test)]
+    ComponentOutput(NodeId),
     Power(PowerTarget),
     /// A retained actor's computed data input with one certified restoration
     /// source removed; Graph supplies that exact contribution live at sampling.
@@ -66,8 +67,6 @@ pub(crate) enum SettledTarget {
         contact: ContactId,
     },
     Register(BudMemoryRead),
-    /// This is `!fired && Main == 0 && Quasi == 0`, not a route, request, or accepted action.
-    InstantPowerEligible(PistonId),
     /// A recognized two-contact payload whose stationary source occupancy is logical state.
     ResourceState {
         resource: ResourceId,
@@ -101,7 +100,6 @@ impl SettledCircuit {
                 return Err("settled circuit has an invalid output binding".into());
             }
         }
-        self.validate_firing_binding()?;
         Ok(())
     }
 }

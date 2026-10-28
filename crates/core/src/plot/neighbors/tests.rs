@@ -14,15 +14,15 @@ fn neighbor_refreshes_are_grouped_throttled_and_skip_unchanged_packets() {
     let mut views = Views::default();
     let now = Instant::now();
     let interval = Duration::from_secs(2);
-    views.load(1, (16, 0));
-    views.load(2, (16, 0));
+    views.load(1, (PLOT_WIDTH, 0));
+    views.load(2, (PLOT_WIDTH, 0));
     let mut requests = Vec::new();
     assert!(views.update(now, interval, |r| requests.push(r)).is_empty());
     assert_eq!(requests.len(), 1);
     let request = requests.pop().unwrap();
     assert_eq!(request.plot, (1, 0));
-    assert_eq!(request.chunks, vec![(16, 0)]);
-    request.reply.send(vec![((16, 0), packet(1))]).unwrap();
+    assert_eq!(request.chunks, vec![(PLOT_WIDTH, 0)]);
+    request.reply.send(vec![((PLOT_WIDTH, 0), packet(1))]).unwrap();
     let delivered = views.update(now, interval, |r| requests.push(r));
     assert_eq!(delivered.len(), 2);
     assert!(Arc::ptr_eq(&delivered[0].1, &delivered[1].1));
@@ -30,10 +30,10 @@ fn neighbor_refreshes_are_grouped_throttled_and_skip_unchanged_packets() {
     assert!(requests.is_empty());
     views.update(now + interval, interval, |r| requests.push(r));
     assert_eq!(requests.len(), 1);
-    requests.pop().unwrap().reply.send(vec![((16, 0), packet(1))]).unwrap();
+    requests.pop().unwrap().reply.send(vec![((PLOT_WIDTH, 0), packet(1))]).unwrap();
     assert!(views.update(now + interval, interval, |r| requests.push(r)).is_empty());
     views.update(now + interval * 2, interval, |r| requests.push(r));
-    requests.pop().unwrap().reply.send(vec![((16, 0), packet(2))]).unwrap();
+    requests.pop().unwrap().reply.send(vec![((PLOT_WIDTH, 0), packet(2))]).unwrap();
     assert_eq!(views.update(now + interval * 2, interval, |r| requests.push(r)).len(), 2);
 }
 
@@ -70,7 +70,7 @@ fn failed_and_timed_out_requests_retry_without_flooding_the_service() {
     let mut views = Views::default();
     let now = Instant::now();
     let interval = Duration::from_secs(2);
-    views.load(1, (16, 0));
+    views.load(1, (PLOT_WIDTH, 0));
     let mut requests = Vec::new();
     views.update(now, interval, |r| requests.push(r));
     drop(requests.pop());
@@ -246,18 +246,18 @@ fn missing_neighbors_use_the_template_or_generated_ground_without_creating_saves
     let (reply, _) = mpsc::sync_channel(1);
     let request = Request {
         plot: (1, -1),
-        chunks: vec![(16, -16)],
+        chunks: vec![(PLOT_WIDTH, -PLOT_WIDTH)],
         reply,
     };
     let mut cache = Cache::new(DISK_CACHE_BYTES);
     let generated = disk_snapshots(&root.0, &request, &mut cache).unwrap();
     assert_eq!(
         generated[0].1.buffer,
-        Plot::generate_chunk(8, 16, -16).encode_packet_for_client(true).buffer
+        Plot::generate_chunk(8, PLOT_WIDTH, -PLOT_WIDTH).encode_packet_for_client(true).buffer
     );
     assert!(!root.0.join("p1,-1").exists());
     let mut data = saved_plot();
-    let mut chunk = Chunk::empty(16, -16);
+    let mut chunk = Chunk::empty(PLOT_WIDTH, -PLOT_WIDTH);
     chunk.set_block(1, 20, 2, 1);
     data.chunk_data[0] = chunk.save();
     data.save_to_file(root.0.join("pTEMPLATE")).unwrap();

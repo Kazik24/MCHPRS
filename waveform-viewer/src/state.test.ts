@@ -6,8 +6,43 @@ import {
   parseSession,
   visibleRows,
   ungroupRows,
+  selectRows,
 } from "./state.ts";
 import { demoTrace } from "./demo.ts";
+
+test("shift selection spans visible rows and control-shift adds the range", () => {
+  const rows = initialSession(demoTrace).rows.slice(0, 5);
+  rows[2] = { ...rows[2], enabled: false };
+  assert.deepEqual(
+    selectRows(rows, [rows[0].id], rows[0].id, rows[4].id, false, true),
+    [rows[0].id, rows[1].id, rows[3].id, rows[4].id],
+  );
+  assert.deepEqual(
+    selectRows(rows, [rows[4].id], rows[0].id, rows[1].id, true, true),
+    [rows[4].id, rows[0].id, rows[1].id],
+  );
+  assert.deepEqual(
+    selectRows(rows, [rows[0].id], "missing", rows[3].id, false, true),
+    [rows[3].id],
+  );
+  assert.deepEqual(
+    selectRows(rows, [rows[0].id], rows[0].id, rows[0].id, true, false),
+    [],
+  );
+});
+
+test("session preserves clock settings and rejects invalid edge modes", () => {
+  const session = initialSession(demoTrace);
+  session.clock = "clock-key";
+  session.rows[1] = { ...session.rows[1], clockEdge: "rising" };
+  const encode = () =>
+    JSON.stringify({ version: 1, traceId: demoTrace.id, ...session });
+  assert.equal(parseSession(encode(), demoTrace).clock, "clock-key");
+  assert.equal(parseSession(encode(), demoTrace).rows[1].clockEdge, "rising");
+  const invalid = JSON.parse(encode());
+  invalid.rows[1].clockEdge = "either";
+  assert.throws(() => parseSession(JSON.stringify(invalid), demoTrace));
+});
 
 test("ungroup keeps the signal after its former group and visible when collapsed", () => {
   const [first, second, outside] = initialSession(demoTrace).rows;

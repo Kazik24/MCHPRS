@@ -423,7 +423,9 @@ impl<'a> SignalTracer<'a> {
         let complete_axis = builder.all([first, second])?;
         if let Some(dot_mode) = dot_mode {
             let not_dot = builder.not(dot_mode)?;
-            let cross_axis_emits = builder.all([not_dot, complete_axis])?;
+            let any_connected = builder.any(connected.iter().copied())?;
+            let regulated = builder.any([not_dot, any_connected])?;
+            let cross_axis_emits = builder.all([regulated, complete_axis])?;
             builder.any([connected[side], cross_axis_emits])
         } else {
             builder.any([connected[side], complete_axis])

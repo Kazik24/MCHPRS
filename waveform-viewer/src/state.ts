@@ -25,8 +25,10 @@ export interface Row {
   guides: "none" | "rising" | "falling" | "both";
   shortName: boolean;
   bus?: BusSettings;
+  clockEdge?: "rising" | "falling";
 }
 export interface Session {
+  clock: string | null;
   zeroTick: string;
   rows: Row[];
   viewport: Viewport;
@@ -36,6 +38,7 @@ export interface Session {
 
 export function initialSession(trace: Trace): Session {
   return {
+    clock: null,
     zeroTick: "0",
     rows: trace.signals.slice(0, 12).map((signal) => ({
       id: signal.id,
@@ -67,6 +70,30 @@ export function visibleRows(rows: Row[]): Row[] {
             group.id === row.groupId && (group.collapsed || !group.enabled),
         )),
   );
+}
+
+export function selectRows(
+  rows: Row[],
+  selected: string[],
+  anchor: string | null,
+  id: string,
+  multiple: boolean,
+  range: boolean,
+): string[] {
+  const visible = visibleRows(rows);
+  const start = visible.findIndex((row) => row.id === anchor);
+  const end = visible.findIndex((row) => row.id === id);
+  if (range && start >= 0 && end >= 0) {
+    const ids = visible
+      .slice(Math.min(start, end), Math.max(start, end) + 1)
+      .map((row) => row.id);
+    return multiple ? [...new Set([...selected, ...ids])] : ids;
+  }
+  return multiple
+    ? selected.includes(id)
+      ? selected.filter((item) => item !== id)
+      : [...selected, id]
+    : [id];
 }
 
 export function moveRow(
@@ -128,12 +155,14 @@ export function ungroupRows(rows: Row[], selected: string[]): Row[] {
 export function parseSession(text: string, trace: Trace): Session {
   const value = JSON.parse(text);
   const zeroTick = parseZeroTick(value.zeroTick ?? "0");
+  const clock = value.clock ?? null;
   if (
     value.version !== 1 ||
     value.traceId !== trace.id ||
     !Array.isArray(value.rows) ||
     value.rows.length > 4096 ||
-    zeroTick === null
+    zeroTick === null ||
+    (clock !== null && (typeof clock !== "string" || clock.length > 512))
   )
     throw Error("This session does not match the current capture.");
   const ids = new Set<string>();
@@ -152,12 +181,16 @@ export function parseSession(text: string, trace: Trace): Session {
       typeof row.shortName !== "boolean" ||
       (row.groupId !== undefined && typeof row.groupId !== "string") ||
       (row.collapsed !== undefined && typeof row.collapsed !== "boolean") ||
+      (row.clockEdge !== undefined &&
+        (!["rising", "falling"].includes(row.clockEdge) ||
+          (row.kind !== "signal" && !row.bus))) ||
       (row.bus !== undefined &&
         (row.kind !== "group" ||
           !row.bus ||
           ![2, 8, 10, 16].includes(row.bus.radix) ||
           typeof row.bus.inverted !== "boolean" ||
-          (row.bus.signed !== undefined && typeof row.bus.signed !== "boolean") ||
+          (row.bus.signed !== undefined &&
+            typeof row.bus.signed !== "boolean") ||
           !Array.isArray(row.bus.members) ||
           row.bus.members.length < 1 ||
           row.bus.members.length > 1024 ||
@@ -205,6 +238,7 @@ export function parseSession(text: string, trace: Trace): Session {
   )
     throw Error("Invalid session time range.");
   return {
+    clock,
     zeroTick,
     rows,
     viewport: value.viewport,

@@ -159,7 +159,7 @@ fn invalid_update_bounds_are_rejected_before_any_callbacks() {
     world.set_block(lamp.offset(mchprs_blocks::BlockFace::East), Block::RedstoneBlock {});
     for invalid in [
         BlockPos::new(-1, 16, 16),
-        BlockPos::new(256, 16, 16),
+        BlockPos::new(PLOT_WIDTH * 16, 16, 16),
         BlockPos::new(16, -1, 16),
         BlockPos::new(16, PLOT_BLOCK_HEIGHT, 16),
     ] {

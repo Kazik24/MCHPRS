@@ -1,7 +1,7 @@
 //! Incremental Boolean evaluation for settled logical programs.
-use super::{LayerExpr, LayerExprId, ReducedLayerProgram};
 #[cfg(test)]
-use super::{LayerInput, LayerInputId};
+use super::LayerInput;
+use super::{LayerExpr, LayerExprId, ReducedLayerProgram};
 #[cfg(test)]
 use std::cmp::Reverse;
 #[cfg(test)]
@@ -211,43 +211,6 @@ impl LogicalValues {
         }
 
         self.inputs.copy_from_slice(inputs);
-        self.propagate_frontier()
-    }
-
-    /// Update only the listed dense input slots, validating the entire batch before mutation.
-    /// This is for runtime event cuts where only one or a few logical state bits changed.
-    #[cfg(test)]
-    pub(crate) fn evaluate_changes(&mut self, changes: &[(LayerInputId, bool)]) -> Result<usize, &'static str> {
-        if !self.initialized {
-            return Err("logical input changes require an initial evaluation");
-        }
-        for &(input, _) in changes {
-            if input.0 as usize >= self.inputs.len() {
-                return Err("logical input change is out of range");
-            }
-        }
-        #[cfg(test)]
-        if self.heap_reference {
-            let mut inputs = self.inputs.clone();
-            for &(input, value) in changes {
-                inputs[input.0 as usize] = value;
-            }
-            return self.evaluate_heap_reference(&inputs);
-        }
-
-        debug_assert!(self.frontier.is_empty());
-        for &(input, value) in changes {
-            let slot = input.0 as usize;
-            if self.inputs[slot] == value {
-                continue;
-            }
-            self.inputs[slot] = value;
-            let start = self.input_offsets[slot];
-            let end = self.input_offsets[slot + 1];
-            for offset in start..end {
-                self.frontier.set(self.input_expressions[offset]);
-            }
-        }
         self.propagate_frontier()
     }
 

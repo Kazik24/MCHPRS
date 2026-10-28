@@ -72,20 +72,21 @@ fn persistent_wire_addresses_observe_block_changes_and_plot_boundaries() {
     assert_eq!(w.get_block(changed), Block::Air);
     let edge = w.wire_neighborhood(BlockPos::new(0, 0, 0)).unwrap();
     assert!(edge.iter().any(|n| n.cell.is_none()));
-    assert_eq!(w.wire_location(BlockPos::new(255, 255, 255)), Some(16_777_215));
+    let last = PLOT_BLOCK_WIDTH - 1;
+    assert_eq!(w.wire_location(BlockPos::new(last, 255, last)), Some((NUM_CHUNKS as u32 * 16 * 4096) - 1));
 
     let chunks = (0..PLOT_WIDTH)
-        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x + 16, z - 16)))
+        .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x + PLOT_WIDTH, z - PLOT_WIDTH)))
         .collect();
     let other = PlotWorld::from_chunks(1, -1, chunks, Default::default());
-    let q = BlockPos::new(271, 15, -241);
+    let q = BlockPos::new(PLOT_BLOCK_WIDTH + 15, 15, -PLOT_BLOCK_WIDTH + 15);
     assert_eq!(w.wire_location(p), other.wire_location(q));
     let other_cached = other.wire_neighborhood(q).unwrap();
     assert!(!std::sync::Arc::ptr_eq(&cached, &other_cached));
     for (a, b) in cached.iter().zip(other_cached.iter()) {
         assert_eq!(a.cell, b.cell);
-        assert_eq!(a.pos.x + 256, b.pos.x);
-        assert_eq!(a.pos.z - 256, b.pos.z);
+        assert_eq!(a.pos.x + PLOT_BLOCK_WIDTH, b.pos.x);
+        assert_eq!(a.pos.z - PLOT_BLOCK_WIDTH, b.pos.z);
     }
 }
 

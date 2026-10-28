@@ -221,6 +221,64 @@ fn tick_pair(backend: &mut GraphBackend, graph_world: &mut PlotWorld, native: &m
 }
 
 #[test]
+fn o6_counter_output_matches_native_each_frame_through_control_changes() {
+    let (mut native, bounds) = super::adder_tests::counter_world();
+    let (mut graph_world, _) = super::adder_tests::counter_world();
+    let manifest = manifest();
+    let trigger = ORIGIN
+        + BlockPos::new(
+            manifest["ports"]["inputs"]["trigger"][0].as_i64().unwrap() as i32,
+            manifest["ports"]["inputs"]["trigger"][1].as_i64().unwrap() as i32,
+            manifest["ports"]["inputs"]["trigger"][2].as_i64().unwrap() as i32,
+        );
+    let output_positions = positions(&manifest["ports"]["observations"]["repeater"]);
+    let ticks = graph_world.scheduler().iter_entries().collect();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        ..Default::default()
+    };
+    let mut backend = GraphBackend::compile_with_options(&graph_world, bounds, ticks, &options, Arc::new(TaskMonitor::default())).unwrap();
+    assert!(!backend.logical_devices.is_empty(), "COUNTER must use the logical device");
+
+    let mut powered = false;
+    let mut changed_at = 0;
+    let mut frames = 0;
+    let mut saw_byte_max = false;
+    let mut saw_byte_carry = false;
+    for tick in 1..=1_700 {
+        if [7, 40, 55, 90, 109, 145, 168].contains(&tick) {
+            powered = !powered;
+            changed_at = tick;
+            set_native_lever(&mut native, trigger, powered);
+            backend.use_block(trigger).unwrap();
+            backend.flush(&mut graph_world, false);
+        }
+        tick_pair(&mut backend, &mut graph_world, &mut native);
+        let elapsed = tick - changed_at + 1;
+        // Transient output values may differ between settled publication frames.
+        if (powered && elapsed % 6 == 5) || (!powered && elapsed >= 12) {
+            let word = output_count(&native, &output_positions).expect("native output repeater bank");
+            saw_byte_max |= word == 255;
+            saw_byte_carry |= word == 256;
+            for &position in &output_positions {
+                assert_eq!(
+                    graph_world.get_block(position),
+                    native.get_block(position),
+                    "output at {position:?}, tick {tick}"
+                );
+            }
+            frames += 1;
+        }
+    }
+    assert!(backend.execution_counts().logical_kernel_evaluations > 0);
+    assert!(
+        frames > 256 && saw_byte_max && saw_byte_carry,
+        "frames={frames}, saw 255={saw_byte_max}, saw 256={saw_byte_carry}"
+    );
+}
+
+#[test]
 fn o6_counter_matches_native_at_stable_storage_and_publication_cuts() {
     let (mut native, bounds) = super::adder_tests::counter_world();
     let (mut graph_world, graph_bounds) = super::adder_tests::counter_world();
@@ -602,6 +660,7 @@ fn o6_counter_falls_back_to_graph_when_an_imported_tick_is_pending() {
         lowered.program.settled_circuit().and_then(|circuit| circuit.timing.as_ref()).is_some(),
         "COUNTER must qualify for the timing-backed device path before imported work is added"
     );
+    assert!(!lowered.program.logical_devices().is_empty(), "a candidate must reach runtime admission");
     let (index, repeater) = lowered
         .program
         .nodes()
@@ -628,6 +687,13 @@ fn o6_counter_falls_back_to_graph_when_an_imported_tick_is_pending() {
 
     let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
     assert!(backend.logical_devices.is_empty(), "entry work must select the ordinary Graph path");
+    assert!(
+        monitor
+            .warnings()
+            .iter()
+            .any(|warning| warning.contains("could not start") && warning.contains("pending")),
+        "runtime activation failure must be reported even when Graph remains available"
+    );
     assert!(!backend.future.pending.is_empty());
     backend.tick().unwrap();
     assert!(backend.counts.scheduled_ticks > 0, "the imported repeater tick ran in Graph");

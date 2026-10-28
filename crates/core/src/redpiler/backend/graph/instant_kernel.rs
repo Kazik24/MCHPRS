@@ -248,7 +248,9 @@ impl GraphBackend {
             .iter()
             .enumerate()
             .filter(|(_, pull)| pull.origin.is_boundary() && values[pull.requested.0 as usize]);
-        let Some((expected_index, first_expected)) = expected.next() else { return false };
+        let Some((expected_index, first_expected)) = expected.next() else {
+            return false;
+        };
         if expected_index != first_index
             || first_expected.actor != first.piston
             || !first_expected.origin.source_matches(first.source)
@@ -260,9 +262,9 @@ impl GraphBackend {
         for (_, pull) in expected {
             if actual
                 .find(|request| {
-                request.piston == pull.actor
-                    && request.action == mchprs_world::PistonAction::Retract
-                    && pull.origin.source_matches(request.source)
+                    request.piston == pull.actor
+                        && request.action == mchprs_world::PistonAction::Retract
+                        && pull.origin.source_matches(request.source)
                 })
                 .is_none()
             {
@@ -396,16 +398,8 @@ impl GraphBackend {
         }
     }
 
-    pub(super) fn deliver_kernel_route(
-        &mut self,
-        route: &KernelRoute,
-        captured: Option<&[Option<ObservedSite>]>,
-    ) -> Result<(), GraphExecutionError> {
-        if route
-            .steps
-            .iter()
-            .any(|step| matches!(&step.kind, KernelRouteStepKind::NativeHandoff(_)))
-        {
+    pub(super) fn deliver_kernel_route(&mut self, route: &KernelRoute, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
+        if route.steps.iter().any(|step| matches!(&step.kind, KernelRouteStepKind::NativeHandoff(_))) {
             // A callback can change later reads; preserve the whole route's native prefix.
             self.instant_kernel.continuation = None;
             self.instant_kernel.active = None;

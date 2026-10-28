@@ -335,7 +335,9 @@ impl PlayerPermissionsCache {
     }
 
     pub(crate) fn waveform_rank(&self) -> Option<Rank> {
-        if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now()) || self.valid_until.is_none_or(|until| Instant::now() >= until) { return None; }
+        if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now()) || self.valid_until.is_none_or(|until| Instant::now() >= until) {
+            return None;
+        }
         self.waveform_rank
     }
 
@@ -346,9 +348,15 @@ impl PlayerPermissionsCache {
         } else {
             (config.waveform_other_signals, config.waveform_other_ticks)
         };
-        let prefix = if config.luckperms.as_ref().is_some_and(|c| c.mchprs_permissions) { "mchprs." } else { "" };
-        Ok(((signals.min(config.waveform_max_signals) as usize).min(self.numeric_limit(&format!("{prefix}waveform.signals.limit.")).unwrap_or(0)),
-            (ticks.min(config.waveform_max_ticks) as usize).min(self.numeric_limit(&format!("{prefix}waveform.ticks.limit.")).unwrap_or(0))))
+        let prefix = if config.luckperms.as_ref().is_some_and(|c| c.mchprs_permissions) {
+            "mchprs."
+        } else {
+            ""
+        };
+        Ok((
+            (signals.min(config.waveform_max_signals) as usize).min(self.numeric_limit(&format!("{prefix}waveform.signals.limit.")).unwrap_or(0)),
+            (ticks.min(config.waveform_max_ticks) as usize).min(self.numeric_limit(&format!("{prefix}waveform.ticks.limit.")).unwrap_or(0)),
+        ))
     }
 
     pub fn compilation_budget_multiplier(&self) -> usize {
@@ -504,7 +512,11 @@ impl PlayerPermissionsCache {
         result.waveform_rank = visited.keys().filter_map(|group| Rank::from_group(group)).max();
         if let Some(rank) = result.waveform_rank {
             result.rank_budget_expiry = visited.get(rank.group()).map_or(0, |paths| {
-                if paths.iter().any(|&(_, expiry)| expiry == 0) { 0 } else { paths.iter().map(|&(_, expiry)| expiry).max().unwrap_or(0) }
+                if paths.iter().any(|&(_, expiry)| expiry == 0) {
+                    0
+                } else {
+                    paths.iter().map(|&(_, expiry)| expiry).max().unwrap_or(0)
+                }
             });
         }
         if config.redstonefun_ranks {
@@ -633,21 +645,29 @@ mod tests {
         server.luckperms = Some(permissions.clone());
         server.waveform_builder_signals = 16;
         server.waveform_builder_ticks = 100;
-        let grants = vec![node("default", "mchprs.waveform.signals.limit.1024", true),
+        let grants = vec![
+            node("default", "mchprs.waveform.signals.limit.1024", true),
             node("default", "mchprs.waveform.ticks.limit.10000", true),
-            node("builder", "group.default", true), node("advanced", "group.builder", true)];
-        for (group, expected) in [("builder", (16,100)), ("advanced", (1024,10000)), ("default", (1024,10000))] {
+            node("builder", "group.default", true),
+            node("advanced", "group.builder", true),
+        ];
+        for (group, expected) in [("builder", (16, 100)), ("advanced", (1024, 10000)), ("default", (1024, 10000))] {
             let mut cache = PlayerPermissionsCache::resolve(vec![node("", &format!("group.{group}"), true)], grants.clone(), &permissions, now());
             assert_eq!(cache.waveform_limits(&server).unwrap(), expected);
             cache.valid_until = Some(Instant::now() - Duration::from_secs(1));
             assert!(cache.waveform_limits(&server).is_err());
         }
         let missing = PlayerPermissionsCache::from_proxy("builder".into(), String::new(), vec![]);
-        assert_eq!(missing.waveform_limits(&server).unwrap(), (0,0));
+        assert_eq!(missing.waveform_limits(&server).unwrap(), (0, 0));
         let unknown = PlayerPermissionsCache::from_proxy("unknown".into(), String::new(), vec![]);
         assert!(unknown.waveform_limits(&server).is_err());
-        let denied = PlayerPermissionsCache::resolve(vec![node("", "group.builder", true), node("", "mchprs.waveform.signals.limit.1024", false)], grants, &permissions, now());
-        assert_eq!(denied.waveform_limits(&server).unwrap(), (0,100));
+        let denied = PlayerPermissionsCache::resolve(
+            vec![node("", "group.builder", true), node("", "mchprs.waveform.signals.limit.1024", false)],
+            grants,
+            &permissions,
+            now(),
+        );
+        assert_eq!(denied.waveform_limits(&server).unwrap(), (0, 100));
     }
 
     #[test]

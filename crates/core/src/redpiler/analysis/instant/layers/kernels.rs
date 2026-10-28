@@ -22,46 +22,35 @@ pub(crate) fn lower_with_context(
 ) -> Result<Vec<Arc<InstantKernel>>, String> {
     let mut kernels = lower_pull_waves(graph, monitor, context)?;
     if !graph.plans.instant_events.is_empty() {
-        if graph.plans.settled_circuit.is_some() {
-            let event_actors: FxHashSet<_> = graph
-                .plans
-                .instant_events
-                .iter()
-                .flat_map(|kernel| kernel.actors.iter().copied())
-                .collect();
-            // An event kernel already provides the cheaper exact path for a one-actor
-            // wave that owns no wire corridor. Keep PullWaves where they contract
-            // multiple actors or eliminate owned wire propagation.
-            kernels.retain(|kernel| {
-                let KernelProgram::PullWave { .. } = &kernel.program else {
-                    return true;
-                };
-                kernel.actors.len() != 1 || !kernel.wires.is_empty() || !event_actors.contains(&kernel.actors[0])
-            });
-            let owned: FxHashSet<_> = kernels.iter().flat_map(|kernel| kernel.actors.iter().copied()).collect();
-            for kernel in &graph.plans.instant_events {
-                let KernelProgram::Events(entries) = &kernel.program else {
-                    return Err("instant event table contains a non-event kernel".into());
-                };
-                let remaining: Vec<_> = entries.iter().filter(|entry| !owned.contains(&entry.actor)).cloned().collect();
-                if remaining.is_empty() {
-                    continue;
-                }
-                let mut fallback = kernel.clone();
-                fallback.actors = remaining.iter().map(|entry| entry.actor).collect();
-                fallback.program = KernelProgram::Events(remaining.into_boxed_slice());
-                kernels.push(Arc::new(fallback));
-            }
-            return Ok(kernels);
-        }
-        let actors: FxHashSet<_> = graph
+        let event_actors: FxHashSet<_> = graph
             .plans
             .instant_events
             .iter()
             .flat_map(|kernel| kernel.actors.iter().copied())
             .collect();
-        kernels.retain(|kernel| !kernel.actors.iter().any(|actor| actors.contains(actor)));
-        kernels.extend(graph.plans.instant_events.iter().cloned().map(Arc::new));
+        // An event kernel already provides the cheaper exact path for a one-actor
+        // wave that owns no wire corridor. Keep PullWaves where they contract
+        // multiple actors or eliminate owned wire propagation.
+        kernels.retain(|kernel| {
+            let KernelProgram::PullWave { .. } = &kernel.program else {
+                return true;
+            };
+            kernel.actors.len() != 1 || !kernel.wires.is_empty() || !event_actors.contains(&kernel.actors[0])
+        });
+        let owned: FxHashSet<_> = kernels.iter().flat_map(|kernel| kernel.actors.iter().copied()).collect();
+        for kernel in &graph.plans.instant_events {
+            let KernelProgram::Events(entries) = &kernel.program else {
+                return Err("instant event table contains a non-event kernel".into());
+            };
+            let remaining: Vec<_> = entries.iter().filter(|entry| !owned.contains(&entry.actor)).cloned().collect();
+            if remaining.is_empty() {
+                continue;
+            }
+            let mut fallback = kernel.clone();
+            fallback.actors = remaining.iter().map(|entry| entry.actor).collect();
+            fallback.program = KernelProgram::Events(remaining.into_boxed_slice());
+            kernels.push(Arc::new(fallback));
+        }
     }
     Ok(kernels)
 }
@@ -171,9 +160,8 @@ fn lower_region(
         for (occurrence, use_) in frontier.uses.iter().enumerate() {
             let causes = use_.cause.boundary_occurrences.as_ref();
             let triggers = use_.cause.enqueue_triggers.as_ref();
-            let all_boundary_sources = !causes.is_empty()
-                && causes.iter().all(|event| entries.binary_search(&event.route).is_ok())
-                && causes == triggers;
+            let all_boundary_sources =
+                !causes.is_empty() && causes.iter().all(|event| entries.binary_search(&event.route).is_ok()) && causes == triggers;
             let origin = if all_boundary_sources {
                 KernelPullOrigin::Boundary(causes.to_vec().into_boxed_slice())
             } else {
@@ -196,14 +184,7 @@ fn lower_region(
             });
         }
     }
-    let Some(routes) = lower_routes(
-        graph,
-        &actors,
-        &resets,
-        &wires,
-        arrivals,
-        &pulls,
-    ) else {
+    let Some(routes) = lower_routes(graph, &actors, &resets, &wires, arrivals, &pulls) else {
         return Ok(None);
     };
     let mut expected_wire_levels = FxHashMap::default();
@@ -249,12 +230,16 @@ fn lower_routes(
         let cause_delivery = *graph.routes.get(cause.route.index())?.deliveries.get(cause.ordinal as usize)?;
         // Piston sampling is an Update callback. A shape row at the same target is
         // not a valid recipe for creating the child request.
-        let direct_receiver = matches!(cause_delivery.kind, DeliveryKind::Update { .. }).then(|| {
-            cause_delivery.receiver.or_else(|| match graph.sites[cause_delivery.target.index()].source {
-                SiteSource::Component(node) => Some(CallbackReceiver::Component(node)),
-                _ => None,
+        let direct_receiver = matches!(cause_delivery.kind, DeliveryKind::Update { .. })
+            .then(|| {
+                cause_delivery
+                    .receiver
+                    .or_else(|| match graph.sites[cause_delivery.target.index()].source {
+                        SiteSource::Component(node) => Some(CallbackReceiver::Component(node)),
+                        _ => None,
+                    })
             })
-        }).flatten();
+            .flatten();
         let target_actor = match direct_receiver {
             Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => Some(actor),
             Some(CallbackReceiver::Component(node)) => match graph.nodes[node.index()].kind {
@@ -273,7 +258,10 @@ fn lower_routes(
             let direct_trigger = trigger == cause && direct;
             let certified_arrival = arrivals.iter().any(|arrival| {
                 arrival.start == trigger
-                    && arrival.finishes.iter().any(|finish| finish.actor == pull.actor && finish.occurrence == cause)
+                    && arrival
+                        .finishes
+                        .iter()
+                        .any(|finish| finish.actor == pull.actor && finish.occurrence == cause)
             });
             if !direct_trigger && !certified_arrival {
                 return None;
@@ -358,10 +346,7 @@ fn lower_routes(
                     });
                 }
             }
-            routes.push(KernelRoute {
-                route,
-                steps: steps.into(),
-            });
+            routes.push(KernelRoute { route, steps: steps.into() });
         }
     }
     routes.sort_unstable_by_key(|route| route.route);

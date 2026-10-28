@@ -126,7 +126,6 @@ impl GraphBackend {
             }
             let powered = self.piston_powered(piston);
             #[cfg(test)]
-            self.record_logical_firing_sample(piston);
             #[cfg(test)]
             if self.test_recording {
                 self.test_recorder.observed_operations.push(GraphObservedOperation::Sample {
@@ -251,14 +250,10 @@ impl GraphBackend {
                 action: request.action,
             });
         }
-        if self.apply_logical_firing_action(request)?.is_some() {
-            return Ok(());
-        }
         let accepted = compiled.unwrap_or_else(|| self.native_action_accepted(request));
         #[cfg(test)]
         self.record_accepted_boundary_probe(request, accepted);
         #[cfg(test)]
-        self.record_logical_firing_accept(request, accepted);
         if accepted
             && matches!(
                 request.action,
@@ -862,14 +857,9 @@ impl GraphBackend {
     }
 
     pub(super) fn apply_deferred_event(&mut self, event: DeferredPistonEvent) -> Result<(), GraphExecutionError> {
-        if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_actor(event.piston)) {
-            self.apply_logical_firing_deferred(event)?;
-            return Ok(());
-        }
         if self.logical_bud_owner_by_actor.get(event.piston.index()).is_some_and(Option::is_some) {
             self.apply_logical_bud_deferred_event(event)?;
             #[cfg(test)]
-            self.record_logical_firing_reset(event);
             return Ok(());
         }
         let state = self.state.pistons[event.piston.index()];
@@ -901,8 +891,6 @@ impl GraphBackend {
         }
         #[cfg(test)]
         graph_test_trace!(self, format!("piston restored {:?} revision={}", event.piston, event.revision));
-        #[cfg(test)]
-        self.record_logical_firing_reset(event);
         Ok(())
     }
 

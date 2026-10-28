@@ -709,8 +709,6 @@ mod tests {
                 resource: ResourceId::new(22),
                 contact: ContactId::new(23),
             }),
-            LayerInputSource::InstantFired { actor: PistonId::new(14) },
-            LayerInputSource::InstantFired { actor: PistonId::new(24) },
         ];
         let debug_keys: FxHashSet<_> = sources.iter().map(|source| format!("{source:?}")).collect();
         assert_eq!(debug_keys.len(), sources.len(), "Debug keys distinguish the source variants and fields");
@@ -758,6 +756,9 @@ mod tests {
     fn make_equations<'a>(graph: &'a CompileGraph, monitor: &'a TaskMonitor) -> Equations<'a> {
         Equations {
             graph,
+            candidate_owners: None,
+            candidate_contact_states: false,
+            candidate_live_states: false,
             power: index_power(graph),
             wires: FxHashSet::default(),
             resets: FxHashSet::default(),
@@ -779,9 +780,6 @@ mod tests {
             pending_repeaters: FxHashSet::default(),
             retain_classic: true,
             resource_semantics: ResourceSemantics::default(),
-            fired_inputs: FxHashMap::default(),
-            firing_resources: FxHashMap::default(),
-            one_shot_contracts: FxHashMap::default(),
             diagnostic_unknown_resources: false,
             resource_cycle_witness: None,
             source_cycle_witness: Vec::new(),

@@ -66,16 +66,6 @@ impl fmt::Display for ExportError {
 
 impl std::error::Error for ExportError {}
 
-/// Counts the graph records shown in the command's success message.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ExportCounts {
-    pub(crate) nodes: usize,
-    pub(crate) power_links: usize,
-    pub(crate) sites: usize,
-    pub(crate) guards: usize,
-    pub(crate) resources: usize,
-}
-
 /// GraphExport is the concrete v1 JSON contract; execution traces stay unavailable.
 #[derive(Debug, Serialize)]
 pub(crate) struct GraphExport {
@@ -696,17 +686,6 @@ struct DiagnosticDto {
 }
 
 impl GraphExport {
-    /// counts returns the graph sizes shown to the initiating player.
-    pub(crate) fn counts(&self) -> ExportCounts {
-        ExportCounts {
-            nodes: self.graph.nodes.len(),
-            power_links: self.graph.power_links.len(),
-            sites: self.graph.sites.len(),
-            guards: self.graph.guards.len(),
-            resources: self.graph.resources.len(),
-        }
-    }
-
     /// to_bytes validates every typed reference before deterministic pretty serialization.
     pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, ExportError> {
         self.validate()?;
@@ -1070,13 +1049,12 @@ pub(crate) fn prepare_and_write<W: World>(
     directory: &Path,
     plot_x: i32,
     plot_z: i32,
-) -> Result<(PathBuf, ExportCounts), ExportError> {
+) -> Result<PathBuf, ExportError> {
     let export = prepare(world, bounds, ticks, options, monitor, limits)?;
-    let counts = export.counts();
     let bytes = export.to_bytes()?;
     check_export_cancellation(monitor)?;
     let path = write_artifact(directory, plot_x, plot_z, &bytes).map_err(|error| ExportError::new("write", error.to_string()))?;
-    Ok((path, counts))
+    Ok(path)
 }
 
 fn check_export_cancellation(monitor: &TaskMonitor) -> Result<(), ExportError> {

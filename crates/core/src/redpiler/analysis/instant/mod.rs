@@ -2,6 +2,9 @@
 pub(crate) mod boundaries;
 pub(crate) mod cells;
 pub(crate) mod event_kernels;
+// Research passes lack complete event, reset, output and native-fallback execution.
+#[cfg(test)]
+pub(crate) mod event_netlist;
 pub(crate) mod layers;
 pub(crate) mod ownership;
 pub(crate) mod regions;

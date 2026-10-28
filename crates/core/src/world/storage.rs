@@ -443,6 +443,29 @@ impl Chunk {
         }
     }
 
+    /// Commit and consume pending writes for a headless world. Do not mix with network flushes.
+    pub fn take_changed_blocks(&mut self) -> Vec<(BlockPos, u32)> {
+        let mut result = Vec::new();
+        for (section_y, section) in self.sections.iter_mut().enumerate() {
+            section.flush();
+            if let Some(changes) = section.changed_blocks.take() {
+                for (index, &state) in changes.iter().enumerate() {
+                    if state >= 0 {
+                        result.push((
+                            BlockPos::new(
+                                self.x * 16 + (index & 15) as i32,
+                                section_y as i32 * 16 + ((index >> 8) & 15) as i32,
+                                self.z * 16 + ((index >> 4) & 15) as i32,
+                            ),
+                            state as u32,
+                        ));
+                    }
+                }
+            }
+        }
+        result
+    }
+
     pub(crate) fn changed_blocks(&self) -> Vec<(BlockPos, u32)> {
         let mut changes = Vec::new();
         for (section_y, section) in self.sections.iter().enumerate() {
@@ -936,6 +959,24 @@ mod heightmap_tests {
         assert_eq!(chunk.get_top_most_block(1, 2), 21);
         chunk.set_block(1, 255, 2, 1);
         assert_eq!(chunk.get_top_most_block(1, 2), 256);
+    }
+
+    #[test]
+    fn headless_drain_commits_and_consumes_changes() {
+        let mut chunk = Chunk::empty(-2, 3);
+        assert!(chunk.take_changed_blocks().is_empty());
+        assert!(chunk.set_block(15, 20, 2, 1));
+        assert!(chunk.set_block(0, 0, 0, 1));
+        assert!(chunk.set_block(0, 0, 0, 0));
+        assert_eq!(
+            chunk.take_changed_blocks(),
+            vec![(BlockPos::new(-32, 0, 48), 0), (BlockPos::new(-17, 20, 50), 1)]
+        );
+        assert_eq!(chunk.get_block(15, 20, 2), 1);
+        assert_eq!(chunk.get_block(0, 0, 0), 0);
+        assert!(chunk.take_changed_blocks().is_empty());
+        let loaded = Chunk::load(-2, 3, chunk.save());
+        assert_eq!(loaded.get_block(15, 20, 2), 1);
     }
 
     #[test]

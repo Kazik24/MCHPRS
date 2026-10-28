@@ -1,6 +1,8 @@
 //! Cold inspection tables for the experimental boundary catalog; no runtime state is copied.
 use super::*;
-use crate::redpiler::program_graph::{BoundaryDirection, BoundaryOwner, BoundaryPortKind, CellDeclineReason, CellReset, ComparatorPortRole, FixedReadRole};
+use crate::redpiler::program_graph::{
+    BoundaryDirection, BoundaryOwner, BoundaryPortKind, CellDeclineReason, CellReset, ComparatorPortRole, FixedReadRole,
+};
 use serde_json::{Value, json};
 
 #[derive(Default)]

@@ -30,10 +30,21 @@ Formats, bit order and layout are saved per plot in the browser and in viewer
 session files. Missing probes keep their bit slots as X. VCD exports physical
 signals and command output; WaveDrom uses visible rows and selected bus formats.
 
+Shift-click selects a range of visible rows; Ctrl/⌘-Shift-click adds a range.
+Right-click a signal and choose **Set as Clock**, then select signal or bus rows
+and choose **Clock Lock → Rising edge** or **Falling edge**. Values sample at
+that edge in recorded sequence order and hold until the next selected edge.
+Before the first retained edge, or while the clock probe is missing, locked
+values are unknown. Selecting the clock again clears it and the locks. These
+settings are saved with the layout and viewer session; VCD remains the original
+recording. Right-click a bus and choose **Plot Bus** for a closable numeric plot
+of the visible time range. It uses inverted logic and signed Decimal U2 when
+selected; unknown values appear as gaps. Click the plot to move marker A.
+
 The bottom-left **Zero tick** field sets the absolute tick displayed as zero.
 Apply with Enter or by leaving the field. Ruler, cursors, event previews and
-go-to-tick use this reference. Empty the field or use **Reset** to return to zero;
-earlier ticks display as negative. The reference
+go-to-tick use this reference. **Reset** sets it to marker A; empty the field to
+return to absolute tick zero. Earlier ticks display as negative. The reference
 is saved per plot and in viewer sessions. VCD timing and recordings stay physical.
 
 In Minecraft, `/waveform clear` empties captured history/events and keeps watches

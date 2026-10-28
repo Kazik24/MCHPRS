@@ -372,3 +372,64 @@ fn advance(world: &mut crate::plot::PlotWorld, ticks: usize) {
         world.tick_interpreted();
     }
 }
+
+#[test]
+#[ignore = "standalone Divider source-event discovery census"]
+fn divider_research_greedy_discovers_source_regions() {
+    use crate::redpiler::analysis::instant::event_netlist::discover;
+    use sha2::{Digest, Sha256};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(root.join("test_data/piston-research/fixtures/fpu_divider.json")).unwrap()).unwrap();
+    let bytes = std::fs::read(root.join(manifest["fixture"].as_str().unwrap())).unwrap();
+    assert_eq!(
+        format!("{:x}", Sha256::digest(&bytes)),
+        "c6f04b0f948a3dc5b05e42e7b1a450edefed522159f421a6dd25f891b6e5297b"
+    );
+    let origin = BlockPos::new(40, 30, 40);
+    manifest["origin"] = serde_json::json!([origin.x, origin.y, origin.z]);
+    let world = cpus::load_manifest(&manifest).unwrap();
+    let d = &manifest["dimensions"];
+    let bounds = (
+        origin,
+        origin
+            + BlockPos::new(
+                d[0].as_i64().unwrap() as i32 - 1,
+                d[1].as_i64().unwrap() as i32 - 1,
+                d[2].as_i64().unwrap() as i32 - 1,
+            ),
+    );
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::for_budget(8)).unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let found = discover(graph, catalog, &vec![true; catalog.cells.len() + catalog.corridors.len()], &monitor).unwrap();
+    let selected = found.selected.iter().filter(|&&value| value).count();
+    assert!(selected > 0, "real source events must reach recognized owners");
+    assert!(
+        graph.plans.instant_events.is_empty() && graph.plans.logical_devices.is_empty(),
+        "discovery must not install an executor"
+    );
+    println!(
+        "Divider discovery: {} cells, {} corridors, {} selected owners, {} catalog declines",
+        catalog.cells.len(),
+        catalog.corridors.len(),
+        selected,
+        catalog.declines.len()
+    );
+}

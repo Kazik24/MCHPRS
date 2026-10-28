@@ -20,7 +20,6 @@ mod help;
 mod history;
 mod interpreter_cache;
 pub(crate) mod memory_budget;
-mod waveform;
 mod monitor;
 mod neighbors;
 mod packet_handlers;
@@ -36,6 +35,7 @@ mod screen_updates;
 mod sign_tests;
 mod small;
 mod visuals;
+mod waveform;
 pub mod worldedit;
 
 use crate::chat::ChatComponent;
@@ -73,7 +73,7 @@ use self::data::sleep_time_for_tps;
 use self::scoreboard::Scoreboard;
 
 /// The width of a plot (2^n)
-pub const PLOT_SCALE: u32 = 4;
+pub const PLOT_SCALE: u32 = 5;
 
 /// The width of a plot counted in chunks
 pub const PLOT_WIDTH: i32 = 2i32.pow(PLOT_SCALE);
@@ -383,6 +383,11 @@ impl PlotWorld {
 
     pub fn get_chunks(&self) -> &[Chunk] {
         &self.chunks
+    }
+
+    /// Commit and drain pending writes for a headless world, without sending packets.
+    pub fn take_block_changes(&mut self) -> Vec<(BlockPos, u32)> {
+        self.chunks.iter_mut().flat_map(Chunk::take_changed_blocks).collect()
     }
 
     pub fn scheduler(&self) -> &TickScheduler<ScheduledBlockTick> {
@@ -1393,7 +1398,9 @@ impl Plot {
     }
 
     fn disable_empty_plot_history(&mut self) {
-        if self.players.is_empty() { self.world.waveform.stop("empty_plot"); }
+        if self.players.is_empty() {
+            self.world.waveform.stop("empty_plot");
+        }
         if self.players.is_empty() && self.world.history.enabled() {
             let bytes = self.world.history.disable();
             debug!(
@@ -1704,11 +1711,15 @@ impl Plot {
     }
 
     fn update(&mut self) {
-        if let Some(source) = &mut self.waveform_source { source.poll(&self.world.waveform, self.redpiler.is_active() || self.compilation.is_some(), self.owner); }
+        if let Some(source) = &mut self.waveform_source {
+            source.poll(&self.world.waveform, self.redpiler.is_active() || self.compilation.is_some(), self.owner);
+        }
         if self.world.waveform.take_overflow_notice() {
             for player in &mut self.players {
                 if player.can_edit_plot(self.owner, (self.world.x, self.world.z)) {
-                    player.send_error_message("Waveform buffer full; recording stopped. Captured history is still available. Use /waveform on to restart.");
+                    player.send_error_message(
+                        "Waveform buffer full; recording stopped. Captured history is still available. Use /waveform on to restart.",
+                    );
                 }
             }
         }
@@ -1970,9 +1981,14 @@ impl Plot {
         assert!(probes.len() <= 1024, "Saved waveform definition exceeds the hard signal limit");
         let mut names = HashSet::new();
         let mut positions = HashSet::new();
-        assert!(probes.iter().all(|p| crate::waveform::Probe::valid_name(&p.name)
-            && Self::in_plot_bounds(x,z,p.pos.x,p.pos.z) && (0..PLOT_BLOCK_HEIGHT).contains(&p.pos.y)
-            && names.insert(p.name.as_str()) && positions.insert(p.pos)), "Invalid saved waveform definitions");
+        assert!(
+            probes.iter().all(|p| crate::waveform::Probe::valid_name(&p.name)
+                && Self::in_plot_bounds(x, z, p.pos.x, p.pos.z)
+                && (0..PLOT_BLOCK_HEIGHT).contains(&p.pos.y)
+                && names.insert(p.name.as_str())
+                && positions.insert(p.pos)),
+            "Invalid saved waveform definitions"
+        );
         world.waveform.replace(probes);
         if plot_data.piston_state.logical_tick != 0
             || plot_data.piston_state.next_identity != 0
@@ -2046,7 +2062,8 @@ impl Plot {
 
     fn run(&mut self, initial_player: Option<Player>) {
         if CONFIG.waveform_enabled {
-            self.waveform_source = Some(crate::waveform::api::Source::register((self.world.x, self.world.z)).expect("Cannot register waveform source"));
+            self.waveform_source =
+                Some(crate::waveform::api::Source::register((self.world.x, self.world.z)).expect("Cannot register waveform source"));
         }
         let _guard = self.async_rt.enter();
 

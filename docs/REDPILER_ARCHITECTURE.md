@@ -43,12 +43,29 @@ lowering and runtime admission succeed. Logical plans are optional: each has to
 bind its inputs, outputs, owned state, and any callbacks or events it consumes.
 The original graph remains available to execute work outside that contract.
 
-Finite-layer compilation partitions the catalog once, indexes power once, and
-tries each independent region once. Its lowering context retains the successful
-arrival proofs. Unsupported regions stay on Graph; cancellation and invalid
-graphs still fail compilation. There is no failure-guided repartition/recompile
-loop: the removed loop repeatedly rebuilt global ownership and perimeters
-without demonstrating a useful throughput gain on the saved plot.
+Finite-layer compilation first runs
+[`regions::greedy`](../crates/core/src/redpiler/analysis/instant/regions/greedy.rs)
+over the existing boundary catalog. It indexes exact input callback occurrences,
+follows only the corresponding cell uses and their immediate effects, including
+same-owner activations, then retains reached work that can affect a native
+boundary. Deferred reset and publication effects remain boundaries. Power reads
+participate in usefulness analysis but do not authorize ownership merges.
+
+The partition joins selected owners only through witnessed immediate callback
+edges, retaining complete shared-resource cell contracts and every original
+perimeter read/effect row. Whether an owner can join another is separate from
+whether it can compile alone. Excluded owners remain on Graph with a decline
+reason; selected regions still require the existing arrival, boundary and
+runtime-entry certificates. This discovery feeds the connected-layer compiler;
+it does not itself create a clock scheduler or materializer for `SettledFrame`.
+
+Compilation indexes power once and tries each independent selected region once.
+Its lowering context retains the successful arrival proofs. Discovery has a
+shared work and memory budget; exhaustion leaves its candidates on Graph.
+Cancellation and invalid graphs still fail compilation. There is no
+failure-guided repartition/recompile loop: the removed loop repeatedly rebuilt
+global ownership and perimeters without demonstrating a useful throughput gain
+on the saved plot.
 
 An interaction island is a conservative envelope of mutable dependencies, not
 proof that all its components belong to one computation. Computation-frame
@@ -179,20 +196,23 @@ certified. Whole-frame
 next-state equations inferred from lane geometry remain candidates and cannot
 claim those shared resources without a complete lifecycle contract.
 
-A PullWave can commit several actors without going through the individual
-action handlers. Its runtime entry therefore checks every actor for a conflicting
-BUD, native clock, or retained-frame owner before evaluating or changing state.
-Any overlap leaves the request and remaining FIFO work to Graph. Multi-actor
-waves still require ownership of the complete pending piston queue; independent
-islands alone do not justify reordering scheduled ticks or command effects.
+A PullWave follows Graph's actual popped requests, committing one action at a
+time through the ordinary action handler. Entry checks every actor for a
+conflicting BUD, native clock, or retained-frame owner before evaluating or
+changing state. It validates the queued region requests and their source order;
+unrelated requests remain in the FIFO. A foreign or unexpected pop discards the
+predicted suffix. Live acceptance is checked again before each action, and a
+route with a native callback cut hands back to Graph before running compiled
+steps. Independent islands do not justify reordering scheduled ticks or
+command effects.
 
 Production activation goes through `GraphBackend::from_lowered`: it imports
 pending ticks, admits logical runtimes, and schedules initial command work.
 `new_unactivated` deliberately constructs only the underlying Graph executor;
 proof and comparison code can use it without activating a whole-device runtime.
 
-Equation extraction explicitly selects settled resource semantics, recognized
-feedback state, or one-shot fired state. Unsupported semantics, unresolved
+Equation extraction explicitly selects settled resource semantics or recognized
+feedback state. Unsupported semantics, unresolved
 feedback, exhausted budgets, and malformed programs have typed internal errors;
 diagnostic wording does not decide whether compilation declines. Physical
 boundary certification and runtime entry checks remain separate obligations.
@@ -232,16 +252,21 @@ their scheduled transitions and delays. Their source wires remain public outputs
 Repeaters with downstream consumers or side inputs require a broader boundary
 proof and are not admitted by this terminal-output adapter.
 
-The current original-checkout WIP adds a source-certified
-[`LogicalFiringRuntime`](../crates/core/src/redpiler/backend/graph/logical_firing.rs).
-It intercepts only an admitted activation, piston action, observer reset, and
-retained lamp effects, and leaves other routes and actors on Graph. This event
-runtime is experimental and is not part of the v0.6.0 release.
+Single untimed observer-reset cells execute on Graph. The experimental
+single-cell firing runtime and its one-shot equation probes have been removed;
+the ordinary event-boundary diagnostics remain available for research.
+
+The requested replacement contract compares output states at settled frame
+boundaries; intermediate output states may differ. Inputs may be restricted to
+frame boundaries and handoff to a settled state. Native circuitry that observes
+intermediate effects cannot safely share such a boundary without a separate
+proof, and command effects must remain correct. Unsupported circuits use Graph.
+The saved FPU does not yet have an admitted implementation of this contract.
 
 ## Version boundary and limits
 
 The v0.6.0 settled FPU frame and Counter runtimes are integrated with the newer
-logical BUD and firing work. O6 implies stable inputs through reset; no additional
+logical BUD work. O6 implies stable inputs through reset; no additional
 flag is needed. Lower tiers request that promise explicitly with
 [`CompilerOptions`](../crates/core/src/redpiler/options.rs)'s
 `--stable-instant-inputs` option.

@@ -5,6 +5,19 @@ achieved useful acceleration. The latest planning targets are COUNTER at least
 1M game TPS, the actual saved FPU around 10–40k game TPS, and correct ADDER
 execution and handoff. No replacement is deployed.
 
+The user subsequently narrowed the proposed fast-backend output contract:
+observable output states must match at settled frame boundaries; intermediate
+output states may differ. Inputs may be restricted to frame boundaries and
+handoff to a settled state. This does not prove that an existing candidate is
+safe: native neighbors must not consume incorrect intermediate transitions,
+and retained command effects still need their required behavior. Unsupported
+circuits continue on Graph. The saved FPU has not passed the revised contract.
+After removal of the single-cell firing runtime, the existing COUNTER device
+passed a settled-frame output comparison across starts, stops and 255-to-256
+carry. Three 1,000,002-tick release samples measured 5.38M, 5.48M and 5.53M
+wall ticks/s, with active logical evaluation and the existing sampled native
+reference; intermediate output values can differ under the revised contract.
+
 Compile and `/rp analyze` now show bounded, clickable warnings for scoped
 instant admission and the separate whole-plot equation attempt. On the saved
 FPU the warning identifies candidate clock `(-267, 86, -181)` and output
@@ -131,6 +144,126 @@ native comparisons and handoff, with instrumented event entries observed for
 the nine matching west-facing actors. This did not activate or benchmark the
 saved plot's logical executor; comparator behavior, the complete boundary and
 saved-plot acceleration still need the broader acceptance checks.
+
+The current saved-plot warning instead points to the piston at
+`(-157,78,-236)`, which shares a redstone block with the piston at
+`(-155,76,-236)`. The user identifies the first as an intentionally held
+logical zero in a ROM decoder. A fresh graph inspection found an unconditional
+quasi-power link from the redstone block at `(-157,80,-236)` to that piston.
+The current cell builder declines the entire shared group because it requires
+every owner to have a recognized reset. The graph census found 44 declined
+groups inside the FPU selection bounds. Of these, 33 have an unconditional
+redstone-block power input for the unrecognized actor, and those source
+positions have no movable contact in the prepared graph. Eleven did not match
+that conservative check. These counts do not establish which groups affect
+the outputs. A general improvement could
+prove a power source immutable and keep the held actor in the shared physical
+ownership group while omitting its impossible pull transition. Such a change
+still needs native tests and must fall back for movable or conditional sources.
+The read-only neighborhood and graph diagnostic is
+`E:/codex-builds/warning-witness-reduced.log`.
+The power-source census is `E:/codex-builds/warning-constant-owner-census.log`.
+
+The census describes the older snapshot. The user subsequently identified a
+missing reset in a repeated group beginning at `(-229,87,-218)` and fixed the
+build. Compared with `FPU_MROWW.schem`, `FPU_27.schem` adds ten downward-facing
+observers and ten wool blocks at the corresponding repeated positions. The
+updated full plot was saved after that schematic and downloaded separately;
+its SHA-256 is `261e7c67467d788023b0b809f439cf390e09d0e449ab103fcc5c75be75bcf319`.
+Direct block reads confirm all ten observer-and-wool pairs are in the new
+plot and were air in the older snapshot.
+An instrumented, changing-input replay of that snapshot passed native output,
+command and six-offset continuation checks, with 24 command outputs in the
+handoff histories. It admitted zero logical devices and processed 936,587
+callbacks in 96 measured ticks. The scoped candidate still declined on an
+ownership overlap, separately from the whole-plot equation budget failure.
+The replay ran alongside compilation, so its timing is not a server throughput
+measurement. The log is `E:/codex-builds/FPU27-changing-input-replay.log`.
+
+An isolated event-index feasibility check of the updated plot's pipeline
+catalog found 6,557 cells, 10,070 uses and 306,426 source-occurrence entries.
+Building power expressions for the entire catalog stopped at a directional
+wire output whose dot/cross shape can change: actor `(-224,66,-221)` reads wire
+`(-224,65,-222)`. Treating all 137 saved dot wires as native leaves allowed
+construction of 10,070 actor roots with 112,381 inputs and 373,051 expressions.
+The largest declined connected region separately produced 96 actor roots with
+700 inputs and 2,066 expressions. These are static power-root results, not
+proof of event ordering, ownership, handoff or execution. The diagnostic log is
+`E:/codex-builds/greedy-shadow-FPU27-partition.log`.
+
+In a 16-frame workload census, catalog actors inside the FPU accounted for
+33,200 of 33,360 whole-plot piston actions. Activity was spread across 1,850
+regions, 1,816 of which received outside-wire samples. The largest individually
+observed region had 320 actions; the 96-actor example had 256. These counts
+show coverage opportunities, not safe ownership or callback savings. The log is
+`E:/codex-builds/greedy-shadow-FPU27-all-region-activity.log`.
+
+An isolated event-domain prototype replaced callbacks on a connected two-cell
+fixture and matched native state after a settled handoff and 24 continuation
+ticks. Its first saved-region replay declined before execution: the first
+native boundary event arrived during piston actions, while that prototype only
+accepted events before a tick. The replay captured 24 such boundary events and
+256 native actions, but accepted no shadow actions. This is a concrete runtime
+boundary gap, not an FPU acceleration result. See
+`E:/codex-builds/greedy-shadow-FPU27-external-bridge.log`.
+After adding phase-aware inputs and owned-wire shape updates, the isolated
+shadow completed 16 changing-input frames and 256 actions, matching the 96
+actors and their resources at each settled cut. It still ran beside Graph:
+Graph supplied the external effects. A later test also matched full owned
+piston, resource, wire and observer state, materialized it at the settled cut,
+and matched readouts, lamps and command deltas for 24 native continuation
+ticks. Independent boundary publication and actual callback replacement
+remain unproved. See `E:/codex-builds/greedy-shadow-FPU27-handoff.log`.
+
+A later test-only installed bridge ran the same 96-actor candidate for 16
+changing-input frames, published its native boundary deliveries and matched
+readouts, indicators and 16 native command outputs. It replaced 256 piston
+actions and reduced callbacks from 936,587 to 931,707 (0.52%). The bridge stops
+on unsupported events rather than safely falling back, and its diagnostic wall
+timings are not a speed comparison. It is not production code. See
+`E:/codex-builds/greedy-shadow-FPU27-installed.log`.
+
+A four-region extension passed the same 16-frame native comparison and replaced
+576 actions and 7,425 callbacks. In one same-binary instrumented sample, the
+reference ran at 429 game TPS and the prototype at 399 game TPS. This is not a
+benchmark, but the small coverage and added work do not justify integrating the
+prototype. A coarser settled-frame transition is still needed. Logs:
+`E:/codex-builds/greedy-shadow-FPU27-sparse-multi.log` and
+`E:/codex-builds/greedy-shadow-FPU27-sparse-baseline.log`.
+
+An isolated source-stage feasibility run precompiled actor callback routes
+while retaining wire and boundary delivery on Graph. It matched 16 changing
+frames and 16 command messages, and reduced callbacks from 936,587 to 895,003
+(4.44%). Wire walks and piston actions remained native. This is not production
+admission and does not approach the FPU throughput target by itself. A
+same-binary instrumented sample measured 427.7 game TPS with the stage off and
+401.6 with it on. Logs: `E:/codex-builds/greedy-shadow-FPU27-source-stage-on.log`
+and `E:/codex-builds/greedy-shadow-FPU27-source-stage-off.log`.
+
+An isolated admission of exclusive single-cell instant actors to the existing
+per-action logical owner passed native replay and six handoffs. It replaced
+9,216 ordinary actions one-for-one with logical actions and reduced callbacks
+by 3.66%; single instrumented samples were 346 TPS off and 374 TPS on. This is
+not evidence of a reliable speedup or the frame-level reduction required for
+the target, so the experimental admission was discarded.
+
+An isolated bulk sparse executor subsequently ran 1,021 selected groups and
+passed 16 changing-input readout and command comparisons. It replaced 24,192
+piston actions one-for-one and reduced callbacks from 936,587 to 898,452 (4.1%).
+A sequential same-binary instrumented sample measured 128.8 game TPS for Graph
+and 111.2 with the prototype. Installed handoff and static ingress remained
+unproved; the test-only executor is not a viable performance result. Logs:
+`E:/codex-builds/sparse-nativeobserver-bulk-control.log` and
+`E:/codex-builds/sparse-nativeobserver-bulk-timed.log`.
+
+The pulse investigation found and fixed a separate wire-shape tracing error:
+native regulation completes an axis for a dot when any raw side is connected,
+whereas the old expression suppressed that completion for every dot. The
+regression compares all 16 raw-side masks and both dot modes against native
+regulation. An isolated corrected-build replay with 192 random-input frames
+passed the native oracle and handoffs, but still activated zero logical devices
+and processed 13,321,604 callbacks. Its instrumented timing is not a server
+benchmark. Log: `E:/codex-builds/coarse-pulse-coverage-random-192.log`.
 
 In an isolated scoped-only output-selection experiment, omitting wires with no
 power fanout moved the first crop rejection from the highlighted dead wire to
@@ -282,9 +415,11 @@ An isolated one-shot shadow assumed plan-order activations, phase-5 rearm and
 frozen unmodeled native inputs. It exceeded its 250,000 eligibility-visit cap
 in the second random-input frame. In its only complete frame, 71 of 6,453
 resource positions disagreed in phases 3 and 4 despite matching sampled power
-and actor lifecycle roots. It retained 23,187 frozen non-control predicates and
-176 unmapped observer slots. This assumption is insufficient and the model was
-not activated. See `E:/codex-builds/virtual-firing-random.log`.
+and actor lifecycle roots. Its counter reported 23,187 seeded non-control
+predicates, including some subsequently updated by the resource model, and
+176 unmapped observer slots; the count is not a count of proven stale inputs.
+This assumption is insufficient and the model was not activated. See
+`E:/codex-builds/virtual-firing-random.log`.
 An affected-expression worklist reduced the first two frames to 15,736 and
 18,051 actor visits, and separate location/enablement removed the initial
 phase-3/4 location errors. But assuming every eligible actor fires produced
@@ -473,9 +608,12 @@ continuation derived for the resulting state. Its runtime rules are:
    never reuse an unproven frozen suffix.
 6. Keep Graph's real FIFO and first request source authoritative. An unexpected
    popped request discards the predicted continuation before further effects.
-7. At tick boundaries, reset or handoff, authoritative state and future must
-   describe the exact native continuation. If a region keeps private state,
-   materialization is part of its proof, not a presentation approximation.
+7. At any permitted handoff, authoritative state and future must describe a
+   correct native continuation. A frame may restrict handoff to certified
+   settled boundaries under the accepted compatibility contract. If it keeps
+   private state, materialization is part of its proof, not a presentation
+   approximation. Native callbacks must still observe the state they require
+   whenever they run.
 
 An unsupported cut remains native. Surrounding supported cuts may compile when
 their state ownership and interfaces are certified. A failure must not trigger
@@ -499,17 +637,20 @@ it did not address the architectural failure.
 Compilation counts and installed plans are not execution evidence. Acceptance
 requires actual executed regions and a substantial callback/work reduction on
 the changing-input saved plot, measured against the same revision and options.
-The latest requested FPU target is approximately 10–40k game TPS for the actual
-saved plot with changing inputs. The earlier strict 40k target was revised when
-the user requested a scoped implementation plan covering COUNTER (at least 1M
-game TPS), FPU and ADDERS. A standalone FPU fixture does not meet the saved-plot
-target.
+The user accepts 20k–30k game TPS for the actual saved plot with changing
+inputs, with 40k as a stretch target, and at least 1M game TPS for COUNTER.
+A standalone FPU fixture does not meet the saved-plot target.
 
-Correctness requires native outputs every game tick; FIFO order and source;
-actor/resource state, reset and scheduled work; all six input-frame handoff
-offsets followed by native continuation; nonzero command/tellraw output; and
-independent, connected, differently clocked and unsupported-neighbor fixtures.
-Performance does not waive any of these checks.
+The user subsequently accepted output-state equivalence only at settled frame
+boundaries, with reduced compatibility. Intermediate private states may differ;
+this does not permit dropping native boundary effects or inventing a final
+state without proving the admitted transition. Validate reset and future state,
+FIFO source/order where they affect behavior, nonzero command/tellraw output,
+native continuation at every permitted handoff, and independent, connected,
+differently clocked and unsupported-neighbor fixtures. Existing Graph replay
+tests also check every tick and all six handoff offsets; those stronger checks
+validate that path, but are not the compatibility requirement for every future
+settled-frame implementation. See [the current contract](REDPILER_MASTERPLAN.md#goal-and-contract).
 
 Native circuit health is a separate investigation. Zero commands or a constant
 indicator trace alone does not establish a broken plot: the exercised operand

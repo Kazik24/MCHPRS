@@ -224,39 +224,75 @@ fn reset_power_witness_does_not_borrow_an_independent_input_cone() {
 fn reset_search_traces_observer_through_furnace_component() {
     use mchprs_blocks::BlockDirection;
     let mut graph = wire_graph(&[Block::Air; 24], RedstoneWire::default());
-    graph.nodes[0].raw_state = Some(Block::Furnace { facing: BlockDirection::North, lit: false }.get_id());
+    graph.nodes[0].raw_state = Some(
+        Block::Furnace {
+            facing: BlockDirection::North,
+            lit: false,
+        }
+        .get_id(),
+    );
     graph.nodes[0].kind = CircuitNodeKind::Electrical(crate::redpiler::components::NodeType::Constant);
     graph.nodes.push(CircuitNodeDraft {
         position: None,
         raw_state: None,
-        kind: CircuitNodeKind::Observer { watched: SiteId::new(0), facing: BlockFace::Bottom },
+        kind: CircuitNodeKind::Observer {
+            watched: SiteId::new(0),
+            facing: BlockFace::Bottom,
+        },
         state: ComponentState::Specialized,
         output_route: None,
     });
     for node in [NodeId::new(0), NodeId::new(1)] {
-        graph.sites.push(SiteSpec { position: BlockPos::new(20, 20, 20), source: SiteSource::Component(node), source_strength: 0 });
+        graph.sites.push(SiteSpec {
+            position: BlockPos::new(20, 20, 20),
+            source: SiteSource::Component(node),
+            source_strength: 0,
+        });
     }
     graph.power_links = vec![
         PowerLink {
-            from: SiteId::new(24), from_port: PowerPort::Conducted { include_dust: true },
-            to: PowerTarget::Input { node: NodeId::new(2), port: InputPort::Quasi },
-            face: BlockFace::Top, attenuation: 0, guard: GuardId::new(0),
+            from: SiteId::new(24),
+            from_port: PowerPort::Conducted { include_dust: true },
+            to: PowerTarget::Input {
+                node: NodeId::new(2),
+                port: InputPort::Quasi,
+            },
+            face: BlockFace::Top,
+            attenuation: 0,
+            guard: GuardId::new(0),
         },
         PowerLink {
-            from: SiteId::new(25), from_port: PowerPort::Strong(BlockFace::Bottom),
-            to: PowerTarget::Conductor { site: SiteId::new(24), include_dust: true },
-            face: BlockFace::Bottom, attenuation: 0, guard: GuardId::new(0),
+            from: SiteId::new(25),
+            from_port: PowerPort::Strong(BlockFace::Bottom),
+            to: PowerTarget::Conductor {
+                site: SiteId::new(24),
+                include_dust: true,
+            },
+            face: BlockFace::Bottom,
+            attenuation: 0,
+            guard: GuardId::new(0),
         },
     ];
     let observers = FxHashMap::from_iter([(NodeId::new(1), PistonId::new(0))]);
     let monitor = TaskMonitor::default();
     let search = |graph: &CompileGraph| find(graph, &index_power(graph), &observers, NodeId::new(2), &monitor).unwrap();
     assert_eq!(search(&graph), Some((NodeId::new(1), PistonId::new(0))));
-    graph.nodes[0].raw_state = Some(Block::RedstoneWire { wire: RedstoneWire::default() }.get_id());
+    graph.nodes[0].raw_state = Some(
+        Block::RedstoneWire {
+            wire: RedstoneWire::default(),
+        }
+        .get_id(),
+    );
     assert_eq!(search(&graph), None, "a nonconducting component cannot relay reset power");
     graph.nodes[0].raw_state = None;
     assert_eq!(search(&graph), None, "a component with unknown geometry cannot relay reset power");
-    graph.nodes[0].raw_state = Some(Block::Furnace { facing: BlockDirection::North, lit: false }.get_id());
+    graph.nodes[0].raw_state = Some(
+        Block::Furnace {
+            facing: BlockDirection::North,
+            lit: false,
+        }
+        .get_id(),
+    );
     graph.guards.push(Guard::Not(GuardId::new(0)));
     graph.power_links[1].guard = GuardId::new(1);
     assert_eq!(search(&graph), None, "a false source guard cannot relay reset power");

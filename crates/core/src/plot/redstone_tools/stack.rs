@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn auto_stack_rejects_noop_and_out_of_bounds_configurations() {
         let world = super::super::tests::test_world();
-        let pos = BlockPos::new(250, 30, 10);
+        let pos = BlockPos::new(crate::plot::PLOT_BLOCK_WIDTH - 6, 30, 10);
         let bounds = SelectionBounds::new(pos, pos, &world).unwrap();
         for args in [["east", "0", "2"], ["east", "2", "0"]] {
             let request = RStackRequest::parse_mode(&args, BlockPos::new(0, 0, 1), true).unwrap();
@@ -379,7 +379,7 @@ mod tests {
         let stack = session(&world, pos, pos, &["east", "-2", "2"]);
         assert_eq!(
             stack.destinations(pos).collect::<Vec<_>>(),
-            [BlockPos::new(248, 30, 10), BlockPos::new(246, 30, 10)]
+            [pos + BlockPos::new(-2, 0, 0), pos + BlockPos::new(-4, 0, 0)]
         );
     }
 
@@ -409,13 +409,13 @@ mod tests {
     #[test]
     fn every_destination_is_checked_before_mutation() {
         let world = super::super::tests::test_world();
-        let start = BlockPos::new(250, 10, 10);
+        let start = BlockPos::new(crate::plot::PLOT_BLOCK_WIDTH - 6, 10, 10);
         let bounds = SelectionBounds::new(start, start, &world).unwrap();
         let request = RStackRequest::parse(&["east", "4", "2"], BlockPos::new(0, 0, 1)).unwrap();
         assert!(request.destinations(bounds, &world).is_err());
         let valid = RStackRequest::parse(&["-2", "2", "east"], BlockPos::new(0, 0, 1)).unwrap();
         let destinations = valid.destinations(bounds, &world).unwrap();
-        assert_eq!(destinations[0].start.x, 248);
-        assert_eq!(destinations[1].start.x, 246);
+        assert_eq!(destinations[0].start.x, start.x - 2);
+        assert_eq!(destinations[1].start.x, start.x - 4);
     }
 }

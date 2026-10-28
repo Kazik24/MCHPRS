@@ -229,8 +229,12 @@ impl MinecraftServer {
         }
 
         // Create server struct
-        let waveform_api = CONFIG.waveform_enabled.then(|| crate::waveform::api::ApiServer::start(&CONFIG.waveform_bind_address).expect("Cannot start waveform API"));
-        if let Some(api) = &waveform_api { info!(address = %api.address, "Waveform API ready"); }
+        let waveform_api = CONFIG
+            .waveform_enabled
+            .then(|| crate::waveform::api::ApiServer::start(&CONFIG.waveform_bind_address).expect("Cannot start waveform API"));
+        if let Some(api) = &waveform_api {
+            info!(address = %api.address, "Waveform API ready");
+        }
         let mut server = MinecraftServer {
             waveform_api,
             network: NetworkServer::new(bind_addr),

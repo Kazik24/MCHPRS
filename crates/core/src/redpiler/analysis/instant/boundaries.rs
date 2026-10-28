@@ -59,12 +59,13 @@ struct Budget<'a> {
 
 impl Budget<'_> {
     fn bounded(monitor: &TaskMonitor) -> Budget<'_> {
+        let multiplier = monitor.budget_multiplier();
         Budget {
             monitor,
             work: 0,
             bytes: 0,
-            max_work: Some(MAX_BOUNDARY_WORK),
-            max_bytes: Some(MAX_BOUNDARY_BYTES),
+            max_work: Some(MAX_BOUNDARY_WORK.saturating_mul(multiplier)),
+            max_bytes: Some(MAX_BOUNDARY_BYTES.saturating_mul(multiplier)),
         }
     }
 
@@ -226,4 +227,28 @@ pub(crate) fn infer_boundaries(graph: &CompileGraph, monitor: &TaskMonitor) -> R
         corridors: corridors.into_boxed_slice(),
         ports: ports.into_boxed_slice(),
     })
+}
+
+#[cfg(test)]
+mod budget_multiplier_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_budget_scales_boundary_work_and_preserves_default_limit() {
+        let ordinary = TaskMonitor::default();
+        let mut one = Budget::bounded(&ordinary);
+        assert_eq!(one.max_bytes, Some(MAX_BOUNDARY_BYTES));
+        assert_eq!(one.max_work, Some(MAX_BOUNDARY_WORK));
+        one.bytes = MAX_BOUNDARY_BYTES;
+        assert!(one.retain_bytes(1).is_err());
+        let expanded = TaskMonitor::default();
+        expanded.set_budget_multiplier(4);
+        let mut four = Budget::bounded(&expanded);
+        assert_eq!(four.max_bytes, Some(MAX_BOUNDARY_BYTES * 4));
+        assert_eq!(four.max_work, Some(MAX_BOUNDARY_WORK * 4));
+        four.bytes = MAX_BOUNDARY_BYTES;
+        assert!(four.retain_bytes(1).is_ok());
+        expanded.cancel();
+        assert!(four.retain_bytes(1).is_err());
+    }
 }

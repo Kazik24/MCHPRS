@@ -487,18 +487,28 @@ impl Compiler {
     ///
     /// Ignores other positions. Logs execution errors, which also stop later backend work.
     pub fn on_use_block(&mut self, pos: BlockPos) {
-        if let Err(error) = self.backend().use_block(pos) {
+        if let Err(error) = self.try_on_use_block(pos) {
             tracing::error!(%error, "graph backend control failed");
         }
+    }
+
+    /// Use a control and return any graph execution error to a headless host.
+    pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), GraphExecutionError> {
+        self.backend().use_block(pos)
     }
 
     /// Change a pressure plate's powered state and send its notifications immediately.
     ///
     /// Ignores other positions. Logs execution errors, which also stop later backend work.
     pub fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
-        if let Err(error) = self.backend().set_pressure_plate(pos, powered) {
+        if let Err(error) = self.try_set_pressure_plate(pos, powered) {
             tracing::error!(%error, "graph backend control failed");
         }
+    }
+
+    /// Set a plate and return any graph execution error to a headless host.
+    pub fn try_set_pressure_plate(&mut self, pos: BlockPos, powered: bool) -> Result<(), GraphExecutionError> {
+        self.backend().set_pressure_plate(pos, powered)
     }
 
     /// Write display changes and effects to the world, keeping the circuit running.

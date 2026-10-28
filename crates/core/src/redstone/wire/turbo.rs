@@ -345,9 +345,8 @@ impl RedstoneWireTurbo {
                     Block::RedstoneWire { .. } => {
                         self.update_node(world, node_id, self.current_walk_layer);
                     }
-                    // This only works because updating any other block than a wire will
-                    // never change the state of the block. If that changes in the future,
-                    // the cached state will need to be updated
+                    // Non-wire callbacks receive the state captured for this walk;
+                    // handlers that need current state must read it from the world.
                     block => {
                         #[cfg(test)]
                         let _source = crate::redstone::instant_piston_tests::notification_source(Some(self.notification_sources[0][index]));

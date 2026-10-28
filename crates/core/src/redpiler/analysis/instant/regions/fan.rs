@@ -24,7 +24,10 @@ pub(super) fn index(
         if !include(owner, port.kind) {
             continue;
         }
-        budget.retain_bytes(std::mem::size_of::<usize>())?;
+        if !fans.contains_key(&port.kind) {
+            budget.retain_bytes(4 * std::mem::size_of::<(BoundaryPortKind, PortEndpoints)>())?;
+        }
+        budget.retain_bytes(2 * std::mem::size_of::<usize>())?;
         let fan = fans.entry(port.kind).or_default();
         match port.direction {
             BoundaryDirection::Input => fan.inputs.push(owner),
@@ -73,6 +76,30 @@ mod tests {
     }
 
     #[test]
+    fn fan_index_charges_unique_entries_and_duplicate_rows() {
+        let monitor = TaskMonitor::default();
+        let kind = BoundaryPortKind::Callback {
+            occurrence: RouteOccurrence {
+                route: RouteId::new(0),
+                ordinal: 0,
+            },
+        };
+        let port = BoundaryPort {
+            owner: BoundaryOwner::Cell(0),
+            direction: BoundaryDirection::Input,
+            kind,
+        };
+        let mut budget = WorkBudget::new(&monitor);
+        let rows = vec![port; 1_024];
+        let fans = index(1, 1, &rows, &mut budget, |_, _| true).unwrap();
+        assert_eq!(fans[&kind].inputs.len(), rows.len());
+        assert!(budget.bytes >= 2 * rows.len() * std::mem::size_of::<usize>());
+        let mut exhausted = WorkBudget::new(&monitor);
+        exhausted.bytes = crate::redpiler::analysis::MAX_GRAPH_PREPARATION_BYTES / 4 - 1;
+        assert!(index(1, 1, &[port], &mut exhausted, |_, _| true).is_err());
+    }
+
+    #[test]
     fn native_input_remains_a_read_without_an_owned_producer() {
         let monitor = TaskMonitor::default();
         let kind = BoundaryPortKind::Power { link: 4 };
@@ -105,7 +132,10 @@ mod tests {
         let fans = index(2, 2, &ports, &mut budget, |owner, _| owner == 0).unwrap();
         assert_eq!(fans.len(), 1);
         assert_eq!(budget.work, 2);
-        assert_eq!(budget.bytes, std::mem::size_of::<usize>());
+        assert_eq!(
+            budget.bytes,
+            4 * std::mem::size_of::<(BoundaryPortKind, PortEndpoints)>() + 2 * std::mem::size_of::<usize>()
+        );
     }
 
     #[test]

@@ -58,11 +58,15 @@ fn empty() -> Snapshot {
     }
 }
 fn pos(x: i32, y: i32, z: i32) -> BlockPos {
-    BlockPos::new(-256 + x, y, 512 + z)
+    BlockPos::new(-super::super::PLOT_WIDTH * 16 + x, y, 2 * super::super::PLOT_WIDTH * 16 + z)
 }
 fn set(snapshot: &mut Snapshot, x: i32, y: i32, z: i32, block: Block, entity: Option<BlockEntity>) {
     let index = (x / 16 * super::super::PLOT_WIDTH + z / 16) as usize;
-    let mut chunk = Chunk::load(-16 + x / 16, 32 + z / 16, snapshot.data.chunk_data[index].clone());
+    let mut chunk = Chunk::load(
+        -super::super::PLOT_WIDTH + x / 16,
+        2 * super::super::PLOT_WIDTH + z / 16,
+        snapshot.data.chunk_data[index].clone(),
+    );
     chunk.set_block((x & 15) as u32, y as u32, (z & 15) as u32, block.get_id());
     if let Some(entity) = entity {
         chunk.set_block_entity(BlockPos::new(x & 15, y, z & 15), entity);
@@ -415,7 +419,7 @@ fn nearby_markers_are_capped_sorted_and_include_deleted_blocks() {
     }
     set(&mut a, 8, 64, 0, Block::Stone {}, None);
     let diff = compare(a, b);
-    let center = PlayerPos::new(-247.5, 64.5, 512.5);
+    let center = PlayerPos::new(pos(9, 64, 0).x as f64 + 0.5, 64.5, pos(9, 64, 0).z as f64 + 0.5);
     let nearby = diff.near(center, 20.0, 8).unwrap();
     assert_eq!(nearby.len(), 8);
     assert_eq!(nearby[0], Marker { pos: pos(8, 64, 0), kind: 1 });

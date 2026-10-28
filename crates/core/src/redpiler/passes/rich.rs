@@ -86,10 +86,12 @@ pub(crate) struct ValidatedGraph {
 }
 
 impl ValidatedGraph {
+    #[cfg(test)]
     pub(crate) fn graph(&self) -> &CompileGraph {
         &self.prepared.graph
     }
 
+    #[cfg(test)]
     pub(crate) fn report(&self) -> &AnalysisReport {
         &self.prepared.report
     }

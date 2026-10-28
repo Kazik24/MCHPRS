@@ -9,11 +9,13 @@ import {
   syncBusMembership,
 } from "./bus";
 import type { BusSettings } from "./bus";
+import { sampleOnClock } from "./clock";
 import {
   clampView,
   nextEdge,
   parseZeroTick,
   tickLabel,
+  signalKey,
   valueAt,
   zoomAt,
 } from "./trace";
@@ -25,6 +27,7 @@ import {
   ungroupRows,
   parseSession,
   visibleRows,
+  selectRows,
 } from "./state";
 import type { Row, Session } from "./state";
 import { Netlist } from "./components/Netlist";
@@ -40,6 +43,7 @@ import type { ConnectionState } from "./api";
 import { emptyState, ownerLabel } from "./empty";
 import { parsePlot } from "./plot";
 import { layoutKey, readLayout, writeLayout } from "./layout";
+import { BusPlot } from "./components/BusPlot";
 
 function download(text: string, name: string, type = "application/json") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -111,6 +115,7 @@ export default function App() {
         if (previous.id !== next.id || schemaChanged) {
           restoreLayout(next);
           setSelected([]);
+          selectionAnchor.current = null;
         } else {
           setSession((session) => {
             const follow = session.viewport.end >= previous.end;
@@ -164,18 +169,64 @@ export default function App() {
     ...initialSession(trace),
     rows: savedLayout.rows,
     zeroTick: savedLayout.zeroTick,
+    clock: savedLayout.clock,
   }));
   const [zeroInput, setZeroInput] = useState(savedLayout.zeroTick);
   const [selected, setSelected] = useState<string[]>([]);
+  const selectionAnchor = useRef<string | null>(null);
+  const [plotRow, setPlotRow] = useState<string | null>(null);
   const busLayout = JSON.stringify(
     session.rows
       .filter((row) => row.bus && row.enabled)
       .map((row) => [row.id, row.bus!.members]),
   );
-  const buses = useMemo(
+  const rawBuses = useMemo(
     () => buildBuses(session.rows, trace),
     [busLayout, trace],
   );
+  const clock = trace.signals.find(
+    (signal) => signalKey(signal) === session.clock,
+  );
+  const { signals, buses } = useMemo(() => {
+    const signals = new Map<string, Signal>();
+    const buses = new Map(rawBuses);
+    for (const row of session.rows) {
+      const raw = trace.signals.find((signal) => signal.id === row.signalId);
+      if (raw) {
+        signals.set(
+          row.id,
+          row.clockEdge && signalKey(raw) !== session.clock
+            ? {
+                ...raw,
+                ...sampleOnClock(
+                  clock,
+                  raw,
+                  row.clockEdge,
+                  null,
+                  (a, b) => a === b,
+                ),
+              }
+            : raw,
+        );
+      }
+      const bus = buses.get(row.id);
+      if (bus && row.clockEdge)
+        buses.set(row.id, {
+          ...bus,
+          ...sampleOnClock(
+            clock,
+            bus,
+            row.clockEdge,
+            { bits: 0n, known: 0n },
+            (a, b) => a.bits === b.bits && a.known === b.known,
+          ),
+        });
+    }
+    return { signals, buses };
+  }, [session.rows, session.clock, trace, rawBuses]);
+  useEffect(() => {
+    if (plotRow && !buses.has(plotRow)) setPlotRow(null);
+  }, [plotRow, buses]);
   const [search, setSearch] = useState("");
   const [snap, setSnap] = useState(savedLayout.snap);
   const [scrollMode, setScrollMode] = useState<ScrollMode>(
@@ -188,6 +239,7 @@ export default function App() {
       ...initialSession(next),
       rows: saved.rows,
       zeroTick: saved.zeroTick,
+      clock: saved.clock,
     });
     setZeroInput(saved.zeroTick);
     setNetlistWidth(saved.netlistWidth);
@@ -212,6 +264,7 @@ export default function App() {
       {
         rows: session.rows,
         zeroTick: session.zeroTick,
+        clock: session.clock,
         netlistWidth,
         labelWidth,
         eventsExpanded,
@@ -226,6 +279,7 @@ export default function App() {
     layoutOwner,
     session.rows,
     session.zeroTick,
+    session.clock,
     netlistWidth,
     labelWidth,
     eventsExpanded,
@@ -269,14 +323,19 @@ export default function App() {
     setSession((session) => ({ ...session, zeroTick: tick }));
   }
   const closeMenu = useCallback(() => setMenu(null), []);
-  const select = (id: string, multiple: boolean) =>
+  const select = (id: string, multiple: boolean, range: boolean) => {
     setSelected((previous) =>
-      multiple
-        ? previous.includes(id)
-          ? previous.filter((item) => item !== id)
-          : [...previous, id]
-        : [id],
+      selectRows(
+        session.rows,
+        previous,
+        selectionAnchor.current,
+        id,
+        multiple,
+        range,
+      ),
     );
+    if (!range) selectionAnchor.current = id;
+  };
   const updateRows = (update: (rows: Row[]) => Row[]) =>
     setSession((previous) => ({
       ...previous,
@@ -336,7 +395,10 @@ export default function App() {
   }
   function context(event: React.MouseEvent, rowId?: string) {
     event.preventDefault();
-    if (rowId && !selected.includes(rowId)) setSelected([rowId]);
+    if (rowId && !selected.includes(rowId)) {
+      setSelected([rowId]);
+      selectionAnchor.current = rowId;
+    }
     setMenu({ x: event.clientX, y: event.clientY, rowId });
   }
   function addLayout(kind: "group" | "separator", fromSelection = false) {
@@ -374,6 +436,7 @@ export default function App() {
       return result;
     });
     setSelected([id]);
+    selectionAnchor.current = id;
   }
   function removeSelected() {
     updateRows((rows) =>
@@ -386,6 +449,7 @@ export default function App() {
         ),
     );
     setSelected([]);
+    selectionAnchor.current = null;
   }
   async function copy(text: string) {
     try {
@@ -421,7 +485,7 @@ export default function App() {
         Math.max(session.marker, session.altMarker ?? session.marker + 16),
       ),
     );
-    const signals = visibleRows(session.rows)
+    const output = visibleRows(session.rows)
       .filter((row) => row.signalId || buses.has(row.id))
       .map((row) => {
         const bus = buses.get(row.id);
@@ -440,7 +504,7 @@ export default function App() {
           ).join("");
           return { name: row.label, wave, data };
         }
-        const signal = trace.signals.find((item) => item.id === row.signalId)!;
+        const signal = signals.get(row.id)!;
         let last = "";
         const wave = Array.from(
           { length: Math.max(1, end - start + 1) },
@@ -457,7 +521,7 @@ export default function App() {
     void copy(
       JSON.stringify(
         {
-          signal: signals,
+          signal: output,
           head: {
             text: `Settled ticks ${tickLabel(trace, start, session.zeroTick)}–${tickLabel(trace, end, session.zeroTick)}; intra-tick events omitted`,
           },
@@ -471,11 +535,7 @@ export default function App() {
     const { viewport, marker } = session;
     const width = viewport.end - viewport.start;
     const bus = buses.get(selected[0]);
-    const signal = trace.signals.find(
-      (item) =>
-        item.id ===
-        session.rows.find((row) => row.id === selected[0])?.signalId,
-    );
+    const signal = signals.get(selected[0]);
     if (name === "fit") setViewport(bounds);
     else if (name === "in" || name === "out")
       setViewport(zoomAt(viewport, name === "in" ? 0.5 : 2, 0.5, bounds));
@@ -534,7 +594,10 @@ export default function App() {
         setViewport({ start: tick - width / 2, end: tick + width / 2 });
       } else {
         const found = session.rows.find((row) => row.label.includes(search));
-        if (found) setSelected([found.id]);
+        if (found) {
+          setSelected([found.id]);
+          selectionAnchor.current = found.id;
+        }
       }
     } else if (name === "help") setHelp(true);
     else if (name === "menu") setMenu({ x: window.innerWidth - 350, y: 100 });
@@ -544,7 +607,8 @@ export default function App() {
       if (
         (event.target as HTMLElement).matches("input,select,textarea") ||
         menu ||
-        help
+        help ||
+        plotRow
       )
         return;
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -600,6 +664,9 @@ export default function App() {
   const activeRow = session.rows.find(
     (row) => row.id === (menu?.rowId ?? selected[0]),
   );
+  const activeSignal = trace.signals.find(
+    (signal) => signal.id === activeRow?.signalId,
+  );
   const separator: MenuItem = { label: "", divider: true };
   const commonMenu: MenuItem[] = [
     { label: "New Group", action: () => addLayout("group") },
@@ -622,6 +689,70 @@ export default function App() {
   ];
   const rowMenu: MenuItem[] = activeRow
     ? [
+        ...(activeSignal
+          ? [
+              {
+                label: "Set as Clock",
+                checked: signalKey(activeSignal) === session.clock,
+                action: () => {
+                  const key = signalKey(activeSignal);
+                  setSession((previous) => ({
+                    ...previous,
+                    clock: previous.clock === key ? null : key,
+                    rows: previous.rows.map((row) =>
+                      previous.clock === key || row.signalId === activeSignal.id
+                        ? { ...row, clockEdge: undefined }
+                        : row,
+                    ),
+                  }));
+                },
+              },
+            ]
+          : []),
+        ...(activeRow.signalId || activeRow.bus
+          ? [
+              {
+                label: "Clock Lock",
+                children: (["none", "rising", "falling"] as const).map(
+                  (edge) => ({
+                    label:
+                      edge === "none"
+                        ? "None"
+                        : edge === "rising"
+                          ? "Rising edge"
+                          : "Falling edge",
+                    checked: (activeRow.clockEdge ?? "none") === edge,
+                    disabled:
+                      edge !== "none" &&
+                      (!session.clock ||
+                        (activeSignal &&
+                          signalKey(activeSignal) === session.clock)),
+                    action: () =>
+                      updateRows((rows) =>
+                        rows.map((row) =>
+                          selected.includes(row.id) &&
+                          (row.signalId || row.bus) &&
+                          (!row.signalId ||
+                            trace.signals.find(
+                              (signal) =>
+                                signal.id === row.signalId &&
+                                signalKey(signal) === session.clock,
+                            ) === undefined)
+                            ? {
+                                ...row,
+                                clockEdge: edge === "none" ? undefined : edge,
+                              }
+                            : row,
+                        ),
+                      ),
+                  }),
+                ),
+              },
+            ]
+          : []),
+        ...(activeRow.bus
+          ? [{ label: "Plot Bus", action: () => setPlotRow(activeRow.id) }]
+          : []),
         ...(activeRow.kind === "group"
           ? [
               {
@@ -637,6 +768,7 @@ export default function App() {
                       const members = memberKeys(rows, row.id, trace);
                       return {
                         ...row,
+                        clockEdge: row.bus ? undefined : row.clockEdge,
                         bus:
                           row.bus || !members.length
                             ? undefined
@@ -743,9 +875,7 @@ export default function App() {
         {
           label: "Copy Variable Name",
           action: () => {
-            const signal = trace.signals.find(
-              (item) => item.id === activeRow.signalId,
-            );
+            const signal = signals.get(activeRow.id);
             void copy(
               signal ? `${signal.scope}.${signal.name}` : activeRow.label,
             );
@@ -759,9 +889,7 @@ export default function App() {
               void copy(formatBus(valueAt(bus, session.marker), activeRow.bus));
               return;
             }
-            const signal = trace.signals.find(
-              (item) => item.id === activeRow.signalId,
-            );
+            const signal = signals.get(activeRow.id);
             if (signal) {
               const value = valueAt(signal, session.marker);
               void copy(value === null ? "X" : value ? "1" : "0");
@@ -847,6 +975,8 @@ export default function App() {
             zeroTick={session.zeroTick}
             trace={trace}
             buses={buses}
+            signals={signals}
+            clock={session.clock}
             rows={visibleRows(session.rows)}
             selected={selected}
             viewport={session.viewport}
@@ -901,10 +1031,12 @@ export default function App() {
           </label>
           <button
             type="button"
-            aria-label="Reset zero tick"
+            aria-label="Reset zero tick to marker A"
+            title="Set zero tick to marker A"
             onClick={() => {
-              setZeroInput("0");
-              setSession((session) => ({ ...session, zeroTick: "0" }));
+              const tick = tickLabel(trace, session.marker);
+              setZeroInput(tick);
+              setSession((session) => ({ ...session, zeroTick: tick }));
               setNotice("");
             }}
           >
@@ -938,6 +1070,25 @@ export default function App() {
           close={closeMenu}
         />
       )}
+      {plotRow &&
+        (() => {
+          const row = session.rows.find((row) => row.id === plotRow);
+          const bus = buses.get(plotRow);
+          return row?.bus && bus ? (
+            <BusPlot
+              bus={bus}
+              settings={row.bus}
+              label={row.label}
+              color={row.color}
+              trace={trace}
+              viewport={session.viewport}
+              marker={session.marker}
+              zeroTick={session.zeroTick}
+              setMarker={setMarker}
+              close={() => setPlotRow(null)}
+            />
+          ) : null;
+        })()}
       <input
         type="file"
         accept=".json,application/json"
@@ -953,6 +1104,7 @@ export default function App() {
             setSession(saved);
             setZeroInput(saved.zeroTick);
             setSelected([]);
+            selectionAnchor.current = null;
             setNotice("Viewer session restored");
           } catch (error) {
             setNotice(
@@ -995,6 +1147,13 @@ export default function App() {
               <dd>Pan through time</dd>
               <dt>Drag signal labels</dt>
               <dd>Reorder rows; drop on a group to add to it</dd>
+              <dt>Shift-click rows</dt>
+              <dd>Select a range of visible rows</dd>
+              <dt>Clock and bus plot</dt>
+              <dd>
+                Right-click a signal to set the clock; right-click rows to lock
+                or plot
+              </dd>
               <dt>Alt + ↑ / ↓</dt>
               <dd>Reorder selected row with the keyboard</dd>
               <dt>← / →, Home / End, Ctrl+0</dt>

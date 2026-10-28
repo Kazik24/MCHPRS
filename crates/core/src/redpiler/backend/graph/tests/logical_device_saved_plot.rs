@@ -9,6 +9,10 @@ use mchprs_save_data::plot_data::PlotData;
 use std::sync::Arc;
 use std::time::Instant;
 
+#[cfg(test)]
+#[path = "saved_plot_native_profile.rs"]
+mod native_profile;
+
 const MIN: BlockPos = BlockPos::new(-273, 50, -253);
 const MAX: BlockPos = BlockPos::new(-102, 92, -147);
 const TRIGGER: BlockPos = BlockPos::new(-267, 86, -177);
@@ -34,8 +38,7 @@ fn manifest_positions(value: &serde_json::Value) -> Vec<BlockPos> {
 fn saved_fpu_manifest() -> serde_json::Value {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let path = root.join("test_data/piston-research/fixtures/fpu_legal.json");
-    serde_json::from_slice(&std::fs::read(path).expect("read saved FPU port manifest"))
-        .expect("parse saved FPU port manifest")
+    serde_json::from_slice(&std::fs::read(path).expect("read saved FPU port manifest")).expect("parse saved FPU port manifest")
 }
 
 fn sorted_positions(mut positions: Vec<BlockPos>) -> Vec<BlockPos> {
@@ -48,7 +51,11 @@ fn known_command_witness_word(manifest: &serde_json::Value, positions: &[BlockPo
     let mut assignments = manifest_positions(&ports["light_blue_operand_inputs"])
         .into_iter()
         .map(|position| (position, false))
-        .chain(manifest_positions(&ports["red_operand_inputs"]).into_iter().map(|position| (position, true)))
+        .chain(
+            manifest_positions(&ports["red_operand_inputs"])
+                .into_iter()
+                .map(|position| (position, true)),
+        )
         .collect::<Vec<_>>();
     assignments.extend(
         manifest_positions(&ports["opcode_levers_by_sign_weight_4_2_1"])
@@ -81,10 +88,7 @@ fn command_block_census(backend: &GraphBackend) -> Vec<serde_json::Value> {
             let ComponentState::Electrical(state) = &backend.state.components[plan.node.index()] else {
                 panic!("saved command block retains electrical state at {position:?}");
             };
-            let entity = state
-                .command_entity
-                .as_deref()
-                .expect("saved command block retains its entity");
+            let entity = state.command_entity.as_deref().expect("saved command block retains its entity");
             serde_json::json!({
                 "position": position,
                 "command": entity.command,
@@ -130,7 +134,9 @@ fn saved_world_from_with_limits(path: std::path::PathBuf, limits: bool) -> PlotW
         .collect();
     let mut world = PlotWorld::from_chunks(-1, -1, chunks, data.pending_ticks.into_iter().collect());
     *world.piston_state_mut() = data.piston_state;
-    if !limits { world.disable_command_output_limits_for_replay(); }
+    if !limits {
+        world.disable_command_output_limits_for_replay();
+    }
     world
 }
 
@@ -472,8 +478,17 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
         .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/build-audit-tps/prod/p-1,-1-goal-start"));
     use sha2::{Digest, Sha256};
     assert_eq!(PLOT_SCALE, 5, "saved production snapshot requires PLOT_SCALE=5");
-    let snapshot_hash = format!("{:x}", Sha256::digest(std::fs::read(&snapshot_path).expect("read saved snapshot for hashing")));
-    assert_eq!(snapshot_hash, "426d2395869062817fa698dca1b7a101c3594728cd440389970a4e6004f06d17", "saved production snapshot hash mismatch");
+    let snapshot_hash = format!(
+        "{:x}",
+        Sha256::digest(std::fs::read(&snapshot_path).expect("read saved snapshot for hashing"))
+    );
+    assert!(
+        matches!(
+            snapshot_hash.as_str(),
+            "426d2395869062817fa698dca1b7a101c3594728cd440389970a4e6004f06d17" | "261e7c67467d788023b0b809f439cf390e09d0e449ab103fcc5c75be75bcf319"
+        ),
+        "saved production snapshot hash mismatch"
+    );
     let mut world = saved_world_from_with_limits(snapshot_path.clone(), server);
     let bounds = world.get_corners();
     let options = CompilerOptions {
@@ -542,10 +557,17 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
     assert_eq!(fpu_inputs.len(), 35, "profile must drive all FPU input levers in stable coordinate order");
     let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/piston-research/fixtures/fpu_legal.json");
     let manifest_hash = format!("{:x}", Sha256::digest(std::fs::read(manifest_path).expect("read manifest for hashing")));
-    assert_eq!(manifest_hash, "981109d849cadaf13a059c295a6d78444d0626a21c72683cf425eb6344b68227", "saved FPU manifest hash mismatch");
+    assert_eq!(
+        manifest_hash, "981109d849cadaf13a059c295a6d78444d0626a21c72683cf425eb6344b68227",
+        "saved FPU manifest hash mismatch"
+    );
     let manifest = saved_fpu_manifest();
     let manifest_ports = &manifest["ports"];
-    assert_eq!(manifest_position(&manifest_ports["trigger"]), TRIGGER, "manifest MIN offset maps its clock trigger");
+    assert_eq!(
+        manifest_position(&manifest_ports["trigger"]),
+        TRIGGER,
+        "manifest MIN offset maps its clock trigger"
+    );
     let mut declared_input_positions = [
         manifest_positions(&manifest_ports["light_blue_operand_inputs"]),
         manifest_positions(&manifest_ports["red_operand_inputs"]),
@@ -581,12 +603,7 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
         "saved FPU's 16 readout repeaters must be present"
     );
     let terminal_dust_positions = manifest_positions(&manifest["observations"]["output"]);
-    let terminal_readout_positions = sorted_positions(
-        terminal_dust_positions
-            .iter()
-            .map(|position| position.offset(BlockFace::East))
-            .collect(),
-    );
+    let terminal_readout_positions = sorted_positions(terminal_dust_positions.iter().map(|position| position.offset(BlockFace::East)).collect());
     assert_eq!(terminal_dust_positions.len(), 16, "manifest declares sixteen far-side dust terminals");
     assert_eq!(
         terminal_readout_positions,
@@ -619,11 +636,26 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
         .map(|value| value.parse::<usize>().expect("MCHPRS_PROFILE_FRAMES must be an integer"))
         .unwrap_or(96);
     assert!(frames > 0, "profile frame count must be positive");
-    if command_witness { assert!(frames >= 4, "command witness needs at least four frames"); }
+    if command_witness {
+        assert!(frames >= 4, "command witness needs at least four frames");
+    }
 
     #[cfg(feature = "saved-plot-bench")]
     if server {
-        return server_profile::run(world, backend, options, snapshot_path, manifest, fpu_inputs, neighbor_controls, output_lamps, readout_positions, clock_piston, frames, compile_seconds - clock_census_seconds);
+        return server_profile::run(
+            world,
+            backend,
+            options,
+            snapshot_path,
+            manifest,
+            fpu_inputs,
+            neighbor_controls,
+            output_lamps,
+            readout_positions,
+            clock_piston,
+            frames,
+            compile_seconds - clock_census_seconds,
+        );
     }
     #[cfg(not(feature = "saved-plot-bench"))]
     assert!(!server);
@@ -661,8 +693,14 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
         .zip(&warmup_command_entities_after)
         .filter(|(before, after)| before["last_execution"] != after["last_execution"])
         .count();
-    assert!(warmup_command_count_after > warmup_command_count_before, "the selector-011 warmup must emit real FPU commands");
-    assert!(warmup_command_execution_changes > 0, "the command witness must execute native command entities");
+    assert!(
+        warmup_command_count_after > warmup_command_count_before,
+        "the selector-011 warmup must emit real FPU commands"
+    );
+    assert!(
+        warmup_command_execution_changes > 0,
+        "the command witness must execute native command entities"
+    );
     assert!(
         matches!(world.get_block(TRIGGER), Block::Lever { lever } if !lever.powered),
         "warmup must leave the saved FPU clock running"
@@ -711,9 +749,19 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
         let control_start = Instant::now();
         let (word, input_updates, neighbor_updates) = if command_witness {
             let word = if frame % 2 == 0 { 0 } else { witness_word };
-            drive_profile_word(word, previous_word, &input_positions, &neighbor_controls, frame, |position| backend.use_block(position).unwrap())
+            drive_profile_word(word, previous_word, &input_positions, &neighbor_controls, frame, |position| {
+                backend.use_block(position).unwrap()
+            })
         } else {
-            drive_profile_frame(&mut random, mask, previous_word, &input_positions, &neighbor_controls, frame, |position| backend.use_block(position).unwrap())
+            drive_profile_frame(
+                &mut random,
+                mask,
+                previous_word,
+                &input_positions,
+                &neighbor_controls,
+                frame,
+                |position| backend.use_block(position).unwrap(),
+            )
         };
         first_word = word;
         input_lever_updates += input_updates;
@@ -757,7 +805,10 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
     let trigger_powered_after = matches!(world.get_block(TRIGGER), Block::Lever { lever } if lever.powered);
     let command_count_after = world.command_output().count();
     if command_witness {
-        assert!(command_count_after > command_count_before, "changing inputs must refire commands during measurement");
+        assert!(
+            command_count_after > command_count_before,
+            "changing inputs must refire commands during measurement"
+        );
     }
     let command_entities_after = command_block_census(&backend);
     let command_execution_changes = command_entities_before
@@ -838,7 +889,9 @@ fn run_saved_plot_profile_with_protocol(server: bool, command_witness: bool) {
         })
         .collect::<Vec<_>>();
     #[cfg(test)]
-    { oracle_report["other_handoff_phases"] = serde_json::json!(other_handoff_phases); }
+    {
+        oracle_report["other_handoff_phases"] = serde_json::json!(other_handoff_phases);
+    }
     #[cfg(not(test))]
     let oracle_report = serde_json::json!({"status": "not run; use the separate ignored native oracle test"});
     let mut report = serde_json::json!({
@@ -1112,10 +1165,15 @@ fn replay_saved_fpu_native_oracle(
         let native_output = native_world.command_output().collect::<Vec<_>>();
         assert_eq!(graph_output, native_output, "native command output at tick {step}");
         native_command_outputs = native_output.len() - initial_native_command_outputs;
-        if step + 1 == graph_ticks { measured_command_outputs = native_command_outputs; }
+        if step + 1 == graph_ticks {
+            measured_command_outputs = native_command_outputs;
+        }
         if step == 23 {
             warmup_command_outputs = native_command_outputs;
-            assert!(warmup_command_outputs > 0, "native selector-011 warmup must exercise the FPU command outputs");
+            assert!(
+                warmup_command_outputs > 0,
+                "native selector-011 warmup must exercise the FPU command outputs"
+            );
         }
         let readout_word = readout_positions.iter().enumerate().fold(0u16, |word, (bit, &position)| {
             word | (u16::from(matches!(graph_world.get_block(position), Block::RedstoneRepeater { repeater } if repeater.powered)) << bit)
@@ -1125,7 +1183,10 @@ fn replay_saved_fpu_native_oracle(
     }
     assert_physical_state(&graph_world, &native_world, "after interpreter continuation");
     if command_witness {
-        assert!(measured_command_outputs > warmup_command_outputs, "changing inputs must refire native commands before handoff");
+        assert!(
+            measured_command_outputs > warmup_command_outputs,
+            "changing inputs must refire native commands before handoff"
+        );
     }
     serde_json::json!({
         "oracle": "native PlotWorld::tick_interpreted versus GraphBackend from the same validated program",
@@ -1166,16 +1227,25 @@ fn native_use_lever(world: &mut PlotWorld, position: BlockPos) {
 }
 
 fn drive_profile_frame(
-    random: &mut u64, mask: u64, previous: u64, inputs: &[BlockPos], neighbors: &[BlockPos],
-    frame: usize, use_block: impl FnMut(BlockPos),
+    random: &mut u64,
+    mask: u64,
+    previous: u64,
+    inputs: &[BlockPos],
+    neighbors: &[BlockPos],
+    frame: usize,
+    use_block: impl FnMut(BlockPos),
 ) -> (u64, u64, u64) {
     let word = next_profile_word(random, mask, previous);
     drive_profile_word(word, previous, inputs, neighbors, frame, use_block)
 }
 
 fn drive_profile_word(
-    word: u64, previous: u64, inputs: &[BlockPos], neighbors: &[BlockPos],
-    frame: usize, mut use_block: impl FnMut(BlockPos),
+    word: u64,
+    previous: u64,
+    inputs: &[BlockPos],
+    neighbors: &[BlockPos],
+    frame: usize,
+    mut use_block: impl FnMut(BlockPos),
 ) -> (u64, u64, u64) {
     let mut input_updates = 0;
     let mut neighbor_updates = 0;
@@ -1204,4 +1274,146 @@ fn next_profile_word(random: &mut u64, mask: u64, previous: u64) -> u64 {
     *random ^= *random << 17;
     let word = *random & mask;
     if word == previous { word ^ 1 } else { word }
+}
+
+#[test]
+#[ignore = "requires corrected saved plot; checks production O6 diagnostics without activating a server"]
+fn saved_fpu_production_diagnostics_report_declines() {
+    let world = saved_world();
+    assert_eq!(PLOT_SCALE, 5);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        ..Default::default()
+    };
+    let monitor = Arc::new(TaskMonitor::default());
+    monitor.set_budget_multiplier(8);
+    let backend = GraphBackend::compile_with_options(
+        &world,
+        world.get_corners(),
+        world.scheduler().iter_entries().collect(),
+        &options,
+        monitor.clone(),
+    )
+    .expect("ordinary Graph must still compile the saved plot");
+    let warnings = monitor.warnings();
+    for warning in &warnings {
+        println!("{warning}");
+    }
+    println!("logical-device admission: {:?}", backend.logical_device_admission());
+    assert!(
+        warnings
+            .iter()
+            .any(|line| line.contains("skipped") || line.contains("could not start") || line.contains("not recognized")),
+        "expected an actual compiler decline warning for this saved fixture"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|line| crate::player::diagnostic_component(line).get("extra").is_some()),
+        "at least one diagnostic must link a real block position"
+    );
+}
+
+#[test]
+#[ignore = "corrected saved plot event-netlist discovery; read-only and no executor"]
+fn saved_fpu_research_greedy_discovers_source_regions() {
+    use crate::redpiler::analysis::instant::event_netlist::{CutReason, candidate_boundary, cut_unsupported_resources, discover, source_cuts};
+    use sha2::{Digest, Sha256};
+
+    let path = std::env::var_os("MCHPRS_SAVED_PLOT")
+        .map(std::path::PathBuf::from)
+        .expect("set MCHPRS_SAVED_PLOT to the corrected FPU27 snapshot");
+    assert_eq!(
+        format!("{:x}", Sha256::digest(std::fs::read(&path).unwrap())),
+        "261e7c67467d788023b0b809f439cf390e09d0e449ab103fcc5c75be75bcf319"
+    );
+    assert_eq!(PLOT_SCALE, 5);
+    let world = saved_world_from(path);
+    let monitor = TaskMonitor::default();
+    monitor.set_budget_multiplier(8);
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        budget_multiplier: 8,
+        stable_instant_inputs: true,
+        io_only: true,
+        ..Default::default()
+    };
+    let mut prepared = passes::rich::prepare(
+        &world,
+        world.get_corners(),
+        world.scheduler().iter_entries().collect(),
+        &monitor,
+        crate::redpiler::analysis::AnalysisLimits::for_budget(8),
+    )
+    .unwrap();
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &options,
+        &prepared.entry,
+        &passes::event_domain_research_pipeline(),
+        &monitor,
+    )
+    .unwrap();
+    let graph = &prepared.graph;
+    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
+    let eligible = vec![true; catalog.cells.len() + catalog.corridors.len()];
+    let candidates = discover(graph, catalog, &eligible, &monitor).unwrap();
+    let selected = candidates.selected.iter().filter(|&&yes| yes).count();
+    assert!(selected > 0, "the saved plot must have source-event candidates");
+    assert!(
+        graph.plans.instant_events.is_empty() && graph.plans.logical_devices.is_empty(),
+        "discovery must not install an executor"
+    );
+    let cuts = source_cuts(graph, catalog, &candidates, &monitor).unwrap();
+    let region = candidates
+        .partition
+        .regions
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, region)| region.cells.len() + region.corridors.len())
+        .map(|(index, _)| index as u32)
+        .unwrap();
+    let boundary = candidate_boundary(graph, catalog, &candidates, region, &monitor).unwrap();
+    assert!(!boundary.aggregate_targets.is_empty());
+    let (circuit, _) = crate::redpiler::analysis::instant::layers::logical::computation_support(graph, &boundary.aggregate_targets, &monitor)
+        .expect("the explicit 8x budget compiles the aggregate power queries");
+    assert!(circuit.outputs.len() >= boundary.aggregate_targets.len());
+    let resource_cuts = cut_unsupported_resources(graph, catalog, &eligible, &monitor).unwrap();
+    let mut incomplete = 0usize;
+    let mut unsupported = 0usize;
+    for cut in &resource_cuts.cuts {
+        assert!(!resource_cuts.candidates.selected[cut.owner]);
+        match cut.reason {
+            CutReason::IncompleteGroup { actor, resource, contact } => {
+                assert!(graph.pistons.get(actor.index()).is_some());
+                assert!(resource.is_none_or(|id| graph.resources.get(id.index()).is_some()));
+                assert!(contact.is_none_or(|id| graph.contacts.get(id.index()).is_some()));
+                incomplete += 1;
+            }
+            CutReason::ResourceDestination { resource, crossing } => {
+                assert!(graph.resources.get(resource.index()).is_some());
+                assert!(matches!(
+                    crossing,
+                    BoundaryPortKind::GuardState { .. } | BoundaryPortKind::ContactAlternative { .. }
+                ));
+                unsupported += 1;
+            }
+        }
+    }
+    println!(
+        "saved FPU discovery: cells={} corridors={} selected={} regions={} source_cuts={} resource_cut_rounds={} incomplete={} unsupported={} crossing_rows={} aggregate_targets={}",
+        catalog.cells.len(),
+        catalog.corridors.len(),
+        selected,
+        candidates.partition.regions.len(),
+        cuts.len(),
+        resource_cuts.rounds,
+        incomplete,
+        unsupported,
+        resource_cuts.scan.ports.len(),
+        boundary.aggregate_targets.len()
+    );
 }

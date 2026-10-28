@@ -765,7 +765,9 @@ impl ServerBoundPacketHandler for Plot {
 
     fn handle_use_item(&mut self, packet: SUseItem, player: usize) {
         let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(&self.players[player].client, packet.sequence);
-        if self.players[player].redstone_tools.waveform.is_some() { return; }
+        if self.players[player].redstone_tools.waveform.is_some() {
+            return;
+        }
         self.send_powertool_click(player, 1);
         if self.use_wire_tool(player, packet.hand, packet.yaw, packet.pitch) {
             return;
@@ -779,10 +781,14 @@ impl ServerBoundPacketHandler for Plot {
     fn handle_player_block_placement(&mut self, player_block_placement: SPlayerBlockPlacemnt, player: usize) {
         let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(&self.players[player].client, player_block_placement.sequence);
         if self.players[player].redstone_tools.waveform.is_some() {
-            let pos=BlockPos::from_packed(player_block_placement.pos);
-            self.correct_predicted_block(player,pos);
-            if let Some(face)=BlockFace::try_from_id(player_block_placement.face as u32) { self.correct_predicted_block(player,pos.offset(face)); }
-            if player_block_placement.hand==0 { self.players[player].send_system_message("Left-click each bit, low to high. Use /waveform cancel to exit selection."); }
+            let pos = BlockPos::from_packed(player_block_placement.pos);
+            self.correct_predicted_block(player, pos);
+            if let Some(face) = BlockFace::try_from_id(player_block_placement.face as u32) {
+                self.correct_predicted_block(player, pos.offset(face));
+            }
+            if player_block_placement.hand == 0 {
+                self.players[player].send_system_message("Left-click each bit, low to high. Use /waveform cancel to exit selection.");
+            }
             return;
         }
         self.send_powertool_click(player, 1);
@@ -938,14 +944,14 @@ impl ServerBoundPacketHandler for Plot {
     fn handle_player_digging(&mut self, player_digging: SPlayerDigging, player: usize) {
         let _acknowledgement = mchprs_network::BlockActionAcknowledgement::new(&self.players[player].client, player_digging.sequence);
         if self.players[player].redstone_tools.waveform.is_some() && (0..=2).contains(&player_digging.status) {
-            let pos=BlockPos::from_packed(player_digging.pos);
-            if player_digging.status==0 && !self.players[player].awaiting_teleport() {
-                match self.select_waveform_bit(player,pos) {
-                    Ok(message)=>self.players[player].send_raw_system_message(crate::player::diagnostic_component(&message).to_string()),
-                    Err(error)=>self.players[player].send_error_message(&error),
+            let pos = BlockPos::from_packed(player_digging.pos);
+            if player_digging.status == 0 && !self.players[player].awaiting_teleport() {
+                match self.select_waveform_bit(player, pos) {
+                    Ok(message) => self.players[player].send_raw_system_message(crate::player::diagnostic_component(&message).to_string()),
+                    Err(error) => self.players[player].send_error_message(&error),
                 }
             }
-            self.correct_predicted_block(player,pos);
+            self.correct_predicted_block(player, pos);
             return;
         }
         let previous = self.world.set_authoritative_updates(true);

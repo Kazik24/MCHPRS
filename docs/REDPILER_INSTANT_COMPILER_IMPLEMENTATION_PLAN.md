@@ -1,5 +1,14 @@
 # Redpiler instant compiler replacement plan
 
+**Later scope decision:** the user accepts output-state equivalence at settled
+frame boundaries, frame-boundary input changes and settled-state handoff for
+the proposed fast backend. Intermediate output states may differ. Native
+neighbors and command effects still require a correct boundary; unsupported
+regions fall back to Graph. The stricter per-tick and arbitrary-handoff goals
+below describe the earlier plan and remain existing regression coverage, but
+are not mandatory for a new backend under the revised contract. No such FPU
+backend has been admitted or validated yet.
+
 Status: implementation plan; no replacement has been accepted. The plan is for
 one general compiler and runtime contract over the immutable physical graph. It
 does not authorize layout edits, fixture-specific compiler rules, or loosening
@@ -50,6 +59,32 @@ sampled progression check supplements rather than replaces the state and
 handoff tests. Reports are `target/build-audit-tps/counter-native-1m.json` and
 `counter-o6-1m.json`; the build used Rust 1.98.1, release LTO disabled and
 incremental compilation disabled.
+
+After removing the experimental single-cell firing runtime, the existing O6
+counter device still ran: three 1,000,002-game-tick samples measured **5.38M,
+5.48M, and 5.53M wall game TPS** (median **5.48M**). Each sample admitted and
+executed the logical device, with 166,667 logical evaluations in its measured
+window. The benchmark compared its sampled progression with the frozen native
+reference. The separate `o6_counter_output_matches_native_each_frame_through_control_changes`
+test compares every output repeater at settled publication boundaries through
+starts, stops, and the 255-to-256 carry. Intermediate output values can differ
+under the subsequently agreed contract; this is not a full per-tick equivalence
+claim. System activity during the samples was not controlled.
+
+Reproduce with Rust 1.98.1, release LTO and incremental compilation disabled:
+
+```powershell
+$env:CARGO_PROFILE_RELEASE_LTO = 'false'
+$env:CARGO_INCREMENTAL = '0'
+cargo bench -p mchprs_core --locked --bench instant -- --component counter_basic --tier 6 --ticks 1000002 --iterations 3 --reference target/build-audit-tps/counter-native-1m.json --output target/build-audit-tps/counter-simplification-1m.json
+```
+
+The tested executable SHA-256 was
+`72322D42C7D2C524D6582DECBF8B9C022E3DC16B77BD35D7460C160F865AFACA`;
+the frozen reference SHA-256 was
+`0A128ADA3869CEEF97F94EBF62214FEFBB29C11EE2372ABB52A63868E6DC2CBA`.
+This measurement predates deletion of unreachable one-shot compiler code; the
+counter differential test passed after that deletion, but timing was not rerun.
 
 ## Replacement contract
 

@@ -24,7 +24,6 @@ fn evaluate_input(
         LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => Ok(state_matches(test)),
         LayerInputSource::BoundaryEvent { .. } => Err("settled input requires a callback event"),
         LayerInputSource::BoundaryRequest { .. } => Err("settled input requires a pending piston request"),
-        LayerInputSource::InstantFired { .. } => Err("settled input requires a logical firing latch"),
     }
 }
 
@@ -139,17 +138,6 @@ mod tests {
         assert_eq!(
             evaluate_input(request, |_, _| 15, |_| true, |_| true, |_| Ok(false)),
             Err("settled input requires a pending piston request")
-        );
-
-        assert_eq!(
-            evaluate_input(
-                LayerInputSource::InstantFired { actor: PistonId::new(6) },
-                |_, _| 15,
-                |_| true,
-                |_| true,
-                |_| Ok(false)
-            ),
-            Err("settled input requires a logical firing latch")
         );
     }
 }

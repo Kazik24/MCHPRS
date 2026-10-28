@@ -482,6 +482,24 @@ select {
   top: 7px;
   font-size: 24px;
 }
+.bus-plot-dialog {
+  width: min(1000px, 95vw);
+}
+.bus-plot-dialog > svg {
+  display: block;
+  width: 100%;
+  height: min(45vh, 360px);
+  background: #1e1e1e;
+  cursor: crosshair;
+}
+.bus-plot-dialog > svg text {
+  fill: #aaa;
+  font: 13px var(--font-mono);
+}
+.bus-plot-value {
+  padding-bottom: 10px;
+  overflow-wrap: anywhere;
+}
 @media (max-width: 1200px) {
   .sidebar {
     width: 245px;

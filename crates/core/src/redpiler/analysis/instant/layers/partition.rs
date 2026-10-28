@@ -2,7 +2,16 @@
 use super::*;
 
 /// Partition computation once; unsupported regions retain their complete Graph boundary.
+#[cfg(test)]
 pub(super) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<regions::RegionPartition, String> {
+    partition_with_activity(graph, catalog, monitor).map(|(partition, _)| partition)
+}
+
+pub(super) fn partition_with_activity(
+    graph: &CompileGraph,
+    catalog: &BoundaryCatalog,
+    monitor: &TaskMonitor,
+) -> Result<(regions::RegionPartition, Vec<Option<LayerDeclineReason>>), String> {
     let mut corridor_ports: FxHashMap<(BoundaryPortKind, BoundaryDirection), FxHashSet<u32>> = FxHashMap::default();
     for (index, port) in catalog.ports.iter().enumerate() {
         if index & 0x3ff == 0 && monitor.cancelled() {
@@ -65,7 +74,59 @@ pub(super) fn partition(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor
         candidate && composition::corridors::closed_straight_cable(graph, &wires)
     });
     let joinable: Vec<_> = cells.chain(corridors).collect();
-    regions::partition_with_cuts(graph, catalog, monitor, &joinable, |kind| computation_dependency(graph, kind))
+    drop(corridor_ports);
+    drop(candidates);
+    drop(direct_shared);
+    drop(cell_has_edge);
+    drop(shared_cell_has_candidate);
+    drop(shared_cell_has_unsupported_edge);
+    drop(shared_source_corridors);
+    drop(shared_single_wire_cells);
+    // Recognized owners can be certified independently even when they cannot merge.
+    let candidates = vec![true; joinable.len()];
+    let (selected, executable_edges, budget_declined) = match regions::greedy_event_owners(graph, catalog, &candidates, joinable.len(), monitor) {
+        Ok((selected, edges)) => (selected, edges, false),
+        Err(error) if !monitor.cancelled() && (error.contains("work budget exceeded") || error.contains("retained-row budget exceeded")) => {
+            monitor.record_warning("Instant event discovery exceeded its budget; affected work remains on Graph.".into());
+            (vec![false; joinable.len()], Vec::new(), true)
+        }
+        Err(error) => return Err(error),
+    };
+    drop(candidates);
+    let mergeable = selected
+        .iter()
+        .zip(&joinable)
+        .map(|(&selected, &joinable)| selected && joinable)
+        .collect::<Vec<_>>();
+    let retained_bytes = selected
+        .len()
+        .checked_add(joinable.len())
+        .and_then(|bytes| bytes.checked_add(mergeable.len()))
+        .ok_or("instant event retained size overflow")?
+        .checked_add(
+            executable_edges
+                .len()
+                .checked_mul(std::mem::size_of::<RouteOccurrence>())
+                .ok_or("instant event retained size overflow")?,
+        )
+        .ok_or("instant event retained size overflow")?;
+    let partition = regions::partition_with_cuts(graph, catalog, monitor, &mergeable, retained_bytes, |kind| {
+        matches!(kind, BoundaryPortKind::Callback { occurrence } if executable_edges.binary_search_by_key(&(occurrence.route, occurrence.ordinal), |edge| (edge.route, edge.ordinal)).is_ok())
+            && computation_dependency(graph, kind)
+    })?;
+    let mut declines = vec![Some(LayerDeclineReason::NoUsefulEventPath); partition.regions.len()];
+    for (owner, &selected) in selected.iter().enumerate() {
+        declines[partition.owner_region[owner] as usize] = if selected {
+            None
+        } else if budget_declined {
+            Some(LayerDeclineReason::ProofBudgetExceeded)
+        } else if owner >= catalog.cells.len() && !joinable[owner] {
+            Some(LayerDeclineReason::SignalArrivalUnproven)
+        } else {
+            Some(LayerDeclineReason::NoUsefulEventPath)
+        };
+    }
+    Ok((partition, declines))
 }
 
 /// Only possible inter-cell transfers are absorbed; input/reset/output wires keep Graph ownership.

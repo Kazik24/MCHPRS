@@ -104,7 +104,12 @@ impl Plot {
     }
 
     pub(super) fn start_redpiler(&mut self, options: CompilerOptions) {
-        if self.world.waveform.enabled() { for player in &self.players { player.send_error_message("Disable waveform capture before compiling Redpiler"); } return; }
+        if self.world.waveform.enabled() {
+            for player in &self.players {
+                player.send_error_message("Disable waveform capture before compiling Redpiler");
+            }
+            return;
+        }
         // Keep cancelled workers until they finish so repeated requests cannot multiply large jobs.
         if self.compilation.is_some() || self.analysis.is_some() {
             for player in &self.players {
@@ -193,17 +198,36 @@ impl Plot {
                         worker_monitor.clone(),
                     ) {
                         Ok(candidate) => candidate,
-                        Err(error) => return Err(error.to_string()),
+                        Err(error) => {
+                            return Ok(AnalysisOutput {
+                                lines: worker_monitor.warnings(),
+                                error: Some(format!("Redpiler: {error}")),
+                            });
+                        }
                     };
                     let summary = candidate.summary();
                     let lines = if let Some(position) = inspect {
-                        crate::redpiler::analysis::diagnostics::inspect(&candidate.graph, position, &worker_monitor)?
+                        let mut lines = crate::redpiler::analysis::diagnostics::inspect(&candidate.graph, position, &worker_monitor)?;
+                        lines.insert(1, format!("Inspection mode: {mode}. Match the flags used for /rp compile."));
+                        lines.insert(
+                            2,
+                            "Runtime activation is not tested here; use /rp analyze with the same flags to check it.".into(),
+                        );
+                        let warnings = worker_monitor.warnings();
+                        if !warnings.is_empty() {
+                            let end = lines.len().saturating_sub(1);
+                            lines.splice(end..end, std::iter::once("Plot-wide compiler warnings:".into()).chain(warnings));
+                        }
+                        lines
                     } else {
                         let mut lines = vec![format!(
                             "Prepared Graph: {mode}; {} nodes, {} links; no compiler was activated",
                             summary.nodes, summary.links
                         )];
                         lines.push(crate::redpiler::analysis::diagnostics::summary(&candidate.graph));
+                        if options.optimization_level.is_some_and(|level| level < 6) {
+                            lines.push("For O6 acceleration warnings, use /rp analyze --graph -O6 with your compile flags.".into());
+                        }
                         lines.extend(worker_monitor.graph_statistics().chat_summary_lines());
                         lines.extend(worker_monitor.warnings());
                         lines
@@ -219,12 +243,22 @@ impl Plot {
                         crate::redpiler::analysis::AnalysisLimits::for_budget(options.budget_multiplier),
                     ) {
                         Ok(report) => report,
-                        Err(error) => return Err(error.to_string()),
+                        Err(error) => {
+                            return Ok(AnalysisOutput {
+                                lines: worker_monitor.warnings(),
+                                error: Some(format!("Redpiler: {error}")),
+                            });
+                        }
                     };
                     let mut lines = vec![report.summary()];
+                    if options.optimization_level.is_some_and(|level| level < 6) {
+                        lines[0].push_str(" For O6 warnings, use /rp analyze -O6 with your compile flags.");
+                    }
                     debug!(report = %serde_json::to_string(&report).unwrap(), "Redpiler analysis");
                     let mut compiler = Compiler::default();
-                    let error = compiler.compile(&world, world.get_corners(), options, ticks, worker_monitor.clone()).err();
+                    let error = compiler
+                        .compile(&world, world.get_corners(), options, ticks, worker_monitor.clone())
+                        .err();
                     lines.extend(worker_monitor.warnings());
                     let error = error.map(|error| format!("Redpiler: {error}"));
                     if error.is_none() {
@@ -323,7 +357,7 @@ impl Plot {
             if let Some(stats) = self.redpiler.stats() {
                 for line in stats.chat_summary_lines(&job.mode) {
                     for player in &self.players {
-                        player.send_system_message(&line);
+                        player.send_raw_system_message(crate::player::diagnostic_component(&line).to_string());
                     }
                 }
             }

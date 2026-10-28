@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import type { Row } from "../state";
-import type { Trace, Viewport } from "../trace";
+import type { Signal, Trace, Viewport } from "../trace";
 import { clampView, tickStep, tickLabel, valueAt, zoomAt } from "../trace";
 import { detectDevice, scrollMotion } from "../scroll";
 import type { ScrollMode } from "../scroll";
@@ -25,13 +25,15 @@ interface Props {
   trace: Trace;
   rows: Row[];
   buses: Map<string, Bus>;
+  signals: Map<string, Signal>;
+  clock: string | null;
   selected: string[];
   viewport: Viewport;
   marker: number;
   altMarker: number | null;
   setViewport: (view: Viewport) => void;
   setMarker: (tick: number, alternate: boolean) => void;
-  select: (id: string, multiple: boolean) => void;
+  select: (id: string, multiple: boolean, range: boolean) => void;
   reorder: (from: string, to: string) => void;
   context: (event: React.MouseEvent, id?: string) => void;
   toggleGroup: (id: string) => void;
@@ -232,7 +234,7 @@ export function Waveform(props: Props) {
         c.stroke();
         continue;
       }
-      const signal = trace.signals.find((item) => item.id === row.signalId)!;
+      const signal = props.signals.get(row.id)!;
       const high = y + 8,
         low = y + row.height - 8;
       const yFor = (value: boolean | null) =>
@@ -333,6 +335,7 @@ export function Waveform(props: Props) {
     altMarker,
     trace,
     props.buses,
+    props.signals,
     props.zeroTick,
   ]);
   useEffect(() => {
@@ -350,7 +353,7 @@ export function Waveform(props: Props) {
       const row = positions.find(
         (item) => y >= item.y && y < item.y + item.row.height,
       )?.row;
-      const signal = trace.signals.find((item) => item.id === row?.signalId);
+      const signal = row && props.signals.get(row.id);
       const changes =
         (row && props.buses.get(row.id)?.changes) ?? signal?.changes;
       const nearest = changes?.reduce(
@@ -422,9 +425,7 @@ export function Waveform(props: Props) {
         >
           <div className="row-labels" style={{ width: labelWidth }}>
             {positions.map(({ row, y }, index) => {
-              const signal = trace.signals.find(
-                (item) => item.id === row.signalId,
-              );
+              const signal = props.signals.get(row.id);
               const bus = props.buses.get(row.id);
               const parent = row.groupId
                 ? props.buses.get(row.groupId)
@@ -474,7 +475,11 @@ export function Waveform(props: Props) {
                     );
                   }}
                   onClick={(event) =>
-                    props.select(row.id, event.ctrlKey || event.metaKey)
+                    props.select(
+                      row.id,
+                      event.ctrlKey || event.metaKey,
+                      event.shiftKey,
+                    )
                   }
                   onContextMenu={(event) => props.context(event, row.id)}
                 >
@@ -497,6 +502,11 @@ export function Waveform(props: Props) {
                       ? `${signal?.scope}.`
                       : ""}
                     {row.label}
+                    {signal && signalKey(signal) === props.clock
+                      ? " [clock]"
+                      : row.clockEdge
+                        ? ` [${row.clockEdge} clock]`
+                        : ""}
                     {bus
                       ? ` [${bus.members.length - 1}:0]`
                       : bit >= 0
@@ -601,7 +611,12 @@ export function Waveform(props: Props) {
                 const row = positions.find(
                   (item) => y >= item.y && y < item.y + item.row.height,
                 )?.row;
-                if (row) props.select(row.id, event.ctrlKey || event.metaKey);
+                if (row)
+                  props.select(
+                    row.id,
+                    event.ctrlKey || event.metaKey,
+                    event.shiftKey,
+                  );
               }
               drag.current = null;
             }}

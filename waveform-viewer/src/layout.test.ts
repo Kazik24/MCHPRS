@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { demoTrace } from "./demo.ts";
+import { signalKey } from "./trace.ts";
 import { initialSession } from "./state.ts";
 import {
   defaultOptions,
@@ -118,5 +119,26 @@ test("zero reference persists exactly and older browser layouts default to absol
   delete old.zeroTick;
   assert.equal(decodeLayout(JSON.stringify(old), demoTrace).zeroTick, "0");
   old.zeroTick = "-1";
+  assert.throws(() => decodeLayout(JSON.stringify(old), demoTrace));
+});
+
+test("clock selection and edge locks survive layout and absent probes", () => {
+  const rows = initialSession(demoTrace).rows;
+  rows[1] = { ...rows[1], clockEdge: "falling" };
+  const key = signalKey(demoTrace.signals[0]);
+  const text = encodeLayout({ ...defaultOptions, clock: key, rows }, demoTrace);
+  const restored = decodeLayout(text, demoTrace);
+  assert.equal(restored.clock, key);
+  assert.equal(restored.rows[1].clockEdge, "falling");
+  const missing = decodeLayout(text, {
+    ...demoTrace,
+    signals: demoTrace.signals.slice(1),
+  });
+  assert.equal(missing.clock, key);
+  assert.equal(missing.rows[0].clockEdge, "falling");
+  const old = JSON.parse(text);
+  delete old.clock;
+  assert.equal(decodeLayout(JSON.stringify(old), demoTrace).clock, null);
+  old.clock = 12;
   assert.throws(() => decodeLayout(JSON.stringify(old), demoTrace));
 });

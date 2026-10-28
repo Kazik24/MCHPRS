@@ -37,7 +37,6 @@ fn circuit(program: ReducedLayerProgram, outputs: Vec<SettledOutput>) -> Settled
     SettledCircuit {
         program,
         outputs: outputs.into_boxed_slice(),
-        firing: None,
         retained_cells: Box::new([]),
         retained_effects: Box::new([]),
         declines: Box::new([]),
@@ -138,13 +137,17 @@ fn construction_rejects_invalid_output_bindings_and_program_roots() {
     assert!(SettledEvaluation::new(&short_strength).unwrap_err().contains("invalid output binding"));
 
     let missing_expression = circuit(program, vec![power_output(SettledValueKind::Bool, vec![LayerExprId(1)])]);
-    assert!(SettledEvaluation::new(&missing_expression)
-        .unwrap_err()
-        .contains("invalid output binding"));
+    assert!(
+        SettledEvaluation::new(&missing_expression)
+            .unwrap_err()
+            .contains("invalid output binding")
+    );
 
     let invalid_program_root = input_program(1, vec![LayerExpr::Input(LayerInputId(0))], vec![(LayerRoot::Output(0), LayerExprId(9))]);
     let invalid_program_root = circuit(invalid_program_root, vec![]);
-    assert!(SettledEvaluation::new(&invalid_program_root)
-        .unwrap_err()
-        .contains("missing root expression"));
+    assert!(
+        SettledEvaluation::new(&invalid_program_root)
+            .unwrap_err()
+            .contains("missing root expression")
+    );
 }

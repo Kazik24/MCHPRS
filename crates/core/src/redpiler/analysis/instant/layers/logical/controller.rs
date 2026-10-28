@@ -209,7 +209,6 @@ pub(crate) fn controller_support(graph: &CompileGraph, clock: PistonId, monitor:
                     }
                     LayerInputSource::BoundaryEvent { .. }
                     | LayerInputSource::BoundaryRequest { .. }
-                    | LayerInputSource::InstantFired { .. }
                     | LayerInputSource::PowerContribution { .. }
                     | LayerInputSource::LocalResetOutput { .. } => {
                         return Err(format!("controller power query produced unsupported boundary source {source:?}"));

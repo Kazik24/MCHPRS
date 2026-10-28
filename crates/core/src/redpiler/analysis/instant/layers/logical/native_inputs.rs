@@ -205,7 +205,7 @@ impl<'a> Builder<'a> {
 
     fn charge(&mut self) -> Option<()> {
         self.work = self.work.checked_add(1)?;
-        if self.work > super::MAX_LAYER_WORK {
+        if self.work > super::MAX_LAYER_WORK.saturating_mul(self.monitor.budget_multiplier()) {
             return None;
         }
         if self.work & 0x3fff == 0 && self.monitor.cancelled() {

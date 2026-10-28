@@ -24,7 +24,7 @@ under the admitted logical contract; consequential outputs and clock cadence rem
 Interpreter handoff for those logical devices remains experimental.
 
 At O3 through O5, `--stable-instant-inputs` requests that promise explicitly.
-The newer one-shot firing runtime remains experimental work beyond the release.
+Single untimed observer-reset cells use Graph; the experimental one-shot firing runtime was removed.
 
 ```text
 /rp compile --optimize

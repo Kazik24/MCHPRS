@@ -272,6 +272,39 @@ fn reset_preserves_ordinary_scheduled_work_beside_pending_transitions() {
 }
 
 #[test]
+fn observer_and_lamp_outputs_match_native_while_compiled() {
+    for fixture in templates().into_iter().map(|template| with_observer(fixture(template))) {
+        let outputs: Vec<_> = fixture
+            .blocks
+            .iter()
+            .filter_map(|(pos, block)| matches!(block, Block::Observer { .. } | Block::RedstoneLamp { .. }).then_some(*pos))
+            .collect();
+        for protocol in host_protocols() {
+            let mut native = load_fixture(&fixture);
+            let mut world = load_fixture(&fixture);
+            let ticks = world.scheduler().iter_entries().collect();
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(&world, BOUNDS, CompilerOptions::default(), ticks, Arc::default())
+                .unwrap();
+            world.clear_scheduled_ticks();
+            for step in steps(&fixture, &protocol) {
+                native_step(&mut native, step);
+                graph_step(&mut compiler, &mut world, step, Display::Full);
+                for &position in &outputs {
+                    assert_eq!(
+                        world.get_block(position),
+                        native.get_block(position),
+                        "{} at {position:?} after {step:?}",
+                        protocol.id
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn suppressed_display_does_not_change_execution_or_continuation() {
     let fixtures: Vec<_> = templates()
         .into_iter()

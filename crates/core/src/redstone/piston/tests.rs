@@ -437,7 +437,7 @@ fn movable_trapdoor_is_preserved() {
 #[test]
 fn movement_cannot_lose_payload_at_plot_boundary() {
     let mut world = empty_world();
-    let pos = BlockPos::new(254, 30, 40);
+    let pos = BlockPos::new(PLOT_WIDTH * 16 - 2, 30, 40);
     start(&mut world, pos, BlockFacing::East, Block::Stone {});
     settle(&mut world);
     println!(

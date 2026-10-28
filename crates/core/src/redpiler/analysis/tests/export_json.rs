@@ -259,13 +259,12 @@ fn adder_1bit_fixture_matches_graph_json() {
         assert!(document["trace"].is_null());
     }
     let mut o6: Value = serde_json::from_slice(&adder_1bit_export(Some(6))).unwrap();
-    let world = geometry_io_fixture("ADDER_1BIT.schem");
     let stable_o5 = CompilerOptions {
         optimization_level: Some(5),
         stable_instant_inputs: true,
         ..Default::default()
     };
-    let o5: Value = serde_json::from_slice(&exported_with_options(&world, &stable_o5).to_bytes().unwrap()).unwrap();
+    let o5: Value = serde_json::from_slice(&adder_1bit_export_with_options(&stable_o5)).unwrap();
     let graph = o6["graph"].as_object_mut().unwrap();
     let layer_regions = graph.remove("instant_layer_regions").unwrap_or_else(|| Value::Array(Vec::new()));
     let layer_declines = graph.remove("instant_layer_declines").unwrap_or_else(|| Value::Array(Vec::new()));
@@ -442,14 +441,25 @@ fn graph_fixture_world(path: &std::path::Path) -> PlotWorld {
 }
 
 fn adder_1bit_export(level: Option<usize>) -> Vec<u8> {
+    adder_1bit_export_with_options(&CompilerOptions {
+        optimization_level: level,
+        ..Default::default()
+    })
+}
+
+fn adder_1bit_export_with_options(options: &CompilerOptions) -> Vec<u8> {
     let world = geometry_io_fixture("ADDER_1BIT.schem");
-    exported_with_options(
+    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    // The checked-in export uses this selection, independent of plot scale.
+    adapter::prepare(
         &world,
-        &CompilerOptions {
-            optimization_level: level,
-            ..Default::default()
-        },
+        (BlockPos::new(0, 0, 0), BlockPos::new(255, 255, 255)),
+        &ticks,
+        options,
+        &crate::redpiler::TaskMonitor::default(),
+        AnalysisLimits::default(),
     )
+    .unwrap()
     .to_bytes()
     .unwrap()
 }

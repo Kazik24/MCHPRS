@@ -124,6 +124,42 @@ fn direct_cell_world() -> PlotWorld {
 }
 
 #[test]
+fn event_domain_research_pipeline_discovers_without_taking_graph_ownership() {
+    let mut world = direct_cell_world();
+    let mut native = direct_cell_world();
+    let monitor = TaskMonitor::default();
+    let options = CompilerOptions {
+        optimization_level: Some(6),
+        ..Default::default()
+    };
+    let prepared = passes::rich::prepare(&world, BOUNDS, vec![], &monitor, AnalysisLimits::default()).unwrap();
+    let validated = prepared
+        .run_passes(&options, &passes::event_domain_research_pipeline(), &monitor)
+        .unwrap();
+    let catalog = validated.graph().plans.instant.boundaries.as_ref().unwrap();
+    assert_eq!(catalog.cells.len(), 1);
+    let positions: Vec<_> = validated.graph().sites.iter().map(|site| site.position).collect();
+    let lowered = validated.lower(&monitor).unwrap();
+    assert!(lowered.program.instant_kernels().is_empty());
+    assert!(lowered.program.logical_devices().is_empty());
+    let mut backend = GraphBackend::from_lowered(lowered, &monitor).unwrap();
+    backend.use_block(CONTROL).unwrap();
+    native_step(
+        &mut native,
+        Step::SetLever {
+            position: CONTROL,
+            powered: false,
+        },
+    );
+    for tick in 0..24 {
+        backend.tick().unwrap();
+        native.tick_interpreted();
+        check_boundary(&backend, &native, &mut world, &positions, &format!("research baseline tick {tick}")).unwrap();
+    }
+    assert!(backend.execution_counts().piston_actions > 0, "Graph must execute the physical piston");
+}
+
+#[test]
 fn parser_admits_a_private_reset_cell_without_synthetic_contracts() {
     let world = direct_cell_world();
     let monitor = TaskMonitor::default();
@@ -266,7 +302,6 @@ fn entry_input(input: LayerInput, backend: &GraphBackend) -> bool {
             backend.guard_matches(link.guard, None) && backend.site_power(link.from, link.from_port).saturating_sub(link.attenuation) > 0
         }
         LayerInputSource::State(test) | LayerInputSource::BoundaryState { test, .. } => state_predicate(backend, test),
-        LayerInputSource::InstantFired { .. } => panic!("legacy instant-entry fixture has no logical firing latch"),
     }
 }
 
@@ -555,9 +590,19 @@ fn four_cell_wave_executes_without_internal_turbo_and_preserves_reset() {
     assert_eq!(plan.regions.len(), 1, "{:?}", plan.declines);
     prepared.graph.plans.instant.boundaries = Some(catalog);
     prepared.graph.plans.instant.layers = Some(plan);
+    prepared.graph.plans.instant_events = crate::redpiler::analysis::instant::event_kernels::infer(&prepared.graph, &monitor).unwrap();
+    assert!(
+        !prepared.graph.plans.instant_events.is_empty(),
+        "Event ownership competes with the certified wave"
+    );
+    assert!(prepared.graph.plans.settled_circuit.is_none());
     let positions: Vec<_> = prepared.graph.sites.iter().map(|site| site.position).collect();
     let (program, state) = prepared.graph.lower().unwrap();
     assert_eq!(program.instant_kernels().len(), 1);
+    assert!(matches!(
+        program.instant_kernels()[0].program,
+        crate::redpiler::program_graph::KernelProgram::PullWave { .. }
+    ));
     assert_eq!(program.instant_kernels()[0].actors.len(), 4);
     assert_eq!(program.instant_kernels()[0].wires.len(), 6);
     let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
@@ -655,6 +700,7 @@ fn hot_entry_arrival_or_native_fallback_preserves_observer_work() {
         let label = if observer { "native observer fallback" } else { "hot-entry arrival" };
         prepared.graph.plans.instant.boundaries = Some(catalog);
         prepared.graph.plans.instant.layers = Some(selected_plan);
+        prepared.graph.plans.instant_events = crate::redpiler::analysis::instant::event_kernels::infer(&prepared.graph, &monitor).unwrap();
         prepared.graph.validate().unwrap();
         let (program, state) = prepared.graph.clone().lower().unwrap();
         let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
@@ -671,7 +717,10 @@ fn hot_entry_arrival_or_native_fallback_preserves_observer_work() {
             }
         }
         if !observer {
-            assert!(backend.execution_counts().instant_kernel_invocations > 0, "the valid hot cycle executes its PullWave");
+            assert!(
+                backend.execution_counts().instant_kernel_invocations > 0,
+                "the valid hot cycle executes its PullWave"
+            );
         }
         let mut handed_back = wire_arrival_world(observer);
         backend.reset(&mut handed_back);
@@ -690,7 +739,6 @@ fn hot_entry_arrival_or_native_fallback_preserves_observer_work() {
             );
         }
     }
-
 }
 
 fn check_composed_chain(dust: bool) {

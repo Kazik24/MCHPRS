@@ -5,6 +5,7 @@ import { parseZeroTick, signalKey } from "./trace.ts";
 import type { ScrollMode } from "./scroll.ts";
 
 export interface LayoutOptions {
+  clock: string | null;
   zeroTick: string;
   netlistWidth: number;
   labelWidth: number;
@@ -17,6 +18,7 @@ export interface Layout extends LayoutOptions {
   rows: Row[];
 }
 export const defaultOptions: LayoutOptions = {
+  clock: null,
   zeroTick: "0",
   netlistWidth: 280,
   labelWidth: 292,
@@ -36,6 +38,7 @@ export function encodeLayout(layout: Layout, trace: Trace): string {
   return JSON.stringify({
     version: 1,
     ...defaultOptions,
+    clock: layout.clock,
     zeroTick: layout.zeroTick,
     netlistWidth: layout.netlistWidth,
     labelWidth: layout.labelWidth,
@@ -58,6 +61,7 @@ export function encodeLayout(layout: Layout, trace: Trace): string {
       guides: row.guides,
       shortName: row.shortName,
       bus: row.bus,
+      clockEdge: row.clockEdge,
     })),
   });
 }
@@ -66,9 +70,11 @@ export function decodeLayout(text: string, trace: Trace): Layout {
   if (text.length > 1_048_576) throw Error("Layout is too large");
   const saved = JSON.parse(text);
   const zeroTick = parseZeroTick(saved?.zeroTick ?? "0");
+  const clock = saved?.clock ?? null;
   if (
     saved?.version !== 1 ||
     zeroTick === null ||
+    (clock !== null && (typeof clock !== "string" || clock.length > 512)) ||
     !Array.isArray(saved.rows) ||
     saved.rows.length > 4096 ||
     !Array.isArray(saved.signals) ||
@@ -137,6 +143,7 @@ export function decodeLayout(text: string, trace: Trace): Layout {
     trace,
   );
   return {
+    clock,
     zeroTick,
     rows: validated.rows,
     netlistWidth: saved.netlistWidth,

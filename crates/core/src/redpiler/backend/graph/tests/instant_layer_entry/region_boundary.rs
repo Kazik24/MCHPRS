@@ -52,12 +52,10 @@ fn set_native_lever(world: &mut PlotWorld, position: BlockPos, powered: bool) {
 fn assert_clear_wires_artifact(backend: &GraphBackend) {
     assert!(
         backend.program.instant_kernels().iter().any(|kernel| {
-            kernel.routes.iter().any(|route| {
-                route
-                    .steps
-                    .iter()
-                    .any(|step| matches!(&step.kind, KernelRouteStepKind::ClearWires(_)))
-            })
+            kernel
+                .routes
+                .iter()
+                .any(|route| route.steps.iter().any(|step| matches!(&step.kind, KernelRouteStepKind::ClearWires(_))))
         }),
         "the admitted route must contain certified work to elide"
     );
@@ -202,14 +200,7 @@ fn pull_region_preserves_native_fifo_and_command_history_each_tick() {
             &format!("optimized/native tick {tick}"),
         )
         .unwrap();
-        check_boundary(
-            &exact,
-            &native,
-            &mut exact_projection,
-            &positions,
-            &format!("exact/native tick {tick}"),
-        )
-        .unwrap();
+        check_boundary(&exact, &native, &mut exact_projection, &positions, &format!("exact/native tick {tick}")).unwrap();
 
         let native_output = native.command_output().map(str::to_owned).collect::<Vec<_>>();
         assert_eq!(

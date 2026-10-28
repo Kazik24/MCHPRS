@@ -111,7 +111,7 @@ pub(crate) struct ExecutionPlans {
     pub(crate) stable_instant_logic: StableInstantLogic,
     /// Exact bounded electrical distance rows for transport-net value regions.
     pub(crate) instant_value_regions: InstantValueRegions,
-    /// Whole-graph logical equations retained for diagnostics and static/one-shot planning.
+    /// Whole-graph logical equations retained for diagnostics and static planning.
     pub(crate) settled_circuit: Option<SettledCircuit>,
     /// Independently certified, scoped logical devices executed beside ordinary graph components.
     pub(crate) logical_devices: Vec<ScopedSettledDevice>,

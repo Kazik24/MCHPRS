@@ -119,8 +119,6 @@ pub(crate) enum LayerInputSource {
     },
     /// This reads the exact live or captured graph state predicate at the declared phase.
     State(StateTest),
-    /// This reads whether the actor has already fired in its current source-derived reset epoch.
-    InstantFired { actor: PistonId },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -320,6 +318,8 @@ pub(crate) enum LayerWitness {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Structured reason why a whole connected owner component remains general Graph execution.
 pub(crate) enum LayerDeclineReason {
+    /// No supported input-event path to a native effect was discovered.
+    NoUsefulEventPath,
     /// Optional construction exceeded its per-region work or retained-table limit.
     ProofBudgetExceeded,
     /// This electrical dependency has no proven value at the relevant request/acceptance cut.

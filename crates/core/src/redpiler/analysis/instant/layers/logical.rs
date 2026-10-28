@@ -29,15 +29,11 @@ mod settled;
 pub(crate) mod timing;
 pub(crate) use islands::LogicalIsland;
 #[cfg(test)]
-pub(crate) use settled::compile_computation;
-#[cfg(test)]
 pub(crate) use settled::compile_event_boundary;
 #[cfg(test)]
 pub(crate) use settled::compile_event_boundary_cut_feedback;
 #[cfg(test)]
 pub(crate) use settled::compile_event_boundary_with_retained_resources;
-#[cfg(test)]
-pub(crate) use settled::compile_one_shot_boundary;
 #[cfg(test)]
 pub(crate) use settled::compile_public_boundary;
 #[cfg(test)]
@@ -48,6 +44,11 @@ pub(crate) use settled::diagnostic_computation_failures;
 pub(crate) use settled::diagnostic_query;
 #[cfg(test)]
 pub(crate) use settled::diagnostic_source_cycle_edges;
+#[cfg(test)]
+pub(crate) use settled::{
+    compile_candidate_computation, compile_candidate_live_computation, compile_candidate_state_computation, compile_candidate_with_native_wires,
+    compile_computation, compile_global_boundary_computation, compile_global_live_computation, computation_support,
+};
 pub(crate) use settled::{compile_device, compile_devices, compile_scoped_devices, compile_settled};
 #[cfg(test)]
 mod adders11;
@@ -58,6 +59,13 @@ mod test_samples;
 
 struct Equations<'a> {
     graph: &'a CompileGraph,
+    /// When present, outside values remain live Graph inputs instead of being inlined.
+    #[cfg(test)]
+    candidate_owners: Option<&'a crate::redpiler::analysis::instant::boundaries::OwnerMap>,
+    #[cfg(test)]
+    candidate_contact_states: bool,
+    #[cfg(test)]
+    candidate_live_states: bool,
     power: PowerIndex,
     wires: FxHashSet<NodeId>,
     resets: FxHashSet<NodeId>,
@@ -84,12 +92,6 @@ struct Equations<'a> {
     pending_repeaters: FxHashSet<NodeId>,
     retain_classic: bool,
     resource_semantics: ResourceSemantics,
-    /// Fired-state inputs allocated for actors that own a requested feedback resource.
-    fired_inputs: FxHashMap<PistonId, LayerInputId>,
-    /// Shared source resources whose feedback was represented by owner fired inputs.
-    firing_resources: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
-    /// Prevalidated common-Far contracts built from one sticky-owner index.
-    one_shot_contracts: FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
     /// Diagnostic-only mode: retain otherwise unknown payload locations as leaves so one
     /// traversal can report every blocker. Executable compilation never enables this.
     diagnostic_unknown_resources: bool,
@@ -119,8 +121,6 @@ enum ResourceSemantics {
     Settled,
     /// Turn recognized source-location cycles into state inputs; optionally reject unknown destinations.
     Feedback { reject_unrepresented_destinations: bool },
-    /// Replace canonical source occupancy with the actors' one-use fired bits.
-    OneShot,
 }
 
 impl ResourceSemantics {
@@ -135,10 +135,6 @@ impl ResourceSemantics {
                 reject_unrepresented_destinations: true
             }
         )
-    }
-
-    fn uses_one_shot_firing(self) -> bool {
-        matches!(self, Self::OneShot)
     }
 }
 
@@ -171,9 +167,14 @@ impl<'a> Equations<'a> {
             .into_iter()
             .filter_map(|(resource, count)| (count == 1).then_some(resource))
             .collect();
-        let one_shot_contracts = common_far_contracts(graph, &cells, &unique_cell_resources);
         Ok(Self {
             graph,
+            #[cfg(test)]
+            candidate_owners: None,
+            #[cfg(test)]
+            candidate_contact_states: false,
+            #[cfg(test)]
+            candidate_live_states: false,
             power: index_power(graph),
             wires: graph
                 .nodes
@@ -215,9 +216,6 @@ impl<'a> Equations<'a> {
             pending_repeaters: FxHashSet::default(),
             retain_classic: false,
             resource_semantics: ResourceSemantics::default(),
-            fired_inputs: FxHashMap::default(),
-            firing_resources: FxHashMap::default(),
-            one_shot_contracts,
             diagnostic_unknown_resources: false,
             #[cfg(test)]
             resource_cycle_witness: None,
@@ -367,33 +365,6 @@ impl<'a> Equations<'a> {
     fn leaf(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
         let input = self.reduced.input(source, LayerInputRole::RequestSample)?;
         self.reduced.input_expr(input)
-    }
-
-    fn fired_leaf(&mut self, actor: PistonId) -> Result<LayerExprId, ConstructionError> {
-        let source = LayerInputSource::InstantFired { actor };
-        let input = self.reduced.input(source, LayerInputRole::RequestSample)?;
-        self.fired_inputs.insert(actor, input);
-        self.reduced.input_expr(input)
-    }
-
-    fn one_shot_source_presence(&mut self, resource: ResourceId) -> Result<Option<LayerExprId>, ConstructionError> {
-        if !self.resource_semantics.uses_one_shot_firing() {
-            return Ok(None);
-        }
-        let Some((source, owners)) = self.one_shot_contracts.get(&resource).cloned() else {
-            return Ok(None);
-        };
-        let fired = owners.iter().map(|&actor| self.fired_leaf(actor)).collect::<Result<Vec<_>, _>>()?;
-        let any_fired = self.reduced.any(fired)?;
-        let present = self.reduced.not(any_fired)?;
-        self.firing_resources.insert(resource, (source, owners));
-        Ok(Some(present))
-    }
-
-    fn one_shot_live_destination(&self, resource: ResourceId, contact: ContactId) -> bool {
-        self.resource_semantics.uses_one_shot_firing()
-            && self.one_shot_contracts.contains_key(&resource)
-            && self.graph.resources[resource.index()].contacts.contains(&contact)
     }
 
     fn source(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
@@ -556,6 +527,10 @@ impl<'a> Equations<'a> {
     }
 
     fn feedback_resource_leaf(&mut self, source: LayerInputSource) -> Result<Option<LayerExprId>, ConstructionError> {
+        #[cfg(test)]
+        if self.candidate_live_states && matches!(source, LayerInputSource::State(StateTest::ResourceAt { .. })) {
+            return self.leaf(source).map(Some);
+        }
         let LayerInputSource::State(StateTest::ResourceAt { resource, contact }) = source else {
             return Ok(None);
         };
@@ -566,17 +541,22 @@ impl<'a> Equations<'a> {
         if !spec.contacts.contains(&contact) {
             return Ok(None);
         }
-        if contact != canonical {
+        #[cfg(test)]
+        let model_contact = self.candidate_contact_states;
+        #[cfg(not(test))]
+        let model_contact = false;
+        if contact != canonical && !model_contact {
             // The candidate tracks only whether the payload remains at common Far.
             // It deliberately does not invent which Near receives a pulled token.
             return Ok(Some(self.reduced.constant(false)?));
         }
-        if !self.feedback_state_sources.contains(&(resource, canonical)) {
-            self.feedback_state_sources.push((resource, canonical));
+        let tracked_contact = if model_contact { contact } else { canonical };
+        if !self.feedback_state_sources.contains(&(resource, tracked_contact)) {
+            self.feedback_state_sources.push((resource, tracked_contact));
         }
         let state = self.leaf(LayerInputSource::State(StateTest::ResourceAt {
             resource,
-            contact: canonical,
+            contact: tracked_contact,
         }))?;
         Ok(Some(state))
     }
@@ -621,6 +601,48 @@ impl<'a> Equations<'a> {
     pub(super) fn shared_far_presence(&mut self, owners: &[PistonId]) -> Result<LayerExprId, ConstructionError> {
         let powered = owners.iter().map(|&owner| self.powered(owner)).collect::<Result<Vec<_>, _>>()?;
         self.shared_far_presence_from(powered)
+    }
+
+    /// Idealized deterministic destination: the lowest-id unpowered actor wins.
+    #[cfg(test)]
+    pub(super) fn candidate_contact_presence(&mut self, resource: ResourceId, contact: ContactId) -> Result<LayerExprId, String> {
+        let (far, mut actors) = self
+            .feedback_resource_contract(resource)
+            .ok_or_else(|| format!("resource {resource:?} lacks a complete source lane"))?;
+        actors.sort_unstable_by_key(|actor| actor.index());
+        if contact == far {
+            return self.shared_far_presence(&actors).map_err(|error| format!("{error:?}"));
+        }
+        let mut owners = Vec::with_capacity(actors.len());
+        for actor in actors {
+            let powered = self.powered(actor).map_err(|error| format!("{error:?}"))?;
+            owners.push((self.graph.pistons[actor.index()].near, powered));
+        }
+        self.candidate_near_presence_from(resource, contact, owners)
+    }
+
+    #[cfg(test)]
+    fn candidate_near_presence_from(
+        &mut self,
+        resource: ResourceId,
+        contact: ContactId,
+        owners: Vec<(ContactId, LayerExprId)>,
+    ) -> Result<LayerExprId, String> {
+        let mut prior = Vec::new();
+        let mut winners = Vec::new();
+        for (destination, powered) in owners {
+            if destination == contact {
+                let off = self.reduced.not(powered).map_err(|error| format!("{error:?}"))?;
+                let mut terms = prior.clone();
+                terms.push(off);
+                winners.push(self.reduced.all(terms).map_err(|error| format!("{error:?}"))?);
+            }
+            prior.push(powered);
+        }
+        if winners.is_empty() {
+            return Err(format!("resource {resource:?} contact {contact:?} is not an owner destination"));
+        }
+        self.reduced.any(winners).map_err(|error| format!("{error:?}"))
     }
 
     fn shared_far_presence_from(&mut self, powered: Vec<LayerExprId>) -> Result<LayerExprId, ConstructionError> {
@@ -766,6 +788,42 @@ impl<'a> Equations<'a> {
     }
 
     fn source_value(&mut self, source: LayerInputSource) -> Result<LayerExprId, ConstructionError> {
+        #[cfg(test)]
+        if self.candidate_live_states
+            && matches!(
+                source,
+                LayerInputSource::State(
+                    StateTest::ResourceAt { .. }
+                        | StateTest::ResourceEnabled(_)
+                        | StateTest::PistonExtended(_)
+                        | StateTest::PistonHeadPresent(_)
+                        | StateTest::PistonAvailability { .. }
+                )
+            )
+        {
+            return self.leaf(source);
+        }
+        #[cfg(test)]
+        if let Some(owners) = self.candidate_owners {
+            let outside = match source {
+                LayerInputSource::SourceAbove { site, .. } => match self.graph.sites.get(site.index()).map(|site| site.source) {
+                    Some(SiteSource::Component(node)) => owners.nodes.get(node.index()).copied().flatten().is_none(),
+                    Some(SiteSource::Contact(contact)) => owners.contacts.get(contact.index()).copied().flatten().is_none(),
+                    _ => false,
+                },
+                LayerInputSource::State(StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor))
+                | LayerInputSource::State(StateTest::PistonAvailability { piston: actor, .. }) => {
+                    owners.actors.get(actor.index()).copied().flatten().is_none()
+                }
+                LayerInputSource::State(StateTest::ResourceAt { resource, .. } | StateTest::ResourceEnabled(resource)) => {
+                    owners.resources.get(resource.index()).copied().flatten().is_none()
+                }
+                _ => false,
+            };
+            if outside {
+                return self.leaf(source);
+            }
+        }
         let value = match source {
             LayerInputSource::WireDot { node } => {
                 if !matches!(self.graph.nodes.get(node.index()).map(|node| &node.kind), Some(CircuitNodeKind::Wire(_))) {
@@ -774,21 +832,13 @@ impl<'a> Equations<'a> {
                 self.leaf(source)?
             }
             LayerInputSource::State(StateTest::PistonAvailability { piston, is }) => {
-                if self.resource_semantics.uses_one_shot_firing() {
-                    self.leaf(source)?
-                } else if self.actors.contains(&piston) || self.registers.values().any(|read| read.storage == piston) {
+                if self.actors.contains(&piston) || self.registers.values().any(|read| read.storage == piston) {
                     self.reduced.constant(is == PistonAvailability::Ready)?
                 } else {
                     self.leaf(source)?
                 }
             }
             LayerInputSource::State(StateTest::ResourceEnabled(resource)) => {
-                if self.resource_semantics.uses_one_shot_firing() {
-                    // Only canonical far-side ResourceAt values are represented by
-                    // owner fired bits. Keep enablement live as an exact Graph phase
-                    // input, including for private destinations and register lanes.
-                    return self.leaf(source);
-                }
                 if !self.cells.contains_key(&resource) && !self.registers.contains_key(&resource) {
                     return if self.retain_classic || self.diagnostic_unknown_resources {
                         self.leaf(source)
@@ -817,16 +867,8 @@ impl<'a> Equations<'a> {
                     }
                 } else if let Some((origin, actors)) = self.cells.get(&resource).cloned() {
                     if origin == contact {
-                        if let Some(present) = self.one_shot_source_presence(resource)? {
-                            return Ok(present);
-                        }
                         let values = actors.into_iter().map(|actor| self.powered(actor)).collect::<Result<Vec<_>, _>>()?;
                         self.reduced.all(values)?
-                    } else if self.one_shot_live_destination(resource, contact) {
-                        // The logical source occupancy is the fired-bit contract;
-                        // preserve any moved destination as an exact live Graph state
-                        // input rather than inventing a destination transfer.
-                        self.leaf(source)?
                     } else if self.resource_semantics.uses_feedback()
                         && self.feedback_resource_contract(resource).is_some()
                         && self.graph.resources[resource.index()].contacts.contains(&contact)
@@ -854,9 +896,7 @@ impl<'a> Equations<'a> {
                 }
             }
             LayerInputSource::State(StateTest::PistonExtended(actor) | StateTest::PistonHeadPresent(actor)) => {
-                if self.resource_semantics.uses_one_shot_firing() {
-                    self.leaf(source)?
-                } else if let Some(read) = self.registers.values().find(|read| read.storage == actor).copied() {
+                if let Some(read) = self.registers.values().find(|read| read.storage == actor).copied() {
                     let value = self.leaf(LayerInputSource::State(StateTest::ResourceAt {
                         resource: read.resource,
                         contact: read.source,
@@ -934,11 +974,6 @@ impl<'a> Equations<'a> {
                     })?
                 } else if self.retain_classic && retained_state_source {
                     self.leaf(source)?
-                } else if self.resource_semantics.uses_one_shot_firing() && matches!(kind, CircuitNodeKind::Wire(_)) && !self.wires.contains(&node) {
-                    // Saved-dot wires are deliberately outside the one-shot
-                    // equation region. Preserve the exact directional native
-                    // source (including Stored/weak/strong ports and threshold).
-                    self.leaf(source)?
                 } else {
                     match self.graph.nodes[node.index()].kind {
                         CircuitNodeKind::Electrical(NodeType::Constant) => {
@@ -965,60 +1000,6 @@ impl<'a> Equations<'a> {
         };
         Ok(value)
     }
-}
-
-fn common_far_contracts(
-    graph: &CompileGraph,
-    cells: &FxHashMap<ResourceId, (ContactId, Vec<PistonId>)>,
-    unique_resources: &FxHashSet<ResourceId>,
-) -> FxHashMap<ResourceId, (ContactId, Vec<PistonId>)> {
-    let mut sticky_far_owners = FxHashMap::<ContactId, Vec<PistonId>>::default();
-    for (index, piston) in graph.pistons.iter().enumerate() {
-        if piston.sticky {
-            if let PistonLane::SingleResource { far } = piston.lane {
-                sticky_far_owners.entry(far).or_default().push(PistonId::new(index as u32));
-            }
-        }
-    }
-
-    let mut contracts = FxHashMap::default();
-    for (&resource, &(canonical, ref owners)) in cells {
-        if !unique_resources.contains(&resource) || !(1..=5).contains(&owners.len()) {
-            continue;
-        }
-        let Some(spec) = graph.resources.get(resource.index()) else {
-            continue;
-        };
-        let owner_set: FxHashSet<_> = owners.iter().copied().collect();
-        if owner_set.len() != owners.len() || !spec.contacts.contains(&canonical) {
-            continue;
-        }
-        let mut indexed = sticky_far_owners.get(&canonical).cloned().unwrap_or_default();
-        indexed.sort_unstable();
-        let mut declared = owner_set.iter().copied().collect::<Vec<_>>();
-        declared.sort_unstable();
-        if indexed != declared {
-            continue;
-        }
-        let mut covered = FxHashSet::default();
-        covered.insert(canonical);
-        let mut valid = true;
-        for &owner in owners {
-            let Some(piston) = graph.pistons.get(owner.index()) else {
-                valid = false;
-                break;
-            };
-            if !piston.sticky || piston.lane != (PistonLane::SingleResource { far: canonical }) || !spec.contacts.contains(&piston.near) {
-                valid = false;
-                break;
-            }
-            covered.insert(piston.near);
-        }
-        if valid && spec.contacts.iter().all(|contact| covered.contains(contact)) {
-            contracts.insert(resource, (canonical, owners.clone()));
-        }
-    }
-    contracts
 }
 
 /// A contract proves that an accepted pull disables the payload at Near until

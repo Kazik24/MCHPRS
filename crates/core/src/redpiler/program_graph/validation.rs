@@ -8,6 +8,7 @@ impl CircuitDraft {
         self.validate_with_monitor(&crate::redpiler::TaskMonitor::default())
     }
 
+    #[cfg(test)]
     pub(crate) fn validate_with_monitor(&self, monitor: &crate::redpiler::TaskMonitor) -> Result<(), GraphBuildError> {
         self.validate_for_lowering(monitor).map(|_| ())
     }
@@ -372,7 +373,7 @@ impl CircuitDraft {
             index: 0,
         };
         plan.validate().map_err(|_| invalid())?;
-        let expected = if plan.timing.is_some() || plan.firing.is_some() {
+        let expected = if plan.timing.is_some() {
             crate::redpiler::analysis::instant::layers::logical::compile_device(self, monitor)
         } else {
             crate::redpiler::analysis::instant::layers::logical::compile_settled(self, monitor)

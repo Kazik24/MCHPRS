@@ -20,8 +20,6 @@ mod drives;
 #[cfg(test)]
 #[path = "graph/tests/event_boundary_probes.rs"]
 mod event_boundary_probes;
-#[cfg(test)]
-mod firing_probe;
 mod fixed_classic;
 mod instant;
 #[cfg(test)]
@@ -52,7 +50,6 @@ mod logical_device_island_tests;
 #[cfg(any(test, feature = "saved-plot-bench"))]
 #[path = "graph/tests/logical_device_saved_plot.rs"]
 pub(crate) mod logical_device_saved_plot_tests;
-mod logical_firing;
 #[cfg(test)]
 #[path = "graph/tests/memory_cells.rs"]
 mod memory_cell_tests;
@@ -287,8 +284,6 @@ pub(crate) struct TestRecorder {
     logical_bud_occurrence_dispatches: u64,
     /// Cold reduced Main/Quasi evaluator sampled before accepted actor mutation.
     accepted_boundary_probe: Option<accepted_boundary_probe::Probe>,
-    /// Test-only one-shot evaluator sampled at selected native actor/reset cuts.
-    logical_firing_probe: Option<firing_probe::Probe>,
     /// Optional callback attribution; updated only by test builds and never changes trace order.
     callback_census: CallbackCensus,
     /// Opt-in per-value-region execution attribution for ignored research runs only.
@@ -467,7 +462,6 @@ pub(crate) struct GraphBackend {
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
     /// This holds reusable wave scratch and the current synchronous route replacement.
     instant_kernel: instant_kernel::KernelExecution,
-    logical_firing: Option<logical_firing::LogicalFiringRuntime>,
     logical_devices: Vec<logical_device::LogicalDevice>,
     logical_device_owner: Vec<Option<usize>>,
     /// Source-qualified native clock pistons dispatch accepted retracts to their frame owner.
@@ -563,7 +557,7 @@ impl GraphBackend {
     /// Create a bare Graph executor without production activation.
     ///
     /// The returned executor remains usable for ordinary Graph execution. Use `from_lowered`
-    /// when activation is required: it imports ticks, installs the logical firing/device
+    /// when activation is required: it imports ticks, installs the logical device
     /// runtimes, and schedules initial command ticks.
     pub(crate) fn new_unactivated(program: CircuitProgram, state: CircuitState, logical_tick: u64) -> Result<Self, GraphBackendError> {
         let positions = program.position_index();
@@ -633,11 +627,12 @@ impl GraphBackend {
         Self::validate_supported(&lowered.program)?;
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
         backend.import_ticks(lowered.imported_ticks)?;
-        backend.logical_firing = logical_firing::LogicalFiringRuntime::new(&backend);
-        backend.logical_device_admission = backend.install_logical_device().map_err(|_| GraphBackendError::UnsupportedComponent {
-            position: None,
-            kind: "logical device input or stationary entry contract",
-        })?;
+        backend.logical_device_admission = backend
+            .install_logical_device(monitor)
+            .map_err(|_| GraphBackendError::UnsupportedComponent {
+                position: None,
+                kind: "logical device input or stationary entry contract",
+            })?;
         let initial_command_ticks: Vec<_> = backend
             .program
             .command_blocks()
@@ -917,7 +912,6 @@ impl GraphBackend {
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
             instant_kernel,
-            logical_firing: None,
             logical_devices: Vec::new(),
             logical_device_owner: Vec::new(),
             native_action_clock_owner,
@@ -1350,9 +1344,6 @@ impl GraphBackend {
         }
         if self.fixed_classic.is_some() {
             return self.fixed_classic_tick(node);
-        }
-        if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node)) {
-            return self.tick_logical_firing_observer(node);
         }
         match self.program.nodes()[node.index()].kind.clone() {
             CircuitNodeKind::Wire(_) => Ok(()),
@@ -2039,11 +2030,9 @@ impl GraphBackend {
             return Ok(());
         }
         let has_logical_sample = self.logical_bud_samples_by_route.get(route.index()).is_some_and(Option::is_some);
-        let has_logical_firing = self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_route(route));
         let requires_general_delivery = self.requires_general_route_delivery(route);
         if !retained_frame
             && !has_logical_sample
-            && !has_logical_firing
             && !requires_general_delivery
             && let Some(kernel) = self.instant_kernel.active.clone()
             && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
@@ -2052,7 +2041,6 @@ impl GraphBackend {
         }
         if !retained_frame
             && !has_logical_sample
-            && !has_logical_firing
             && !requires_general_delivery
             && let Some(binding) = self.program.instant_route_binding(route)
         {
@@ -2266,9 +2254,6 @@ impl GraphBackend {
         if !matches_target {
             return None;
         }
-        if matches!(receiver, CallbackReceiver::Component(node) if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node))) {
-            return None;
-        }
         self.logical_bud_owner_by_actor.get(target.index())?.as_ref()?;
         if !self.state.pistons[target.index()].availability.base_pending() || self.classic_route_entry(event.occurrence).is_some() {
             return None;
@@ -2339,16 +2324,6 @@ impl GraphBackend {
                 return Err(self.unsupported(target, "ordinary callback crosses a logical-device scope"));
             }
         }
-        if matches!(receiver, CallbackReceiver::Component(node) if self.logical_firing.as_ref().is_some_and(|runtime| runtime.owns_observer(node))) {
-            if matches!(delivery.kind, DeliveryKind::Update { .. } | DeliveryKind::Shape { .. }) {
-                let node = match receiver {
-                    CallbackReceiver::Component(node) => node,
-                    _ => unreachable!(),
-                };
-                self.update_component(node, delivery.kind, observed)?;
-            }
-            return Ok(());
-        }
         let logical_sample = occurrence
             .and_then(|occurrence| {
                 self.logical_bud_samples_by_route
@@ -2365,18 +2340,6 @@ impl GraphBackend {
             });
         if let Some(actor) = logical_sample {
             self.sample_piston_from(actor, route)?;
-            return Ok(());
-        }
-        let owned_firing_actor = self.logical_firing.as_ref().and_then(|runtime| {
-            let actor = runtime.actor();
-            match receiver {
-                CallbackReceiver::PistonBase(candidate) | CallbackReceiver::PistonHead(candidate) if candidate == actor => Some(actor),
-                CallbackReceiver::Component(node) if self.program.pistons()[actor.index()].node == node => Some(actor),
-                _ => None,
-            }
-        });
-        if let Some(actor) = owned_firing_actor {
-            self.sample_logical_firing_actor(actor, route)?;
             return Ok(());
         }
         self.counts.callbacks += 1;

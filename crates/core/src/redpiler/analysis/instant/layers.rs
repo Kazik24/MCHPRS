@@ -63,6 +63,32 @@ pub(crate) fn trace_native_power_targets(graph: &CompileGraph, targets: &[PowerT
     Ok(NativePowerTrace { inputs, wires, source_sites })
 }
 
+/// Compile exact directional power samples while leaving every wire Graph-owned.
+/// The caller supplies the original sampling cut; this does not own any state.
+#[cfg(test)]
+pub(crate) fn compile_native_power_cuts(
+    graph: &CompileGraph,
+    targets: &[(PowerTarget, u8)],
+    monitor: &TaskMonitor,
+) -> Result<ReducedLayerProgram, String> {
+    let power = index_power(graph);
+    let internal_wires = FxHashSet::default();
+    let state = FxHashMap::default();
+    let mut builder = LayerBuilder::new(monitor).map_err(|error| format!("native cut builder: {error:?}"))?;
+    let mut tracer = signals::SignalTracer::new(graph, &power, &internal_wires, &state, LayerInputRole::RequestSample).with_stable_wire_modes();
+    let mut roots = Vec::with_capacity(targets.len());
+    for (index, &(target, threshold)) in targets.iter().enumerate() {
+        if monitor.cancelled() {
+            return Err("cancelled while compiling native power cuts".into());
+        }
+        let root = tracer
+            .query(target, threshold, &mut builder)
+            .map_err(|error| format!("native power cut declined: {error:?}"))?;
+        roots.push((LayerRoot::Output(index), root));
+    }
+    reduction::reduce_roots(&builder.inputs, &builder.expressions, roots, monitor)
+}
+
 /// Keep each query root separate while retaining only the expression/input slice
 /// that can affect at least one root. The tracer's memo maps include visited
 /// branches later folded away by a constant guard.
@@ -76,7 +102,7 @@ fn reachable_trace_inputs(builder: &LayerBuilder<'_>, roots: &[LayerExprId], mon
     let mut work = 0usize;
     while let Some(id) = pending.pop() {
         work = work.checked_add(1).ok_or("native power trace work counter overflow")?;
-        if work > MAX_LAYER_WORK {
+        if work > MAX_LAYER_WORK.saturating_mul(monitor.budget_multiplier()) {
             return Err("native power trace reachability exceeded its work bound".into());
         }
         if work & 0x3fff == 0 && monitor.cancelled() {
@@ -151,6 +177,8 @@ struct CompiledRegion {
 pub(crate) struct LayerCompilationContext {
     /// The computation partition derived from this unchanged graph and boundary catalog.
     partition: regions::RegionPartition,
+    /// Native-fallback reason for each region not selected by event discovery.
+    discovery_declines: Vec<Option<LayerDeclineReason>>,
     /// Incoming power links indexed once for both compilation and corridor certification.
     power: PowerIndex,
     /// Successful connected-region arrival proofs, indexed by the unchanged partition.
@@ -159,10 +187,11 @@ pub(crate) struct LayerCompilationContext {
 
 impl LayerCompilationContext {
     fn prepare(graph: &CompileGraph, catalog: &BoundaryCatalog, monitor: &TaskMonitor) -> Result<Self, String> {
-        let partition = partition::partition(graph, catalog, monitor)?;
+        let (partition, discovery_declines) = partition::partition_with_activity(graph, catalog, monitor)?;
         let arrivals = (0..partition.regions.len()).map(|_| None).collect();
         Ok(Self {
             partition,
+            discovery_declines,
             power: index_power(graph),
             arrivals,
         })
@@ -187,6 +216,10 @@ pub(crate) fn compile_layers_with_context(
     let mut declined = Vec::new();
     for (region_index, component) in partition.regions.iter().enumerate() {
         check_cancelled(monitor)?;
+        if let Some(reason) = context.discovery_declines[region_index] {
+            declined.push(decline(component, first_witness(graph, catalog, component), reason));
+            continue;
+        }
         let result = compile_component(
             graph,
             catalog,
@@ -491,7 +524,7 @@ fn first_unproven_power(
             let mut visited = rustc_hash::FxHashSet::default();
             while let Some(pin) = pending.pop() {
                 work = work.checked_add(1).ok_or("layer support walk work overflow")?;
-                if work > MAX_LAYER_WORK {
+                if work > MAX_LAYER_WORK.saturating_mul(monitor.budget_multiplier()) {
                     return Err(ConstructionError::BudgetExceeded);
                 }
                 if work & 0x3ff == 0 {
@@ -1348,7 +1381,11 @@ impl<'a> LayerBuilder<'a> {
             expressions: Vec::new(),
             interned: FxHashMap::default(),
             input_ids: FxHashMap::default(),
-            budget: LayerBudget { bytes: 0, work: 0 },
+            budget: LayerBudget {
+                bytes: 0,
+                work: 0,
+                multiplier: monitor.budget_multiplier(),
+            },
         };
         // The two constants are stable roots shared by all subsequent local equations.
         builder.constant(false)?;
@@ -1474,12 +1511,14 @@ struct LayerBudget {
     bytes: usize,
     /// This counts pin, input and Boolean-operation visits.
     work: usize,
+    /// Explicit compilation-budget scaling, fixed when this builder is created.
+    multiplier: usize,
 }
 
 impl LayerBudget {
     fn retain(&mut self, bytes: usize) -> Result<(), ConstructionError> {
         self.bytes = self.bytes.checked_add(bytes).ok_or("layer retained byte counter overflow")?;
-        if self.bytes > MAX_LAYER_BYTES {
+        if self.bytes > MAX_LAYER_BYTES.saturating_mul(self.multiplier) {
             return Err(ConstructionError::BudgetExceeded);
         }
         Ok(())
@@ -1488,7 +1527,7 @@ impl LayerBudget {
     fn visit(&mut self, monitor: &TaskMonitor) -> Result<(), ConstructionError> {
         check_cancelled(monitor)?;
         self.work = self.work.checked_add(1).ok_or("layer work counter overflow")?;
-        if self.work > MAX_LAYER_WORK {
+        if self.work > MAX_LAYER_WORK.saturating_mul(self.multiplier) {
             return Err(ConstructionError::BudgetExceeded);
         }
         Ok(())

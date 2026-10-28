@@ -1,4 +1,3 @@
-use super::settled::{callback_targets_lamp, first_single_lamp_candidate};
 use super::*;
 use crate::plot::PlotWorld;
 use crate::redpiler::analysis::AnalysisLimits;
@@ -30,50 +29,6 @@ pub(super) fn prepared_o6(world: &PlotWorld, bounds: (BlockPos, BlockPos), monit
     )
     .unwrap();
     prepared.graph
-}
-
-fn original_first_single_lamp_candidate(graph: &CompileGraph) -> (Option<PistonId>, usize) {
-    let Some(catalog) = graph.plans.instant.boundaries.as_ref() else {
-        return (None, 0);
-    };
-    let mut ports_by_owner = FxHashMap::<BoundaryOwner, Vec<BoundaryPort>>::default();
-    for port in catalog.ports.iter().copied() {
-        ports_by_owner.entry(port.owner).or_default().push(port);
-    }
-    let mut skipped_empty_owner_sets = 0;
-    for (cell_index, cell) in catalog.cells.iter().enumerate() {
-        if cell.uses.len() != 1 {
-            continue;
-        }
-        let use_ = &cell.uses[0];
-        if !matches!(use_.reset, CellReset::Observer { .. }) || use_.retraction.transfer.is_none() {
-            continue;
-        }
-        let owner = BoundaryOwner::Cell(u32::try_from(cell_index).unwrap());
-        let owner_ports = ports_by_owner.get(&owner).map_or(&[][..], Vec::as_slice);
-        let lamp_occurrences: FxHashSet<_> = owner_ports
-            .iter()
-            .filter_map(|port| match port.kind {
-                BoundaryPortKind::Callback { occurrence }
-                    if port.owner == owner && port.direction == BoundaryDirection::Output && callback_targets_lamp(graph, occurrence) =>
-                {
-                    Some(occurrence)
-                }
-                _ => None,
-            })
-            .collect();
-        let has_lamp_output = !lamp_occurrences.is_empty();
-        if !has_lamp_output {
-            skipped_empty_owner_sets += 1;
-        }
-        let has_owned_corridor = catalog.ports.iter().any(
-            |port| matches!(port.kind, BoundaryPortKind::Callback { occurrence } if lamp_occurrences.contains(&occurrence) && port.owner != owner),
-        );
-        if has_lamp_output && !has_owned_corridor {
-            return (Some(use_.actor), skipped_empty_owner_sets);
-        }
-    }
-    (None, skipped_empty_owner_sets)
 }
 
 fn tiny_world() -> PlotWorld {
@@ -467,8 +422,7 @@ fn counter_control_inputs(graph: &CompileGraph, circuit: &SettledCircuit, contro
         .filter_map(|output| match output.target {
             SettledTarget::Register(read) => Some(read),
             SettledTarget::Power(_) | SettledTarget::ResetExcludedPower { .. } => None,
-            SettledTarget::InstantPowerEligible(_) => None,
-            SettledTarget::ResourceState { .. } => None,
+            SettledTarget::ResourceState { .. } | SettledTarget::ComponentOutput(_) => None,
         })
         .collect::<Vec<_>>();
     register_slots.sort_unstable_by_key(|read| graph.pistons[read.storage.index()].position.z);
@@ -688,7 +642,7 @@ fn settled_outputs_keep_comparator_strength_as_fifteen_thresholds() {
 }
 
 #[test]
-fn settled_equations_sample_dot_mode_without_resource_feedback() {
+fn settled_equations_reduce_connected_dot_mode_without_resource_feedback() {
     let mut world = tiny_world();
     let source = BlockPos::new(4, 2, 4);
     let wire = source + BlockPos::new(1, 0, 0);
@@ -730,12 +684,12 @@ fn settled_equations_sample_dot_mode_without_resource_feedback() {
         .expect("lamp input is powered by the wire in this fixture");
 
     // Exercise the public settled-boundary constructor, which owns its wire policy.
-    // Its live mode leaf must be lowered and validated without enabling resource feedback.
+    // This wire has a fixed connection, so regulation is independent of dot mode.
     let boundary = compile_public_boundary(&graph, &[target], &[], &monitor).unwrap();
     assert!(boundary.declines.is_empty());
     assert!(boundary.outputs.iter().any(|output| output.target == SettledTarget::Power(target)));
     assert!(
-        boundary
+        !boundary
             .program
             .inputs
             .iter()
@@ -749,7 +703,7 @@ fn settled_equations_sample_dot_mode_without_resource_feedback() {
     assert!(!equations.resource_semantics.uses_feedback());
     equations.query(target, 0).unwrap();
     assert!(
-        equations
+        !equations
             .reduced
             .inputs
             .iter()
@@ -758,35 +712,6 @@ fn settled_equations_sample_dot_mode_without_resource_feedback() {
     assert!(
         !equations.resource_semantics.uses_feedback(),
         "wire policy must not enable resource-feedback semantics"
-    );
-
-    let site = graph
-        .sites
-        .iter()
-        .position(|site| site.source == SiteSource::Component(wire_node))
-        .map(|index| SiteId::new(index as u32))
-        .expect("the dot wire has a source site");
-    let port = graph
-        .power_links
-        .iter()
-        .find(|link| link.from == site && link.to == target)
-        .map(|link| link.from_port)
-        .expect("the lamp reads this wire through a directional power port");
-    let one_shot = compile_one_shot_boundary(&graph, &[target], &[], &monitor).unwrap();
-    assert!(
-        one_shot
-            .program
-            .inputs
-            .iter()
-            .any(|input| { input.source == LayerInputSource::SourceAbove { site, port, threshold: 0 } })
-    );
-    assert!(
-        !one_shot
-            .program
-            .inputs
-            .iter()
-            .any(|input| input.source == LayerInputSource::WireDot { node: wire_node }),
-        "a saved-dot wire stays Graph-owned and is observed through its exact directional source"
     );
 }
 
@@ -1527,394 +1452,6 @@ fn event_boundary_cut_keeps_selected_cell_writer_and_resource_as_live_graph_stat
 }
 
 #[test]
-fn one_shot_boundary_emits_fired_cut_and_keeps_reset_observers_live() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/fixtures/counter_basic.json");
-    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
-    let world = cpus::load_manifest(&manifest).unwrap();
-    let monitor = TaskMonitor::default();
-    let graph = prepared_o6(&world, world.get_corners(), &monitor);
-    let catalog = graph.plans.instant.boundaries.as_ref().unwrap();
-    let candidate = first_single_lamp_candidate(&graph).unwrap();
-    let (original_candidate, skipped_empty_owner_sets) = original_first_single_lamp_candidate(&graph);
-    assert_eq!(candidate, original_candidate, "the short-circuit preserves first-candidate selection");
-    assert!(
-        skipped_empty_owner_sets > 0,
-        "the fixture includes empty lamp-occurrence sets whose global corridor scan is skipped"
-    );
-    let mut equations = Equations::new(&graph, &monitor).unwrap();
-    let (resource, (source, owners)) = equations
-        .one_shot_contracts
-        .iter()
-        .next()
-        .map(|(&resource, contract)| (resource, contract.clone()))
-        .expect("counter fixture has a recognized shared-Far cell resource");
-
-    equations.resource_semantics = ResourceSemantics::OneShot;
-    let presence = equations.one_shot_source_presence(resource).unwrap().unwrap();
-    let fired_sources = equation_inputs(&equations.reduced, presence);
-    let expected_fired: FxHashSet<_> = owners.iter().map(|&actor| LayerInputSource::InstantFired { actor }).collect();
-    assert_eq!(
-        fired_sources, expected_fired,
-        "shared source presence depends only on its owners' fired bits"
-    );
-    match equations.reduced.expression(presence).unwrap() {
-        LayerExpr::Not(child) => match equations.reduced.expression(*child).unwrap() {
-            LayerExpr::Input(input) if owners.len() == 1 => {
-                assert_eq!(
-                    equations.reduced.inputs[input.0 as usize].source,
-                    LayerInputSource::InstantFired { actor: owners[0] }
-                );
-            }
-            LayerExpr::Any(children) => {
-                assert_eq!(children.len(), owners.len());
-            }
-            expression => panic!("shared source presence must negate an owner-fired disjunction, got {expression:?}"),
-        },
-        expression => panic!("shared source presence must be the complement of fired owners, got {expression:?}"),
-    }
-
-    let observer = catalog
-        .cells
-        .iter()
-        .flat_map(|cell| cell.uses.iter())
-        .find_map(|use_| use_.reset.observer())
-        .expect("fixture use has a classified private reset observer");
-    let site = graph
-        .sites
-        .iter()
-        .position(|site| site.source == SiteSource::Component(observer))
-        .map(|index| SiteId::new(index as u32))
-        .expect("private reset observer has an output site");
-    equations.retain_classic = true;
-    equations.resets.clear();
-    let observer_root = equations
-        .source_value(LayerInputSource::SourceAbove {
-            site,
-            port: PowerPort::Output,
-            threshold: 0,
-        })
-        .unwrap();
-    assert!(matches!(equations.reduced.expression(observer_root).unwrap(), LayerExpr::Input(_)));
-
-    let target = graph
-        .power_links
-        .iter()
-        .find_map(|link| {
-            (graph.sites[link.from.index()].source == SiteSource::Contact(source))
-                .then_some(link.to)
-                .and_then(|target| matches!(target, PowerTarget::Input { .. }).then_some(target))
-        })
-        .unwrap_or(PowerTarget::Input {
-            node: graph.pistons[owners[0].index()].node,
-            port: InputPort::Main,
-        });
-    let circuit = compile_one_shot_boundary(&graph, &[target], &[], &monitor).unwrap();
-    let firing = circuit.firing.as_ref().expect("requested cell feedback has a firing plan");
-    let all_wires: FxHashSet<_> = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .filter_map(|(index, node)| matches!(node.kind, CircuitNodeKind::Wire(_)).then_some(NodeId::new(index as u32)))
-        .collect();
-    let saved_dot_wires: FxHashSet<_> = graph
-        .nodes
-        .iter()
-        .enumerate()
-        .filter_map(|(index, node)| {
-            matches!(&node.state, ComponentState::Wire(wire) if crate::redstone::wire::is_dot(*wire)).then_some(NodeId::new(index as u32))
-        })
-        .collect();
-    let mut equation_wires = all_wires.clone();
-    equation_wires.retain(|wire| !saved_dot_wires.contains(wire));
-    let all_wire_effects = super::settled::logical_action_retained_effects(&graph, firing, &all_wires, &monitor).unwrap();
-    let retained_effect_set: FxHashSet<_> = circuit.retained_effects.iter().copied().collect();
-    let expected_effects = super::settled::logical_action_retained_effects(&graph, firing, &equation_wires, &monitor).unwrap();
-    let active_actors: FxHashSet<_> = firing.uses.iter().map(|use_| use_.actor).collect();
-    let callback_through_corridor = catalog.ports.iter().find_map(|output| {
-        if output.direction != BoundaryDirection::Output {
-            return None;
-        }
-        let BoundaryOwner::Cell(cell_index) = output.owner else {
-            return None;
-        };
-        if !catalog.cells[cell_index as usize]
-            .uses
-            .iter()
-            .any(|use_| active_actors.contains(&use_.actor))
-        {
-            return None;
-        }
-        let BoundaryPortKind::Callback { occurrence } = output.kind else {
-            return None;
-        };
-        catalog.ports.iter().find_map(|input| {
-            if input.direction != BoundaryDirection::Input || input.kind != (BoundaryPortKind::Callback { occurrence }) {
-                return None;
-            }
-            let BoundaryOwner::Corridor(corridor_index) = input.owner else {
-                return None;
-            };
-            let corridor = &catalog.corridors[corridor_index as usize];
-            let cut_wire = *corridor.wires.first()?;
-            corridor.wires.iter().all(|wire| all_wires.contains(wire)).then_some((output, cut_wire))
-        })
-    });
-    let (callback, cut_wire) = callback_through_corridor.expect("an active cell output feeds an owned corridor through a callback");
-    assert!(
-        !all_wire_effects.contains(callback),
-        "the callback is internal while every corridor wire is equation-owned"
-    );
-    let mut cut_wires = all_wires.clone();
-    assert!(cut_wires.remove(&cut_wire));
-    let cut_effects = super::settled::logical_action_retained_effects(&graph, firing, &cut_wires, &monitor).unwrap();
-    assert!(
-        cut_effects.contains(callback),
-        "cutting a corridor wire preserves its exact cell callback as an external native effect"
-    );
-    assert_eq!(
-        retained_effect_set,
-        expected_effects.into_iter().collect(),
-        "production one-shot effects use the same saved-dot wire mask as equation inputs"
-    );
-    assert!(
-        circuit
-            .retained_effects
-            .iter()
-            .all(|port| { port.direction == BoundaryDirection::Output && catalog.ports.contains(port) }),
-        "retained one-shot effects must be exact externally visible catalog outputs"
-    );
-    for output in catalog
-        .ports
-        .iter()
-        .filter(|port| port.direction == BoundaryDirection::Output && matches!(port.kind, BoundaryPortKind::Callback { .. }))
-    {
-        let BoundaryPortKind::Callback { occurrence } = output.kind else {
-            unreachable!()
-        };
-        if catalog.ports.iter().any(|input| {
-            input.direction == BoundaryDirection::Input
-                && input.kind == (BoundaryPortKind::Callback { occurrence })
-                && matches!(input.owner, BoundaryOwner::Corridor(index) if catalog.corridors[index as usize]
-                    .wires
-                    .iter()
-                    .all(|wire| equation_wires.contains(wire)))
-        }) {
-            assert!(
-                !retained_effect_set.contains(output),
-                "callback rows consumed by an owned wire corridor must not escape as public effects"
-            );
-        }
-    }
-    let resource = firing
-        .resources
-        .iter()
-        .find(|row| row.resource == resource)
-        .expect("source feedback row is retained");
-    let firing_owners: FxHashSet<_> = resource.owners.iter().map(|&owner| firing.uses[owner as usize].actor).collect();
-    assert_eq!(firing_owners, owners.iter().copied().collect());
-    assert!(
-        circuit.program.inputs.iter().all(|input| {
-            !matches!(input.source, LayerInputSource::State(StateTest::ResourceAt { resource: input_resource, contact })
-                if input_resource == resource.resource && contact == source)
-        }),
-        "the canonical feedback source must be replaced by fired-state inputs, not a live graph resource read"
-    );
-    for use_ in firing.uses.iter() {
-        let catalog_use = catalog
-            .cells
-            .iter()
-            .flat_map(|cell| cell.uses.iter())
-            .find(|catalog_use| catalog_use.actor == use_.actor)
-            .expect("firing actor has one source catalog cell use");
-        assert_eq!(
-            use_.effect, catalog_use.retraction,
-            "cold action binding must reuse the catalog's exact accepted-retraction/deferred-wake effect"
-        );
-        assert_eq!(
-            circuit.program.inputs[use_.fired_input.0 as usize].source,
-            LayerInputSource::InstantFired { actor: use_.actor }
-        );
-        assert_eq!(
-            circuit.outputs[use_.power_eligible_output as usize].target,
-            SettledTarget::InstantPowerEligible(use_.actor)
-        );
-        let mut pending = vec![circuit.outputs[use_.power_eligible_output as usize].roots[0]];
-        let mut visited = FxHashSet::default();
-        let mut sources = FxHashSet::default();
-        while let Some(root) = pending.pop() {
-            if !visited.insert(root) {
-                continue;
-            }
-            match &circuit.program.expressions[root.0 as usize] {
-                LayerExpr::Constant(_) => {}
-                LayerExpr::Input(input) => {
-                    sources.insert(circuit.program.inputs[input.0 as usize].source);
-                }
-                LayerExpr::Not(child) => pending.push(*child),
-                LayerExpr::All(children) | LayerExpr::Any(children) => pending.extend(children.iter().copied()),
-            }
-        }
-        assert!(
-            sources.contains(&LayerInputSource::InstantFired { actor: use_.actor }),
-            "power eligibility for {:?} must depend on its explicit fired input",
-            use_.actor
-        );
-    }
-}
-
-#[test]
-fn one_shot_actor_physical_state_predicates_remain_live_inputs() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/fixtures/counter_basic.json");
-    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
-    let world = cpus::load_manifest(&manifest).unwrap();
-    let monitor = TaskMonitor::default();
-    let graph = prepared_o6(&world, world.get_corners(), &monitor);
-    let actor = graph
-        .plans
-        .instant
-        .boundaries
-        .as_ref()
-        .unwrap()
-        .cells
-        .iter()
-        .flat_map(|cell| cell.uses.iter().map(|use_| use_.actor))
-        .next()
-        .expect("counter fixture has a catalog actor");
-    let sources = [
-        LayerInputSource::State(StateTest::PistonAvailability {
-            piston: actor,
-            is: PistonAvailability::Ready,
-        }),
-        LayerInputSource::State(StateTest::PistonExtended(actor)),
-        LayerInputSource::State(StateTest::PistonHeadPresent(actor)),
-    ];
-
-    for source in sources {
-        let mut equations = Equations::new(&graph, &monitor).unwrap();
-        assert!(equations.actors.contains(&actor));
-        equations.resource_semantics = ResourceSemantics::OneShot;
-        let root = equations.source_value(source).unwrap();
-        let LayerExpr::Input(input) = equations.reduced.expression(root).unwrap() else {
-            panic!("one-shot piston state {source:?} must remain a live Graph input");
-        };
-        assert_eq!(
-            equations.reduced.inputs[input.0 as usize].source, source,
-            "each native state predicate keeps its own source binding"
-        );
-    }
-}
-
-#[test]
-fn one_shot_boundary_keeps_transferred_near_guard_state_live() {
-    fn guard_has_near_transfer_pair(graph: &CompileGraph, root: GuardId, resource: ResourceId, near: ContactId) -> bool {
-        let mut pending = vec![root];
-        let mut at_near = false;
-        let mut enabled = false;
-        let mut visited = FxHashSet::default();
-        while let Some(guard) = pending.pop() {
-            if !visited.insert(guard) {
-                continue;
-            }
-            match &graph.guards[guard.index()] {
-                Guard::State(StateTest::ResourceAt {
-                    resource: candidate,
-                    contact,
-                }) if *candidate == resource && *contact == near => at_near = true,
-                Guard::State(StateTest::ResourceEnabled(candidate)) if *candidate == resource => enabled = true,
-                Guard::All(children) => pending.extend(children.iter().copied()),
-                Guard::Always | Guard::State(_) | Guard::Site { .. } | Guard::Not(_) | Guard::Any(_) => {}
-            }
-        }
-        at_near && enabled
-    }
-
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/instant-pistons-io/fixtures/counter_basic.json");
-    let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(fixture).unwrap()).unwrap();
-    let world = cpus::load_manifest(&manifest).unwrap();
-    let monitor = TaskMonitor::default();
-    let graph = prepared_o6(&world, world.get_corners(), &monitor);
-    let equations = Equations::new(&graph, &monitor).unwrap();
-    let mut candidates = Vec::new();
-    for &(resource, near) in &equations.disabled_destinations {
-        // Only use a canonical one-shot cell. A guard mentioning an unrelated
-        // recognized resource would not exercise the OneShot source contract.
-        if !equations.one_shot_contracts.contains_key(&resource) {
-            continue;
-        }
-        let Some(site) = graph
-            .sites
-            .iter()
-            .position(|site| site.source == SiteSource::Contact(near))
-            .map(|index| SiteId::new(index as u32))
-        else {
-            continue;
-        };
-        for &link in &graph.power_links {
-            if link.from == site && matches!(link.to, PowerTarget::Input { .. }) && guard_has_near_transfer_pair(&graph, link.guard, resource, near) {
-                candidates.push((resource, near, link));
-            }
-        }
-    }
-
-    let mut witness = None;
-    for (resource, near, link) in candidates {
-        // Isolate this actual guarded input so unrelated parallel power sources
-        // cannot mask whether the Near+Enabled conjunction controls its output.
-        let mut isolated_graph = graph.clone();
-        isolated_graph
-            .power_links
-            .retain(|candidate| candidate.to != link.to || *candidate == link);
-        let Ok(circuit) = compile_one_shot_boundary(&isolated_graph, &[link.to], &[], &monitor) else {
-            continue;
-        };
-        let Some(output_index) = circuit.outputs.iter().position(|output| output.target == SettledTarget::Power(link.to)) else {
-            continue;
-        };
-        let has_near = circuit
-            .program
-            .inputs
-            .iter()
-            .any(|input| input.source == LayerInputSource::State(StateTest::ResourceAt { resource, contact: near }));
-        let has_enabled = circuit
-            .program
-            .inputs
-            .iter()
-            .any(|input| input.source == LayerInputSource::State(StateTest::ResourceEnabled(resource)));
-        if !has_near || !has_enabled {
-            continue;
-        }
-
-        let mut evaluation = SettledEvaluation::new(&circuit).unwrap();
-        let mut outputs = Vec::new();
-        for (near_present, enabled) in [(false, true), (true, false), (true, true)] {
-            let inputs = circuit
-                .program
-                .inputs
-                .iter()
-                .map(|input| match input.source {
-                    LayerInputSource::State(StateTest::ResourceAt {
-                        resource: candidate,
-                        contact,
-                    }) if candidate == resource && contact == near => near_present,
-                    LayerInputSource::State(StateTest::ResourceEnabled(candidate)) if candidate == resource => enabled,
-                    _ => false,
-                })
-                .collect::<Vec<_>>();
-            evaluation.evaluate(&inputs).unwrap();
-            outputs.push(evaluation.outputs()[output_index] > 0);
-        }
-        if outputs == [false, false, true] {
-            witness = Some((resource, near));
-            break;
-        }
-    }
-    assert!(
-        witness.is_some(),
-        "production OneShot compilation must keep a canonical transferred Near guard live: Far/off, Near/disabled, Near/enabled should evaluate false, false, true"
-    );
-}
-
-#[test]
 fn shared_far_feedback_presence_requires_every_owner_to_be_powered() {
     let monitor = TaskMonitor::default();
     let world = tiny_world();
@@ -1944,6 +1481,46 @@ fn shared_far_feedback_presence_requires_every_owner_to_be_powered() {
             expected_common_far,
             "owner power {owners_powered:?} must produce common-Far presence {expected_common_far}"
         );
+    }
+}
+
+#[test]
+fn candidate_shared_contact_tie_uses_first_unpowered_owner() {
+    let monitor = TaskMonitor::default();
+    let world = tiny_world();
+    let graph = prepared_o6(&world, (BlockPos::new(1, 1, 1), BlockPos::new(3, 3, 3)), &monitor);
+    let mut equations = Equations::new(&graph, &monitor).unwrap();
+    let a = equations
+        .reduced
+        .input(
+            LayerInputSource::State(StateTest::ResourceEnabled(ResourceId::new(0))),
+            LayerInputRole::RequestSample,
+        )
+        .unwrap();
+    let b = equations
+        .reduced
+        .input(
+            LayerInputSource::State(StateTest::ResourceEnabled(ResourceId::new(1))),
+            LayerInputRole::RequestSample,
+        )
+        .unwrap();
+    let a = equations.reduced.input_expr(a).unwrap();
+    let b = equations.reduced.input_expr(b).unwrap();
+    let near_a = ContactId::new(0);
+    let near_b = ContactId::new(1);
+    let resource = ResourceId::new(0);
+    let owners = vec![(near_a, a), (near_b, b)];
+    let root_a = equations.candidate_near_presence_from(resource, near_a, owners.clone()).unwrap();
+    let root_b = equations.candidate_near_presence_from(resource, near_b, owners).unwrap();
+    let far = equations.shared_far_presence_from(vec![a, b]).unwrap();
+    for (power, expected) in [
+        ([true, true], [true, false, false]),
+        ([false, true], [false, true, false]),
+        ([true, false], [false, false, true]),
+        ([false, false], [false, true, false]),
+    ] {
+        let actual = [far, root_a, root_b].map(|root| evaluate_logical_expression(&equations.reduced, root, &power));
+        assert_eq!(actual, expected, "owner power {power:?}");
     }
 }
 
