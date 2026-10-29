@@ -1,10 +1,17 @@
 //! Compiled source-derived signal updates for bounded physical circuits.
+#[path = "physical_signal_network/dust_corridor.rs"]
+mod dust_corridor;
 #[path = "physical_signal_network/entry_work.rs"]
 mod entry_work;
+#[path = "physical_signal_network/input_links.rs"]
+mod input_links;
+#[path = "physical_signal_network/projection.rs"]
+mod projection;
 #[cfg(test)]
 #[path = "physical_signal_network/repeater_tests.rs"]
 mod repeater_tests;
 pub(crate) use entry_work::EntryWork;
+pub(crate) use projection::SelectionSnapshot;
 #[derive(Clone, Copy)]
 struct WireSample {
     site: super::program_graph::SiteId,
@@ -38,11 +45,13 @@ pub(crate) struct CapturedSite {
 pub(crate) struct PhysicalSignalNetwork {
     program: std::sync::Arc<super::program_graph::CircuitProgram>,
     state: super::program_graph::CircuitState,
-    wire_samples: Vec<(usize, Vec<WireSample>)>,
-    torches: Vec<usize>,
-    observers: Vec<usize>,
-    comparators: Vec<usize>,
-    lamps: Vec<usize>,
+    wire_samples: std::sync::Arc<[(usize, Vec<WireSample>)]>,
+    input_links: std::sync::Arc<input_links::InputLinks>,
+    dust_corridor: Option<dust_corridor::Corridor>,
+    physical_settles: u64,
+    torches: std::sync::Arc<[usize]>,
+    observers: std::sync::Arc<[usize]>,
+    comparators: std::sync::Arc<[usize]>,
     scheduler: super::TickScheduler<usize>,
     detached_output_repeaters: Vec<usize>,
     tick: u64,
@@ -75,14 +84,12 @@ impl PhysicalSignalNetwork {
         let mut torches = Vec::new();
         let mut observers = Vec::new();
         let mut comparators = Vec::new();
-        let mut lamps = Vec::new();
         for (node_index, node) in program.nodes().iter().enumerate() {
             match node.kind {
                 CircuitNodeKind::Electrical(NodeType::Lamp) => {
                     if !matches!(&state.components[node_index], ComponentState::Electrical(state) if !state.pending_tick) {
                         return Err("lamp entry state has unavailable or pending work");
                     }
-                    lamps.push(node_index);
                 }
                 CircuitNodeKind::Electrical(NodeType::Torch) => torches.push(node_index),
                 CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => {}
@@ -182,11 +189,13 @@ impl PhysicalSignalNetwork {
         Ok(Self {
             program: std::sync::Arc::new(program.clone()),
             state: state.clone(),
-            wire_samples,
-            torches,
-            observers,
-            comparators,
-            lamps,
+            wire_samples: wire_samples.into(),
+            input_links: std::sync::Arc::new(input_links::InputLinks::compile(program)),
+            dust_corridor: None,
+            physical_settles: 0,
+            torches: torches.into(),
+            observers: observers.into(),
+            comparators: comparators.into(),
             scheduler: super::TickScheduler::default(),
             detached_output_repeaters: Vec::new(),
             tick: 0,
@@ -196,6 +205,15 @@ impl PhysicalSignalNetwork {
 
     /// Change one declared lever, update wires, schedule torches, and return changed output routes.
     pub(crate) fn set_lever(&mut self, position: mchprs_blocks::BlockPos, powered: bool) -> Result<Vec<SignalEvent>, &'static str> {
+        let before = self.clone();
+        let result = self.set_lever_in_transaction(position, powered);
+        if result.is_err() {
+            *self = before;
+        }
+        result
+    }
+
+    pub(super) fn set_lever_in_transaction(&mut self, position: mchprs_blocks::BlockPos, powered: bool) -> Result<Vec<SignalEvent>, &'static str> {
         use super::components::NodeType;
         use super::program_graph::{CircuitNodeKind, ComponentState};
         let (index, _) = self
@@ -211,22 +229,18 @@ impl PhysicalSignalNetwork {
         if source.powered == powered {
             return Ok(Vec::new());
         }
-        let previous = self.clone();
         let ComponentState::Electrical(source) = &mut self.state.components[index] else {
             return Err("lever state is unavailable");
         };
         source.powered = powered;
         source.output_strength = if powered { 15 } else { 0 };
         let result = (|| {
-            let mut changed = self.settle_wires()?;
+            let mut changed = self.update_wires()?;
             changed.push(index);
             self.schedule_torches()?;
             let routes = self.output_routes(changed);
             self.deliver_routes(&routes)
         })();
-        if result.is_err() {
-            *self = previous;
-        }
         result
     }
 
@@ -337,7 +351,7 @@ impl PhysicalSignalNetwork {
         result
     }
 
-    fn advance_tick_inner(&mut self) -> Result<Vec<SignalEvent>, &'static str> {
+    pub(super) fn advance_tick_inner(&mut self) -> Result<Vec<SignalEvent>, &'static str> {
         self.tick += 1;
         let mut events = self.drain_scheduled()?;
         self.scheduler.end_last_tick_move_next();
@@ -438,7 +452,7 @@ impl PhysicalSignalNetwork {
                 state.pending_tick = true;
             }
             if changed {
-                let mut nodes = self.settle_wires()?;
+                let mut nodes = self.update_wires()?;
                 nodes.push(node);
                 self.schedule_torches()?;
                 events.extend(self.deliver_routes(&self.output_routes(nodes))?);
@@ -454,9 +468,18 @@ impl PhysicalSignalNetwork {
             .iter()
             .find(|piston| piston.position == position)
             .ok_or("piston is not in the signal network")?;
+        self.piston_input_by_node(piston.node)
+    }
+
+    pub(super) fn piston_input_by_id(&self, id: super::program_graph::PistonId) -> Result<u8, &'static str> {
+        let piston = self.program.pistons().get(id.index()).ok_or("piston is not in the signal network")?;
+        self.piston_input_by_node(piston.node)
+    }
+
+    fn piston_input_by_node(&self, node: super::program_graph::NodeId) -> Result<u8, &'static str> {
         Ok(self
-            .input_power(piston.node.index(), super::program_graph::InputPort::Main)?
-            .max(self.input_power(piston.node.index(), super::program_graph::InputPort::Quasi)?))
+            .input_power(node.index(), super::program_graph::InputPort::Main)?
+            .max(self.input_power(node.index(), super::program_graph::InputPort::Quasi)?))
     }
 
     pub(crate) fn piston_signal_nodes(&self, position: mchprs_blocks::BlockPos) -> Result<Vec<usize>, &'static str> {
@@ -699,7 +722,7 @@ impl PhysicalSignalNetwork {
             if let CircuitNodeKind::Wire(wire_index) = self.program.nodes()[receiver.index()].kind {
                 match delivery.kind {
                     DeliveryKind::Update { .. } => {
-                        let changed = self.settle_wires()?;
+                        let changed = self.update_wires()?;
                         self.schedule_torches()?;
                         for followup in self.output_routes(changed) {
                             self.deliver_route(followup, delivered, route_count, depth + 1)?;
@@ -889,11 +912,12 @@ impl PhysicalSignalNetwork {
     }
 
     fn settle_wires(&mut self) -> Result<Vec<usize>, &'static str> {
+        self.physical_settles += 1;
         use super::program_graph::ComponentState;
         let mut changed_nodes = Vec::new();
         for _ in 0..self.state.components.len().saturating_mul(16).max(1) {
             let mut changed = false;
-            for &(node_index, ref samples) in &self.wire_samples {
+            for &(node_index, ref samples) in self.wire_samples.iter() {
                 let mut block_power = 0;
                 let mut wire_power = 0;
                 for sample in samples {
@@ -927,9 +951,89 @@ impl PhysicalSignalNetwork {
         Err("source signal feedback did not settle")
     }
 
+    fn update_wires(&mut self) -> Result<Vec<usize>, &'static str> {
+        if self.dust_corridor.is_none() {
+            return self.settle_wires();
+        }
+        let mut corridor = self.dust_corridor.take().unwrap();
+        let result = (|| {
+            for (index, source) in corridor.plan.sources.iter().enumerate() {
+                let value = self.site_power(source.site, source.port, 0)?;
+                if corridor.values[index] != value {
+                    corridor.values[index] = value;
+                    for &(node, _) in &corridor.plan.outgoing[corridor.plan.source_ranges[index].clone()] {
+                        if !corridor.affected[node] {
+                            corridor.affected[node] = true;
+                            corridor.affected_nodes.push(node);
+                        }
+                        corridor.operations += 1;
+                    }
+                }
+            }
+            let mut changed = Vec::new();
+            corridor.affected_nodes.sort_unstable();
+            for node in corridor.affected_nodes.drain(..) {
+                corridor.affected[node] = false;
+                let mut power = 0;
+                for &(source, attenuation) in &corridor.plan.incoming[corridor.plan.receiver_ranges[node].clone()] {
+                    power = power.max(corridor.values[source].saturating_sub(attenuation));
+                    corridor.operations += 1;
+                }
+                let super::program_graph::ComponentState::Wire(wire) = &mut self.state.components[node] else {
+                    return Err("wire state is unavailable");
+                };
+                if wire.power != power {
+                    wire.power = power;
+                    changed.push(node);
+                }
+            }
+            Ok(changed)
+        })();
+        self.dust_corridor = Some(corridor);
+        result
+    }
+
+    pub(crate) fn enable_dust_corridor(&mut self) -> Result<(), &'static str> {
+        if self.dust_corridor.is_some() {
+            return Err("dust corridor already enabled");
+        }
+        let corridor = dust_corridor::Corridor::compile(&self.program, &self.state, &self.wire_samples)?;
+        self.dust_corridor = Some(corridor);
+        let before = self.state.clone();
+        if let Err(error) = self.update_wires() {
+            self.state = before;
+            self.dust_corridor = None;
+            return Err(error);
+        }
+        if self.state != before {
+            self.state = before;
+            self.dust_corridor = None;
+            return Err("dust entry power is not settled");
+        }
+        Ok(())
+    }
+
+    pub(crate) fn lever_power(&self, position: mchprs_blocks::BlockPos) -> Option<bool> {
+        use super::components::NodeType;
+        use super::program_graph::{CircuitNodeKind, ComponentState};
+        let index = self
+            .program
+            .nodes()
+            .iter()
+            .position(|node| node.position == Some(position) && matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Lever)))?;
+        match self.state.components.get(index)? {
+            ComponentState::Electrical(state) => Some(state.powered),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn dust_corridor_work(&self) -> (u64, u64) {
+        (self.dust_corridor.as_ref().map_or(0, |plan| plan.operations), self.physical_settles)
+    }
+
     fn schedule_torches(&mut self) -> Result<(), &'static str> {
         use super::program_graph::ComponentState;
-        for &node_index in &self.torches {
+        for &node_index in self.torches.iter() {
             let input = self.input_power(node_index, super::program_graph::InputPort::Main)?;
             let ComponentState::Electrical(state) = &self.state.components[node_index] else {
                 return Err("torch state is unavailable");
@@ -964,6 +1068,26 @@ impl PhysicalSignalNetwork {
     }
 
     fn input_power(&self, node: usize, port: super::program_graph::InputPort) -> Result<u8, &'static str> {
+        if let Some(links) = self.input_links.get(node, port) {
+            let mut maximum = 0;
+            for link in links {
+                let mut enabled = true;
+                for &guard in &link.guards {
+                    if !guard_matches(guard, &self.program, &self.state, 0)? {
+                        enabled = false;
+                        break;
+                    }
+                }
+                if enabled {
+                    maximum = maximum.max(self.site_power(link.source, link.port, 0)?.saturating_sub(link.attenuation));
+                }
+            }
+            return Ok(maximum);
+        }
+        self.input_power_physical(node, port)
+    }
+
+    fn input_power_physical(&self, node: usize, port: super::program_graph::InputPort) -> Result<u8, &'static str> {
         use super::program_graph::PowerTarget;
         self.program
             .power_links_to(PowerTarget::Input {

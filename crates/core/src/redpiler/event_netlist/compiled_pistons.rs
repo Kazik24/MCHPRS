@@ -5,7 +5,7 @@ use super::*;
 #[derive(Clone)]
 pub(crate) struct CompiledPistonActors {
     pub(super) signals: crate::redpiler::physical_signal_network::PhysicalSignalNetwork,
-    pub(super) actors: Vec<Option<CompiledPistonActor>>,
+    pub(super) actors: std::sync::Arc<[Option<CompiledPistonActor>]>,
     pub(super) consumed: Vec<bool>,
     pub(super) successful_moves: Vec<u64>,
     pub(super) successful_actions: Vec<u64>,
@@ -17,7 +17,6 @@ pub(crate) struct CompiledPistonActors {
 pub(super) struct CompiledPistonActor {
     pub(super) id: crate::redpiler::program_graph::PistonId,
     pub(super) resource: crate::redpiler::program_graph::ResourceId,
-    pub(super) position: mchprs_blocks::BlockPos,
     pub(super) near: crate::redpiler::program_graph::ContactId,
     pub(super) far: crate::redpiler::program_graph::ContactId,
     pub(super) routes: Vec<usize>,
@@ -25,6 +24,15 @@ pub(super) struct CompiledPistonActor {
 }
 
 impl CompiledPistonActors {
+    pub(crate) fn signals(&self) -> &crate::redpiler::physical_signal_network::PhysicalSignalNetwork {
+        &self.signals
+    }
+    pub(crate) fn signals_mut(&mut self) -> &mut crate::redpiler::physical_signal_network::PhysicalSignalNetwork {
+        &mut self.signals
+    }
+    pub(crate) fn movement_count(&self) -> u64 {
+        self.successful_moves.iter().sum()
+    }
     pub(crate) fn compile(
         program: &crate::redpiler::program_graph::CircuitProgram,
         state: &crate::redpiler::program_graph::CircuitState,
@@ -66,7 +74,6 @@ impl CompiledPistonActors {
             actors[index] = Some(CompiledPistonActor {
                 id,
                 resource,
-                position: spec.position,
                 near: spec.near,
                 far: spec.far,
                 routes,
@@ -75,7 +82,7 @@ impl CompiledPistonActors {
         }
         Ok(Self {
             signals: crate::redpiler::physical_signal_network::PhysicalSignalNetwork::compile(program, state, entry)?,
-            actors,
+            actors: actors.into(),
             consumed: vec![false; program.resources().len()],
             successful_moves: vec![0; program.pistons().len()],
             successful_actions: vec![0; program.pistons().len()],
@@ -90,9 +97,18 @@ impl CompiledPistonActors {
         self.consumed.fill(false);
     }
 
+    /// Drop all event-owned work and restore the selected cells to their entry state.
+    pub(crate) fn stop<W: crate::world::World>(
+        &mut self,
+        world: &mut W,
+        snapshot: &crate::redpiler::physical_signal_network::SelectionSnapshot,
+    ) -> Result<(), &'static str> {
+        snapshot.restore(world)
+    }
+
     pub(crate) fn set_lever(&mut self, position: mchprs_blocks::BlockPos, powered: bool) -> Result<(), &'static str> {
         let before = self.clone();
-        match self.signals.set_lever(position, powered) {
+        match self.signals.set_lever_in_transaction(position, powered) {
             Ok(events) => {
                 self.pending.extend(events);
                 Ok(())
@@ -140,7 +156,7 @@ impl CompiledPistonActors {
             if !belongs_to_piston(&request, actor.id, &actor.routes) || !request.piston_guards.iter().any(|(_, passed)| *passed) {
                 continue;
             }
-            let power = self.signals.piston_input(actor.position)?;
+            let power = self.signals.piston_input_by_id(actor.id)?;
             let state = self.signals.state().pistons[actor.id.index()];
             let resource = self.signals.state().resources[actor.resource.index()];
             let extending = request.action == mchprs_world::PistonAction::Extend;
@@ -243,7 +259,7 @@ impl CompiledPistonActors {
 
     fn advance_tick_inner(&mut self) -> Result<usize, &'static str> {
         let mut events = std::mem::take(&mut self.pending);
-        events.extend(self.signals.advance_tick()?);
+        events.extend(self.signals.advance_tick_inner()?);
         let moved = self.drain_inner(events)?;
         let now = self.signals.current_tick();
         let mut index = 0;

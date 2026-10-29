@@ -44,8 +44,7 @@ mod observed_probes;
 mod physical_piston;
 
 use autonomous_piston::*;
-#[cfg(test)]
-use compiled_pistons::*;
+pub(crate) use compiled_pistons::CompiledPistonActors;
 use physical_piston::*;
 
 #[cfg(test)]

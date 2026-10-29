@@ -331,6 +331,8 @@ enum PresentationEffect {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// A runtime failure that requires falling back from graph execution.
 pub enum GraphExecutionError {
+    /// Experimental event backend failed before completing its operation.
+    Event { reason: &'static str },
     /// The selected component kind has no graph execution implementation.
     UnsupportedComponent { position: Option<BlockPos>, kind: &'static str },
     /// Scheduled command block work reached execution without a world command host.
@@ -340,6 +342,7 @@ pub enum GraphExecutionError {
 impl fmt::Display for GraphExecutionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Event { reason } => write!(f, "event executor failed: {reason}"),
             Self::UnsupportedComponent { position, kind } => {
                 write!(f, "graph execution does not support {kind} at {position:?}")
             }

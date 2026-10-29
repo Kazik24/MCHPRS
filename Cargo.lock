@@ -1730,6 +1730,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mroww-redgear-api"
+version = "0.1.0"
+dependencies = [
+ "mchprs_blocks",
+ "mchprs_core",
+ "serde_json",
+]
+
+[[package]]
 name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

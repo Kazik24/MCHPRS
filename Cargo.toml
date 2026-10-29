@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/proc_macros"]
+members = ["crates/proc_macros", "crates/redgear-api"]
 
 [package]
 name = "mroww"

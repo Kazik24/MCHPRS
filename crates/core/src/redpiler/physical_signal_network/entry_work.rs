@@ -46,6 +46,8 @@ mod tests {
         });
         let outside_ticks: Vec<_> = world.scheduler().iter_entries().collect();
         let outside_events = world.piston_state().events.clone();
+        let compiler_entry = EntryWork::capture_from_scheduler(&world, BOUNDS, &outside_ticks);
+        assert!(PhysicalSignalNetwork::compile(&program, &state, &compiler_entry).is_ok());
         let runtime = PhysicalSignalNetwork::compile(&program, &state, &EntryWork::capture(&world, BOUNDS)).unwrap();
         assert_eq!(runtime.current_tick(), 37);
         assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), outside_ticks);
@@ -128,12 +130,18 @@ mod tests {
 
 impl EntryWork {
     pub(crate) fn capture(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Self {
+        Self::capture_from_scheduler(world, bounds, &world.scheduler().iter_entries().collect::<Vec<_>>())
+    }
+
+    /// Capture the actual world piston inventory and the scheduler entries being transferred
+    /// at the compiler boundary. The caller must pass the scheduler's unfiltered inventory.
+    pub(crate) fn capture_from_scheduler(world: &impl World, bounds: (BlockPos, BlockPos), scheduled: &[TickEntry]) -> Self {
         let pistons = world.piston_state();
         Self {
             bounds,
             logical_tick: pistons.logical_tick,
             phase: pistons.phase,
-            scheduled: world.scheduler().iter_entries().collect(),
+            scheduled: scheduled.to_vec(),
             piston_events: pistons.events.iter().copied().collect(),
             motions: pistons.motions.iter().cloned().collect(),
             movement_work: pistons.movement_work.clone(),

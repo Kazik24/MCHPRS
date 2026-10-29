@@ -4221,7 +4221,7 @@ fn compiler_returns_latched_execution_failure_without_advancing_host() {
         position: Some(LEVER_POS),
         kind: "injected execution failure",
     };
-    let backend = compiler.backend.as_mut().unwrap();
+    let backend = compiler.backend();
     backend.failure = Some(error.clone());
     for _ in 0..2 {
         assert_eq!(compiler.tick_with_world(&mut world), Err(error.clone()));

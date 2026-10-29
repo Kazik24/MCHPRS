@@ -1,0 +1,9 @@
+[package]
+name = "mroww-redgear-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+mchprs_core = { path = "../core" }
+mchprs_blocks = { path = "../blocks" }
+serde_json = "1"
