@@ -7,3 +7,4 @@ edition = "2024"
 mchprs_core = { path = "../core" }
 mchprs_blocks = { path = "../blocks" }
 serde_json = "1"
+base64 = "0.22"

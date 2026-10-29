@@ -1,7 +1,7 @@
 //! Execution of compiled contribution/notification instructions; no physical propagation.
 use super::program::{CompiledResourceInstruction, ComponentKind, ComponentState, EventCondition, EventProgram, Operation, ResourceEventPhase};
-use crate::redpiler::TickScheduler;
 use crate::redpiler::program_graph::{ContactId, InputPort, NodeId, PistonId, ResourceId};
+use crate::redpiler::TickScheduler;
 use mchprs_world::PistonAction;
 use mchprs_world::TickPriority;
 use std::collections::{HashSet, VecDeque};
@@ -232,24 +232,48 @@ impl EventState {
     }
 
     fn run_source(&mut self, source: NodeId) {
-        self.counts.source_events += 1;
-        for index in self.program.source_ranges[source.index()].clone() {
-            match self.program.operations[index] {
-                Operation::Contribution(id) => {
-                    self.refresh_link(id);
-                }
-                Operation::Notify(receiver) => {
-                    self.counts.notifications += 1;
-                    self.update_receiver(receiver);
-                }
-                Operation::NotifyObserver { target, shape } => {
-                    self.counts.notifications += 1;
-                    if shape {
-                        self.update_observer(target);
+        let mut sources = VecDeque::from([source]);
+        while let Some(source) = sources.pop_front() {
+            self.counts.source_events += 1;
+            for index in self.program.source_ranges[source.index()].clone() {
+                match self.program.operations[index] {
+                    Operation::Contribution(id) => {
+                        self.refresh_link(id);
+                    }
+                    Operation::RecomputeWire(wire) => {
+                        if self.refresh_wire(wire) {
+                            sources.push_back(wire);
+                        }
+                    }
+                    Operation::Notify(receiver) => {
+                        self.counts.notifications += 1;
+                        self.update_receiver(receiver);
+                    }
+                    Operation::NotifyObserver { target, shape } => {
+                        self.counts.notifications += 1;
+                        if shape {
+                            self.update_observer(target);
+                        }
                     }
                 }
             }
+            if self.program.components[source.index()].kind == ComponentKind::Wire {
+                let receivers = self.program.wire_watchers[source.index()].to_vec();
+                for receiver in receivers {
+                    self.counts.notifications += 1;
+                    self.update_receiver(receiver);
+                }
+            }
         }
+    }
+
+    fn refresh_wire(&mut self, wire: NodeId) -> bool {
+        let output = self.input_strength(wire).expect("compiled wire input range");
+        if self.components[wire.index()].output == output {
+            return false;
+        }
+        self.components[wire.index()] = ComponentState { output, powered: output > 0 };
+        true
     }
 
     fn update_receiver(&mut self, node: NodeId) {
@@ -284,7 +308,7 @@ impl EventState {
                     self.pending[node.index()] = true;
                 }
             }
-            ComponentKind::Input | ComponentKind::Observer => unreachable!("validated notification target"),
+            ComponentKind::Input | ComponentKind::Observer | ComponentKind::Wire => unreachable!("validated notification target"),
         }
     }
 
@@ -351,7 +375,7 @@ impl EventState {
                         self.run_source(node);
                     }
                 }
-                ComponentKind::Input | ComponentKind::Piston => unreachable!("inputs and pistons cannot have scheduled work"),
+                ComponentKind::Input | ComponentKind::Wire | ComponentKind::Piston => unreachable!("inputs and pistons cannot have scheduled work"),
             }
         }
     }
@@ -482,6 +506,11 @@ impl EventState {
                         }
                     }
                 }
+                CompiledResourceInstruction::RecomputeWire(wire) => {
+                    if self.refresh_wire(wire) {
+                        self.run_source(wire);
+                    }
+                }
                 CompiledResourceInstruction::NotifyIfChanged(target) => {
                     if changed_targets.remove(&target) {
                         self.counts.notifications += 1;
@@ -516,8 +545,14 @@ impl EventState {
             }
         }
         for target in changed_targets {
-            self.counts.notifications += 1;
-            self.update_receiver(target);
+            if self.program.components[target.index()].kind == ComponentKind::Wire {
+                if self.refresh_wire(target) {
+                    self.run_source(target);
+                }
+            } else {
+                self.counts.notifications += 1;
+                self.update_receiver(target);
+            }
         }
     }
 }
@@ -582,6 +617,13 @@ mod tests {
         Component {
             kind: ComponentKind::Lamp,
             initial: ComponentState { output: 0, powered },
+        }
+    }
+
+    fn wire(output: u8) -> Component {
+        Component {
+            kind: ComponentKind::Wire,
+            initial: ComponentState { output, powered: output > 0 },
         }
     }
 
@@ -669,6 +711,76 @@ mod tests {
         state.tick().unwrap();
         assert!(!state.piston(piston_id).unwrap().extended);
         assert_eq!(state.counts().piston_actions, 1);
+    }
+
+    #[test]
+    fn watched_wire_change_notifies_piston_only_when_strength_changes() {
+        const WIRE: NodeId = NodeId::new(2);
+        const PISTON: NodeId = NodeId::new(3);
+        const QUASI: NodeId = NodeId::new(4);
+        let program = EventProgram::new_with_wire_watchers(
+            vec![input(0), input(12), wire(12), piston_component(), input(0)],
+            vec![
+                ElectricalLink {
+                    source: A,
+                    target: WIRE,
+                    port: InputPort::Main,
+                    attenuation: 0,
+                    condition: None,
+                },
+                ElectricalLink {
+                    source: B,
+                    target: WIRE,
+                    port: InputPort::Main,
+                    attenuation: 0,
+                    condition: None,
+                },
+                ElectricalLink {
+                    source: QUASI,
+                    target: PISTON,
+                    port: InputPort::Quasi,
+                    attenuation: 0,
+                    condition: None,
+                },
+            ],
+            vec![
+                (A, Operation::Contribution(0)),
+                (A, Operation::RecomputeWire(WIRE)),
+                (B, Operation::Contribution(1)),
+                (B, Operation::RecomputeWire(WIRE)),
+                (QUASI, Operation::Contribution(2)),
+            ],
+            vec![],
+            vec![EventPiston {
+                input: PISTON,
+                resource: None,
+                near: CONTACT_A,
+                far: CONTACT_B,
+                sticky: false,
+                initial_extended: true,
+                initial_head_present: true,
+            }],
+            vec![],
+            vec![(WIRE, PISTON)],
+        )
+        .unwrap();
+        let mut state = EventState::new(Arc::new(program), 0);
+
+        state.set_input(A, 8).unwrap();
+        assert_eq!(state.component(WIRE).unwrap().output, 12, "the stronger source masks this change");
+        assert_eq!(state.counts().notifications, 0);
+
+        state.set_input(B, 0).unwrap();
+        assert_eq!(state.component(WIRE).unwrap().output, 8);
+        assert_eq!(state.piston_requests.len(), 1, "a changed watched wire delivers a piston update");
+
+        state.set_input(QUASI, 15).unwrap();
+        state.tick().unwrap();
+        assert!(
+            state.piston(PistonId::new(0)).unwrap().extended,
+            "the queued request samples live quasi power"
+        );
+        assert_eq!(state.counts().rejected_piston_actions, 1);
     }
 
     #[test]
@@ -1468,60 +1580,54 @@ mod tests {
             contacts: vec![CONTACT_A, CONTACT_B].into(),
             initial_at: CONTACT_A,
         };
-        assert!(
-            EventProgram::new_with_movement(
-                vec![input(0)],
-                vec![],
-                vec![],
-                vec![shared_initial_contact.clone(), shared_initial_contact],
-                vec![],
-                vec![],
-            )
-            .is_err()
-        );
+        assert!(EventProgram::new_with_movement(
+            vec![input(0)],
+            vec![],
+            vec![],
+            vec![shared_initial_contact.clone(), shared_initial_contact],
+            vec![],
+            vec![],
+        )
+        .is_err());
 
-        assert!(
-            EventProgram::new_with_movement(
-                vec![piston_component(), piston_component()],
-                vec![],
-                vec![],
-                vec![],
-                vec![
-                    EventPiston {
-                        input: NodeId::new(0),
-                        resource: None,
-                        near: CONTACT_A,
-                        far: CONTACT_B,
-                        sticky: true,
-                        initial_extended: false,
-                        initial_head_present: false,
-                    },
-                    EventPiston {
-                        input: NodeId::new(0),
-                        resource: None,
-                        near: CONTACT_A,
-                        far: CONTACT_C,
-                        sticky: true,
-                        initial_extended: false,
-                        initial_head_present: false,
-                    },
-                ],
-                vec![],
-            )
-            .is_err()
-        );
+        assert!(EventProgram::new_with_movement(
+            vec![piston_component(), piston_component()],
+            vec![],
+            vec![],
+            vec![],
+            vec![
+                EventPiston {
+                    input: NodeId::new(0),
+                    resource: None,
+                    near: CONTACT_A,
+                    far: CONTACT_B,
+                    sticky: true,
+                    initial_extended: false,
+                    initial_head_present: false,
+                },
+                EventPiston {
+                    input: NodeId::new(0),
+                    resource: None,
+                    near: CONTACT_A,
+                    far: CONTACT_C,
+                    sticky: true,
+                    initial_extended: false,
+                    initial_head_present: false,
+                },
+            ],
+            vec![],
+        )
+        .is_err());
     }
 
     #[test]
     fn invalid_observer_program_and_initial_state_are_rejected() {
-        assert!(
-            EventProgram::new(
-                vec![input(0), observer(false)],
-                vec![],
-                vec![(A, Operation::NotifyObserver { target: A, shape: true })]
-            )
-            .is_err()
-        );
+        assert!(EventProgram::new(
+            vec![input(0), observer(false)],
+            vec![],
+            vec![(A, Operation::NotifyObserver { target: A, shape: true })]
+        )
+        .is_err());
         assert!(EventProgram::new(vec![input(0), observer(true)], vec![], vec![]).is_err());
     }
 }

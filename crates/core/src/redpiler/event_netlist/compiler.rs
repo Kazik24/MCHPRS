@@ -8,7 +8,7 @@ use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, Guard, InputPort, LoweredCircuit, NodeId, PistonAvailability, PowerPort, PowerTarget, ProfileElectrical,
     SiteSource, SiteTest, StateTest,
 };
-use mchprs_blocks::{BlockPos, blocks::Block};
+use mchprs_blocks::{blocks::Block, BlockPos};
 use std::sync::Arc;
 
 pub(crate) struct CompiledEvent {
@@ -50,6 +50,10 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
                 output: state.output_strength,
                 powered: state.powered,
             },
+            Some(ComponentState::Wire(wire)) => EventComponentState {
+                output: wire.power,
+                powered: wire.power > 0,
+            },
             _ => EventComponentState::default(),
         };
         let kind = match &node.kind {
@@ -57,7 +61,8 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
             CircuitNodeKind::Piston(_) => ComponentKind::Piston,
             CircuitNodeKind::Electrical(NodeType::Lamp) => ComponentKind::Lamp,
             CircuitNodeKind::Electrical(NodeType::Repeater { delay, .. }) => ComponentKind::Repeater { delay: *delay },
-            CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Constant | NodeType::Wire) | CircuitNodeKind::Wire(_) => ComponentKind::Input,
+            CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Constant) => ComponentKind::Input,
+            CircuitNodeKind::Electrical(NodeType::Wire) | CircuitNodeKind::Wire(_) => ComponentKind::Wire,
             CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => {
                 return Err(CompileError {
                     position: node.position,
@@ -102,15 +107,7 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
         };
         for &port in ports {
             let mut leaves = Vec::new();
-            expand_power(
-                graph,
-                PowerTarget::Input { node: target, port },
-                0,
-                None,
-                &mut Vec::new(),
-                &mut leaves,
-            )
-            .map_err(|reason| CompileError {
+            expand_power(graph, PowerTarget::Input { node: target, port }, 0, None, &mut Vec::new(), &mut leaves).map_err(|reason| CompileError {
                 position: at(target),
                 reason,
             })?;
@@ -131,7 +128,7 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
                 };
                 if !matches!(
                     components[source.index()].kind,
-                    ComponentKind::Input | ComponentKind::Observer | ComponentKind::Repeater { .. }
+                    ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. }
                 ) {
                     return Err(CompileError {
                         position: at(source),
@@ -177,6 +174,76 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
             initial_head_present: lowered.state.pistons[index].head_present,
         })
         .collect();
+    let mut wire_watchers = Vec::new();
+    for piston in &pistons {
+        let piston_position = graph.nodes()[piston.input.index()].position;
+        let Some(piston_position) = piston_position else { continue };
+        for (wire_index, node) in graph.nodes().iter().enumerate() {
+            if !matches!(node.kind, CircuitNodeKind::Wire(_)) {
+                continue;
+            }
+            let Some(wire_position) = node.position else { continue };
+            let distance = piston_position.x.abs_diff(wire_position.x)
+                + piston_position.y.abs_diff(wire_position.y)
+                + piston_position.z.abs_diff(wire_position.z);
+            if distance <= 2 {
+                wire_watchers.push((NodeId::new(wire_index as u32), piston.input));
+            }
+        }
+    }
+    let mut wire_targets: Vec<NodeId> = wire_watchers.iter().map(|(wire, _)| *wire).collect();
+    wire_targets.extend(
+        links
+            .iter()
+            .filter_map(|link| (components[link.source.index()].kind == ComponentKind::Wire).then_some(link.source)),
+    );
+    wire_targets.sort_by_key(|wire| wire.index());
+    wire_targets.dedup();
+    let mut wire_recomputes = Vec::new();
+    for wire in wire_targets {
+        let mut leaves = Vec::new();
+        expand_power(
+            graph,
+            PowerTarget::Input {
+                node: wire,
+                port: InputPort::Main,
+            },
+            0,
+            None,
+            &mut Vec::new(),
+            &mut leaves,
+        )
+        .map_err(|reason| CompileError { position: at(wire), reason })?;
+        for leaf in leaves {
+            let source = match leaf.source {
+                LeafSource::Node(source) => source,
+                LeafSource::Constant(strength) => {
+                    let source = NodeId::new(components.len() as u32);
+                    components.push(Component {
+                        kind: ComponentKind::Input,
+                        initial: EventComponentState {
+                            output: strength,
+                            powered: strength > 0,
+                        },
+                    });
+                    source
+                }
+            };
+            let id = links.len();
+            links.push(ElectricalLink {
+                source,
+                target: wire,
+                port: InputPort::Main,
+                attenuation: leaf.attenuation,
+                condition: leaf.condition,
+            });
+            operations.push((source, Operation::Contribution(id)));
+            wire_recomputes.push((source, wire));
+        }
+    }
+    wire_recomputes.sort_by_key(|(source, wire)| (source.index(), wire.index()));
+    wire_recomputes.dedup();
+    operations.extend(wire_recomputes.into_iter().map(|(source, wire)| (source, Operation::RecomputeWire(wire))));
     for (resource_index, resource) in graph.resources().iter().enumerate() {
         for &contact in resource.contacts.iter() {
             for (observer_index, node) in graph.nodes().iter().enumerate() {
@@ -199,8 +266,8 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
             }
         }
     }
-    let program =
-        EventProgram::new_with_movement(components, links, operations, resources, pistons, resource_operations).map_err(|reason| CompileError {
+    let program = EventProgram::new_with_wire_watchers(components, links, operations, resources, pistons, resource_operations, wire_watchers)
+        .map_err(|reason| CompileError {
             position: None,
             reason: reason.into(),
         })?;

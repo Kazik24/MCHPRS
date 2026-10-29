@@ -1,7 +1,7 @@
 use mchprs_blocks::{BlockPos, blocks::Block};
-use mchprs_core::headless::{CompilerOptions, Input, Session, Snapshot};
+use mchprs_core::headless::{CompilerOptions, Input, Session};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, TcpListener, TcpStream};
 use std::sync::{
@@ -11,7 +11,7 @@ use std::sync::{
 use std::time::Duration;
 
 const MAX_MESSAGE: u64 = 1_048_576;
-const MAX_CELLS: i32 = 65_536;
+const MAX_CELLS: i32 = 30_000;
 const MAX_CLIENTS: usize = 4;
 
 struct Connection {
@@ -37,7 +37,7 @@ fn pos(value: &Value, size: [i32; 3], origin: BlockPos) -> Result<BlockPos, Stri
 
 fn block_string(block: Block) -> String {
     let name = block.get_name();
-    let mut props: Vec<_> = block.properties().into_iter().collect();
+    let mut props: Vec<_> = mchprs_blocks::generated::STATE_PROPERTIES[block.get_id() as usize].iter().copied().collect();
     props.sort_by(|a, b| a.0.cmp(b.0));
     if props.is_empty() {
         return format!("minecraft:{name}");
@@ -46,37 +46,6 @@ fn block_string(block: Block) -> String {
         "minecraft:{name}[{}]",
         props.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join(",")
     )
-}
-
-fn parse_block(text: &str) -> Result<Block, String> {
-    if text.len() > 256 { return Err("block state exceeds 256 bytes".into()); }
-    let text = text.strip_prefix("minecraft:").ok_or("state must be namespaced")?;
-    let (name, properties) = match text.split_once('[') {
-        Some((name, rest)) => (name, Some(rest.strip_suffix(']').ok_or("invalid state")?)),
-        None => (text, None),
-    };
-    if !matches!(name, "air" | "stone" | "lever") {
-        return Err(format!("unsupported state: {text}"));
-    }
-    let mut block = Block::from_name(name).ok_or("unknown block")?;
-    let mut props = std::collections::HashMap::new();
-    if let Some(properties) = properties {
-        if properties.is_empty() {
-            return Err("invalid properties".into());
-        }
-        for pair in properties.split(',') {
-            let (key, value) = pair.split_once('=').ok_or("invalid property")?;
-            if props.insert(key, value).is_some() {
-                return Err("duplicate property".into());
-            }
-        }
-    }
-    block.set_properties(props.clone());
-    let actual = block.properties();
-    if actual.len() != props.len() || actual.iter().any(|(k, v)| props.get(k).copied() != Some(v.as_str())) {
-        return Err(format!("invalid properties: {text}"));
-    }
-    Ok(block)
 }
 
 fn changes(items: Vec<(BlockPos, u32)>, origin: BlockPos) -> Value {
@@ -110,91 +79,38 @@ impl Connection {
             }
             self.hello = true;
             return Ok(
-                json!({"protocol":3,"engine":"mroww","version":env!("CARGO_PKG_VERSION"),"revision":option_env!("MROWW_API_REVISION").unwrap_or("unversioned"),"registry":"1.21.5","data_version":4325,"capabilities":{"selection_validation":true,"lever_effects":true,"modes":["interpreter","compiled"],"blocks":["air","stone","lever"],"entities":false,"ticks":false,"effects":false,"boundary":"closed"},"limits":{"message_bytes":MAX_MESSAGE,"cells":MAX_CELLS,"axis":64,"inputs":64,"ticks":64}}),
+                json!({"protocol":3,"engine":"mroww","version":env!("CARGO_PKG_VERSION"),"revision":option_env!("MROWW_API_REVISION").unwrap_or("unversioned"),"registry":"1.21.5","data_version":4325,"capabilities":{"schematic_load":true,"modes":["interpreter","compiled"]},"limits":{"message_bytes":MAX_MESSAGE,"cells":MAX_CELLS,"axis":64,"inputs":64,"ticks":64}}),
             );
         }
         if !self.hello {
             return Err("handshake required".into());
         }
         match op {
-            "load" => {
+            "load_schematic" => {
                 if self.session.is_some() {
                     return Err("session already loaded".into());
                 }
-                request["data_version"]
-                    .as_u64()
-                    .filter(|n| *n > 0 && *n <= u32::MAX as u64)
-                    .ok_or("invalid data version")?;
-                if request["boundary"].as_str() != Some("closed") {
-                    return Err("unsupported boundary".into());
-                }
-                for key in ["entities", "ticks"] {
-                    if !request[key].as_array().is_some_and(|a| a.is_empty()) {
-                        return Err(format!("{key} unsupported"));
-                    }
-                }
-                let dims = request["size"].as_array().filter(|v| v.len() == 3).ok_or("invalid dimensions")?;
-                let mut size = [0; 3];
-                for i in 0..3 {
-                    size[i] = dims[i]
-                        .as_i64()
-                        .and_then(|n| i32::try_from(n).ok())
-                        .filter(|n| (1..=64).contains(n))
-                        .ok_or("invalid dimensions")?;
-                }
-                if size.iter().product::<i32>() > MAX_CELLS {
-                    return Err("region too large".into());
-                }
-                // Only inert states are admitted until generated effects and scheduled work are supported.
-                for record in request["blocks"].as_array().ok_or("missing blocks")? {
-                    let Some(a) = record.as_array().filter(|a| a.len() == 4) else { continue };
-                    let Some(index) = a[3].as_u64().and_then(|n| usize::try_from(n).ok()) else { continue };
-                    let Some(state) = request["palette"].as_array().and_then(|p| p.get(index)).and_then(Value::as_str) else { continue };
-                    let name = state.split('[').next().unwrap_or("");
-                    let origin = BlockPos::new(4, 4, 4);
-                    let local = pos(&json!([a[0], a[1], a[2]]), size, origin)? - origin;
-                    let feature = if name == "minecraft:lever" {
-                        parse_block(state).map_err(|error| format!("{error} at local position [{},{},{}]", local.x, local.y, local.z))?;
-                        None
-                    }
-                        else if matches!(name, "minecraft:repeater" | "minecraft:comparator") { Some("scheduled ticks") }
-                        else if name == "minecraft:stone_button" { Some("scheduled ticks and effects") }
-                        else { None };
-                    if let Some(feature) = feature {
-                        return Err(format!("{feature} unsupported for {name} at local position [{},{},{}]", local.x, local.y, local.z));
-                    }
-                }
-                let palette: Vec<Block> = request["palette"]
-                    .as_array()
-                    .ok_or("missing palette")?
-                    .iter()
-                    .enumerate()
-                    .map(|(index, v)| parse_block(v.as_str().ok_or("invalid state")?).map_err(|error| format!("palette entry {index}: {error}")))
-                    .collect::<Result<_, _>>()?;
+                if request["format"].as_str() != Some("sponge-v3") { return Err("format must be sponge-v3".into()); }
+                let encoded = request["schematic"].as_str().ok_or("missing schematic")?;
+                if encoded.len() > 900_000 { return Err("encoded schematic exceeds limit".into()); }
+                use base64::Engine;
+                let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).map_err(|_| "invalid schematic base64")?;
+                if bytes.len() > 675_000 { return Err("compressed schematic exceeds limit".into()); }
+                let (mut session, dims) = Session::from_sponge_schematic(&bytes, MAX_CELLS as u32).map_err(|e| format!("invalid schematic: {e:#}"))?;
                 let origin = BlockPos::new(4, 4, 4);
-                let mut blocks = Vec::new();
-                let mut seen = HashSet::new();
-                for record in request["blocks"].as_array().ok_or("missing blocks")? {
-                    let a = record.as_array().filter(|a| a.len() == 4).ok_or("invalid block")?;
-                    let p = pos(&json!([a[0], a[1], a[2]]), size, origin)?;
-                    if !seen.insert(p) {
-                        return Err("duplicate block".into());
-                    }
-                    let index = a[3].as_u64().and_then(|n| usize::try_from(n).ok()).ok_or("invalid palette index")?;
-                    blocks.push((p, *palette.get(index).ok_or("invalid palette index")?));
+                let mut baseline = Vec::new();
+                for x in 0..dims[0] as i32 { for y in 0..dims[1] as i32 { for z in 0..dims[2] as i32 {
+                    let p = origin + BlockPos::new(x, y, z);
+                    baseline.push((p, Block::get_id(session.get(p).map_err(|e| e.to_string())?)));
+                }}}
+                if serde_json::to_vec(&changes(baseline, origin)).map_err(|e| e.to_string())?.len() + 64 > MAX_MESSAGE as usize {
+                    return Err("full baseline exceeds response limit".into());
                 }
-                let session = Session::new(Snapshot {
-                    min: origin,
-                    max: origin + BlockPos::new(size[0] - 1, size[1] - 1, size[2] - 1),
-                    blocks,
-                    entities: vec![],
-                    ticks: vec![],
-                })
-                .map_err(|e| e.to_string())?;
+                session.drain_changes().map_err(|e| e.to_string())?;
                 self.session = Some(session);
-                self.size = size;
+                self.size = dims.map(|n| n as i32);
                 self.origin = origin;
-                Ok(json!({}))
+                Ok(json!({"size":dims}))
             }
             "compile" => {
                 if self.compiled {
@@ -243,21 +159,8 @@ impl Connection {
                     Some(value) => value.as_bool().ok_or("invalid projection flag")?,
                 };
                 let s = self.session.as_mut().ok_or("no session")?;
-                let mut powered = std::collections::HashMap::new();
-                let mut effects = Vec::new();
-                for input in &parsed {
-                    let Input::Use(p) = input else { return Err("unsupported plate input".into()) };
-                    let initial = match s.get(*p).map_err(|e| e.to_string())? {
-                        Block::Lever { lever } => lever.powered,
-                        _ => return Err("input requires a lever".into()),
-                    };
-                    let value = powered.entry(*p).or_insert(initial);
-                    *value = !*value;
-                    let local = *p - self.origin;
-                    effects.push(json!({"kind":"lever_click","pos":[local.x,local.y,local.z],"powered":*value}));
-                }
                 s.advance_with_inputs(ticks, &parsed).map_err(|e| format!("session failed: {e}"))?;
-                let mut result = json!({"tick":s.ticks(),"effects":effects});
+                let mut result = json!({"tick":s.ticks()});
                 if projection {
                     let c = changes(s.drain_changes().map_err(|e| e.to_string())?, self.origin);
                     result["states"] = c["states"].clone();
@@ -271,14 +174,14 @@ impl Connection {
                 match request["kind"].as_str() {
                     Some("changes") => items = s.drain_changes().map_err(|e| e.to_string())?,
                     Some("baseline") => {
+                        // Baseline owns the change stream through this point.
+                        s.drain_changes().map_err(|e| e.to_string())?;
                         for x in 0..self.size[0] {
                             for y in 0..self.size[1] {
                                 for z in 0..self.size[2] {
                                     let p = self.origin + BlockPos::new(x, y, z);
                                     let block = s.get(p).map_err(|e| e.to_string())?;
-                                    if !matches!(block, Block::Air) {
-                                        items.push((p, Block::get_id(block)));
-                                    }
+                                    items.push((p, Block::get_id(block)));
                                 }
                             }
                         }

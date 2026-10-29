@@ -325,10 +325,28 @@ pub fn load_schematic(file: impl Read) -> Result<WorldEditClipboard> {
 }
 
 pub fn load_schematic_with_warnings(mut file: impl Read) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
+    read_schematic(&mut file, None)
+}
+
+/// Strict block-only import for headless sessions, without changing normal WorldEdit imports.
+pub fn load_block_schematic(file: impl Read, max_cells: u32) -> Result<WorldEditClipboard> {
+    read_schematic(file, Some(max_cells)).map(|(clipboard, _)| clipboard)
+}
+
+fn read_schematic(mut file: impl Read, max_cells: Option<u32>) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
     let decoded = read_gzip_nbt(&mut file, MAX_NBT_BYTES).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
     preflight_nbt(&decoded).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
     let nbt = nbt::Blob::from_reader(&mut Cursor::new(decoded)).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
     let schema = Schema::read(&nbt).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
+    if let Some(limit) = max_cells {
+        let cells = schema.dimensions.iter().try_fold(1u32, |n, d| n.checked_mul(*d)).context("schematic dimensions overflow")?;
+        anyhow::ensure!(cells <= limit && schema.dimensions.iter().all(|d| *d <= 64), "schematic exceeds API dimensions or cell limit");
+        let root = if nbt.get("Schematic").is_some() { compound(&nbt.content, "Schematic")? } else { &nbt.content };
+        if let Some(entities) = root.get("Entities") {
+            anyhow::ensure!(matches!(entities, nbt::Value::List(items) if items.is_empty()), "schematic entities are unsupported");
+        }
+        anyhow::ensure!(schema.entities.is_empty(), "schematic block entities are unsupported");
+    }
     tracing::debug!(
         "Importing Sponge v{} with source Minecraft DataVersion {}",
         schema.version,

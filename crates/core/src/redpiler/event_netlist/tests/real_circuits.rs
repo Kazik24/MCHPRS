@@ -1,8 +1,8 @@
 //! Offline executable gates for the pinned adder and counter fixtures.
 use super::*;
 use crate::plot::{
-    PLOT_WIDTH, PlotWorld,
     worldedit::{load_schematic, paste_clipboard},
+    PlotWorld, PLOT_WIDTH,
 };
 use crate::redpiler::components::NodeType;
 use crate::redpiler::event_netlist::executor::EventState;
@@ -10,7 +10,7 @@ use crate::redpiler::physical_signal_network::{EntryWork, PhysicalSignalNetwork}
 use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, ContactId, InputPort, LoweredCircuit, PistonId, PistonLane, PowerPort, PowerTarget, ResourceId,
 };
-use crate::redpiler::{CompilerOptions, TaskMonitor, analysis::AnalysisLimits, passes};
+use crate::redpiler::{analysis::AnalysisLimits, passes, CompilerOptions, TaskMonitor};
 use crate::world::storage::Chunk;
 use mchprs_blocks::BlockPos;
 use serde_json::Value;
@@ -549,22 +549,107 @@ fn offline_adder1_event_program_sum_lockstep_0_1_0() {
             event.counts().motion_completions
         );
         println!(
-            "{label}: Graph piston actions={:?}; Event pistons={:?}; Graph resources={:?}; Event resources={:?}",
-            lowered
-                .program
-                .pistons()
-                .iter()
-                .map(|spec| graph.piston_operations_for_test(spec.position))
-                .filter(|operations| !operations.is_empty())
-                .collect::<Vec<_>>(),
-            (0..compiled.program.pistons.len())
-                .map(|index| event.piston(PistonId::new(index as u32)).unwrap())
-                .collect::<Vec<_>>(),
+            "{label}: Graph resources={:?}; Event resources={:?}",
             graph.circuit_state().resources,
             (0..compiled.program.resources.len())
                 .map(|index| event.resource(ResourceId::new(index as u32)).unwrap())
                 .collect::<Vec<_>>()
         );
+        for (index, graph_spec) in lowered.program.pistons().iter().enumerate() {
+            let actions = graph.piston_operations_for_test(graph_spec.position);
+            if actions
+                .iter()
+                .any(|action| action.contains("Request") || action.contains("Accepted") || action.contains("AcceptanceAttempt"))
+            {
+                let event_spec = compiled.program.pistons[index];
+                println!(
+                    "{label}: piston={index} pos={:?} Graph main/quasi={}/{} state={:?} actions={actions:?}; Event input={:?} state={:?}",
+                    graph_spec.position,
+                    graph.input_strength_for_test(graph_spec.node, InputPort::Main),
+                    graph.input_strength_for_test(graph_spec.node, InputPort::Quasi),
+                    graph.circuit_state().pistons[index],
+                    event.input_strength(event_spec.input),
+                    event.piston(PistonId::new(index as u32))
+                );
+                let event_input = event_spec.input;
+                let event_links = compiled.program.input_links[compiled.program.input_ranges[event_input.index()].clone()]
+                    .iter()
+                    .map(|&id| {
+                        let link = &compiled.program.links[id];
+                        (id, link.source, link.port, event.link_state_for_test(id), &link.condition)
+                    })
+                    .collect::<Vec<_>>();
+                let mut graph_links = Vec::new();
+                for port in [InputPort::Main, InputPort::Quasi] {
+                    for link in lowered
+                        .program
+                        .power_links_to(crate::redpiler::program_graph::PowerTarget::Input { node: graph_spec.node, port })
+                    {
+                        graph_links.push((
+                            port,
+                            link.from,
+                            lowered.program.sites()[link.from.index()],
+                            link.from_port,
+                            link.attenuation,
+                            &lowered.program.guards()[link.guard.index()],
+                        ));
+                    }
+                }
+                println!("{label}: piston={index} Event links={event_links:?}; Graph links={graph_links:?}");
+            }
+        }
+        if label == "after trigger" {
+            for route_id in [25usize, 27, 35, 59] {
+                let route = &lowered.program.routes()[route_id];
+                println!(
+                    "trigger request route {route_id}: source={:?} source_node={:?} deliveries={:?}",
+                    route.source,
+                    lowered.program.nodes()[route.source.index()],
+                    route
+                        .deliveries
+                        .iter()
+                        .map(|delivery| (
+                            delivery.sequence,
+                            lowered.program.sites()[delivery.target.index()],
+                            delivery.kind,
+                            delivery.receiver,
+                            &lowered.program.guards()[delivery.guard.index()]
+                        ))
+                        .collect::<Vec<_>>()
+                );
+            }
+        }
+        let sum_links = compiled.program.input_links[compiled.program.input_ranges[sum.index()].clone()].to_vec();
+        if event.input_strength(sum) != Some(graph.input_strength_for_test(sum, InputPort::Main)) {
+            println!(
+                "{label}: Event sum links={:?}",
+                sum_links
+                    .iter()
+                    .map(|&link| {
+                        let item = &compiled.program.links[link];
+                        (link, item.source, item.port, event.link_state_for_test(link), &item.condition)
+                    })
+                    .collect::<Vec<_>>()
+            );
+            println!(
+                "{label}: Graph sum links={:?}",
+                lowered
+                    .program
+                    .power_links_to(crate::redpiler::program_graph::PowerTarget::Input {
+                        node: sum,
+                        port: InputPort::Main
+                    })
+                    .iter()
+                    .map(|link| (
+                        link.from,
+                        lowered.program.sites()[link.from.index()],
+                        link.from_port,
+                        link.attenuation,
+                        &lowered.program.guards()[link.guard.index()]
+                    ))
+                    .collect::<Vec<_>>()
+            );
+        }
     };
 
     for action in case["actions"].as_array().unwrap() {
@@ -652,16 +737,12 @@ fn compiled_event_pistons_keep_quasi_power_during_trigger_departures() {
                 event.set_input(node, if value { 15 } else { 0 }).unwrap();
                 if pos == trigger {
                     let native_trace = native_trace.unwrap();
-                    assert!(
-                        native_trace
-                            .iter()
-                            .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Sample && entry.powered)
-                    );
-                    assert!(
-                        !native_trace
-                            .iter()
-                            .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Request)
-                    );
+                    assert!(native_trace
+                        .iter()
+                        .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Sample && entry.powered));
+                    assert!(!native_trace
+                        .iter()
+                        .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Request));
                     assert!(
                         !native_trace.iter().any(|entry| entry.pos == piston_positions[1]),
                         "Piston 9 must not update without resource 8 departure"
@@ -721,8 +802,8 @@ fn compiled_event_pistons_keep_quasi_power_during_trigger_departures() {
 
 fn set_native_lever(world: &mut PlotWorld, pos: BlockPos, powered: bool) {
     use crate::world::World;
-    use mchprs_blocks::BlockFace;
     use mchprs_blocks::blocks::{Block, LeverFace};
+    use mchprs_blocks::BlockFace;
 
     let Block::Lever { mut lever } = world.get_block(pos) else {
         panic!("expected lever at {pos:?}");
@@ -876,6 +957,21 @@ fn offline_adder1_compiled_event_program_arithmetic() {
                     }
                     event.set_input(node, if action["powered"].as_bool().unwrap() { 15 } else { 0 }).unwrap();
                     if node == compiled.positions[&position(&manifest["ports"]["inputs"]["trigger"])] {
+                        let wire = compiled.positions[&BlockPos::new(40, 34, 41)];
+                        println!(
+                            "{} wire89 after trigger={:?} input={:?} ops={:?} links={:?}",
+                            case["id"],
+                            event.component(wire),
+                            event.input_strength(wire),
+                            compiled.program.source_ranges[wire.index()]
+                                .clone()
+                                .map(|index| compiled.program.operations[index])
+                                .collect::<Vec<_>>(),
+                            compiled.program.input_links[compiled.program.input_ranges[wire.index()].clone()]
+                                .iter()
+                                .map(|&link| (link, &compiled.program.links[link], event.link_state_for_test(link)))
+                                .collect::<Vec<_>>()
+                        );
                         println!(
                             "{} P0 after trigger: strength={:?} links={:?}",
                             case["id"],

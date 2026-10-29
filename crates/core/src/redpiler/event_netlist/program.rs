@@ -6,6 +6,7 @@ use std::ops::Range;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ComponentKind {
     Input,
+    Wire,
     Lamp,
     Observer,
     Piston,
@@ -114,6 +115,7 @@ pub(crate) struct ResourceOperation {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CompiledResourceInstruction {
     Contribution(usize),
+    RecomputeWire(NodeId),
     NotifyIfChanged(NodeId),
     Notify(NodeId),
     NotifyObserver { target: NodeId, shape: bool },
@@ -123,6 +125,7 @@ pub(crate) enum CompiledResourceInstruction {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Operation {
     Contribution(usize),
+    RecomputeWire(NodeId),
     Notify(NodeId),
     /// Observer watchers receive shape notifications, not ordinary updates.
     NotifyObserver {
@@ -144,6 +147,7 @@ pub(crate) struct EventProgram {
     pub(super) resource_operations: Box<[(ContactId, CompiledResourceInstruction)]>,
     pub(super) piston_ranges: Box<[Range<usize>]>,
     pub(super) piston_links: Box<[usize]>,
+    pub(super) wire_watchers: Box<[Box<[NodeId]>]>,
 }
 
 impl EventProgram {
@@ -159,6 +163,18 @@ impl EventProgram {
         resources: Vec<EventResource>,
         pistons: Vec<EventPiston>,
         resource_operations: Vec<ResourceOperation>,
+    ) -> Result<Self, &'static str> {
+        Self::new_with_wire_watchers(components, links, operations, resources, pistons, resource_operations, Vec::new())
+    }
+
+    pub(crate) fn new_with_wire_watchers(
+        components: Vec<Component>,
+        links: Vec<ElectricalLink>,
+        operations: Vec<(NodeId, Operation)>,
+        resources: Vec<EventResource>,
+        pistons: Vec<EventPiston>,
+        resource_operations: Vec<ResourceOperation>,
+        wire_watchers: Vec<(NodeId, NodeId)>,
     ) -> Result<Self, &'static str> {
         let count = components.len();
         if u32::try_from(count).is_err() || u32::try_from(resources.len()).is_err() || u32::try_from(pistons.len()).is_err() {
@@ -177,6 +193,9 @@ impl EventProgram {
                 }
                 ComponentKind::Observer if component.initial.powered => {
                     return Err("initially powered observer requires pending work");
+                }
+                ComponentKind::Wire if component.initial.powered != (component.initial.output > 0) => {
+                    return Err("wire power and strength disagree");
                 }
                 ComponentKind::Lamp if component.initial.output != 0 => {
                     return Err("lamps do not emit electrical power");
@@ -239,10 +258,10 @@ impl EventProgram {
             }
             if !matches!(
                 components[link.source.index()].kind,
-                ComponentKind::Input | ComponentKind::Observer | ComponentKind::Repeater { .. }
+                ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. }
             ) || !matches!(
                 components[link.target.index()].kind,
-                ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. }
+                ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Wire
             ) {
                 return Err("unsupported electrical source or receiver");
             }
@@ -254,7 +273,7 @@ impl EventProgram {
             if source.index() >= count
                 || !matches!(
                     components[source.index()].kind,
-                    ComponentKind::Input | ComponentKind::Observer | ComponentKind::Repeater { .. }
+                    ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. }
                 )
             {
                 return Err("unsupported operation source");
@@ -268,6 +287,11 @@ impl EventProgram {
                         return Err("link has a wrong or repeated source operation");
                     }
                     bound[id] = true;
+                }
+                Operation::RecomputeWire(target) => {
+                    if target.index() >= count || components[target.index()].kind != ComponentKind::Wire {
+                        return Err("invalid wire recomputation target");
+                    }
                 }
                 Operation::Notify(target) => {
                     if target.index() >= count
@@ -308,7 +332,11 @@ impl EventProgram {
                         let arrival = departure + 1;
                         for phase in [departure, arrival] {
                             resource_buckets[phase].push((contact, CompiledResourceInstruction::Contribution(link_index)));
-                            if link.port != InputPort::Quasi && resource_notifications.insert((phase, contact, link.target)) {
+                            if components[link.target.index()].kind == ComponentKind::Wire {
+                                if resource_notifications.insert((phase, contact, link.target)) {
+                                    notifications.push((phase, contact, link.target));
+                                }
+                            } else if link.port != InputPort::Quasi && resource_notifications.insert((phase, contact, link.target)) {
                                 notifications.push((phase, contact, link.target));
                             }
                         }
@@ -317,7 +345,12 @@ impl EventProgram {
             }
         }
         for (phase, contact, target) in notifications {
-            resource_buckets[phase].push((contact, CompiledResourceInstruction::NotifyIfChanged(target)));
+            let instruction = if components[target.index()].kind == ComponentKind::Wire {
+                CompiledResourceInstruction::RecomputeWire(target)
+            } else {
+                CompiledResourceInstruction::NotifyIfChanged(target)
+            };
+            resource_buckets[phase].push((contact, instruction));
         }
         for operation in resource_operations {
             let Some(resource) = resources.get(operation.resource.index()) else {
@@ -362,6 +395,24 @@ impl EventProgram {
             }
         }
         let (piston_ranges, piston_links) = flatten(piston_buckets);
+        let mut watcher_buckets = vec![Vec::new(); count];
+        for (wire, piston) in wire_watchers {
+            if wire.index() >= count
+                || components[wire.index()].kind != ComponentKind::Wire
+                || piston.index() >= count
+                || components[piston.index()].kind != ComponentKind::Piston
+            {
+                return Err("invalid watched wire receiver");
+            }
+            if !watcher_buckets[wire.index()].contains(&piston) {
+                watcher_buckets[wire.index()].push(piston);
+            }
+        }
+        let wire_watchers = watcher_buckets
+            .into_iter()
+            .map(Vec::into_boxed_slice)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
         Ok(Self {
             components: components.into(),
             links: links.into(),
@@ -375,6 +426,7 @@ impl EventProgram {
             resource_operations,
             piston_ranges,
             piston_links,
+            wire_watchers,
         })
     }
 }

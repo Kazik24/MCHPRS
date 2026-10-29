@@ -1733,6 +1733,7 @@ dependencies = [
 name = "mroww-redgear-api"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "mchprs_blocks",
  "mchprs_core",
  "serde_json",

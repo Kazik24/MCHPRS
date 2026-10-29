@@ -45,6 +45,39 @@ fn contains((min, max): (BlockPos, BlockPos), p: BlockPos) -> bool {
 }
 
 impl Session {
+    /// Create a fresh block-only session from a Sponge schematic. Its minimum
+    /// corner is normalized to the native session origin.
+    pub fn from_sponge_schematic(bytes: &[u8], max_cells: u32) -> Result<(Self, [u32; 3])> {
+        use std::io::Cursor;
+        let clipboard = crate::plot::worldedit::load_block_schematic(Cursor::new(bytes), max_cells)?;
+        let size = [clipboard.size_x, clipboard.size_y, clipboard.size_z];
+        let cells = size.iter().try_fold(1u32, |n, d| n.checked_mul(*d)).ok_or_else(|| anyhow::anyhow!("schematic dimensions overflow"))?;
+        if cells > max_cells || size.iter().any(|d| *d > 64) {
+            bail!("schematic exceeds API dimensions or cell limit");
+        }
+        let origin = BlockPos::new(4, 4, 4);
+        let mut blocks = Vec::with_capacity(cells as usize);
+        for x in 0..size[0] as i32 {
+            for y in 0..size[1] as i32 {
+                for z in 0..size[2] as i32 {
+                    let index = (x + z * size[0] as i32 + y * size[0] as i32 * size[2] as i32) as usize;
+                    let block = Block::from_id(clipboard.data.get_entry(index));
+                    if !matches!(block, Block::Air) { blocks.push((origin + BlockPos::new(x, y, z), block)); }
+                }
+            }
+        }
+        let mut session = Self::new(Snapshot {
+            min: origin, max: origin + BlockPos::new(size[0] as i32 - 1, size[1] as i32 - 1, size[2] as i32 - 1),
+            blocks, entities: vec![], ticks: vec![],
+        })?;
+        let (min, max) = session.bounds;
+        crate::world::for_each_block_mut_optimized(&mut session.world, min, max, |world, pos| {
+            redstone::update(world.get_block(pos), world, pos, None);
+        });
+        session.world.take_block_changes();
+        Ok((session, size))
+    }
+
     /// Validate all records before creating a fresh world.
     pub fn new(snapshot: Snapshot) -> Result<Self> {
         let bounds = (snapshot.min, snapshot.max);
