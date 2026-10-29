@@ -308,6 +308,12 @@ impl EventState {
                     self.pending[node.index()] = true;
                 }
             }
+            ComponentKind::Torch => {
+                if self.components[node.index()].powered == (self.input_strength(node).unwrap() > 0) && !self.pending[node.index()] {
+                    self.scheduler.schedule_half_tick(node, 2, TickPriority::Normal);
+                    self.pending[node.index()] = true;
+                }
+            }
             ComponentKind::Input | ComponentKind::Observer | ComponentKind::Wire => unreachable!("validated notification target"),
         }
     }
@@ -372,6 +378,13 @@ impl EventState {
                             output: if powered { 15 } else { 0 },
                             powered,
                         };
+                        self.run_source(node);
+                    }
+                }
+                ComponentKind::Torch => {
+                    let lit = self.input_strength(node).unwrap() == 0;
+                    if lit != self.components[node.index()].powered {
+                        self.components[node.index()] = ComponentState { output: if lit { 15 } else { 0 }, powered: lit };
                         self.run_source(node);
                     }
                 }

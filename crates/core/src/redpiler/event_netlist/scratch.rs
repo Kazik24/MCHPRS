@@ -448,8 +448,17 @@ mod tests {
     #[test]
     fn direct_source_strength_matches_interpreter_dust() {
         let mut world = fixture();
-        drive(&mut world);
         let discovery = discover_watched_wire_sources(&world, BOUNDS).unwrap();
+        assert!(discovery.sources.contains(&WireSource {
+            wire: WIRE,
+            source: LEVER,
+            attenuation: 0
+        }));
+        let Block::RedstoneWire { wire } = world.get_block(WIRE) else {
+            panic!("wire missing")
+        };
+        assert_eq!(discovered_wire_strength(&world, &discovery, WIRE), wire.power);
+        drive(&mut world);
         let Block::RedstoneWire { wire } = world.get_block(WIRE) else {
             panic!("wire missing")
         };
@@ -488,6 +497,129 @@ mod tests {
                 discovered_wire_strength(&world, &discovery, WIRE),
                 redstone::get_redstone_power(block, &world, source, BlockFace::North)
             );
+        }
+    }
+
+    #[test]
+    fn dust_distance_fourteen_and_unpowered_continuation_match_interpreter() {
+        let mut world = fixture();
+        world.set_block(LEVER, Block::Air);
+        world.set_block(WIRE, Block::Air);
+        world.set_block(PISTON, Block::Air);
+        let source = BlockPos::new(39, 30, 40);
+        let mut lever = Lever::new(LeverFace::Floor, BlockDirection::North, false);
+        world.set_block(source, Block::Lever { lever });
+        for x in 40..=55 {
+            world.set_block(
+                BlockPos::new(x, 30, 40),
+                Block::RedstoneWire {
+                    wire: RedstoneWire::new(
+                        RedstoneWireSide::None,
+                        RedstoneWireSide::None,
+                        RedstoneWireSide::Side,
+                        RedstoneWireSide::Side,
+                        0,
+                    ),
+                },
+            );
+        }
+        let bounds = (BlockPos::new(37, 26, 37), BlockPos::new(58, 34, 43));
+        let discovery = discover_watched_wire_sources(&world, bounds).unwrap();
+        for x in 40..=55 {
+            let wire = BlockPos::new(x, 30, 40);
+            assert_eq!(discovered_wire_strength(&world, &discovery, wire), 0);
+            assert_eq!(discovery.sources.iter().any(|link| link.wire == wire && link.source == source), x <= 54);
+        }
+        lever.powered = true;
+        world.set_block(source, Block::Lever { lever });
+        redstone::update_surrounding_blocks(&mut world, source);
+        for x in 40..=55 {
+            let pos = BlockPos::new(x, 30, 40);
+            let Block::RedstoneWire { wire } = world.get_block(pos) else {
+                panic!("wire missing")
+            };
+            assert_eq!(discovered_wire_strength(&world, &discovery, pos), wire.power, "wire at {pos:?}");
+        }
+    }
+
+    #[test]
+    fn competing_levers_mask_a_source_change_in_native_dust() {
+        let mut world = fixture();
+        let second = WIRE.offset(BlockFace::North);
+        let mut lever = Lever::new(LeverFace::Floor, BlockDirection::North, false);
+        world.set_block(second, Block::Lever { lever });
+        let discovery = discover_watched_wire_sources(&world, BOUNDS).unwrap();
+        for source in [LEVER, second] {
+            assert!(
+                discovery
+                    .sources
+                    .iter()
+                    .any(|link| link.wire == WIRE && link.source == source && link.attenuation == 0)
+            );
+        }
+        drive(&mut world);
+        lever.powered = true;
+        world.set_block(second, Block::Lever { lever });
+        redstone::update_surrounding_blocks(&mut world, second);
+        let before = world.get_block(WIRE);
+        let Block::RedstoneWire { wire } = before else { panic!("wire missing") };
+        assert_eq!(discovered_wire_strength(&world, &discovery, WIRE), wire.power);
+        lever.powered = false;
+        world.set_block(second, Block::Lever { lever });
+        redstone::update_surrounding_blocks(&mut world, second);
+        assert_eq!(world.get_block(WIRE), before);
+        assert_eq!(discovered_wire_strength(&world, &discovery, WIRE), wire.power);
+    }
+
+    #[test]
+    fn ascending_and_descending_dust_match_interpreter() {
+        for source_above in [false, true] {
+            let mut world = fixture();
+            world.set_block(LEVER, Block::Air);
+            world.set_block(PISTON, Block::Stone {});
+            let lower = WIRE;
+            let upper = PISTON.offset(BlockFace::Top);
+            let source = if source_above { BlockPos::new(43, 31, 40) } else { LEVER };
+            let mut lever = Lever::new(LeverFace::Floor, BlockDirection::North, false);
+            world.set_block(source, Block::Lever { lever });
+            for pos in [lower, upper] {
+                world.set_block(
+                    pos,
+                    Block::RedstoneWire {
+                        wire: RedstoneWire::new(
+                            RedstoneWireSide::None,
+                            RedstoneWireSide::None,
+                            RedstoneWireSide::Side,
+                            RedstoneWireSide::Side,
+                            0,
+                        ),
+                    },
+                );
+            }
+            let discovery = discover_watched_wire_sources(&world, BOUNDS).unwrap();
+            let destination = if source_above { lower } else { upper };
+            assert!(
+                discovery
+                    .sources
+                    .iter()
+                    .any(|link| link.wire == destination && link.source == source && link.attenuation == 1)
+            );
+            for pos in [lower, upper] {
+                assert_eq!(discovered_wire_strength(&world, &discovery, pos), 0);
+            }
+            lever.powered = true;
+            world.set_block(source, Block::Lever { lever });
+            redstone::update_surrounding_blocks(&mut world, source);
+            for pos in [lower, upper] {
+                let Block::RedstoneWire { wire } = world.get_block(pos) else {
+                    panic!("wire missing")
+                };
+                assert_eq!(
+                    discovered_wire_strength(&world, &discovery, pos),
+                    wire.power,
+                    "wire at {pos:?}, source_above={source_above}"
+                );
+            }
         }
     }
 }

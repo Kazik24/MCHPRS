@@ -11,6 +11,7 @@ pub(crate) enum ComponentKind {
     Observer,
     Piston,
     Repeater { delay: u8 },
+    Torch,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -207,6 +208,9 @@ impl EventProgram {
                 ComponentKind::Repeater { .. } if component.initial.powered != (component.initial.output > 0) => {
                     return Err("repeater power and strength disagree");
                 }
+                ComponentKind::Torch if component.initial.output != if component.initial.powered { 15 } else { 0 } => {
+                    return Err("torch power and strength disagree");
+                }
                 _ => {}
             }
         }
@@ -258,10 +262,10 @@ impl EventProgram {
             }
             if !matches!(
                 components[link.source.index()].kind,
-                ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. }
+                ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. } | ComponentKind::Torch
             ) || !matches!(
                 components[link.target.index()].kind,
-                ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Wire
+                ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Wire | ComponentKind::Torch
             ) {
                 return Err("unsupported electrical source or receiver");
             }
@@ -273,7 +277,7 @@ impl EventProgram {
             if source.index() >= count
                 || !matches!(
                     components[source.index()].kind,
-                    ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. }
+                    ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. } | ComponentKind::Torch
                 )
             {
                 return Err("unsupported operation source");
@@ -297,7 +301,7 @@ impl EventProgram {
                     if target.index() >= count
                         || !matches!(
                             components[target.index()].kind,
-                            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. }
+                            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch
                         )
                     {
                         return Err("unsupported notification receiver");
@@ -364,7 +368,7 @@ impl EventProgram {
                     if target.index() >= count
                         || !matches!(
                             components[target.index()].kind,
-                            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. }
+                            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch
                         )
                     {
                         return Err("invalid resource notification receiver");

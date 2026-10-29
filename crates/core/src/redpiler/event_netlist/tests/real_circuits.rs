@@ -62,6 +62,145 @@ fn lower(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Result<LoweredCircu
 }
 
 #[test]
+fn discovered_static_wire_matches_native_piston() {
+    use mchprs_blocks::{
+        BlockDirection, BlockFacing,
+        blocks::{Lever, LeverFace, RedstonePiston, RedstoneWire, RedstoneWireSide},
+    };
+    let lever = ORIGIN;
+    let wire = ORIGIN + BlockPos::new(1, 0, 0);
+    let wire2 = ORIGIN + BlockPos::new(2, 0, 0);
+    let mask = ORIGIN + BlockPos::new(1, 0, -1);
+    let piston = ORIGIN + BlockPos::new(3, 0, 0);
+    let bounds = (ORIGIN - BlockPos::new(3, 3, 3), ORIGIN + BlockPos::new(5, 3, 3));
+    let mut world = PlotWorld::from_chunks(
+        0,
+        0,
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
+        Default::default(),
+    );
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(wire2.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(mask.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    world.set_block(
+        wire,
+        Block::RedstoneWire {
+            wire: RedstoneWire::new(
+                RedstoneWireSide::None,
+                RedstoneWireSide::None,
+                RedstoneWireSide::Side,
+                RedstoneWireSide::Side,
+                0,
+            ),
+        },
+    );
+    world.set_block(wire2, world.get_block(wire));
+    world.set_block(mask, world.get_block(lever));
+    world.set_block(
+        piston,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    let discovery = discover_watched_wire_sources(&world, bounds).unwrap();
+    let lowered = lower(&world, bounds).unwrap();
+    let compiled = crate::redpiler::event_netlist::compiler::compile_with_wire_discovery(&lowered, &discovery).unwrap();
+    let mut event = EventState::new(compiled.program.clone(), lowered.logical_tick);
+    assert!(discovery.sources.iter().any(|source| source.wire == wire2 && source.attenuation == 1));
+    assert!(discovery.sources.iter().any(|source| source.source == mask));
+    for wire in [wire, wire2] {
+        let node = compiled.positions[&wire];
+        let mut actual: Vec<_> = compiled.program.input_links[compiled.program.input_ranges[node.index()].clone()]
+            .iter()
+            .map(|&id| {
+                let link = &compiled.program.links[id];
+                assert!(link.condition.is_none());
+                (link.source.index(), link.attenuation)
+            })
+            .collect();
+        let mut expected: Vec<_> = discovery
+            .sources
+            .iter()
+            .filter(|source| source.wire == wire)
+            .map(|source| (compiled.positions[&source.source].index(), source.attenuation))
+            .collect();
+        actual.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(actual, expected);
+        let expected_watchers: Vec<_> = discovery
+            .watchers
+            .iter()
+            .filter(|watch| watch.wire == wire)
+            .map(|_| compiled.program.pistons[0].input)
+            .collect();
+        assert_eq!(&*compiled.program.wire_watchers[node.index()], expected_watchers);
+    }
+    assert_eq!(event.component(compiled.positions[&mask]).unwrap().output, 0);
+    // The two on sources mask each other; their individual transitions must not change dust power.
+    for (source, powered, extended, actions) in [
+        (lever, true, true, 1),
+        (mask, true, true, 1),
+        (lever, false, true, 1),
+        (mask, false, false, 2),
+        (lever, true, true, 3),
+    ] {
+        let native_before: Vec<_> = [lever, mask, wire, wire2, piston].into_iter().map(|pos| world.get_block(pos)).collect();
+        let strengths_before = [wire, wire2].map(|pos| event.component(compiled.positions[&pos]).unwrap().output);
+        event.set_input(compiled.positions[&source], if powered { 15 } else { 0 }).unwrap();
+        if (source == mask && powered) || (source == lever && !powered) {
+            assert_eq!(
+                strengths_before,
+                [wire, wire2].map(|pos| event.component(compiled.positions[&pos]).unwrap().output)
+            );
+        }
+        for _ in 0..4 {
+            event.tick().unwrap();
+        }
+        assert_eq!(
+            native_before,
+            [lever, mask, wire, wire2, piston]
+                .into_iter()
+                .map(|pos| world.get_block(pos))
+                .collect::<Vec<_>>()
+        );
+        set_native_lever(&mut world, source, powered);
+        for pos in [wire, wire2] {
+            let Block::RedstoneWire { wire: native_wire } = world.get_block(pos) else {
+                unreachable!()
+            };
+            assert_eq!(event.component(compiled.positions[&pos]).unwrap().output, native_wire.power);
+        }
+        for _ in 0..4 {
+            world.tick_interpreted();
+        }
+        let Block::Piston { piston: native_piston } = world.get_block(piston) else {
+            unreachable!()
+        };
+        assert_eq!(native_piston.extended, extended);
+        let state = event.piston(PistonId::new(0)).unwrap();
+        assert_eq!(state.extended, native_piston.extended);
+        assert_eq!(state.head_present, extended);
+        assert!(!state.pending_motion && !event.has_pending_work());
+        assert!(world.piston_state().events.is_empty() && world.piston_state().motions.is_empty());
+        assert_eq!(world.scheduler().iter_entries().count(), 0);
+        assert_eq!(event.counts().piston_actions, actions);
+        assert_eq!(event.counts().motion_completions, actions);
+        assert_eq!(event.counts().resource_movements, 0);
+    }
+}
+
+#[test]
 fn real_fixture_inventory_reports_executable_admission() {
     for id in ["adder_1bit", "adder_11bits", "counter_basic"] {
         let (world, bounds, manifest) = fixture(id);
@@ -107,22 +246,48 @@ fn real_fixture_inventory_reports_executable_admission() {
 }
 
 #[test]
-fn event_compiler_rejects_unimplemented_dynamic_components_at_their_position() {
-    let (world, bounds, _) = fixture("counter_basic");
+fn event_compiler_rejects_pending_entry_ticks() {
+    let (mut world, bounds, _) = fixture("counter_basic");
+    let position = bounds.0;
+    world.schedule_tick(position, 1, mchprs_world::TickPriority::Normal);
     let lowered = lower(&world, bounds).unwrap();
-    let torch = lowered
-        .program
-        .nodes()
-        .iter()
-        .find(|node| matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Torch)))
-        .expect("counter fixture contains a torch");
-
     let error = match crate::redpiler::event_netlist::compiler::compile(&lowered) {
-        Ok(_) => panic!("torch behavior was silently compiled"),
+        Ok(_) => panic!("pending work was silently discarded"),
         Err(error) => error,
     };
-    assert_eq!(error.position, torch.position);
-    assert!(error.reason.contains("Torch"), "{error}");
+    assert_eq!(error.position, Some(position));
+    assert!(error.reason.contains("pending entry"), "{error}");
+}
+
+#[test]
+fn event_torch_matches_native_delay_short_pulses_and_rearm() {
+    use mchprs_blocks::{BlockDirection, blocks::{Lever, LeverFace}};
+    for wall in [false, true] {
+        let support = ORIGIN;
+        let torch = support.offset(if wall { BlockFace::East } else { BlockFace::Top });
+        let lever = support.offset(BlockFace::West);
+        let bounds = (ORIGIN - BlockPos::new(3, 3, 3), ORIGIN + BlockPos::new(3, 3, 3));
+        let mut world = PlotWorld::from_chunks(0, 0, (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(), Default::default());
+        world.set_block(support, Block::Stone {});
+        world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::West, false) });
+        world.set_block(torch, if wall { Block::RedstoneWallTorch { facing: BlockDirection::East, lit: true } } else { Block::RedstoneTorch { lit: true } });
+        let lowered = lower(&world, bounds).unwrap();
+        let compiled = crate::redpiler::event_netlist::compiler::compile(&lowered).unwrap();
+        let mut event = EventState::new(compiled.program.clone(), lowered.logical_tick);
+        let torch_node = compiled.positions[&torch];
+        let lever_node = compiled.positions[&lever];
+        for (powered, ticks) in [(true, 0), (false, 2), (true, 2), (false, 2), (true, 2), (false, 2)] {
+            set_native_lever(&mut world, lever, powered);
+            event.set_input(lever_node, if powered { 15 } else { 0 }).unwrap();
+            for _ in 0..ticks {
+                world.tick_interpreted();
+                event.tick().unwrap();
+                let lit = match world.get_block(torch) { Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => lit, _ => unreachable!() };
+                assert_eq!(event.component(torch_node).unwrap().powered, lit, "wall={wall} input={powered}");
+                assert_eq!(event.has_pending_work(), world.scheduler().iter_entries().count() != 0);
+            }
+        }
+    }
 }
 
 #[test]

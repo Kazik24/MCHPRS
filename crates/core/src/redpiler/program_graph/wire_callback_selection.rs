@@ -49,11 +49,6 @@ impl WireCallbackSelection {
     }
 }
 
-/// Electrical reads have no capture; unknown state stays unknown rather than false.
-pub(super) fn fixed_live_guard(graph: &CompileGraph, id: GuardId) -> Option<bool> {
-    fixed_guard(graph, id, SiteId::new(u32::MAX), 0)
-}
-
 /// None is genuinely dynamic, never a false predicate. Boolean identities can
 /// still decide a composite containing an unknown child.
 fn fixed_guard(graph: &CompileGraph, id: GuardId, captured: SiteId, depth: usize) -> Option<bool> {

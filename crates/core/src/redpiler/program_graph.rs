@@ -132,6 +132,7 @@ pub(crate) enum CircuitNodeKind {
         facing: BlockFace,
     },
     /// A reset pulse source executed directly by the scheduler, without an output callback circuit.
+    #[allow(dead_code)]
     BuiltinReset {
         /// This retains the original watched site for provenance and projection.
         watched: SiteId,
@@ -662,6 +663,7 @@ pub(crate) enum GraphBuildError {
     InvalidWireCapture {
         site: usize,
     },
+    #[allow(dead_code)]
     InvalidWireCaptureMask {
         wire: usize,
     },

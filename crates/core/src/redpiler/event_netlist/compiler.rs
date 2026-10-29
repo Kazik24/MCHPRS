@@ -32,7 +32,22 @@ impl std::fmt::Display for CompileError {
 }
 
 pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, CompileError> {
+    compile_inner(lowered, None)
+}
+
+// shortcut: one piston and static geometry only; upgrade when movement is modeled.
+pub(super) fn compile_with_wire_discovery(
+    lowered: &LoweredCircuit,
+    discovery: &super::scratch::WireDiscovery,
+) -> Result<CompiledEvent, CompileError> {
+    compile_inner(lowered, Some(discovery))
+}
+
+fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::WireDiscovery>) -> Result<CompiledEvent, CompileError> {
     let graph = &lowered.program;
+    if let Some(tick) = lowered.imported_ticks.first() {
+        return Err(CompileError { position: Some(tick.position), reason: "pending entry ticks are not represented".into() });
+    }
     let at = |node: NodeId| graph.nodes()[node.index()].position;
     for (index, piston) in graph.pistons().iter().enumerate() {
         let state = lowered.state.pistons[index];
@@ -45,6 +60,9 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
     }
     let mut components = Vec::with_capacity(graph.nodes().len());
     for (index, node) in graph.nodes().iter().enumerate() {
+        if matches!(lowered.state.components.get(index), Some(ComponentState::Electrical(state)) if state.pending_tick) {
+            return Err(CompileError { position: node.position, reason: "pending component work is not represented".into() });
+        }
         let mut state = match lowered.state.components.get(index) {
             Some(ComponentState::Electrical(state)) => EventComponentState {
                 output: state.output_strength,
@@ -60,6 +78,7 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
             CircuitNodeKind::Observer { .. } => ComponentKind::Observer,
             CircuitNodeKind::Piston(_) => ComponentKind::Piston,
             CircuitNodeKind::Electrical(NodeType::Lamp) => ComponentKind::Lamp,
+            CircuitNodeKind::Electrical(NodeType::Torch) => ComponentKind::Torch,
             CircuitNodeKind::Electrical(NodeType::Repeater { delay, .. }) => ComponentKind::Repeater { delay: *delay },
             CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Constant) => ComponentKind::Input,
             CircuitNodeKind::Electrical(NodeType::Wire) | CircuitNodeKind::Wire(_) => ComponentKind::Wire,
@@ -95,7 +114,7 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
     for (target_index, _node) in graph.nodes().iter().enumerate() {
         if !matches!(
             components[target_index].kind,
-            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. }
+            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch
         ) {
             continue;
         }
@@ -128,7 +147,7 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
                 };
                 if !matches!(
                     components[source.index()].kind,
-                    ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. }
+                    ComponentKind::Input | ComponentKind::Wire | ComponentKind::Observer | ComponentKind::Repeater { .. } | ComponentKind::Torch
                 ) {
                     return Err(CompileError {
                         position: at(source),
@@ -175,19 +194,44 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
         })
         .collect();
     let mut wire_watchers = Vec::new();
-    for piston in &pistons {
-        let piston_position = graph.nodes()[piston.input.index()].position;
-        let Some(piston_position) = piston_position else { continue };
-        for (wire_index, node) in graph.nodes().iter().enumerate() {
-            if !matches!(node.kind, CircuitNodeKind::Wire(_)) {
-                continue;
+    if let Some(discovery) = discovery {
+        // shortcut: movable resources can change discovered geometry; admit them only after rediscovery is modeled.
+        if pistons.len() != 1 || !graph.resources().is_empty() {
+            return Err(CompileError {
+                position: None,
+                reason: "wire discovery requires one piston and static geometry".into(),
+            });
+        }
+        let positions = graph.position_index();
+        for watch in &discovery.watchers {
+            let wire = positions.get(&watch.wire).copied().ok_or_else(|| CompileError {
+                position: Some(watch.wire),
+                reason: "discovered wire missing from graph".into(),
+            })?;
+            let piston = pistons[0].input;
+            if components[wire.index()].kind != ComponentKind::Wire || watch.piston != graph.pistons()[0].position {
+                return Err(CompileError {
+                    position: Some(watch.wire),
+                    reason: "invalid discovered wire watcher".into(),
+                });
             }
-            let Some(wire_position) = node.position else { continue };
-            let distance = piston_position.x.abs_diff(wire_position.x)
-                + piston_position.y.abs_diff(wire_position.y)
-                + piston_position.z.abs_diff(wire_position.z);
-            if distance <= 2 {
-                wire_watchers.push((NodeId::new(wire_index as u32), piston.input));
+            wire_watchers.push((wire, piston));
+        }
+    } else {
+        for piston in &pistons {
+            let piston_position = graph.nodes()[piston.input.index()].position;
+            let Some(piston_position) = piston_position else { continue };
+            for (wire_index, node) in graph.nodes().iter().enumerate() {
+                if !matches!(node.kind, CircuitNodeKind::Wire(_)) {
+                    continue;
+                }
+                let Some(wire_position) = node.position else { continue };
+                let distance = piston_position.x.abs_diff(wire_position.x)
+                    + piston_position.y.abs_diff(wire_position.y)
+                    + piston_position.z.abs_diff(wire_position.z);
+                if distance <= 2 {
+                    wire_watchers.push((NodeId::new(wire_index as u32), piston.input));
+                }
             }
         }
     }
@@ -202,18 +246,39 @@ pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, Compile
     let mut wire_recomputes = Vec::new();
     for wire in wire_targets {
         let mut leaves = Vec::new();
-        expand_power(
-            graph,
-            PowerTarget::Input {
-                node: wire,
-                port: InputPort::Main,
-            },
-            0,
-            None,
-            &mut Vec::new(),
-            &mut leaves,
-        )
-        .map_err(|reason| CompileError { position: at(wire), reason })?;
+        if let Some(discovery) = discovery.filter(|d| d.watchers.iter().any(|watch| Some(watch.wire) == at(wire))) {
+            let positions = graph.position_index();
+            for dependency in discovery.sources.iter().filter(|source| Some(source.wire) == at(wire)) {
+                let source = positions.get(&dependency.source).copied().ok_or_else(|| CompileError {
+                    position: Some(dependency.source),
+                    reason: "discovered source missing from graph".into(),
+                })?;
+                if !matches!(components[source.index()].kind, ComponentKind::Input | ComponentKind::Torch) {
+                    return Err(CompileError {
+                        position: Some(dependency.source),
+                        reason: "discovered source is not a static input".into(),
+                    });
+                }
+                leaves.push(Leaf {
+                    source: LeafSource::Node(source),
+                    attenuation: dependency.attenuation,
+                    condition: None,
+                });
+            }
+        } else {
+            expand_power(
+                graph,
+                PowerTarget::Input {
+                    node: wire,
+                    port: InputPort::Main,
+                },
+                0,
+                None,
+                &mut Vec::new(),
+                &mut leaves,
+            )
+            .map_err(|reason| CompileError { position: at(wire), reason })?;
+        }
         for leaf in leaves {
             let source = match leaf.source {
                 LeafSource::Node(source) => source,
