@@ -9,6 +9,7 @@ mod chat;
 mod chat_commands;
 mod config;
 mod container;
+pub mod headless;
 mod interaction;
 mod messages;
 mod permissions;

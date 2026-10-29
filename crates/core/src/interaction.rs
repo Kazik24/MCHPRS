@@ -45,83 +45,19 @@ pub fn on_use(block: Block, world: &mut impl World, player: &mut Player, pos: Bl
         };
         return ActionResult::Pass;
     }
+    if let Some(result) = use_redstone(block, world, pos, Some(player.uuid)) {
+        return result;
+    }
     match block {
-        Block::RedstoneRepeater { repeater } => {
-            let mut repeater = repeater;
-            repeater.delay += 1;
-            if repeater.delay > 4 {
-                repeater.delay -= 4;
-            }
-            world.set_block(pos, Block::RedstoneRepeater { repeater });
-            ActionResult::Success
-        }
-        Block::RedstoneComparator { comparator } => {
-            let mut comparator = comparator;
-            comparator.mode = comparator.mode.toggle();
-            redstone::comparator::tick(comparator, world, pos);
-            world.set_block(pos, Block::RedstoneComparator { comparator });
-            crate::sound::control_used(world, pos, block, player.uuid);
-            ActionResult::Success
-        }
-        Block::Lever { mut lever } => {
-            lever.powered = !lever.powered;
-            world.set_block(pos, Block::Lever { lever });
-            crate::sound::control_used(world, pos, block, player.uuid);
-            redstone::update_surrounding_blocks(world, pos);
-            match lever.face {
-                LeverFace::Ceiling => {
-                    redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Top));
-                }
-                LeverFace::Floor => {
-                    redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
-                }
-                LeverFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(lever.facing.opposite().block_face())),
-            }
-            ActionResult::Success
-        }
-        Block::StoneButton { mut button } => {
-            if !button.powered {
-                button.powered = true;
-                world.set_block(pos, Block::StoneButton { button });
-                crate::sound::control_used(world, pos, block, player.uuid);
-                world.schedule_tick(pos, 10, TickPriority::Normal);
-                redstone::update_surrounding_blocks(world, pos);
-                match button.face {
-                    ButtonFace::Ceiling => {
-                        redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Top));
-                    }
-                    ButtonFace::Floor => {
-                        redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
-                    }
-                    ButtonFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(button.facing.opposite().block_face())),
-                }
-            }
-            ActionResult::Success
-        }
         Block::Cake { .. } => {
             crate::container::eat_cake(world, pos);
             ActionResult::Success
         }
-        Block::RedstoneWire { wire } => redstone::wire::on_use(wire, world, pos),
         Block::SeaPickle { pickles } => {
             if let Some(Item::SeaPickle) = item_in_hand {
                 if pickles < 4 {
                     world.set_block(pos, Block::SeaPickle { pickles: pickles + 1 });
                 }
-            }
-            ActionResult::Success
-        }
-        Block::NoteBlock { instrument, note, powered } => {
-            world.set_block(
-                pos,
-                Block::NoteBlock {
-                    instrument,
-                    note: (note + 1) % 25,
-                    powered,
-                },
-            );
-            if redstone::noteblock::is_noteblock_unblocked(world, pos) {
-                redstone::noteblock::play_note_for_action(world, pos, instrument, (note + 1) % 25);
             }
             ActionResult::Success
         }
@@ -201,6 +137,85 @@ pub fn on_use(block: Block, world: &mut impl World, player: &mut Player, pos: Bl
         }
         _ => ActionResult::Pass,
     }
+}
+
+pub(crate) fn use_redstone(block: Block, world: &mut impl World, pos: BlockPos, player: Option<u128>) -> Option<ActionResult> {
+    Some(match block {
+        Block::RedstoneRepeater { repeater } => {
+            let mut repeater = repeater;
+            repeater.delay += 1;
+            if repeater.delay > 4 {
+                repeater.delay -= 4;
+            }
+            world.set_block(pos, Block::RedstoneRepeater { repeater });
+            ActionResult::Success
+        }
+        Block::RedstoneComparator { comparator } => {
+            let mut comparator = comparator;
+            comparator.mode = comparator.mode.toggle();
+            redstone::comparator::tick(comparator, world, pos);
+            world.set_block(pos, Block::RedstoneComparator { comparator });
+            if let Some(uuid) = player {
+                crate::sound::control_used(world, pos, block, uuid);
+            }
+            ActionResult::Success
+        }
+        Block::Lever { mut lever } => {
+            lever.powered = !lever.powered;
+            world.set_block(pos, Block::Lever { lever });
+            if let Some(uuid) = player {
+                crate::sound::control_used(world, pos, block, uuid);
+            }
+            redstone::update_surrounding_blocks(world, pos);
+            match lever.face {
+                LeverFace::Ceiling => {
+                    redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Top));
+                }
+                LeverFace::Floor => {
+                    redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
+                }
+                LeverFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(lever.facing.opposite().block_face())),
+            }
+            ActionResult::Success
+        }
+        Block::StoneButton { mut button } => {
+            if !button.powered {
+                button.powered = true;
+                world.set_block(pos, Block::StoneButton { button });
+                if let Some(uuid) = player {
+                    crate::sound::control_used(world, pos, block, uuid);
+                }
+                world.schedule_tick(pos, 10, TickPriority::Normal);
+                redstone::update_surrounding_blocks(world, pos);
+                match button.face {
+                    ButtonFace::Ceiling => {
+                        redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Top));
+                    }
+                    ButtonFace::Floor => {
+                        redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
+                    }
+                    ButtonFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(button.facing.opposite().block_face())),
+                }
+            }
+            ActionResult::Success
+        }
+        Block::RedstoneWire { wire } => redstone::wire::on_use(wire, world, pos),
+        Block::NoteBlock { instrument, note, powered } => {
+            world.set_block(
+                pos,
+                Block::NoteBlock {
+                    instrument,
+                    note: (note + 1) % 25,
+                    powered,
+                },
+            );
+            if redstone::noteblock::is_noteblock_unblocked(world, pos) {
+                redstone::noteblock::play_note_for_action(world, pos, instrument, (note + 1) % 25);
+            }
+            ActionResult::Success
+        }
+        _ => return None,
+    })
 }
 
 pub fn get_state_for_placement(world: &impl World, pos: BlockPos, item: Item, context: &UseOnBlockContext<'_>) -> Block {

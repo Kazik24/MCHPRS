@@ -275,7 +275,7 @@ fn run_trial(baseline: &GraphBackend, events: &[BlockPos], outputs: &[BlockPos],
     })
 }
 
-fn pending_work(graph: &GraphBackend) -> PendingWork {
+pub(crate) fn pending_work(graph: &GraphBackend) -> PendingWork {
     PendingWork {
         scheduled: graph
             .future

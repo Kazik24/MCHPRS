@@ -1166,9 +1166,7 @@ impl Plot {
         let block = self.world.get_block(pos);
         match block {
             block if block.pressure_plate_powered().is_some() => {
-                self.world.set_block(pos, block.with_pressure_plate_power(powered).unwrap());
-                redstone::update_surrounding_blocks(&mut self.world, pos);
-                redstone::update_surrounding_blocks(&mut self.world, pos.offset(BlockFace::Bottom));
+                redstone::set_pressure_plate(&mut self.world, pos, block, powered);
             }
             _ => warn!("Block at {} is not a pressure plate", pos),
         }

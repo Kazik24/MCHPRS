@@ -1,4 +1,10 @@
 //! Compiled source-derived signal updates for bounded physical circuits.
+#[path = "physical_signal_network/entry_work.rs"]
+mod entry_work;
+#[cfg(test)]
+#[path = "physical_signal_network/repeater_tests.rs"]
+mod repeater_tests;
+pub(crate) use entry_work::EntryWork;
 #[derive(Clone, Copy)]
 struct WireSample {
     site: super::program_graph::SiteId,
@@ -8,7 +14,12 @@ struct WireSample {
 
 #[derive(Clone, Debug)]
 pub(crate) struct SignalEvent {
+    /// The exact piston receiver selected by this callback delivery.
+    pub(crate) piston: super::program_graph::PistonId,
+    /// Unique occurrence within this signal network; route alone is not unique.
+    pub(crate) occurrence: u64,
     pub(crate) route: usize,
+    pub(crate) action: mchprs_world::PistonAction,
     pub(crate) piston_input: u8,
     pub(crate) captures: Vec<CapturedSite>,
     pub(crate) piston_guards: Vec<(super::program_graph::GuardId, bool)>,
@@ -29,26 +40,39 @@ pub(crate) struct PhysicalSignalNetwork {
     state: super::program_graph::CircuitState,
     wire_samples: Vec<(usize, Vec<WireSample>)>,
     torches: Vec<usize>,
-    repeaters: Vec<usize>,
     observers: Vec<usize>,
     comparators: Vec<usize>,
     lamps: Vec<usize>,
-    torch_due: Vec<Option<u64>>,
-    repeater_due: Vec<Option<u64>>,
-    observer_due: Vec<Option<u64>>,
-    comparator_due: Vec<Option<u64>>,
-    lamp_due: Vec<Option<u64>>,
+    scheduler: super::TickScheduler<usize>,
     detached_output_repeaters: Vec<usize>,
     tick: u64,
+    next_occurrence: u64,
 }
 
 impl PhysicalSignalNetwork {
-    pub(crate) fn compile(program: &super::program_graph::CircuitProgram, state: &super::program_graph::CircuitState) -> Result<Self, &'static str> {
+    pub(crate) fn compile(
+        program: &super::program_graph::CircuitProgram,
+        state: &super::program_graph::CircuitState,
+        entry: &EntryWork,
+    ) -> Result<Self, String> {
+        entry.validate(program, state)?;
+        let mut network = Self::compile_state(program, state).map_err(str::to_owned)?;
+        network.tick = entry.logical_tick();
+        Ok(network)
+    }
+
+    fn compile_state(program: &super::program_graph::CircuitProgram, state: &super::program_graph::CircuitState) -> Result<Self, &'static str> {
         use super::components::NodeType;
         use super::program_graph::{CircuitNodeKind, ComponentState, PowerTarget, SiteSource};
+        if state
+            .components
+            .iter()
+            .any(|component| matches!(component, ComponentState::Electrical(node) if node.pending_tick))
+        {
+            return Err("scheduled component entry work is unsupported");
+        }
         let mut wire_samples = Vec::new();
         let mut torches = Vec::new();
-        let mut repeaters = Vec::new();
         let mut observers = Vec::new();
         let mut comparators = Vec::new();
         let mut lamps = Vec::new();
@@ -61,7 +85,7 @@ impl PhysicalSignalNetwork {
                     lamps.push(node_index);
                 }
                 CircuitNodeKind::Electrical(NodeType::Torch) => torches.push(node_index),
-                CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => repeaters.push(node_index),
+                CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => {}
                 CircuitNodeKind::Electrical(NodeType::Comparator { .. }) => {
                     if program.comparator_input(super::program_graph::NodeId::new(node_index as u32)).is_none() {
                         return Err("comparator input plan is unavailable");
@@ -160,17 +184,13 @@ impl PhysicalSignalNetwork {
             state: state.clone(),
             wire_samples,
             torches,
-            repeaters,
             observers,
             comparators,
             lamps,
-            torch_due: vec![None; program.nodes().len()],
-            repeater_due: vec![None; program.nodes().len()],
-            observer_due: vec![None; program.nodes().len()],
-            comparator_due: vec![None; program.nodes().len()],
-            lamp_due: vec![None; program.nodes().len()],
+            scheduler: super::TickScheduler::default(),
             detached_output_repeaters: Vec::new(),
             tick: 0,
+            next_occurrence: 0,
         })
     }
 
@@ -191,14 +211,7 @@ impl PhysicalSignalNetwork {
         if source.powered == powered {
             return Ok(Vec::new());
         }
-        let previous = self.state.clone();
-        let previous_due = (
-            self.torch_due.clone(),
-            self.repeater_due.clone(),
-            self.observer_due.clone(),
-            self.comparator_due.clone(),
-            self.lamp_due.clone(),
-        );
+        let previous = self.clone();
         let ComponentState::Electrical(source) = &mut self.state.components[index] else {
             return Err("lever state is unavailable");
         };
@@ -212,12 +225,7 @@ impl PhysicalSignalNetwork {
             self.deliver_routes(&routes)
         })();
         if result.is_err() {
-            self.state = previous;
-            self.torch_due = previous_due.0;
-            self.repeater_due = previous_due.1;
-            self.observer_due = previous_due.2;
-            self.comparator_due = previous_due.3;
-            self.lamp_due = previous_due.4;
+            *self = previous;
         }
         result
     }
@@ -261,6 +269,56 @@ impl PhysicalSignalNetwork {
         Ok(Vec::new())
     }
 
+    pub(crate) fn resource_destination_available(
+        &self,
+        resource: super::program_graph::ResourceId,
+        contact: super::program_graph::ContactId,
+        vacated_head: Option<super::program_graph::PistonId>,
+    ) -> Result<bool, &'static str> {
+        let Some(spec) = self.program.resources().get(resource.index()) else {
+            return Ok(false);
+        };
+        if !spec.contacts.contains(&contact)
+            || self
+                .program
+                .resources_at_contact(contact)
+                .iter()
+                .any(|other| *other != resource && self.state.resources[other.index()].at == contact)
+        {
+            return Ok(false);
+        }
+        if self
+            .program
+            .base_pistons_at_contact(contact)
+            .iter()
+            .any(|id| !self.state.pistons[id.index()].availability.base_pending())
+        {
+            return Ok(false);
+        }
+        if self.program.head_pistons_at_contact(contact).iter().any(|id| {
+            let state = self.state.pistons[id.index()];
+            state.head_present
+                && matches!(
+                    state.availability,
+                    super::program_graph::PistonAvailability::Ready
+                        | super::program_graph::PistonAvailability::HeadPending
+                        | super::program_graph::PistonAvailability::BasePendingHeadPresent
+                )
+                && Some(*id) != vacated_head
+        }) {
+            return Ok(false);
+        }
+        if vacated_head.is_some_and(|id| self.program.pistons()[id.index()].near == contact) {
+            return Ok(true);
+        }
+        for variant in &self.program.contacts()[contact.index()].variants {
+            if guard_matches(variant.when, &self.program, &self.state, 0)? {
+                return Ok(self.program.profile_block(variant.profile).ok_or("contact profile unavailable")? == mchprs_blocks::blocks::Block::Air);
+            }
+        }
+        Err("contact has no active profile")
+    }
+
     pub(crate) fn set_piston_state(&mut self, piston: usize, state: super::program_graph::PistonState) -> Result<(), &'static str> {
         *self.state.pistons.get_mut(piston).ok_or("piston state is unavailable")? = state;
         Ok(())
@@ -271,132 +329,119 @@ impl PhysicalSignalNetwork {
     }
 
     pub(crate) fn advance_tick(&mut self) -> Result<Vec<SignalEvent>, &'static str> {
-        let previous = (
-            self.state.clone(),
-            self.torch_due.clone(),
-            self.repeater_due.clone(),
-            self.observer_due.clone(),
-            self.comparator_due.clone(),
-            self.lamp_due.clone(),
-            self.tick,
-        );
+        let previous = self.clone();
         let result = self.advance_tick_inner();
         if result.is_err() {
-            self.state = previous.0;
-            self.torch_due = previous.1;
-            self.repeater_due = previous.2;
-            self.observer_due = previous.3;
-            self.comparator_due = previous.4;
-            self.lamp_due = previous.5;
-            self.tick = previous.6;
+            *self = previous;
         }
         result
     }
 
     fn advance_tick_inner(&mut self) -> Result<Vec<SignalEvent>, &'static str> {
-        use super::program_graph::ComponentState;
         self.tick += 1;
-        let mut changed = Vec::new();
-        for &node_index in &self.torches {
-            if !self.torch_due[node_index].is_some_and(|due| due <= self.tick) {
-                continue;
-            }
-            let input = self.input_power(node_index, super::program_graph::InputPort::Main)?;
-            let ComponentState::Electrical(state) = &mut self.state.components[node_index] else {
-                return Err("torch state is unavailable");
+        let mut events = self.drain_scheduled()?;
+        self.scheduler.end_last_tick_move_next();
+        events.extend(self.drain_scheduled()?);
+        Ok(events)
+    }
+
+    fn drain_scheduled(&mut self) -> Result<Vec<SignalEvent>, &'static str> {
+        use super::components::NodeType;
+        use super::program_graph::{CircuitNodeKind, ComponentState, InputPort};
+        use mchprs_world::TickPriority;
+        let mut events = Vec::new();
+        while let Some(node) = self.scheduler.this_tick().pop_first() {
+            let kind = self.program.nodes()[node].kind.clone();
+            let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                return Err("scheduled component state unavailable");
             };
             state.pending_tick = false;
-            let powered = input == 0;
-            self.torch_due[node_index] = None;
-            if state.powered != powered {
-                state.powered = powered;
-                state.output_strength = if powered { 15 } else { 0 };
-                changed.push(node_index);
-            }
-        }
-        for &node_index in &self.observers {
-            if !self.observer_due[node_index].is_some_and(|due| due <= self.tick) {
-                continue;
-            }
-            let ComponentState::Electrical(state) = &mut self.state.components[node_index] else {
-                return Err("observer state is unavailable");
-            };
-            state.pending_tick = false;
-            state.powered = !state.powered;
-            state.output_strength = if state.powered { 15 } else { 0 };
-            self.observer_due[node_index] = None;
-            if state.powered {
-                state.pending_tick = true;
-                self.observer_due[node_index] = Some(self.tick + 2);
-            }
-            changed.push(node_index);
-        }
-        for &node_index in &self.repeaters {
-            if !self.repeater_due[node_index].is_some_and(|due| due <= self.tick) {
-                continue;
-            }
-            let input = self.input_power(node_index, super::program_graph::InputPort::Main)?;
-            let delay = self.repeater_delay(node_index);
-            let ComponentState::Electrical(repeater) = &mut self.state.components[node_index] else {
-                return Err("repeater state is unavailable");
-            };
-            repeater.pending_tick = false;
-            self.repeater_due[node_index] = None;
-            if repeater.repeater_locked {
-                continue;
-            }
-            if repeater.powered && input == 0 {
-                repeater.powered = false;
-                repeater.output_strength = 0;
-                changed.push(node_index);
-            } else if !repeater.powered {
-                if input == 0 {
-                    repeater.pending_tick = true;
-                    self.repeater_due[node_index] = Some(self.tick + delay);
+            let mut reschedule = None;
+            let changed = match kind {
+                CircuitNodeKind::Electrical(NodeType::Torch) => {
+                    let input = self.input_power(node, InputPort::Main)?;
+                    let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                        unreachable!()
+                    };
+                    let powered = input == 0;
+                    let changed = state.powered != powered;
+                    state.powered = powered;
+                    state.output_strength = u8::from(powered) * 15;
+                    changed
                 }
-                repeater.powered = true;
-                repeater.output_strength = 15;
-                changed.push(node_index);
-            }
-        }
-        for &node_index in &self.comparators {
-            if !self.comparator_due[node_index].is_some_and(|due| due <= self.tick) {
-                continue;
-            }
-            let mode = match self.program.nodes()[node_index].kind {
-                super::program_graph::CircuitNodeKind::Electrical(super::components::NodeType::Comparator { mode, .. }) => mode,
-                _ => return Err("comparator node kind is unavailable"),
+                CircuitNodeKind::Observer { .. } => {
+                    let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                        unreachable!()
+                    };
+                    state.powered = !state.powered;
+                    state.output_strength = u8::from(state.powered) * 15;
+                    if state.powered {
+                        reschedule = Some((2, TickPriority::Normal));
+                    }
+                    true
+                }
+                CircuitNodeKind::Electrical(NodeType::Repeater { .. }) => {
+                    let input = self.input_power(node, InputPort::Main)?;
+                    let delay = self.repeater_delay(node) as usize;
+                    let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                        unreachable!()
+                    };
+                    if state.repeater_locked {
+                        false
+                    } else if state.powered && input == 0 {
+                        state.powered = false;
+                        state.output_strength = 0;
+                        true
+                    } else if !state.powered {
+                        if input == 0 {
+                            reschedule = Some((delay, TickPriority::Higher));
+                        }
+                        state.powered = true;
+                        state.output_strength = 15;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                CircuitNodeKind::Electrical(NodeType::Comparator { mode, .. }) => {
+                    let strength = self.comparator_output(node)?;
+                    let powered = self.comparator_powered(node)?;
+                    let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                        unreachable!()
+                    };
+                    if strength != state.output_strength || mode == mchprs_blocks::blocks::ComparatorMode::Compare {
+                        state.powered = powered;
+                        state.output_strength = strength;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                CircuitNodeKind::Electrical(NodeType::Lamp) => {
+                    let input = self.input_power(node, InputPort::Main)?;
+                    let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                        unreachable!()
+                    };
+                    if input == 0 {
+                        state.powered = false;
+                        state.output_strength = 0;
+                    }
+                    false
+                }
+                _ => return Err("unsupported scheduled component"),
             };
-            let strength = self.comparator_output(node_index)?;
-            let powered = self.comparator_powered(node_index)?;
-            let ComponentState::Electrical(state) = &mut self.state.components[node_index] else {
-                return Err("comparator state is unavailable");
-            };
-            state.pending_tick = false;
-            self.comparator_due[node_index] = None;
-            if strength != state.output_strength || mode == mchprs_blocks::blocks::ComparatorMode::Compare {
-                state.powered = powered;
-                state.output_strength = strength;
-                changed.push(node_index);
+            if let Some((delay, priority)) = reschedule {
+                self.scheduler.schedule_half_tick(node, delay, priority);
+                let ComponentState::Electrical(state) = &mut self.state.components[node] else {
+                    unreachable!()
+                };
+                state.pending_tick = true;
             }
-        }
-        changed.extend(self.settle_wires()?);
-        self.schedule_torches()?;
-        let routes = self.output_routes(changed);
-        let events = self.deliver_routes(&routes)?;
-        for &node_index in &self.lamps {
-            if !self.lamp_due[node_index].is_some_and(|due| due <= self.tick) {
-                continue;
-            }
-            let input = self.input_power(node_index, super::program_graph::InputPort::Main)?;
-            let ComponentState::Electrical(lamp) = &mut self.state.components[node_index] else {
-                return Err("lamp state is unavailable");
-            };
-            lamp.pending_tick = false;
-            self.lamp_due[node_index] = None;
-            if input == 0 {
-                lamp.powered = false;
-                lamp.output_strength = 0;
+            if changed {
+                let mut nodes = self.settle_wires()?;
+                nodes.push(node);
+                self.schedule_torches()?;
+                events.extend(self.deliver_routes(&self.output_routes(nodes))?);
             }
         }
         Ok(events)
@@ -498,19 +543,24 @@ impl PhysicalSignalNetwork {
     }
 
     pub(crate) fn has_pending_torch_work(&self) -> bool {
-        self.torch_due.iter().any(Option::is_some)
+        self.scheduler.iter().any(|(node, _, _)| self.torches.contains(node))
     }
 
     pub(crate) fn has_pending_observer_work(&self) -> bool {
-        self.observer_due.iter().any(Option::is_some)
+        self.scheduler.iter().any(|(node, _, _)| self.observers.contains(node))
     }
 
     pub(crate) fn has_pending_repeater_work(&self) -> bool {
-        self.repeater_due.iter().any(Option::is_some)
+        self.scheduler.iter().any(|(node, _, _)| {
+            matches!(
+                self.program.nodes()[*node].kind,
+                super::program_graph::CircuitNodeKind::Electrical(super::components::NodeType::Repeater { .. })
+            )
+        })
     }
 
     pub(crate) fn has_pending_comparator_work(&self) -> bool {
-        self.comparator_due.iter().any(Option::is_some)
+        self.scheduler.iter().any(|(node, _, _)| self.comparators.contains(node))
     }
 
     pub(crate) fn repeater_inputs(&self, position: mchprs_blocks::BlockPos) -> Result<(u8, bool), &'static str> {
@@ -541,7 +591,9 @@ impl PhysicalSignalNetwork {
         if self.detached_output_repeaters.contains(&node) {
             return Err("repeater is already owned by an output adapter");
         }
-        self.repeaters.retain(|&candidate| candidate != node);
+        if self.scheduler.contains(&node) {
+            return Err("repeater has scheduled work");
+        }
         self.detached_output_repeaters.push(node);
         Ok(())
     }
@@ -624,8 +676,17 @@ impl PhysicalSignalNetwork {
                     let input = self
                         .input_power(piston.node.index(), InputPort::Main)?
                         .max(self.input_power(piston.node.index(), InputPort::Quasi)?);
+                    let occurrence = self.next_occurrence;
+                    self.next_occurrence = self.next_occurrence.wrapping_add(1);
                     delivered.push(SignalEvent {
+                        piston: id,
+                        occurrence,
                         route: route_index,
+                        action: if input > 0 {
+                            mchprs_world::PistonAction::Extend
+                        } else {
+                            mchprs_world::PistonAction::Retract
+                        },
                         piston_input: input,
                         captures: captures.clone(),
                         piston_guards: vec![(delivery.guard, true)],
@@ -680,8 +741,8 @@ impl PhysicalSignalNetwork {
                 let ComponentState::Electrical(torch) = &mut self.state.components[receiver.index()] else {
                     return Err("torch state is unavailable");
                 };
-                if torch.powered == (input > 0) && self.torch_due[receiver.index()].is_none() {
-                    self.torch_due[receiver.index()] = Some(self.tick + 2);
+                if torch.powered == (input > 0) && !self.scheduler.contains(&receiver.index()) {
+                    self.scheduler.schedule_half_tick(receiver.index(), 2, mchprs_world::TickPriority::Normal);
                     torch.pending_tick = true;
                 }
                 continue;
@@ -696,13 +757,18 @@ impl PhysicalSignalNetwork {
                 let main = self.input_power(receiver.index(), InputPort::Main)? > 0;
                 let side = self.input_power(receiver.index(), InputPort::Side)? > 0;
                 let delay = self.repeater_delay(receiver.index());
+                let priority = match self.program.nodes()[receiver.index()].kind {
+                    CircuitNodeKind::Electrical(NodeType::Repeater { facing_diode: true, .. }) => mchprs_world::TickPriority::Highest,
+                    _ if !main => mchprs_world::TickPriority::Higher,
+                    _ => mchprs_world::TickPriority::High,
+                };
                 let ComponentState::Electrical(repeater) = &mut self.state.components[receiver.index()] else {
                     return Err("repeater state is unavailable");
                 };
                 repeater.repeater_locked = side;
                 if !side && !repeater.pending_tick && main != repeater.powered {
                     repeater.pending_tick = true;
-                    self.repeater_due[receiver.index()] = Some(self.tick + delay);
+                    self.scheduler.schedule_half_tick(receiver.index(), delay as usize, priority);
                 }
                 continue;
             }
@@ -710,7 +776,7 @@ impl PhysicalSignalNetwork {
                 self.program.nodes()[receiver.index()].kind,
                 CircuitNodeKind::Electrical(NodeType::Comparator { .. })
             ) {
-                if self.comparator_due[receiver.index()].is_none() {
+                if !self.scheduler.contains(&receiver.index()) {
                     let strength = self.comparator_output(receiver.index())?;
                     let powered = self.comparator_powered(receiver.index())?;
                     let ComponentState::Electrical(comparator) = &mut self.state.components[receiver.index()] else {
@@ -718,7 +784,15 @@ impl PhysicalSignalNetwork {
                     };
                     if strength != comparator.output_strength || powered != comparator.powered {
                         comparator.pending_tick = true;
-                        self.comparator_due[receiver.index()] = Some(self.tick + 2);
+                        let priority = if matches!(
+                            self.program.nodes()[receiver.index()].kind,
+                            CircuitNodeKind::Electrical(NodeType::Comparator { facing_diode: true, .. })
+                        ) {
+                            mchprs_world::TickPriority::High
+                        } else {
+                            mchprs_world::TickPriority::Normal
+                        };
+                        self.scheduler.schedule_half_tick(receiver.index(), 2, priority);
                     }
                 }
                 continue;
@@ -750,8 +824,8 @@ impl PhysicalSignalNetwork {
                 if input && !lamp.powered {
                     lamp.powered = true;
                     lamp.output_strength = 0;
-                } else if !input && lamp.powered && self.lamp_due[receiver.index()].is_none() {
-                    self.lamp_due[receiver.index()] = Some(self.tick + 4);
+                } else if !input && lamp.powered && !self.scheduler.contains(&receiver.index()) {
+                    self.scheduler.schedule_half_tick(receiver.index(), 4, mchprs_world::TickPriority::Normal);
                     lamp.pending_tick = true;
                 }
                 continue;
@@ -775,8 +849,8 @@ impl PhysicalSignalNetwork {
                 return Err("observer state is unavailable");
             };
             let qualifies = direction.map_or(observer.powered, |direction| direction == facing);
-            if qualifies && self.observer_due[receiver.index()].is_none() {
-                self.observer_due[receiver.index()] = Some(self.tick + 2);
+            if qualifies && !self.scheduler.contains(&receiver.index()) {
+                self.scheduler.schedule_half_tick(receiver.index(), 2, mchprs_world::TickPriority::Normal);
                 observer.pending_tick = true;
             }
         }
@@ -861,8 +935,8 @@ impl PhysicalSignalNetwork {
                 return Err("torch state is unavailable");
             };
             if state.powered != (input == 0) {
-                if self.torch_due[node_index].is_none() {
-                    self.torch_due[node_index] = Some(self.tick + 2);
+                if !self.scheduler.contains(&node_index) {
+                    self.scheduler.schedule_half_tick(node_index, 2, mchprs_world::TickPriority::Normal);
                     let ComponentState::Electrical(state) = &mut self.state.components[node_index] else {
                         return Err("torch state is unavailable");
                     };
@@ -925,7 +999,7 @@ impl PhysicalSignalNetwork {
                 });
         }
         let spec = &self.program.sites()[site.index()];
-        let (block, strength) = match spec.source {
+        let (mut block, strength) = match spec.source {
             SiteSource::Component(node) => (self.component_block(node.index())?, self.component_strength(node.index())?),
             SiteSource::Constant(profile) => (
                 self.program.profile_block(profile).ok_or("constant profile is unavailable")?,
@@ -942,6 +1016,20 @@ impl PhysicalSignalNetwork {
             }
         };
         use super::program_graph::PowerPort::*;
+        if matches!(port, Weak(_) | Strong(_))
+            && let (SiteSource::Component(node), mchprs_blocks::blocks::Block::RedstoneWire { wire }) = (spec.source, block)
+            && let super::program_graph::CircuitNodeKind::Wire(index) = self.program.nodes()[node.index()].kind
+        {
+            let plan = &self.program.wires()[index];
+            let mut neighbors = [mchprs_blocks::blocks::Block::Air; 24];
+            for (slot, site) in plan.canonical_neighbors.iter().enumerate() {
+                neighbors[slot] = site_block(&self.program, &self.state, *site)?;
+            }
+            let raw = crate::redstone::wire::get_raw_sides_from_neighbor_read(wire, |slot| neighbors[slot]);
+            block = mchprs_blocks::blocks::Block::RedstoneWire {
+                wire: crate::redstone::wire::regulate_sides(wire, raw),
+            };
+        }
         Ok(match port {
             Output | Stored => strength,
             Weak(face) if crate::redpiler::power_rules::emits_weak(block, face) => strength,
@@ -973,7 +1061,7 @@ impl PhysicalSignalNetwork {
 
     fn repeater_delay(&self, node: usize) -> u64 {
         match self.program.nodes()[node].kind {
-            super::program_graph::CircuitNodeKind::Electrical(super::components::NodeType::Repeater { delay, .. }) => u64::from(delay),
+            super::program_graph::CircuitNodeKind::Electrical(super::components::NodeType::Repeater { delay, .. }) => u64::from(delay) * 2,
             _ => 1,
         }
     }
@@ -1284,12 +1372,15 @@ mod lamp_tests {
         let lamp = program.position_index()[&LAMP].index();
         let source = program.position_index()[&SOURCE];
         let source_route = program.nodes()[source.index()].output_route.unwrap().index();
-        let mut network = PhysicalSignalNetwork::compile(&program, &state).unwrap();
+        let mut network = PhysicalSignalNetwork::compile(&program, &state, &EntryWork::capture(&native, bounds)).unwrap();
 
         set_source(&mut native, &mut network, true);
         assert_matches(&native, &network, lamp);
         set_source(&mut native, &mut network, false);
-        assert_eq!(network.lamp_due[lamp], Some(4));
+        assert_eq!(
+            network.scheduler.iter().find(|(node, _, _)| **node == lamp).map(|(_, delay, _)| delay),
+            Some(4)
+        );
         advance(&mut native, &mut network, lamp, 1);
         set_source(&mut native, &mut network, true);
         advance(&mut native, &mut network, lamp, 3);
@@ -1299,7 +1390,11 @@ mod lamp_tests {
         advance(&mut native, &mut network, lamp, 1);
         network.deliver_callback_routes(&[source_route]).unwrap();
         redstone::update_surrounding_blocks(&mut native, SOURCE);
-        assert_eq!(network.lamp_due[lamp], Some(8), "repeated callbacks preserve the original due time");
+        assert_eq!(
+            network.scheduler.iter().find(|(node, _, _)| **node == lamp).map(|(_, delay, _)| delay),
+            Some(3),
+            "repeated callbacks preserve the original due time"
+        );
         advance(&mut native, &mut network, lamp, 3);
         assert!(matches!(native.get_block(LAMP), Block::RedstoneLamp { lit: false }));
     }
@@ -1389,7 +1484,7 @@ mod comparator_tests {
         for mode in [ComparatorMode::Compare, ComparatorMode::Subtract] {
             let initial = world(mode);
             let (program, state, _) = physical_program(&initial, BOUNDS).unwrap();
-            let mut network = PhysicalSignalNetwork::compile(&program, &state).unwrap();
+            let mut network = PhysicalSignalNetwork::compile(&program, &state, &EntryWork::capture(&initial, BOUNDS)).unwrap();
             let mut native = initial.activation_snapshot();
 
             network.set_lever(SOURCE, true).unwrap();
@@ -1422,7 +1517,7 @@ mod comparator_tests {
             assert_matches_native(&network, &program, &native);
 
             if mode == ComparatorMode::Compare {
-                let mut pulse_network = PhysicalSignalNetwork::compile(&program, &state).unwrap();
+                let mut pulse_network = PhysicalSignalNetwork::compile(&program, &state, &EntryWork::capture(&initial, BOUNDS)).unwrap();
                 let mut pulse_native = initial.activation_snapshot();
                 pulse_network.set_lever(SOURCE, true).unwrap();
                 set_source(&mut pulse_native, true);

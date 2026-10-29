@@ -295,6 +295,12 @@ pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<B
     }
 }
 
+pub(crate) fn set_pressure_plate(world: &mut impl World, pos: BlockPos, block: Block, powered: bool) {
+    world.set_block(pos, block.with_pressure_plate_power(powered).unwrap());
+    update_surrounding_blocks(world, pos);
+    update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
+}
+
 pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
     if block.is_command_block() {
         command_block::tick(world, pos);
