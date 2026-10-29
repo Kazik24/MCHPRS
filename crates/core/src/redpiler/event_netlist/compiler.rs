@@ -8,7 +8,7 @@ use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, Guard, InputPort, LoweredCircuit, NodeId, PistonAvailability, PowerPort, PowerTarget, ProfileElectrical,
     SiteSource, SiteTest, StateTest,
 };
-use mchprs_blocks::{blocks::Block, BlockPos};
+use mchprs_blocks::{BlockPos, blocks::Block};
 use std::sync::Arc;
 
 pub(crate) struct CompiledEvent {

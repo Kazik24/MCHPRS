@@ -339,11 +339,25 @@ fn read_schematic(mut file: impl Read, max_cells: Option<u32>) -> Result<(WorldE
     let nbt = nbt::Blob::from_reader(&mut Cursor::new(decoded)).context(messages::SCHEMATIC_GZIP_READ_FAILED)?;
     let schema = Schema::read(&nbt).context(messages::SCHEMATIC_SCHEMA_INVALID)?;
     if let Some(limit) = max_cells {
-        let cells = schema.dimensions.iter().try_fold(1u32, |n, d| n.checked_mul(*d)).context("schematic dimensions overflow")?;
-        anyhow::ensure!(cells <= limit && schema.dimensions.iter().all(|d| *d <= 64), "schematic exceeds API dimensions or cell limit");
-        let root = if nbt.get("Schematic").is_some() { compound(&nbt.content, "Schematic")? } else { &nbt.content };
+        let cells = schema
+            .dimensions
+            .iter()
+            .try_fold(1u32, |n, d| n.checked_mul(*d))
+            .context("schematic dimensions overflow")?;
+        anyhow::ensure!(
+            cells <= limit && schema.dimensions.iter().all(|d| *d <= 64),
+            "schematic exceeds API dimensions or cell limit"
+        );
+        let root = if nbt.get("Schematic").is_some() {
+            compound(&nbt.content, "Schematic")?
+        } else {
+            &nbt.content
+        };
         if let Some(entities) = root.get("Entities") {
-            anyhow::ensure!(matches!(entities, nbt::Value::List(items) if items.is_empty()), "schematic entities are unsupported");
+            anyhow::ensure!(
+                matches!(entities, nbt::Value::List(items) if items.is_empty()),
+                "schematic entities are unsupported"
+            );
         }
         anyhow::ensure!(schema.entities.is_empty(), "schematic block entities are unsupported");
     }

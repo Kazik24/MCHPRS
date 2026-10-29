@@ -51,7 +51,10 @@ impl Session {
         use std::io::Cursor;
         let clipboard = crate::plot::worldedit::load_block_schematic(Cursor::new(bytes), max_cells)?;
         let size = [clipboard.size_x, clipboard.size_y, clipboard.size_z];
-        let cells = size.iter().try_fold(1u32, |n, d| n.checked_mul(*d)).ok_or_else(|| anyhow::anyhow!("schematic dimensions overflow"))?;
+        let cells = size
+            .iter()
+            .try_fold(1u32, |n, d| n.checked_mul(*d))
+            .ok_or_else(|| anyhow::anyhow!("schematic dimensions overflow"))?;
         if cells > max_cells || size.iter().any(|d| *d > 64) {
             bail!("schematic exceeds API dimensions or cell limit");
         }
@@ -62,13 +65,18 @@ impl Session {
                 for z in 0..size[2] as i32 {
                     let index = (x + z * size[0] as i32 + y * size[0] as i32 * size[2] as i32) as usize;
                     let block = Block::from_id(clipboard.data.get_entry(index));
-                    if !matches!(block, Block::Air) { blocks.push((origin + BlockPos::new(x, y, z), block)); }
+                    if !matches!(block, Block::Air) {
+                        blocks.push((origin + BlockPos::new(x, y, z), block));
+                    }
                 }
             }
         }
         let mut session = Self::new(Snapshot {
-            min: origin, max: origin + BlockPos::new(size[0] as i32 - 1, size[1] as i32 - 1, size[2] as i32 - 1),
-            blocks, entities: vec![], ticks: vec![],
+            min: origin,
+            max: origin + BlockPos::new(size[0] as i32 - 1, size[1] as i32 - 1, size[2] as i32 - 1),
+            blocks,
+            entities: vec![],
+            ticks: vec![],
         })?;
         let (min, max) = session.bounds;
         crate::world::for_each_block_mut_optimized(&mut session.world, min, max, |world, pos| {

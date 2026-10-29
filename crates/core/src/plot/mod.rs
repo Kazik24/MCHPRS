@@ -47,7 +47,7 @@ use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
 use crate::world::storage::Chunk;
-use crate::world::{BlockAction, World};
+use crate::world::{BlockAction, RedstoneUpdateObservation, World};
 use anyhow::Context;
 use bus::BusReader;
 use mchprs_blocks::block_entities::BlockEntity;
@@ -166,6 +166,10 @@ pub struct PlotWorld {
     waveform: crate::waveform::Recorder,
     update_stats: UpdateStats,
     bulb_light: block_light::BulbLight,
+    redstone_update_observations: Option<Vec<RedstoneUpdateObservation>>,
+    scratch_capture_bounds: Option<(BlockPos, BlockPos)>,
+    scratch_boundary_read: std::cell::Cell<Option<BlockPos>>,
+    scratch_suppress_commands: bool,
 }
 
 #[derive(Default)]
@@ -210,6 +214,10 @@ impl PlotWorld {
             waveform: Default::default(),
             update_stats: Default::default(),
             bulb_light: Default::default(),
+            redstone_update_observations: None,
+            scratch_capture_bounds: None,
+            scratch_boundary_read: std::cell::Cell::new(None),
+            scratch_suppress_commands: false,
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -392,6 +400,24 @@ impl PlotWorld {
 
     pub fn scheduler(&self) -> &TickScheduler<ScheduledBlockTick> {
         &self.to_be_ticked
+    }
+
+    pub(crate) fn observe_redstone_updates(&mut self, enabled: bool) {
+        self.redstone_update_observations = enabled.then(Vec::new);
+    }
+
+    pub(crate) fn take_redstone_update_observations(&mut self) -> Vec<RedstoneUpdateObservation> {
+        self.redstone_update_observations.take().unwrap_or_default()
+    }
+
+    pub(crate) fn configure_scratch(&mut self, bounds: (BlockPos, BlockPos)) {
+        self.scratch_capture_bounds = Some(bounds);
+        self.scratch_boundary_read.set(None);
+        self.scratch_suppress_commands = true;
+    }
+
+    pub(crate) fn take_scratch_boundary_read(&self) -> Option<BlockPos> {
+        self.scratch_boundary_read.take()
     }
 
     pub(crate) fn clear_scheduled_ticks(&mut self) {
@@ -581,10 +607,19 @@ impl PlotWorld {
 }
 
 impl World for PlotWorld {
+    fn observe_redstone_update(&mut self, pos: BlockPos, block: Block, direction: Option<BlockFace>) {
+        if let Some(observations) = &mut self.redstone_update_observations {
+            observations.push(RedstoneUpdateObservation { pos, block, direction });
+        }
+    }
+
     fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {
         self.execute_command_block_at(BlockPos::new(0, 0, 0), command, source)
     }
     fn execute_command_block_at(&mut self, pos: BlockPos, command: &str, source: &str) -> Result<(), String> {
+        if self.scratch_suppress_commands {
+            return Err("command-block execution is suppressed in scratch worlds".into());
+        }
         if self.command_output_window.elapsed() >= Duration::from_secs(1) {
             self.command_output_window = Instant::now();
             self.command_output_count = 0;
@@ -672,6 +707,12 @@ impl World for PlotWorld {
 
     /// Returns the block state id of the block at `pos`
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
+        if let Some((min, max)) = self.scratch_capture_bounds
+            && (pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
+        {
+            self.scratch_boundary_read.set(Some(pos));
+            return 0;
+        }
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
             None => return 0,

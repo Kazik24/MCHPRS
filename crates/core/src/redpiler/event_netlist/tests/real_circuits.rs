@@ -1,8 +1,8 @@
 //! Offline executable gates for the pinned adder and counter fixtures.
 use super::*;
 use crate::plot::{
+    PLOT_WIDTH, PlotWorld,
     worldedit::{load_schematic, paste_clipboard},
-    PlotWorld, PLOT_WIDTH,
 };
 use crate::redpiler::components::NodeType;
 use crate::redpiler::event_netlist::executor::EventState;
@@ -10,7 +10,7 @@ use crate::redpiler::physical_signal_network::{EntryWork, PhysicalSignalNetwork}
 use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, ContactId, InputPort, LoweredCircuit, PistonId, PistonLane, PowerPort, PowerTarget, ResourceId,
 };
-use crate::redpiler::{analysis::AnalysisLimits, passes, CompilerOptions, TaskMonitor};
+use crate::redpiler::{CompilerOptions, TaskMonitor, analysis::AnalysisLimits, passes};
 use crate::world::storage::Chunk;
 use mchprs_blocks::BlockPos;
 use serde_json::Value;
@@ -737,12 +737,16 @@ fn compiled_event_pistons_keep_quasi_power_during_trigger_departures() {
                 event.set_input(node, if value { 15 } else { 0 }).unwrap();
                 if pos == trigger {
                     let native_trace = native_trace.unwrap();
-                    assert!(native_trace
-                        .iter()
-                        .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Sample && entry.powered));
-                    assert!(!native_trace
-                        .iter()
-                        .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Request));
+                    assert!(
+                        native_trace
+                            .iter()
+                            .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Sample && entry.powered)
+                    );
+                    assert!(
+                        !native_trace
+                            .iter()
+                            .any(|entry| entry.pos == piston_positions[0] && entry.stage == Stage::Request)
+                    );
                     assert!(
                         !native_trace.iter().any(|entry| entry.pos == piston_positions[1]),
                         "Piston 9 must not update without resource 8 departure"
@@ -802,8 +806,8 @@ fn compiled_event_pistons_keep_quasi_power_during_trigger_departures() {
 
 fn set_native_lever(world: &mut PlotWorld, pos: BlockPos, powered: bool) {
     use crate::world::World;
-    use mchprs_blocks::blocks::{Block, LeverFace};
     use mchprs_blocks::BlockFace;
+    use mchprs_blocks::blocks::{Block, LeverFace};
 
     let Block::Lever { mut lever } = world.get_block(pos) else {
         panic!("expected lever at {pos:?}");

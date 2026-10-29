@@ -1,7 +1,7 @@
 //! Execution of compiled contribution/notification instructions; no physical propagation.
 use super::program::{CompiledResourceInstruction, ComponentKind, ComponentState, EventCondition, EventProgram, Operation, ResourceEventPhase};
-use crate::redpiler::program_graph::{ContactId, InputPort, NodeId, PistonId, ResourceId};
 use crate::redpiler::TickScheduler;
+use crate::redpiler::program_graph::{ContactId, InputPort, NodeId, PistonId, ResourceId};
 use mchprs_world::PistonAction;
 use mchprs_world::TickPriority;
 use std::collections::{HashSet, VecDeque};
@@ -1580,54 +1580,60 @@ mod tests {
             contacts: vec![CONTACT_A, CONTACT_B].into(),
             initial_at: CONTACT_A,
         };
-        assert!(EventProgram::new_with_movement(
-            vec![input(0)],
-            vec![],
-            vec![],
-            vec![shared_initial_contact.clone(), shared_initial_contact],
-            vec![],
-            vec![],
-        )
-        .is_err());
+        assert!(
+            EventProgram::new_with_movement(
+                vec![input(0)],
+                vec![],
+                vec![],
+                vec![shared_initial_contact.clone(), shared_initial_contact],
+                vec![],
+                vec![],
+            )
+            .is_err()
+        );
 
-        assert!(EventProgram::new_with_movement(
-            vec![piston_component(), piston_component()],
-            vec![],
-            vec![],
-            vec![],
-            vec![
-                EventPiston {
-                    input: NodeId::new(0),
-                    resource: None,
-                    near: CONTACT_A,
-                    far: CONTACT_B,
-                    sticky: true,
-                    initial_extended: false,
-                    initial_head_present: false,
-                },
-                EventPiston {
-                    input: NodeId::new(0),
-                    resource: None,
-                    near: CONTACT_A,
-                    far: CONTACT_C,
-                    sticky: true,
-                    initial_extended: false,
-                    initial_head_present: false,
-                },
-            ],
-            vec![],
-        )
-        .is_err());
+        assert!(
+            EventProgram::new_with_movement(
+                vec![piston_component(), piston_component()],
+                vec![],
+                vec![],
+                vec![],
+                vec![
+                    EventPiston {
+                        input: NodeId::new(0),
+                        resource: None,
+                        near: CONTACT_A,
+                        far: CONTACT_B,
+                        sticky: true,
+                        initial_extended: false,
+                        initial_head_present: false,
+                    },
+                    EventPiston {
+                        input: NodeId::new(0),
+                        resource: None,
+                        near: CONTACT_A,
+                        far: CONTACT_C,
+                        sticky: true,
+                        initial_extended: false,
+                        initial_head_present: false,
+                    },
+                ],
+                vec![],
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn invalid_observer_program_and_initial_state_are_rejected() {
-        assert!(EventProgram::new(
-            vec![input(0), observer(false)],
-            vec![],
-            vec![(A, Operation::NotifyObserver { target: A, shape: true })]
-        )
-        .is_err());
+        assert!(
+            EventProgram::new(
+                vec![input(0), observer(false)],
+                vec![],
+                vec![(A, Operation::NotifyObserver { target: A, shape: true })]
+            )
+            .is_err()
+        );
         assert!(EventProgram::new(vec![input(0), observer(true)], vec![], vec![]).is_err());
     }
 }

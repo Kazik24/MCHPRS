@@ -185,6 +185,7 @@ pub(crate) fn has_neighbor_update(block: Block) -> bool {
 }
 
 pub fn update(block: Block, world: &mut impl World, pos: BlockPos, dir: Option<BlockFace>) {
+    world.observe_redstone_update(pos, block, dir);
     #[cfg(test)]
     let _trace = instant_piston_tests::callback(world, block, pos, dir);
     if block.is_command_block() {
@@ -461,8 +462,8 @@ pub fn is_diode(block: Block) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use mchprs_blocks::BlockPos;
-    use mchprs_blocks::blocks::Block;
+    use mchprs_blocks::blocks::{Block, Lever, LeverFace, RedstonePiston, RedstoneWire, RedstoneWireSide};
+    use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
     use std::fs::File;
     use std::ops::{Deref, DerefMut};
     use std::path::PathBuf;
@@ -527,6 +528,95 @@ mod tests {
                 _ => false,
             }
         }
+    }
+
+    #[test]
+    fn redstone_update_observation_is_passive_for_lever_wire_piston() {
+        fn run(
+            record: bool,
+        ) -> (
+            Vec<Block>,
+            serde_json::Value,
+            Vec<mchprs_world::TickEntry>,
+            Vec<crate::world::RedstoneUpdateObservation>,
+        ) {
+            let mut world = TestWorld(PlotWorld::from_chunks(
+                0,
+                0,
+                (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
+                Default::default(),
+            ));
+            let lever_pos = BlockPos::new(40, 30, 40);
+            let wire_pos = BlockPos::new(41, 30, 40);
+            let piston_pos = BlockPos::new(42, 30, 40);
+            world.set_block(BlockPos::new(40, 29, 40), Block::Stone {});
+            world.set_block(
+                lever_pos,
+                Block::Lever {
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+                },
+            );
+            world.set_block(
+                wire_pos,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::new(
+                        RedstoneWireSide::None,
+                        RedstoneWireSide::None,
+                        RedstoneWireSide::Side,
+                        RedstoneWireSide::Side,
+                        0,
+                    ),
+                },
+            );
+            world.set_block(
+                piston_pos,
+                Block::Piston {
+                    piston: RedstonePiston {
+                        facing: BlockFacing::East,
+                        sticky: false,
+                        extended: false,
+                    },
+                },
+            );
+            world.observe_redstone_updates(record);
+
+            // Match the native lever interaction's state change and neighbor dispatch.
+            world.set_block(
+                lever_pos,
+                Block::Lever {
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+                },
+            );
+            super::update_surrounding_blocks(&mut world.0, lever_pos);
+            super::update_surrounding_blocks(&mut world.0, wire_pos);
+            super::update_surrounding_blocks(&mut world.0, BlockPos::new(40, 29, 40));
+
+            let observed = world.take_redstone_update_observations();
+            let blocks = [lever_pos, wire_pos, piston_pos, piston_pos.offset(BlockFace::East)]
+                .into_iter()
+                .map(|pos| world.get_block(pos))
+                .collect();
+            (
+                blocks,
+                serde_json::to_value(world.piston_state()).unwrap(),
+                world.scheduler().iter_entries().collect(),
+                observed,
+            )
+        }
+
+        let (recorded_blocks, recorded_pistons, recorded_ticks, callbacks) = run(true);
+        let (plain_blocks, plain_pistons, plain_ticks, no_callbacks) = run(false);
+        let piston_pos = BlockPos::new(42, 30, 40);
+        assert!(
+            callbacks.iter().any(|event| event.pos == piston_pos
+                && matches!(event.block, Block::Piston { piston } if !piston.extended)
+                && event.direction.is_some()),
+            "piston callback not observed: {callbacks:?}"
+        );
+        assert!(no_callbacks.is_empty());
+        assert_eq!(recorded_blocks, plain_blocks);
+        assert_eq!(recorded_pistons, plain_pistons);
+        assert_eq!(recorded_ticks, plain_ticks);
     }
 
     fn java_trace(name: &str) -> serde_json::Value {

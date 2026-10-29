@@ -6,14 +6,17 @@ pub(crate) mod wire_cache;
 pub use wire_cache::Neighbor as WireNeighbor;
 
 use crate::messages;
-use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, RedstonePiston};
+use mchprs_blocks::{BlockFace, BlockPos};
 pub use mchprs_world::PistonAction;
 use mchprs_world::TickPriority;
 use storage::Chunk;
 
 pub trait World {
+    /// Observe an interpreter power callback without changing its dispatch.
+    fn observe_redstone_update(&mut self, _pos: BlockPos, _block: Block, _direction: Option<BlockFace>) {}
+
     /// Returns the block located at `pos`
     fn get_block(&self, pos: BlockPos) -> Block {
         Block::from_id(self.get_block_raw(pos))
@@ -151,6 +154,13 @@ pub trait World {
     }
     fn container_opened(&mut self, _pos: BlockPos, _ty: ContainerType) {}
     fn level_event_for_action(&mut self, _pos: BlockPos, _event: i32, _excluded: u128) {}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RedstoneUpdateObservation {
+    pub pos: BlockPos,
+    pub block: Block,
+    pub direction: Option<BlockFace>,
 }
 
 // https://wiki.vg/Block_Actions#Piston

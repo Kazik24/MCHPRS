@@ -51,24 +51,32 @@ fn schematic_loading_and_disconnect_cleanup() {
     use base64::Engine;
     let schematic = base64::engine::general_purpose::STANDARD.encode(include_bytes!("../../../test_data/graph-fixtures/simple_or_gate.schem"));
     let load = json!({"id":2,"op":"load_schematic","format":"sponge-v3","schematic":schematic});
-    let invalid = request(&mut client, json!({"id":100,"op":"load_schematic","format":"sponge-v3","schematic":"invalid-base64"}));
+    let invalid = request(
+        &mut client,
+        json!({"id":100,"op":"load_schematic","format":"sponge-v3","schematic":"invalid-base64"}),
+    );
     assert_eq!(invalid["ok"], false);
     assert_eq!(request(&mut client, load.clone())["ok"], true);
     assert_eq!(request(&mut client, json!({"id":3,"op":"compile","mode":"interpreter"}))["ok"], true);
     let baseline = request(&mut client, json!({"id":4,"op":"project","kind":"baseline"}));
     assert_eq!(baseline["ok"], true);
     assert_eq!(baseline["changes"].as_array().unwrap().len(), 36);
-    let first = &baseline["changes"][0];
-    let expected = &baseline["states"][first[3].as_u64().unwrap() as usize];
-    assert_eq!(request(&mut client, json!({"id":5,"op":"inspect","pos":[first[0],first[1],first[2]]}))["state"], *expected);
     assert_eq!(request(&mut client, load.clone())["ok"], false);
-    assert_eq!(request(&mut client, json!({"id":6,"op":"inspect","pos":[first[0],first[1],first[2]]}))["state"], *expected);
+    let after_rejected_load = request(&mut client, json!({"id":6,"op":"project","kind":"baseline"}));
+    assert_eq!(after_rejected_load["states"], baseline["states"]);
+    assert_eq!(after_rejected_load["changes"], baseline["changes"]);
     for id in [7, 8] {
         let drained = request(&mut client, json!({"id":id,"op":"project","kind":"changes"}));
         assert_eq!(drained["ok"], true);
         assert!(drained["changes"].as_array().unwrap().is_empty());
     }
-    assert_eq!(request(&mut client, json!({"id":9,"op":"advance","ticks":0,"inputs":[{"kind":"use","pos":[99,0,0]}]}))["ok"], false);
+    assert_eq!(
+        request(
+            &mut client,
+            json!({"id":9,"op":"advance","ticks":0,"inputs":[{"kind":"use","pos":[99,0,0]}]})
+        )["ok"],
+        false
+    );
     assert_eq!(request(&mut client, json!({"id":10,"op":"close"}))["ok"], true);
     drop(client);
     let mut disconnected = BufReader::new(TcpStream::connect(address).unwrap());
@@ -89,13 +97,7 @@ fn schematic_loading_and_disconnect_cleanup() {
         clients.push(client);
     }
     let mut loaded = clients.pop().unwrap();
-    assert_eq!(
-        request(
-            &mut loaded,
-            load.clone()
-        )["ok"],
-        true
-    );
+    assert_eq!(request(&mut loaded, load.clone())["ok"], true);
     drop(loaded);
     let replacement = (0..100)
         .find_map(|_| {

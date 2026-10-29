@@ -12,21 +12,9 @@ tools/node_modules/
 __pycache__/
 *.pyc
 *.pyo
-scraps/*
-!scraps/docs/
-scraps/docs/*
-!scraps/docs/README.md
-!scraps/docs/WAVEFORM_*.md
-!scraps/docs/VAPORVIEW_VIEWER_SPEC.md
-!scraps/docs/notes/
-scraps/docs/notes/*
-!scraps/docs/notes/REDPILER_PLAYER_ANALYSIS_PLAN.md
-!scraps/docs/notes/REDPILER_COMPILATION_RESOURCE_PLAN.md
-!scraps/docs/notes/REDPILER_TIMING_HAZARD_ANALYSIS_PLAN.md
-!scraps/docs/research-2026-10-21/
-!scraps/docs/reports/
-scraps/docs/reports/*
-!scraps/docs/reports/REDPILER_REVIEW_2026-10-21.md
+
+# do not add things from scraps to git.
+scraps
 
 # Generated analysis outputs; retain schematics, fixture protocols and frozen baselines.
 /test_data/**/traces/

@@ -37,7 +37,10 @@ fn pos(value: &Value, size: [i32; 3], origin: BlockPos) -> Result<BlockPos, Stri
 
 fn block_string(block: Block) -> String {
     let name = block.get_name();
-    let mut props: Vec<_> = mchprs_blocks::generated::STATE_PROPERTIES[block.get_id() as usize].iter().copied().collect();
+    let mut props: Vec<_> = mchprs_blocks::generated::STATE_PROPERTIES[block.get_id() as usize]
+        .iter()
+        .copied()
+        .collect();
     props.sort_by(|a, b| a.0.cmp(b.0));
     if props.is_empty() {
         return format!("minecraft:{name}");
@@ -90,19 +93,32 @@ impl Connection {
                 if self.session.is_some() {
                     return Err("session already loaded".into());
                 }
-                if request["format"].as_str() != Some("sponge-v3") { return Err("format must be sponge-v3".into()); }
+                if request["format"].as_str() != Some("sponge-v3") {
+                    return Err("format must be sponge-v3".into());
+                }
                 let encoded = request["schematic"].as_str().ok_or("missing schematic")?;
-                if encoded.len() > 900_000 { return Err("encoded schematic exceeds limit".into()); }
+                if encoded.len() > 900_000 {
+                    return Err("encoded schematic exceeds limit".into());
+                }
                 use base64::Engine;
-                let bytes = base64::engine::general_purpose::STANDARD.decode(encoded).map_err(|_| "invalid schematic base64")?;
-                if bytes.len() > 675_000 { return Err("compressed schematic exceeds limit".into()); }
-                let (mut session, dims) = Session::from_sponge_schematic(&bytes, MAX_CELLS as u32).map_err(|e| format!("invalid schematic: {e:#}"))?;
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(encoded)
+                    .map_err(|_| "invalid schematic base64")?;
+                if bytes.len() > 675_000 {
+                    return Err("compressed schematic exceeds limit".into());
+                }
+                let (mut session, dims) =
+                    Session::from_sponge_schematic(&bytes, MAX_CELLS as u32).map_err(|e| format!("invalid schematic: {e:#}"))?;
                 let origin = BlockPos::new(4, 4, 4);
                 let mut baseline = Vec::new();
-                for x in 0..dims[0] as i32 { for y in 0..dims[1] as i32 { for z in 0..dims[2] as i32 {
-                    let p = origin + BlockPos::new(x, y, z);
-                    baseline.push((p, Block::get_id(session.get(p).map_err(|e| e.to_string())?)));
-                }}}
+                for x in 0..dims[0] as i32 {
+                    for y in 0..dims[1] as i32 {
+                        for z in 0..dims[2] as i32 {
+                            let p = origin + BlockPos::new(x, y, z);
+                            baseline.push((p, Block::get_id(session.get(p).map_err(|e| e.to_string())?)));
+                        }
+                    }
+                }
                 if serde_json::to_vec(&changes(baseline, origin)).map_err(|e| e.to_string())?.len() + 64 > MAX_MESSAGE as usize {
                     return Err("full baseline exceeds response limit".into());
                 }
@@ -191,11 +207,6 @@ impl Connection {
                 let mut result = changes(items, self.origin);
                 result["tick"] = json!(s.ticks());
                 Ok(result)
-            }
-            "inspect" => {
-                let p = pos(&request["pos"], self.size, self.origin)?;
-                let s = self.session.as_ref().ok_or("no session")?;
-                Ok(json!({"state":block_string(s.get(p).map_err(|e|e.to_string())?),"tick":s.ticks()}))
             }
             "close" => {
                 self.session = None;
