@@ -9,80 +9,15 @@ impl CircuitDraft {
 
     /// Check and lower the draft, stopping if the task is cancelled.
     pub(crate) fn lower_with_monitor(self, monitor: &crate::redpiler::TaskMonitor) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
-        let layers = self.validate_for_lowering(monitor)?;
-        self.lower_checked(monitor, layers)
+        self.validate_for_lowering(monitor)?;
+        self.lower_checked(monitor)
     }
 
-    fn lower_checked(
-        mut self,
-        monitor: &crate::redpiler::TaskMonitor,
-        layers: Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>,
-    ) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
+    fn lower_checked(mut self, monitor: &crate::redpiler::TaskMonitor) -> Result<(CircuitProgram, CircuitState), GraphBuildError> {
         if monitor.cancelled() {
             return Err(GraphBuildError::Cancelled);
         }
-        let kernel_start = std::time::Instant::now();
-        let kernels = crate::redpiler::analysis::instant::layers::lower_kernels_with_context(&self, monitor, layers.as_ref()).map_err(|_| {
-            GraphBuildError::InvalidInstantRegion {
-                table: "kernel lowering",
-                index: 0,
-            }
-        })?;
-        drop(layers);
-        let kernel_duration = kernel_start.elapsed();
         let program_start = std::time::Instant::now();
-        let mut kernel_by_actor = vec![None; self.pistons.len()];
-        let mut cpu_by_actor = if self.plans.cpu_kernels.entries.is_empty() {
-            Vec::new()
-        } else {
-            vec![u32::MAX; self.pistons.len()]
-        };
-        for (index, entry) in self.plans.cpu_kernels.entries.iter().enumerate() {
-            cpu_by_actor[entry.actor.index()] = index as u32;
-        }
-        let mut logical_bud_owner_by_actor = vec![None; self.pistons.len()];
-        for (index, owner) in self.plans.logical_bud_owners.iter().enumerate() {
-            logical_bud_owner_by_actor[owner.actor.index()] = Some(index as u32);
-        }
-        for (index, kernel) in kernels.iter().enumerate() {
-            match &kernel.program {
-                KernelProgram::PullWave { pulls, .. } => {
-                    for pull in pulls.iter().filter(|pull| pull.origin.is_boundary()) {
-                        kernel_by_actor[pull.actor.index()] = Some((index as u32, 0));
-                        if self.plans.settled_circuit.is_some() && !cpu_by_actor.is_empty() {
-                            cpu_by_actor[pull.actor.index()] = u32::MAX;
-                        }
-                    }
-                }
-                KernelProgram::Events(entries) => {
-                    for (entry_index, entry) in entries.iter().enumerate() {
-                        kernel_by_actor[entry.actor.index()] = Some((index as u32, entry_index as u32));
-                    }
-                }
-            }
-        }
-
-        let mut instant_route_by_route = vec![None; self.routes.len()];
-        let mut private_resource_owners = vec![None; self.resources.len()];
-        for (proxy_index, proxy) in self.plans.instant.proxies.iter().enumerate() {
-            for cell in &proxy.private_cells {
-                private_resource_owners[cell.resource.index()] = Some(cell.actor);
-            }
-            for (route_index, route) in proxy.routes.iter().enumerate() {
-                instant_route_by_route[route.route.index()] = Some((proxy_index as u32, route_index as u32));
-                // The validated instructions retain every witness; runtime needs only one copy.
-                self.routes[route.route.index()].deliveries = Box::new([]);
-            }
-        }
-
-        // Proxy-owned routes use their own instructions and were cleared above.
-        // Never bypass that ownership with a pre-lowering admission certificate.
-        for wire in &mut self.wires {
-            if wire.turbo_route.is_some_and(|route| instant_route_by_route[route.index()].is_some()) {
-                wire.execution.callback_selection = None;
-                wire.execution.instant_node = None;
-            }
-        }
         if !self.wires.is_empty()
             && self.wires.iter().all(|wire| {
                 wire.execution
@@ -105,33 +40,6 @@ impl CircuitDraft {
             })
             .collect::<Vec<_>>();
 
-        let power_link_remap = if self.plans.settled_circuit.is_some() || !self.plans.logical_devices.is_empty() {
-            let mut order: Vec<_> = (0..self.power_links.len()).collect();
-            order.sort_by_key(|&index| self.power_links[index].to);
-            let mut remap = vec![0; order.len()];
-            for (new, old) in order.into_iter().enumerate() {
-                remap[old] = new as u32;
-            }
-            Some(remap)
-        } else {
-            None
-        };
-        if let (Some(settled), Some(remap)) = (&mut self.plans.settled_circuit, &power_link_remap) {
-            for effect in &mut settled.retained_effects {
-                if let BoundaryPortKind::Power { link } = &mut effect.kind {
-                    *link = remap[*link as usize];
-                }
-            }
-        }
-        if let Some(remap) = &power_link_remap {
-            for scoped in &mut self.plans.logical_devices {
-                for effect in &mut scoped.circuit.retained_effects {
-                    if let BoundaryPortKind::Power { link } = &mut effect.kind {
-                        *link = remap[*link as usize];
-                    }
-                }
-            }
-        }
         self.power_links.sort_by_key(|link| link.to);
         let mut power_inputs: FxHashMap<PowerTarget, Range<usize>> = FxHashMap::default();
         for (index, link) in self.power_links.iter().enumerate() {
@@ -253,27 +161,6 @@ impl CircuitDraft {
             }
         }
 
-        let mut transport_wire_by_node = if self.plans.instant_transport.nets.is_empty() {
-            Vec::new()
-        } else {
-            vec![None; nodes.len()]
-        };
-        for (net_index, net) in self.plans.instant_transport.nets.iter().enumerate() {
-            for (wire_index, wire) in net.wires.iter().enumerate() {
-                transport_wire_by_node[wire.node.index()] = Some((net_index as u32, wire_index as u32));
-            }
-        }
-
-        let mut bud_read_by_node = if self.plans.bud_memory_reads.is_empty() {
-            Vec::new()
-        } else {
-            vec![None; nodes.len()]
-        };
-        for (index, read) in self.plans.bud_memory_reads.iter().enumerate() {
-            let node = self.pistons[read.reader.index()].node;
-            bud_read_by_node[node.index()] = Some(index as u32);
-        }
-
         let state = CircuitState {
             classic_signals: self.plans.classic_nets.iter().map(|net| net.initial_signal).collect(),
             classic_active: vec![true; self.plans.classic_nets.len()].into_boxed_slice(),
@@ -282,57 +169,10 @@ impl CircuitDraft {
             resources: self.initial_resources.into_boxed_slice(),
         };
         let program = CircuitProgram {
-            settled_circuit: self.plans.settled_circuit,
-            logical_devices: self.plans.logical_devices.into_boxed_slice(),
             mixed_classic: self.plans.mixed_classic,
             fixed_classic: self.plans.fixed_classic.program,
             fixed_signals: FixedSignalProgram::lower(&self.plans.fixed_signals, nodes.len(), self.sites.len()),
-            instant_drives: self.plans.instant_drives,
-            instant_transition_programs: self
-                .plans
-                .instant_transition_programs
-                .nets
-                .into_iter()
-                .map(|net| net.map(std::sync::Arc::new))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            stable_instant_logic: self
-                .plans
-                .stable_instant_logic
-                .nets
-                .into_iter()
-                .map(|net| net.map(std::sync::Arc::new))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            instant_value_regions: self
-                .plans
-                .instant_value_regions
-                .nets
-                .into_iter()
-                .map(|net| net.map(std::sync::Arc::new))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            signal_channels: self
-                .plans
-                .signal_channels
-                .channels
-                .into_iter()
-                .map(|channel| channel.map(std::sync::Arc::new))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
             classic: ClassicProgram::lower(&self.plans.classic_nets, nodes.len(), self.routes.len()),
-            instant: InstantProgram {
-                cpu: self.plans.cpu_kernels,
-                cpu_by_actor: cpu_by_actor.into_boxed_slice(),
-                cpu_power_queries: self.plans.cpu_power_queries,
-                kernels: kernels.into_boxed_slice(),
-                kernel_by_actor: kernel_by_actor.into_boxed_slice(),
-                proxies: self.plans.instant.proxies.into_boxed_slice(),
-                logical_bud_owners: self.plans.logical_bud_owners.into_boxed_slice(),
-                logical_bud_owner_by_actor: logical_bud_owner_by_actor.into_boxed_slice(),
-                private_resource_owners: private_resource_owners.into_boxed_slice(),
-                route_by_route: instant_route_by_route.into_boxed_slice(),
-            },
             nodes: nodes.into_boxed_slice(),
             power_links: self.power_links.into_boxed_slice(),
             power_inputs,
@@ -345,20 +185,9 @@ impl CircuitDraft {
             routes: self.routes.into_boxed_slice(),
             turbo_callback_indices: self.plans.turbo_callback_indices.into_boxed_slice(),
             wire_captures: self.plans.wire_captures.into_boxed_slice(),
-            bud_memory_reads: self.plans.bud_memory_reads.into_boxed_slice(),
-            bud_read_by_node: bud_read_by_node.into_boxed_slice(),
             wires: self.wires.into_boxed_slice(),
             dust_paths: self.plans.dust_paths.into_boxed_slice(),
             dust_path_by_wire: dust_path_by_wire.into_boxed_slice(),
-            instant_transport: self
-                .plans
-                .instant_transport
-                .nets
-                .into_iter()
-                .map(std::sync::Arc::new)
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            transport_wire_by_node: transport_wire_by_node.into_boxed_slice(),
             sites: self.sites.into_boxed_slice(),
             pistons: self.pistons.into_boxed_slice(),
             resources: self.resources.into_boxed_slice(),
@@ -371,7 +200,7 @@ impl CircuitDraft {
             note_blocks,
             note_plan_by_node: note_plan_by_node.into_boxed_slice(),
         };
-        monitor.record_lowering(kernel_duration, program_start.elapsed());
+        monitor.record_lowering(program_start.elapsed());
         Ok((program, state))
     }
 }
@@ -386,9 +215,9 @@ pub(crate) fn lower_prepared(
     monitor: &crate::redpiler::TaskMonitor,
 ) -> Result<LoweredCircuit, GraphBuildError> {
     use crate::redpiler::passes::utils::{lowered_table_statistics, record_lowering_input_tables};
-    let (prepared, layers) = checked.into_lowering_parts();
+    let prepared = checked.into_prepared();
     record_lowering_input_tables(monitor, &prepared.graph)?;
-    let (program, state) = prepared.graph.lower_checked(monitor, layers)?;
+    let (program, state) = prepared.graph.lower_checked(monitor)?;
     monitor.record_preparation_tables(lowered_table_statistics(&program));
     let positions = program.position_index();
     let imported_ticks = prepared

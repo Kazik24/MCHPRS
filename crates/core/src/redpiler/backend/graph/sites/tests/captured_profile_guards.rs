@@ -20,7 +20,7 @@ fn old_captured_profile_test(
 
 #[test]
 fn captured_profile_guards_match_the_resolver_snapshot() {
-    let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+    let (world, bounds) = crate::redpiler::test_fixtures::piston_reset_fixture();
     let monitor = TaskMonitor::default();
     let mut graph = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default())
         .unwrap()

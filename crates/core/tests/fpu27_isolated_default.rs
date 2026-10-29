@@ -1,4 +1,5 @@
-//! Isolated FPU_27 schematic, compiled with the normal `--optimize` options.
+//! Physical Graph baseline for FPU_27 with the normal `--optimize` options.
+//! This fixture test does not exercise or claim activation of the event-netlist engine.
 #[path = "../benches/support/cpus.rs"]
 #[allow(dead_code)]
 mod cpus;
@@ -15,7 +16,7 @@ fn fpu27_isolated_default_optimize() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(root.join("test_data/piston-research/fixtures/fpu_legal.json")).unwrap()).unwrap();
-    manifest["fixture"] = serde_json::json!("target/build-audit-tps/prod/FPU_27-2026-10-27.schem");
+    manifest["fixture"] = serde_json::json!("test_data/piston-research/FPU_27.schem");
     manifest["sha256"] = serde_json::json!("b6182c6c0541d692d635d72d23ecc8f33cef2fb6071f4ba4be66485ff6892bc1");
     manifest["origin"] = serde_json::json!([40, 30, 40]);
     let mut world = cpus::load_manifest(&manifest).unwrap();
@@ -74,13 +75,13 @@ fn fpu27_isolated_default_optimize() {
     let seconds = start.elapsed().as_secs_f64();
     let after = compiler.graph_execution_counts().unwrap();
     println!(
-        "isolated FPU_27 --optimize default budget: compile_seconds={compile_seconds:.3} frames={frames} game_ticks={} seconds={seconds:.6} actual_game_tps={:.1} logical_evaluations={} wire_walks={} piston_actions={} checksum={checksum:04x} flags={:?}",
+        "physical Graph FPU_27 --optimize baseline: compile_seconds={compile_seconds:.3} frames={frames} game_ticks={} seconds={seconds:.6} actual_game_tps={:.1} wire_walks={} piston_actions={} checksum={checksum:04x} flags={:?} (does not exercise event-netlist activation)",
         frames * 6,
         frames as f64 * 6.0 / seconds,
-        after.logical_kernel_evaluations - before.logical_kernel_evaluations,
         after.wire_walks - before.wire_walks,
         after.piston_actions - before.piston_actions,
         compiler.current_flags()
     );
     assert_eq!(after.ticks - before.ticks, (frames * 6) as u64);
+    assert!(after.wire_walks > before.wire_walks, "the physical Graph must process wire work");
 }

@@ -8,8 +8,6 @@ pub struct CompilerOptions {
     pub budget_multiplier: usize,
     /// `Some(level)` selects that pass tier; `None` selects every configured tier.
     pub optimization_level: Option<usize>,
-    /// Explicitly promise stable inputs through reset. O6 implies this contract.
-    pub stable_instant_inputs: bool,
     /// Only flush visible outputs and controls, including lamps and copper bulbs.
     pub io_only: bool,
     /// Update all blocks in the input region after reset.
@@ -23,7 +21,6 @@ impl Default for CompilerOptions {
         Self {
             budget_multiplier: 0,
             optimization_level: Some(0),
-            stable_instant_inputs: false,
             io_only: false,
             update: false,
         }
@@ -31,17 +28,8 @@ impl Default for CompilerOptions {
 }
 
 impl CompilerOptions {
-    /// O6's instant analyses require stable inputs; lower tiers opt in explicitly.
-    pub(crate) fn assumes_stable_instant_inputs(&self) -> bool {
-        self.stable_instant_inputs || self.optimization_level.unwrap_or(MAX_OPTIMIZATION_LEVEL) >= 6
-    }
-
     pub(crate) fn optimization_label(&self) -> String {
-        let mut label = format!("O{}", self.optimization_level.unwrap_or(MAX_OPTIMIZATION_LEVEL));
-        if self.stable_instant_inputs {
-            label.push_str(" stable");
-        }
-        label
+        format!("O{}", self.optimization_level.unwrap_or(MAX_OPTIMIZATION_LEVEL))
     }
 
     pub fn parse(flags: &str) -> Result<CompilerOptions, String> {
@@ -52,7 +40,6 @@ impl CompilerOptions {
                     "--optimize" => options.optimization_level = None,
                     "--io-only" => options.io_only = true,
                     "--update" => options.update = true,
-                    "--stable-instant-inputs" => options.stable_instant_inputs = true,
                     _ => return Err(format!("Unrecognized Redpiler option: {option}")),
                 }
             } else if let Some(short_flags) = option.strip_prefix('-') {
@@ -84,9 +71,6 @@ impl CompilerOptions {
             } else {
                 return Err(format!("Unrecognized Redpiler option: {option}"));
             }
-        }
-        if options.stable_instant_inputs && options.optimization_level.is_some_and(|level| level < 3) {
-            return Err("--stable-instant-inputs requires -O3 or higher, or --optimize".into());
         }
         Ok(options)
     }

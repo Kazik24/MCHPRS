@@ -28,16 +28,14 @@ fn main() -> Result<()> {
     let mut iterations = 3usize;
     let mut ticks = None;
     let mut graph_tier = 3usize;
-    let mut stable_instant_inputs = false;
     let mut output = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/cpu-bubblesort.json");
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--bench" => continue,
-            "--stable-instant-inputs" => stable_instant_inputs = true,
             "--help" => {
                 println!(
-                    "cpu_bubblesort [--graph-tier 0..6] [--stable-instant-inputs] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
+                    "cpu_bubblesort [--graph-tier 0..6] [--iterations N] [--ticks N] [--output path]\nChecks every tick against frozen interpreter RAM. Default ticks cover the 10,035-tick sort plus one settling tick."
                 );
                 return Ok(());
             }
@@ -56,7 +54,6 @@ fn main() -> Result<()> {
     }
     ensure!(iterations > 0, "--iterations must be positive");
     ensure!(graph_tier <= 6, "--graph-tier must be in 0..=6");
-    ensure!(!stable_instant_inputs || graph_tier >= 3, "--stable-instant-inputs requires O3 or higher");
     let cpu = support::CPUS.iter().copied().find(|cpu| cpu.name == "cpu_bubblesort").unwrap();
     let ticks = ticks.unwrap_or(cpu.active_ticks + 1);
     ensure!(ticks > 0 && ticks <= 50_000, "--ticks must be in 1..=50000");
@@ -64,7 +61,7 @@ fn main() -> Result<()> {
     let mut samples = Vec::new();
     let mut reference: Option<Run> = None;
     for iteration in 0..iterations {
-        let run = execute(cpu, ticks, &reference_ram, graph_tier, stable_instant_inputs)?;
+        let run = execute(cpu, ticks, &reference_ram, graph_tier)?;
         if let Some(first) = &reference {
             ensure!(run.active_ram == first.active_ram, "per-tick RAM changed between samples");
             ensure!(run.continuation_ram == first.continuation_ram, "continuation RAM changed between samples");
@@ -89,7 +86,6 @@ fn main() -> Result<()> {
         "schematic_sha256": cpu.sha256,
         "optimization_level": graph_tier,
         "classic_redstone_auto": graph_tier >= 2,
-        "stable_instant_inputs": stable_instant_inputs,
         "ticks": ticks,
         "iterations": iterations,
         "measurement": "tick_seconds measures tick_with_world only; flush_seconds measures World presentation. Graph preparation, activation, RAM probes, reset and continuation are excluded.",
@@ -103,7 +99,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn execute(cpu: support::Cpu, ticks: u32, reference_ram: &[Vec<Option<u16>>], graph_tier: usize, stable_instant_inputs: bool) -> Result<Run> {
+fn execute(cpu: support::Cpu, ticks: u32, reference_ram: &[Vec<Option<u16>>], graph_tier: usize) -> Result<Run> {
     let setup_started = Instant::now();
     let mut world = support::load_cpu(cpu);
     let sign = cpu.origin + BlockPos::new(186, 2, 184);
@@ -123,7 +119,6 @@ fn execute(cpu: support::Cpu, ticks: u32, reference_ram: &[Vec<Option<u16>>], gr
             world.get_corners(),
             CompilerOptions {
                 optimization_level: Some(graph_tier),
-                stable_instant_inputs,
                 budget_multiplier: 8,
                 ..Default::default()
             },

@@ -89,36 +89,6 @@ struct MotionProjection {
 impl MotionProjection {}
 
 impl GraphBackend {
-    /// The caller must prove the selected positions are an exclusive circuit closure.
-    pub(crate) fn reset_selected<W: World>(&mut self, world: &mut W, positions: &std::collections::HashSet<BlockPos>) -> Result<(), &'static str> {
-        if self.future.clock.phase != GraphPhase::BetweenTicks
-            || world.piston_state().phase != mchprs_world::AdvancePhase::BetweenTicks
-            || !world.piston_state().motions.is_empty()
-            || !world.piston_state().events.is_empty()
-            || !self.future.deferred_pistons.is_empty()
-        {
-            return Err("selected reset requires a stationary tick boundary");
-        }
-
-        let mut scheduler = TickScheduler::default();
-        for (tick, delay, priority) in self.future.scheduler.iter() {
-            if !positions.contains(&tick.position) {
-                scheduler.schedule_half_tick(*tick, delay, priority);
-            }
-        }
-        self.future.scheduler = scheduler;
-        let mut requests = PistonRequestQueue::new();
-        for request in &self.future.piston_requests {
-            let piston = &self.program.pistons()[request.piston.index()];
-            if !positions.contains(&self.program.contacts()[piston.base.index()].position) {
-                requests.push_back_if_absent(*request);
-            }
-        }
-        self.future.piston_requests = requests;
-        self.reset(world);
-        Ok(())
-    }
-
     fn is_io(&self, node: NodeId) -> bool {
         matches!(
             self.program.nodes()[node.index()].kind,
@@ -268,22 +238,8 @@ impl GraphBackend {
     /// boundary and drop graph-owned pending work. Pending transitions are
     /// reproduced, never settled.
     pub(crate) fn reset<W: World>(&mut self, world: &mut W) {
-        for cache in &mut self.stable_logic_cache {
-            cache.invalidate();
-        }
         self.flush(world, false);
         self.project_future(world);
-        self.logical_devices.clear();
-        self.logical_device_owner.clear();
-        self.native_action_clock_owner.fill(None);
-        self.logical_input_callbacks.clear();
-        self.general_delivery_routes.fill(false);
-        self.active_frame_command_outputs.clear();
-        self.active_frame_retained_actors.clear();
-        self.active_frame_retained_nodes.clear();
-        self.active_frame_retained_routes.clear();
-        self.active_frame_power_inputs.clear();
-        self.logical_device_admission = crate::redpiler::LogicalDeviceAdmission::NotApplicable;
         self.dirty.fill(false);
         self.contact_dirty.fill(false);
         self.dirty_contacts.clear();

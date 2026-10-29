@@ -114,7 +114,6 @@ impl GraphBackend {
         #[cfg(test)]
         self.test_recorder.piston_sample_census.invalidate();
         self.dirty[node.index()] = true;
-        self.invalidate_wire_programs(node);
         #[cfg(test)]
         graph_test_trace!(self, format!("wire state {node:?} {old:?} -> {wire:?}"));
     }
@@ -152,9 +151,6 @@ impl GraphBackend {
         if self.fixed_classic.is_some() {
             return self.fixed_classic_seed(node, captured);
         }
-        if self.try_stable_instant_logic(node, captured)? || self.try_signal_channel(node, captured)? {
-            return Ok(());
-        }
         let mut wire = captured
             .and_then(|site| match site.properties {
                 ObservedProperties::Wire(wire) => Some(wire),
@@ -191,63 +187,8 @@ impl GraphBackend {
             self.counts.wire_walks += 1;
             return self.evaluate_turbo_wire(node);
         }
-        if let Some(transfer) = plan.execution.instant_node {
-            return self.deliver_instant_wire_node(&plan, transfer);
-        }
-        if self.classic_proof.is_none()
-            && let Some((net, wire)) = self.program.transport_wire(node)
-            && self.transport_entry_admitted(net)
-        {
-            return self.run_instant_transport(net, wire, sample.block_power);
-        }
         self.counts.wire_walks += 1;
         self.evaluate_turbo_wire(node)
-    }
-
-    fn deliver_instant_wire_node(&mut self, plan: &WirePlan, transfer: InstantWireNode) -> Result<(), GraphExecutionError> {
-        let Some(route) = plan.turbo_route else { return Ok(()) };
-        let CircuitNodeKind::Wire(index) = self.program.nodes()[plan.node.index()].kind else {
-            unreachable!()
-        };
-        // Admission and captures precede delivery; these receivers only enqueue future work.
-        let observed: [Option<ObservedSite>; 24] = std::array::from_fn(|slot| {
-            if transfer.receivers & (1 << slot) == 0 {
-                return None;
-            }
-            let site = plan.canonical_neighbors[slot];
-            let observed = self.resolve_site(site, None).expect("validated signal receiver").observed();
-            self.wire_route_admitted(index, route, slot, site, Some(&observed)).then_some(observed)
-        });
-        self.counts.instant_wire_node_invocations += 1;
-        let order = &crate::redstone::wire::TURBO_ORDER[3];
-        let mut seen = [None; 24];
-        let mut count = 0;
-        for slots in [order.as_slice(), &order[..4]] {
-            for &slot in slots {
-                let Some(observed) = &observed[slot] else { continue };
-                let receiver = match observed.receiver {
-                    Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => CallbackReceiver::PistonBase(actor),
-                    Some(CallbackReceiver::Component(node)) => match self.program.nodes()[node.index()].kind {
-                        CircuitNodeKind::Piston(actor) => CallbackReceiver::PistonBase(actor),
-                        CircuitNodeKind::Observer { .. } | CircuitNodeKind::BuiltinReset { .. } => CallbackReceiver::Component(node),
-                        _ => continue,
-                    },
-                    _ => continue,
-                };
-                if seen[..count].contains(&Some(receiver)) {
-                    continue;
-                }
-                seen[count] = Some(receiver);
-                count += 1;
-                // All reads are unchanged inside this queue-only episode; retain the first operation.
-                match receiver {
-                    CallbackReceiver::PistonBase(actor) => self.sample_piston_from(actor, route)?,
-                    CallbackReceiver::Component(node) => self.update_component(node, DeliveryKind::Update { direction: None }, Some(observed))?,
-                    _ => unreachable!(),
-                }
-            }
-        }
-        Ok(())
     }
 
     fn dust_path_neighbors(&self, node: NodeId) -> Option<DustPathNeighbors> {
@@ -451,22 +392,6 @@ impl GraphBackend {
         Some(maximum)
     }
 
-    /// Queue-only transport keeps all no-dust inputs stable throughout this episode.
-    pub(super) fn transport_block_power(&self, node: NodeId) -> u8 {
-        if let Some(power) = self.instant_drive_power(node) {
-            return power;
-        }
-        let plan = self.wire_plan(node);
-        self.mixed_classic_block_power(plan, None).unwrap_or_else(|| {
-            BlockFace::values()
-                .into_iter()
-                .zip([3, 2, 4, 5, 1, 0])
-                .map(|(face, slot)| self.neighbor_power_no_dust(plan, slot, face, None))
-                .max()
-                .unwrap_or(0)
-        })
-    }
-
     fn capture_walk_site(&mut self, walk: &mut WireWalk, site: SiteId) -> usize {
         if let Some(slot) = walk.slot(site) {
             return slot;
@@ -519,13 +444,7 @@ impl GraphBackend {
                     .unwrap_or_else(|| plan.canonical_neighbors.map(|site| walk.slot(site).expect("discovered wire neighbor"))),
             };
         }
-        let slots = std::array::from_fn(|index| {
-            if walk.is_compiled() && plan.execution.mutable_captures.is_some_and(|mask| mask & (1 << index) == 0) {
-                CONSTANT_SITE
-            } else {
-                self.capture_walk_site(walk, plan.canonical_neighbors[index])
-            }
-        });
+        let slots = std::array::from_fn(|index| self.capture_walk_site(walk, plan.canonical_neighbors[index]));
 
         let visited = slots.map(|slot| slot != CONSTANT_SITE && walk.sites[slot].visited);
         let from_west = visited[0] || visited[7] || visited[8];
@@ -678,10 +597,6 @@ impl GraphBackend {
 
     #[inline(always)]
     fn evaluate_turbo_wire(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        if let Some(instant) = self.wire_plan(node).execution.instant_reset {
-            let plan = self.wire_plan(node).clone();
-            return self.evaluate_instant_output(&plan, instant);
-        }
         if self.wire_plan(node).execution.query_facts.is_some_and(|facts| facts.isolated) {
             let plan = self.wire_plan(node).clone();
             return self.evaluate_isolated_turbo_wire(&plan);
@@ -828,9 +743,6 @@ impl GraphBackend {
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled {
             self.record_callback_candidate(receiver);
-        }
-        if self.instant_event_noop(receiver) {
-            return Ok(());
         }
         #[cfg(test)]
         if let Some(tapes) = &self.test_recorder.wire_tapes {

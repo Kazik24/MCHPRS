@@ -251,17 +251,6 @@ fn classic_bent_branch_keeps_native_receiver_fifo_and_exported_ownership() {
     optimize(&mut prepared.graph, &prepared.entry);
     assert_eq!(prepared.graph.plans.classic_nets.len(), 1);
     assert_eq!(prepared.graph.plans.classic_nets[0].inputs.len(), 2);
-    let export = crate::redpiler::analysis::export_json::from_graph(&prepared.report, &prepared.graph).unwrap();
-    let json: Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
-    assert_eq!(json["graph"]["classic_nets"].as_array().unwrap().len(), 1);
-    assert!(
-        json["graph"]["routes"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .flat_map(|route| route["deliveries"].as_array().unwrap())
-            .any(|delivery| delivery["execution"] == "classic_provenance")
-    );
     let mut classic = backend(prepared.graph);
     for step in 0..24 {
         if step % 3 == 0 {
@@ -319,13 +308,6 @@ fn classic_real_fixture_paired_release() {
         compile_times.push(started.elapsed().as_secs_f64());
     }
     assert!(!classic_draft.plans.classic_nets.is_empty(), "real positive fixture must be admitted");
-    let export = crate::redpiler::analysis::export_json::from_graph(&general_draft.report, &classic_draft).unwrap();
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    std::fs::write(
-        root.join("test_data/graph-fixtures/simple_and_gate-classic.graph.json"),
-        export.to_bytes().unwrap(),
-    )
-    .unwrap();
     let controls = general_draft
         .graph
         .nodes
@@ -374,6 +356,7 @@ fn classic_real_fixture_paired_release() {
         println!("CLASSIC BENCH {row}");
         rows.push(row);
     }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     std::fs::write(root.join("target/classic-real-fixture-benchmark.json"),serde_json::to_vec_pretty(&serde_json::json!({"fixture":"test_data/graph-fixtures/simple_and_gate.schem","profile":if cfg!(debug_assertions){"debug"}else{"release"},"events_per_sample":2000,"ticks_per_event":2,"pipeline_seconds":compile_times,"samples":rows})).unwrap()).unwrap();
 }
 

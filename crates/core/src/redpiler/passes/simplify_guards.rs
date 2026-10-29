@@ -559,9 +559,6 @@ mod tests {
             (1, "prune-inert-callbacks"),
             (1, "prune-unhandled-updates"),
             (2, "simplify-state-guards"),
-            (3, "simplify-instant-resets"),
-            (3, "specialize-instant-pistons"),
-            (3, "compile-builtin-resets"),
             (5, "experimental-coalesce-delayed-updates"),
             (1, "index-turbo-callbacks"),
             (1, "contract-static-dust-paths"),
@@ -570,50 +567,22 @@ mod tests {
             (3, "compile-wire-captures"),
             (2, "compile-wire-hops"),
             (2, "compile-wire-callbacks"),
-            (3, "compile-instant-resets"),
-            (3, "identify-instant-regions"),
-            (3, "compile-instant-proxies"),
             (2, "compile-fixed-signals"),
             (2, "compile-fixed-classic"),
             (2, "compile-mixed-classic"),
             (2, "compile-classic-redstone"),
-            (4, "identify-instant-boundaries"),
-            (4, "experimental-compile-instant-wire-nodes"),
-            (4, "experimental-minimize-wire-captures"),
-            (4, "experimental-compile-bud-memory-reads"),
-            (4, "experimental-compile-instant-events"),
-            (5, "optimize-instant-kernels-cpu"),
-            (5, "compile-instant-transport"),
-            (5, "compile-guarded-instant-transport"),
-            (5, "compile-instant-drives"),
-            (5, "compile-instant-transition-programs"),
-            (5, "compile-instant-value-regions"),
-            (5, "compile-signal-channels"),
-            (5, "compile-stable-instant-logic"),
-            (6, "compile-instant-layers"),
-            (6, "compile-logical-bud-owners"),
-            (6, "compile-settled-circuit"),
-            (6, "compile-cpu-power-queries"),
         ];
         for level in [Some(0), Some(1), Some(2), Some(3), Some(4), Some(5), Some(6), None] {
             let pipeline = default_graph_pipeline(&CompilerOptions {
                 optimization_level: level,
                 ..Default::default()
             });
-            let expected: Vec<_> = expected
-                .iter()
-                .copied()
-                .filter(|(_, name)| {
-                    !(*name == "compile-instant-layers" && level.is_some_and(|level| level < 6))
-                        && (level.is_some_and(|level| level < 4) || !matches!(*name, "identify-instant-regions" | "compile-instant-proxies"))
-                })
-                .collect();
             assert_eq!(pipeline.entries.len(), expected.len());
             for (index, (entry, &(minimum, name))) in pipeline.entries.iter().zip(&expected).enumerate() {
                 assert_eq!(entry.pass.name(), name);
                 let enabled = level.is_none_or(|level| level >= minimum);
                 assert_eq!(entry.enabled, enabled, "{name} at {level:?}");
-                assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 8);
+                assert_eq!(matches!(entry.pass, Pass::Rewrite(_)), index < 5);
             }
         }
     }

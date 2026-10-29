@@ -819,26 +819,10 @@ mod tests {
     }
 
     #[test]
-    fn default_pipeline_export_contains_the_certified_path() {
-        let world = path_world();
-        let options = CompilerOptions {
-            optimization_level: Some(1),
-            ..Default::default()
-        };
-        let export =
-            crate::redpiler::analysis::export_json::prepare(&world, BOUNDS, &[], &options, &TaskMonitor::default(), AnalysisLimits::default())
-                .unwrap();
-        let document: serde_json::Value = serde_json::from_slice(&export.to_bytes().unwrap()).unwrap();
-        assert!(
-            document["capabilities"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|capability| capability == "dust_path_certificates")
-        );
-        let paths = document["graph"]["dust_paths"].as_array().unwrap();
-        assert_eq!(paths.len(), 1);
-        assert_eq!(paths[0]["wires"].as_array().unwrap().len(), 3);
+    fn default_pipeline_builds_the_certified_path() {
+        let prepared = run_pass(&path_world(), vec![]);
+        assert_eq!(prepared.graph.plans.dust_paths.len(), 1);
+        assert_eq!(prepared.graph.plans.dust_paths[0].wires.len(), 3);
     }
 
     #[test]

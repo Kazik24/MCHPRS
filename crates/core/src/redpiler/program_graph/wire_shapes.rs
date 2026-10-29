@@ -32,6 +32,7 @@ impl WireShape {
     /// direction must leave all legal strengths unchanged.
     /// Callers must still retain any distinct Update/Turbo deliveries for this
     /// wire; this certificate suppresses only Shape occurrences.
+    #[cfg(test)]
     pub(crate) fn shape_callbacks_are_inert(graph: &CompileGraph, node: NodeId) -> bool {
         let Some(node_spec) = graph.nodes.get(node.index()) else {
             return false;

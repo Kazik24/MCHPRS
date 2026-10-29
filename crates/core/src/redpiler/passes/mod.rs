@@ -4,45 +4,22 @@
 //! add execution plans for supported cases. The runner checks the input and each
 //! enabled pass's result before lowering. See the [redpiler overview](crate::redpiler).
 pub(crate) mod coalesce_delayed_updates;
-pub(crate) mod compile_bud_memory_reads;
-pub(crate) mod compile_builtin_resets;
 pub(crate) mod compile_classic_redstone;
-mod compile_cpu_power_queries;
 pub(crate) mod compile_fixed_classic;
 mod compile_fixed_signals;
-mod compile_guarded_instant_transport;
-mod compile_instant_drives;
-pub(crate) mod compile_instant_events;
-pub(crate) mod compile_instant_layers;
-pub(crate) mod compile_instant_proxies;
-pub(crate) mod compile_instant_resets;
-mod compile_instant_transition_programs;
-pub(crate) mod compile_instant_transport;
-mod compile_instant_value_regions;
-pub(crate) mod compile_instant_wire_nodes;
-pub(crate) mod compile_logical_bud_owners;
 pub(crate) mod compile_mixed_classic;
-mod compile_settled_circuit;
-mod compile_signal_channels;
-mod compile_stable_instant_logic;
 pub(crate) mod compile_wire_callbacks;
 pub(crate) mod compile_wire_captures;
 pub(crate) mod compile_wire_hops;
 pub(crate) mod compile_wire_shapes;
 pub(crate) mod contract_dust_paths;
-pub(crate) mod identify_instant_boundaries;
-pub(crate) mod identify_instant_regions;
 pub(crate) mod index_turbo_callbacks;
-pub(crate) mod minimize_wire_captures;
-pub(crate) mod optimize_instant_kernels_cpu;
 pub(crate) mod planning;
 pub(crate) mod prune_inert_callbacks;
 pub(crate) mod prune_unhandled_updates;
 pub(crate) mod rich;
 pub(crate) mod simplify_guards;
-pub(crate) mod simplify_instant_resets;
 pub(crate) mod simplify_state_guards;
-pub(crate) mod specialize_instant_pistons;
 pub(crate) mod specialize_wire_queries;
 pub(crate) mod utils;
 mod validation;
@@ -64,8 +41,6 @@ pub(crate) trait GraphPass {
 #[allow(dead_code)]
 /// Shared compilation inputs available to each graph transformation.
 pub(crate) struct PassContext<'a> {
-    /// Canonical source analysis prepared by the runner before this builder executes.
-    prepared_instant: Option<&'a validation::PreparedInstant>,
     /// This shares cancellation and progress reporting with compilation.
     pub(crate) monitor: &'a TaskMonitor,
     /// This exposes compiler settings without choosing which passes run.
@@ -76,26 +51,7 @@ pub(crate) struct PassContext<'a> {
 
 impl<'a> PassContext<'a> {
     pub(crate) fn new(monitor: &'a TaskMonitor, options: &'a CompilerOptions, entry: &'a EntryState) -> Self {
-        Self {
-            monitor,
-            options,
-            entry,
-            prepared_instant: None,
-        }
-    }
-
-    pub(crate) fn instant_boundaries(&self) -> Option<&super::program_graph::BoundaryCatalog> {
-        match self.prepared_instant {
-            Some(validation::PreparedInstant::Boundaries(catalog)) => Some(catalog),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn instant_layers(&self) -> Option<&super::program_graph::LayeredInstantPlan> {
-        match self.prepared_instant {
-            Some(validation::PreparedInstant::Layers { plan, .. }) => Some(plan),
-            _ => None,
-        }
+        Self { monitor, options, entry }
     }
 }
 
@@ -222,18 +178,18 @@ pub(crate) fn run_graph_pipeline(
     pipeline: &PassPipeline,
     monitor: &TaskMonitor,
 ) -> Result<(), PassPipelineError> {
-    run_graph_pipeline_with_analysis(graph, options, entry, pipeline, monitor).map(|_| ())
+    run_graph_pipeline_impl(graph, options, entry, pipeline, monitor)
 }
 
 /// Run enabled passes in order and check each result.
 /// Stops on cancellation or a failed check, before a backend is activated.
-fn run_graph_pipeline_with_analysis(
+fn run_graph_pipeline_impl(
     graph: &mut CompileGraph,
     options: &CompilerOptions,
     entry: &EntryState,
     pipeline: &PassPipeline,
     monitor: &TaskMonitor,
-) -> Result<Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>, PassPipelineError> {
+) -> Result<(), PassPipelineError> {
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
@@ -250,7 +206,7 @@ fn run_graph_pipeline_with_analysis(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    let mut layers = validation::input(graph, monitor)?;
+    validation::input(graph, monitor)?;
     monitor.set_max_progress(monitor.progress() + pipeline.entries.len() + 1);
     let context = PassContext::new(monitor, options, entry);
     for item in &pipeline.entries {
@@ -275,7 +231,7 @@ fn run_graph_pipeline_with_analysis(
             utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start, std::time::Duration::ZERO);
             return Err(PassPipelineError::Precondition { pass: name, message });
         }
-        let validation_duration = match validation::run_checked(&item.pass, graph, &context, &mut layers) {
+        let validation_duration = match validation::run_checked(&item.pass, graph, &context) {
             Ok(duration) => duration,
             Err(error) => {
                 utils::record_transformation(monitor, name, before, GraphCounts::of(graph), start, std::time::Duration::ZERO);
@@ -309,32 +265,23 @@ fn run_graph_pipeline_with_analysis(
     if monitor.cancelled() {
         return Err(PassPipelineError::Cancelled);
     }
-    if let Some(example) = crate::redpiler::analysis::diagnostics::cell_decline_example(graph) {
-        monitor.record_cell_decline_example(example);
-    }
-    if let Some(example) = crate::redpiler::analysis::diagnostics::layer_decline_example(graph) {
-        monitor.record_layer_decline_example(example);
-    }
     // Entry and every enabled output have already passed their required validation.
     monitor.set_final_graph(GraphCounts::of(graph));
-    Ok(layers)
+    Ok(())
 }
 
 /// Choose passes from the compiler options, with rewrites before plan builders.
 /// Each builder decides whether the circuit fits its optimization.
 pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline {
     let level = options.optimization_level.unwrap_or(usize::MAX);
-    let rewrites: [(usize, Pass); 8] = [
+    let rewrites: [(usize, Pass); 5] = [
         (1, Pass::rewrite(simplify_guards::GuardAndUpdateReduction)),
         (1, Pass::rewrite(prune_inert_callbacks::PruneInertCallbacks)),
         (1, Pass::rewrite(prune_unhandled_updates::PruneUnhandledUpdates)),
         (2, Pass::rewrite(simplify_state_guards::SimplifyStateGuards)),
-        (3, Pass::rewrite(simplify_instant_resets::SimplifyInstantResets)),
-        (3, Pass::rewrite(specialize_instant_pistons::SpecializeInstantPistons)),
-        (3, Pass::rewrite(compile_builtin_resets::CompileBuiltinResets)),
         (5, Pass::rewrite(coalesce_delayed_updates::CoalesceDelayedUpdates)),
     ];
-    let plans: [(usize, Pass); 11] = [
+    let plans: [(usize, Pass); 8] = [
         (1, Pass::build(index_turbo_callbacks::IndexTurboCallbacks)),
         (1, Pass::build(contract_dust_paths::ContractDustPaths)),
         (2, Pass::build(specialize_wire_queries::SpecializeWireQueries)),
@@ -342,9 +289,6 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
         (3, Pass::build(compile_wire_captures::CompileWireCaptures)),
         (2, Pass::build(compile_wire_hops::CompileWireHops)),
         (2, Pass::build(compile_wire_callbacks::CompileWireCallbacks)),
-        (3, Pass::build(compile_instant_resets::CompileInstantResets)),
-        (3, Pass::build(identify_instant_regions::IdentifyInstantRegions)),
-        (3, Pass::build(compile_instant_proxies::CompileInstantProxies)),
         (2, Pass::build(compile_fixed_signals::CompileFixedSignals)),
     ];
     let entries = rewrites
@@ -370,115 +314,20 @@ pub(crate) fn default_graph_pipeline(options: &CompilerOptions) -> PassPipeline 
             enabled: level >= 2,
         }))
         .collect();
-    let mut pipeline = PassPipeline::new(entries);
-    if level >= 4 {
-        pipeline
-            .entries
-            .retain(|entry| !matches!(entry.pass.name(), "identify-instant-regions" | "compile-instant-proxies"));
-    }
-    // FIFO-local entries sample live inputs; stable logic follows the effective input contract.
-    let kernels = [
-        (4, Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries)),
-        (4, Pass::build(compile_instant_wire_nodes::CompileInstantWireNodes)),
-        (4, Pass::build(minimize_wire_captures::MinimizeWireCaptures)),
-        (4, Pass::build(compile_bud_memory_reads::CompileBudMemoryReads)),
-        (4, Pass::build(compile_instant_events::CompileInstantEvents)),
-        (5, Pass::build(optimize_instant_kernels_cpu::OptimizeInstantKernelsCpu)),
-    ];
-    pipeline.entries.extend(kernels.into_iter().map(|(minimum_level, pass)| PassEntry {
-        pass,
-        enabled: level >= minimum_level,
-    }));
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_instant_transport::CompileInstantTransport),
-        enabled: level >= 5,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_guarded_instant_transport::CompileGuardedInstantTransport),
-        enabled: level >= 5,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_instant_drives::CompileInstantDrives),
-        enabled: level >= 5,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_instant_transition_programs::CompileInstantTransitionPrograms),
-        enabled: level >= 5,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_instant_value_regions::CompileInstantValueRegions),
-        enabled: level >= 5,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_signal_channels::CompileSignalChannels),
-        enabled: level >= 5,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_stable_instant_logic::CompileStableInstantLogic),
-        enabled: level >= 5,
-    });
-    if level >= 6 && options.assumes_stable_instant_inputs() {
-        pipeline.entries.push(PassEntry {
-            pass: Pass::build(compile_instant_layers::CompileInstantLayers),
-            enabled: true,
-        });
-    }
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_logical_bud_owners::CompileLogicalBudOwners),
-        enabled: level >= 6,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_settled_circuit::CompileSettledCircuit),
-        enabled: level >= 6,
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_cpu_power_queries::CompileCpuPowerQueries),
-        enabled: level >= 6,
-    });
+    let pipeline = PassPipeline::new(entries);
     pipeline
 }
 
-/// Research baseline for the event-domain compiler: preserve Graph and discover boundaries.
+/// Experimental Graph-probe path: keep general graph rewrites, but leave execution to Graph.
 #[cfg(test)]
-pub(crate) fn event_domain_research_pipeline() -> PassPipeline {
-    PassPipeline::new(vec![PassEntry {
-        pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
-        enabled: true,
-    }])
-}
-
-/// Inspection-only replacement for the old region/proxy builders; public tiers stay unchanged.
-#[cfg(test)]
-pub(crate) fn experimental_boundary_pipeline(options: &CompilerOptions) -> PassPipeline {
+pub(crate) fn experimental_graph_probe_pipeline(options: &CompilerOptions) -> PassPipeline {
     let mut pipeline = default_graph_pipeline(options);
     pipeline.entries.retain(|entry| {
-        !matches!(
-            entry.pass.name(),
-            "identify-instant-regions"
-                | "compile-instant-proxies"
-                | "identify-instant-boundaries"
-                | "compile-instant-layers"
-                | "experimental-compile-instant-wire-nodes"
-                | "experimental-minimize-wire-captures"
-                | "experimental-compile-bud-memory-reads"
-                | "experimental-compile-instant-events"
-                | "optimize-instant-kernels-cpu"
-        )
-    });
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(identify_instant_boundaries::IdentifyInstantBoundaries),
-        enabled: options.optimization_level.unwrap_or(usize::MAX) >= 3,
-    });
-    pipeline
-}
-
-/// Build cold causal layers without enabling a kernel or changing public optimization tiers.
-#[cfg(test)]
-pub(crate) fn experimental_layer_pipeline(options: &CompilerOptions) -> PassPipeline {
-    let mut pipeline = experimental_boundary_pipeline(options);
-    pipeline.entries.push(PassEntry {
-        pass: Pass::build(compile_instant_layers::CompileInstantLayers),
-        enabled: options.optimization_level.unwrap_or(usize::MAX) >= 3,
+        matches!(&entry.pass, Pass::Rewrite(_))
+            && matches!(
+                entry.pass.name(),
+                "guard-and-update-reduction" | "prune-inert-callbacks" | "prune-unhandled-updates" | "simplify-state-guards"
+            )
     });
     pipeline
 }
@@ -489,28 +338,9 @@ mod tests {
 
     #[test]
     fn production_tiers_and_aliases_enable_certified_passes() {
-        for flags in [
-            "-O0",
-            "-O1",
-            "-O2",
-            "-O3",
-            "-O4",
-            "-O5",
-            "-O6",
-            "-O",
-            "-o",
-            "--optimize",
-            "-O5 --stable-instant-inputs",
-            "-O6 --stable-instant-inputs",
-            "-O --stable-instant-inputs",
-            "-o --stable-instant-inputs",
-            "--optimize --stable-instant-inputs",
-        ] {
+        for flags in ["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "-O6", "-O", "-o", "--optimize"] {
             let options = CompilerOptions::parse(flags).unwrap();
             let level = options.optimization_level.unwrap_or(crate::redpiler::MAX_OPTIMIZATION_LEVEL);
-            let explicit_stable = flags.contains("--stable-instant-inputs");
-            assert_eq!(options.stable_instant_inputs, explicit_stable);
-            assert_eq!(options.assumes_stable_instant_inputs(), explicit_stable || level >= 6, "{flags}");
             let pipeline = default_graph_pipeline(&options);
             let enabled: Vec<_> = pipeline.entries.iter().filter(|p| p.enabled).map(|p| p.pass.name()).collect();
             for (name, minimum) in [
@@ -518,28 +348,11 @@ mod tests {
                 ("compile-mixed-classic", 2),
                 ("compile-wire-captures", 3),
                 ("compile-classic-redstone", 2),
-                ("experimental-compile-instant-wire-nodes", 4),
-                ("experimental-minimize-wire-captures", 4),
-                ("experimental-compile-bud-memory-reads", 4),
-                ("experimental-compile-instant-events", 4),
-                ("compile-logical-bud-owners", 6),
-                ("optimize-instant-kernels-cpu", 5),
-                ("compile-instant-transport", 5),
-                ("compile-guarded-instant-transport", 5),
-                ("compile-instant-drives", 5),
-                ("compile-instant-transition-programs", 5),
-                ("compile-instant-value-regions", 5),
-                ("compile-signal-channels", 5),
-                ("compile-stable-instant-logic", 5),
-                ("compile-settled-circuit", 6),
                 ("experimental-coalesce-delayed-updates", 5),
             ] {
                 assert_eq!(enabled.contains(&name), level >= minimum, "{flags}: {name}");
             }
-            assert_eq!(
-                enabled.contains(&"compile-instant-layers"),
-                level >= 6 && options.assumes_stable_instant_inputs()
-            );
+            assert!(enabled.iter().all(|name| !name.contains("instant") && !name.contains("settled")));
             assert!(!enabled.contains(&"compile-guard-predicates"));
             assert!(
                 enabled
@@ -547,6 +360,7 @@ mod tests {
                     .all(|p| !p.starts_with("unsafe-") && *p != "experimental-settle-dust-networks")
             );
         }
+        assert!(CompilerOptions::parse("--stable-instant-inputs").is_err());
         let options = CompilerOptions::parse("-O2").unwrap();
         assert!(
             default_graph_pipeline(&options)
@@ -554,6 +368,77 @@ mod tests {
                 .iter()
                 .any(|p| p.enabled && p.pass.name() == "compile-classic-redstone")
         );
+    }
+
+    #[test]
+    fn experimental_graph_probe_keeps_only_general_rewrites() {
+        let options = CompilerOptions::parse("--optimize").unwrap();
+        let pipeline = experimental_graph_probe_pipeline(&options);
+        let names: Vec<_> = pipeline.entries.iter().map(|entry| entry.pass.name()).collect();
+        assert_eq!(
+            names,
+            [
+                "guard-and-update-reduction",
+                "prune-inert-callbacks",
+                "prune-unhandled-updates",
+                "simplify-state-guards",
+            ]
+        );
+        assert!(pipeline.entries.iter().all(|entry| entry.enabled));
+    }
+
+    #[test]
+    fn experimental_graph_probe_matches_default_on_a_lever_wire_lamp() {
+        use crate::plot::PlotWorld;
+        use crate::redpiler::backend::graph::GraphBackend;
+        use crate::world::storage::Chunk;
+        use mchprs_blocks::blocks::Block;
+        use mchprs_blocks::{BlockFace, BlockPos};
+
+        let lever = BlockPos::new(5, 20, 5);
+        let wire = lever.offset(BlockFace::East);
+        let lamp = wire.offset(BlockFace::East);
+        let make_world = || {
+            let mut world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], Default::default());
+            for (position, block) in [
+                (lever.offset(BlockFace::Bottom), Block::Stone {}),
+                (lever, Block::Lever { lever: Default::default() }),
+                (wire.offset(BlockFace::Bottom), Block::Stone {}),
+                (wire, Block::RedstoneWire { wire: Default::default() }),
+                (lamp, Block::RedstoneLamp { lit: false }),
+            ] {
+                world.set_block(position, block);
+            }
+            world
+        };
+        let options = CompilerOptions::parse("--optimize").unwrap();
+        let monitor = Arc::new(TaskMonitor::default());
+        let mut expected_world = make_world();
+        let mut probe_world = make_world();
+        let mut expected = GraphBackend::compile_with_options(
+            &expected_world,
+            (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+            vec![],
+            &options,
+            monitor.clone(),
+        )
+        .unwrap();
+        let mut probe = GraphBackend::compile_with_pipeline(
+            &probe_world,
+            (BlockPos::new(0, 0, 0), BlockPos::new(15, 31, 15)),
+            vec![],
+            &options,
+            &experimental_graph_probe_pipeline(&options),
+            monitor,
+        )
+        .unwrap();
+
+        for (backend, world) in [(&mut expected, &mut expected_world), (&mut probe, &mut probe_world)] {
+            backend.use_block(lever).unwrap();
+            backend.flush(world, false);
+            assert!(matches!(world.get_block(lamp), Block::RedstoneLamp { lit: true }));
+        }
+        assert_eq!(expected_world.get_block(lamp), probe_world.get_block(lamp));
     }
     use crate::plot::PlotWorld;
     use crate::redpiler::components::{NodeState, NodeType};
@@ -790,36 +675,33 @@ mod tests {
     }
 
     #[test]
-    fn removed_synthesis_is_absent_at_every_level_with_stable_inputs() {
+    fn instant_and_settled_passes_are_absent_at_every_level() {
         let synthesis = ["compile-symbolic-regions", "compile-instant-machine", "compile-symbolic-kernels"];
         for optimization_level in [Some(0), Some(3), Some(4), Some(5), Some(6), None] {
-            for stable_instant_inputs in [false, true] {
-                let options = CompilerOptions {
-                    optimization_level,
-                    stable_instant_inputs,
-                    ..Default::default()
-                };
-                let mut graph = graph_for_passes();
-                graph.guards.push(crate::redpiler::program_graph::Guard::Always);
-                let monitor = TaskMonitor::default();
-                run_graph_pipeline(
-                    &mut graph,
-                    &options,
-                    &EntryState {
-                        logical_tick: 0,
-                        pending_ticks: vec![],
-                    },
-                    &default_graph_pipeline(&options),
-                    &monitor,
-                )
-                .unwrap();
-                let statistics = monitor.graph_statistics();
-                for name in synthesis {
-                    assert!(
-                        statistics.passes.iter().all(|pass| pass.name != name),
-                        "{name} must remain removed for {options:?}"
-                    );
-                }
+            let options = CompilerOptions {
+                optimization_level,
+                ..Default::default()
+            };
+            let mut graph = graph_for_passes();
+            graph.guards.push(crate::redpiler::program_graph::Guard::Always);
+            let monitor = TaskMonitor::default();
+            run_graph_pipeline(
+                &mut graph,
+                &options,
+                &EntryState {
+                    logical_tick: 0,
+                    pending_ticks: vec![],
+                },
+                &default_graph_pipeline(&options),
+                &monitor,
+            )
+            .unwrap();
+            let statistics = monitor.graph_statistics();
+            for name in synthesis {
+                assert!(
+                    statistics.passes.iter().all(|pass| pass.name != name),
+                    "{name} must remain removed for {options:?}"
+                );
             }
         }
     }

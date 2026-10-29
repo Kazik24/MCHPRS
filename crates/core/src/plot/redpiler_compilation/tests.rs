@@ -55,7 +55,6 @@ fn cpu_bubblesort_request_to_activation_stays_within_ten_seconds() {
         let started = Instant::now();
         plot.start_redpiler(CompilerOptions {
             optimization_level: Some(4),
-            stable_instant_inputs: true,
             budget_multiplier: 8,
             ..Default::default()
         });

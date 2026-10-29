@@ -119,12 +119,6 @@ fn check_workloads() {
 }
 
 fn main() -> Result<()> {
-    #[cfg(feature = "saved-plot-bench")]
-    if std::env::args().any(|arg| arg == "--saved-plot" || arg == "--saved-plot-server") {
-        let server = std::env::args().any(|arg| arg == "--saved-plot-server");
-        mchprs_core::redpiler::saved_plot_benchmark(server);
-        return Ok(());
-    }
     if std::env::args().any(|arg| arg == "--kernel-wave") {
         return instant_wave::run();
     }
@@ -138,7 +132,6 @@ fn main() -> Result<()> {
     let mut flush_every = 0u32;
     let mut optimize = false;
     let mut selected_tier = None;
-    let mut stable_instant_inputs = false;
     let mut interpreted = false;
     let mut changing_inputs = false;
     let mut device_frame = false;
@@ -161,10 +154,6 @@ fn main() -> Result<()> {
                 selected_tier = None;
                 continue;
             }
-            "--stable-instant-inputs" => {
-                stable_instant_inputs = true;
-                continue;
-            }
             "--interpreted" => {
                 interpreted = true;
                 continue;
@@ -183,7 +172,7 @@ fn main() -> Result<()> {
                 );
                 println!("--device-frame measures production O6 FPU execution with inputs held for six game ticks.");
                 println!(
-                    "instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--stable-instant-inputs] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero. Stable mode requires --optimize.\n--check-workloads verifies generators without loading a schematic."
+                    "instant [--component counter_basic|pc_counter|cpu_bubblesort|fpu_divider|fpu_legal] [--manifest path.json] [--changing-inputs | --workload random|random-walk|sequence] [--seed integer] [--input-every ticks] [--interpreted | --optimize] [--iterations 3] [--episodes 32] [--ticks 60000] [--flush-every 0|1] [--output path.json] [--reference frozen-native-report.json]\n--workload implies --changing-inputs. Sequence repeats 128 fixed raw port pairs with opcode zero.\n--check-workloads verifies generators without loading a schematic."
                 );
                 return Ok(());
             }
@@ -226,7 +215,6 @@ fn main() -> Result<()> {
     ensure!(ticks >= 50_000 && ticks % 6 == 0, "--ticks must be at least 50000 and divisible by six");
     ensure!(flush_every <= 1, "--flush-every must be zero or one");
     ensure!(!interpreted || !optimize, "--optimize applies only to compiled execution");
-    ensure!(!stable_instant_inputs || optimize, "--stable-instant-inputs requires --optimize");
     ensure!(
         !interpreted || matches!(component.as_str(), "counter_basic" | "pc_counter" | "fpu_divider" | "fpu_legal"),
         "unsupported interpreted component"
@@ -323,7 +311,6 @@ fn main() -> Result<()> {
                         CompilerOptions {
                             optimization_level: if checked_optimize { selected_tier } else { Some(0) },
                             budget_multiplier: 8,
-                            stable_instant_inputs: stable_instant_inputs && checked_optimize,
                             ..Default::default()
                         },
                         Vec::new(),
@@ -377,7 +364,6 @@ fn main() -> Result<()> {
                 CompilerOptions {
                     optimization_level: if optimize { selected_tier } else { Some(0) },
                     budget_multiplier: 8,
-                    stable_instant_inputs,
                     ..Default::default()
                 },
                 Vec::new(),
@@ -574,10 +560,9 @@ fn main() -> Result<()> {
     }
     let report = json!({
         "schema": 1, "backend": backend, "component": component, "manifest": manifest_path, "schematic_sha256": descriptor["sha256"],
-        "stable_instant_inputs": stable_instant_inputs,
         "optimization_level": if interpreted { None } else { Some(if optimize { selected_tier.unwrap_or(6) } else { 0 }) },
         "actual_origin": [origin(&descriptor).x, origin(&descriptor).y, origin(&descriptor).z],
-        "flags": if interpreted { None } else { Some(format!("-O{}{}", if optimize { selected_tier.unwrap_or(6) } else { 0 }, if stable_instant_inputs { " --stable-instant-inputs" } else { "" })) }, "budget_multiplier": (!interpreted).then_some(8),
+        "flags": if interpreted { None } else { Some(format!("-O{}", if optimize { selected_tier.unwrap_or(6) } else { 0 })) }, "budget_multiplier": (!interpreted).then_some(8),
         "admitted_means": (!interpreted).then_some("compiler acceptance only; no physical or arithmetic equivalence claim"),
         "scope": if interpreted { "native interpreter; per-tick outputs and final whole-world checkpoint compared with --reference" } else { "actual logical workloads; BubbleSort and full FPU without --changing-inputs are admission only; no runtime fallback" },
         "measurement_kind": if changing_inputs { if component == "fpu_legal" { "full_fpu_raw_changing_inputs" } else { "divider_raw_changing_inputs" } } else { match (component.as_str(), interpreted) { ("pc_counter", true) => "interpreted_pc_counter_runtime", ("counter_basic", true) => "interpreted_counter_runtime", ("counter_basic", false) => "graph_counter_runtime", ("fpu_divider", true) => "interpreted_divider_episodes", ("fpu_divider", false) => "graph_divider_episodes", _ => "admission_only" } },

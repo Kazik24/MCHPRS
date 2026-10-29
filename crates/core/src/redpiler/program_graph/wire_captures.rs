@@ -49,16 +49,4 @@ impl WireCapture {
             },
         }
     }
-
-    #[cfg(test)]
-    pub(crate) fn kind(&self) -> &'static str {
-        match self {
-            Self::Fixed(_) => "fixed",
-            Self::Electrical(_) => "electrical",
-            Self::Bulb(_) => "bulb",
-            Self::Wire(_) => "wire",
-            Self::Piston { .. } => "piston",
-            Self::Contact(_) => "contact",
-        }
-    }
 }

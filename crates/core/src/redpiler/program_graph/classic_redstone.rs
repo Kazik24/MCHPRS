@@ -138,7 +138,6 @@ pub(crate) struct ClassicAnalysis<'a> {
     /// Watched and already-owned wires cannot become private classic cells.
     watched: BTreeSet<NodeId>,
     dust_owned: BTreeSet<NodeId>,
-    instant_owned: BTreeSet<NodeId>,
 }
 
 impl<'a> ClassicAnalysis<'a> {
@@ -154,13 +153,6 @@ impl<'a> ClassicAnalysis<'a> {
             touching_routes: vec![Vec::new(); graph.nodes.len()],
             watched: BTreeSet::new(),
             dust_owned: graph.plans.dust_paths.iter().flat_map(|path| path.wires.iter().copied()).collect(),
-            instant_owned: graph
-                .plans
-                .instant
-                .regions
-                .iter()
-                .flat_map(|region| region.wires.iter().copied())
-                .collect(),
         };
         for &target in analysis.inputs.keys().filter(|target| matches!(target, PowerTarget::Input { .. })) {
             let mut dependencies = BTreeSet::new();
@@ -400,7 +392,7 @@ impl<'a> ClassicAnalysis<'a> {
         if expression.leaves.keys().any(|leaf| *leaf == source || owned.contains(leaf)) {
             return Err("callback boundary depends on private ingress");
         }
-        if self.dust_owned.contains(&node) || self.instant_owned.contains(&node) {
+        if self.dust_owned.contains(&node) {
             return Err("guarded boundary has another owner");
         }
         Ok(())
@@ -444,9 +436,6 @@ impl<'a> ClassicAnalysis<'a> {
             else {
                 return Err("private owner is not a wire");
             };
-            if graph.wires[*index].execution.instant_reset.is_some() {
-                return Err("wire already has instant reset owner");
-            }
             let neighbors = graph.wires[*index].canonical_neighbors.map(|site| self.block(site));
             let mut blocks = [Block::Air; 24];
             for (slot, block) in neighbors.into_iter().enumerate() {
@@ -811,9 +800,6 @@ impl<'a> ClassicAnalysis<'a> {
         if owned.iter().any(|node| self.dust_owned.contains(node)) {
             return Err("dust-path ownership overlap");
         }
-        if owned.iter().any(|node| self.instant_owned.contains(node)) {
-            return Err("instant region ownership overlap");
-        }
         Ok(ClassicNetPlan {
             outside: outside.into_boxed_slice(),
             guarded_wires: guarded_wires.into_iter().collect(),
@@ -957,16 +943,6 @@ pub(crate) fn validate_classic(graph: &CompileGraph, monitor: &crate::redpiler::
     for (index, plan) in graph.plans.classic_nets.iter().enumerate() {
         let members = plan.wires.iter().map(|wire| wire.node).collect::<Vec<_>>();
         if members.iter().any(|node| !owned.insert(*node)) || plan.inputs.iter().any(|input| !receivers.insert(input.receiver)) {
-            return Err(invalid(index));
-        }
-        if plan.entries.iter().any(|entry| {
-            graph
-                .plans
-                .instant
-                .proxies
-                .iter()
-                .any(|proxy| proxy.routes.iter().any(|route| route.route == entry.route))
-        }) {
             return Err(invalid(index));
         }
         let inferred = analysis

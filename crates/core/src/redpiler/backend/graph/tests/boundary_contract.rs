@@ -1,94 +1,5 @@
 //! Independent boundary discovery checks on separate, fixture-derived devices.
 use super::*;
-use crate::redpiler::CompilerOptions;
-use crate::redpiler::analysis::instant_regions::infer_stable_regions;
-
-pub(super) fn independent_devices() -> (CompileGraph, NodeId) {
-    let first = load_adder("adder_1bit", ORIGIN, None);
-    let second = load_adder("adder_1bit", ORIGIN + BlockPos::new(48, 0, 0), None);
-    let mut world = first.build();
-    for (position, block, entity) in &second.cells {
-        let position = second.place(*position);
-        world.set_block(position, *block);
-        if let Some(entity) = entity {
-            world.set_block_entity(position, entity.clone());
-        }
-    }
-    let bounds = (first.bounds().0.min(second.bounds().0), first.bounds().1.max(second.bounds().1));
-    let monitor = TaskMonitor::default();
-    let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
-    let options = CompilerOptions {
-        optimization_level: Some(3),
-        stable_instant_inputs: true,
-        ..Default::default()
-    };
-    passes::run_graph_pipeline(
-        &mut prepared.graph,
-        &options,
-        &prepared.entry,
-        &passes::default_graph_pipeline(&options),
-        &monitor,
-    )
-    .unwrap();
-    let control = prepared
-        .graph
-        .nodes
-        .iter()
-        .position(|node| node.position == Some(first.trigger()))
-        .unwrap();
-    (prepared.graph, NodeId::new(control as u32))
-}
-
-#[test]
-fn shared_external_power_does_not_merge_independent_instant_devices() {
-    let (mut graph, control) = independent_devices();
-    let monitor = TaskMonitor::default();
-    let graph = &mut graph;
-    let original = infer_stable_regions(graph, &monitor).unwrap();
-    assert!(original.len() >= 2, "the separate fixtures must begin with independent owners");
-    let ownership: Vec<_> = original.iter().map(|region| region.actors.clone()).collect();
-    for region in &original {
-        let sides: Vec<_> = region
-            .actors
-            .iter()
-            .map(|actor| graph.pistons[actor.index()].position.x >= ORIGIN.x + 48)
-            .collect();
-        assert!(
-            sides.iter().all(|side| *side == sides[0]),
-            "a starting region must not span both fixtures"
-        );
-    }
-    let source = graph.sites.iter().position(|site| site.source == SiteSource::Component(control)).unwrap();
-    let always = graph.guards.iter().position(|guard| *guard == Guard::Always).unwrap();
-    let mut ports = Vec::new();
-    for region in &original {
-        let actor = region.actors[0];
-        let link = graph.power_links.len() as u32;
-        ports.push((actor, link));
-        // Graph-level contributions isolate boundary classification from spatial wire parsing.
-        graph.power_links.push(PowerLink {
-            from: SiteId::new(source as u32),
-            from_port: PowerPort::Output,
-            to: PowerTarget::Input {
-                node: graph.pistons[actor.index()].node,
-                port: InputPort::Main,
-            },
-            face: BlockFace::Top,
-            attenuation: 0,
-            guard: GuardId::new(always as u32),
-        });
-    }
-    let regions = infer_stable_regions(graph, &monitor).unwrap();
-    assert_eq!(
-        regions.iter().map(|region| region.actors.clone()).collect::<Vec<_>>(),
-        ownership,
-        "common input power is a boundary dependency and must preserve the original ownership partition"
-    );
-    for (actor, link) in ports {
-        let region = regions.iter().find(|region| region.actors.contains(&actor)).unwrap();
-        assert!(region.power_inputs.contains(&link));
-    }
-}
 
 #[test]
 fn regional_bud_memory_changes_only_after_the_independent_update() {
@@ -102,7 +13,7 @@ fn regional_bud_memory_changes_only_after_the_independent_update() {
     for powered in [false, true] {
         let mut native = circuit.build();
         let mut projected = circuit.build();
-        let mut backend = stable_region_tests::stable_backend_at(&circuit, &native, 3);
+        let mut backend = GraphBackend::compile_with_options(&native, circuit.bounds(), vec![], &Default::default(), Arc::default()).unwrap();
         let initial_memory = native.get_block(memory);
         let steps = std::iter::once(Step::SetLever { position: data, powered })
             .chain(std::iter::repeat_n(Step::Tick, 32))

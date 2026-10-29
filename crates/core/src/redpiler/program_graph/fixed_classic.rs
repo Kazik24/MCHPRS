@@ -732,8 +732,8 @@ impl<'a> FixedClassicView<'a> {
     }
     fn has_private_owners(&self) -> bool {
         match self {
-            Self::Draft { graph, .. } => !graph.plans.classic_nets.is_empty() || !graph.plans.instant.proxies.is_empty(),
-            Self::Lowered(program, _) => !program.classic().nets.is_empty() || !program.instant_proxies().is_empty(),
+            Self::Draft { graph, .. } => !graph.plans.classic_nets.is_empty(),
+            Self::Lowered(program, _) => !program.classic().nets.is_empty(),
         }
     }
     fn comparator_input(&self, node: NodeId) -> Option<&ComparatorInputPlan> {

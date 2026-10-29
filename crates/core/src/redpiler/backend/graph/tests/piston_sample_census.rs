@@ -308,7 +308,6 @@ fn bubblesort_piston_sample_reuse_census() {
     monitor.set_budget_multiplier(8);
     let options = crate::redpiler::CompilerOptions {
         optimization_level: Some(5),
-        stable_instant_inputs: true,
         budget_multiplier: 8,
         ..Default::default()
     };

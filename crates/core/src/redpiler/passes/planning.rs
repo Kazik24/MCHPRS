@@ -1,17 +1,11 @@
 //! Read-only plan construction. Builders return data; only this module publishes it.
 use super::PassContext;
 use crate::redpiler::program_graph::{
-    CallbackReceiver, CompileGraph, CpuPowerQueryPlans, DeliveryKind, DustPathPlan, GraphBuildError, InstantDriveProgram, InstantProxy,
-    InstantRegion, InstantResetPlan, InstantTransitionPrograms, InstantTransport, InstantValueRegions, PlanChange, ScopedSettledDevice,
-    SettledCircuit, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts, WireShape,
+    CompileGraph, DustPathPlan, GraphBuildError, PlanChange, SiteId, TurboCallbackIndex, WireCallbackSelection, WireQueryFacts,
 };
 
 pub(crate) trait PlanBuilder {
     fn name(&self) -> &'static str;
-    /// Request source-derived reference data; this never exempts an output from checking.
-    fn instant_analysis(&self) -> Option<InstantAnalysis> {
-        None
-    }
     fn build(&self, graph: &CompileGraph, context: &PassContext<'_>) -> Result<PlanOutput, String>;
 
     #[cfg(test)]
@@ -25,50 +19,19 @@ pub(crate) trait PlanBuilder {
     }
 }
 
-#[derive(Clone, Copy)]
-/// Immutable reference products the runner can prepare from its current validated input.
-pub(crate) enum InstantAnalysis {
-    /// The complete cell/corridor boundary catalog for this graph and current classic ownership.
-    Boundaries,
-    /// The causal plan and lowering evidence for this graph and its validated catalog.
-    Layers,
-}
-
 /// Each result names its owner instead of exposing the mutable graph to a builder.
 pub(crate) enum PlanOutput {
     MixedClassic(crate::redpiler::program_graph::MixedClassicProgram),
     FixedClassic(crate::redpiler::program_graph::FixedClassicPlans),
-    Boundaries(crate::redpiler::program_graph::BoundaryCatalog),
-    Layers(crate::redpiler::program_graph::LayeredInstantPlan),
     FixedSignals(crate::redpiler::program_graph::FixedSignalPlans),
-    InstantDrives(InstantDriveProgram),
-    InstantTransitionPrograms(InstantTransitionPrograms),
-    SignalChannels(crate::redpiler::program_graph::SignalChannels),
-    StableInstantLogic(crate::redpiler::program_graph::StableInstantLogic),
-    InstantValueRegions(InstantValueRegions),
-    SettledDevices {
-        legacy: SettledCircuit,
-        devices: Vec<ScopedSettledDevice>,
-    },
     ClassicNets(Vec<crate::redpiler::program_graph::ClassicNetPlan>),
     TurboCallbacks(Vec<Option<TurboCallbackIndex>>),
     DustPaths(Vec<DustPathPlan>),
     WireQueries(Vec<Option<WireQueryFacts>>),
     WireShapes(Vec<Option<crate::redpiler::program_graph::WireShape>>),
     WireCaptures(Vec<crate::redpiler::program_graph::WireCapture>),
-    WireCaptureMasks(Vec<u32>),
-    InstantEvents(Vec<crate::redpiler::program_graph::InstantKernel>),
-    CpuKernels(crate::redpiler::program_graph::CpuKernelPlans),
-    CpuPowerQueries(CpuPowerQueryPlans),
-    BudMemoryReads(Vec<crate::redpiler::program_graph::BudMemoryRead>),
-    LogicalBudOwners(Vec<crate::redpiler::program_graph::LogicalBudOwnerPlan>),
-    InstantTransport(InstantTransport),
-    InstantWireNodes(Vec<Option<crate::redpiler::program_graph::InstantWireNode>>),
     WireCallbacks(Vec<Option<WireCallbackSelection>>),
     WireHops(Vec<Option<SiteId>>),
-    InstantResets(Vec<(usize, InstantResetPlan)>),
-    Regions(Vec<InstantRegion>),
-    Proxies(Vec<InstantProxy>),
 }
 
 impl PlanOutput {
@@ -79,62 +42,14 @@ impl PlanOutput {
         match self {
             Self::MixedClassic(program) => graph.plans.mixed_classic = program,
             Self::FixedClassic(plans) => graph.plans.fixed_classic = plans,
-            Self::Boundaries(catalog) => {
-                graph.plans.instant.layers = None;
-                graph.plans.instant.boundaries = Some(catalog);
-                graph.plans.instant.regions.clear();
-                graph.plans.instant.proxies.clear();
-                graph.plans.settled_circuit = None;
-                graph.plans.logical_devices.clear();
-                graph.plans.logical_bud_owners.clear();
-            }
-            Self::Layers(layers) => {
-                graph.plans.instant.layers = Some(layers);
-                graph.plans.settled_circuit = None;
-                graph.plans.logical_devices.clear();
-                graph.plans.logical_bud_owners.clear();
-            }
             Self::FixedSignals(plans) => graph.plans.fixed_signals = plans,
-            Self::InstantDrives(plans) => graph.plans.instant_drives = plans,
-            Self::InstantTransitionPrograms(plans) => graph.plans.instant_transition_programs = plans,
-            Self::SignalChannels(plans) => graph.plans.signal_channels = plans,
-            Self::StableInstantLogic(plans) => graph.plans.stable_instant_logic = plans,
-            Self::InstantValueRegions(plans) => graph.plans.instant_value_regions = plans,
-            Self::SettledDevices { legacy, devices } => {
-                graph.plans.settled_circuit = Some(legacy);
-                graph.plans.logical_devices = devices;
-            }
             Self::ClassicNets(nets) => graph.plans.classic_nets = nets,
             Self::TurboCallbacks(indices) => graph.plans.turbo_callback_indices = indices,
             Self::WireCaptures(captures) => graph.plans.wire_captures = captures,
-            Self::WireCaptureMasks(masks) => {
-                for (wire, mask) in graph.wires.iter_mut().zip(masks) {
-                    wire.execution.mutable_captures = Some(mask);
-                }
-            }
-            Self::InstantEvents(kernels) => {
-                graph.plans.instant_events = kernels;
-                graph.plans.cpu_kernels = Default::default();
-                graph.plans.logical_bud_owners.clear();
-            }
-            Self::CpuKernels(plans) => graph.plans.cpu_kernels = plans,
-            Self::CpuPowerQueries(plans) => graph.plans.cpu_power_queries = plans,
-            Self::BudMemoryReads(reads) => {
-                graph.plans.bud_memory_reads = reads;
-                graph.plans.settled_circuit = None;
-                graph.plans.logical_devices.clear();
-            }
-            Self::LogicalBudOwners(owners) => graph.plans.logical_bud_owners = owners,
-            Self::InstantTransport(plan) => graph.plans.instant_transport = plan,
             Self::DustPaths(paths) => graph.plans.dust_paths = paths,
             Self::WireQueries(facts) => {
                 for (wire, facts) in graph.wires.iter_mut().zip(facts) {
                     wire.execution.query_facts = facts;
-                }
-            }
-            Self::InstantWireNodes(nodes) => {
-                for (wire, node) in graph.wires.iter_mut().zip(nodes) {
-                    wire.execution.instant_node = node;
                 }
             }
             Self::WireShapes(shapes) => {
@@ -152,28 +67,6 @@ impl PlanOutput {
                     wire.execution.hop_root = root;
                 }
             }
-            Self::InstantResets(resets) => {
-                for wire in &mut graph.wires {
-                    wire.execution.instant_reset = None;
-                }
-                for (wire, plan) in resets {
-                    graph.wires[wire].execution.instant_reset = Some(plan);
-                }
-            }
-            Self::Regions(regions) => {
-                graph.plans.instant.layers = None;
-                graph.plans.instant.boundaries = None;
-                graph.plans.instant.regions = regions;
-                graph.plans.instant.proxies.clear();
-                graph.plans.settled_circuit = None;
-                graph.plans.logical_devices.clear();
-                graph.plans.logical_bud_owners.clear();
-            }
-            Self::Proxies(proxies) => {
-                graph.plans.instant.proxies = proxies;
-                graph.plans.settled_circuit = None;
-                graph.plans.logical_devices.clear();
-            }
         }
         Ok(change)
     }
@@ -182,163 +75,19 @@ impl PlanOutput {
         match self {
             Self::MixedClassic(_) => PlanChange::MixedClassic,
             Self::FixedClassic(_) => PlanChange::FixedClassic,
-            Self::Boundaries(_) => PlanChange::Boundaries,
-            Self::Layers(_) => PlanChange::Layers,
             Self::FixedSignals(_) => PlanChange::FixedSignals,
-            Self::InstantDrives(_) => PlanChange::InstantDrives,
-            Self::InstantTransitionPrograms(_) => PlanChange::InstantTransitionPrograms,
-            Self::SignalChannels(_) => PlanChange::SignalChannels,
-            Self::StableInstantLogic(_) => PlanChange::StableInstantLogic,
-            Self::InstantValueRegions(_) => PlanChange::InstantValueRegions,
-            Self::SettledDevices { .. } => PlanChange::SettledDevices,
             Self::ClassicNets(_) => PlanChange::ClassicNets,
             Self::TurboCallbacks(_) => PlanChange::TurboCallbacks,
             Self::DustPaths(_) => PlanChange::DustPaths,
             Self::WireQueries(_) => PlanChange::WireQueries,
             Self::WireShapes(_) => PlanChange::WireShapes,
             Self::WireCaptures(_) => PlanChange::WireCaptures,
-            Self::WireCaptureMasks(_) => PlanChange::WireCaptureMasks,
-            Self::InstantEvents(_) => PlanChange::InstantEvents,
-            Self::CpuKernels(_) => PlanChange::CpuKernels,
-            Self::CpuPowerQueries(_) => PlanChange::CpuPowerQueries,
-            Self::BudMemoryReads(_) => PlanChange::BudMemoryReads,
-            Self::LogicalBudOwners(_) => PlanChange::LogicalBudOwners,
-            Self::InstantTransport(_) => PlanChange::InstantTransport,
-            Self::InstantWireNodes(_) => PlanChange::InstantWireNodes,
             Self::WireCallbacks(_) => PlanChange::WireCallbacks,
             Self::WireHops(_) => PlanChange::WireHops,
-            Self::InstantResets(_) => PlanChange::InstantResets,
-            Self::Regions(_) => PlanChange::Regions,
-            Self::Proxies(_) => PlanChange::Proxies,
         }
     }
 
     fn validate_shape(&self, graph: &CompileGraph) -> Result<(), GraphBuildError> {
-        if let Self::StableInstantLogic(plan) = self {
-            if !plan.nets.is_empty() && plan.nets.len() != graph.plans.instant_transport.nets.len() {
-                return Err(GraphBuildError::StateTableLength {
-                    table: "stable instant logic",
-                    descriptions: graph.plans.instant_transport.nets.len(),
-                    states: plan.nets.len(),
-                });
-            }
-        }
-        if let Self::InstantValueRegions(plan) = self {
-            if !plan.nets.is_empty() && plan.nets.len() != graph.plans.instant_transport.nets.len() {
-                return Err(GraphBuildError::StateTableLength {
-                    table: "instant value regions",
-                    descriptions: graph.plans.instant_transport.nets.len(),
-                    states: plan.nets.len(),
-                });
-            }
-        }
-        if let Self::InstantTransitionPrograms(plan) = self {
-            if plan.nets.len() != graph.plans.instant_transport.nets.len() {
-                return Err(GraphBuildError::StateTableLength {
-                    table: "instant transition programs",
-                    descriptions: graph.plans.instant_transport.nets.len(),
-                    states: plan.nets.len(),
-                });
-            }
-            for (index, net) in plan.nets.iter().enumerate() {
-                if net
-                    .as_ref()
-                    .is_some_and(|net| net.wire_queries.len() != graph.plans.instant_transport.nets[index].wires.len())
-                {
-                    return Err(GraphBuildError::InvalidInstantRegion {
-                        table: "instant transition program shape",
-                        index,
-                    });
-                }
-            }
-        }
-        if let Self::SignalChannels(plan) = self {
-            if plan.channels.len() != graph.plans.instant_transport.nets.len() {
-                return Err(GraphBuildError::StateTableLength {
-                    table: "signal channels",
-                    descriptions: graph.plans.instant_transport.nets.len(),
-                    states: plan.channels.len(),
-                });
-            }
-        }
-        if let Self::CpuKernels(plans) = self {
-            if plans.require_true.len() != plans.require_false.len() || plans.entries.len() > graph.pistons.len() {
-                return Err(GraphBuildError::InvalidInstantRegion {
-                    table: "CPU kernel shape",
-                    index: 0,
-                });
-            }
-        }
-        if let Self::CpuPowerQueries(plans) = self {
-            if plans.entries.len() > graph.pistons.len() || plans.packed.require_true.len() != plans.packed.require_false.len() {
-                return Err(GraphBuildError::InvalidInstantRegion {
-                    table: "CPU power query shape",
-                    index: 0,
-                });
-            }
-        }
-        if let Self::SettledDevices { devices, .. } = self {
-            let mut previous_component = None;
-            let mut globally_owned_nodes = rustc_hash::FxHashSet::default();
-            let mut globally_owned_sites = rustc_hash::FxHashSet::default();
-            let mut globally_owned_contacts = rustc_hash::FxHashSet::default();
-            let mut globally_owned_resources = rustc_hash::FxHashSet::default();
-            let mut globally_owned_input_callbacks = rustc_hash::FxHashSet::default();
-            for scoped in devices {
-                scoped.circuit.validate().map_err(|_| GraphBuildError::InvalidInstantRegion {
-                    table: "scoped settled device",
-                    index: scoped.scope.component as usize,
-                })?;
-                if previous_component.is_some_and(|previous| previous >= scoped.scope.component)
-                    || !strictly_sorted(&scoped.scope.owned_nodes)
-                    || !strictly_sorted(&scoped.scope.owned_sites)
-                    || !strictly_sorted(&scoped.scope.owned_contacts)
-                    || !strictly_sorted(&scoped.scope.owned_resources)
-                    || !strictly_sorted(&scoped.scope.owned_source_routes)
-                    || !strictly_sorted_by_key(&scoped.scope.input_callbacks, |occurrence| (occurrence.route, occurrence.ordinal))
-                    || scoped.circuit.timing.is_none()
-                    || scoped.scope.owned_nodes.iter().any(|node| node.index() >= graph.nodes.len())
-                    || scoped.scope.owned_sites.iter().any(|site| site.index() >= graph.sites.len())
-                    || scoped.scope.owned_contacts.iter().any(|contact| contact.index() >= graph.contacts.len())
-                    || scoped
-                        .scope
-                        .owned_resources
-                        .iter()
-                        .any(|resource| resource.index() >= graph.resources.len())
-                    || scoped.scope.owned_source_routes.iter().any(|route| {
-                        route.index() >= graph.routes.len() || scoped.scope.owned_nodes.binary_search(&graph.routes[route.index()].source).is_err()
-                    })
-                    || scoped
-                        .scope
-                        .input_callbacks
-                        .iter()
-                        .any(|&occurrence| !valid_scoped_input_callback(graph, &scoped.scope.owned_nodes, occurrence))
-                    || scoped.scope.owned_nodes.iter().any(|node| !globally_owned_nodes.insert(*node))
-                    || scoped.scope.owned_sites.iter().any(|site| !globally_owned_sites.insert(*site))
-                    || scoped
-                        .scope
-                        .owned_contacts
-                        .iter()
-                        .any(|contact| !globally_owned_contacts.insert(*contact))
-                    || scoped
-                        .scope
-                        .owned_resources
-                        .iter()
-                        .any(|resource| !globally_owned_resources.insert(*resource))
-                    || scoped
-                        .scope
-                        .input_callbacks
-                        .iter()
-                        .any(|&occurrence| !globally_owned_input_callbacks.insert(occurrence))
-                {
-                    return Err(GraphBuildError::InvalidInstantRegion {
-                        table: "scoped settled device ordering",
-                        index: scoped.scope.component as usize,
-                    });
-                }
-                previous_component = Some(scoped.scope.component);
-            }
-        }
         if let Self::WireCaptures(rows) = self {
             if !rows.is_empty() && rows.len() != graph.sites.len() {
                 return Err(GraphBuildError::StateTableLength {
@@ -350,10 +99,7 @@ impl PlanOutput {
         }
         let aligned = match self {
             Self::WireQueries(rows) => Some(("wire query facts", rows.len())),
-            Self::InstantDrives(plan) => Some(("instant drive wire map", plan.by_wire.len())),
             Self::WireShapes(rows) => Some(("wire shapes", rows.len())),
-            Self::WireCaptureMasks(rows) => Some(("wire capture masks", rows.len())),
-            Self::InstantWireNodes(rows) => Some(("instant wire nodes", rows.len())),
             Self::WireCallbacks(rows) => Some(("wire callback selection", rows.len())),
             Self::WireHops(rows) => Some(("wire hop roots", rows.len())),
             Self::TurboCallbacks(rows) if !rows.is_empty() => Some(("Turbo callback indices", rows.len())),
@@ -368,146 +114,6 @@ impl PlanOutput {
                 });
             }
         }
-        if let Self::InstantResets(rows) = self {
-            let mut seen = vec![false; graph.wires.len()];
-            for &(wire, _) in rows {
-                if wire >= seen.len() || std::mem::replace(&mut seen[wire], true) {
-                    return Err(GraphBuildError::InvalidInstantReset { wire });
-                }
-            }
-        }
         Ok(())
-    }
-}
-
-fn valid_scoped_input_callback(
-    graph: &CompileGraph,
-    owned_nodes: &[crate::redpiler::program_graph::NodeId],
-    occurrence: crate::redpiler::program_graph::RouteOccurrence,
-) -> bool {
-    let Some(route) = graph.routes.get(occurrence.route.index()) else {
-        return false;
-    };
-    let Some(delivery) = route.deliveries.get(occurrence.ordinal as usize) else {
-        return false;
-    };
-    if owned_nodes.binary_search(&route.source).is_ok() {
-        return false;
-    }
-    let receiver = delivery
-        .receiver
-        .or_else(|| match (graph.sites.get(delivery.target.index())?.source, delivery.kind) {
-            (crate::redpiler::program_graph::SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
-            _ => None,
-        });
-    let target = match receiver {
-        Some(CallbackReceiver::Component(node)) => node,
-        Some(CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor)) => {
-            let Some(piston) = graph.pistons.get(actor.index()) else {
-                return false;
-            };
-            piston.node
-        }
-        Some(CallbackReceiver::Contact(contact)) => {
-            let Some(contact) = graph.contacts.get(contact.index()) else {
-                return false;
-            };
-            contact.node
-        }
-        None => return false,
-    };
-    if owned_nodes.binary_search(&target).is_err() {
-        return false;
-    }
-    match delivery.kind {
-        DeliveryKind::Update { .. } => true,
-        DeliveryKind::Shape { .. } => {
-            matches!(
-                graph.nodes.get(target.index()).map(|node| &node.kind),
-                Some(crate::redpiler::program_graph::CircuitNodeKind::Wire(_))
-            ) && WireShape::shape_callbacks_are_inert(graph, target)
-        }
-    }
-}
-
-fn strictly_sorted<T: Ord>(items: &[T]) -> bool {
-    items.windows(2).all(|pair| pair[0] < pair[1])
-}
-
-fn strictly_sorted_by_key<T, K: Ord>(items: &[T], key: impl Fn(&T) -> K) -> bool {
-    items.windows(2).all(|pair| key(&pair[0]) < key(&pair[1]))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::redpiler::components::{NodeState, NodeType};
-    use crate::redpiler::program_graph::{CircuitNodeDraft, CircuitNodeKind, ComponentState, Guard, Route, RouteDelivery, RouteOccurrence};
-
-    fn callback_graph(kind: DeliveryKind) -> CompileGraph {
-        let source = crate::redpiler::program_graph::NodeId::new(0);
-        let target = crate::redpiler::program_graph::NodeId::new(1);
-        CompileGraph {
-            nodes: vec![source, target]
-                .into_iter()
-                .map(|_| CircuitNodeDraft {
-                    position: None,
-                    raw_state: None,
-                    kind: CircuitNodeKind::Electrical(NodeType::Constant),
-                    state: ComponentState::Electrical(NodeState::default()),
-                    output_route: None,
-                })
-                .collect(),
-            links: vec![],
-            power_links: vec![],
-            comparator_inputs: vec![],
-            profiles: vec![],
-            guards: vec![Guard::Always],
-            contacts: vec![],
-            routes: vec![Route {
-                source,
-                deliveries: vec![RouteDelivery {
-                    target: crate::redpiler::program_graph::SiteId::new(0),
-                    kind,
-                    guard: crate::redpiler::program_graph::GuardId::new(0),
-                    view: crate::redpiler::program_graph::OperandView::Live,
-                    sequence: 0,
-                    receiver: Some(CallbackReceiver::Component(target)),
-                }]
-                .into_boxed_slice(),
-            }],
-            wires: vec![],
-            wire_relations: vec![],
-            sites: vec![],
-            pistons: vec![],
-            resources: vec![],
-            initial_pistons: vec![],
-            initial_resources: vec![],
-            plans: Default::default(),
-        }
-    }
-
-    #[test]
-    fn scoped_callback_validation_keeps_updates_and_rejects_unproven_shape_rows() {
-        let occurrence = RouteOccurrence {
-            route: crate::redpiler::program_graph::RouteId::new(0),
-            ordinal: 0,
-        };
-        let owned = [crate::redpiler::program_graph::NodeId::new(1)];
-        assert!(valid_scoped_input_callback(
-            &callback_graph(DeliveryKind::Update { direction: None }),
-            &owned,
-            occurrence
-        ));
-        assert!(
-            !valid_scoped_input_callback(
-                &callback_graph(DeliveryKind::Shape {
-                    direction: mchprs_blocks::BlockFace::North,
-                }),
-                &owned,
-                occurrence
-            ),
-            "Shape rows to non-wire receivers are never certified as inert"
-        );
     }
 }

@@ -6,56 +6,16 @@
 //! the interpreter. See the [redpiler overview](crate::redpiler).
 
 #[cfg(test)]
-pub(crate) mod accepted_boundary_probe;
-#[cfg(test)]
 #[path = "graph/tests/chungus_census.rs"]
 mod chungus_census;
 pub(crate) mod classic;
 mod coverage;
-mod cpu_kernels;
-#[cfg(test)]
-#[path = "graph/tests/cpu_power_queries.rs"]
-mod cpu_power_query_tests;
-mod drives;
-#[cfg(test)]
-#[path = "graph/tests/event_boundary_probes.rs"]
-mod event_boundary_probes;
 mod fixed_classic;
-mod instant;
-#[cfg(test)]
-#[path = "graph/tests/instant_cpu.rs"]
-mod instant_cpu_tests;
-#[cfg(test)]
-#[path = "graph/tests/instant_firing_reset.rs"]
-mod instant_firing_reset_tests;
-mod instant_kernel;
-mod instant_proxy;
-#[cfg(test)]
-#[path = "graph/tests/logical_bud_runtime.rs"]
-mod logical_bud_runtime_tests;
-mod logical_clock;
-pub(crate) mod logical_device;
-#[cfg(test)]
-#[path = "graph/tests/logical_device_author_profiles.rs"]
-mod logical_device_author_profile_tests;
-#[cfg(test)]
-#[path = "graph/tests/logical_device_counter.rs"]
-mod logical_device_counter_tests;
-#[cfg(test)]
-#[path = "graph/tests/logical_device_frame.rs"]
-mod logical_device_frame_tests;
-#[cfg(test)]
-#[path = "graph/tests/logical_device_islands.rs"]
-mod logical_device_island_tests;
-#[cfg(any(test, feature = "saved-plot-bench"))]
-#[path = "graph/tests/logical_device_saved_plot.rs"]
-pub(crate) mod logical_device_saved_plot_tests;
-#[cfg(test)]
-#[path = "graph/tests/memory_cells.rs"]
-mod memory_cell_tests;
 #[cfg(test)]
 #[path = "graph/tests/mixed_classic.rs"]
 mod mixed_classic_tests;
+#[allow(dead_code)]
+pub(crate) mod piston_probe;
 #[cfg(test)]
 #[path = "graph/tests/piston_sample_census.rs"]
 mod piston_sample_census;
@@ -63,21 +23,17 @@ mod pistons;
 mod power;
 mod projection;
 mod reset;
-mod settled_inputs;
-#[cfg(test)]
-#[path = "graph/tests/settled_timing.rs"]
-mod settled_timing;
-mod signal_channels;
 mod sites;
-mod stable_instant_logic;
-mod transitions;
-pub(crate) mod transport;
 #[cfg(test)]
 #[path = "graph/tests/unchecked_classic_anpu.rs"]
 mod unchecked_classic_anpu;
 mod wire;
+#[allow(dead_code)]
+pub(crate) mod wire_probe;
 
-use pistons::{DeferredPistonEvent, PistonRequest, PistonRequestQueue};
+#[cfg(test)]
+use pistons::PistonRequest;
+use pistons::{DeferredPistonEvent, PistonRequestQueue};
 use sites::ResolvedSiteView;
 
 use super::TickScheduler;
@@ -283,12 +239,8 @@ pub(crate) struct TestRecorder {
     /// Owner event occurrences handed to the shared delivery path.
     logical_bud_occurrence_dispatches: u64,
     /// Cold reduced Main/Quasi evaluator sampled before accepted actor mutation.
-    accepted_boundary_probe: Option<accepted_boundary_probe::Probe>,
     /// Optional callback attribution; updated only by test builds and never changes trace order.
     callback_census: CallbackCensus,
-    /// Opt-in per-value-region execution attribution for ignored research runs only.
-    value_region_census_enabled: bool,
-    value_region_census: ValueRegionExecutionCensus,
     // Experimental executor bindings and counters outlive individual trace episodes.
     power_links_examined: Cell<usize>,
     unchecked_classic: Option<Arc<unchecked_classic_anpu::UncheckedProgram>>,
@@ -327,24 +279,6 @@ pub(crate) struct TransportNetCensus {
 }
 
 #[cfg(test)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct ValueRegionExecutionRow {
-    pub(crate) dense_visits: u64,
-    pub(crate) inert_visits: u64,
-    pub(crate) changed_wire_writes: u64,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ValueRegionExecutionCensus {
-    /// Rows align with transport net, then the net's value-region table.
-    pub(crate) by_net: Vec<Vec<ValueRegionExecutionRow>>,
-    /// Complete transport invocations whose every wire visit was inert.
-    pub(crate) all_inert_invocations: u64,
-    pub(crate) all_inert_visits: u64,
-}
-
-#[cfg(test)]
 fn callback_kind_index(kind: DeliveryKind) -> usize {
     match kind {
         DeliveryKind::Update { .. } => 0,
@@ -377,9 +311,6 @@ impl TestRecorder {
         self.logical_bud_direct_samples.clear();
         self.logical_bud_boundary_callbacks.clear();
         self.callback_census = CallbackCensus::default();
-        for rows in &mut self.value_region_census.by_net {
-            rows.fill(ValueRegionExecutionRow::default());
-        }
     }
 }
 
@@ -449,38 +380,11 @@ pub(crate) struct GraphBackend {
     component_sites: Vec<Option<SiteId>>,
     /// This pool reuses compiled hop scratch; each nested invocation owns a separate walk.
     wire_walks: Vec<WireWalk>,
-    /// Closed transport programs reuse private scratch between propagation episodes.
-    transport_scratch: Vec<transport::TransportScratch>,
-    value_region_cache: Vec<transport::ValueRegionCache>,
-    transition_cache: transitions::TransitionCache,
-    /// False requires per-net checks; a noncanonical import or write permanently clears this hint.
-    canonical_transport_repeaters: bool,
-    stable_logic_scratch: Vec<stable_instant_logic::StableLogicScratch>,
-    stable_logic_cache: Vec<stable_instant_logic::StableLogicCache>,
     classic_proof: Option<classic::ProofRecorder>,
     fixed_classic: Option<std::sync::Arc<FixedClassicProgram>>,
     fixed_classic_scratch: Vec<fixed_classic::FixedClassicScratch>,
     /// This holds reusable wave scratch and the current synchronous route replacement.
-    instant_kernel: instant_kernel::KernelExecution,
-    logical_devices: Vec<logical_device::LogicalDevice>,
-    logical_device_owner: Vec<Option<usize>>,
-    /// Source-qualified native clock pistons dispatch accepted retracts to their frame owner.
-    native_action_clock_owner: Vec<Option<usize>>,
-    /// Exact native callback occurrences replaced by certified logical-device inputs.
-    logical_input_callbacks: FxHashSet<RouteOccurrence>,
-    /// Routes with typed input ports must retain per-occurrence native dispatch.
-    general_delivery_routes: Vec<bool>,
-    logical_device_admission: crate::redpiler::LogicalDeviceAdmission,
-    active_frame_command_outputs: Vec<NodeId>,
-    active_frame_retained_actors: Vec<PistonId>,
-    active_frame_retained_nodes: Vec<NodeId>,
-    active_frame_retained_routes: Vec<RouteOccurrence>,
-    active_frame_power_inputs: Vec<logical_device::ActiveFramePowerInput>,
-    /// O6 logical BUD owners index immutable transition plans by physical piston ID.
-    /// Their values, revisions and deferred deadlines remain in the shared CircuitState/GraphFuture.
-    logical_bud_owner_by_actor: Vec<Option<usize>>,
     /// Original callback occurrences that sample active logical BUD owners.
-    logical_bud_samples_by_route: Vec<Option<Box<[Option<PistonId>]>>>,
     future: GraphFuture,
     dirty: Vec<bool>,
     /// Contact cells whose selected profile may differ from the last full projection.
@@ -627,12 +531,6 @@ impl GraphBackend {
         Self::validate_supported(&lowered.program)?;
         let mut backend = Self::new_with_positions(lowered.program, lowered.state, lowered.logical_tick, lowered.positions)?;
         backend.import_ticks(lowered.imported_ticks)?;
-        backend.logical_device_admission = backend
-            .install_logical_device(monitor)
-            .map_err(|_| GraphBackendError::UnsupportedComponent {
-                position: None,
-                kind: "logical device input or stationary entry contract",
-            })?;
         let initial_command_ticks: Vec<_> = backend
             .program
             .command_blocks()
@@ -846,7 +744,6 @@ impl GraphBackend {
             }
         }
         let node_count = program.nodes().len();
-        let route_count = program.routes().len();
         let (contacts_by_piston, contacts_by_resource, always_dirty_contacts) = projection::contact_projection_dependencies(&program);
         let contact_count = program.contacts().len();
         let full_contact_projection = program.contacts().iter().map(|contact| contact.position).collect::<FxHashSet<_>>().len() != contact_count;
@@ -855,76 +752,15 @@ impl GraphBackend {
         let projected_pistons = state.pistons.to_vec();
         let projected_resources = state.resources.to_vec();
         let fixed_classic = program.fixed_classic().cloned();
-        let instant_kernel = instant_kernel::KernelExecution::new(&program);
-        let mut logical_bud_owner_by_actor = vec![None; program.pistons().len()];
-        let native_action_clock_owner = vec![None; program.pistons().len()];
-        let mut logical_bud_samples_by_route: Vec<Option<Box<[Option<PistonId>]>>> =
-            std::iter::repeat_with(|| None).take(program.routes().len()).collect();
-        let instant_kernel_routes: FxHashSet<_> = program
-            .instant_kernels()
-            .iter()
-            .flat_map(|kernel| kernel.routes.iter().map(|route| route.route))
-            .collect();
-        for (index, owner) in program.logical_bud_owners().iter().enumerate() {
-            let piston_state = state.pistons.get(owner.actor.index());
-            let resource_state = state.resources.get(owner.resource.index());
-            let matches_entry = piston_state.is_some_and(|current| {
-                current.extended == owner.initial_piston.extended
-                    && current.head_present == owner.initial_piston.head_present
-                    && current.availability == owner.initial_piston.availability
-            }) && resource_state
-                .is_some_and(|current| current.at == owner.initial_resource.at && current.enabled == owner.initial_resource.enabled);
-            // The older pull-wave route replacement cannot preserve an individual occurrence
-            // handoff to a logical owner. Keep that actor physical when the route programs overlap.
-            let route_conflict = owner
-                .sample_routes
-                .iter()
-                .any(|occurrence| instant_kernel_routes.contains(&occurrence.route) || program.instant_route_binding(occurrence.route).is_some());
-            if matches_entry && !route_conflict {
-                logical_bud_owner_by_actor[owner.actor.index()] = Some(index);
-                for &occurrence in owner.sample_routes.iter() {
-                    let samples = &mut logical_bud_samples_by_route[occurrence.route.index()];
-                    let ordinals =
-                        samples.get_or_insert_with(|| vec![None; program.routes()[occurrence.route.index()].deliveries.len()].into_boxed_slice());
-                    if let Some(actor) = ordinals.get_mut(occurrence.ordinal as usize) {
-                        *actor = Some(owner.actor);
-                    }
-                }
-            }
-        }
-        let canonical_transport_repeaters = program.nodes().iter().zip(state.components.iter()).all(|(node, state)| {
-            !matches!(node.kind, CircuitNodeKind::Electrical(NodeType::Repeater { .. }))
-                || matches!(state, ComponentState::Electrical(value) if value.output_strength == 15 * u8::from(value.powered))
-        });
         Ok(Self {
             program,
             state,
             positions,
             component_sites,
             wire_walks: Vec::new(),
-            transport_scratch: Vec::new(),
-            value_region_cache: Vec::new(),
-            transition_cache: transitions::TransitionCache::default(),
-            canonical_transport_repeaters,
-            stable_logic_scratch: Vec::new(),
-            stable_logic_cache: Vec::new(),
             classic_proof: None,
             fixed_classic,
             fixed_classic_scratch: Vec::new(),
-            instant_kernel,
-            logical_devices: Vec::new(),
-            logical_device_owner: Vec::new(),
-            native_action_clock_owner,
-            logical_input_callbacks: FxHashSet::default(),
-            general_delivery_routes: vec![false; route_count],
-            logical_device_admission: crate::redpiler::LogicalDeviceAdmission::NotApplicable,
-            active_frame_command_outputs: Vec::new(),
-            active_frame_retained_actors: Vec::new(),
-            active_frame_retained_nodes: Vec::new(),
-            active_frame_retained_routes: Vec::new(),
-            active_frame_power_inputs: Vec::new(),
-            logical_bud_owner_by_actor,
-            logical_bud_samples_by_route,
             future: GraphFuture {
                 scheduler: TickScheduler::default(),
                 pending: FxHashMap::default(),
@@ -1135,11 +971,6 @@ impl GraphBackend {
         {
             return Err(GraphExecutionError::CommandHostUnavailable { position });
         }
-        if !self.logical_devices.is_empty() {
-            let result = self.tick_logical_device(&mut host);
-            self.latch_error(&result);
-            return result;
-        }
         let result = self.tick_phases(&mut host);
         if let Err(error) = &result {
             if !matches!(error, GraphExecutionError::CommandHostUnavailable { .. }) {
@@ -1296,12 +1127,12 @@ impl GraphBackend {
         match self.program.nodes()[node.index()].kind {
             CircuitNodeKind::Electrical(NodeType::Lever) => {
                 let powered = !self.node_state(node).powered;
-                self.set_node(node, powered, u8::from(powered) * 15, None, !self.logical_node_owned(node))?;
+                self.set_node(node, powered, u8::from(powered) * 15, None, true)?;
             }
             CircuitNodeKind::Electrical(NodeType::Button) => {
                 if !self.node_state(node).powered {
                     self.schedule(node, 10, TickPriority::Normal);
-                    self.set_node(node, true, 15, None, !self.logical_node_owned(node))?;
+                    self.set_node(node, true, 15, None, true)?;
                 }
             }
             _ => {}
@@ -1326,7 +1157,7 @@ impl GraphBackend {
             self.program.nodes()[node.index()].kind,
             CircuitNodeKind::Electrical(NodeType::PressurePlate)
         ) {
-            self.set_node(node, powered, u8::from(powered) * 15, None, !self.logical_node_owned(node))?;
+            self.set_node(node, powered, u8::from(powered) * 15, None, true)?;
         }
         Ok(())
     }
@@ -1339,9 +1170,6 @@ impl GraphBackend {
 
     /// Run a component's scheduled tick and send any resulting notifications.
     fn tick_component<'h>(&mut self, node: NodeId, host: &mut Option<&'h mut (dyn GraphCommandHost + 'h)>) -> Result<(), GraphExecutionError> {
-        if self.logical_node_owned(node) && !self.active_frame_retained_nodes.contains(&node) {
-            return Err(self.unsupported(node, "logical frame received an unowned scheduled tick"));
-        }
         if self.fixed_classic.is_some() {
             return self.fixed_classic_tick(node);
         }
@@ -1450,9 +1278,6 @@ impl GraphBackend {
     }
 
     fn update_command_power(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
-        if self.active_frame_command_outputs.contains(&node) {
-            return Ok(());
-        }
         let powered = self.input_strength(node, InputPort::Main) > 0;
         self.update_command_powered(node, powered)
     }
@@ -1967,9 +1792,7 @@ impl GraphBackend {
     fn fire_route(&mut self, node: NodeId) -> Result<(), GraphExecutionError> {
         if let Some(program) = &self.fixed_classic {
             let route = program.nodes[node.index()].output_route;
-            if let Some(route) = route
-                && !self.requires_general_route_delivery(route)
-            {
+            if let Some(route) = route {
                 return self.fixed_classic_route(route, None);
             }
         }
@@ -2009,10 +1832,7 @@ impl GraphBackend {
     /// The general path keeps duplicate notifications. A callback can run another route.
     #[inline(always)]
     fn deliver_route(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        if self.fixed_classic.is_some()
-            && !self.logical_node_owned(self.program.routes()[route.index()].source)
-            && !self.requires_general_route_delivery(route)
-        {
+        if self.fixed_classic.is_some() {
             return self.fixed_classic_route(route, captured);
         }
         let result = self.deliver_route_inner(route, captured);
@@ -2020,37 +1840,11 @@ impl GraphBackend {
     }
 
     fn deliver_route_inner(&mut self, route: RouteId, captured: Option<&[Option<ObservedSite>]>) -> Result<(), GraphExecutionError> {
-        let retained_frame = self.logical_node_owned(self.program.routes()[route.index()].source);
-        if retained_frame
-            && self
-                .active_frame_retained_routes
-                .binary_search_by_key(&route, |occurrence| occurrence.route)
-                .is_err()
-        {
-            return Ok(());
-        }
-        let has_logical_sample = self.logical_bud_samples_by_route.get(route.index()).is_some_and(Option::is_some);
-        let requires_general_delivery = self.requires_general_route_delivery(route);
-        if !retained_frame
-            && !has_logical_sample
-            && !requires_general_delivery
-            && let Some(kernel) = self.instant_kernel.active.clone()
-            && let Ok(index) = kernel.routes.binary_search_by_key(&route, |row| row.route)
-        {
-            return self.deliver_kernel_route(&kernel.routes[index], captured);
-        }
-        if !retained_frame
-            && !has_logical_sample
-            && !requires_general_delivery
-            && let Some(binding) = self.program.instant_route_binding(route)
-        {
-            return self.deliver_instant_route(route, binding, captured);
-        }
         let delivery_count = self.program.routes()[route.index()].deliveries.len();
         let classic_range = self.program.classic().route_ranges.get(route.index()).cloned().unwrap_or(0..0);
         let mut classic_cursor = classic_range.start;
         for index in 0..delivery_count {
-            if !retained_frame && !requires_general_delivery && classic_cursor < classic_range.end {
+            if classic_cursor < classic_range.end {
                 let binding = self.program.classic().route_entries[classic_cursor];
                 if binding.ordinal as usize == index {
                     classic_cursor += 1;
@@ -2060,216 +1854,9 @@ impl GraphBackend {
                 }
             }
             let delivery = self.program.routes()[route.index()].deliveries[index];
-            let occurrence = RouteOccurrence {
-                route,
-                ordinal: index as u32,
-            };
-            if retained_frame
-                && self
-                    .active_frame_retained_routes
-                    .binary_search_by_key(&(route, occurrence.ordinal), |row| (row.route, row.ordinal))
-                    .is_err()
-            {
-                continue;
-            }
-            self.deliver_callback(route, delivery, captured, Some(occurrence))?;
+            self.deliver_callback(route, delivery, captured)?;
         }
         Ok(())
-    }
-
-    #[inline(always)]
-    fn requires_general_route_delivery(&self, route: RouteId) -> bool {
-        self.general_delivery_routes.get(route.index()).copied().unwrap_or(false)
-    }
-
-    /// Deliver one original callback occurrence bound to a logical BUD transition cut.
-    /// Direct self-samples pass back through the owner sampler; external deliveries stay Graph-owned.
-    pub(super) fn deliver_logical_bud_occurrence(
-        &mut self,
-        actor: PistonId,
-        occurrence: RouteOccurrence,
-        dispatch: LogicalBudDispatch,
-    ) -> Result<(), GraphExecutionError> {
-        #[cfg(test)]
-        if self.test_recorder.test_recording {
-            self.test_recorder.logical_bud_occurrence_dispatches += 1;
-        }
-        if self.program.logical_bud_owner(actor).is_none() {
-            return Ok(());
-        }
-        let Some(delivery) = self
-            .program
-            .routes()
-            .get(occurrence.route.index())
-            .and_then(|route| route.deliveries.get(occurrence.ordinal as usize))
-            .copied()
-        else {
-            return Err(GraphExecutionError::UnsupportedComponent {
-                position: Some(self.program.pistons()[actor.index()].position),
-                kind: "invalid logical BUD route occurrence",
-            });
-        };
-        let classic_range = self.program.classic().route_ranges.get(occurrence.route.index()).cloned().unwrap_or(0..0);
-        if !self.requires_general_route_delivery(occurrence.route)
-            && let Some(binding) = self
-                .program
-                .classic()
-                .route_entries
-                .get(classic_range)
-                .unwrap_or(&[])
-                .iter()
-                .find(|binding| binding.ordinal == occurrence.ordinal)
-                .copied()
-            && self.run_classic_entry(binding.entry as usize)
-        {
-            return Ok(());
-        }
-        match dispatch {
-            LogicalBudDispatch::OwnSample => {
-                debug_assert!(
-                    self.program
-                        .logical_bud_owner(actor)
-                        .is_some_and(|plan| plan.sample_routes.contains(&occurrence))
-                );
-                #[cfg(test)]
-                if self.test_recorder.callback_census_enabled
-                    && let Some(receiver) = delivery.receiver
-                {
-                    self.record_callback_candidate(receiver);
-                }
-                if matches!(delivery.kind, DeliveryKind::Update { .. }) && delivery.receiver.is_some_and(|receiver| self.instant_event_noop(receiver))
-                {
-                    return Ok(());
-                }
-                if delivery.view != OperandView::Live || !self.guard_matches(delivery.guard, None) {
-                    return Ok(());
-                }
-                #[cfg(test)]
-                if self.test_recorder.test_recording {
-                    *self.test_recorder.logical_bud_direct_samples.entry(actor).or_default() += 1;
-                }
-                self.sample_piston_from(actor, occurrence.route)
-            }
-            LogicalBudDispatch::Boundary => {
-                #[cfg(test)]
-                if self.test_recorder.test_recording {
-                    *self.test_recorder.logical_bud_boundary_callbacks.entry(actor).or_default() += 1;
-                }
-                self.deliver_callback(occurrence.route, delivery, None, Some(occurrence))
-            }
-        }
-    }
-
-    /// Replay the retained boundary rows for a transition cut in their compiled order.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn deliver_logical_bud_cut(
-        &mut self,
-        actor: PistonId,
-        cut: LogicalBudEventCut,
-        resource_moved: bool,
-        interrupted_head: bool,
-        restore_matching_extension: bool,
-        pulled_resource: bool,
-        actor_revision_current: bool,
-        resource_revision_current: bool,
-    ) -> Result<(), GraphExecutionError> {
-        let event_count = self.program.logical_bud_owner(actor).map_or(0, |plan| plan.transition.events.len());
-        for index in 0..event_count {
-            let event = self
-                .program
-                .logical_bud_owner(actor)
-                .and_then(|plan| plan.transition.events.get(index))
-                .copied();
-            let Some(event) = event else { break };
-            if event.cut != cut {
-                continue;
-            }
-            let should_deliver = match event.condition {
-                LogicalBudEventCondition::Always => true,
-                LogicalBudEventCondition::ResourceMoved => resource_moved,
-                LogicalBudEventCondition::InterruptedHead => interrupted_head,
-                LogicalBudEventCondition::NotInterruptedHead => !interrupted_head,
-                LogicalBudEventCondition::RestoreMatchingExtension => restore_matching_extension,
-                LogicalBudEventCondition::PulledResource => pulled_resource,
-                LogicalBudEventCondition::ActorRevisionCurrent => actor_revision_current,
-                LogicalBudEventCondition::ResourceRevisionCurrent => resource_revision_current,
-            };
-            if should_deliver {
-                let redundant = self.logical_bud_event_base_pending(actor, event).is_some() && {
-                    #[cfg(test)]
-                    {
-                        !self.test_recorder.disable_busy_callback_contraction
-                    }
-                    #[cfg(not(test))]
-                    {
-                        true
-                    }
-                };
-                if redundant {
-                    // The owner sampler itself returns before reading power or enqueuing work while its base is pending.
-                    #[cfg(test)]
-                    {
-                        if self.test_recorder.test_recording {
-                            self.test_recorder.logical_bud_busy_callbacks_elided += 1;
-                        }
-                    }
-                    continue;
-                }
-                self.deliver_logical_bud_occurrence(actor, event.occurrence, event.dispatch)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn logical_bud_event_base_pending(&self, actor: PistonId, event: LogicalBudRouteEvent) -> Option<PistonId> {
-        let delivery = *self
-            .program
-            .routes()
-            .get(event.occurrence.route.index())?
-            .deliveries
-            .get(event.occurrence.ordinal as usize)?;
-        if delivery.view != OperandView::Live {
-            return None;
-        }
-        let target = match event.dispatch {
-            LogicalBudDispatch::OwnSample => actor,
-            LogicalBudDispatch::Boundary => self
-                .logical_bud_samples_by_route
-                .get(event.occurrence.route.index())?
-                .as_ref()?
-                .get(event.occurrence.ordinal as usize)
-                .copied()??,
-        };
-        let receiver = delivery
-            .receiver
-            .or_else(|| match (self.program.sites()[delivery.target.index()].source, delivery.kind) {
-                (SiteSource::Component(node), DeliveryKind::Update { .. }) => Some(CallbackReceiver::Component(node)),
-                _ => None,
-            })?;
-        let matches_target = match receiver {
-            CallbackReceiver::PistonBase(owner) | CallbackReceiver::PistonHead(owner) => owner == target,
-            CallbackReceiver::Component(node) => self.program.pistons()[target.index()].node == node,
-            CallbackReceiver::Contact(_) => false,
-        };
-        if !matches_target {
-            return None;
-        }
-        self.logical_bud_owner_by_actor.get(target.index())?.as_ref()?;
-        if !self.state.pistons[target.index()].availability.base_pending() || self.classic_route_entry(event.occurrence).is_some() {
-            return None;
-        }
-        Some(target)
-    }
-
-    fn classic_route_entry(&self, occurrence: RouteOccurrence) -> Option<ClassicRouteEntry> {
-        let range = self.program.classic().route_ranges.get(occurrence.route.index())?;
-        self.program
-            .classic()
-            .route_entries
-            .get(range.clone())?
-            .iter()
-            .find(|binding| binding.ordinal == occurrence.ordinal)
-            .copied()
     }
 
     /// Check a delivery's guard, then notify its receiver using live or captured state.
@@ -2280,19 +1867,12 @@ impl GraphBackend {
         route: RouteId,
         delivery: RouteDelivery,
         captured: Option<&[Option<ObservedSite>]>,
-        occurrence: Option<RouteOccurrence>,
     ) -> Result<(), GraphExecutionError> {
-        if occurrence.is_some_and(|occurrence| occurrence.route == route && self.logical_input_callbacks.contains(&occurrence)) {
-            return Ok(());
-        }
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled
             && let Some(receiver) = delivery.receiver
         {
             self.record_callback_candidate(receiver);
-        }
-        if matches!(delivery.kind, DeliveryKind::Update { .. }) && delivery.receiver.is_some_and(|receiver| self.instant_event_noop(receiver)) {
-            return Ok(());
         }
         if !self.guard_matches(delivery.guard, captured) {
             return Ok(());
@@ -2314,34 +1894,6 @@ impl GraphBackend {
         let Some(receiver) = receiver else {
             return Ok(());
         };
-        if !self.logical_device_owner.is_empty() && !self.logical_node_owned(self.program.routes()[route.index()].source) {
-            let target = match receiver {
-                CallbackReceiver::Component(node) => node,
-                CallbackReceiver::PistonBase(actor) | CallbackReceiver::PistonHead(actor) => self.program.pistons()[actor.index()].node,
-                CallbackReceiver::Contact(contact) => self.program.contacts()[contact.index()].node,
-            };
-            if self.logical_node_owned(target) {
-                return Err(self.unsupported(target, "ordinary callback crosses a logical-device scope"));
-            }
-        }
-        let logical_sample = occurrence
-            .and_then(|occurrence| {
-                self.logical_bud_samples_by_route
-                    .get(occurrence.route.index())?
-                    .as_ref()?
-                    .get(occurrence.ordinal as usize)
-            })
-            .copied()
-            .flatten()
-            .filter(|&actor| match receiver {
-                CallbackReceiver::PistonBase(id) | CallbackReceiver::PistonHead(id) => id == actor,
-                CallbackReceiver::Component(node) => self.program.pistons()[actor.index()].node == node,
-                CallbackReceiver::Contact(_) => false,
-            });
-        if let Some(actor) = logical_sample {
-            self.sample_piston_from(actor, route)?;
-            return Ok(());
-        }
         self.counts.callbacks += 1;
         #[cfg(test)]
         if self.test_recorder.callback_census_enabled {
@@ -2395,15 +1947,6 @@ impl GraphBackend {
         };
         let changed =
             state.powered != powered || state.output_strength != output_strength || locked.is_some_and(|locked| state.repeater_locked != locked);
-        if self.canonical_transport_repeaters
-            && matches!(
-                self.program.nodes()[node.index()].kind,
-                CircuitNodeKind::Electrical(NodeType::Repeater { .. })
-            )
-            && (state.output_strength != 15 * u8::from(state.powered) || output_strength != 15 * u8::from(powered))
-        {
-            self.canonical_transport_repeaters = false;
-        }
         state.powered = powered;
         state.output_strength = output_strength;
         state.pending_tick = false;
@@ -2482,28 +2025,8 @@ impl GraphBackend {
     }
 
     #[cfg(test)]
-    pub(crate) fn disable_logical_bud_owners_for_test(&mut self) {
-        self.logical_bud_owner_by_actor.fill(None);
-        self.logical_bud_samples_by_route.fill(None);
-    }
-
-    #[cfg(test)]
     pub(crate) fn disable_busy_callback_contraction_for_test(&mut self) {
         self.test_recorder.disable_busy_callback_contraction = true;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn install_accepted_boundary_probe(&mut self, actor: PistonId, circuit: SettledCircuit) -> Result<(), String> {
-        self.test_recorder.accepted_boundary_probe = Some(accepted_boundary_probe::Probe::new(actor, &self.program, circuit)?);
-        Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn take_accepted_boundary_probe(&mut self) -> Option<accepted_boundary_probe::Report> {
-        self.test_recorder
-            .accepted_boundary_probe
-            .take()
-            .map(accepted_boundary_probe::Probe::into_report)
     }
 
     #[cfg(test)]
@@ -2532,86 +2055,6 @@ impl GraphBackend {
     #[cfg(test)]
     pub(crate) fn piston_sample_census(&self) -> serde_json::Value {
         self.test_recorder.piston_sample_census.to_json()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn enable_value_region_census(&mut self) {
-        self.test_recorder.value_region_census_enabled = true;
-        let metadata = self.program.transport_census_metadata();
-        let mut rows = Vec::with_capacity(metadata.len());
-        for net in 0..metadata.len() {
-            let count = self.program.instant_value_region_net(net as u32).map_or(0, |plan| plan.regions.len());
-            rows.push(vec![ValueRegionExecutionRow::default(); count]);
-        }
-        self.test_recorder.value_region_census.by_net = rows;
-    }
-
-    #[cfg(test)]
-    pub(crate) fn value_region_census(&self) -> ValueRegionExecutionCensus {
-        self.test_recorder.value_region_census.clone()
-    }
-
-    #[cfg(test)]
-    pub(super) fn record_value_region_visit(&mut self, net: usize, region: u32, inert: bool) {
-        if let Some(row) = self
-            .test_recorder
-            .value_region_census
-            .by_net
-            .get_mut(net)
-            .and_then(|rows| rows.get_mut(region as usize))
-        {
-            if inert {
-                row.inert_visits += 1;
-            } else {
-                row.dense_visits += 1;
-            }
-        }
-    }
-
-    #[cfg(test)]
-    pub(super) fn record_value_region_write(&mut self, net: usize, region: u32) {
-        if let Some(row) = self
-            .test_recorder
-            .value_region_census
-            .by_net
-            .get_mut(net)
-            .and_then(|rows| rows.get_mut(region as usize))
-        {
-            row.changed_wire_writes += 1;
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn transport_census_metadata(&self) -> Vec<serde_json::Value> {
-        self.program.transport_census_metadata()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn value_region_census_program_net(&self, net: u32) -> Option<(&TransportNet, &InstantValueRegionNet)> {
-        Some((
-            self.program.instant_transport_net(net).as_ref(),
-            self.program.instant_value_region_net(net)?.as_ref(),
-        ))
-    }
-
-    #[cfg(test)]
-    pub(crate) fn value_region_census_drive_program(&self) -> &InstantDriveProgram {
-        self.program.instant_drive_program()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn value_region_census_node_position(&self, node: NodeId) -> Option<BlockPos> {
-        self.program.nodes().get(node.index()).and_then(|spec| spec.position)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn value_region_census_site_position(&self, site: SiteId) -> Option<BlockPos> {
-        self.program.sites().get(site.index()).map(|spec| spec.position)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn value_region_census_route(&self, route: RouteId) -> &Route {
-        &self.program.routes()[route.index()]
     }
 
     #[cfg(test)]
@@ -2668,10 +2111,6 @@ mod classic_pending_tests;
 #[cfg(test)]
 #[path = "graph/tests/isolated_wire.rs"]
 mod isolated_wire_tests;
-
-#[cfg(test)]
-#[path = "graph/tests/instant_reset.rs"]
-mod instant_reset_tests;
 
 #[cfg(test)]
 #[path = "graph/tests/wire_callbacks.rs"]

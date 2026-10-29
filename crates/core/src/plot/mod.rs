@@ -28,7 +28,6 @@ mod picking;
 mod piston_tests;
 mod preview;
 mod redpiler_compilation;
-mod region_snapshot;
 pub(crate) mod redstone_tools;
 mod scoreboard;
 mod screen_updates;
@@ -361,7 +360,7 @@ impl PlotWorld {
         (first_pos, second_pos)
     }
 
-    fn activation_snapshot(&self) -> Self {
+    pub(crate) fn activation_snapshot(&self) -> Self {
         let mut snapshot = Self::from_chunks(
             self.x,
             self.z,
@@ -1775,8 +1774,6 @@ impl Plot {
                 // 50_000 (= 3.33 MHz) here is arbitrary.
                 // We just need a number that's not too high so we actually get around to sending block updates.
                 let batch_size = batch_size.min(50_000) as u32;
-                #[cfg(feature = "saved-plot-bench")]
-                let batch_size = batch_size.min(benchmark::tick_cap());
                 let slice = if self.wire_tools_active() {
                     Duration::from_millis(5)
                 } else {

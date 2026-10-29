@@ -185,9 +185,6 @@ fn read(path: &Path) -> Value {
 pub(crate) fn manifests() -> Vec<Value> {
     manifests_at(&pack())
 }
-pub(crate) fn all_manifests() -> Vec<Value> {
-    all_manifests_at(&pack())
-}
 fn manifests_at(directory: &Path) -> Vec<Value> {
     all_manifests_at(directory)
         .into_iter()

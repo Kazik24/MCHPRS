@@ -1,41 +1,10 @@
 //! Full adder fixture replays against the interpreter and compact graph inventory.
-use crate::redpiler::passes::Pass;
 #[path = "boundary_contract.rs"]
 mod boundary_contract_tests;
-#[path = "builtin_reset.rs"]
-mod builtin_reset_tests;
 #[path = "execution_coverage.rs"]
 mod execution_coverage_tests;
-#[path = "guarded_transport.rs"]
-mod guarded_transport_tests;
-#[path = "instant_boundaries.rs"]
-mod instant_boundary_tests;
-#[path = "instant_cells.rs"]
-mod instant_cell_tests;
-#[path = "instant_contract.rs"]
-mod instant_contract_tests;
-#[path = "instant_events.rs"]
-mod instant_event_tests;
-#[path = "instant_layers.rs"]
-mod instant_layer_tests;
-
-pub(super) fn composed_chain_world(dust: bool) -> crate::plot::PlotWorld {
-    instant_layer_tests::composed_chain_world(dust)
-}
-#[path = "instant_proxy.rs"]
-mod instant_proxy_tests;
-#[path = "instant_recognition.rs"]
-mod instant_recognition_tests;
-#[path = "instant_transport.rs"]
-mod instant_transport_tests;
 #[path = "ordered_wire.rs"]
 mod ordered_wire_tests;
-#[path = "production_tiers.rs"]
-mod production_tier_tests;
-#[path = "reset_elision.rs"]
-mod reset_elision_tests;
-#[path = "stable_region.rs"]
-mod stable_region_tests;
 use super::fuzz_tests::{Operation, graph_operations_since, native_operations};
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
@@ -53,11 +22,6 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-pub(super) fn counter_world() -> (PlotWorld, (BlockPos, BlockPos)) {
-    let circuit = boundary_contract_tests::load_mechanism("counter_basic");
-    (circuit.build(), circuit.bounds())
-}
 
 const ORIGIN: BlockPos = BlockPos::new(40, 30, 40);
 const EXTRA: BlockPos = BlockPos::new(1, 1, 1);
@@ -445,38 +409,18 @@ fn assert_math_window(circuit: &Adder, world: &PlotWorld, sum: u16, carry: u16, 
     }
 }
 
-fn compile_with_instant_pass(circuit: &Adder, world: &PlotWorld, ticks: Vec<TickEntry>) -> Result<GraphBackend, String> {
+fn compile_graph(circuit: &Adder, world: &PlotWorld, ticks: Vec<TickEntry>) -> Result<GraphBackend, String> {
     let monitor = TaskMonitor::default();
     let mut prepared =
         passes::rich::prepare(world, circuit.bounds(), ticks, &monitor, AnalysisLimits::default()).map_err(|error| error.to_string())?;
-    let pipeline = passes::PassPipeline::new(vec![
-        passes::PassEntry {
-            pass: Pass::rewrite(passes::simplify_instant_resets::SimplifyInstantResets),
-            enabled: true,
-        },
-        passes::PassEntry {
-            pass: Pass::rewrite(passes::specialize_instant_pistons::SpecializeInstantPistons),
-            enabled: true,
-        },
-        passes::PassEntry {
-            pass: Pass::rewrite(passes::compile_builtin_resets::CompileBuiltinResets),
-            enabled: true,
-        },
-        passes::PassEntry {
-            pass: Pass::build(passes::compile_instant_resets::CompileInstantResets),
-            enabled: true,
-        },
-        passes::PassEntry {
-            pass: Pass::build(passes::identify_instant_regions::IdentifyInstantRegions),
-            enabled: true,
-        },
-        passes::PassEntry {
-            pass: Pass::build(passes::compile_instant_proxies::CompileInstantProxies),
-            enabled: true,
-        },
-    ]);
-    // Isolate this rewrite: older O1 passes intentionally erase identity callbacks.
-    passes::run_graph_pipeline(&mut prepared.graph, &Default::default(), &prepared.entry, &pipeline, &monitor).map_err(|error| error.to_string())?;
+    passes::run_graph_pipeline(
+        &mut prepared.graph,
+        &Default::default(),
+        &prepared.entry,
+        &passes::PassPipeline::new(vec![]),
+        &monitor,
+    )
+    .map_err(|error| error.to_string())?;
     GraphBackend::from_lowered(prepared.lower(&monitor).map_err(|error| error.to_string())?, &monitor).map_err(|error| error.to_string())
 }
 
@@ -491,7 +435,7 @@ fn replay(
     let mut native = circuit.build();
     let mut scratch = circuit.build();
     let ticks = native.scheduler().iter_entries().collect();
-    let mut backend = compile_with_instant_pass(circuit, &native, ticks).map_err(|error| format!("{} compile: {error}", circuit.id))?;
+    let mut backend = compile_graph(circuit, &native, ticks).map_err(|error| format!("{} compile: {error}", circuit.id))?;
     backend.set_test_recording(true);
     let mut coverage = Coverage::default();
     check_boundary(&backend, &native, &mut scratch, &positions, "initial")?;

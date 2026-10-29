@@ -60,15 +60,15 @@ impl PreparedGraph {
         pipeline: &super::PassPipeline,
         monitor: &TaskMonitor,
     ) -> Result<ValidatedGraph, super::PassPipelineError> {
-        let layers = super::run_graph_pipeline_with_analysis(&mut self.graph, options, &self.entry, pipeline, monitor)?;
+        super::run_graph_pipeline_impl(&mut self.graph, options, &self.entry, pipeline, monitor)?;
         self.finish_pipeline_statistics(monitor);
-        Ok(ValidatedGraph { prepared: self, layers })
+        Ok(ValidatedGraph { prepared: self })
     }
 
     #[cfg(test)]
     pub(crate) fn lower(self, monitor: &TaskMonitor) -> Result<LoweredCircuit, GraphBuildError> {
-        let layers = self.graph.validate_for_lowering(monitor)?;
-        ValidatedGraph { prepared: self, layers }.lower(monitor)
+        self.graph.validate_for_lowering(monitor)?;
+        ValidatedGraph { prepared: self }.lower(monitor)
     }
 
     pub(crate) fn finish_pipeline_statistics(&self, monitor: &TaskMonitor) {
@@ -81,8 +81,6 @@ impl PreparedGraph {
 pub(crate) struct ValidatedGraph {
     /// The exact prepared graph and entry accepted by the pipeline.
     prepared: PreparedGraph,
-    /// Transient analysis checked against this graph, retained only until lowering.
-    layers: Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>,
 }
 
 impl ValidatedGraph {
@@ -104,11 +102,6 @@ impl ValidatedGraph {
     /// Moving the draft out also discards the validation and all transient analysis.
     pub(crate) fn into_prepared(self) -> PreparedGraph {
         self.prepared
-    }
-
-    /// Only consuming lowering can recover the checked graph and its matching analysis.
-    pub(crate) fn into_lowering_parts(self) -> (PreparedGraph, Option<crate::redpiler::analysis::instant::layers::LayerCompilationContext>) {
-        (self.prepared, self.layers)
     }
 }
 

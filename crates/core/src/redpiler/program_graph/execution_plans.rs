@@ -6,73 +6,28 @@ use super::*;
 pub(crate) enum PlanChange {
     MixedClassic,
     FixedClassic,
-    Boundaries,
-    Layers,
-    SettledDevices,
     FixedSignals,
-    InstantDrives,
-    InstantTransitionPrograms,
-    SignalChannels,
-    StableInstantLogic,
-    InstantValueRegions,
     ClassicNets,
     TurboCallbacks,
     DustPaths,
     WireQueries,
     WireShapes,
     WireCaptures,
-    WireCaptureMasks,
-    InstantEvents,
-    CpuKernels,
-    CpuPowerQueries,
-    BudMemoryReads,
-    LogicalBudOwners,
-    InstantTransport,
-    InstantWireNodes,
     WireCallbacks,
     WireHops,
-    InstantResets,
-    Regions,
-    Proxies,
-}
-
-impl PlanChange {
-    /// These replacements can change instant ownership or its source catalog.
-    pub(crate) fn replaces_layer_analysis(self) -> bool {
-        matches!(self, Self::Boundaries | Self::Layers | Self::ClassicNets | Self::Regions | Self::Proxies)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// Optional execution shortcuts for one wire's unchanged canonical bindings.
 pub(crate) struct WireExecutionPlan {
-    /// Mutable canonical sites retained after immutable passive capture elimination.
-    pub(crate) mutable_captures: Option<u32>,
-    /// Experimental closed single-wire signal transfer.
-    pub(crate) instant_node: Option<InstantWireNode>,
     /// Exact fixed admission; dynamic slots keep their original guard search.
     pub(crate) callback_selection: Option<WireCallbackSelection>,
     /// Checked fixed geometry removes repeated property resolution without caching power.
     pub(crate) query_facts: Option<WireQueryFacts>,
     /// Proven raw shapes and regulated output bits across all contact variants; strength stays live.
     pub(crate) shape: Option<WireShape>,
-    /// This replaces a certified private reset cell's output walk with its exact two-wire transfer.
-    pub(crate) instant_reset: Option<InstantResetPlan>,
     /// This binds the root for compiled hops; neighbors reuse canonical_neighbors.
     pub(crate) hop_root: Option<SiteId>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Bindings for the first private redstone-resource/base-observer reset family.
-pub(crate) struct InstantResetPlan {
-    /// This identifies the existing actor whose lane and callbacks close the mechanism.
-    pub(crate) piston: PistonId,
-    /// This identifies the sole payload owner; no proxy copies its location or revision.
-    pub(crate) resource: ResourceId,
-    /// This identifies the base-watching reset observer and its existing scheduled state.
-    pub(crate) observer: NodeId,
-    /// This identifies the second wire in the certified two-wire output line.
-    pub(crate) partner: NodeId,
 }
 
 /// A certified short dust line whose only variable input is the first wire's direct source.
@@ -103,49 +58,12 @@ pub(crate) struct ExecutionPlans {
     pub(crate) fixed_classic: FixedClassicPlans,
     /// Exact compiled electrical reads and the separate settled weighted topology witness.
     pub(crate) fixed_signals: FixedSignalPlans,
-    /// Typed no-dust source expressions; unsupported wires retain general queries.
-    pub(crate) instant_drives: InstantDriveProgram,
-    /// Exact episode eligibility maps over certified ordered transport nets.
-    pub(crate) instant_transition_programs: InstantTransitionPrograms,
-    pub(crate) signal_channels: SignalChannels,
-    pub(crate) stable_instant_logic: StableInstantLogic,
-    /// Exact bounded electrical distance rows for transport-net value regions.
-    pub(crate) instant_value_regions: InstantValueRegions,
-    /// Whole-graph logical equations retained for diagnostics and static planning.
-    pub(crate) settled_circuit: Option<SettledCircuit>,
-    /// Independently certified, scoped logical devices executed beside ordinary graph components.
-    pub(crate) logical_devices: Vec<ScopedSettledDevice>,
     /// Whole private wire regions with exact ordered delayed-receiver programs.
     pub(crate) classic_nets: Vec<ClassicNetPlan>,
     /// Empty disables indexing; otherwise entries align with the wire table.
     pub(crate) turbo_callback_indices: Vec<Option<TurboCallbackIndex>>,
     /// Empty uses general capture; otherwise aligned with sites, shared by all walks.
     pub(crate) wire_captures: Vec<WireCapture>,
-    /// Experimental FIFO cell kernels; empty retains the existing pull-wave lowering.
-    pub(crate) instant_events: Vec<InstantKernel>,
-    /// Flat pure predicates compiled from event kernels; no mutable values are duplicated.
-    pub(crate) cpu_kernels: CpuKernelPlans,
-    /// Live Main/Quasi predicates for exact O6 piston power queries.
-    pub(crate) cpu_power_queries: CpuPowerQueryPlans,
-    /// Exact private storage/read pairs; their original state and update work remain owned by Graph.
-    pub(crate) bud_memory_reads: Vec<BudMemoryRead>,
-    /// Ordinary exclusive payload writers with exact sample and publication route bindings.
-    pub(crate) logical_bud_owners: Vec<LogicalBudOwnerPlan>,
-    /// Closed wire corridors with dense local Turbo bindings and ordered boundary effects.
-    pub(crate) instant_transport: InstantTransport,
     /// Local wire-power certificates, retaining the original ordered walks.
     pub(crate) dust_paths: Vec<DustPathPlan>,
-    /// Ownership boundaries and their dependent instant programs.
-    pub(crate) instant: InstantPlans,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-/// Instant region ownership and private-cell proxy plans.
-pub(crate) struct InstantPlans {
-    /// These cold causal layers are lowered separately into certified pull-wave executables.
-    pub(crate) layers: Option<LayeredInstantPlan>,
-    /// This cold experimental catalog is the sole owner map when the boundary pipeline is selected.
-    pub(crate) boundaries: Option<BoundaryCatalog>,
-    pub(crate) regions: Vec<InstantRegion>,
-    pub(crate) proxies: Vec<InstantProxy>,
 }

@@ -64,53 +64,8 @@ impl GraphBackend {
     /// Read a component's main, side, or quasi input strength.
     /// Uses a specialized query when available, otherwise follows the power links.
     pub(super) fn input_strength(&self, node: NodeId, port: InputPort) -> u8 {
-        if let Some(binding) = self
-            .active_frame_power_inputs
-            .iter()
-            .find(|binding| binding.node == node && binding.port == port)
-        {
-            let Some(reset_source) = binding.reset else {
-                return binding.data_strength;
-            };
-            let target = PowerTarget::Input { node, port };
-            let mut reset_strength = 0u8;
-            for link in self.program.power_links_to(target) {
-                if !self.guard_matches(link.guard, None) {
-                    continue;
-                }
-                if self.frame_reset_source_matches(reset_source, link) {
-                    reset_strength = reset_strength.max(self.link_strength(link));
-                    continue;
-                }
-                let SiteSource::Constant(profile) = self.program.sites()[link.from.index()].source else {
-                    continue;
-                };
-                if !self.program.profiles()[profile.index()].solid || !self.program.profiles()[profile.index()].cube {
-                    continue;
-                }
-                let PowerPort::Conducted { include_dust } = link.from_port else {
-                    continue;
-                };
-                let conductor = PowerTarget::Conductor {
-                    site: link.from,
-                    include_dust,
-                };
-                for reset_link in self.program.power_links_to(conductor) {
-                    if self.frame_reset_source_matches(reset_source, reset_link) && self.guard_matches(reset_link.guard, None) {
-                        reset_strength = reset_strength.max(self.link_strength(reset_link).saturating_sub(link.attenuation));
-                    }
-                }
-            }
-            return binding.data_strength.max(reset_strength);
-        }
         if self.fixed_classic.is_some() {
             return self.fixed_classic_input_strength(node, port);
-        }
-        if port == InputPort::Quasi
-            && let Some(read) = self.program.bud_memory_read(node)
-        {
-            let state = self.state.resources[read.resource.index()];
-            return u8::from(state.enabled && state.at == read.source) * 15;
         }
         if port == InputPort::Main
             && let Some((net, attenuation, source_attenuation)) = self.program.classic().input_by_node.get(node.index()).copied().flatten()
@@ -122,51 +77,6 @@ impl GraphBackend {
                 .max(self.node_state(source).output_strength.saturating_sub(source_attenuation));
         }
         self.query_power(PowerTarget::Input { node, port })
-    }
-
-    /// Read the retained actor's data input with its certified reset contribution
-    /// removed. This is used only to seed the frame adapter; subsequent computes
-    /// replace it with the reset-excluded equation output.
-    pub(super) fn input_strength_without_frame_reset(&self, node: NodeId, port: InputPort, reset: super::logical_device::FrameResetSource) -> u8 {
-        let target = PowerTarget::Input { node, port };
-        let mut maximum = 0;
-        for link in self.program.power_links_to(target) {
-            if !self.guard_matches(link.guard, None) || self.frame_reset_source_matches(reset, link) {
-                continue;
-            }
-            if let PowerPort::Conducted { include_dust } = link.from_port {
-                let conductor = PowerTarget::Conductor {
-                    site: link.from,
-                    include_dust,
-                };
-                for reset_link in self.program.power_links_to(conductor) {
-                    if self.guard_matches(reset_link.guard, None) && !self.frame_reset_source_matches(reset, reset_link) {
-                        maximum = maximum.max(self.link_strength(reset_link).saturating_sub(link.attenuation));
-                    }
-                }
-            } else {
-                maximum = maximum.max(self.link_strength(link));
-            }
-        }
-        maximum
-    }
-
-    fn frame_reset_source_matches(&self, reset: super::logical_device::FrameResetSource, link: &PowerLink) -> bool {
-        match reset {
-            super::logical_device::FrameResetSource::Observer(node) => {
-                matches!(link.from_port, PowerPort::Output | PowerPort::Stored)
-                    && matches!(self.program.sites()[link.from.index()].source, SiteSource::Component(source) if source == node)
-            }
-            super::logical_device::FrameResetSource::InputRestoration { resource, contact } => {
-                let resource_state = self.state.resources[resource.index()];
-                resource_state.at == contact
-                    && self
-                        .program
-                        .sites()
-                        .get(link.from.index())
-                        .is_some_and(|site| site.source == SiteSource::Contact(contact))
-            }
-        }
     }
 
     /// Return the strongest allowed input after attenuation, or zero if there are none.

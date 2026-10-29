@@ -16,14 +16,9 @@ use std::fmt;
 pub(crate) mod callbacks;
 pub(crate) mod diagnostics;
 pub(crate) mod electrical;
-#[cfg(test)]
-pub(crate) mod export_json;
 pub(crate) mod geometry;
 pub mod graph;
 mod guard_table;
-pub(crate) mod instant;
-pub(crate) mod instant_regions;
-pub(crate) mod instant_resets;
 
 // shortcut: excludes maps and allocator overhead, upgrade if measured RSS exceeds the table estimate.
 pub(crate) const MAX_GRAPH_PREPARATION_BYTES: usize = 1024 * 1024 * 1024;

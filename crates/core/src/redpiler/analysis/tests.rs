@@ -1,9 +1,7 @@
 use super::*;
 mod callback_routes;
 mod deep_parser_audit;
-mod export_json;
 mod redstone_fuzz;
-mod research;
 
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
@@ -16,9 +14,9 @@ use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::{Block, ComparatorMode, RedstoneComparator, RedstonePiston, RedstoneRepeater};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, TickPriority};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[test]
 fn preparation_memory_limit_reports_stage_and_estimate() {
@@ -62,14 +60,6 @@ const BASE: BlockPos = BlockPos::new(40, 30, 40);
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn local_pos(pos: &Value) -> BlockPos {
-    BASE + BlockPos::new(
-        pos[0].as_i64().unwrap() as i32,
-        pos[1].as_i64().unwrap() as i32,
-        pos[2].as_i64().unwrap() as i32,
-    )
 }
 
 fn lever_action(world: &mut PlotWorld, pos: BlockPos, powered: bool) {

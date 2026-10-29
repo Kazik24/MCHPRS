@@ -37,19 +37,6 @@ fn compile_hops(graph: &mut CompileGraph) {
             ),
         )
         .unwrap();
-    passes::minimize_wire_captures::MinimizeWireCaptures
-        .run(
-            graph,
-            &PassContext::new(
-                &TaskMonitor::default(),
-                &Default::default(),
-                &EntryState {
-                    logical_tick: 0,
-                    pending_ticks: vec![],
-                },
-            ),
-        )
-        .unwrap();
     graph.validate().unwrap();
 }
 
@@ -237,7 +224,7 @@ fn compiled_hops_preserve_seeded_histories_on_branched_cyclic_dust() {
 
 #[test]
 fn compiled_capture_selects_live_contacts_and_properties_across_memory_poses() {
-    let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+    let (world, bounds) = crate::redpiler::test_fixtures::piston_reset_fixture();
     let graph = passes::rich::prepare(&world, bounds, vec![], &TaskMonitor::default(), AnalysisLimits::default())
         .unwrap()
         .graph;

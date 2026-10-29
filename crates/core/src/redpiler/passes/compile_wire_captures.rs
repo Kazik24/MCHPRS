@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn capture_plans_reject_stale_bindings_and_cancel_before_publication() {
-        let (world, bounds) = passes::simplify_instant_resets::tests::fixture();
+        let (world, bounds) = crate::redpiler::test_fixtures::piston_reset_fixture();
         let monitor = TaskMonitor::default();
         let mut prepared = passes::rich::prepare(&world, bounds, vec![], &monitor, AnalysisLimits::default()).unwrap();
         let options = Default::default();

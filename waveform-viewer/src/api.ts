@@ -180,13 +180,26 @@ export function connectWaveform(
   let stream: EventSource | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let capture: Capture | undefined;
+  let retryAttempt = 0;
   const path = `/api/v1/plots/${plot[0]}/${plot[1]}/waveform`;
-  const retry = (message: string, state: ConnectionState = "error") => {
+  const retry = (
+    message: string,
+    state: ConnectionState = "error",
+    retryAfter?: string | null,
+  ) => {
     stream?.close();
     if (controller.signal.aborted) return;
     status(message, state);
     clearTimeout(timer);
-    timer = setTimeout(() => void snapshot(), 1000);
+    const parsedRetryAfter = retryAfter
+      ? /^\d+$/.test(retryAfter)
+        ? Number(retryAfter)
+        : (Date.parse(retryAfter) - Date.now()) / 1000
+      : NaN;
+    const seconds = Number.isFinite(parsedRetryAfter)
+      ? Math.max(0, parsedRetryAfter)
+      : Math.min(30, 2 ** retryAttempt++);
+    timer = setTimeout(() => void snapshot(), Math.min(2_147_000, seconds) * 1000);
   };
   const accept = (page: Page) => {
     if (controller.signal.aborted) return;
@@ -206,9 +219,17 @@ export function connectWaveform(
           { signal: controller.signal, cache: "no-store" },
         );
         if (!response.ok) {
-          const problem = await response.json();
+          const problem = await response.json().catch(() => ({}));
           if (problem.error === "plot_not_loaded") {
             retry("Plot is not loaded", "unloaded");
+            return;
+          }
+          if (response.status === 429 || response.status === 503) {
+            retry(
+              problem.error ?? `HTTP ${response.status}`,
+              "error",
+              response.headers.get("Retry-After"),
+            );
             return;
           }
           throw Error(
@@ -217,6 +238,7 @@ export function connectWaveform(
               : (problem.error ?? `HTTP ${response.status}`),
           );
         }
+        retryAttempt = 0;
         page = await response.json();
         capture = applyPage(capture, page, plot);
         cursor = page.cursor;

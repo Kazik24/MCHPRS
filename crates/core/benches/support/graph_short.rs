@@ -161,7 +161,6 @@ impl Episode {
                 self.bounds,
                 CompilerOptions {
                     optimization_level: Some(tier),
-                    stable_instant_inputs: compose_regions,
                     budget_multiplier: 8,
                     ..Default::default()
                 },
@@ -1226,11 +1225,6 @@ pub fn main() -> Result<()> {
         selected_tier.is_none_or(|tier| (1..=6).contains(&tier)),
         "--graph-tier needs 1, 2, 3, 4, 5 or 6"
     );
-    let stable_inputs = args.iter().any(|arg| arg == "--stable-instant-inputs");
-    ensure!(
-        !stable_inputs || selected_tier.is_some_and(|tier| tier >= 3),
-        "--stable-instant-inputs requires --graph-tier 3 or higher"
-    );
     let interpreted = args.iter().any(|arg| arg == "--interpreted");
     let label = argument("--label").unwrap_or("current");
     let git = |args: &[&str]| -> Result<String> {
@@ -1246,8 +1240,7 @@ pub fn main() -> Result<()> {
         "timed_operations":"tick_with_world or tick_interpreted calls only; fresh world per executor/sample; setup, compilation, stimulus, publication, reads, reset and continuation excluded"});
     let mut blockers = 0;
     for name in names.iter().filter(|name| selected.is_none_or(|selected| selected == name.as_str())) {
-        let measured =
-            Episode::new(name, stable_inputs).and_then(|episode| benchmark_episode(&episode, iterations, smoke, selected_tier, interpreted));
+        let measured = Episode::new(name, false).and_then(|episode| benchmark_episode(&episode, iterations, smoke, selected_tier, interpreted));
         let workload = match measured {
             Ok((workload, rejected)) => {
                 blockers += rejected;

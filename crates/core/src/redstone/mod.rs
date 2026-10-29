@@ -148,7 +148,7 @@ pub fn redstone_lamp_should_be_lit(world: &impl World, pos: BlockPos) -> bool {
     false
 }
 
-fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDirection) -> u8 {
+pub(crate) fn diode_get_input_strength(world: &impl World, pos: BlockPos, facing: BlockDirection) -> u8 {
     let input_pos = pos.offset(facing.block_face());
     let input_block = world.get_block(input_pos);
     let mut power = get_redstone_power(input_block, world, input_pos, facing.block_face());

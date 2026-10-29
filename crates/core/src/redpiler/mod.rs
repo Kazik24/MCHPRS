@@ -158,12 +158,20 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
+#[allow(dead_code)]
+mod event_netlist;
+#[allow(dead_code)]
+pub(crate) mod event_repeater;
 mod options;
 mod passes;
+#[allow(dead_code)]
+mod physical_signal_network;
 mod power_rules;
 pub(crate) mod program_graph;
 mod statistics;
 mod task_monitor;
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 
 use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
@@ -179,9 +187,7 @@ pub use backend::{Queues, TickScheduler};
 pub use options::CompilerOptions;
 #[cfg(test)]
 pub(crate) use options::MAX_OPTIMIZATION_LEVEL;
-pub use statistics::{
-    CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, LogicalDeviceAdmission, PassStatistics, PreparationTableStatistics,
-};
+pub use statistics::{CompileStatistics, GraphCounts, GraphExecutionCoverage, GraphStatistics, PassStatistics, PreparationTableStatistics};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]
@@ -257,45 +263,6 @@ pub enum BackendKind {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 /// Cumulative work counters for an active graph backend.
 pub struct GraphExecutionCounts {
-    /// Closed single-wire transfers executed without a Turbo walk.
-    pub instant_wire_node_invocations: u64,
-    /// Dense queue-preserving local Turbo transport invocations.
-    pub instant_transport_invocations: u64,
-    /// Wire visits handled by dense local transport programs.
-    pub instant_transport_wire_visits: u64,
-    /// Member-wire captures stored as scalar power instead of general observed block properties.
-    pub instant_transport_compact_captures: u64,
-    /// Exact whole-episode programs replayed after matching every control input.
-    pub instant_transition_hits: u64,
-    pub instant_transition_misses: u64,
-    pub instant_transition_programs: u64,
-    pub instant_transition_operations: u64,
-    pub instant_transition_wire_visits_elided: u64,
-    /// Electrical regions solved to certify unchanged wire values during ordered transport.
-    pub instant_value_region_solves: u64,
-    /// Unchanged per-region input and wire certificates reused without a solve.
-    pub instant_value_region_cache_hits: u64,
-    /// Ordered marker visits whose wire evaluation was replaced by a fixed-point certificate.
-    pub instant_value_region_inert_visits: u64,
-    /// Entries handled by an ordered signal program, including proven no-ops.
-    pub signal_channel_invocations: u64,
-    /// Registered channel entries rejected before any optimized effect.
-    pub signal_channel_fallbacks: u64,
-    /// Straight-line signal operations executed without interior propagation.
-    pub signal_channel_operations: u64,
-    /// Stable-input net evaluations using compiled weighted expressions.
-    pub stable_logic_invocations: u64,
-    pub stable_logic_fallbacks: u64,
-    pub stable_logic_wire_values: u64,
-    pub stable_logic_boundary_calls: u64,
-    /// Reduced instant pull waves actually executed after entry and FIFO checks.
-    pub instant_kernel_invocations: u64,
-    /// Certified closed-wire walks replaced by compiled pull-wave route steps.
-    pub instant_kernel_wire_walks_elided: u64,
-    /// Incremental logical evaluations at an admitted kernel's original sample cut.
-    pub logical_kernel_evaluations: u64,
-    /// Boolean expressions revisited by those evaluations, including entry vetoes.
-    pub logical_kernel_operations: u64,
     pub classic_net_invocations: u64,
     pub classic_receiver_ops: u64,
     pub ticks: u64,
@@ -308,18 +275,6 @@ pub struct GraphExecutionCounts {
     pub piston_actions: u64,
     /// Piston-driven block changes waiting for publication to the world.
     pub deferred_publications: u64,
-    /// Logical BUD samples represented without running the owner's piston callback.
-    pub logical_bud_samples: u64,
-    /// Accepted logical BUD state transitions; these do not count as physical piston actions.
-    pub logical_bud_accepts: u64,
-    /// Logical BUD delayed state publications processed at Graph's deferred phase.
-    pub logical_bud_publications: u64,
-}
-
-/// Run the opt-in saved-plot direct Graph benchmark. Native parity is a separate test.
-#[cfg(feature = "saved-plot-bench")]
-pub fn saved_plot_benchmark(server: bool) {
-    backend::graph::logical_device_saved_plot_tests::run_saved_plot_profile(server);
 }
 
 #[derive(Default)]
@@ -414,8 +369,6 @@ impl Compiler {
             graph: monitor.graph_statistics(),
             backend: BackendKind::Graph,
             backend_nodes: backend.node_count(),
-            logical_device_count: backend.logical_devices_count(),
-            logical_device_admission: backend.logical_device_admission().clone(),
             execution_coverage: backend.execution_coverage(),
             analysis_duration,
             backend_duration,
@@ -469,23 +422,6 @@ impl Compiler {
             });
         }
         self.options = Default::default();
-    }
-
-    /// Experimental handoff for a proven isolated region. The caller restores its entry snapshot afterward.
-    pub(crate) fn reset_selected<W: World>(
-        &mut self,
-        world: &mut W,
-        positions: &std::collections::HashSet<BlockPos>,
-    ) -> Result<(), &'static str> {
-        if self.options.update {
-            return Err("selected reset does not support whole-plot updates");
-        }
-        if let Some(backend) = self.backend.as_mut() {
-            backend.reset_selected(world, positions)?;
-            self.backend = None;
-        }
-        self.options = Default::default();
-        Ok(())
     }
 
     fn backend(&mut self) -> &mut GraphBackend {
@@ -716,7 +652,6 @@ mod tests {
             io_only: true,
             optimization_level: Some(0),
             update: true,
-            stable_instant_inputs: false,
         };
         let options = CompilerOptions::parse(input).unwrap();
 
@@ -736,13 +671,7 @@ mod tests {
             assert!(CompilerOptions::parse(&format!("{prefix}{}", MAX_OPTIMIZATION_LEVEL + 1)).is_err());
         }
         assert_eq!(CompilerOptions::parse("--optimize").unwrap().optimization_label(), "O6");
-        assert!(!CompilerOptions::parse("-O5").unwrap().assumes_stable_instant_inputs());
-        assert!(CompilerOptions::parse("-O6").unwrap().assumes_stable_instant_inputs());
-        assert!(CompilerOptions::parse("--optimize").unwrap().assumes_stable_instant_inputs());
-        assert_eq!(
-            CompilerOptions::parse("--optimize --stable-instant-inputs").unwrap().optimization_label(),
-            "O6 stable"
-        );
+        assert!(CompilerOptions::parse("--stable-instant-inputs").is_err());
     }
 
     #[test]
@@ -790,7 +719,3 @@ mod tests {
         assert_eq!(compiler.stats().unwrap().total_duration, total_duration);
     }
 }
-
-#[cfg(feature = "native-clock-test-support")]
-#[doc(hidden)]
-pub use backend::graph::logical_device::native_clock_test_support;

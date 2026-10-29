@@ -378,7 +378,6 @@ impl GraphBackend {
                 unreachable!()
             };
             state.power = signal.saturating_sub(wire.attenuation);
-            self.invalidate_wire_programs(wire.node);
         }
         self.state.classic_active[net] = false;
     }
@@ -426,7 +425,6 @@ impl GraphBackend {
             for index in wires {
                 let node = self.program.classic().wires[index].node;
                 self.dirty[node.index()] = true;
-                self.invalidate_wire_programs(node);
             }
         }
         true

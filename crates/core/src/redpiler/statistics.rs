@@ -3,36 +3,6 @@
 use super::{BackendKind, program_graph};
 use std::time::Duration;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-/// Whether Graph installed a logical-device evaluator for this compiled world.
-pub enum LogicalDeviceAdmission {
-    /// No settled logical-device candidate was produced for this compilation.
-    NotApplicable,
-    /// A logical-device evaluator was installed and will receive runtime work.
-    Active,
-    /// A candidate was declined with the source-derived reason it stayed on general Graph.
-    Declined(String),
-}
-
-impl LogicalDeviceAdmission {
-    fn chat_summary_line(&self, logical_device_count: usize) -> String {
-        match self {
-            Self::NotApplicable => "Execution path: general Graph (no logical-device candidate).".into(),
-            Self::Active if logical_device_count > 0 => format!(
-                "Execution path: {logical_device_count} logical device{} active; remaining regions use general Graph.",
-                if logical_device_count == 1 { "" } else { "s" },
-            ),
-            Self::Active => "Execution path: logical-device evaluator active.".into(),
-            Self::Declined(reason) => {
-                let is_long = reason.chars().count() > 82;
-                let reason: String = reason.chars().take(82).collect();
-                let suffix = if is_long { "…" } else { "" };
-                format!("Execution path: general Graph; logical-device decline: {reason}{suffix}.")
-            }
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
 /// Current execution ownership; counts describe circuit structure, not CPU time.
 pub struct GraphExecutionCoverage {
@@ -40,7 +10,7 @@ pub struct GraphExecutionCoverage {
     pub component_nodes: usize,
     /// Original dust state owners, including wires executed by a compiled classic net.
     pub wire_nodes: usize,
-    /// Original piston state owners, including actors with a private occupancy shortcut.
+    /// Original piston state owners.
     pub piston_nodes: usize,
     /// Wire nodes currently owned by an active compiled classic net.
     pub compiled_classic_wires: usize,
@@ -50,40 +20,22 @@ pub struct GraphExecutionCoverage {
     pub fixed_classic_nodes: usize,
     /// Wire state owners executed by that program; disjoint from local classic nets.
     pub fixed_classic_wires: usize,
-    /// Nodes whose internal execution is replaced by a whole instant kernel; currently zero.
-    pub instant_kernel_nodes: usize,
-    /// Nodes executed through a native fallback; zero in the Graph-only compiler.
-    pub native_nodes: usize,
-    /// Actors with a private resource-occupancy shortcut; their ordinary actions still execute.
-    pub private_proxy_pistons: usize,
-    /// Wire entry points with a certified reset-transfer shortcut; not whole-region ownership.
-    pub reset_transfer_entries: usize,
-    /// Routes with compiled instant instructions; these retain externally observable dispatch.
-    pub instant_instruction_routes: usize,
-    /// Observer state owners using the built-in reset pulse handler instead of ordinary observer dispatch.
-    pub builtin_reset_clocks: usize,
-    /// Piston predicates with a compiled CPU evaluation plan; actors still own and commit actions.
-    pub compiled_cpu_piston_predicates: usize,
-    /// Wire nodes mapped into a compiled transport plan; this is not whole-region ownership.
-    pub compiled_transport_wires: usize,
-    /// Wire nodes with an additional stable-input value plan.
-    pub stable_logic_wires: usize,
 }
 
 impl GraphExecutionCoverage {
     pub fn general_graph_nodes(&self) -> usize {
-        self.component_nodes - self.compiled_classic_wires - self.fixed_classic_nodes - self.instant_kernel_nodes - self.native_nodes
+        self.component_nodes
+            .saturating_sub(self.compiled_classic_wires)
+            .saturating_sub(self.fixed_classic_nodes)
     }
 
     pub fn summary_lines(&self) -> Vec<String> {
         vec![
             format!(
-                "Execution ownership (component nodes): instant kernels {}; compiled classic wires {}; whole fixed program {}; general Graph {}; native fallback {}.",
-                share(self.instant_kernel_nodes, self.component_nodes),
+                "Execution ownership (component nodes): compiled classic wires {}; whole fixed program {}; general Graph {}.",
                 share(self.compiled_classic_wires, self.component_nodes),
                 share(self.fixed_classic_nodes, self.component_nodes),
                 share(self.general_graph_nodes(), self.component_nodes),
-                share(self.native_nodes, self.component_nodes),
             ),
             format!(
                 "Wire ownership: compiled classic {}; whole fixed program {}; general Graph {}; {} certified wires currently deoptimized.",
@@ -91,13 +43,6 @@ impl GraphExecutionCoverage {
                 share(self.fixed_classic_wires, self.wire_nodes),
                 share(self.wire_nodes - self.compiled_classic_wires - self.fixed_classic_wires, self.wire_nodes),
                 self.certified_classic_wires - self.compiled_classic_wires,
-            ),
-            format!(
-                "Partial instant shortcuts (overlap Graph ownership): private piston checks {}; reset-transfer wire entries {}; {} instruction routes; {} built-in reset clocks. Coverage is not CPU-time share.",
-                share(self.private_proxy_pistons, self.piston_nodes),
-                share(self.reset_transfer_entries, self.wire_nodes),
-                self.instant_instruction_routes,
-                self.builtin_reset_clocks,
             ),
         ]
     }
@@ -107,9 +52,7 @@ impl GraphExecutionCoverage {
         let graph_nodes = self
             .component_nodes
             .saturating_sub(self.compiled_classic_wires)
-            .saturating_sub(self.fixed_classic_nodes)
-            .saturating_sub(self.instant_kernel_nodes)
-            .saturating_sub(self.native_nodes);
+            .saturating_sub(self.fixed_classic_nodes);
         let graph_wires = self
             .wire_nodes
             .saturating_sub(self.compiled_classic_wires)
@@ -121,12 +64,6 @@ impl GraphExecutionCoverage {
         }
         if self.fixed_classic_nodes > 0 {
             node_owners.push(format!("fixed {}", self.fixed_classic_nodes));
-        }
-        if self.instant_kernel_nodes > 0 {
-            node_owners.push(format!("whole-region kernels {}", self.instant_kernel_nodes));
-        }
-        if self.native_nodes > 0 {
-            node_owners.push(format!("native fallback {}", self.native_nodes));
         }
         let mut lines = vec![format!("Nodes ({}): {}.", self.component_nodes, node_owners.join("; "))];
 
@@ -142,12 +79,6 @@ impl GraphExecutionCoverage {
             wire_line.push_str(&format!(" {deoptimized} classic wires deoptimized."));
         }
         lines.push(wire_line);
-        if self.compiled_cpu_piston_predicates + self.compiled_transport_wires + self.stable_logic_wires > 0 {
-            lines.push(format!(
-                "Plans: piston checks {}/{}; transport {}/{} wires; stable logic {} wires.",
-                self.compiled_cpu_piston_predicates, self.piston_nodes, self.compiled_transport_wires, self.wire_nodes, self.stable_logic_wires,
-            ));
-        }
         lines
     }
 }
@@ -229,8 +160,6 @@ pub struct GraphStatistics {
     /// This records the final graph independently of the supplied pass count.
     pub final_counts: Option<GraphCounts>,
     pub duration: Duration,
-    /// Time spent turning checked instant layers into runtime kernels.
-    pub kernel_lowering_duration: Duration,
     /// Time spent constructing ordinary immutable tables and initial state.
     pub program_lowering_duration: Duration,
 }
@@ -355,10 +284,6 @@ pub struct CompileStatistics {
     pub graph: GraphStatistics,
     pub backend: BackendKind,
     pub backend_nodes: usize,
-    /// Number of independently installed logical-device evaluators at activation.
-    pub logical_device_count: usize,
-    /// Runtime logical-device admission outcome captured when the backend was activated.
-    pub logical_device_admission: LogicalDeviceAdmission,
     /// Structural ownership at activation; later deoptimization is visible through Compiler's live snapshot.
     pub execution_coverage: GraphExecutionCoverage,
     pub analysis_duration: Duration,
@@ -381,7 +306,6 @@ impl CompileStatistics {
         )];
         lines.extend(self.graph.chat_summary_lines());
         lines.extend(self.execution_coverage.chat_summary_lines());
-        lines.push(self.logical_device_admission.chat_summary_line(self.logical_device_count));
         lines
     }
 
@@ -397,7 +321,6 @@ impl CompileStatistics {
         )];
         lines.extend(self.graph.summary_lines().into_iter().take(3));
         lines.extend(self.execution_coverage.summary_lines());
-        lines.push(self.logical_device_admission.chat_summary_line(self.logical_device_count));
         lines
     }
 }
@@ -443,63 +366,32 @@ mod chat_summary_tests {
         };
         let coverage = GraphExecutionCoverage {
             component_nodes: 100,
-            native_nodes: 2,
             wire_nodes: 40,
             piston_nodes: 10,
             compiled_classic_wires: 10,
             certified_classic_wires: 12,
-            compiled_cpu_piston_predicates: 4,
-            compiled_transport_wires: 40,
-            stable_logic_wires: 40,
             ..Default::default()
         };
         let summary = CompileStatistics {
             graph,
             backend: BackendKind::Graph,
             backend_nodes: 90,
-            logical_device_count: 0,
-            logical_device_admission: LogicalDeviceAdmission::NotApplicable,
             execution_coverage: coverage,
             analysis_duration: Duration::from_millis(10),
             backend_duration: Duration::from_millis(5),
             total_duration: Duration::from_millis(30),
         }
-        .chat_summary_lines("O5 + stable inputs");
+        .chat_summary_lines("--optimize");
         let joined = summary.join("\n");
 
         assert!(summary.len() <= 7, "chat summary unexpectedly grew: {joined}");
-        assert!(joined.contains("Compiled O5 + stable inputs with Graph: 30 ms total"));
-        assert!(joined.contains("Execution path: general Graph (no logical-device candidate)."));
+        assert!(joined.contains("Compiled --optimize with Graph: 30 ms total"));
         assert!(joined.contains("passes configured: 1 on, 1 off."));
-        assert!(joined.contains("native fallback 2"));
-        assert!(joined.contains("Plans: piston checks"));
-        assert!(joined.contains("transport 40/40 wires"));
+        assert!(joined.contains("Graph 80"));
+        assert!(joined.contains("classic 10"));
         assert!(joined.contains("Longest compile steps:"));
         assert!(!joined.contains("preparation_tables"));
         assert_eq!(joined.matches("preparation-pass").count(), 2);
         assert!(summary.iter().all(|line| line.chars().count() <= 140), "chat line too wide: {joined}");
-    }
-
-    #[test]
-    fn logical_device_admission_summary_is_explicit_and_bounded() {
-        assert_eq!(
-            LogicalDeviceAdmission::Active.chat_summary_line(0),
-            "Execution path: logical-device evaluator active."
-        );
-        assert_eq!(
-            LogicalDeviceAdmission::Active.chat_summary_line(2),
-            "Execution path: 2 logical devices active; remaining regions use general Graph."
-        );
-        assert_eq!(
-            LogicalDeviceAdmission::Declined("pending scheduled work at entry".into()).chat_summary_line(0),
-            "Execution path: general Graph; logical-device decline: pending scheduled work at entry."
-        );
-        assert_eq!(
-            LogicalDeviceAdmission::NotApplicable.chat_summary_line(0),
-            "Execution path: general Graph (no logical-device candidate)."
-        );
-        let line = LogicalDeviceAdmission::Declined("x".repeat(200)).chat_summary_line(0);
-        assert!(line.chars().count() <= 140, "chat line too wide: {line}");
-        assert!(line.ends_with("…."));
     }
 }

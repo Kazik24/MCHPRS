@@ -1,47 +1,11 @@
 //! Pass statistics and table-memory accounting shared by preparation and transformations.
 
-pub(crate) mod instant_mechanisms;
-
 use crate::redpiler::analysis::{AnalysisError, MAX_GRAPH_PREPARATION_BYTES, callbacks, electrical, geometry};
 use crate::redpiler::program_graph::{CompileGraph, DustPathId, GraphBuildError, Guard, GuardId, NodeSpec, PistonId, ResourceId, RouteDelivery};
 use crate::redpiler::{GraphCounts, PassStatistics, PreparationTableStatistics, TaskMonitor};
 use mchprs_blocks::BlockPos;
 use mchprs_blocks::blocks::Block;
 use std::time::Instant;
-
-fn instant_proxy_bytes(proxies: &[crate::redpiler::program_graph::InstantProxy]) -> usize {
-    use crate::redpiler::program_graph::{InstantRoute, InstantStep, PrivateInstantCell};
-    proxies
-        .iter()
-        .map(|proxy| {
-            boxed_bytes::<PrivateInstantCell>(proxy.private_cells.len())
-                + boxed_bytes::<InstantRoute>(proxy.routes.len())
-                + proxy
-                    .routes
-                    .iter()
-                    .map(|route| boxed_bytes::<InstantStep>(route.steps.len()))
-                    .sum::<usize>()
-        })
-        .sum()
-}
-
-fn instant_region_bytes(regions: &[crate::redpiler::program_graph::InstantRegion]) -> usize {
-    use crate::redpiler::program_graph::{ContactId, NodeId, RouteId, RouteOccurrence, SiteId};
-    regions
-        .iter()
-        .map(|region| {
-            boxed_bytes::<NodeId>(region.wires.capacity())
-                + boxed_bytes::<PistonId>(region.actors.capacity())
-                + boxed_bytes::<ResourceId>(region.resources.capacity())
-                + boxed_bytes::<NodeId>(region.resets.capacity() + region.wire_readers.capacity() + region.observers.capacity())
-                + boxed_bytes::<ContactId>(region.contacts.capacity())
-                + boxed_bytes::<SiteId>(region.readable_sites.capacity())
-                + boxed_bytes::<u32>(region.power_inputs.capacity() + region.power_readers.capacity())
-                + boxed_bytes::<RouteId>(region.routes.capacity())
-                + boxed_bytes::<RouteOccurrence>(region.incoming.capacity() + region.outgoing.capacity())
-        })
-        .sum()
-}
 
 pub(super) fn child_before_parent_order(guards: &[Guard], monitor: &TaskMonitor) -> Result<Vec<usize>, String> {
     let mut marks = vec![0u8; guards.len()];
@@ -248,31 +212,11 @@ pub(crate) fn record_lowering_input_tables(monitor: &TaskMonitor, graph: &Compil
                 graph.routes.len(),
             ) + graph.plans.classic_nets.len(),
         },
-        vector_table_statistics(
-            "lowering input",
-            "instant regions",
-            &graph.plans.instant.regions,
-            instant_region_bytes(&graph.plans.instant.regions),
-        ),
-        vector_table_statistics(
-            "lowering input",
-            "instant proxies",
-            &graph.plans.instant.proxies,
-            instant_proxy_bytes(&graph.plans.instant.proxies),
-        ),
         vector_table_statistics("lowering input", "nodes", &graph.nodes, 0),
         vector_table_statistics("lowering input", "callback links", &graph.links, 0),
         vector_table_statistics("lowering input", "power links", &graph.power_links, 0),
         vector_table_statistics("lowering input", "sites", &graph.sites, 0),
         vector_table_statistics("lowering input", "guards", &graph.guards, guard_child_bytes(&graph.guards)),
-        vector_table_statistics(
-            "lowering input",
-            "piston power queries",
-            &graph.plans.cpu_power_queries.entries,
-            graph.plans.cpu_power_queries.packed.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
-                + (graph.plans.cpu_power_queries.packed.require_true.capacity() + graph.plans.cpu_power_queries.packed.require_false.capacity())
-                    * std::mem::size_of::<u64>(),
-        ),
         vector_table_statistics("lowering input", "wire relations", &graph.wire_relations, 0),
         vector_table_statistics("lowering input", "routes", &graph.routes, 0),
         table_memory_statistics::<crate::redpiler::program_graph::RouteDelivery>("lowering input", "deliveries", delivery_count, delivery_count, 0),
@@ -349,19 +293,6 @@ pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
             capacity: program.classic().nets.len(),
             estimated_bytes: program.classic().nets.len(),
         },
-        slice_table_statistics(
-            "lowering",
-            "instant proxies",
-            program.instant_proxies(),
-            instant_proxy_bytes(program.instant_proxies()),
-        ),
-        table_memory_statistics::<Option<(u32, u32)>>(
-            "lowering",
-            "instant route bindings",
-            routes.len(),
-            routes.len(),
-            boxed_bytes::<Option<PistonId>>(program.resources().len()),
-        ),
         slice_table_statistics("lowering", "nodes", program.nodes(), 0),
         slice_table_statistics("lowering", "power links", program.power_links(), 0),
         slice_table_statistics("lowering", "comparator inputs", program.comparator_inputs(), 0),
@@ -378,14 +309,6 @@ pub(crate) fn lowered_table_statistics(program: &crate::redpiler::program_graph:
         ),
         slice_table_statistics("lowering", "sites", program.sites(), 0),
         slice_table_statistics("lowering", "guards", program.guards(), guard_child_bytes(program.guards())),
-        slice_table_statistics(
-            "lowering",
-            "piston power queries",
-            &program.cpu_power_queries().entries,
-            program.cpu_power_queries().packed.reads.capacity() * std::mem::size_of::<crate::redpiler::program_graph::CpuRead>()
-                + (program.cpu_power_queries().packed.require_true.capacity() + program.cpu_power_queries().packed.require_false.capacity())
-                    * std::mem::size_of::<u64>(),
-        ),
         slice_table_statistics("lowering", "routes", routes, 0),
         table_memory_statistics::<RouteDelivery>("lowering", "deliveries", delivery_count, delivery_count, 0),
         slice_table_statistics("lowering", "wire plans", program.wires(), 0),

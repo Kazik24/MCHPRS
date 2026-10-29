@@ -1,29 +1,19 @@
-//! Structural coverage is separate from recognition, executed event counts and CPU time.
+//! Structural ownership reports the active physical Graph optimizations.
 use super::*;
 use crate::redpiler::GraphExecutionCoverage;
 
 fn assert_partition(coverage: GraphExecutionCoverage) {
     assert_eq!(
-        coverage.general_graph_nodes()
-            + coverage.compiled_classic_wires
-            + coverage.fixed_classic_nodes
-            + coverage.instant_kernel_nodes
-            + coverage.native_nodes,
+        coverage.general_graph_nodes() + coverage.compiled_classic_wires + coverage.fixed_classic_nodes,
         coverage.component_nodes
     );
     assert!(coverage.compiled_classic_wires <= coverage.certified_classic_wires);
     assert!(coverage.certified_classic_wires <= coverage.wire_nodes);
-    assert!(coverage.private_proxy_pistons <= coverage.piston_nodes);
-    assert_eq!(coverage.native_nodes, 0, "compiled execution has no native fallback");
-    assert_eq!(
-        coverage.instant_kernel_nodes, 0,
-        "local cell certificates do not activate a whole-region kernel"
-    );
 }
 
 #[test]
-fn circuit_coverage_reports_recognition_separately_from_execution_ownership() {
-    for id in super::instant_contract_tests::IO_FIXTURES {
+fn circuit_coverage_reports_physical_execution_ownership() {
+    for id in ["adder_1bit", "adder_11bits"] {
         let circuit = boundary_contract_tests::load_mechanism(id);
         let monitor = TaskMonitor::default();
         let mut prepared = passes::rich::prepare(&circuit.build(), circuit.bounds(), vec![], &monitor, AnalysisLimits::default()).unwrap();
@@ -39,22 +29,20 @@ fn circuit_coverage_reports_recognition_separately_from_execution_ownership() {
             &monitor,
         )
         .unwrap();
-        let candidates = crate::redpiler::analysis::instant::cells::discover_cells(&prepared.graph, &monitor).unwrap();
-        let candidate_actors: usize = candidates.cells.iter().map(|cell| cell.uses.len()).sum();
         let (program, state) = prepared.graph.lower().unwrap();
         let mut backend = GraphBackend::new_unactivated(program, state, 0).unwrap();
         let coverage = backend.execution_coverage();
         assert_partition(coverage);
         println!(
-            "{id}: stationary candidate actors={candidate_actors}/{} ({:.1}%; recognition only)",
-            coverage.piston_nodes,
-            100.0 * candidate_actors as f64 / coverage.piston_nodes as f64
+            "{id}: physical Graph ownership: {} general nodes, {} classic wires",
+            coverage.general_graph_nodes(),
+            coverage.compiled_classic_wires
         );
         for line in coverage.summary_lines() {
             println!("  {line}");
         }
 
-        // A deoptimized classic net returns to general Graph ownership, never Native.
+        // A deoptimized classic net returns to general Graph ownership.
         backend.state.classic_active.fill(false);
         let deoptimized = backend.execution_coverage();
         assert_partition(deoptimized);
@@ -71,7 +59,6 @@ fn empty_circuit_coverage_uses_not_applicable_percentages() {
     let summary = coverage.summary_lines().join("\n");
     assert!(summary.contains("0/0 (n/a)"));
     assert!(!summary.contains("NaN"));
-    assert!(!summary.contains("100.0%"));
 }
 
 #[test]

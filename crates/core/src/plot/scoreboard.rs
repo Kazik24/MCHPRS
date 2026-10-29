@@ -384,7 +384,6 @@ mod tests {
         assert_eq!(
             optimization_mode_label(&CompilerOptions {
                 optimization_level: None,
-                stable_instant_inputs: true,
                 ..Default::default()
             }),
             "O6 + stable inputs"

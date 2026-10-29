@@ -105,7 +105,6 @@ pub(super) fn run() -> Result<()> {
                 BOUNDS,
                 CompilerOptions {
                     optimization_level: Some(tier),
-                    stable_instant_inputs: true,
                     ..Default::default()
                 },
                 vec![],

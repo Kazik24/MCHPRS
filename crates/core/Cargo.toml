@@ -5,9 +5,7 @@ authors = ["kazik24", "lord225"]
 edition = "2024"
 
 [features]
-native-clock-test-support = []
 graph-trace = []
-saved-plot-bench = ["plot-bench"]
 plot-bench = ["mchprs_network/test-support"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

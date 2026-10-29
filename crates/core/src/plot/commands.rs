@@ -70,7 +70,6 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
         "-O4",
         "-O5",
         "-O6",
-        "--stable-instant-inputs",
     ]
     .into_iter()
     .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
@@ -2149,8 +2148,8 @@ mod security_tests {
     fn redpiler_flags_complete_aliases_prefixes_and_multiple_options() {
         assert_eq!(inspect_options(&[], 8).unwrap().optimization_label(), "O6");
         assert_eq!(inspect_options(&["--io-only"], 8).unwrap().optimization_label(), "O6");
-        let inspected = inspect_options(&["-O3", "--stable-instant-inputs"], 4).unwrap();
-        assert_eq!(inspected.optimization_label(), "O3 stable");
+        let inspected = inspect_options(&["-O3"], 4).unwrap();
+        assert_eq!(inspected.optimization_label(), "O3");
         assert_eq!(inspected.budget_multiplier, 4);
         assert!(inspect_options(&["--unknown"], 1).is_err());
         let (position, options) = inspect_arguments(&["-201", "82", "-244", "-O3"], 8).unwrap();
@@ -2197,13 +2196,12 @@ mod security_tests {
                     "-O4",
                     "-O5",
                     "-O6",
-                    "--stable-instant-inputs",
                 ],
             ),
             ("/rp analyze --ex", vec![]),
             ("/rp inspect -O", vec!["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "-O6"]),
-            ("/rp i --sta", vec!["--stable-instant-inputs"]),
-            ("/rp compile --stable", vec!["--stable-instant-inputs"]),
+            ("/rp i --sta", vec![]),
+            ("/rp compile --stable", vec![]),
             ("/rp compile --unknown", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();

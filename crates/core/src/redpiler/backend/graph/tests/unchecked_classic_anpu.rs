@@ -1127,9 +1127,6 @@ impl TapeProgram {
             ) {
                 why.insert("direct_dynamic_power_query");
             }
-            if plan.execution.instant_reset.is_some() {
-                why.insert("instant_execution");
-            }
             if let Some(route) = plan.turbo_route {
                 for delivery in &backend.program.routes()[route.index()].deliveries {
                     let observed = backend.observe_site(delivery.target).unwrap();
