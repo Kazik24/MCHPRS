@@ -944,6 +944,57 @@ impl GraphBackend {
     }
 
     #[cfg(test)]
+    pub(crate) fn input_strength_for_test(&self, node: NodeId, port: InputPort) -> u8 {
+        self.input_strength(node, port)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn scheduled_delay_for_test(&self, node: NodeId) -> Option<usize> {
+        self.future
+            .scheduler
+            .iter()
+            .find_map(|(tick, delay, _)| (tick.node == Some(node)).then_some(delay))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn component_updated_for_test(&self, node: NodeId) -> bool {
+        let position = self.position(node);
+        self.test_recorder.callback_order.iter().any(|(updated, _)| *updated == position)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn piston_operations_for_test(&self, position: BlockPos) -> Vec<String> {
+        let Some(piston) = self.program.pistons().iter().position(|piston| piston.position == position) else {
+            return Vec::new();
+        };
+        let mut operations = self
+            .test_recorder
+            .observed_operations
+            .iter()
+            .filter_map(|operation| {
+                let actor = match operation {
+                    GraphObservedOperation::Sample { actor, .. }
+                    | GraphObservedOperation::Request { actor, .. }
+                    | GraphObservedOperation::AcceptanceAttempt { actor, .. }
+                    | GraphObservedOperation::Accepted { actor, .. }
+                    | GraphObservedOperation::NativeFrameStep { actor, .. }
+                    | GraphObservedOperation::RetractionDispatch { actor, .. } => *actor,
+                    GraphObservedOperation::Callback { .. } => return None,
+                };
+                (actor == position).then(|| format!("{operation:?}"))
+            })
+            .collect::<Vec<_>>();
+        operations.extend(
+            self.test_recorder
+                .popped_piston_requests
+                .iter()
+                .filter(|(id, _, _)| id.index() == piston)
+                .map(|(_, action, source)| format!("PoppedRequest {{ action: {action:?}, source: {source:?} }}")),
+        );
+        operations
+    }
+
+    #[cfg(test)]
     pub(crate) fn assert_same_execution_state(&self, other: &Self) {
         assert_eq!(self.state, other.state, "authoritative graph state");
         assert_eq!(self.future.clock.logical_tick, other.future.clock.logical_tick);

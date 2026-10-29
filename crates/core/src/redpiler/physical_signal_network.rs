@@ -123,7 +123,11 @@ impl PhysicalSignalNetwork {
                         let source = program.sites()[site.index()].source;
                         let block = site_block(program, state, site)?;
                         let dust = matches!(block, mchprs_blocks::blocks::Block::RedstoneWire { .. });
-                        if dust || !block.is_solid() || !program.power_links_to(PowerTarget::Conductor { site, include_dust: false }).is_empty() {
+                        if dust
+                            || !block.is_solid()
+                            || matches!(source, SiteSource::Contact(_))
+                            || !program.power_links_to(PowerTarget::Conductor { site, include_dust: false }).is_empty()
+                        {
                             if let SiteSource::Component(source) = source
                                 && !matches!(
                                     program.nodes()[source.index()].kind,

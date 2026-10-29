@@ -1,6 +1,5 @@
 //! Conservative source-to-dust lowering for fixed, electrically isolated dust networks.
 use super::{WireSample, site_block};
-use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{CircuitNodeKind, CircuitProgram, CircuitState, PowerPort, PowerTarget, SiteId, SiteSource};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -96,17 +95,14 @@ impl Corridor {
                 continue;
             };
             let SiteSource::Contact(contact) = program.sites()[watched.index()].source else {
-                return Err("observer watches a component site; compiled piston watchers are not yet represented");
+                // Component-site changes are delivered by the compiled callback plan.
+                continue;
             };
             let resources = program.resources_at_contact(contact);
-            if resources.is_empty()
-                || resources
-                    .iter()
-                    .any(|resource| !program.resources()[resource.index()].contacts.contains(&contact))
-            {
-                return Err("observer watches a contact that is not owned by a movable resource");
-            }
             for &resource in resources {
+                if !program.resources()[resource.index()].contacts.contains(&contact) {
+                    continue;
+                }
                 resource_observers.push(ResourceObserver {
                     resource,
                     contact,
@@ -118,35 +114,7 @@ impl Corridor {
             return Err("no dust corridor");
         }
         let wires: Vec<_> = samples.iter().map(|(node, _)| *node).collect();
-        // The entry snapshot may omit a solid neighbor from `samples`; validate
-        // all movable neighbors so later contact changes cannot introduce a source.
-        for wire in program.wires() {
-            for (face, slot) in [
-                (mchprs_blocks::BlockFace::West, 0),
-                (mchprs_blocks::BlockFace::East, 1),
-                (mchprs_blocks::BlockFace::Bottom, 2),
-                (mchprs_blocks::BlockFace::Top, 3),
-                (mchprs_blocks::BlockFace::North, 4),
-                (mchprs_blocks::BlockFace::South, 5),
-            ] {
-                let site_id = wire.canonical_neighbors[slot];
-                if let SiteSource::Contact(contact) = program.sites()[site_id.index()].source {
-                    let inert = program.contacts()[contact.index()].variants.iter().all(|variant| {
-                        program
-                            .profile_block(variant.profile)
-                            .is_some_and(|block| !crate::redpiler::power_rules::emits_weak(block, face))
-                    }) && program
-                        .power_links_to(PowerTarget::Conductor {
-                            site: site_id,
-                            include_dust: false,
-                        })
-                        .is_empty();
-                    if !inert {
-                        return Err("dust depends on a movable contact");
-                    }
-                }
-            }
-        }
+        // Contact sources remain indexed even when their current occupant is inert.
         let mut edges = vec![Vec::new(); wires.len()];
         let mut sources = Vec::new();
         let mut roots = Vec::new();
@@ -164,51 +132,73 @@ impl Corridor {
                     continue;
                 }
                 let block = site_block(program, state, sample.site)?;
+                if let SiteSource::Contact(contact) = site.source {
+                    let can_weak_power = program.resources_at_contact(contact).iter().any(|resource| {
+                        program
+                            .profile_block(program.resources()[resource.index()].material)
+                            .is_some_and(|block| crate::redpiler::power_rules::emits_weak(block, sample.face))
+                    }) || program.contacts()[contact.index()].variants.iter().any(|variant| {
+                        program
+                            .profile_block(variant.profile)
+                            .is_some_and(|block| crate::redpiler::power_rules::emits_weak(block, sample.face))
+                    });
+                    let can_conduct = !program
+                        .power_links_to(PowerTarget::Conductor {
+                            site: sample.site,
+                            include_dust: false,
+                        })
+                        .is_empty();
+                    for port in [
+                        can_weak_power.then_some(PowerPort::Weak(sample.face)),
+                        can_conduct.then_some(PowerPort::Conducted { include_dust: false }),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        let source = Source { site: sample.site, port };
+                        let index = match sources.iter().position(|candidate| *candidate == source) {
+                            Some(index) => index,
+                            None => {
+                                sources.push(source);
+                                roots.push(Vec::new());
+                                sources.len() - 1
+                            }
+                        };
+                        roots[index].push(target);
+                    }
+                    continue;
+                }
                 let port = if block.is_solid() {
-                    if !program
+                    if program
                         .power_links_to(PowerTarget::Conductor {
                             site: sample.site,
                             include_dust: false,
                         })
                         .is_empty()
                     {
-                        return Err("dust depends on a conductor");
+                        continue;
                     }
-                    continue;
+                    PowerPort::Conducted { include_dust: false }
                 } else {
                     PowerPort::Weak(sample.face)
                 };
                 match site.source {
                     SiteSource::Contact(contact) => {
-                        // A contact may change between air and a piston base without ever
-                        // contributing weak or conducted power to this wire.
-                        let inert = program.contacts()[contact.index()].variants.iter().all(|variant| {
+                        let can_power = program.resources_at_contact(contact).iter().any(|resource| {
+                            program
+                                .profile_block(program.resources()[resource.index()].material)
+                                .is_some_and(|block| crate::redpiler::power_rules::emits_weak(block, sample.face))
+                        }) || program.contacts()[contact.index()].variants.iter().any(|variant| {
                             program
                                 .profile_block(variant.profile)
-                                .is_some_and(|block| !crate::redpiler::power_rules::emits_weak(block, sample.face))
-                        }) && program
-                            .power_links_to(PowerTarget::Conductor {
-                                site: sample.site,
-                                include_dust: false,
-                            })
-                            .is_empty();
-                        if inert {
+                                .is_some_and(|block| crate::redpiler::power_rules::emits_weak(block, sample.face))
+                        });
+                        if !can_power {
                             continue;
                         }
-                        return Err("dust depends on a movable contact");
                     }
                     SiteSource::Constant(_) if !crate::redpiler::power_rules::emits_weak(block, sample.face) => continue,
-                    SiteSource::Component(node) => {
-                        if !matches!(
-                            program.nodes()[node.index()].kind,
-                            CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Torch | NodeType::Repeater { .. } | NodeType::Constant)
-                        ) {
-                            return Err("dust has an unsupported component source");
-                        }
-                        if !crate::redpiler::power_rules::emits_weak(block, sample.face) {
-                            continue;
-                        }
-                    }
+                    SiteSource::Component(_) if !crate::redpiler::power_rules::emits_weak(block, sample.face) => continue,
                     _ => {}
                 }
                 let source = Source { site: sample.site, port };

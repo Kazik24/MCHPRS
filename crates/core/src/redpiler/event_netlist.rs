@@ -36,12 +36,18 @@ pub(crate) struct EventNetlist {
 mod autonomous_piston;
 #[path = "event_netlist/compiled_pistons.rs"]
 mod compiled_pistons;
+#[path = "event_netlist/compiler.rs"]
+pub(crate) mod compiler;
+#[path = "event_netlist/executor.rs"]
+pub(crate) mod executor;
 #[path = "event_netlist/netlist.rs"]
 mod netlist;
 #[path = "event_netlist/observed_probes.rs"]
 mod observed_probes;
 #[path = "event_netlist/physical_piston.rs"]
 mod physical_piston;
+#[path = "event_netlist/program.rs"]
+pub(crate) mod program;
 
 use autonomous_piston::*;
 pub(crate) use compiled_pistons::CompiledPistonActors;

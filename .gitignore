@@ -35,3 +35,4 @@ scraps/docs/reports/*
 /test_data/**/trace-index.json
 
 target-pass-cleanup
+target-redgear-manual

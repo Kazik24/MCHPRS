@@ -49,6 +49,7 @@ fn block_string(block: Block) -> String {
 }
 
 fn parse_block(text: &str) -> Result<Block, String> {
+    if text.len() > 256 { return Err("block state exceeds 256 bytes".into()); }
     let text = text.strip_prefix("minecraft:").ok_or("state must be namespaced")?;
     let (name, properties) = match text.split_once('[') {
         Some((name, rest)) => (name, Some(rest.strip_suffix(']').ok_or("invalid state")?)),
@@ -109,7 +110,7 @@ impl Connection {
             }
             self.hello = true;
             return Ok(
-                json!({"protocol":3,"engine":"mroww","version":env!("CARGO_PKG_VERSION"),"revision":option_env!("MROWW_API_REVISION").unwrap_or("unversioned"),"registry":"1.21.5","data_version":4325,"capabilities":{"modes":["interpreter","compiled"],"blocks":["air","stone","lever"],"entities":false,"ticks":false,"effects":false,"boundary":"closed"},"limits":{"message_bytes":MAX_MESSAGE,"cells":MAX_CELLS,"axis":64,"inputs":64,"ticks":64}}),
+                json!({"protocol":3,"engine":"mroww","version":env!("CARGO_PKG_VERSION"),"revision":option_env!("MROWW_API_REVISION").unwrap_or("unversioned"),"registry":"1.21.5","data_version":4325,"capabilities":{"selection_validation":true,"lever_effects":true,"modes":["interpreter","compiled"],"blocks":["air","stone","lever"],"entities":false,"ticks":false,"effects":false,"boundary":"closed"},"limits":{"message_bytes":MAX_MESSAGE,"cells":MAX_CELLS,"axis":64,"inputs":64,"ticks":64}}),
             );
         }
         if !self.hello {
@@ -120,7 +121,10 @@ impl Connection {
                 if self.session.is_some() {
                     return Err("session already loaded".into());
                 }
-                request["data_version"].as_u64().filter(|n| *n > 0 && *n <= u32::MAX as u64).ok_or("invalid data version")?;
+                request["data_version"]
+                    .as_u64()
+                    .filter(|n| *n > 0 && *n <= u32::MAX as u64)
+                    .ok_or("invalid data version")?;
                 if request["boundary"].as_str() != Some("closed") {
                     return Err("unsupported boundary".into());
                 }
@@ -140,6 +144,25 @@ impl Connection {
                 }
                 if size.iter().product::<i32>() > MAX_CELLS {
                     return Err("region too large".into());
+                }
+                // Only inert states are admitted until generated effects and scheduled work are supported.
+                for record in request["blocks"].as_array().ok_or("missing blocks")? {
+                    let Some(a) = record.as_array().filter(|a| a.len() == 4) else { continue };
+                    let Some(index) = a[3].as_u64().and_then(|n| usize::try_from(n).ok()) else { continue };
+                    let Some(state) = request["palette"].as_array().and_then(|p| p.get(index)).and_then(Value::as_str) else { continue };
+                    let name = state.split('[').next().unwrap_or("");
+                    let origin = BlockPos::new(4, 4, 4);
+                    let local = pos(&json!([a[0], a[1], a[2]]), size, origin)? - origin;
+                    let feature = if name == "minecraft:lever" {
+                        parse_block(state).map_err(|error| format!("{error} at local position [{},{},{}]", local.x, local.y, local.z))?;
+                        None
+                    }
+                        else if matches!(name, "minecraft:repeater" | "minecraft:comparator") { Some("scheduled ticks") }
+                        else if name == "minecraft:stone_button" { Some("scheduled ticks and effects") }
+                        else { None };
+                    if let Some(feature) = feature {
+                        return Err(format!("{feature} unsupported for {name} at local position [{},{},{}]", local.x, local.y, local.z));
+                    }
                 }
                 let palette: Vec<Block> = request["palette"]
                     .as_array()
@@ -184,8 +207,16 @@ impl Connection {
                         Ok(json!({"mode":"interpreter"}))
                     }
                     Some("compiled") => {
-                        let level = request.get("optimization").map(|value| value.as_u64().filter(|level| *level <= 6).ok_or("invalid optimization")).transpose()?.unwrap_or(0);
-                        s.compile(CompilerOptions { optimization_level: Some(level as usize), ..Default::default() }).map_err(|e| e.to_string())?;
+                        let level = request
+                            .get("optimization")
+                            .map(|value| value.as_u64().filter(|level| *level <= 6).ok_or("invalid optimization"))
+                            .transpose()?
+                            .unwrap_or(0);
+                        s.compile(CompilerOptions {
+                            optimization_level: Some(level as usize),
+                            ..Default::default()
+                        })
+                        .map_err(|e| e.to_string())?;
                         self.compiled = true;
                         Ok(json!({"mode":"compiled"}))
                     }
@@ -212,8 +243,21 @@ impl Connection {
                     Some(value) => value.as_bool().ok_or("invalid projection flag")?,
                 };
                 let s = self.session.as_mut().ok_or("no session")?;
+                let mut powered = std::collections::HashMap::new();
+                let mut effects = Vec::new();
+                for input in &parsed {
+                    let Input::Use(p) = input else { return Err("unsupported plate input".into()) };
+                    let initial = match s.get(*p).map_err(|e| e.to_string())? {
+                        Block::Lever { lever } => lever.powered,
+                        _ => return Err("input requires a lever".into()),
+                    };
+                    let value = powered.entry(*p).or_insert(initial);
+                    *value = !*value;
+                    let local = *p - self.origin;
+                    effects.push(json!({"kind":"lever_click","pos":[local.x,local.y,local.z],"powered":*value}));
+                }
                 s.advance_with_inputs(ticks, &parsed).map_err(|e| format!("session failed: {e}"))?;
-                let mut result = json!({"tick":s.ticks()});
+                let mut result = json!({"tick":s.ticks(),"effects":effects});
                 if projection {
                     let c = changes(s.drain_changes().map_err(|e| e.to_string())?, self.origin);
                     result["states"] = c["states"].clone();

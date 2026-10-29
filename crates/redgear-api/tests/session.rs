@@ -22,7 +22,7 @@ fn request(reader: &mut BufReader<TcpStream>, request: Value) -> Value {
 }
 
 #[test]
-fn lever_session_and_disconnect_cleanup() {
+fn selection_validation_and_disconnect_cleanup() {
     let socket = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = socket.local_addr().unwrap();
     drop(socket);
@@ -45,37 +45,61 @@ fn lever_session_and_disconnect_cleanup() {
         .expect("server did not start");
     stream.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
     let mut client = BufReader::new(stream);
-    assert_eq!(request(&mut client, json!({"id":1,"op":"rawr","protocol":3}))["ok"], true);
-    for state in ["minecraft:unknown", "minecraft:lever[face=floor,facing=north]", "minecraft:lever[face=floor,facing=north,powered=false,extra=true]"] {
-        let rejected = request(&mut client, json!({"id":100,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":[state],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}));
+    let hello = request(&mut client, json!({"id":1,"op":"rawr","protocol":3}));
+    assert_eq!(hello["ok"], true);
+    assert_eq!(hello["capabilities"]["selection_validation"], true);
+    for state in [
+        "minecraft:unknown",
+        "minecraft:lever[face=floor,facing=north]",
+        "minecraft:lever[face=floor,facing=north,powered=false,extra=true]",
+    ] {
+        let rejected = request(
+            &mut client,
+            json!({"id":100,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":[state],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}),
+        );
         assert_eq!(rejected["ok"], false, "{state}");
     }
-    let invalid_position = request(&mut client, json!({"id":101,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[1,0,0,0]],"entities":[],"ticks":[]}));
+    let invalid_position = request(
+        &mut client,
+        json!({"id":101,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[1,0,0,0]],"entities":[],"ticks":[]}),
+    );
     assert_eq!(invalid_position["ok"], false);
-    let pending_tick = request(&mut client, json!({"id":105,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[0,0,0,0]],"entities":[],"ticks":[{"pos":[0,0,0],"delay":1}]}));
+    let pending_tick = request(
+        &mut client,
+        json!({"id":105,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[0,0,0,0]],"entities":[],"ticks":[{"pos":[0,0,0],"delay":1}]}),
+    );
     assert_eq!(pending_tick["ok"], false);
     assert!(pending_tick["error"].as_str().unwrap().contains("ticks"));
+    let entity = request(&mut client, json!({"id":109,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":[],"blocks":[],"entities":[{}],"ticks":[]}));
+    assert_eq!(entity["ok"], false);
+    assert!(entity["error"].as_str().unwrap().contains("entities"));
+    for (state, feature) in [("minecraft:repeater", "scheduled ticks")] {
+        let rejected = request(&mut client, json!({"id":106,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":[state],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}));
+        assert_eq!(rejected["ok"], false);
+        assert!(rejected["error"].as_str().unwrap().contains(feature));
+        assert!(rejected["error"].as_str().unwrap().contains("[0,0,0]"));
+    }
     assert_eq!(
         request(
             &mut client,
-            json!({"id":2,"op":"load","size":[2,2,2],"data_version":5023,"boundary":"closed","palette":["minecraft:stone","minecraft:lever[powered=false,facing=north,face=floor]"],"blocks":[[0,0,0,0],[0,1,0,1]],"entities":[],"ticks":[]})
+            json!({"id":2,"op":"load","size":[2,2,2],"data_version":5023,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[0,0,0,0],[0,1,0,0]],"entities":[],"ticks":[]})
         )["ok"],
         true
     );
     let before = request(&mut client, json!({"id":102,"op":"inspect","pos":[0,1,0]}));
-    assert_eq!(before["state"], "minecraft:lever[face=floor,facing=north,powered=false]");
-    let rejected_reload = request(&mut client, json!({"id":103,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":["minecraft:unknown"],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}));
-    assert_eq!(rejected_reload["ok"], false);
-    assert_eq!(request(&mut client, json!({"id":104,"op":"inspect","pos":[0,1,0]}))["state"], before["state"]);
-    assert_eq!(request(&mut client, json!({"id":3,"op":"compile","mode":"interpreter"}))["ok"], true);
-    let toggled = request(
+    assert_eq!(before["state"], "minecraft:stone");
+    let rejected_reload = request(
         &mut client,
-        json!({"id":4,"op":"advance","ticks":1,"inputs":[{"kind":"use","pos":[0,1,0]}],"projection":true}),
+        json!({"id":103,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":["minecraft:unknown"],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}),
     );
-    assert_eq!(toggled["ok"], true);
-    assert_eq!(toggled["changes"].as_array().unwrap().len(), 1);
-    let inspected = request(&mut client, json!({"id":5,"op":"inspect","pos":[0,1,0]}));
-    assert!(inspected["state"].as_str().unwrap().contains("powered=true"));
+    assert_eq!(rejected_reload["ok"], false);
+    assert_eq!(
+        request(&mut client, json!({"id":104,"op":"inspect","pos":[0,1,0]}))["state"],
+        before["state"]
+    );
+    assert_eq!(request(&mut client, json!({"id":107,"op":"compile","mode":"unsupported"}))["ok"], false);
+    assert_eq!(request(&mut client, json!({"id":108,"op":"inspect","pos":[0,1,0]}))["state"], before["state"]);
+    assert_eq!(request(&mut client, json!({"id":3,"op":"compile","mode":"interpreter"}))["ok"], true);
     let drained = request(&mut client, json!({"id":6,"op":"project","kind":"changes"}));
     assert_eq!(drained["changes"].as_array().unwrap().len(), 0);
     let drained_again = request(&mut client, json!({"id":7,"op":"project","kind":"changes"}));
@@ -88,12 +112,32 @@ fn lever_session_and_disconnect_cleanup() {
         false
     );
     let after_invalid = request(&mut client, json!({"id":9,"op":"inspect","pos":[0,1,0]}));
-    assert!(after_invalid["state"].as_str().unwrap().contains("powered=true"));
+    assert_eq!(after_invalid["state"], "minecraft:stone");
     assert_eq!(request(&mut client, json!({"id":10,"op":"close"}))["ok"], true);
     drop(client);
+    let mut lever = BufReader::new(TcpStream::connect(address).unwrap());
+    assert_eq!(request(&mut lever, json!({"id":1,"op":"rawr","protocol":3}))["capabilities"]["lever_effects"], true);
+    assert_eq!(request(&mut lever, json!({"id":2,"op":"load","size":[1,2,1],"data_version":5023,"boundary":"closed","palette":["minecraft:stone","minecraft:lever[face=floor,facing=north,powered=false]"],"blocks":[[0,0,0,0],[0,1,0,1]],"entities":[],"ticks":[]}))["ok"], true);
+    assert_eq!(request(&mut lever, json!({"id":3,"op":"compile","mode":"interpreter"}))["ok"], true);
+    let result = request(&mut lever, json!({"id":4,"op":"advance","ticks":1,"projection":true,"inputs":[{"kind":"use","pos":[0,1,0]},{"kind":"use","pos":[0,1,0]}]}));
+    assert_eq!(result["ok"], true);
+    assert_eq!(result["effects"], json!([{"kind":"lever_click","pos":[0,1,0],"powered":true},{"kind":"lever_click","pos":[0,1,0],"powered":false}]));
+    assert!(request(&mut lever, json!({"id":5,"op":"project","kind":"changes"}))["changes"].as_array().unwrap().is_empty());
+    assert_eq!(request(&mut lever, json!({"id":6,"op":"advance","ticks":0,"inputs":[],"projection":true}))["effects"], json!([]));
+    let on = request(&mut lever, json!({"id":7,"op":"advance","ticks":0,"inputs":[{"kind":"use","pos":[0,1,0]}],"projection":true}));
+    assert_eq!(on["effects"], json!([{"kind":"lever_click","pos":[0,1,0],"powered":true}]));
+    assert!(request(&mut lever, json!({"id":8,"op":"inspect","pos":[0,1,0]}))["state"].as_str().unwrap().contains("powered=true"));
+    assert_eq!(request(&mut lever, json!({"id":9,"op":"close"}))["ok"], true);
+    drop(lever);
     let mut disconnected = BufReader::new(TcpStream::connect(address).unwrap());
     assert_eq!(request(&mut disconnected, json!({"id":1,"op":"rawr","protocol":3}))["ok"], true);
-    assert_eq!(request(&mut disconnected, json!({"id":2,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":[],"blocks":[],"entities":[],"ticks":[]}))["ok"], true);
+    assert_eq!(
+        request(
+            &mut disconnected,
+            json!({"id":2,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":[],"blocks":[],"entities":[],"ticks":[]})
+        )["ok"],
+        true
+    );
     drop(disconnected);
     let mut next = BufReader::new(TcpStream::connect(address).unwrap());
     assert_eq!(request(&mut next, json!({"id":1,"op":"rawr","protocol":3}))["ok"], true);
@@ -109,21 +153,31 @@ fn lever_session_and_disconnect_cleanup() {
         clients.push(client);
     }
     let mut loaded = clients.pop().unwrap();
-    assert_eq!(request(&mut loaded, json!({"id":2,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":[],"blocks":[],"entities":[],"ticks":[]}))["ok"], true);
+    assert_eq!(
+        request(
+            &mut loaded,
+            json!({"id":2,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":[],"blocks":[],"entities":[],"ticks":[]})
+        )["ok"],
+        true
+    );
     drop(loaded);
-    let replacement = (0..100).find_map(|_| {
-        let stream = TcpStream::connect(address).ok()?;
-        stream.set_read_timeout(Some(Duration::from_millis(200))).ok()?;
-        let mut reader = BufReader::new(stream);
-        if writeln!(reader.get_mut(), "{}", json!({"id":1,"op":"rawr","protocol":3})).is_ok() {
-            let mut line = String::new();
-            if reader.read_line(&mut line).ok().filter(|count| *count > 0).is_some() {
-                if serde_json::from_str::<Value>(&line).ok().is_some_and(|v| v["ok"] == true) { return Some(reader); }
+    let replacement = (0..100)
+        .find_map(|_| {
+            let stream = TcpStream::connect(address).ok()?;
+            stream.set_read_timeout(Some(Duration::from_millis(200))).ok()?;
+            let mut reader = BufReader::new(stream);
+            if writeln!(reader.get_mut(), "{}", json!({"id":1,"op":"rawr","protocol":3})).is_ok() {
+                let mut line = String::new();
+                if reader.read_line(&mut line).ok().filter(|count| *count > 0).is_some() {
+                    if serde_json::from_str::<Value>(&line).ok().is_some_and(|v| v["ok"] == true) {
+                        return Some(reader);
+                    }
+                }
             }
-        }
-        thread::sleep(Duration::from_millis(20));
-        None
-    }).expect("disconnected session slot was not released");
+            thread::sleep(Duration::from_millis(20));
+            None
+        })
+        .expect("disconnected session slot was not released");
     drop(replacement);
     drop(clients);
     thread::sleep(Duration::from_millis(50));
@@ -134,7 +188,10 @@ fn lever_session_and_disconnect_cleanup() {
     let mut byte = [0];
     match oversized.peek(&mut byte) {
         Ok(count) => assert_eq!(count, 0),
-        Err(error) => assert!(matches!(error.kind(), std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted)),
+        Err(error) => assert!(matches!(
+            error.kind(),
+            std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+        )),
     }
     let mut healthy = BufReader::new(TcpStream::connect(address).unwrap());
     assert_eq!(request(&mut healthy, json!({"id":1,"op":"rawr","protocol":3}))["ok"], true);
