@@ -6,13 +6,14 @@ use crate::plot::{
 };
 use crate::redpiler::components::NodeType;
 use crate::redpiler::event_netlist::executor::EventState;
+use crate::redpiler::event_netlist::scratch::{ScratchEntry, ScratchWorld, discover_watched_wire_sources, discovered_wire_strength};
 use crate::redpiler::physical_signal_network::{EntryWork, PhysicalSignalNetwork};
 use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, ContactId, InputPort, LoweredCircuit, PistonId, PistonLane, PowerPort, PowerTarget, ResourceId,
 };
 use crate::redpiler::{CompilerOptions, TaskMonitor, analysis::AnalysisLimits, passes};
-use crate::world::storage::Chunk;
-use mchprs_blocks::BlockPos;
+use crate::world::{World, storage::Chunk};
+use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::PathBuf};
@@ -833,6 +834,149 @@ fn position(value: &Value) -> BlockPos {
             value[1].as_i64().unwrap() as i32,
             value[2].as_i64().unwrap() as i32,
         )
+}
+
+#[test]
+fn adder1_prepared_0_1_0_world_discovery_diagnostic() {
+    let (host, bounds, manifest) = fixture("adder_1bit");
+    let case = manifest["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|case| case["id"] == "prepared-0-1-0")
+        .unwrap();
+    let input_actions = &case["actions"].as_array().unwrap()[..4];
+    let all_actions = case["actions"].as_array().unwrap();
+    let (min, max) = bounds;
+    let capture = (min - BlockPos::new(2, 2, 2), max + BlockPos::new(2, 2, 2));
+    let entry = || ScratchEntry {
+        scheduled: host.scheduler().iter_entries().collect(),
+        piston: host.piston_state().clone(),
+    };
+    let apply = |scratch: &mut ScratchWorld, actions: &[Value], observe: bool| {
+        scratch.world_mut().observe_redstone_updates(observe);
+        for action in actions {
+            match action["op"].as_str().unwrap() {
+                "lever" => {
+                    let pos = position(&action["pos"]);
+                    let Block::Lever { mut lever } = scratch.world().get_block(pos) else {
+                        panic!("expected lever at {pos:?}")
+                    };
+                    lever.powered = action["powered"].as_bool().unwrap();
+                    scratch.world_mut().set_block(pos, Block::Lever { lever });
+                    crate::redstone::update_surrounding_blocks(scratch.world_mut(), pos);
+                    let attachment = match lever.face {
+                        mchprs_blocks::blocks::LeverFace::Ceiling => BlockFace::Top,
+                        mchprs_blocks::blocks::LeverFace::Floor => BlockFace::Bottom,
+                        mchprs_blocks::blocks::LeverFace::Wall => lever.facing.opposite().block_face(),
+                    };
+                    crate::redstone::update_surrounding_blocks(scratch.world_mut(), pos.offset(attachment));
+                }
+                "wait_ready" | "wait" => {
+                    for _ in 0..action["ticks"].as_u64().unwrap() {
+                        scratch.world_mut().tick_interpreted();
+                    }
+                }
+                op => panic!("unexpected operation {op}"),
+            }
+        }
+    };
+
+    let mut preparation = ScratchWorld::from_world(&host, capture, entry()).unwrap();
+    apply(&mut preparation, input_actions, false);
+    preparation.finish_probe().unwrap();
+    let plan = discover_watched_wire_sources(preparation.world(), capture).unwrap();
+    let predicted_before: Vec<_> = plan
+        .watchers
+        .iter()
+        .map(|watch| (watch.wire, discovered_wire_strength(preparation.world(), &plan, watch.wire)))
+        .collect();
+    preparation.finish_probe().unwrap();
+
+    let mut transition = ScratchWorld::from_world(&host, capture, entry()).unwrap();
+    apply(&mut transition, input_actions, false);
+    transition.finish_probe().unwrap();
+    transition.world_mut().observe_redstone_updates(true);
+    apply(&mut transition, &all_actions[4..], true);
+    transition.finish_probe().unwrap();
+    let after: Vec<_> = plan
+        .watchers
+        .iter()
+        .map(|watch| {
+            let Block::RedstoneWire { wire } = transition.world().get_block(watch.wire) else {
+                unreachable!()
+            };
+            (watch.wire, wire.power)
+        })
+        .collect();
+    let predicted_after: Vec<_> = plan
+        .watchers
+        .iter()
+        .map(|watch| (watch.wire, discovered_wire_strength(transition.world(), &plan, watch.wire)))
+        .collect();
+    transition.finish_probe().unwrap();
+    let callbacks = transition.world_mut().take_redstone_update_observations();
+    let piston_callbacks: Vec<_> = callbacks
+        .into_iter()
+        .filter(|event| matches!(event.block, Block::Piston { .. }))
+        .collect();
+    let before: Vec<_> = predicted_before
+        .iter()
+        .map(|&(wire, _)| {
+            let Block::RedstoneWire { wire: state } = preparation.world().get_block(wire) else {
+                unreachable!()
+            };
+            (wire, state.power)
+        })
+        .collect();
+    assert_eq!(predicted_before, before, "discovered wire strength differs from saved interpreter state");
+    assert_eq!(predicted_after, after, "discovered wire strength differs from interpreter after trigger");
+    let changed: Vec<_> = before
+        .iter()
+        .zip(&after)
+        .filter(|((before_wire, before_power), (after_wire, after_power))| before_wire == after_wire && before_power != after_power)
+        .map(|((wire, before), (_, after))| (*wire, *before, *after))
+        .collect();
+    assert!(!plan.watchers.is_empty(), "no nearby watched wires discovered");
+    assert!(plan.sources.iter().all(|source| source.attenuation <= 14));
+    assert!(
+        piston_callbacks
+            .iter()
+            .any(|event| plan.watchers.iter().any(|watch| watch.piston == event.pos)),
+        "no delivered update reached a discovered watched piston: {piston_callbacks:?}"
+    );
+    assert!(
+        plan.watchers.iter().any(|watch| {
+            changed.iter().any(|(wire, _, _)| *wire == watch.wire) && piston_callbacks.iter().any(|event| event.pos == watch.piston)
+        }),
+        "no changed watched wire and delivered piston callback coincide; changed={changed:?} callbacks={piston_callbacks:?}"
+    );
+    let changed_evidence: Vec<_> = changed
+        .iter()
+        .map(|(wire, before, after)| {
+            (
+                *wire,
+                *before,
+                *after,
+                plan.sources.iter().filter(|source| source.wire == *wire).copied().collect::<Vec<_>>(),
+                plan.watchers
+                    .iter()
+                    .filter(|watch| watch.wire == *wire)
+                    .map(|watch| watch.piston)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect();
+    assert!(
+        changed_evidence.iter().all(|(_, _, _, sources, _)| !sources.is_empty()),
+        "changed wire has no discovered electrical source: {changed_evidence:?}"
+    );
+    println!(
+        "ADDER1BIT prepared-0-1-0 watchers={} sources={} changed_wire_evidence={changed_evidence:?} delivered_piston_callbacks={}",
+        plan.watchers.len(),
+        plan.sources.len(),
+        piston_callbacks.len()
+    );
 }
 
 #[test]

@@ -49,7 +49,7 @@ mod physical_piston;
 #[path = "event_netlist/program.rs"]
 pub(crate) mod program;
 #[path = "event_netlist/scratch.rs"]
-mod scratch;
+pub(crate) mod scratch;
 
 use autonomous_piston::*;
 pub(crate) use compiled_pistons::CompiledPistonActors;
