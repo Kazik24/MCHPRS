@@ -4,13 +4,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use anyhow::{Result, bail};
-use mchprs_blocks::BlockPos;
 use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::blocks::Block;
+use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::{TickEntry, TickPriority};
 
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld};
-use crate::redpiler::{CompileStatistics, Compiler, CompilerOptions, TaskMonitor, TickScheduler};
+pub use crate::redpiler::{CompileStatistics, CompilerOptions};
+use crate::redpiler::{Compiler, TaskMonitor, TickScheduler};
 use crate::redstone;
 use crate::world::{World, storage::Chunk};
 
@@ -24,12 +25,19 @@ pub struct Snapshot {
     pub ticks: Vec<TickEntry>,
 }
 
+/// Inputs are applied in order before the next game tick.
+pub enum Input {
+    Use(BlockPos),
+    Plate(BlockPos, bool),
+}
+
 /// A session owns its world and compiler until it is dropped.
 pub struct Session {
     world: PlotWorld,
     bounds: (BlockPos, BlockPos),
     compiler: Compiler,
     failed: bool,
+    ticks: u64,
 }
 
 fn contains((min, max): (BlockPos, BlockPos), p: BlockPos) -> bool {
@@ -108,6 +116,7 @@ impl Session {
             bounds,
             compiler: Compiler::default(),
             failed: false,
+            ticks: 0,
         })
     }
 
@@ -131,11 +140,15 @@ impl Session {
         self.compiler
             .compile(&self.world, self.bounds, options, ticks, Arc::new(TaskMonitor::default()))
             .map_err(|error| anyhow::anyhow!("compile failed: {error:?}"))?;
+        self.world.clear_scheduled_ticks();
         Ok(self.compiler.stats().expect("successful compile has statistics"))
     }
 
     pub fn advance(&mut self, ticks: u64) -> Result<()> {
         self.ready()?;
+        if self.ticks.checked_add(ticks).is_none() {
+            bail!("tick count overflow");
+        }
         for _ in 0..ticks {
             if self.compiler.is_active() {
                 if let Err(error) = self.compiler.tick() {
@@ -146,8 +159,51 @@ impl Session {
             } else {
                 self.world.tick_interpreted();
             }
+            self.ticks += 1;
         }
         Ok(())
+    }
+
+    /// Apply validated inputs in order, then advance. Any error after an input fails the session.
+    pub fn advance_with_inputs(&mut self, ticks: u64, inputs: &[Input]) -> Result<()> {
+        self.ready()?;
+        if self.ticks.checked_add(ticks).is_none() {
+            bail!("tick count overflow");
+        }
+        for input in inputs {
+            let pos = match input {
+                Input::Use(pos) | Input::Plate(pos, _) => *pos,
+            };
+            let block = self.get(pos)?;
+            let supported = match input {
+                Input::Use(_) if self.compiler.is_active() => matches!(block, Block::Lever { .. } | Block::StoneButton { .. }),
+                Input::Use(_) => matches!(
+                    block,
+                    Block::Lever { .. }
+                        | Block::StoneButton { .. }
+                        | Block::RedstoneRepeater { .. }
+                        | Block::RedstoneComparator { .. }
+                        | Block::RedstoneWire { .. }
+                        | Block::NoteBlock { .. }
+                ),
+                Input::Plate(_, _) => block.pressure_plate_powered().is_some(),
+            };
+            let supported = supported && (!self.compiler.is_active() || self.compiler.accepts_control(pos, matches!(input, Input::Plate(..))));
+            if !supported {
+                bail!("unsupported input at {pos}");
+            }
+        }
+        for input in inputs {
+            let result = match input {
+                Input::Use(pos) => self.use_block(*pos),
+                Input::Plate(pos, powered) => self.set_pressure_plate(*pos, *powered),
+            };
+            if let Err(error) = result {
+                self.failed = true;
+                return Err(error);
+            }
+        }
+        self.advance(ticks)
     }
 
     pub fn use_block(&mut self, pos: BlockPos) -> Result<()> {
@@ -156,6 +212,9 @@ impl Session {
         if self.compiler.is_active() {
             if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. }) {
                 bail!("unsupported compiled control at {pos}");
+            }
+            if !self.compiler.accepts_control(pos, false) {
+                bail!("control is not present in compiled graph at {pos}");
             }
             if let Err(error) = self.compiler.try_on_use_block(pos) {
                 self.failed = true;
@@ -175,6 +234,9 @@ impl Session {
             bail!("not a pressure plate at {pos}");
         }
         if self.compiler.is_active() {
+            if !self.compiler.accepts_control(pos, true) {
+                bail!("pressure plate is not present in compiled graph at {pos}");
+            }
             if let Err(error) = self.compiler.try_set_pressure_plate(pos, powered) {
                 self.failed = true;
                 bail!("compiled plate failed: {error:?}");
@@ -192,6 +254,43 @@ impl Session {
             bail!("position outside region: {pos}");
         }
         Ok(self.world.get_block(pos))
+    }
+
+    /// Read the redstone power seen from a face at a position in the session.
+    pub fn power(&self, pos: BlockPos, face: BlockFace) -> Result<u8> {
+        let block = self.get(pos)?;
+        Ok(redstone::get_redstone_power(block, &self.world, pos, face))
+    }
+
+    /// Completed game ticks, including those completed before an execution failure.
+    pub fn ticks(&self) -> u64 {
+        self.ticks
+    }
+
+    pub fn block_entity(&self, pos: BlockPos) -> Result<Option<&BlockEntity>> {
+        self.get(pos)?;
+        if self.compiler.is_active() {
+            bail!("block entity inspection is unavailable in compiled mode");
+        }
+        Ok(self.world.get_block_entity(pos))
+    }
+
+    /// Compiled pending work is owned by the compiler and cannot be inspected here.
+    pub fn pending_ticks(&self) -> Result<Vec<TickEntry>> {
+        self.ready()?;
+        if self.compiler.is_active() {
+            bail!("pending ticks are unavailable in compiled mode");
+        }
+        Ok(self.world.scheduler().iter_entries().collect())
+    }
+
+    /// Return compiled state and scheduled work to the interpreter.
+    pub fn reset(&mut self) -> Result<()> {
+        self.ready()?;
+        if self.compiler.is_active() {
+            self.compiler.reset(&mut self.world, self.bounds);
+        }
+        Ok(())
     }
 
     pub fn drain_changes(&mut self) -> Result<Vec<(BlockPos, u32)>> {
@@ -301,5 +400,127 @@ mod tests {
         session.compile(CompilerOptions::default()).unwrap();
         session.advance(1).unwrap();
         assert!(session.drain_changes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn compiled_reset_hands_pending_ticks_back_once() {
+        let pos = BlockPos::new(21, 4, 30);
+        let mut input = snapshot();
+        let Block::StoneButton { mut button } = Block::from_name("stone_button").unwrap() else {
+            unreachable!()
+        };
+        button.powered = true;
+        let block = Block::StoneButton { button };
+        input.blocks.push((pos, block));
+        input.ticks.push(TickEntry {
+            pos,
+            ticks_left: 4,
+            tick_priority: TickPriority::Normal,
+            block_type: Some(block.registry_id()),
+        });
+        let mut session = Session::new(input).unwrap();
+        let before = session.pending_ticks().unwrap();
+        assert!(
+            session
+                .compile(CompilerOptions {
+                    io_only: true,
+                    ..Default::default()
+                })
+                .is_err()
+        );
+        assert_eq!(session.pending_ticks().unwrap(), before);
+        session.compile(CompilerOptions::default()).unwrap();
+        assert!(session.pending_ticks().is_err());
+        assert_eq!(session.world.scheduler().iter_entries().count(), 0);
+        session.reset().unwrap();
+        let ticks = session.pending_ticks().unwrap();
+        assert_eq!(ticks.len(), 1);
+        assert_eq!(ticks[0].pos, pos);
+        assert_eq!(ticks[0].ticks_left, 4);
+    }
+
+    #[test]
+    fn power_and_ordered_controls_use_the_current_state() {
+        let pos = BlockPos::new(21, 4, 30);
+        let mut input = snapshot();
+        input.blocks.push((pos, Block::from_name("lever").unwrap()));
+        let mut session = Session::new(input).unwrap();
+        session.use_block(pos).unwrap();
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if lever.powered));
+        session.use_block(pos).unwrap();
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if !lever.powered));
+        session.advance(2).unwrap();
+        assert_eq!(session.ticks(), 2);
+        assert!(session.power(BlockPos::new(0, 0, 0), BlockFace::Top).is_err());
+        assert!(session.drain_changes().unwrap().iter().any(|(changed, _)| *changed == pos));
+        assert!(session.drain_changes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn input_batch_validates_before_mutating_and_preserves_order() {
+        let pos = BlockPos::new(21, 4, 30);
+        let mut input = snapshot();
+        input.blocks.push((pos, Block::from_name("lever").unwrap()));
+        let mut session = Session::new(input).unwrap();
+        assert!(
+            session
+                .advance_with_inputs(1, &[Input::Use(pos), Input::Use(BlockPos::new(20, 4, 30))])
+                .is_err()
+        );
+        assert_eq!(session.ticks(), 0);
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if !lever.powered));
+        session.advance_with_inputs(1, &[Input::Use(pos), Input::Use(pos)]).unwrap();
+        assert_eq!(session.ticks(), 1);
+        assert!(matches!(session.get(pos).unwrap(), Block::Lever { lever } if !lever.powered));
+    }
+
+    #[test]
+    fn compiled_execution_error_fails_the_session() {
+        use mchprs_blocks::block_entities::CommandBlockEntity;
+        let pos = BlockPos::new(21, 4, 30);
+        let mut input = snapshot();
+        input.blocks.push((pos, Block::from_name("command_block").unwrap()));
+        input.entities.push((
+            pos,
+            BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
+                command: "say test".into(),
+                automatic: true,
+                ..Default::default()
+            })),
+        ));
+        let mut session = Session::new(input).unwrap();
+        session.compile(CompilerOptions::default()).unwrap();
+        assert!(session.advance(1).is_err());
+        assert_eq!(session.ticks(), 0);
+        assert!(session.advance(1).is_err());
+        assert!(session.get(pos).is_err());
+        assert!(session.drain_changes().is_err());
+    }
+
+    #[test]
+    fn drain_reports_air_and_consumes_it_once() {
+        let pos = BlockPos::new(21, 4, 30);
+        let mut input = snapshot();
+        input.blocks.push((pos, Block::from_name("stone").unwrap()));
+        let mut session = Session::new(input).unwrap();
+        session.world.set_block(pos, Block::Air);
+        assert!(
+            session
+                .drain_changes()
+                .unwrap()
+                .iter()
+                .any(|(changed, state)| *changed == pos && *state == Block::get_id(Block::Air))
+        );
+        assert!(session.drain_changes().unwrap().is_empty());
+    }
+
+    #[test]
+    fn inspect_power_and_block_entity() {
+        let pos = BlockPos::new(21, 4, 30);
+        let mut input = snapshot();
+        input.blocks.push((pos, Block::RedstoneBlock {}));
+        let session = Session::new(input).unwrap();
+        assert_eq!(session.power(pos, BlockFace::Top).unwrap(), 15);
+        assert!(session.block_entity(pos).unwrap().is_none());
     }
 }

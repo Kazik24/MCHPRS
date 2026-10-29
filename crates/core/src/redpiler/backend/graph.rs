@@ -1111,6 +1111,17 @@ impl GraphBackend {
         Ok(())
     }
 
+    pub(crate) fn accepts_control(&self, position: BlockPos, plate: bool) -> bool {
+        self.positions.get(&position).is_some_and(|node| {
+            let kind = &self.program.nodes()[node.index()].kind;
+            if plate {
+                matches!(kind, CircuitNodeKind::Electrical(NodeType::PressurePlate))
+            } else {
+                matches!(kind, CircuitNodeKind::Electrical(NodeType::Lever | NodeType::Button))
+            }
+        })
+    }
+
     pub(crate) fn use_block(&mut self, position: BlockPos) -> Result<(), GraphExecutionError> {
         if let Some(error) = &self.failure {
             return Err(error.clone());

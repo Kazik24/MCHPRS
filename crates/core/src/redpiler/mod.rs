@@ -450,6 +450,10 @@ impl Compiler {
         self.backend().use_block(pos)
     }
 
+    pub(crate) fn accepts_control(&self, pos: BlockPos, plate: bool) -> bool {
+        self.backend.as_ref().is_some_and(|backend| backend.accepts_control(pos, plate))
+    }
+
     /// Change a pressure plate's powered state and send its notifications immediately.
     ///
     /// Ignores other positions. Logs execution errors, which also stop later backend work.
