@@ -1,5 +1,9 @@
 # Redpiler event-engine implementation plan
 
+> Historical plan. The current implementation sequence and representation decision
+> are in [Compiled netlist port plan](REDPILER_COMPILED_NETLIST_PORT_PLAN.md).
+> Checkpoints below describe earlier work and are not the current activation status.
+
 ## Goal and current checkpoint
 
 Build an event-driven Redpiler engine following the observable design of the

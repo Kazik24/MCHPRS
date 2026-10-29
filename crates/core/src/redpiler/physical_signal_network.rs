@@ -283,6 +283,26 @@ impl PhysicalSignalNetwork {
         Ok(Vec::new())
     }
 
+    pub(crate) fn notify_resource_observers(&mut self, resource: usize, contact: super::program_graph::ContactId) -> Result<(), &'static str> {
+        let Some(corridor) = &self.dust_corridor else { return Ok(()) };
+        for record in corridor
+            .plan
+            .resource_observers
+            .iter()
+            .filter(|record| record.resource.index() == resource && record.contact == contact)
+        {
+            let node = record.observer.index();
+            if !self.scheduler.contains(&node) {
+                self.scheduler.schedule_half_tick(node, 2, mchprs_world::TickPriority::Normal);
+                let super::program_graph::ComponentState::Electrical(observer) = &mut self.state.components[node] else {
+                    return Err("observer state is unavailable");
+                };
+                observer.pending_tick = true;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn resource_destination_available(
         &self,
         resource: super::program_graph::ResourceId,
@@ -1031,6 +1051,11 @@ impl PhysicalSignalNetwork {
         (self.dust_corridor.as_ref().map_or(0, |plan| plan.operations), self.physical_settles)
     }
 
+    #[cfg(test)]
+    pub(crate) fn dust_corridor_resource_observers(&self) -> usize {
+        self.dust_corridor.as_ref().map_or(0, |corridor| corridor.plan.resource_observers.len())
+    }
+
     fn schedule_torches(&mut self) -> Result<(), &'static str> {
         use super::program_graph::ComponentState;
         for &node_index in self.torches.iter() {
@@ -1085,6 +1110,19 @@ impl PhysicalSignalNetwork {
             return Ok(maximum);
         }
         self.input_power_physical(node, port)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn diagnostic_input_power(&self, node: usize, port: super::program_graph::InputPort) -> Result<u8, &'static str> {
+        self.input_power(node, port)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn diagnostic_scheduled(&self, node: usize) -> Vec<(usize, mchprs_world::TickPriority)> {
+        self.scheduler
+            .iter()
+            .filter_map(|(item, delay, priority)| (*item == node).then_some((delay, priority)))
+            .collect()
     }
 
     fn input_power_physical(&self, node: usize, port: super::program_graph::InputPort) -> Result<u8, &'static str> {
@@ -1350,6 +1388,31 @@ fn state_only_guard(id: super::program_graph::GuardId, guards: &[super::program_
     }
 }
 
+#[cfg(test)]
+mod state_guard_tests {
+    use super::state_only_guard;
+    use crate::redpiler::program_graph::{Guard, GuardId, OperandView, PistonId, SiteId, SiteTest, StateTest};
+
+    #[test]
+    fn composed_state_guards_are_admitted_but_site_guards_are_not() {
+        let guards = vec![
+            Guard::Always,
+            Guard::State(StateTest::PistonExtended(PistonId::new(0))),
+            Guard::All(vec![GuardId::new(0), GuardId::new(1)].into_boxed_slice()),
+            Guard::Not(GuardId::new(2)),
+            Guard::Site {
+                site: SiteId::new(0),
+                view: OperandView::Live,
+                test: SiteTest::Solid,
+            },
+            Guard::Any(vec![GuardId::new(3), GuardId::new(4)].into_boxed_slice()),
+        ];
+        assert!(state_only_guard(GuardId::new(2), &guards));
+        assert!(state_only_guard(GuardId::new(3), &guards));
+        assert!(!state_only_guard(GuardId::new(5), &guards));
+    }
+}
+
 fn site_block(
     program: &super::program_graph::CircuitProgram,
     state: &super::program_graph::CircuitState,
@@ -1411,7 +1474,7 @@ fn validate_power_source(
     port: super::program_graph::PowerPort,
     depth: usize,
 ) -> Result<(), &'static str> {
-    use super::program_graph::{Guard, PowerPort, PowerTarget};
+    use super::program_graph::{PowerPort, PowerTarget};
     if depth > 32 {
         return Err("conducted power dependency is cyclic");
     }
@@ -1426,7 +1489,7 @@ fn validate_power_source(
     }
     if let PowerPort::Conducted { include_dust } = port {
         for link in program.power_links_to(PowerTarget::Conductor { site, include_dust }) {
-            if !matches!(program.guards().get(link.guard.index()), Some(Guard::Always | Guard::State(_))) {
+            if !state_only_guard(link.guard, program.guards()) {
                 return Err("conducted power link has an unsupported site guard");
             }
             validate_power_source(program, link.from, link.from_port, depth + 1)?;

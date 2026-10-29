@@ -26,48 +26,61 @@ impl SelectionSnapshot {
 
     /// Restore only captured cells; scheduler and piston queues remain owned by the world.
     pub(crate) fn restore<W: World>(&self, world: &mut W) -> Result<(), &'static str> {
-        for (position, block, entity) in &self.0 {
-            if world.get_block(*position) != *block {
-                world.set_block(*position, *block);
-                if world.get_block(*position) != *block {
-                    return Err("world refused restoration block write");
+        // Admission excludes owned block entities. Refuse subsequent host edits
+        // before writing so a failed restore cannot lose an entity.
+        if self
+            .0
+            .iter()
+            .any(|(position, _, entity)| entity.is_some() || world.get_block_entity(*position).is_some())
+        {
+            return Err("restoration with an owned block entity is unsupported");
+        }
+        let writes = self.0.iter().map(|(position, block, _)| (*position, *block)).collect();
+        write_blocks(world, writes, WriteKind::Restoration)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum WriteKind {
+    Projection,
+    Restoration,
+}
+
+/// Apply a prevalidated write list and undo every attempted write on failure.
+fn write_blocks<W: World>(world: &mut W, writes: Vec<(BlockPos, Block)>, kind: WriteKind) -> Result<(), &'static str> {
+    let mut applied = Vec::new();
+    for (position, block) in writes {
+        let before = world.get_block(position);
+        if before != block {
+            applied.push((position, before));
+            world.set_block(position, block);
+            if world.get_block(position) != block {
+                let mut rollback_failed = false;
+                for (position, previous) in applied.into_iter().rev() {
+                    world.set_block(position, previous);
+                    rollback_failed |= world.get_block(position) != previous;
                 }
-            }
-            match entity {
-                Some(entity) => world.set_block_entity(*position, entity.clone()),
-                None if world.get_block_entity(*position).is_some() => world.delete_block_entity(*position),
-                None => {}
-            }
-            if world.get_block_entity(*position).is_some() != entity.is_some() {
-                return Err("world refused restoration block entity write");
+                return Err(match (kind, rollback_failed) {
+                    (WriteKind::Projection, false) => "world refused projection block write",
+                    (WriteKind::Projection, true) => "world refused projection rollback",
+                    (WriteKind::Restoration, false) => "world refused restoration block write",
+                    (WriteKind::Restoration, true) => "world refused restoration rollback",
+                });
             }
         }
-        Ok(())
     }
+    Ok(())
 }
 
 impl PhysicalSignalNetwork {
     /// Build the complete write list before touching the world. Contacts own piston and
     /// movable-resource cells; ordinary components own their positions.
     pub(crate) fn project<W: World>(&self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<(), &'static str> {
-        let mut applied = Vec::new();
-        for (position, block) in self.projection_blocks(bounds)? {
-            let before = world.get_block(position);
-            if before != block {
-                applied.push((position, before));
-                world.set_block(position, block);
-                if world.get_block(position) != block {
-                    for (position, previous) in applied.into_iter().rev() {
-                        world.set_block(position, previous);
-                        if world.get_block(position) != previous {
-                            return Err("world refused projection rollback");
-                        }
-                    }
-                    return Err("world refused projection block write");
-                }
-            }
+        let writes = self.projection_blocks(bounds)?;
+        if writes.iter().any(|(position, _)| world.get_block_entity(*position).is_some()) {
+            return Err("projection with an owned block entity is unsupported");
         }
-        Ok(())
+        write_blocks(world, writes, WriteKind::Projection)
     }
 
     fn projection_blocks(&self, bounds: (BlockPos, BlockPos)) -> Result<Vec<(BlockPos, Block)>, &'static str> {

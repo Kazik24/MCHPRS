@@ -33,6 +33,10 @@ impl CompiledPistonActors {
     pub(crate) fn movement_count(&self) -> u64 {
         self.successful_moves.iter().sum()
     }
+
+    pub(crate) fn has_pending_movement(&self) -> bool {
+        !self.pending.is_empty() || !self.deferred.is_empty()
+    }
     pub(crate) fn compile(
         program: &crate::redpiler::program_graph::CircuitProgram,
         state: &crate::redpiler::program_graph::CircuitState,
@@ -42,7 +46,10 @@ impl CompiledPistonActors {
         let mut actors = vec![None; program.pistons().len()];
         for (index, spec) in program.pistons().iter().enumerate() {
             if !spec.sticky || !matches!(spec.lane, PistonLane::SingleResource { .. }) {
-                return Err("unsupported piston actor geometry".into());
+                return Err(format!(
+                    "piston at {}: unsupported actor geometry (sticky={}, lane={:?})",
+                    spec.position, spec.sticky, spec.lane
+                ));
             }
             let id = crate::redpiler::program_graph::PistonId::new(index as u32);
             let resource = program.resource_for_piston(id).ok_or("piston has no resource identity")?;
@@ -197,6 +204,7 @@ impl CompiledPistonActors {
             let revision = next.revision;
             self.signals.set_piston_state(actor.id.index(), next)?;
             if extending && moving_resource {
+                self.signals.notify_resource_observers(actor.resource.index(), actor.near)?;
                 self.signals.set_resource_contact(actor.resource.index(), destination, false)?;
             }
             let mut callbacks = Vec::new();
@@ -206,6 +214,7 @@ impl CompiledPistonActors {
                 next.head_present = false;
                 self.signals.set_piston_state(actor.id.index(), next)?;
                 if moving_resource {
+                    self.signals.notify_resource_observers(actor.resource.index(), actor.far)?;
                     self.signals.set_resource_contact(actor.resource.index(), destination, false)?;
                 }
             }
@@ -293,6 +302,7 @@ impl CompiledPistonActors {
                     .extend(self.signals.deliver_callback_routes(&[routes.base_restored.index()])?);
             }
             if moving_resource {
+                self.signals.notify_resource_observers(actor.resource.index(), work.resource_contact)?;
                 self.signals.set_resource_contact(actor.resource.index(), work.resource_contact, true)?;
             }
             let route = if work.extending {

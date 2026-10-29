@@ -120,8 +120,9 @@ impl Connection {
                 if self.session.is_some() {
                     return Err("session already loaded".into());
                 }
-                if request["data_version"].as_i64() != Some(4325) || request["boundary"].as_str() != Some("closed") {
-                    return Err("incompatible data version or boundary".into());
+                request["data_version"].as_u64().filter(|n| *n > 0 && *n <= u32::MAX as u64).ok_or("invalid data version")?;
+                if request["boundary"].as_str() != Some("closed") {
+                    return Err("unsupported boundary".into());
                 }
                 for key in ["entities", "ticks"] {
                     if !request[key].as_array().is_some_and(|a| a.is_empty()) {

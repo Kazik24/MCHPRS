@@ -5,6 +5,8 @@
 pub struct CompilerOptions {
     /// Opt in to the narrowly admitted experimental event executor. The caller
     /// declares computation cycles and must stop it with `Compiler::try_reset`.
+    /// New cycles and lever changes are rejected while a piston request or
+    /// movement is pending; advance ticks before retrying.
     pub experimental_event: bool,
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.

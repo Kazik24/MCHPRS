@@ -544,7 +544,8 @@ impl Compiler {
         }
     }
 
-    /// Use a control and return any graph execution error to a headless host.
+    /// Use a control and return any execution error. Event controls reject
+    /// input while a piston request or movement is pending.
     pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), GraphExecutionError> {
         match self.backend.as_mut().expect("compiler inactive") {
             ActiveBackend::Graph(graph) => graph.use_block(pos),
@@ -610,7 +611,8 @@ impl Compiler {
         }
     }
 
-    /// Declare the start of a computation cycle for an event backend.
+    /// Declare the start of a computation cycle for an event backend. Returns
+    /// an error while a piston request or movement is pending.
     pub fn begin_computation_cycle(&mut self) -> Result<(), GraphExecutionError> {
         match self.backend.as_mut().expect("compiler inactive") {
             ActiveBackend::Event(event) => event.begin_cycle().map_err(|reason| GraphExecutionError::Event { reason }),

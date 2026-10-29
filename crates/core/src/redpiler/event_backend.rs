@@ -175,6 +175,9 @@ impl EventBackend {
 
     pub(super) fn use_block(&mut self, position: BlockPos) -> Result<(), &'static str> {
         self.ready()?;
+        if self.actors.has_pending_movement() {
+            return Err("piston movement or request is pending");
+        }
         let powered = self.actors.signals().lever_power(position).ok_or("control is not an admitted lever")?;
         self.actors.set_lever(position, !powered)
     }
@@ -184,6 +187,9 @@ impl EventBackend {
     }
     pub(super) fn begin_cycle(&mut self) -> Result<(), &'static str> {
         self.ready()?;
+        if self.actors.has_pending_movement() {
+            return Err("piston movement or request is pending");
+        }
         self.actors.begin_computation_cycle();
         Ok(())
     }

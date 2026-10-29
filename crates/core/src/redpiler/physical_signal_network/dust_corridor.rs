@@ -9,6 +9,13 @@ pub(super) struct Source {
     pub(super) port: PowerPort,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct ResourceObserver {
+    pub(super) resource: crate::redpiler::program_graph::ResourceId,
+    pub(super) contact: crate::redpiler::program_graph::ContactId,
+    pub(super) observer: crate::redpiler::program_graph::NodeId,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,6 +76,7 @@ pub(super) struct Plan {
     pub(super) receiver_ranges: Vec<std::ops::Range<usize>>,
     pub(super) incoming: Vec<(usize, u8)>,
     pub(super) wires: Vec<usize>,
+    pub(super) resource_observers: Box<[ResourceObserver]>,
 }
 
 #[derive(Clone)]
@@ -82,8 +90,29 @@ pub(super) struct Corridor {
 
 impl Corridor {
     pub(super) fn compile(program: &CircuitProgram, state: &CircuitState, samples: &[(usize, Vec<WireSample>)]) -> Result<Self, &'static str> {
-        if program.nodes().iter().any(|node| matches!(node.kind, CircuitNodeKind::Observer { .. })) {
-            return Err("dust corridor observer notifications are unsupported");
+        let mut resource_observers = Vec::new();
+        for (observer_index, node) in program.nodes().iter().enumerate() {
+            let CircuitNodeKind::Observer { watched, .. } = node.kind else {
+                continue;
+            };
+            let SiteSource::Contact(contact) = program.sites()[watched.index()].source else {
+                return Err("observer watches a component site; compiled piston watchers are not yet represented");
+            };
+            let resources = program.resources_at_contact(contact);
+            if resources.is_empty()
+                || resources
+                    .iter()
+                    .any(|resource| !program.resources()[resource.index()].contacts.contains(&contact))
+            {
+                return Err("observer watches a contact that is not owned by a movable resource");
+            }
+            for &resource in resources {
+                resource_observers.push(ResourceObserver {
+                    resource,
+                    contact,
+                    observer: crate::redpiler::program_graph::NodeId::new(observer_index as u32),
+                });
+            }
         }
         if samples.is_empty() {
             return Err("no dust corridor");
@@ -251,6 +280,7 @@ impl Corridor {
                 receiver_ranges,
                 incoming,
                 wires,
+                resource_observers: resource_observers.into(),
             }),
             operations: 0,
         })

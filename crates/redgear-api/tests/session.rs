@@ -47,15 +47,18 @@ fn lever_session_and_disconnect_cleanup() {
     let mut client = BufReader::new(stream);
     assert_eq!(request(&mut client, json!({"id":1,"op":"rawr","protocol":3}))["ok"], true);
     for state in ["minecraft:unknown", "minecraft:lever[face=floor,facing=north]", "minecraft:lever[face=floor,facing=north,powered=false,extra=true]"] {
-        let rejected = request(&mut client, json!({"id":100,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":[state],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}));
+        let rejected = request(&mut client, json!({"id":100,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":[state],"blocks":[[0,0,0,0]],"entities":[],"ticks":[]}));
         assert_eq!(rejected["ok"], false, "{state}");
     }
     let invalid_position = request(&mut client, json!({"id":101,"op":"load","size":[1,1,1],"data_version":4325,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[1,0,0,0]],"entities":[],"ticks":[]}));
     assert_eq!(invalid_position["ok"], false);
+    let pending_tick = request(&mut client, json!({"id":105,"op":"load","size":[1,1,1],"data_version":5023,"boundary":"closed","palette":["minecraft:stone"],"blocks":[[0,0,0,0]],"entities":[],"ticks":[{"pos":[0,0,0],"delay":1}]}));
+    assert_eq!(pending_tick["ok"], false);
+    assert!(pending_tick["error"].as_str().unwrap().contains("ticks"));
     assert_eq!(
         request(
             &mut client,
-            json!({"id":2,"op":"load","size":[2,2,2],"data_version":4325,"boundary":"closed","palette":["minecraft:stone","minecraft:lever[powered=false,facing=north,face=floor]"],"blocks":[[0,0,0,0],[0,1,0,1]],"entities":[],"ticks":[]})
+            json!({"id":2,"op":"load","size":[2,2,2],"data_version":5023,"boundary":"closed","palette":["minecraft:stone","minecraft:lever[powered=false,facing=north,face=floor]"],"blocks":[[0,0,0,0],[0,1,0,1]],"entities":[],"ticks":[]})
         )["ok"],
         true
     );
