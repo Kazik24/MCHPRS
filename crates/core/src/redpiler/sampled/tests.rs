@@ -58,6 +58,33 @@ use mchprs_world::TickPriority;
             Default::default(),
         )
     }
+    #[test]
+    fn piston_request_moves_token_after_two_motion_ticks() {
+        let base = BlockPos::new(15, 15, 15);
+        let home = base.offset(BlockFace::East);
+        let far = home.offset(BlockFace::East);
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+        let mut world = host();
+        world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+        world.set_block(home, Block::RedstoneBlock);
+        let actors = discover_piston_actors(&world, bounds, entry(&world)).unwrap();
+        let tokens = super::compiler::discover_piston_tokens(&world, &actors).unwrap();
+        let mut program = test_program(vec![], vec![], vec![], vec![], vec![], vec![]).unwrap();
+        program.pistons = actors;
+        program.tokens = tokens;
+        let mut runtime = program.start();
+        runtime.queue_piston_extension(0);
+        runtime.queue_piston_extension(0);
+        runtime.tick().unwrap();
+        assert_eq!(runtime.accepted_piston_actions, 1);
+        assert_eq!(runtime.token_movements, 1);
+        assert_eq!(runtime.token_positions[0], None);
+        assert_eq!(runtime.motion_completions, 0);
+        runtime.tick().unwrap();
+        assert_eq!(runtime.token_positions[0], Some(far));
+        assert!(runtime.piston_head_present[0]);
+        assert_eq!(runtime.motion_completions, 1);
+    }
     fn entry(w: &PlotWorld) -> ScratchEntry {
         ScratchEntry {
             scheduled: w.scheduler().iter_entries().collect(),
@@ -1105,9 +1132,16 @@ use mchprs_world::TickPriority;
         let mut occupied = host();
         occupied.set_block(base, Block::Piston { piston: RedstonePiston { facing, sticky: false, extended: false } });
         occupied.set_block(far, Block::Stone {});
-        let error = discover_piston_actors(&occupied, bounds, entry(&occupied)).unwrap_err();
-        assert_eq!(error.position, Some(far));
-        assert_eq!(error.reason, "piston contact cell is occupied");
+        let actors = discover_piston_actors(&occupied, bounds, entry(&occupied)).unwrap();
+        assert!(super::compiler::discover_piston_tokens(&occupied, &actors).unwrap().is_empty());
+
+        occupied.set_block(base, Block::Piston { piston: RedstonePiston { facing, sticky: true, extended: false } });
+        let actors = discover_piston_actors(&occupied, bounds, entry(&occupied)).unwrap();
+        let tokens = super::compiler::discover_piston_tokens(&occupied, &actors).unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].position, Some(far));
+        assert_eq!(tokens[0].block, Block::Stone {});
+        assert_eq!(tokens[0].cells, vec![home, far]);
 
         let mut moving = host();
         moving.set_block(base, Block::MovingPiston { moving: Default::default() });

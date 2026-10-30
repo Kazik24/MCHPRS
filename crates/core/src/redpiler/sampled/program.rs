@@ -30,6 +30,8 @@ pub(super) struct RepeaterRecord {
 }
 
 pub(super) struct Program {
+    pub(super) pistons: Vec<super::compiler::PistonActor>,
+    pub(super) tokens: Vec<super::compiler::PistonToken>,
     pub(super) positions: Vec<BlockPos>,
     pub(super) initial: Vec<Block>,
     pub(super) sources: Vec<usize>,
@@ -161,6 +163,8 @@ impl Program {
             incoming[link.target].push(id);
         }
         Ok(Self {
+            pistons: Vec::new(),
+            tokens: Vec::new(),
             positions,
             initial,
             sources,
@@ -175,6 +179,17 @@ impl Program {
     pub(super) fn start(&self) -> Runtime<'_> {
         Runtime {
             program: self,
+            piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
+            piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
+            piston_head_moving: vec![false; self.pistons.len()],
+            token_positions: self.tokens.iter().map(|t| t.position).collect(),
+            piston_events: std::collections::VecDeque::new(),
+            queued_piston_events: vec![0; self.pistons.len()],
+            motions: Vec::new(),
+            motion_time: 0,
+            accepted_piston_actions: 0,
+            token_movements: 0,
+            motion_completions: 0,
             blocks: self.initial.clone(),
             pending: TickScheduler::default(),
             contributions: self

@@ -5,6 +5,17 @@ use mchprs_world::TickPriority;
 
 pub(super) struct Runtime<'a> {
     pub(super) program: &'a Program,
+    pub(super) piston_extended: Vec<bool>,
+    pub(super) piston_head_present: Vec<bool>,
+    pub(super) piston_head_moving: Vec<bool>,
+    pub(super) token_positions: Vec<Option<mchprs_blocks::BlockPos>>,
+    pub(super) piston_events: std::collections::VecDeque<(usize, bool)>,
+    pub(super) queued_piston_events: Vec<u8>,
+    pub(super) motions: Vec<(usize, Option<usize>, mchprs_blocks::BlockPos, u64)>,
+    pub(super) motion_time: u64,
+    pub(super) accepted_piston_actions: usize,
+    pub(super) token_movements: usize,
+    pub(super) motion_completions: usize,
     pub(super) blocks: Vec<Block>,
     pub(super) pending: TickScheduler<ScheduledBlockTick>,
     pub(super) contributions: Vec<u8>,
@@ -19,6 +30,48 @@ pub(super) struct Runtime<'a> {
 }
 
 impl Runtime<'_> {
+    pub(super) fn queue_piston_extension(&mut self, index: usize) {
+        if self.queued_piston_events[index] & 1 == 0 {
+            self.queued_piston_events[index] |= 1;
+            self.piston_events.push_back((index, true));
+        }
+    }
+
+    fn run_piston_events(&mut self) {
+        while let Some((index, extending)) = self.piston_events.pop_front() {
+            let piston = &self.program.pistons[index];
+            if !self.consume_operation(piston.base) { return; }
+            self.queued_piston_events[index] &= !1;
+            if !extending || self.piston_extended[index] || self.piston_head_present[index] || self.piston_head_moving[index] { continue; }
+            let token = self.token_positions.iter().position(|&position| position == Some(piston.home));
+            if token.is_some() && (self.token_positions.contains(&Some(piston.far)) || self.motions.iter().any(|motion| motion.1.is_some() && motion.2 == piston.far)) { continue; }
+            if let Some(token) = token {
+                if !self.program.tokens[token].cells.contains(&piston.far) {
+                    self.failure = Some(ScratchError { position: Some(piston.far), reason: "unsupported token destination" });
+                    return;
+                }
+                self.token_positions[token] = None;
+                self.token_movements += 1;
+            }
+            self.piston_extended[index] = true;
+            self.piston_head_moving[index] = true;
+            self.motions.push((index, token, piston.far, self.motion_time + 2));
+            self.accepted_piston_actions += 1;
+        }
+    }
+
+    fn tick_motions(&mut self) {
+        let mut index = 0;
+        while index < self.motions.len() {
+            if self.motions[index].3 > self.motion_time { index += 1; continue; }
+            let (piston, token, destination, _) = self.motions.remove(index);
+            if !self.consume_operation(self.program.pistons[piston].base) { return; }
+            if let Some(token) = token { self.token_positions[token] = Some(destination); }
+            self.piston_head_moving[piston] = false;
+            self.piston_head_present[piston] = true;
+            self.motion_completions += 1;
+        }
+    }
     fn consume_operation(&mut self, position: mchprs_blocks::BlockPos) -> bool {
         if self.failure.is_some() { return false; }
         if self.tick_operations >= 1_000_000 {
@@ -246,6 +299,11 @@ impl Runtime<'_> {
         if let Some(error) = &self.failure { return Err(error.clone()); }
         self.pending.end_last_tick_move_next();
         self.drain_ticks();
+        if let Some(error) = &self.failure { return Err(error.clone()); }
+        self.run_piston_events();
+        if let Some(error) = &self.failure { return Err(error.clone()); }
+        self.motion_time += 1;
+        self.tick_motions();
         if let Some(error) = &self.failure { return Err(error.clone()); }
         self.tick_operations = 0;
         Ok(())

@@ -330,6 +330,7 @@ pub(super) fn discover_piston_actors(world: &impl World, bounds: (BlockPos, Bloc
                 let home = base.offset(facing.into());
                 let far = home.offset(facing.into());
                 let home_block = world.get_block(home);
+                let _ = world.get_block(far);
                 if world.get_block_entity(home).is_some() {
                     return Err(error(home, "unsupported block entity at piston contact"));
                 }

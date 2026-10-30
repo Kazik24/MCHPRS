@@ -8,17 +8,18 @@ ordering is not yet implemented. ADDER1BIT fails admission at the extended
 sticky piston at (49, 31, 42), before any fixture actions or token motions.
 Runtime input and tick calls return errors, and compiled instructions and
 scheduled events are limited to one million semantic operations per game tick.
-Piston and motion events are not yet implemented or counted.
+An isolated, manually queued extension now counts accepted actions, token
+departures and landings; it is not connected to world compilation or power.
 
 The private MAIR runtime and its lever–dust–lamp acceptance gate are implemented.
-Compile-time inventory of bounded empty piston actors is also implemented;
-piston execution remains the next unmet gate. The player-facing backend remains
+Compile-time inventory and preliminary token discovery are implemented;
+connected piston execution remains the next unmet gate. The player-facing backend remains
 Graph. The old `event_netlist` compiler, executor and executor tests have been
 removed; their results below are historical only.
 
 Repeater runtime mechanism is implemented and tested with manually constructed
-lever → repeater → lamp programs. World-derived repeater compilation remains
-pending, full side-locking behavior remains pending, and ADDER1BIT remains
+lever → repeater → lamp programs and world-derived circuits. Full side-locking
+coverage remains pending, and ADDER1BIT remains
 incomplete.
 
 ## Current implementation
@@ -42,9 +43,9 @@ incomplete.
   source positions to deterministic component indexes. The admitted chain now
   uses a discovered lever-to-lamp contribution; it no longer synthesizes a
   wire-to-lamp link. Electrical contribution updates remain separate from lamp
-  deliveries. Production admission allows one floor/wall lever, multiple dust
-  wires, one lamp and decorative signs; multiple-source
-  compilation, watcher installation and piston execution remain pending.
+  deliveries. Production admission allows multiple floor/wall levers, dust
+  wires, lamps, repeaters and decorative signs; watcher installation and
+  connected piston execution remain pending.
 - `Program::new` validates component records, external sources, rise/fall
   programs indexed by component, electrical links, watcher records, repeater
   records and instruction references before building incoming indexes. Partial
@@ -61,12 +62,13 @@ incomplete.
   delays 1–4, tick priorities, duplicate suppression, short pulses, and compiled
   rise/fall output programs. Repeater output contributions initialize from the
   loaded powered state. Pending work can remain queued across external input
-  transitions. World compilation still rejects repeaters; side-input discovery
-  and changing lock state are unsupported.
+  transitions. World compilation discovers repeater side inputs; broader
+  side-locking coverage remains pending.
 - Compile-time piston inventory records stable IDs, facing, sticky state,
   home/far cells, loaded extension/head state and transitive shared-cell groups.
-  It rejects inconsistent, occupied, moving and out-of-capture contacts.
-  Inventory does not change lamp-only production admission.
+  It rejects inconsistent, moving and out-of-capture contacts. Preliminary
+  token discovery distinguishes static far-cell scenery and checks group limits.
+  Neither inventory nor discovery is connected to production admission.
 
 ## Acceptance boundaries
 
@@ -102,7 +104,7 @@ remain the migration contract for future MAIR acceptance tests.
 
 ## Current verification
 
-- `cargo test -p mchprs_core redpiler::sampled::tests --lib`: **28 passed, 0
+- `cargo test -p mchprs_core redpiler::sampled::tests --lib`: **30 passed, 0
   failed, 0 ignored**, 1,004 filtered out. This includes repeater delay 1–4
   boundaries, short-pulse replay, pending-tick deduplication, all three priority
   cases, loaded powered and locked state, repeated lever–repeater–lamp propagation
@@ -116,16 +118,14 @@ remain the migration contract for future MAIR acceptance tests.
 - `cargo test -p mchprs_core
   redpiler::sampled::adder_tests::adder1bit_mair_manifest_arithmetic --lib`:
   **0 passed, 1 failed**. The active case `prepared-0-0-0` is declined at
-  `(51,31,40)` because production world compilation still reports the repeater
-  as an unsupported component. Its manifest replay and output assertions are not
+  `(49,31,42)` because production world compilation reports the piston as an
+  unsupported component. Its manifest replay and output assertions are not
   reached. This is an admission failure; ADDER1BIT remains incomplete.
 
-The native lamp chain still uses isolated sampling, component-state and pending
-tick self-checks, and host-preservation checks. The new repeater tests establish
-only the manually assembled rear-input mechanism. They do not establish
-world-derived repeater compilation, side-input discovery, changing lock state,
-overlapping circuit admission, or ADDER1BIT execution. Full side-locking behavior
-and piston execution remain pending.
+The manually queued piston test records one accepted action, one token
+departure and one completion. Power callbacks, live revalidation, retraction,
+movement programs and arrangement-dependent links are not connected. No fixture
+with pistons executes yet, and no ADDER1BIT outputs have been observed.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).
