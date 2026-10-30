@@ -11,9 +11,14 @@ Use existing world, interpreter and scheduling mechanisms where their contracts
 fit. Preserve the existing experimental implementation as a reference until the
 replacement has passed the relevant gates.
 
-Status verified 30 October 2026: the empty sampled engine runs, but the
-lever–dust–lamp acceptance gate fails. The older event executor passes selected
-static-piston and one-resource BUD fixtures through LoweredCircuit adapters;
+Status verified 30 October 2026: the sampled lever–dust–lamp gate passes for
+initially-off and initially-on entry, including repeated transitions, scheduler
+wrap, four-game-tick lamp-off timing, host preservation and positioned rejection
+of reads outside capture. The latest sampled suite is 8 passed, 0 failed,
+0 ignored (1,035 filtered out). Compile-time empty-piston inventory is now
+complete; the next unmet sampled gate is piston extension, retraction and
+rearm. Separately, the event executor passes selected static-
+piston and one-resource BUD fixtures through LoweredCircuit adapters, but
 ADDER1BIT still fails and COUNTER remains ignored. Do not confuse those adapters
 with the direct world-derived sampled compiler. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
 and the [detailed implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
@@ -35,24 +40,33 @@ interpreter and record delivered updates in order, with rise and fall captured
 separately. Compile the observed behavior and execute it without calling the
 interpreter at runtime. Preserve loaded source and output state.
 
-Fix the existing scheduler phase mismatch first: drain old bucket, advance once,
+Runtime scheduler phase order is implemented: drain old bucket, advance once,
 drain new bucket. Lamp off delay is four game ticks, expressed by
-`schedule_tick(..., 2, ...)`. Keep the compiler self-check and every pending-work
-assertion. Use live receiver instructions, not stored sampled output values.
+`schedule_tick(..., 2, ...)`; do not shorten it. Keep the compiler self-check
+and every pending-work assertion. Use live receiver instructions, not stored
+sampled output values.
 
 **Gate:** lever → dust → lamp matches native rising and falling behavior, with
-actual compiled operations counted. Unsupported dependencies and boundary
-crossings decline before execution.
+actual compiled operations counted. Initially-off and initially-on entry, 12
+alternating transitions, the 32-bucket scheduler wrap and tick-4 lamp-off timing
+pass native comparison. Tight captures and excluded electrical sources reject
+with positioned boundary errors while preserving host state. Unsupported
+dependencies and boundary crossings decline before execution.
 
 ## 3. Piston actors
 
-Discover piston bases, facing, sticky state and possible contact cells. Compile
-requests, queued-action deduplication and live power revalidation. Support an
-empty piston action separately from payload movement.
+Compile-time inventory is implemented for static empty actors: deterministic
+IDs, facing, sticky state, home/far cells, loaded extension/head state and
+transitive shared-cell groups. The capture rejects malformed/occupied contacts,
+unsupported entities, moving states and escaped contact reads. This does not
+change the lamp-only admission path. Next, compile requests, queued-action
+deduplication and live power revalidation. Support an empty piston action
+separately from payload movement.
 
-**Gate:** lever → dust → piston executes extension, retraction and rearm against
-native execution. Assert actual accepted actions and pending work at the
-declared boundaries.
+**Execution gate (unmet):** lever → dust → piston executes extension,
+retraction and rearm against native execution. Assert actual accepted actions
+and pending work at the declared boundaries. Inventory completion alone does
+not pass this gate.
 
 ## 4. Observer updates
 

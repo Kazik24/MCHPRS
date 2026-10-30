@@ -1,8 +1,9 @@
 # Sampled Redpiler implementation status
 
-Verified 30 October 2026 against the working tree. Milestones 1–2 are not
-complete: the supported lever–dust–lamp acceptance fixture currently fails.
-The player-facing backend remains Graph.
+Verified 30 October 2026 against the working tree. The sampled lever–dust–lamp
+gate passes, and compile-time inventory of bounded empty piston actors is
+implemented. Piston execution remains unimplemented; the player-facing backend
+remains Graph.
 
 ## Current implementation
 
@@ -35,17 +36,31 @@ are retained and checked rather than normalized to a convenient probe state.
 
 ## Verified results
 
-`cargo test -p mchprs_core redpiler::sampled --lib`:
+Earlier run before the two boundary-read cases, `cargo test -p mchprs_core
+redpiler::sampled --lib`:
 
-- 3 passed, 1 failed, 0 ignored.
-- Empty admission and the two rejection tests passed.
-- `native_edges_and_host_preservation` failed because compile returned
-  `ScratchError` at (15,15,15), with reason
-  `sampled behavior is not represented by runtime`.
+- 4 passed, 0 failed, 0 ignored; 1,035 filtered out.
+- `native_edges_and_host_preservation` covers initially-off and initially-on
+  entry. The initially-on fixture is activated natively and settled for four
+  game ticks before compilation. Both cases check host blocks, entities,
+  scheduled work and piston state across compilation, then compare loaded
+  component state and pending ticks immediately and after each of four game
+  ticks for 12 alternating transitions. This crosses the 32-bucket scheduler
+  wrap. Each falling edge keeps the lamp lit through ticks 1–3, extinguishes it
+  at tick 4, and leaves no pending work at the settled boundary. Compiled
+  operations are asserted to have executed.
+- The compiler's sampled-runtime self-check and its block/pending-tick
+  comparisons remain enabled.
+- Tight-capture and excluded redstone-block cases both reject with the
+  positioned `scratch probe read outside captured boundary` error. Each test
+  accepts any reported position outside its capture and verifies that host
+  blocks, block entities, scheduled work and piston state are unchanged.
 
-The fixture contains assertions comparing host blocks, entities, scheduler and
-piston state before/after compilation; compilation fails before those assertions
-complete. Their presence is not a passing preservation result for this revision.
+Latest sampled-suite rerun after adding those boundary cases:
+
+- 8 passed, 0 failed, 0 ignored; 1,035 filtered out, including empty-piston
+  inventory, malformed contact rejection, escaped-contact rejection and
+  transitive actor grouping.
 
 `cargo test -p mchprs_core redpiler::event_netlist --lib`:
 
@@ -60,30 +75,26 @@ complete. Their presence is not a passing preservation result for this revision.
 Earlier passing tests and cargo check/fmt reports apply to earlier revisions.
 They do not supersede these execution failures.
 
-## Scheduler defect and required correction
+## Scheduler correction
 
-The sampled Runtime drains the old current bucket and then advances once, but
-does not drain the new current bucket. Native MCHPRS drains both, with exactly
-one advance per game tick. A request scheduled at cursor 0 with game delay 4
-must execute on game tick 4; this runtime leaves it until tick 5.
+Runtime now drains all due work in the current bucket, advances once, and drains
+all due work in the new current bucket, using the same lamp dispatch each time.
+This matches native MCHPRS's per-game-tick scheduler phase order. The repeated
+native comparison verifies the wraparound and delay boundary.
 
 `schedule_tick(..., 2, ...)` means two redstone ticks, hence four game ticks.
-`schedule_half_tick(..., 4, ...)` expresses the same delay. Preserve that delay;
-fix the phase order instead of changing the fixture or shortening the request.
-Retain pending-tick comparisons at every boundary when verifying the fix.
+The delay remains unchanged; the lamp remains lit through tick 3 and turns off
+at tick 4.
 
 ## Remaining work
 
-1. Pass the existing sampled acceptance fixture and add focused coverage for
-   initially-on entry, repeated settled edges and scheduler boundary timing.
-2. Add explicit outside-dependency and tight-capture rejection coverage. Complete
-   passing host-preservation assertions; avoid a source-preservation claim based
-   solely on a failed compile.
-3. Feed world-derived source and watcher tables into one independent runtime;
+1. Pass the piston execution gate: extension, retraction and rearm against native
+   execution with actual accepted actions and pending work checked.
+2. Feed world-derived source and watcher tables into one independent runtime;
    preserve the old event experiment as a reference until replacement gates pass.
-4. Add generic component behavior and source-specific rise/fall programs, then
-   empty pistons, observers, resource movement and BUD gates in order.
-5. Establish interacting arrangements and real-circuit correctness before public
+3. Add observer updates, movable resources and BUD behavior after the piston
+   execution gate; inventory alone does not establish piston execution support.
+4. Establish interacting arrangements and real-circuit correctness before public
    activation, lifecycle integration or performance claims.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md),

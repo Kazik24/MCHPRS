@@ -51,8 +51,25 @@ establish that the independent core can replace Graph for player-facing use.
 rise/fall receiver instructions and a TickScheduler. Its runtime refreshes the
 wire from the live lever and the lamp from the live wire; it does not replay
 stored output frames. It admits only a straight floor-lever, single-dust,
-single-lamp chain with stone supports and settled input changes. The current
-acceptance fixture fails during the compiler's runtime self-check.
+single-lamp chain with stone supports and settled input changes. Every runtime
+tick drains the current scheduler bucket, advances the ring once, then drains
+the new current bucket through the same lamp dispatch, matching native scheduler
+phases. `schedule_tick(..., 2, ...)` retains its four-game-tick lamp-off delay.
+The sampled acceptance test passes for initially-off and initially-on entry,
+including host preservation, 12 alternating transitions per entry state,
+pending-work comparisons through scheduler wrap, and lamp-off timing. The
+compiler's sampled-runtime self-check remains enabled. This narrow test does not
+establish piston, observer, resource or general-circuit support. Latest
+verification with `cargo test -p mchprs_core redpiler::sampled --lib`: 8 passed,
+0 failed, 0 ignored (1,035 filtered out), including boundary-read rejection.
+
+The same private module has a separate compile-time inventory pass for empty
+piston actors, with stable scan-order IDs, home/far cells, loaded base/head
+state and transitive shared-cell groups. It uses captured scratch-world reads
+and rejects inconsistent, occupied, moving or out-of-capture contacts. This
+inventory is not connected to lamp compiler admission or a piston runtime; the
+unmet piston gate is native-equivalent extension, retraction and rearm with
+accepted actions and pending work checked.
 
 ## Target event architecture
 
@@ -111,29 +128,36 @@ histories. This establishes narrow runtime integration, not general admission.
 
 Verification on 30 October 2026:
 
-- `cargo test -p mchprs_core redpiler::sampled --lib`: 3 passed, 1 failed.
-  `native_edges_and_host_preservation` fails at compile with
-  `sampled behavior is not represented by runtime`.
+- `cargo test -p mchprs_core redpiler::sampled --lib`: latest run, 8 passed,
+  0 failed, 0 ignored (1,035 filtered out). Native rise/fall execution passes
+  for initially-off and initially-on entry, including 12 alternating edges,
+  settled pending-work comparisons through scheduler wrap, host preservation,
+  and the four-game-tick lamp-off delay. Tight captures and an excluded
+  redstone-block source reject with a positioned boundary error, and preserve
+  host blocks, entities, scheduled work and piston state.
 - `cargo test -p mchprs_core redpiler::event_netlist --lib`: 45 passed,
   1 failed, 1 ignored. ADDER1BIT fails as described below; COUNTER is ignored.
 
-The sampled tick drains the current bucket and advances the ring, but omits
-draining the new bucket in the same game tick. Native scheduled processing
-drains both buckets and advances exactly once. Lamp off is four game ticks
-(`schedule_tick(..., 2, ...)`), not two. Fix and verify that baseline before
-expanding sampled admission.
+Sampled ticks drain the current bucket, advance the ring once, and drain the new
+current bucket through the same lamp dispatch. This matches native scheduled
+processing. Lamp off remains four game ticks (`schedule_tick(..., 2, ...)`), not
+two. The acceptance test crosses the 32-bucket wrap and checks the native
+pending work at each boundary.
 
 The latest reported ADDER1BIT event gate fails prepared-0-1-0 at sum tick 3.
 Fresh O0 Graph/native replay previously passed all eight one-bit and forty
 eleven-bit manifest cases. The scratch discovery diagnostic now matches native
 watched-wire strengths for the failing one-bit history.
 
-The immediate next gate is passing sampled rise/fall execution, followed by one
-world-derived compiler feeding one event runtime. Retain the existing static
-piston and one-resource BUD gates while adding edge-specific delivery order,
-correct repeater pulses/locking/priorities, and supported piston motion rules.
-General interacting arrangements, public activation and FPU performance remain
-later gates. See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
+The sampled lamp gate and compile-time empty-piston inventory pass. The unmet
+sampled milestone is the separate piston execution gate (extension, retraction
+and rearm against native execution, with accepted actions and pending work
+checked). The event compiler still has the independent ADDER1BIT gate failure
+described above. Continue with
+edge-specific delivery order, repeater pulse retention/locking/priorities and
+supported piston motion rules. General interacting arrangements, public
+activation and FPU performance remain later gates. See the
+[milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
 
 Historical FPU measurements describe the retired settled-frame implementation.
