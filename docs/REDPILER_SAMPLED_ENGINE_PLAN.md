@@ -19,6 +19,9 @@ of reads outside capture. Dust-source extraction now feeds the admitted chain
 through the shared scratch search, with escaped-read validation and resolved
 contribution indexes. The lamp link remains chain-specific; wider source/receiver
 admission and world-derived watcher installation are subsequent compiler work.
+Current verification: sampled suite 17 passed, scratch suite 15 passed, with
+zero failures or ignored tests in either suite. Broader extraction fixtures do
+not widen executable admission.
 Compile-time empty-piston inventory is
 complete; the next unmet sampled gate is piston extension, retraction and
 rearm. The former event executor result is historical: its final suite recorded

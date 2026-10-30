@@ -74,9 +74,15 @@ remain the migration contract for future MAIR acceptance tests.
 
 ## Current verification
 
-cargo test -p mchprs_core redpiler::sampled --lib: 16 passed, 0 failed,
-0 ignored (1,001 filtered out) after splitting the module and retiring the
-event executor.
+- `cargo test -p mchprs_core redpiler::sampled --lib`: 17 passed, 0 failed,
+  0 ignored (1,003 filtered out). Includes explicit repeated delivery versus
+  watcher suppression, discovered-link execution with a nonzero link index,
+  native rise/fall self-validation, boundary rejection and host preservation.
+- `cargo test -p mchprs_core redpiler::scratch --lib`: 15 passed, 0 failed,
+  0 ignored (1,005 filtered out). New wire-only checks cover competing path
+  minimum attenuation and directional strong conduction without pistons.
+  Retained tests cover competing initially-off sources, distances 14/15,
+  directional emitters, stepped dust and scratch isolation.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).
