@@ -105,10 +105,16 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
         })
         .collect();
 
+    let sources = discover_wire_sources(world, &wires)?;
+    Ok(WireDiscovery { watchers, sources })
+}
+
+/// Electrical extraction alone; watcher construction and executable admission are separate.
+pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> Result<Vec<WireSource>, ScratchError> {
     // Dust attenuation follows the shortest represented wire path; dynamic source
     // states are included even when currently off (e.g. an unpowered lever).
     let mut sources = HashMap::new();
-    for &wire in &wires {
+    for &wire in wires {
         let mut distances = HashMap::from([(wire, 0u8)]);
         let mut queue = VecDeque::from([wire]);
         while let Some(current) = queue.pop_front() {
@@ -205,7 +211,7 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
             source.source.z,
         )
     });
-    Ok(WireDiscovery { watchers, sources })
+    Ok(sources)
 }
 
 fn is_supported_dynamic_source(block: Block) -> bool {
@@ -567,6 +573,43 @@ mod tests {
         redstone::update_surrounding_blocks(&mut world, second);
         assert_eq!(world.get_block(WIRE), before);
         assert_eq!(discovered_wire_strength(&world, &discovery, WIRE), wire.power);
+    }
+
+    #[test]
+    fn wire_only_discovery_keeps_shortest_of_competing_paths() {
+        let mut world = fixture();
+        world.set_block(PISTON, Block::Air);
+        // Two paths from the first wire to the target: two edges and four edges.
+        for (x, z) in [(42, 40), (43, 40), (41, 41), (42, 41), (43, 41)] {
+            world.set_block(BlockPos::new(x, 30, z), Block::RedstoneWire { wire: RedstoneWire::default() });
+        }
+        let target = BlockPos::new(43, 30, 40);
+        let scratch = ScratchWorld::from_world(&world, BOUNDS, entry(&world)).unwrap();
+        let sources = discover_wire_sources(scratch.world(), &[target]).unwrap();
+        scratch.finish_probe().unwrap();
+        assert_eq!(sources, vec![WireSource { wire: target, source: LEVER, attenuation: 2 }]);
+        assert_eq!(world.get_block(LEVER), Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+    }
+
+    #[test]
+    fn wire_only_discovery_respects_strong_conduction_direction() {
+        let conductor = WIRE;
+        let target = PISTON;
+        for face in [BlockFace::Top, BlockFace::North] {
+            let mut world = fixture();
+            world.set_block(LEVER, Block::Air);
+            world.set_block(conductor, Block::Stone {});
+            world.set_block(target, Block::RedstoneWire { wire: RedstoneWire::default() });
+            let source = conductor.offset(face);
+            let block = Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) };
+            world.set_block(source, block);
+            let scratch = ScratchWorld::from_world(&world, BOUNDS, entry(&world)).unwrap();
+            let sources = discover_wire_sources(scratch.world(), &[target]).unwrap();
+            scratch.finish_probe().unwrap();
+            let emits = crate::redstone::power::emits_strong_power(block, &world, source, face, false);
+            assert_eq!(emits, face == BlockFace::Top);
+            assert_eq!(sources.contains(&WireSource { wire: target, source, attenuation: 0 }), emits);
+        }
     }
 
     #[test]

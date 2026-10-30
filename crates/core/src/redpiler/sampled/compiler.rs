@@ -84,15 +84,24 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             }
         }
     }
+    let wire_positions: Vec<_> = positions.iter().copied().filter(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneWire { .. })).collect();
+    let discovery = crate::redpiler::scratch::discover_wire_sources(scratch.world(), &wire_positions);
+    scratch.finish_probe()?;
+    let discovery = discovery?;
     let initial = positions.iter().map(|&p| world.get_block(p)).collect();
     let mut links = vec![];
-    if let Some(source) = source {
+    if source.is_some() {
         let wire = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
         let lamp = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
-        links.extend([
-            ElectricalLink { source, target: wire, attenuation: 0 },
-            ElectricalLink { source: wire, target: lamp, attenuation: 0 },
-        ]);
+        // The lamp dependency remains restricted to the admitted straight chain.
+        links.push(ElectricalLink { source: wire, target: lamp, attenuation: 0 });
+        for dependency in discovery {
+            let source = positions.iter().position(|&pos| pos == dependency.source)
+                .ok_or_else(|| error(dependency.source, "unrepresented discovered wire source"))?;
+            let target = positions.iter().position(|&pos| pos == dependency.wire)
+                .ok_or_else(|| error(dependency.wire, "unrepresented discovered wire"))?;
+            links.push(ElectricalLink { source, target, attenuation: dependency.attenuation });
+        }
     }
     let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links, vec![])
         .map_err(|err| error(bounds.0, err.reason))?;
@@ -149,11 +158,13 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             } else {
                 first_edge = Some(frames.clone());
             }
-            let mut operations = vec![Operation::Contribution(0)];
+            let mut operations: Vec<_> = program.links.iter().enumerate()
+                .filter(|(_, link)| link.source == source).map(|(id, _)| Operation::Contribution(id)).collect();
             for delivery in &frames[0].deliveries {
                 if delivery.pos == program.positions[wire] {
                     operations.push(Operation::RefreshWire(wire));
-                    operations.push(Operation::Contribution(1));
+                    operations.extend(program.links.iter().enumerate()
+                        .filter(|(_, link)| link.source == wire).map(|(id, _)| Operation::Contribution(id)));
                 } else if delivery.pos == program.positions[lamp] {
                     operations.push(Operation::UpdateLamp(lamp));
                 }

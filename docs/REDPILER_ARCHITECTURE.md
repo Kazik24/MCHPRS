@@ -41,6 +41,12 @@ work, and report reads beyond capture. Compilation does not mutate the host.
 Rise and fall use separate ordered programs. `Contribution` recalculates one
 attenuated link from its source's live output; `RefreshWire` stores the wire's
 current incoming strength. Neither operation dispatches a receiver by itself.
+The compiler now obtains dust-source links from the shared scratch electrical
+extractor, independently of watcher construction. Captured-world reads are
+checked before discovered positions are mapped to deterministic component IDs.
+Contribution instructions resolve the resulting link indexes. The wire-to-lamp
+link is still specific to the admitted straight chain; this does not admit
+multiple-source world compilation.
 Explicit `UpdateLamp` always delivers. Watcher delivery uses `UpdateOnce`,
 which suppresses repeated watcher callbacks in an input phase; a relevant
 contribution change invalidates the marker. Production compilation currently

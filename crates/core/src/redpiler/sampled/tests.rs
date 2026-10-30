@@ -21,6 +21,25 @@ use super::*;
         }
     }
     #[test]
+    fn explicit_deliveries_repeat_while_watchers_update_once() {
+        let program = Program::new(
+            vec![BlockPos::new(0, 15, 15), BlockPos::new(1, 15, 15)],
+            vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }, Block::RedstoneLamp { lit: false }],
+            vec![0], vec![[vec![], vec![Operation::UpdateLamp(1), Operation::UpdateLamp(1)]]],
+            vec![], vec![],
+        ).unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(0, true);
+        assert_eq!(runtime.operations, 2);
+        assert_eq!(runtime.deliveries, 2);
+        runtime.update_once(1);
+        runtime.update_once(1);
+        assert_eq!(runtime.deliveries, 3);
+        runtime.dispatch_receiver(1);
+        assert_eq!(runtime.deliveries, 4);
+        assert!(runtime.pending.iter_entries().next().is_none());
+    }
+    #[test]
     fn empty() {
         let w = host();
         let p = compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)).unwrap();
@@ -245,7 +264,7 @@ use super::*;
         let mut runtime = program.start();
         runtime.set_input(0, false);
         assert_eq!(runtime.watched_strengths[0], 0);
-        assert_eq!(runtime.deliveries, 2, "lamp input change permits a second watcher update in this phase");
+        assert_eq!(runtime.deliveries, 3, "two watcher updates plus the independent explicit delivery");
         let phase = runtime.phase;
         for _ in 0..4 {
             runtime.tick();
@@ -254,7 +273,7 @@ use super::*;
         assert!(runtime.pending.iter_entries().next().is_none());
         runtime.set_input(0, true);
         assert_eq!(runtime.watched_strengths[0], 15);
-        assert_eq!(runtime.deliveries, 3, "the next external transition starts a fresh update phase");
+        assert_eq!(runtime.deliveries, 4, "the next external transition starts a fresh update phase");
     }
     #[test]
     fn program_construction_rejects_malformed_records() {
@@ -449,6 +468,12 @@ use super::*;
 
             let before = snapshot(&w);
             let p = compile(&w, bounds, entry(&w)).unwrap();
+            let discovered_link = p.links.iter().position(|link| p.positions[link.source] == source
+                && matches!(p.initial[link.target], Block::RedstoneWire { .. }) && link.attenuation == 0).unwrap();
+            assert_ne!(discovered_link, 0, "discovered contributions must not depend on link zero");
+            for operations in &p.transitions[0] {
+                assert!(operations.iter().any(|op| matches!(op, Operation::Contribution(id) if *id == discovered_link)));
+            }
             assert_eq!(before, snapshot(&w));
             assert_eq!(p.initial, p.positions.iter().map(|&pos| w.get_block(pos)).collect::<Vec<_>>());
             let mut r = p.start();

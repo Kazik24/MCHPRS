@@ -31,6 +31,7 @@ impl Runtime<'_> {
         self.updated_in_phase.fill(None);
     }
     pub(super) fn dispatch_receiver(&mut self, receiver: usize) {
+        self.deliveries += 1;
         let power = self.input_strength(receiver);
         let Block::RedstoneLamp { lit } = self.blocks[receiver] else { unreachable!() };
         if power > 0 && !lit {
@@ -50,7 +51,6 @@ impl Runtime<'_> {
             return;
         }
         self.updated_in_phase[receiver] = Some(self.phase);
-        self.deliveries += 1;
         self.dispatch_receiver(receiver);
     }
     pub(super) fn check_watched_wire(&mut self, record_index: usize) {
@@ -99,7 +99,7 @@ impl Runtime<'_> {
                         self.blocks[slot] = Block::RedstoneWire { wire };
                     }
                     Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
-                    Operation::UpdateLamp(slot) => self.update_once(slot),
+                    Operation::UpdateLamp(slot) => self.dispatch_receiver(slot),
                 }
                 self.operations += 1;
             }

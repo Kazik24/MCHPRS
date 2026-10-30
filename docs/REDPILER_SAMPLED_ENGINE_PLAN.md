@@ -15,8 +15,11 @@ historical evidence.
 Status verified 30 October 2026: the sampled lever–dust–lamp gate passes for
 initially-off and initially-on entry, including repeated transitions, scheduler
 wrap, four-game-tick lamp-off timing, host preservation and positioned rejection
-of reads outside capture. The sampled suite after the module split is 16 passed,
-0 failed, 0 ignored (1,001 filtered out). Compile-time empty-piston inventory is
+of reads outside capture. Dust-source extraction now feeds the admitted chain
+through the shared scratch search, with escaped-read validation and resolved
+contribution indexes. The lamp link remains chain-specific; wider source/receiver
+admission and world-derived watcher installation are subsequent compiler work.
+Compile-time empty-piston inventory is
 complete; the next unmet sampled gate is piston extension, retraction and
 rearm. The former event executor result is historical: its final suite recorded
 45 passed, 1 failed and 1 ignored, with ADDER1BIT failing and COUNTER ignored.

@@ -13,6 +13,17 @@ removed; their results below are historical only.
 - `scratch.rs` owns isolated native-interpreter worlds, entry-state validation,
   boundary detection, and native electrical-discovery helpers whose watcher
   integration remains pending.
+- Shared `discover_wire_sources` performs electrical extraction without pistons
+  or watcher records. The retained watcher-discovery entry point calls the same
+  search. It preserves source identity (including initially-off sources), minimum
+  attenuation, the 14-edge bound, directional strong conduction and MCHPRS stepped
+  dust geometry. The compiler runs it against captured scratch state, checks
+  escaped reads, maps positions to deterministic component indexes and resolves
+  contribution instructions by their actual link indexes.
+- Production admission remains one straight lever/dust/lamp chain. The lamp
+  dependency is still constructed specifically for that chain. Broader discovery
+  fixtures do not establish multiple-source executable compilation, watcher
+  ordering completeness or piston execution.
 - `Program::new` validates component records, external sources, rise/fall
   programs, electrical links, watcher records and instruction references before
   building incoming indexes. Partial instruction sequences remain valid.
