@@ -26,6 +26,7 @@ pub(super) struct WatchedWire {
 pub(super) struct RepeaterRecord {
     pub(super) component: usize,
     pub(super) output_is_diode: bool,
+    pub(super) side_sources: Option<Vec<usize>>,
 }
 
 pub(super) struct Program {
@@ -62,7 +63,7 @@ impl Program {
         }
         for block in &initial {
             match block {
-                Block::Lever { .. } | Block::RedstoneLamp { .. } => {}
+                Block::Lever { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock => {}
                 Block::RedstoneWire { wire } if wire.power <= 15 => {}
                 Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
                 Block::RedstoneRepeater { repeater } if (1..=4).contains(&repeater.delay) => {}
@@ -90,6 +91,9 @@ impl Program {
             if !repeater_components.insert(record.component) {
                 return Err(invalid("sampled repeater record is duplicated"));
             }
+            if record.side_sources.iter().flatten().any(|&source| !matches!(initial.get(source), Some(Block::RedstoneRepeater { .. }))) {
+                return Err(invalid("sampled repeater side source is not a repeater"));
+            }
         }
         for (index, block) in initial.iter().enumerate() {
             if matches!(block, Block::RedstoneRepeater { .. }) && !repeater_components.contains(&index) {
@@ -103,7 +107,7 @@ impl Program {
             let Some(target) = initial.get(link.target) else {
                 return Err(invalid("sampled program link target is out of bounds"));
             };
-            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. }) {
+            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneBlock) {
                 return Err(invalid("sampled program link source must be lever, wire or repeater"));
             }
             if !matches!(
@@ -186,6 +190,7 @@ impl Program {
                             }
                         }
                         Block::RedstoneWire { wire } => wire.power,
+                        Block::RedstoneBlock => 15,
                         Block::RedstoneRepeater { repeater } => {
                             if repeater.powered {
                                 15

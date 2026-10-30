@@ -23,6 +23,7 @@ impl Runtime<'_> {
 
     pub(super) fn output(&self, source: usize) -> u8 {
         match self.blocks[source] {
+            Block::RedstoneBlock => 15,
             Block::Lever { lever } => {
                 if lever.powered {
                     15
@@ -116,9 +117,13 @@ impl Runtime<'_> {
     }
 
     pub(super) fn update_repeater(&mut self, component: usize) {
-        let Block::RedstoneRepeater { repeater } = self.blocks[component] else {
+        let Block::RedstoneRepeater { mut repeater } = self.blocks[component] else {
             unreachable!()
         };
+        if let Some(side_sources) = self.program.repeaters.iter().find(|record| record.component == component).and_then(|record| record.side_sources.as_ref()) {
+            repeater.locked = side_sources.iter().any(|&source| self.output(source) > 0);
+            self.blocks[component] = Block::RedstoneRepeater { repeater };
+        }
         if repeater.locked {
             return;
         }

@@ -47,7 +47,7 @@ use mchprs_world::TickPriority;
         Program::new(
             positions, initial, vec![0], output_programs,
             vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }, ElectricalLink { source: 1, target: 2, attenuation: 0 }],
-            vec![], vec![RepeaterRecord { component: 1, output_is_diode }],
+            vec![], vec![RepeaterRecord { component: 1, output_is_diode, side_sources: None }],
         ).unwrap()
     }
     fn host() -> PlotWorld {
@@ -197,12 +197,12 @@ use mchprs_world::TickPriority;
         let program = repeater_program(1, false, false, false);
         let mut outputs = program.output_programs.clone();
         outputs[0][1] = vec![Operation::UpdateRepeater(2)];
-        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs, program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false }]).err().unwrap().reason, "sampled program UpdateRepeater target is not a repeater");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs, program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false, side_sources: None }]).err().unwrap().reason, "sampled program UpdateRepeater target is not a repeater");
         let outputs = program.output_programs.clone();
         assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![]).err().unwrap().reason, "sampled repeater has no repeater record");
-        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false }, RepeaterRecord { component: 1, output_is_diode: true }]).err().unwrap().reason, "sampled repeater record is duplicated");
-        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![RepeaterRecord { component: 3, output_is_diode: false }]).err().unwrap().reason, "sampled repeater record index is not a repeater");
-        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), vec![], program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false }]).err().unwrap().reason, "sampled output program count mismatch");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false, side_sources: None }, RepeaterRecord { component: 1, output_is_diode: true, side_sources: None }]).err().unwrap().reason, "sampled repeater record is duplicated");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![RepeaterRecord { component: 3, output_is_diode: false, side_sources: None }]).err().unwrap().reason, "sampled repeater record index is not a repeater");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), vec![], program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false, side_sources: None }]).err().unwrap().reason, "sampled output program count mismatch");
     }
     #[test]
     fn explicit_deliveries_repeat_while_watchers_update_once() {
@@ -593,7 +593,7 @@ use mchprs_world::TickPriority;
     fn rejects_unrepresented_blocks() {
         let mut w = host();
         let pos = BlockPos::new(15, 15, 15);
-        w.set_block(pos, Block::RedstoneBlock);
+        w.set_block(pos, Block::from_name("observer").unwrap());
         let err = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
             Err(err) => err,
             Ok(_) => panic!("unsupported block admitted"),
@@ -759,6 +759,65 @@ use mchprs_world::TickPriority;
             assert_eq!(sign_before, serde_json::to_value(w.get_block_entity(sign)).unwrap());
         }
         assert!(runtime.operations > 0);
+    }
+
+    #[test]
+    fn world_compiler_runs_repeater_and_lamp() {
+        let mut w = host();
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+        let lever = BlockPos::new(15, 15, 15);
+        let repeater = BlockPos::new(16, 15, 15);
+        let lamp = BlockPos::new(17, 15, 15);
+        w.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        w.set_block(repeater, Block::RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: BlockDirection::West, locked: false, powered: false } });
+        w.set_block(lamp, Block::RedstoneLamp { lit: false });
+        w.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        w.set_block(repeater.offset(BlockFace::Bottom), Block::Stone {});
+        let program = compile(&w, bounds, entry(&w)).unwrap();
+        let repeater_index = program.positions.iter().position(|&pos| pos == repeater).unwrap();
+        let lamp_index = program.positions.iter().position(|&pos| pos == lamp).unwrap();
+        assert!(program.output_programs[repeater_index][0].iter().any(|op| matches!(op, Operation::UpdateLamp(id) if *id == lamp_index)));
+        let mut runtime = program.start();
+        runtime.set_input(0, true);
+        assert!(!matches!(runtime.blocks[repeater_index], Block::RedstoneRepeater { repeater } if repeater.powered));
+        runtime.tick();
+        runtime.tick();
+        assert!(matches!(runtime.blocks[repeater_index], Block::RedstoneRepeater { repeater } if repeater.powered));
+        assert_eq!(runtime.blocks[lamp_index], Block::RedstoneLamp { lit: true });
+        assert!(runtime.scheduled_repeater_ticks > 0);
+        runtime.set_input(0, false);
+        for _ in 0..6 { runtime.tick(); }
+        assert_eq!(runtime.blocks[lamp_index], Block::RedstoneLamp { lit: false });
+    }
+
+    #[test]
+    fn world_compiler_repeater_side_lock() {
+        let mut w = host();
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+        let main_lever = BlockPos::new(15, 15, 15);
+        let main = BlockPos::new(16, 15, 15);
+        let side = BlockPos::new(16, 15, 14);
+        let side_lever = BlockPos::new(16, 15, 13);
+        for pos in [main_lever, side_lever] {
+            w.set_block(pos, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+            w.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        }
+        for (pos, facing) in [(main, BlockDirection::West), (side, BlockDirection::North)] {
+            w.set_block(pos, Block::RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing, locked: false, powered: false } });
+            w.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        }
+        let program = compile(&w, bounds, entry(&w)).unwrap();
+        let source = |pos| program.sources.iter().position(|&id| program.positions[id] == pos).unwrap();
+        let main_index = program.positions.iter().position(|&pos| pos == main).unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(source(side_lever), true);
+        runtime.tick();
+        runtime.tick();
+        assert!(matches!(runtime.blocks[main_index], Block::RedstoneRepeater { repeater } if repeater.locked));
+        runtime.set_input(source(main_lever), true);
+        runtime.tick();
+        runtime.tick();
+        assert!(matches!(runtime.blocks[main_index], Block::RedstoneRepeater { repeater } if repeater.locked && !repeater.powered));
     }
 
     #[test]

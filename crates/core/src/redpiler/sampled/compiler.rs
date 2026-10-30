@@ -44,10 +44,12 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     Block::RedstoneLamp { .. } => {
                         positions.push(pos);
                     }
+                    Block::RedstoneBlock => positions.push(pos),
                     Block::RedstoneRepeater { repeater } => {
                         repeaters.push(RepeaterRecord {
                             component: positions.len(),
                             output_is_diode: crate::redstone::is_diode(world.get_block(pos.offset(repeater.facing.opposite().block_face()))),
+                            side_sources: Some(Vec::new()),
                         });
                         positions.push(pos);
                     }
@@ -74,7 +76,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         for lamp in lamp_positions {
             dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), lamp)?);
         }
-        for record in &repeaters {
+        for record in &mut repeaters {
             let pos = positions[record.component];
             let Block::RedstoneRepeater { repeater } = world.get_block(pos) else { unreachable!() };
             let face = repeater.facing.block_face();
@@ -98,8 +100,13 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             }
             for side in [repeater.facing.rotate(), repeater.facing.rotate_ccw()] {
                 let at = pos.offset(side.block_face());
-                if crate::redstone::is_diode(world.get_block(at)) {
-                    return Err(error(at, "repeater side input is not represented"));
+                let block = world.get_block(at);
+                if crate::redstone::is_diode(block) && crate::redstone::power::emits_strong_power(block, scratch.world(), at, side.block_face(), false) {
+                    let source = positions.iter().position(|&position| position == at).ok_or_else(|| error(at, "unrepresented repeater side source"))?;
+                    if !matches!(block, Block::RedstoneRepeater { .. }) {
+                        return Err(error(at, "unsupported repeater side source"));
+                    }
+                    record.side_sources.as_mut().unwrap().push(source);
                 }
             }
         }
@@ -122,23 +129,40 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
     let mut program = Program::new(positions, initial, sources.clone(), output_programs, links, vec![], repeaters)
         .map_err(|err| error(bounds.0, err.reason))?;
     let output_sources: Vec<_> = sources.iter().copied().chain(program.repeaters.iter().map(|record| record.component)).collect();
+    let mut comparisons = Vec::new();
     for (output_index, &source) in output_sources.iter().enumerate() {
         let mut scratch = ScratchWorld::from_world(world, bounds, entry.clone())?;
         let pos = program.positions[source];
-        // shortcut: settled binary source only, add state-keyed probes before allowing overlapping input edges.
-        let initial_power = match world.get_block(pos) {
-            Block::Lever { lever } => lever.powered,
-            Block::RedstoneRepeater { repeater } => repeater.powered,
-            _ => unreachable!(),
-        };
+        for (id, &at) in program.positions.iter().enumerate() {
+            let block = scratch.world().get_block(at);
+            let constant_power = program.incoming[id].iter().filter_map(|&link| {
+                let link = &program.links[link];
+                matches!(program.initial[link.source], Block::RedstoneBlock).then_some(15u8.saturating_sub(link.attenuation))
+            }).max().unwrap_or(0);
+            let quiet = match block {
+                Block::Lever { mut lever } => { lever.powered = false; Block::Lever { lever } }
+                Block::RedstoneRepeater { mut repeater } => { repeater.powered = false; repeater.locked = false; Block::RedstoneRepeater { repeater } }
+                Block::RedstoneWire { mut wire } => { wire.power = constant_power; Block::RedstoneWire { wire } }
+                Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: constant_power > 0 },
+                _ => block,
+            };
+            scratch.world_mut().set_block(at, quiet);
+        }
+        let initial_power = false;
         let mut first_edge = None;
         let mut samples: [Option<Vec<Frame>>; 2] = [None, None];
         for powered in [!initial_power, initial_power, !initial_power] {
             let w = scratch.world_mut();
             let mut frames = vec![];
+            if let Block::RedstoneRepeater { mut repeater } = w.get_block(pos) {
+                if repeater.powered == powered {
+                    repeater.powered = !powered;
+                    w.set_block(pos, Block::RedstoneRepeater { repeater });
+                }
+            }
             w.observe_redstone_updates(true);
             match w.get_block(pos) {
-                Block::Lever { lever } if lever.powered != powered => crate::interaction::use_redstone(w.get_block(pos), w, pos, None),
+                Block::Lever { lever } if lever.powered != powered => { crate::interaction::use_redstone(w.get_block(pos), w, pos, None); }
                 Block::RedstoneRepeater { mut repeater } if repeater.powered != powered => {
                     repeater.powered = powered;
                     w.set_block(pos, Block::RedstoneRepeater { repeater });
@@ -164,9 +188,6 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             }
             if !frames.last().unwrap().pending.is_empty() {
                 return Err(error(pos, "probe did not settle"));
-            }
-            if powered == initial_power && frames.last().unwrap().blocks != program.initial {
-                eprintln!("sampled source probe at {pos:?}: loaded state differs after transition");
             }
             if let Some(previous) = &first_edge {
                 if powered != initial_power && *previous != frames {
@@ -195,13 +216,35 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     operations.push(Operation::RefreshWire(slot));
                 }
             }
+            for link in program.links.iter().filter(|link| link.source == source) {
+                match program.initial[link.target] {
+                    Block::RedstoneLamp { .. } if !operations.iter().any(|op| matches!(op, Operation::UpdateLamp(id) if *id == link.target)) => operations.push(Operation::UpdateLamp(link.target)),
+                    Block::RedstoneRepeater { .. } if !operations.iter().any(|op| matches!(op, Operation::UpdateRepeater(id) if *id == link.target)) => operations.push(Operation::UpdateRepeater(link.target)),
+                    _ => {}
+                }
+            }
+            for record in &program.repeaters {
+                if record.side_sources.as_ref().is_some_and(|side| side.contains(&source))
+                    && !operations.iter().any(|op| matches!(op, Operation::UpdateRepeater(id) if *id == record.component)) {
+                    operations.push(Operation::UpdateRepeater(record.component));
+                }
+            }
             program.output_programs[source][usize::from(powered)] = operations;
             samples[usize::from(powered)] = Some(frames);
             scratch.finish_probe()?;
         }
-        if output_index >= sources.len() { continue; }
+        if output_index >= sources.len() || program.initial.iter().any(|block| match block {
+            Block::Lever { lever } => lever.powered,
+            Block::RedstoneRepeater { repeater } => repeater.powered || repeater.locked,
+            Block::RedstoneWire { wire } => wire.power != 0,
+            Block::RedstoneLamp { lit } => *lit,
+            _ => false,
+        }) { continue; }
+        comparisons.push((output_index, pos, samples));
+    }
+    for (output_index, pos, samples) in comparisons {
         let mut runtime = program.start();
-        for powered in [!initial_power, initial_power] {
+        for powered in [true, false] {
             runtime.set_input(output_index, powered);
             for (step, frame) in samples[usize::from(powered)].as_ref().unwrap().iter().enumerate() {
                 if step != 0 {
