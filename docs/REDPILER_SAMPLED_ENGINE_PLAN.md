@@ -1,0 +1,132 @@
+# Interpreter-sampled Redpiler engine plan
+
+The goal is a separate experimental compiler and runtime inspired by the
+reference engine. The compiler uses the native interpreter in isolated scratch
+worlds to discover update behavior; the runtime executes a compiled netlist.
+Keep the existing Graph backend available while this engine is developed.
+
+Each step must deliver runnable code and a focused test. A successful discovery
+pass or generated program is not evidence that accelerated execution occurred.
+Use existing world, interpreter and scheduling mechanisms where their contracts
+fit. Preserve the existing experimental implementation as a reference until the
+replacement has passed the relevant gates.
+
+Status verified 30 October 2026: the empty sampled engine runs, but the
+lever–dust–lamp acceptance gate fails. The older event executor passes selected
+static-piston and one-resource BUD fixtures through LoweredCircuit adapters;
+ADDER1BIT still fails and COUNTER remains ignored. Do not confuse those adapters
+with the direct world-derived sampled compiler. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
+and the [detailed implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
+
+## 1. Engine boundary
+
+Complete the existing private sampled module with a compiler entry point,
+immutable program and mutable runtime state; do not create a third executor.
+Compilation accepts a read-only world selection and
+explicit entry work. Do not install the new engine on player plots yet.
+
+**Gate:** an empty supported selection compiles and ticks. Compilation leaves
+the source world unchanged and rejects unrepresented pending work.
+
+## 2. Sample source updates
+
+Copy a small circuit into a scratch world. Toggle a lever through the native
+interpreter and record delivered updates in order, with rise and fall captured
+separately. Compile the observed behavior and execute it without calling the
+interpreter at runtime. Preserve loaded source and output state.
+
+Fix the existing scheduler phase mismatch first: drain old bucket, advance once,
+drain new bucket. Lamp off delay is four game ticks, expressed by
+`schedule_tick(..., 2, ...)`. Keep the compiler self-check and every pending-work
+assertion. Use live receiver instructions, not stored sampled output values.
+
+**Gate:** lever → dust → lamp matches native rising and falling behavior, with
+actual compiled operations counted. Unsupported dependencies and boundary
+crossings decline before execution.
+
+## 3. Piston actors
+
+Discover piston bases, facing, sticky state and possible contact cells. Compile
+requests, queued-action deduplication and live power revalidation. Support an
+empty piston action separately from payload movement.
+
+**Gate:** lever → dust → piston executes extension, retraction and rearm against
+native execution. Assert actual accepted actions and pending work at the
+declared boundaries.
+
+## 4. Observer updates
+
+Sample piston base/head changes and compile shape notifications and delayed
+observer pulses. Keep shape callbacks distinct from ordinary power updates.
+
+**Gate:** an empty piston triggers an observer whose output reaches a second
+piston. Compare against native execution and assert the compiled notification,
+pulse and second-piston action occurred.
+
+## 5. Movable resources
+
+Give each movable block one identity, discover its possible cells and allow
+multiple pistons to reference it. Sample departure and arrival effects in
+separate scratch arrangements. Preserve resource occupancy and moving state.
+
+**Gate:** a moving redstone block changes a repeater's input correctly, including
+reset and repeated movement. Compare payload, piston, output and pending work.
+
+## 6. BUD behavior
+
+Keep power dependencies separate from delivered updates. A data change without
+a qualifying sample must preserve stored piston state. Reuse the existing BUD
+schematics and their declared observation protocols.
+
+**Gate:** the applicable BUD fixtures pass store → hold → sample → resample,
+including repeated operations and native-equivalent declared outputs.
+
+## 7. Interacting arrangements and ordering
+
+Probe combinations of resources that change shared dependencies. Compile
+ordered movement and watcher programs from the observations. Preserve shared
+resource identity and FIFO request behavior; reject unrepresented arrangements.
+
+**Gate:** shared-resource contention and all ADDER1BIT cases pass, including
+successive changing inputs. Assert compiled work actually ran.
+
+Before admitting these circuits, represent repeater short-pulse retention,
+locking and priorities, plus the piston in-flight actions the fixture needs.
+Use separate rise/fall and departure/arrival delivery programs. A changed
+electrical contribution must not automatically synthesize a receiver callback.
+
+## 8. Real circuits
+
+Run ADDER11BIT, COUNTER, CPU_BUBBLESORT and FPU_27 in that order. Use existing
+fixtures, manifests and meaningful input sequences. Add a missing general
+component or interaction when a gate demonstrates it is required.
+
+**Gate:** declared outputs are correct across repeated operations. Count actual
+compiled operations; do not infer acceleration from successful compilation.
+
+## 9. Measurement and integration
+
+After correctness, measure comparable changing-input workloads against native
+and Graph execution. Report fixture throughput separately from server game TPS.
+Connect the engine to an experimental plot backend only when its ownership and
+publication contracts are ready. Preserve unrelated world work and support the
+approved reset-only exit through stop, cancellation, edits, save and unload.
+
+**Gate:** a player can compile a supported plot, observe declared outputs and
+reset safely. Measure actual plot throughput and state its limits.
+
+## Implementation rules
+
+- Steps 1–2 are the first assignment. Do not stop at an inventory or plan.
+- Use coordinates and schematic names only in fixtures and diagnostics.
+- Interpreter sampling is evidence for the probed conditions, not proof for all
+  possible arrangements. Represent those conditions or reject unsupported cases.
+- Keep electrical contributions, update delivery and movement ownership
+  distinct. Do not poll all pistons or manufacture BUD updates from power alone.
+- Preserve intermediate behavior only where needed for correct declared output
+  boundaries. Do not silently discard effects that affect those boundaries.
+- The new runtime must not rely on Graph or the interpreter to calculate results.
+  Existing code may inform implementation; avoid a permanent LoweredCircuit
+  dependency in the new compiler.
+- Preserve dirty work, use inspectable passes and clear positioned errors, and
+  report exact test results and remaining compatibility limits.

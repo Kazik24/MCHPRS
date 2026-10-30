@@ -410,12 +410,10 @@ impl PlotWorld {
         &self.to_be_ticked
     }
 
-    #[cfg(test)]
     pub(crate) fn observe_redstone_updates(&mut self, enabled: bool) {
         self.redstone_update_observations = enabled.then(Vec::new);
     }
 
-    #[cfg(test)]
     pub(crate) fn take_redstone_update_observations(&mut self) -> Vec<RedstoneUpdateObservation> {
         self.redstone_update_observations.take().unwrap_or_default()
     }

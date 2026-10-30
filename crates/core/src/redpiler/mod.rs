@@ -768,3 +768,4 @@ mod tests {
         assert_eq!(compiler.stats().unwrap().total_duration, total_duration);
     }
 }
+mod sampled;
