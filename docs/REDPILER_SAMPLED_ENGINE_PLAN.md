@@ -17,10 +17,7 @@ wrap, four-game-tick lamp-off timing, host preservation and positioned rejection
 of reads outside capture. The latest sampled suite is 8 passed, 0 failed,
 0 ignored (1,035 filtered out). Compile-time empty-piston inventory is now
 complete; the next unmet sampled gate is piston extension, retraction and
-rearm. Separately, the event executor passes selected static-
-piston and one-resource BUD fixtures through LoweredCircuit adapters, but
-ADDER1BIT still fails and COUNTER remains ignored. Do not confuse those adapters
-with the direct world-derived sampled compiler. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
+rearm. The former event executor result is historical: its final suite recorded 45 passed, 1 failed and 1 ignored, with ADDER1BIT failing and COUNTER ignored. Do not count those adapters as MAIR coverage. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
 and the [detailed implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
 
 ## 1. Engine boundary

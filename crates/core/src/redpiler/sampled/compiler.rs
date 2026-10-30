@@ -1,0 +1,281 @@
+use super::{ElectricalLink, Operation, Program, ScratchEntry, ScratchError, ScratchWorld};
+use crate::world::World;
+use mchprs_blocks::{BlockPos, BlockFacing, blocks::{Block, LeverFace}};
+#[derive(Clone, PartialEq, Eq)]
+struct Frame {
+    blocks: Vec<Block>,
+    pending: Vec<mchprs_world::TickEntry>,
+    deliveries: Vec<crate::world::RedstoneUpdateObservation>,
+}#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct PistonActor {
+    pub(super) id: usize,
+    pub(super) base: BlockPos,
+    pub(super) facing: BlockFacing,
+    pub(super) sticky: bool,
+    pub(super) home: BlockPos,
+    pub(super) far: BlockPos,
+    pub(super) extended: bool,
+    pub(super) head_present: bool,
+    pub(super) group: usize,
+}
+pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry) -> Result<Program, ScratchError> {
+    let mut scratch = ScratchWorld::from_world(world, bounds, entry)?;
+    let mut positions = vec![];
+    let mut source = None;
+    let mut wires = 0;
+    let mut lamps = 0;
+    let error = |pos, reason| ScratchError { position: Some(pos), reason };
+    for y in bounds.0.y..=bounds.1.y {
+        for z in bounds.0.z..=bounds.1.z {
+            for x in bounds.0.x..=bounds.1.x {
+                let pos = BlockPos::new(x, y, z);
+                match world.get_block(pos) {
+                    Block::Air | Block::Stone {} => {}
+                    Block::Lever { lever } if lever.face == LeverFace::Floor && source.is_none() => {
+                        source = Some(positions.len());
+                        positions.push(pos);
+                    }
+                    Block::RedstoneWire { .. } => {
+                        wires += 1;
+                        positions.push(pos);
+                    }
+                    Block::RedstoneLamp { .. } => {
+                        lamps += 1;
+                        positions.push(pos);
+                    }
+                    _ => return Err(error(pos, "unsupported component")),
+                }
+                if world.get_block_entity(pos).is_some() {
+                    return Err(error(pos, "unsupported block entity"));
+                }
+            }
+        }
+    }
+    if !positions.is_empty() && (source.is_none() || wires != 1 || lamps != 1) {
+        return Err(error(bounds.0, "requires one lever, dust and lamp"));
+    }
+    if let Some(src) = source {
+        let lever = positions[src];
+        let wire = *positions
+            .iter()
+            .find(|&&p| matches!(world.get_block(p), Block::RedstoneWire { .. }))
+            .unwrap();
+        let lamp = *positions
+            .iter()
+            .find(|&&p| matches!(world.get_block(p), Block::RedstoneLamp { .. }))
+            .unwrap();
+        let delta = wire - lever;
+        if delta.y != 0 || delta.x.abs() + delta.z.abs() != 1 || lamp != wire + delta {
+            return Err(error(wire, "requires straight horizontal lever-dust-lamp"));
+        }
+        for pos in [lever, wire, lamp] {
+            if world.get_block(pos - BlockPos::new(0, 1, 0)) != (Block::Stone {}) {
+                return Err(error(pos, "requires stone support"));
+            }
+        }
+    }
+    for y in bounds.0.y..=bounds.1.y {
+        for z in bounds.0.z..=bounds.1.z {
+            for x in bounds.0.x..=bounds.1.x {
+                let pos = BlockPos::new(x, y, z);
+                if world.get_block(pos) != Block::Air && !positions.contains(&pos) && !positions.iter().any(|&p| pos == p - BlockPos::new(0, 1, 0)) {
+                    return Err(error(pos, "unrepresented fixed connection"));
+                }
+            }
+        }
+    }
+    let initial = positions.iter().map(|&p| world.get_block(p)).collect();
+    let mut links = vec![];
+    if let Some(source) = source {
+        let wire = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
+        let lamp = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
+        links.extend([
+            ElectricalLink { source, target: wire, attenuation: 0 },
+            ElectricalLink { source: wire, target: lamp, attenuation: 0 },
+        ]);
+    }
+    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links, vec![])
+        .map_err(|err| error(bounds.0, err.reason))?;
+    if let Some(source) = source {
+        let pos = program.positions[source];
+        let wire = program
+            .positions
+            .iter()
+            .position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
+        let lamp = program
+            .positions
+            .iter()
+            .position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
+        // shortcut: settled binary source only, add state-keyed probes before allowing overlapping input edges.
+        let initial_power = match world.get_block(pos) {
+            Block::Lever { lever } => lever.powered,
+            _ => unreachable!(),
+        };
+        let mut first_edge = None;
+        let mut samples: [Option<Vec<Frame>>; 2] = [None, None];
+        for powered in [!initial_power, initial_power, !initial_power] {
+            let w = scratch.world_mut();
+            if let Block::Lever { mut lever } = w.get_block(pos) {
+                if lever.powered == powered {
+                    continue;
+                }
+                lever.powered = powered;
+                w.set_block(pos, Block::Lever { lever });
+            }
+            let mut frames = vec![];
+            w.observe_redstone_updates(true);
+            crate::redstone::update_surrounding_blocks(w, pos);
+            for step in 0..=4 {
+                if step > 0 {
+                    w.tick_interpreted();
+                }
+                frames.push(Frame {
+                    blocks: program.positions.iter().map(|&p| w.get_block(p)).collect(),
+                    pending: w.scheduler().iter_entries().collect(),
+                    deliveries: w.take_redstone_update_observations(),
+                });
+                w.observe_redstone_updates(true);
+            }
+            if !frames.last().unwrap().pending.is_empty() {
+                return Err(error(pos, "probe did not settle"));
+            }
+            if powered == initial_power && frames.last().unwrap().blocks != program.initial {
+                return Err(error(pos, "loaded circuit is not a settled sampled state"));
+            }
+            if let Some(previous) = &first_edge {
+                if powered != initial_power && *previous != frames {
+                    return Err(error(pos, "source transition depends on unrepresented state"));
+                }
+            } else {
+                first_edge = Some(frames.clone());
+            }
+            let mut operations = vec![Operation::Contribution(0)];
+            for delivery in &frames[0].deliveries {
+                if delivery.pos == program.positions[wire] {
+                    operations.push(Operation::RefreshWire(wire));
+                    operations.push(Operation::Contribution(1));
+                } else if delivery.pos == program.positions[lamp] {
+                    operations.push(Operation::UpdateLamp(lamp));
+                }
+            }
+            if !operations.iter().any(|op| matches!(op, Operation::RefreshWire(_)))
+                || !operations.iter().any(|op| matches!(op, Operation::UpdateLamp(_)))
+            {
+                return Err(error(pos, "probe did not observe wire and lamp updates"));
+            }
+            program.transitions[0][usize::from(powered)] = operations;
+            samples[usize::from(powered)] = Some(frames);
+            scratch.finish_probe()?;
+        }
+        let mut runtime = program.start();
+        for powered in [!initial_power, initial_power] {
+            runtime.set_input(0, powered);
+            for (step, frame) in samples[usize::from(powered)].as_ref().unwrap().iter().enumerate() {
+                if step != 0 {
+                    runtime.tick();
+                }
+                if runtime.blocks != frame.blocks || runtime.pending.iter_entries().collect::<Vec<_>>() != frame.pending {
+                    return Err(error(pos, "sampled behavior is not represented by runtime"));
+                }
+            }
+        }
+    }
+    Ok(program)
+}
+
+pub(super) fn discover_piston_actors(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry) -> Result<Vec<PistonActor>, ScratchError> {
+    let scratch = ScratchWorld::from_world(world, bounds, entry)?;
+    let world = scratch.world();
+    let error = |pos, reason| ScratchError { position: Some(pos), reason };
+    let mut actors = Vec::new();
+    for y in bounds.0.y..=bounds.1.y {
+        for z in bounds.0.z..=bounds.1.z {
+            for x in bounds.0.x..=bounds.1.x {
+                let base = BlockPos::new(x, y, z);
+                if world.get_block_entity(base).is_some() {
+                    return Err(error(base, "unsupported block entity in piston capture"));
+                }
+                let block = world.get_block(base);
+                let Block::Piston { piston } = block else {
+                    if matches!(block, Block::MovingPiston { .. }) {
+                        return Err(error(base, "moving piston state is unsupported"));
+                    }
+                    continue;
+                };
+                let facing = piston.facing;
+                let home = base.offset(facing.into());
+                let far = home.offset(facing.into());
+                let home_block = world.get_block(home);
+                let far_block = world.get_block(far);
+                if world.get_block_entity(home).is_some() {
+                    return Err(error(home, "unsupported block entity at piston contact"));
+                }
+                if world.get_block_entity(far).is_some() {
+                    return Err(error(far, "unsupported block entity at piston contact"));
+                }
+                let head_present = match home_block {
+                    Block::PistonHead { head }
+                        if head.facing == facing && head.sticky == piston.sticky && !head.short =>
+                    {
+                        true
+                    }
+                    Block::PistonHead { .. } => return Err(error(home, "piston head does not match base state")),
+                    Block::MovingPiston { .. } => return Err(error(home, "moving piston state is unsupported")),
+                    Block::Air => false,
+                    _ => return Err(error(home, "piston contact cell is occupied")),
+                };
+                if far_block != Block::Air {
+                    return Err(error(far, "piston contact cell is occupied"));
+                }
+                if piston.extended != head_present {
+                    return Err(error(base, "piston base and head state disagree"));
+                }
+                actors.push(PistonActor {
+                    id: actors.len(),
+                    base,
+                    facing,
+                    sticky: piston.sticky,
+                    home,
+                    far,
+                    extended: piston.extended,
+                    head_present,
+                    group: 0,
+                });
+            }
+        }
+    }
+    scratch.finish_probe()?;
+    assign_piston_groups(&mut actors);
+    Ok(actors)
+}
+
+pub(super) fn assign_piston_groups(actors: &mut [PistonActor]) {
+    let mut parents: Vec<_> = (0..actors.len()).collect();
+    let mut owner_by_cell = std::collections::HashMap::new();
+    for (index, actor) in actors.iter().enumerate() {
+        for cell in [actor.home, actor.far] {
+            if let Some(&owner) = owner_by_cell.get(&cell) {
+                let left = piston_group_root(&mut parents, index);
+                let right = piston_group_root(&mut parents, owner);
+                parents[left] = right;
+            } else {
+                owner_by_cell.insert(cell, index);
+            }
+        }
+    }
+    let mut root_groups = std::collections::HashMap::new();
+    for (index, actor) in actors.iter_mut().enumerate() {
+        let root = piston_group_root(&mut parents, index);
+        let next = root_groups.len();
+        actor.group = *root_groups.entry(root).or_insert(next);
+    }
+}
+
+fn piston_group_root(parents: &mut [usize], mut index: usize) -> usize {
+    while parents[index] != index {
+        parents[index] = parents[parents[index]];
+        index = parents[index];
+    }
+    index
+}
+

@@ -158,8 +158,7 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
-#[allow(dead_code)]
-mod event_netlist;
+mod scratch;
 mod options;
 mod passes;
 mod power_rules;
