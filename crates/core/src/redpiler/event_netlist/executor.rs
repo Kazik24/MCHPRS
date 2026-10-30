@@ -14,6 +14,7 @@ pub(crate) struct ExecutionCounts {
     pub(crate) source_events: u64,
     pub(crate) contribution_updates: u64,
     pub(crate) notifications: u64,
+    pub(crate) piston_requests_queued: u64,
     pub(crate) scheduled_ticks: u64,
     pub(crate) piston_actions: u64,
     pub(crate) rejected_piston_actions: u64,
@@ -174,6 +175,37 @@ impl EventState {
     }
 
     #[cfg(test)]
+    pub(crate) fn input_strength_for_port_for_test(&self, node: NodeId, port: InputPort) -> Option<u8> {
+        let range = self.program.input_ranges.get(node.index())?.clone();
+        Some(
+            self.program.input_links[range]
+                .iter()
+                .filter(|&&link| self.program.links[link].port == port)
+                .map(|&link| self.contributions[link])
+                .max()
+                .unwrap_or(0),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_piston_requests_for_test(&self) -> Vec<(PistonId, PistonAction)> {
+        self.piston_requests.iter().map(|request| (request.piston, request.action)).collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn pending_motion_for_test(&self, piston: PistonId) -> Option<(PistonAction, Option<ResourceId>, Option<ContactId>, u64)> {
+        self.motions
+            .iter()
+            .find(|motion| motion.piston == piston)
+            .map(|motion| (motion.action, motion.resource, motion.destination, motion.due_tick))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compiled_piston_operation_count_for_test(&self) -> usize {
+        self.program.piston_operations.len()
+    }
+
+    #[cfg(test)]
     pub(crate) fn link_state_for_test(&self, link_index: usize) -> Option<(u8, bool, u8)> {
         let link = self.program.links.get(link_index)?;
         Some((
@@ -236,6 +268,7 @@ impl EventState {
             return Ok(false);
         }
         self.piston_requests.push_back(PistonRequest { piston, action, source });
+        self.counts.piston_requests_queued += 1;
         Ok(true)
     }
 
@@ -515,6 +548,8 @@ impl EventState {
                 }
             }
             self.run_piston_event(motion.piston, motion.action, PistonEventPhase::Completion);
+            // Completion resamples the restored base even without a new source notification.
+            self.update_receiver(self.program.pistons[motion.piston.index()].input);
             self.counts.motion_completions += 1;
         }
     }
@@ -1760,6 +1795,52 @@ mod tests {
         state.tick().unwrap();
         assert!(!state.piston(PistonId::new(0)).unwrap().pending_motion);
         assert_eq!(state.counts().motion_completions, 1);
+    }
+
+    #[test]
+    fn piston_completion_resamples_power_changed_during_motion() {
+        for initial_extended in [false, true] {
+            let program = EventProgram::new_with_movement(
+                vec![input(0), input(0), input(0), piston_component()],
+                vec![ElectricalLink {
+                    port: InputPort::Main,
+                    source: A,
+                    target: PISTON_A,
+                    attenuation: 0,
+                    condition: None,
+                }],
+                vec![(A, Operation::Contribution(0))],
+                vec![],
+                vec![EventPiston {
+                    input: PISTON_A,
+                    resource: None,
+                    near: CONTACT_A,
+                    far: CONTACT_B,
+                    sticky: false,
+                    initial_extended,
+                    initial_head_present: initial_extended,
+                }],
+                vec![],
+            )
+            .unwrap();
+            let mut state = EventState::new(Arc::new(program), 0);
+            state.set_input(A, if initial_extended { 0 } else { 15 }).unwrap();
+            let action = if initial_extended { PistonAction::Retract } else { PistonAction::Extend };
+            state.queue_piston_action(PistonId::new(0), action, None).unwrap();
+            state.tick().unwrap();
+            state.set_input(A, if initial_extended { 15 } else { 0 }).unwrap();
+            assert!(state.piston_requests.is_empty(), "power alone does not deliver an update");
+            state.tick().unwrap();
+            state.tick().unwrap();
+            assert_eq!(state.piston_requests.len(), 1, "completion rechecks the restored base");
+            state.tick().unwrap();
+            state.tick().unwrap();
+            state.tick().unwrap();
+            assert_eq!(state.piston(PistonId::new(0)).unwrap().extended, initial_extended);
+            assert_eq!(state.counts().piston_actions, 2);
+            assert_eq!(state.counts().motion_completions, 2);
+            assert!(!state.has_pending_work());
+        }
     }
 
     #[test]

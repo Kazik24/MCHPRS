@@ -3,11 +3,6 @@
 #[derive(PartialEq, Eq, Debug)]
 /// Options that control graph preparation and reset behavior.
 pub struct CompilerOptions {
-    /// Opt in to the narrowly admitted experimental event executor. The caller
-    /// declares computation cycles and must stop it with `Compiler::try_reset`.
-    /// New cycles and lever changes are rejected while a piston request or
-    /// movement is pending; advance ticks before retrying.
-    pub experimental_event: bool,
     /// Set by the server from the initiating player's rank, never from flags.
     /// Zero retains the default 1x budget; values are capped at 8x.
     pub budget_multiplier: usize,
@@ -24,7 +19,6 @@ pub(crate) const MAX_OPTIMIZATION_LEVEL: usize = 6;
 impl Default for CompilerOptions {
     fn default() -> Self {
         Self {
-            experimental_event: false,
             budget_multiplier: 0,
             optimization_level: Some(0),
             io_only: false,

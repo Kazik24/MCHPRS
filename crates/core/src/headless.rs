@@ -174,9 +174,6 @@ impl Session {
         if self.compiler.is_active() {
             bail!("session is already compiled");
         }
-        if options.experimental_event {
-            bail!("headless sessions do not yet support event computation-cycle boundaries");
-        }
         if options.io_only {
             bail!("headless sessions require full state projection");
         }
@@ -433,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn compiled_session_and_invalid_projection_option() {
+    fn compiled_session_requires_full_projection() {
         let mut session = Session::new(snapshot()).unwrap();
         let options = CompilerOptions {
             io_only: true,

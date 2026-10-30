@@ -5,13 +5,10 @@ mod dust_corridor;
 mod entry_work;
 #[path = "physical_signal_network/input_links.rs"]
 mod input_links;
-#[path = "physical_signal_network/projection.rs"]
-mod projection;
 #[cfg(test)]
 #[path = "physical_signal_network/repeater_tests.rs"]
 mod repeater_tests;
 pub(crate) use entry_work::EntryWork;
-pub(crate) use projection::SelectionSnapshot;
 #[derive(Clone, Copy)]
 struct WireSample {
     site: super::program_graph::SiteId,

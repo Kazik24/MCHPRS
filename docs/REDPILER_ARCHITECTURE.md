@@ -1,14 +1,16 @@
 # Redpiler architecture
 
-Redpiler has an established physical Graph backend and
-an experimental event backend. The planned world-backed tracer compiler is not
-yet connected to the event executor. Compilation and runtime are separate:
-discovering dependencies does not establish that compiled work executes.
+The player-facing Redpiler uses the physical Graph backend. An independent
+EventProgram/EventState executor and its offline compiler are experimental
+research paths; they are not selectable through the player-facing compiler.
+World-derived discovery and scratch probes are still being integrated with that
+executor. Compilation and runtime are separate: discovering dependencies does
+not establish that compiled work executes.
 
 ## Current execution paths
 
-Graph remains the default backend and the correctness comparison for the new
-engine. It compiles a selected region into CircuitProgram and CircuitState:
+Graph is the player-facing backend. It compiles a selected region into
+CircuitProgram and CircuitState:
 
 ```text
 World selection
@@ -35,9 +37,10 @@ resources and movement completions. Its offline compiler still accepts
 LoweredCircuit and builds electrical dependencies and wire watchers from Graph
 facts. World-derived WireDiscovery is not an input to this compiler yet.
 
-The public experimental backend has a separate, narrow admission contract and
-projection/reset tests. Offline real-circuit compilation does not broaden that
-contract or establish that the player plot uses the independent core.
+The offline event executor uses immutable EventProgram tables and mutable
+EventState for its own runs and tests. It does not activate on player plots and
+has no public backend selector. Offline real-circuit compilation does not
+establish that the independent core can replace Graph for player-facing use.
 
 ## Target event architecture
 
@@ -64,10 +67,11 @@ power; a queued action revalidates live power when it executes. Watched wires
 retain raw strengths, including positive-to-positive changes and source masking.
 Source rise/fall order and movement departure/arrival order have separate plans.
 
-The experimental contract permits different intermediate timing and reset-only
-exit, but requires correct declared boundary outputs and represented BUD,
-observer, clock and shared-resource behavior needed to produce those outputs.
-Unsupported crossings or entry work decline before native execution is disabled.
+The proposed offline executor contract permits different intermediate timing
+and reset-only exit, but requires correct declared boundary outputs and
+represented BUD, observer, clock and shared-resource behavior needed to produce
+those outputs. Unsupported crossings or entry work must decline before native
+execution is disabled.
 
 ## Ownership and pass boundaries
 
@@ -102,4 +106,4 @@ ordering follow that bridge. Public activation and FPU performance remain later
 gates. See the [implementation scope and current plan](REDPILER_TRACER_COMPILER_SCOPE.md).
 
 Historical FPU measurements describe the retired settled-frame implementation.
-They do not establish current event-backend behavior or throughput.
+They do not establish current offline event-executor behavior or throughput.

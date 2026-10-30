@@ -144,6 +144,39 @@ fn compile_inner(
     let mut operations = Vec::new();
     let mut resource_operations = Vec::new();
     let mut piston_operations = Vec::new();
+    // Base/head changes send shape updates; only observers matching the native
+    // directional callback are recipients. Power updates use a separate path.
+    for (index, piston) in graph.pistons().iter().enumerate() {
+        let actor = crate::redpiler::program_graph::PistonId::new(index as u32);
+        for source in [piston.position, piston.position.offset(piston.facing)] {
+            crate::redstone::piston::shape_notifications(source, |position, direction| {
+                let Some(&target) = target_positions.get(&position) else { return };
+                if !matches!(components[target.index()].kind, ComponentKind::Observer)
+                    || !matches!(graph.nodes()[target.index()].kind, CircuitNodeKind::Observer { facing, .. } if facing == direction.opposite())
+                {
+                    return;
+                }
+                for action in [
+                    mchprs_world::PistonAction::Extend,
+                    mchprs_world::PistonAction::Retract,
+                    mchprs_world::PistonAction::RetractWithoutPull,
+                ] {
+                    piston_operations.push(PistonOperation {
+                        piston: actor,
+                        action,
+                        phase: PistonEventPhase::Mutation,
+                        instruction: ResourceInstruction::NotifyObserver { target, shape: true },
+                    });
+                    piston_operations.push(PistonOperation {
+                        piston: actor,
+                        action,
+                        phase: PistonEventPhase::Completion,
+                        instruction: ResourceInstruction::NotifyObserver { target, shape: true },
+                    });
+                }
+            });
+        }
+    }
     let explicit_receiver = movement.and_then(|movement| target_positions.get(&movement.receiver).copied());
     for (target_index, _node) in graph.nodes().iter().enumerate() {
         if explicit_receiver.is_some_and(|receiver| receiver.index() == target_index) {

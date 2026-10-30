@@ -158,7 +158,6 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
-mod event_backend;
 #[allow(dead_code)]
 mod event_netlist;
 #[allow(dead_code)]
@@ -195,7 +194,6 @@ pub use task_monitor::TaskMonitor;
 /// Failure to prepare or activate a compiled redstone backend.
 pub enum CompileError {
     AlreadyActive,
-    EventAdmission(String),
     Analysis(analysis::AnalysisError),
     Unsupported(Box<analysis::AnalysisReport>),
     Cancelled,
@@ -217,7 +215,6 @@ impl std::fmt::Display for CompileError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::AlreadyActive => f.write_str("reset the active compiler before recompiling"),
-            Self::EventAdmission(reason) => f.write_str(reason),
             Self::Analysis(error) => error.fmt(f),
             Self::Unsupported(report) => {
                 write!(f, "{}", report.summary())?;
@@ -261,21 +258,10 @@ fn graph_backend_error(error: backend::graph::GraphBackendError, monitor: &TaskM
 pub enum BackendKind {
     /// Compiled redstone execution uses the lowered Graph program.
     Graph,
-    /// Explicitly selected, narrowly admitted experimental event executor.
-    Event,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct EventExecutionCounts {
-    pub logical_tick: u64,
-    pub resource_movements: u64,
-    pub link_visits: u64,
-    pub physical_wire_settles: u64,
 }
 
 enum ActiveBackend {
     Graph(Box<GraphBackend>),
-    Event(Box<event_backend::EventBackend>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -312,7 +298,6 @@ impl Compiler {
     pub(crate) fn ordinary_sources(&self) -> Vec<(BlockPos, u8)> {
         match self.backend.as_ref().unwrap() {
             ActiveBackend::Graph(graph) => graph.ordinary_sources(),
-            ActiveBackend::Event(_) => vec![],
         }
     }
 
@@ -332,7 +317,6 @@ impl Compiler {
     pub fn backend_kind(&self) -> Option<BackendKind> {
         self.backend.as_ref().map(|backend| match backend {
             ActiveBackend::Graph(_) => BackendKind::Graph,
-            ActiveBackend::Event(_) => BackendKind::Event,
         })
     }
 
@@ -340,7 +324,6 @@ impl Compiler {
     pub fn graph_execution_counts(&self) -> Option<GraphExecutionCounts> {
         match self.backend.as_ref()? {
             ActiveBackend::Graph(graph) => Some(graph.execution_counts()),
-            ActiveBackend::Event(_) => None,
         }
     }
 
@@ -348,29 +331,14 @@ impl Compiler {
     pub fn graph_execution_coverage(&self) -> Option<GraphExecutionCoverage> {
         match self.backend.as_ref()? {
             ActiveBackend::Graph(graph) => Some(graph.execution_coverage()),
-            ActiveBackend::Event(_) => None,
         }
-    }
-
-    pub fn event_execution_counts(&self) -> Option<EventExecutionCounts> {
-        let ActiveBackend::Event(event) = self.backend.as_ref()? else {
-            return None;
-        };
-        let (logical_tick, resource_movements, link_visits, physical_wire_settles) = event.counts();
-        Some(EventExecutionCounts {
-            logical_tick,
-            resource_movements,
-            link_visits,
-            physical_wire_settles,
-        })
     }
 
     /// Compile the selected region and start it with the supplied pending ticks.
     ///
     /// Reads the world without changing it. On failure or cancellation, no new
     /// backend or statistics are installed. Reset an active compiler before compiling again.
-    /// Event admission requires the complete current scheduler inventory in `ticks`;
-    /// unrelated entries are inspected but remain owned by the caller.
+    /// Pending ticks in `ticks` are imported into the compiled graph.
     pub fn compile<W: World>(
         &mut self,
         world: &W,
@@ -402,40 +370,6 @@ impl Compiler {
         }
         monitor.clear_graph_statistics();
         monitor.set_budget_multiplier(options.budget_multiplier);
-        if options.experimental_event {
-            if options.optimization_level != Some(0) || options.io_only || options.update {
-                return Err(CompileError::EventAdmission(
-                    "event admission: requires O0 and full projection without update".into(),
-                ));
-            }
-            let entry_ticks = ticks.clone();
-            let limits = analysis::AnalysisLimits::for_budget(monitor.budget_multiplier());
-            let prepared = passes::rich::prepare(world, bounds, ticks, &monitor, limits).map_err(|error| graph_preparation_error(error, &monitor))?;
-            let analysis_duration = prepared.analysis_duration;
-            let validated = prepared
-                .run_passes(&options, &passes::default_graph_pipeline(&options), &monitor)
-                .map_err(|error| graph_pipeline_error(error, &monitor))?;
-            let lowered = validated
-                .lower(&monitor)
-                .map_err(|error| graph_backend_error(backend::graph::GraphBackendError::Graph(error), &monitor))?;
-            let node_count = lowered.program.nodes().len();
-            let event = event_backend::EventBackend::compile(world, bounds, &entry_ticks, lowered).map_err(CompileError::EventAdmission)?;
-            if monitor.cancelled() {
-                return Err(CompileError::Cancelled);
-            }
-            self.statistics = Some(CompileStatistics {
-                graph: monitor.graph_statistics(),
-                backend: BackendKind::Event,
-                backend_nodes: node_count,
-                execution_coverage: Default::default(),
-                analysis_duration,
-                backend_duration: start.elapsed(),
-                total_duration: start.elapsed(),
-            });
-            self.backend = Some(ActiveBackend::Event(Box::new(event)));
-            self.options = options;
-            return Ok(());
-        }
         let backend_start = Instant::now();
         let (backend, analysis_duration) = Self::prepare_graph_backend(world, bounds, ticks, &options, &monitor, graph_pipeline)?;
         let backend_duration = backend_start.elapsed();
@@ -488,19 +422,17 @@ impl Compiler {
     ///
     /// Stops compiled execution. Call between ticks. With `update` enabled, also
     /// send block updates throughout `bounds`. Does nothing when already inactive.
-    /// Use `try_reset` to detect and retry an event restoration failure.
     pub fn reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) {
         if let Err(error) = self.try_reset(world, bounds) {
             tracing::error!(%error, "compiled reset failed");
         }
     }
 
-    /// Stop the backend. Event restoration failure keeps the backend and snapshot for retry.
+    /// Stop the graph backend.
     pub fn try_reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<(), GraphExecutionError> {
         if let Some(backend) = self.backend.as_mut() {
             match backend {
                 ActiveBackend::Graph(graph) => graph.reset(world),
-                ActiveBackend::Event(event) => event.stop(world).map_err(|reason| GraphExecutionError::Event { reason })?,
             }
             self.backend = None;
         }
@@ -520,7 +452,6 @@ impl Compiler {
     fn backend(&mut self) -> &mut GraphBackend {
         match self.backend.as_mut().expect("tried to get redpiler backend when inactive") {
             ActiveBackend::Graph(graph) => graph,
-            ActiveBackend::Event(_) => panic!("event backend is not graph"),
         }
     }
 
@@ -531,38 +462,34 @@ impl Compiler {
     pub fn tick(&mut self) -> Result<(), GraphExecutionError> {
         match self.backend.as_mut().expect("compiler inactive") {
             ActiveBackend::Graph(graph) => graph.tick(),
-            ActiveBackend::Event(event) => event.tick().map_err(|reason| GraphExecutionError::Event { reason }),
         }
     }
 
     /// Use a lever or button and send its notifications immediately.
     ///
-    /// Ignores other positions. Logs execution errors, which also stop later backend work.
+    /// Ignores other positions. Logs execution errors.
     pub fn on_use_block(&mut self, pos: BlockPos) {
         if let Err(error) = self.try_on_use_block(pos) {
             tracing::error!(%error, "graph backend control failed");
         }
     }
 
-    /// Use a control and return any execution error. Event controls reject
-    /// input while a piston request or movement is pending.
+    /// Use a control and return any execution error.
     pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), GraphExecutionError> {
         match self.backend.as_mut().expect("compiler inactive") {
             ActiveBackend::Graph(graph) => graph.use_block(pos),
-            ActiveBackend::Event(event) => event.use_block(pos).map_err(|reason| GraphExecutionError::Event { reason }),
         }
     }
 
     pub(crate) fn accepts_control(&self, pos: BlockPos, plate: bool) -> bool {
         self.backend.as_ref().is_some_and(|backend| match backend {
             ActiveBackend::Graph(graph) => graph.accepts_control(pos, plate),
-            ActiveBackend::Event(event) => !plate && event.accepts_control(pos),
         })
     }
 
     /// Change a pressure plate's powered state and send its notifications immediately.
     ///
-    /// Ignores other positions. Logs execution errors, which also stop later backend work.
+    /// Ignores other positions. Logs execution errors.
     pub fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
         if let Err(error) = self.try_set_pressure_plate(pos, powered) {
             tracing::error!(%error, "graph backend control failed");
@@ -573,9 +500,6 @@ impl Compiler {
     pub fn try_set_pressure_plate(&mut self, pos: BlockPos, powered: bool) -> Result<(), GraphExecutionError> {
         match self.backend.as_mut().expect("compiler inactive") {
             ActiveBackend::Graph(graph) => graph.set_pressure_plate(pos, powered),
-            ActiveBackend::Event(_) => Err(GraphExecutionError::Event {
-                reason: "pressure plates are unsupported",
-            }),
         }
     }
 
@@ -588,7 +512,7 @@ impl Compiler {
         }
     }
 
-    /// Project the selected backend state, reporting errors before any partial event write.
+    /// Project the compiled graph state.
     pub fn try_flush<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
         let io_only = self.options.io_only;
         match self.backend.as_mut().expect("compiler inactive") {
@@ -596,7 +520,6 @@ impl Compiler {
                 graph.flush(world, io_only);
                 Ok(())
             }
-            ActiveBackend::Event(event) => event.flush(world).map_err(|reason| GraphExecutionError::Event { reason }),
         }
     }
 
@@ -607,18 +530,6 @@ impl Compiler {
     pub fn tick_with_world<W: World>(&mut self, world: &mut W) -> Result<(), GraphExecutionError> {
         match self.backend.as_mut().expect("compiler inactive") {
             ActiveBackend::Graph(graph) => graph.tick_with_world(world),
-            ActiveBackend::Event(event) => event.tick().map_err(|reason| GraphExecutionError::Event { reason }),
-        }
-    }
-
-    /// Declare the start of a computation cycle for an event backend. Returns
-    /// an error while a piston request or movement is pending.
-    pub fn begin_computation_cycle(&mut self) -> Result<(), GraphExecutionError> {
-        match self.backend.as_mut().expect("compiler inactive") {
-            ActiveBackend::Event(event) => event.begin_cycle().map_err(|reason| GraphExecutionError::Event { reason }),
-            ActiveBackend::Graph(_) => Err(GraphExecutionError::Event {
-                reason: "computation cycles require event backend",
-            }),
         }
     }
 }
@@ -790,7 +701,6 @@ mod tests {
     fn parse_options() {
         let input = "-iO0 -U";
         let expected_options = CompilerOptions {
-            experimental_event: false,
             budget_multiplier: 0,
             io_only: true,
             optimization_level: Some(0),
