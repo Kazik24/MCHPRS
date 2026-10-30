@@ -61,7 +61,7 @@ use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -167,6 +167,10 @@ pub struct PlotWorld {
     update_stats: UpdateStats,
     bulb_light: block_light::BulbLight,
     redstone_update_observations: Option<Vec<RedstoneUpdateObservation>>,
+    piston_notification_observations: Option<Vec<crate::world::PistonNotificationObservation>>,
+    current_piston_event: Option<mchprs_world::PistonEvent>,
+    piston_motion_origins: HashMap<u64, mchprs_world::PistonEvent>,
+    current_piston_motion: Option<crate::world::PistonMotionObservation>,
     scratch_capture_bounds: Option<(BlockPos, BlockPos)>,
     scratch_boundary_read: std::cell::Cell<Option<BlockPos>>,
     scratch_suppress_commands: bool,
@@ -215,6 +219,10 @@ impl PlotWorld {
             update_stats: Default::default(),
             bulb_light: Default::default(),
             redstone_update_observations: None,
+            piston_notification_observations: None,
+            current_piston_event: None,
+            piston_motion_origins: HashMap::new(),
+            current_piston_motion: None,
             scratch_capture_bounds: None,
             scratch_boundary_read: std::cell::Cell::new(None),
             scratch_suppress_commands: false,
@@ -412,6 +420,16 @@ impl PlotWorld {
         self.redstone_update_observations.take().unwrap_or_default()
     }
 
+    #[cfg(test)]
+    pub(crate) fn observe_piston_notifications(&mut self, enabled: bool) {
+        self.piston_notification_observations = enabled.then(Vec::new);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn take_piston_notification_observations(&mut self) -> Vec<crate::world::PistonNotificationObservation> {
+        self.piston_notification_observations.take().unwrap_or_default()
+    }
+
     pub(crate) fn configure_scratch(&mut self, bounds: (BlockPos, BlockPos)) {
         self.scratch_capture_bounds = Some(bounds);
         self.scratch_boundary_read.set(None);
@@ -450,10 +468,20 @@ impl PlotWorld {
             last_tick: state.logical_tick,
             carried_entity: None,
         });
+        if let Some(event) = self.current_piston_event {
+            self.piston_motion_origins.insert(state.next_identity, event);
+        }
         self.piston_index.get_mut().inserted(pos, state.motions.len() - 1);
     }
 
     fn remove_motions_at(&mut self, pos: BlockPos) {
+        let identities: Vec<_> = self
+            .piston_state
+            .motions
+            .iter()
+            .filter(|motion| motion.pos == pos)
+            .map(|motion| motion.identity)
+            .collect();
         if let Some(index) = self.piston_motion_index(pos, None) {
             if self.piston_state.motions.len() <= 8 || self.piston_index.get_mut().has_duplicate_motions(pos) {
                 // Legacy saves can contain repeated positions; remove all of
@@ -463,6 +491,9 @@ impl PlotWorld {
                 self.piston_state.motions.remove(index);
             }
             self.piston_index.get_mut().removed(pos);
+        }
+        for identity in identities {
+            self.piston_motion_origins.remove(&identity);
         }
     }
 
@@ -613,6 +644,34 @@ impl World for PlotWorld {
         if let Some(observations) = &mut self.redstone_update_observations {
             observations.push(RedstoneUpdateObservation { pos, block, direction });
         }
+    }
+
+    fn observe_piston_notification(&mut self, source: BlockPos, target: BlockPos, direction: BlockFace, shape: bool) {
+        let target_block = self.get_block(target);
+        if let Some(observations) = &mut self.piston_notification_observations {
+            observations.push(crate::world::PistonNotificationObservation {
+                source,
+                target,
+                target_block,
+                direction,
+                shape,
+                phase: self.piston_state.phase,
+                event: self.current_piston_event,
+                motion: self.current_piston_motion,
+            });
+        }
+    }
+
+    fn observe_piston_event_context(&mut self, event: Option<mchprs_world::PistonEvent>) {
+        self.current_piston_event = event;
+    }
+
+    fn piston_motion_origin(&self, identity: u64) -> Option<mchprs_world::PistonEvent> {
+        self.piston_motion_origins.get(&identity).copied()
+    }
+
+    fn observe_piston_motion_context(&mut self, motion: Option<crate::world::PistonMotionObservation>) {
+        self.current_piston_motion = motion;
     }
 
     fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {

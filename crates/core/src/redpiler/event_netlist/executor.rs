@@ -1,5 +1,7 @@
 //! Execution of compiled contribution/notification instructions; no physical propagation.
-use super::program::{CompiledResourceInstruction, ComponentKind, ComponentState, EventCondition, EventProgram, Operation, ResourceEventPhase};
+use super::program::{
+    CompiledResourceInstruction, ComponentKind, ComponentState, EventCondition, EventProgram, Operation, PistonEventPhase, ResourceEventPhase,
+};
 use crate::redpiler::TickScheduler;
 use crate::redpiler::program_graph::{ContactId, InputPort, NodeId, PistonId, ResourceId};
 use mchprs_world::PistonAction;
@@ -44,6 +46,7 @@ struct PistonRequest {
 #[derive(Clone, Copy, Debug)]
 struct MotionState {
     piston: PistonId,
+    action: PistonAction,
     resource: Option<ResourceId>,
     destination: Option<ContactId>,
     resource_revision: u64,
@@ -61,6 +64,8 @@ pub(crate) struct EventState {
     piston_requests: VecDeque<PistonRequest>,
     motions: VecDeque<MotionState>,
     pending: Box<[bool]>,
+    update_phase: u64,
+    updated_in_phase: Box<[u64]>,
     scheduler: TickScheduler<NodeId>,
     logical_tick: u64,
     counts: ExecutionCounts,
@@ -109,6 +114,7 @@ impl EventState {
             })
             .collect();
         let pending = vec![false; components.len()].into();
+        let updated_in_phase = vec![0; components.len()].into();
         // Loaded receiver state is retained. Computing contributions does not deliver an update.
         Self {
             program,
@@ -120,6 +126,8 @@ impl EventState {
             piston_requests: VecDeque::new(),
             motions: VecDeque::new(),
             pending,
+            update_phase: 1,
+            updated_in_phase,
             scheduler: TickScheduler::default(),
             logical_tick,
             counts: ExecutionCounts::default(),
@@ -384,7 +392,10 @@ impl EventState {
                 ComponentKind::Torch => {
                     let lit = self.input_strength(node).unwrap() == 0;
                     if lit != self.components[node.index()].powered {
-                        self.components[node.index()] = ComponentState { output: if lit { 15 } else { 0 }, powered: lit };
+                        self.components[node.index()] = ComponentState {
+                            output: if lit { 15 } else { 0 },
+                            powered: lit,
+                        };
                         self.run_source(node);
                     }
                 }
@@ -394,6 +405,9 @@ impl EventState {
     }
 
     fn run_piston_actions(&mut self) -> Result<(), &'static str> {
+        if !self.piston_requests.is_empty() {
+            self.next_update_phase();
+        }
         if !self.piston_requests.is_empty() && self.logical_tick.checked_add(2).is_none() {
             return Err("event clock overflow");
         }
@@ -455,9 +469,10 @@ impl EventState {
         piston_state.pending_motion = true;
         piston_state.revision = piston_state.revision.wrapping_add(1);
         let piston_revision = piston_state.revision;
-        self.run_piston_event(id);
+        self.run_piston_event(id, action, PistonEventPhase::Mutation);
         self.motions.push_back(MotionState {
             piston: id,
+            action,
             resource: spec.resource.filter(|_| destination.is_some()),
             destination,
             resource_revision,
@@ -476,6 +491,9 @@ impl EventState {
     }
 
     fn complete_motions(&mut self) {
+        if self.motions.iter().any(|motion| motion.due_tick <= self.logical_tick) {
+            self.next_update_phase();
+        }
         let mut index = 0;
         while index < self.motions.len() {
             if self.motions[index].due_tick > self.logical_tick {
@@ -496,7 +514,7 @@ impl EventState {
                     self.run_resource_event(resource, contact, ResourceEventPhase::Arrival);
                 }
             }
-            self.run_piston_event(motion.piston);
+            self.run_piston_event(motion.piston, motion.action, PistonEventPhase::Completion);
             self.counts.motion_completions += 1;
         }
     }
@@ -505,12 +523,13 @@ impl EventState {
         let range_index = resource.index() * 2 + if phase == ResourceEventPhase::Arrival { 1 } else { 0 };
         let range = self.program.resource_ranges[range_index].clone();
         let mut changed_targets = HashSet::new();
+        let mut changed_wires = HashSet::new();
         for index in range {
-            let (operation_contact, instruction) = self.program.resource_operations[index];
-            if operation_contact != contact {
+            let step = self.program.resource_operations[index];
+            if step.contact != contact {
                 continue;
             }
-            match instruction {
+            match step.instruction {
                 CompiledResourceInstruction::Contribution(link) => {
                     let target = self.program.links[link].target;
                     if self.refresh_link(link) {
@@ -521,30 +540,52 @@ impl EventState {
                 }
                 CompiledResourceInstruction::RecomputeWire(wire) => {
                     if self.refresh_wire(wire) {
+                        changed_wires.insert(wire);
                         self.run_source(wire);
                     }
                 }
                 CompiledResourceInstruction::NotifyIfChanged(target) => {
-                    if changed_targets.remove(&target) {
+                    if changed_targets.remove(&target) && self.update_once(target) {
                         self.counts.notifications += 1;
-                        self.update_receiver(target);
                     }
                 }
                 CompiledResourceInstruction::Notify(target) => {
-                    self.counts.notifications += 1;
-                    self.update_receiver(target);
+                    if self.update_once(target) {
+                        self.counts.notifications += 1;
+                    }
+                }
+                CompiledResourceInstruction::NotifyChangedWire { wire, target } => {
+                    if changed_wires.contains(&wire) && self.update_once(target) {
+                        self.counts.notifications += 1;
+                    }
                 }
                 CompiledResourceInstruction::NotifyObserver { target, shape } => {
-                    self.counts.notifications += 1;
-                    if shape {
-                        self.update_observer(target);
+                    if shape && self.update_observer_once(target) {
+                        self.counts.notifications += 1;
                     }
                 }
             }
         }
     }
 
-    fn run_piston_event(&mut self, piston: PistonId) {
+    fn run_piston_event(&mut self, piston: PistonId, action: PistonAction, phase: PistonEventPhase) {
+        let bucket = piston.index() * 6 + action as usize * 2 + usize::from(phase == PistonEventPhase::Completion);
+        let operation_range = self.program.piston_operation_ranges[bucket].clone();
+        let mut explicit_targets = HashSet::new();
+        for index in operation_range.clone() {
+            match self.program.piston_operations[index] {
+                CompiledResourceInstruction::Notify(target) => {
+                    explicit_targets.insert(target);
+                }
+                CompiledResourceInstruction::NotifyChangedWire { target, .. } => {
+                    explicit_targets.insert(target);
+                }
+                CompiledResourceInstruction::NotifyObserver { target, shape: true } => {
+                    explicit_targets.insert(target);
+                }
+                _ => {}
+            }
+        }
         let range = self.program.piston_ranges[piston.index()].clone();
         let links = self.program.piston_links[range].to_vec();
         let mut changed_targets = Vec::new();
@@ -558,15 +599,70 @@ impl EventState {
             }
         }
         for target in changed_targets {
+            if explicit_targets.contains(&target) {
+                continue;
+            }
             if self.program.components[target.index()].kind == ComponentKind::Wire {
                 if self.refresh_wire(target) {
                     self.run_source(target);
                 }
             } else {
-                self.counts.notifications += 1;
-                self.update_receiver(target);
+                if self.update_once(target) {
+                    self.counts.notifications += 1;
+                }
             }
         }
+        let mut changed_wires = HashSet::new();
+        for index in operation_range {
+            match self.program.piston_operations[index] {
+                CompiledResourceInstruction::RecomputeWire(wire) => {
+                    if self.refresh_wire(wire) {
+                        changed_wires.insert(wire);
+                        self.run_source(wire);
+                    }
+                }
+                CompiledResourceInstruction::NotifyChangedWire { wire, target } => {
+                    if changed_wires.contains(&wire) && self.update_once(target) {
+                        self.counts.notifications += 1;
+                    }
+                }
+                CompiledResourceInstruction::Notify(target) => {
+                    if self.update_once(target) {
+                        self.counts.notifications += 1;
+                    }
+                }
+                CompiledResourceInstruction::NotifyObserver { target, shape } => {
+                    if shape && self.update_observer_once(target) {
+                        self.counts.notifications += 1;
+                    }
+                }
+                CompiledResourceInstruction::Contribution(_) | CompiledResourceInstruction::NotifyIfChanged(_) => {
+                    unreachable!("piston notification program contains a resource-only operation")
+                }
+            }
+        }
+    }
+
+    fn next_update_phase(&mut self) {
+        self.update_phase = self.update_phase.wrapping_add(1).max(1);
+    }
+
+    fn update_once(&mut self, node: NodeId) -> bool {
+        if self.updated_in_phase[node.index()] == self.update_phase {
+            return false;
+        }
+        self.updated_in_phase[node.index()] = self.update_phase;
+        self.update_receiver(node);
+        true
+    }
+
+    fn update_observer_once(&mut self, node: NodeId) -> bool {
+        if self.updated_in_phase[node.index()] == self.update_phase {
+            return false;
+        }
+        self.updated_in_phase[node.index()] = self.update_phase;
+        self.update_observer(node);
+        true
     }
 }
 
@@ -985,6 +1081,85 @@ mod tests {
         state.tick().unwrap();
         assert!(!state.component(OBSERVER).unwrap().powered, "on-pulse off deadline is retained");
         assert_eq!(state.counts().scheduled_ticks, 2);
+    }
+
+    #[test]
+    fn movement_step_order_and_changed_wire_overlap_are_phase_deduplicated() {
+        const WIRE: NodeId = NodeId::new(1);
+        const RECEIVER: NodeId = NodeId::new(2);
+        const PISTON: NodeId = NodeId::new(3);
+        const RESOURCE: ResourceId = ResourceId::new(0);
+        const NEAR: ContactId = ContactId::new(0);
+        const FAR: ContactId = ContactId::new(1);
+        let run = |wire_first: bool| {
+            let movement = if wire_first {
+                vec![
+                    ResourceInstruction::RecomputeWire(WIRE),
+                    ResourceInstruction::NotifyChangedWire {
+                        wire: WIRE,
+                        target: RECEIVER,
+                    },
+                    ResourceInstruction::Notify(RECEIVER),
+                ]
+            } else {
+                vec![
+                    ResourceInstruction::Notify(RECEIVER),
+                    ResourceInstruction::RecomputeWire(WIRE),
+                    ResourceInstruction::NotifyChangedWire {
+                        wire: WIRE,
+                        target: RECEIVER,
+                    },
+                ]
+            };
+            let program = EventProgram::new_with_movement(
+                vec![
+                    input(0),
+                    wire(15),
+                    Component {
+                        kind: ComponentKind::Repeater { delay: 2 },
+                        initial: ComponentState::default(),
+                    },
+                    piston_component(),
+                ],
+                vec![ElectricalLink {
+                    source: WIRE,
+                    target: RECEIVER,
+                    port: InputPort::Main,
+                    attenuation: 0,
+                    condition: None,
+                }],
+                vec![(WIRE, Operation::Contribution(0))],
+                vec![EventResource {
+                    contacts: vec![NEAR, FAR].into(),
+                    initial_at: FAR,
+                }],
+                vec![EventPiston {
+                    input: PISTON,
+                    resource: Some(RESOURCE),
+                    near: NEAR,
+                    far: FAR,
+                    sticky: true,
+                    initial_extended: true,
+                    initial_head_present: true,
+                }],
+                movement
+                    .into_iter()
+                    .map(|instruction| ResourceOperation {
+                        resource: RESOURCE,
+                        contact: FAR,
+                        phase: ResourceEventPhase::Departure,
+                        instruction,
+                    })
+                    .collect(),
+            )
+            .unwrap();
+            let mut state = EventState::new(Arc::new(program), 0);
+            state.queue_piston_action(PistonId::new(0), PistonAction::Retract, None).unwrap();
+            state.tick().unwrap();
+            state.pending[RECEIVER.index()]
+        };
+        assert!(run(false), "explicit update runs before changed-wire recomputation");
+        assert!(!run(true), "changed-wire update runs first and suppresses the later duplicate");
     }
 
     #[test]

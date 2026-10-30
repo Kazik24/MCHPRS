@@ -1,7 +1,7 @@
 //! First compiler from prepared discovery facts into the independent event runtime.
 use super::program::{
     Component, ComponentKind, ComponentState as EventComponentState, ElectricalLink, EventCondition, EventContactVariant, EventPiston, EventProfile,
-    EventProgram, EventResource, Operation, ResourceEventPhase, ResourceInstruction, ResourceOperation,
+    EventProgram, EventResource, Operation, PistonEventPhase, PistonOperation, ResourceEventPhase, ResourceInstruction, ResourceOperation,
 };
 use crate::redpiler::components::NodeType;
 use crate::redpiler::program_graph::{
@@ -32,7 +32,7 @@ impl std::fmt::Display for CompileError {
 }
 
 pub(crate) fn compile(lowered: &LoweredCircuit) -> Result<CompiledEvent, CompileError> {
-    compile_inner(lowered, None)
+    compile_inner(lowered, None, None)
 }
 
 // shortcut: one piston and static geometry only; upgrade when movement is modeled.
@@ -40,13 +40,42 @@ pub(super) fn compile_with_wire_discovery(
     lowered: &LoweredCircuit,
     discovery: &super::scratch::WireDiscovery,
 ) -> Result<CompiledEvent, CompileError> {
-    compile_inner(lowered, Some(discovery))
+    compile_inner(lowered, Some(discovery), None)
 }
 
-fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::WireDiscovery>) -> Result<CompiledEvent, CompileError> {
+pub(super) struct ResourceDiscovery<'a> {
+    pub(super) arrangements: &'a super::scratch::ResourceWireArrangements,
+    pub(super) actors: &'a super::scratch::PistonResourceMap,
+    pub(super) receiver: BlockPos,
+    pub(super) departure_far: &'a [BlockPos],
+    pub(super) arrival_far: &'a [BlockPos],
+    pub(super) piston_notifications: &'a [crate::world::PistonNotificationObservation],
+}
+
+pub(super) fn compile_with_resource_discovery(lowered: &LoweredCircuit, discovery: &ResourceDiscovery<'_>) -> Result<CompiledEvent, CompileError> {
+    compile_inner(lowered, Some(&discovery.arrangements.at_far), Some(discovery))
+}
+
+fn compile_inner(
+    lowered: &LoweredCircuit,
+    discovery: Option<&super::scratch::WireDiscovery>,
+    movement: Option<&ResourceDiscovery<'_>>,
+) -> Result<CompiledEvent, CompileError> {
     let graph = &lowered.program;
+    let mut target_positions = graph.position_index();
+    for piston in graph.pistons() {
+        if target_positions.insert(piston.position, piston.node).is_some() {
+            return Err(CompileError {
+                position: Some(piston.position),
+                reason: "piston base collides with another executable target".into(),
+            });
+        }
+    }
     if let Some(tick) = lowered.imported_ticks.first() {
-        return Err(CompileError { position: Some(tick.position), reason: "pending entry ticks are not represented".into() });
+        return Err(CompileError {
+            position: Some(tick.position),
+            reason: "pending entry ticks are not represented".into(),
+        });
     }
     let at = |node: NodeId| graph.nodes()[node.index()].position;
     for (index, piston) in graph.pistons().iter().enumerate() {
@@ -61,7 +90,10 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
     let mut components = Vec::with_capacity(graph.nodes().len());
     for (index, node) in graph.nodes().iter().enumerate() {
         if matches!(lowered.state.components.get(index), Some(ComponentState::Electrical(state)) if state.pending_tick) {
-            return Err(CompileError { position: node.position, reason: "pending component work is not represented".into() });
+            return Err(CompileError {
+                position: node.position,
+                reason: "pending component work is not represented".into(),
+            });
         }
         let mut state = match lowered.state.components.get(index) {
             Some(ComponentState::Electrical(state)) => EventComponentState {
@@ -111,7 +143,12 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
     let mut links = Vec::new();
     let mut operations = Vec::new();
     let mut resource_operations = Vec::new();
+    let mut piston_operations = Vec::new();
+    let explicit_receiver = movement.and_then(|movement| target_positions.get(&movement.receiver).copied());
     for (target_index, _node) in graph.nodes().iter().enumerate() {
+        if explicit_receiver.is_some_and(|receiver| receiver.index() == target_index) {
+            continue;
+        }
         if !matches!(
             components[target_index].kind,
             ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch
@@ -196,11 +233,229 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
     let mut wire_watchers = Vec::new();
     if let Some(discovery) = discovery {
         // shortcut: movable resources can change discovered geometry; admit them only after rediscovery is modeled.
-        if pistons.len() != 1 || !graph.resources().is_empty() {
+        if (movement.is_none() && (pistons.len() != 1 || !graph.resources().is_empty())) || (movement.is_some() && graph.resources().len() != 1) {
             return Err(CompileError {
                 position: None,
                 reason: "wire discovery requires one piston and static geometry".into(),
             });
+        }
+        if let Some(movement) = movement {
+            let a = movement.arrangements;
+            let Some(resource_fact) = movement
+                .actors
+                .resources
+                .iter()
+                .find(|resource| resource.contacts.contains(&a.receiver[1].source))
+            else {
+                return Err(CompileError {
+                    position: Some(movement.receiver),
+                    reason: "receiver contact has no discovered movable resource".into(),
+                });
+            };
+            let [actor] = resource_fact.acting_pistons.as_slice() else {
+                return Err(CompileError {
+                    position: Some(movement.receiver),
+                    reason: "resource actor group is empty or shared by multiple pistons".into(),
+                });
+            };
+            let piston = &pistons[actor.index()];
+            let resource = resource_fact.id;
+            let Some(resource_contact) = graph
+                .contacts()
+                .iter()
+                .position(|contact| contact.position == a.receiver[1].source)
+                .map(|index| crate::redpiler::program_graph::ContactId::new(index as u32))
+            else {
+                return Err(CompileError {
+                    position: Some(movement.receiver),
+                    reason: "discovered resource receiver contact is not compiled".into(),
+                });
+            };
+            let receiver = explicit_receiver.ok_or_else(|| CompileError {
+                position: Some(movement.receiver),
+                reason: "discovered repeater missing from graph".into(),
+            })?;
+            let unsupported = [
+                (
+                    graph.resources()[resource.index()].contacts.len() != 2,
+                    "resource contact count is not represented",
+                ),
+                (!lowered.state.resources[resource.index()].enabled, "initial resource is disabled"),
+                (piston.resource != Some(resource), "resource actor does not own the graph resource"),
+                (
+                    resource_fact.material != (Block::RedstoneBlock {}),
+                    "resource material is not a redstone block",
+                ),
+                (
+                    resource_fact.initial_contact != a.receiver[1].source,
+                    "resource initial contact differs from discovered receiver source",
+                ),
+                (resource_fact.contacts.len() != 2, "resource arrangement count is not represented"),
+                (!piston.sticky, "resource actor is not sticky"),
+                (
+                    components[receiver.index()].kind != (ComponentKind::Repeater { delay: 2 }),
+                    "receiver is not a delay-2 repeater",
+                ),
+                (
+                    a.at_far != a.at_near || a.at_far != a.in_motion,
+                    "wire arrangement changes across resource contacts",
+                ),
+                (
+                    a.receiver.map(|input| input.strength) != [0, 15, 0],
+                    "receiver strengths do not match near/far/moving",
+                ),
+                (
+                    a.receiver
+                        .iter()
+                        .any(|input| input.source != a.receiver[1].source || input.attenuation != 0),
+                    "receiver source or attenuation differs across arrangements",
+                ),
+                (
+                    a.receiver.iter().any(|input| input.direction != a.receiver[1].direction),
+                    "receiver direction differs across arrangements",
+                ),
+                (
+                    links.iter().any(|link| link.condition.as_ref().is_some_and(uses_resource)),
+                    "other graph links depend on the movable resource",
+                ),
+            ]
+            .into_iter()
+            .find_map(|(condition, reason)| condition.then_some(reason));
+            if let Some(reason) = unsupported {
+                return Err(CompileError {
+                    position: Some(movement.receiver),
+                    reason: reason.into(),
+                });
+            }
+            let source = NodeId::new(components.len() as u32);
+            components.push(Component {
+                kind: ComponentKind::Input,
+                initial: EventComponentState { output: 15, powered: true },
+            });
+            let id = links.len();
+            links.push(ElectricalLink {
+                source,
+                target: receiver,
+                port: InputPort::Main,
+                attenuation: a.receiver[1].attenuation,
+                condition: Some(EventCondition::All(
+                    vec![
+                        EventCondition::ResourceAt {
+                            resource,
+                            contact: resource_contact,
+                        },
+                        EventCondition::ResourceEnabled(resource),
+                    ]
+                    .into_boxed_slice(),
+                )),
+            });
+            operations.push((source, Operation::Contribution(id)));
+            let positions = graph.position_index();
+            for (phase, observed) in [
+                (ResourceEventPhase::Departure, movement.departure_far),
+                (ResourceEventPhase::Arrival, movement.arrival_far),
+            ] {
+                for &position in observed {
+                    let target = positions.get(&position).copied().ok_or_else(|| CompileError {
+                        position: Some(position),
+                        reason: "movement watcher is not represented in the graph".into(),
+                    })?;
+                    let instruction = match components[target.index()].kind {
+                        ComponentKind::Observer => ResourceInstruction::NotifyObserver { target, shape: true },
+                        ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch => {
+                            ResourceInstruction::Notify(target)
+                        }
+                        _ => {
+                            return Err(CompileError {
+                                position: Some(position),
+                                reason: "unsupported movement watcher receiver".into(),
+                            });
+                        }
+                    };
+                    resource_operations.push(ResourceOperation {
+                        resource,
+                        contact: resource_contact,
+                        phase,
+                        instruction,
+                    });
+                }
+            }
+            for observation in movement.piston_notifications {
+                let (actor_position, action, phase) = match (observation.event, observation.motion) {
+                    (Some(event), None) if observation.phase == mchprs_world::AdvancePhase::PistonEvents => {
+                        (event.pos, event.action, PistonEventPhase::Mutation)
+                    }
+                    (None, Some(motion)) if observation.phase == mchprs_world::AdvancePhase::MovingEntities => {
+                        if motion.part != observation.source {
+                            return Err(CompileError {
+                                position: Some(observation.source),
+                                reason: "completion callback does not match its recorded motion part".into(),
+                            });
+                        }
+                        (motion.actor, motion.action, PistonEventPhase::Completion)
+                    }
+                    (None, None) => continue,
+                    _ => {
+                        return Err(CompileError {
+                            position: Some(observation.source),
+                            reason: "piston callback phase lacks matching motion provenance".into(),
+                        });
+                    }
+                };
+                if let Some(event) = observation.event.filter(|_| phase == PistonEventPhase::Mutation) {
+                    if event.pos != actor_position || event.action != action {
+                        return Err(CompileError {
+                            position: Some(observation.source),
+                            reason: "piston mutation callback provenance is inconsistent".into(),
+                        });
+                    }
+                }
+                if observation.phase == mchprs_world::AdvancePhase::MovingEntities && observation.motion.is_none() {
+                    return Err(CompileError {
+                        position: Some(observation.source),
+                        reason: "piston completion callback has no motion provenance".into(),
+                    });
+                }
+                let Some(piston) = graph.pistons().iter().position(|piston| piston.position == actor_position) else {
+                    return Err(CompileError {
+                        position: Some(actor_position),
+                        reason: "scratch piston notification actor is not represented".into(),
+                    });
+                };
+                let Some(target) = target_positions.get(&observation.target).copied() else {
+                    if matches!(
+                        observation.target_block,
+                        Block::Piston { .. }
+                            | Block::RedstoneWire { .. }
+                            | Block::RedstoneRepeater { .. }
+                            | Block::RedstoneTorch { .. }
+                            | Block::RedstoneWallTorch { .. }
+                            | Block::RedstoneLamp { .. }
+                            | Block::Observer { .. }
+                    ) {
+                        return Err(CompileError {
+                            position: Some(observation.target),
+                            reason: "scratch callback target is an executable block missing from the target index".into(),
+                        });
+                    }
+                    continue;
+                };
+                let instruction = match components[target.index()].kind {
+                    ComponentKind::Observer if observation.shape => ResourceInstruction::NotifyObserver { target, shape: true },
+                    ComponentKind::Observer => continue,
+                    ComponentKind::Wire => ResourceInstruction::RecomputeWire(target),
+                    ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch => {
+                        ResourceInstruction::Notify(target)
+                    }
+                    ComponentKind::Input => continue,
+                };
+                piston_operations.push(PistonOperation {
+                    piston: crate::redpiler::program_graph::PistonId::new(piston as u32),
+                    action,
+                    phase,
+                    instruction,
+                });
+            }
         }
         let positions = graph.position_index();
         for watch in &discovery.watchers {
@@ -208,8 +463,14 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
                 position: Some(watch.wire),
                 reason: "discovered wire missing from graph".into(),
             })?;
-            let piston = pistons[0].input;
-            if components[wire.index()].kind != ComponentKind::Wire || watch.piston != graph.pistons()[0].position {
+            let Some(piston_index) = graph.pistons().iter().position(|piston| piston.position == watch.piston) else {
+                return Err(CompileError {
+                    position: Some(watch.piston),
+                    reason: "discovered piston watcher is not represented".into(),
+                });
+            };
+            let piston = pistons[piston_index].input;
+            if components[wire.index()].kind != ComponentKind::Wire {
                 return Err(CompileError {
                     position: Some(watch.wire),
                     reason: "invalid discovered wire watcher".into(),
@@ -236,6 +497,16 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
         }
     }
     let mut wire_targets: Vec<NodeId> = wire_watchers.iter().map(|(wire, _)| *wire).collect();
+    if let Some(movement) = movement {
+        let positions = graph.position_index();
+        for source in &movement.arrangements.at_far.sources {
+            let wire = positions.get(&source.wire).copied().ok_or_else(|| CompileError {
+                position: Some(source.wire),
+                reason: "discovered wire missing from graph".into(),
+            })?;
+            wire_targets.push(wire);
+        }
+    }
     wire_targets.extend(
         links
             .iter()
@@ -246,7 +517,7 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
     let mut wire_recomputes = Vec::new();
     for wire in wire_targets {
         let mut leaves = Vec::new();
-        if let Some(discovery) = discovery.filter(|d| d.watchers.iter().any(|watch| Some(watch.wire) == at(wire))) {
+        if let Some(discovery) = discovery.filter(|d| movement.is_some() || d.watchers.iter().any(|watch| Some(watch.wire) == at(wire))) {
             let positions = graph.position_index();
             for dependency in discovery.sources.iter().filter(|source| Some(source.wire) == at(wire)) {
                 let source = positions.get(&dependency.source).copied().ok_or_else(|| CompileError {
@@ -331,15 +602,34 @@ fn compile_inner(lowered: &LoweredCircuit, discovery: Option<&super::scratch::Wi
             }
         }
     }
-    let program = EventProgram::new_with_wire_watchers(components, links, operations, resources, pistons, resource_operations, wire_watchers)
-        .map_err(|reason| CompileError {
-            position: None,
-            reason: reason.into(),
-        })?;
+    let program = EventProgram::new_with_piston_operations(
+        components,
+        links,
+        operations,
+        resources,
+        pistons,
+        resource_operations,
+        wire_watchers,
+        explicit_receiver,
+        piston_operations,
+    )
+    .map_err(|reason| CompileError {
+        position: None,
+        reason: reason.into(),
+    })?;
     Ok(CompiledEvent {
         program: Arc::new(program),
-        positions: graph.position_index(),
+        positions: target_positions,
     })
+}
+
+fn uses_resource(condition: &EventCondition) -> bool {
+    match condition {
+        EventCondition::ResourceAt { .. } | EventCondition::ResourceEnabled(_) | EventCondition::ContactTest { .. } => true,
+        EventCondition::Not(inner) => uses_resource(inner),
+        EventCondition::All(items) | EventCondition::Any(items) => items.iter().any(uses_resource),
+        _ => false,
+    }
 }
 
 #[derive(Clone, Copy)]

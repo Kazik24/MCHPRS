@@ -1,5 +1,6 @@
 //! Component execution data. Physical sites, wires and callback routes are not runtime inputs.
 use crate::redpiler::program_graph::{ContactId, InputPort, NodeId, PistonId, ProfileId, ResourceId, SiteTest};
+use mchprs_world::PistonAction;
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -102,6 +103,8 @@ pub(crate) enum ResourceEventPhase {
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ResourceInstruction {
     Notify(NodeId),
+    RecomputeWire(NodeId),
+    NotifyChangedWire { wire: NodeId, target: NodeId },
     NotifyObserver { target: NodeId, shape: bool },
 }
 
@@ -113,13 +116,34 @@ pub(crate) struct ResourceOperation {
     pub(crate) instruction: ResourceInstruction,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PistonEventPhase {
+    Mutation,
+    Completion,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PistonOperation {
+    pub(crate) piston: PistonId,
+    pub(crate) action: PistonAction,
+    pub(crate) phase: PistonEventPhase,
+    pub(crate) instruction: ResourceInstruction,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CompiledResourceInstruction {
     Contribution(usize),
     RecomputeWire(NodeId),
     NotifyIfChanged(NodeId),
     Notify(NodeId),
+    NotifyChangedWire { wire: NodeId, target: NodeId },
     NotifyObserver { target: NodeId, shape: bool },
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MovementStep {
+    pub(crate) contact: ContactId,
+    pub(crate) instruction: CompiledResourceInstruction,
 }
 
 /// A contribution change and a receiver update are separate observable operations.
@@ -145,7 +169,9 @@ pub(crate) struct EventProgram {
     pub(super) resources: Box<[EventResource]>,
     pub(super) pistons: Box<[EventPiston]>,
     pub(super) resource_ranges: Box<[Range<usize>]>,
-    pub(super) resource_operations: Box<[(ContactId, CompiledResourceInstruction)]>,
+    pub(super) resource_operations: Box<[MovementStep]>,
+    pub(super) piston_operation_ranges: Box<[Range<usize>]>,
+    pub(super) piston_operations: Box<[CompiledResourceInstruction]>,
     pub(super) piston_ranges: Box<[Range<usize>]>,
     pub(super) piston_links: Box<[usize]>,
     pub(super) wire_watchers: Box<[Box<[NodeId]>]>,
@@ -176,6 +202,52 @@ impl EventProgram {
         pistons: Vec<EventPiston>,
         resource_operations: Vec<ResourceOperation>,
         wire_watchers: Vec<(NodeId, NodeId)>,
+    ) -> Result<Self, &'static str> {
+        Self::new_with_explicit_resource_receiver(
+            components,
+            links,
+            operations,
+            resources,
+            pistons,
+            resource_operations,
+            wire_watchers,
+            None,
+        )
+    }
+
+    pub(crate) fn new_with_explicit_resource_receiver(
+        components: Vec<Component>,
+        links: Vec<ElectricalLink>,
+        operations: Vec<(NodeId, Operation)>,
+        resources: Vec<EventResource>,
+        pistons: Vec<EventPiston>,
+        resource_operations: Vec<ResourceOperation>,
+        wire_watchers: Vec<(NodeId, NodeId)>,
+        explicit_receiver: Option<NodeId>,
+    ) -> Result<Self, &'static str> {
+        Self::new_with_piston_operations(
+            components,
+            links,
+            operations,
+            resources,
+            pistons,
+            resource_operations,
+            wire_watchers,
+            explicit_receiver,
+            Vec::new(),
+        )
+    }
+
+    pub(crate) fn new_with_piston_operations(
+        components: Vec<Component>,
+        links: Vec<ElectricalLink>,
+        operations: Vec<(NodeId, Operation)>,
+        resources: Vec<EventResource>,
+        pistons: Vec<EventPiston>,
+        resource_operations: Vec<ResourceOperation>,
+        wire_watchers: Vec<(NodeId, NodeId)>,
+        explicit_receiver: Option<NodeId>,
+        piston_operations: Vec<PistonOperation>,
     ) -> Result<Self, &'static str> {
         let count = components.len();
         if u32::try_from(count).is_err() || u32::try_from(resources.len()).is_err() || u32::try_from(pistons.len()).is_err() {
@@ -335,8 +407,13 @@ impl EventProgram {
                         let departure = resource.index() * 2;
                         let arrival = departure + 1;
                         for phase in [departure, arrival] {
-                            resource_buckets[phase].push((contact, CompiledResourceInstruction::Contribution(link_index)));
-                            if components[link.target.index()].kind == ComponentKind::Wire {
+                            resource_buckets[phase].push(MovementStep {
+                                contact,
+                                instruction: CompiledResourceInstruction::Contribution(link_index),
+                            });
+                            if Some(link.target) == explicit_receiver {
+                                continue;
+                            } else if components[link.target.index()].kind == ComponentKind::Wire {
                                 if resource_notifications.insert((phase, contact, link.target)) {
                                     notifications.push((phase, contact, link.target));
                                 }
@@ -354,7 +431,7 @@ impl EventProgram {
             } else {
                 CompiledResourceInstruction::NotifyIfChanged(target)
             };
-            resource_buckets[phase].push((contact, instruction));
+            resource_buckets[phase].push(MovementStep { contact, instruction });
         }
         for operation in resource_operations {
             let Some(resource) = resources.get(operation.resource.index()) else {
@@ -375,6 +452,25 @@ impl EventProgram {
                     }
                     CompiledResourceInstruction::Notify(target)
                 }
+                ResourceInstruction::RecomputeWire(target) => {
+                    if target.index() >= count || components[target.index()].kind != ComponentKind::Wire {
+                        return Err("invalid movement wire recomputation target");
+                    }
+                    CompiledResourceInstruction::RecomputeWire(target)
+                }
+                ResourceInstruction::NotifyChangedWire { wire, target } => {
+                    if wire.index() >= count
+                        || components[wire.index()].kind != ComponentKind::Wire
+                        || target.index() >= count
+                        || !matches!(
+                            components[target.index()].kind,
+                            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch
+                        )
+                    {
+                        return Err("invalid movement changed-wire watcher");
+                    }
+                    CompiledResourceInstruction::NotifyChangedWire { wire, target }
+                }
                 ResourceInstruction::NotifyObserver { target, shape } => {
                     if target.index() >= count || components[target.index()].kind != ComponentKind::Observer {
                         return Err("invalid resource observer receiver");
@@ -383,9 +479,53 @@ impl EventProgram {
                 }
             };
             let phase = operation.resource.index() * 2 + if operation.phase == ResourceEventPhase::Arrival { 1 } else { 0 };
-            resource_buckets[phase].push((operation.contact, instruction));
+            resource_buckets[phase].push(MovementStep {
+                contact: operation.contact,
+                instruction,
+            });
         }
         let (resource_ranges, resource_operations) = flatten(resource_buckets);
+        let mut piston_operation_buckets = vec![Vec::new(); pistons.len() * 6];
+        for operation in piston_operations {
+            if operation.piston.index() >= pistons.len() {
+                return Err("piston operation references an invalid actor");
+            }
+            let instruction = match operation.instruction {
+                ResourceInstruction::Notify(target) => {
+                    if target.index() >= count
+                        || !matches!(
+                            components[target.index()].kind,
+                            ComponentKind::Lamp | ComponentKind::Piston | ComponentKind::Repeater { .. } | ComponentKind::Torch
+                        )
+                    {
+                        return Err("invalid piston notification receiver");
+                    }
+                    CompiledResourceInstruction::Notify(target)
+                }
+                ResourceInstruction::RecomputeWire(wire) => {
+                    if wire.index() >= count || components[wire.index()].kind != ComponentKind::Wire {
+                        return Err("invalid piston wire recomputation target");
+                    }
+                    CompiledResourceInstruction::RecomputeWire(wire)
+                }
+                ResourceInstruction::NotifyChangedWire { wire, target } => {
+                    if wire.index() >= count || components[wire.index()].kind != ComponentKind::Wire || target.index() >= count {
+                        return Err("invalid piston changed-wire watcher");
+                    }
+                    CompiledResourceInstruction::NotifyChangedWire { wire, target }
+                }
+                ResourceInstruction::NotifyObserver { target, shape } => {
+                    if target.index() >= count || components[target.index()].kind != ComponentKind::Observer {
+                        return Err("invalid piston observer receiver");
+                    }
+                    CompiledResourceInstruction::NotifyObserver { target, shape }
+                }
+            };
+            let phase = usize::from(operation.phase == PistonEventPhase::Completion);
+            let bucket = operation.piston.index() * 6 + operation.action as usize * 2 + phase;
+            piston_operation_buckets[bucket].push(instruction);
+        }
+        let (piston_operation_ranges, piston_operations) = flatten(piston_operation_buckets);
         let mut piston_buckets = vec![Vec::new(); pistons.len()];
         for (link_index, link) in links.iter().enumerate() {
             if let Some(condition) = &link.condition {
@@ -428,6 +568,8 @@ impl EventProgram {
             pistons: pistons.into(),
             resource_ranges,
             resource_operations,
+            piston_operation_ranges,
+            piston_operations,
             piston_ranges,
             piston_links,
             wire_watchers,

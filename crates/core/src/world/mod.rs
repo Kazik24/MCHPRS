@@ -17,6 +17,18 @@ pub trait World {
     /// Observe an interpreter power callback without changing its dispatch.
     fn observe_redstone_update(&mut self, _pos: BlockPos, _block: Block, _direction: Option<BlockFace>) {}
 
+    /// Observe the ordered recipients of piston shape and neighbor notifications.
+    fn observe_piston_notification(&mut self, _source: BlockPos, _target: BlockPos, _direction: BlockFace, _shape: bool) {}
+
+    /// Set the actor/action context while a queued piston event mutates the world.
+    fn observe_piston_event_context(&mut self, _event: Option<mchprs_world::PistonEvent>) {}
+
+    fn piston_motion_origin(&self, _identity: u64) -> Option<mchprs_world::PistonEvent> {
+        None
+    }
+
+    fn observe_piston_motion_context(&mut self, _motion: Option<PistonMotionObservation>) {}
+
     /// Returns the block located at `pos`
     fn get_block(&self, pos: BlockPos) -> Block {
         Block::from_id(self.get_block_raw(pos))
@@ -161,6 +173,28 @@ pub struct RedstoneUpdateObservation {
     pub pos: BlockPos,
     pub block: Block,
     pub direction: Option<BlockFace>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PistonNotificationObservation {
+    pub source: BlockPos,
+    pub target: BlockPos,
+    pub target_block: Block,
+    pub direction: BlockFace,
+    pub shape: bool,
+    pub phase: mchprs_world::AdvancePhase,
+    pub event: Option<mchprs_world::PistonEvent>,
+    pub motion: Option<PistonMotionObservation>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PistonMotionObservation {
+    pub identity: u64,
+    pub actor: BlockPos,
+    pub action: mchprs_world::PistonAction,
+    pub part: BlockPos,
+    pub source: bool,
+    pub extending: bool,
 }
 
 // https://wiki.vg/Block_Actions#Piston

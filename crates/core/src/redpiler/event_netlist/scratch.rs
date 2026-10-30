@@ -2,6 +2,7 @@
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld};
 use crate::redpiler::TickScheduler;
 use crate::redpiler::backend::ScheduledBlockTick;
+use crate::redpiler::program_graph::{LoweredCircuit, PistonId, ResourceId};
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonState, TickEntry};
@@ -40,6 +41,241 @@ pub(crate) struct WireSource {
 pub(crate) struct WireDiscovery {
     pub(crate) watchers: Vec<WireWatcher>,
     pub(crate) sources: Vec<WireSource>,
+}
+
+/// Wire dependencies with the same resource at either contact or in motion.
+pub(crate) struct ResourceWireArrangements {
+    pub(crate) at_near: WireDiscovery,
+    pub(crate) at_far: WireDiscovery,
+    pub(crate) in_motion: WireDiscovery,
+    pub(crate) receiver: [ResourceReceiverInput; 3],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ResourceReceiverInput {
+    pub(crate) source: BlockPos,
+    pub(crate) direction: BlockFace,
+    pub(crate) attenuation: u8,
+    pub(crate) strength: u8,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PistonActorFact {
+    pub(crate) id: PistonId,
+    pub(crate) group: usize,
+    pub(crate) position: BlockPos,
+    pub(crate) facing: BlockFace,
+    pub(crate) sticky: bool,
+    pub(crate) home: BlockPos,
+    pub(crate) far: BlockPos,
+    pub(crate) resource: Option<ResourceId>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ResourceActorFact {
+    pub(crate) id: ResourceId,
+    pub(crate) material: Block,
+    pub(crate) initial_contact: BlockPos,
+    pub(crate) contacts: Vec<BlockPos>,
+    pub(crate) acting_pistons: Vec<PistonId>,
+}
+
+#[derive(Debug)]
+pub(crate) struct PistonResourceMap {
+    pub(crate) pistons: Vec<PistonActorFact>,
+    pub(crate) resources: Vec<ResourceActorFact>,
+}
+
+pub(crate) fn map_piston_resources(world: &impl World, lowered: &LoweredCircuit) -> PistonResourceMap {
+    let graph = &lowered.program;
+    let mut parents: Vec<_> = (0..graph.pistons().len()).collect();
+    for left in 0..graph.pistons().len() {
+        let left_spec = &graph.pistons()[left];
+        let left_cells = [
+            graph.contacts()[left_spec.near.index()].position,
+            graph.contacts()[left_spec.far.index()].position,
+        ];
+        for right in left + 1..graph.pistons().len() {
+            let right_spec = &graph.pistons()[right];
+            let right_cells = [
+                graph.contacts()[right_spec.near.index()].position,
+                graph.contacts()[right_spec.far.index()].position,
+            ];
+            if left_cells.iter().any(|cell| right_cells.contains(cell)) {
+                let left_root = group_root(&mut parents, left);
+                let right_root = group_root(&mut parents, right);
+                parents[right_root] = left_root;
+            }
+        }
+    }
+    let mut group_ids = HashMap::new();
+    let pistons = graph
+        .pistons()
+        .iter()
+        .enumerate()
+        .map(|(index, piston)| {
+            let home = graph.contacts()[piston.near.index()].position;
+            let far = graph.contacts()[piston.far.index()].position;
+            PistonActorFact {
+                id: PistonId::new(index as u32),
+                group: {
+                    let root = group_root(&mut parents, index);
+                    let next = group_ids.len();
+                    *group_ids.entry(root).or_insert(next)
+                },
+                position: piston.position,
+                facing: piston.facing,
+                sticky: piston.sticky,
+                home,
+                far,
+                resource: graph.resource_for_piston(PistonId::new(index as u32)),
+            }
+        })
+        .collect::<Vec<_>>();
+    let resources = graph
+        .resources()
+        .iter()
+        .enumerate()
+        .map(|(index, resource)| {
+            let id = ResourceId::new(index as u32);
+            let contacts = resource
+                .contacts
+                .iter()
+                .map(|contact| graph.contacts()[contact.index()].position)
+                .collect::<Vec<_>>();
+            let shared_groups: Vec<_> = pistons
+                .iter()
+                .filter(|piston| contacts.contains(&piston.home) || contacts.contains(&piston.far))
+                .map(|piston| piston.group)
+                .collect();
+            let acting_pistons = pistons
+                .iter()
+                .filter(|piston| shared_groups.contains(&piston.group))
+                .map(|piston| piston.id)
+                .collect();
+            let initial_contact = graph.contacts()[lowered.state.resources[index].at.index()].position;
+            ResourceActorFact {
+                id,
+                material: world.get_block(initial_contact),
+                initial_contact,
+                contacts,
+                acting_pistons,
+            }
+        })
+        .collect();
+    PistonResourceMap { pistons, resources }
+}
+
+fn group_root(parents: &mut [usize], mut index: usize) -> usize {
+    while parents[index] != index {
+        parents[index] = parents[parents[index]];
+        index = parents[index];
+    }
+    index
+}
+
+fn resource_receiver_input(world: &impl World, receiver: BlockPos, near: BlockPos, far: BlockPos) -> Result<ResourceReceiverInput, ScratchError> {
+    let Block::RedstoneRepeater { repeater } = world.get_block(receiver) else {
+        return Err(ScratchError {
+            position: Some(receiver),
+            reason: "resource receiver is not a repeater",
+        });
+    };
+    let direction = repeater.facing.block_face();
+    let source = receiver.offset(direction);
+    if source != near && source != far {
+        return Err(ScratchError {
+            position: Some(source),
+            reason: "repeater input is not a resource contact",
+        });
+    }
+    let block = world.get_block(source);
+    if !matches!(block, Block::Air | Block::RedstoneBlock | Block::PistonHead { .. }) {
+        return Err(ScratchError {
+            position: Some(source),
+            reason: "unsupported repeater contact geometry",
+        });
+    }
+    let strength = if block == (Block::RedstoneBlock {}) { 15 } else { 0 };
+    let native = crate::redstone::diode_get_input_strength(world, receiver, repeater.facing);
+    if strength != native {
+        return Err(ScratchError {
+            position: Some(receiver),
+            reason: "repeater input has an unrepresented contribution",
+        });
+    }
+    Ok(ResourceReceiverInput {
+        source,
+        direction,
+        attenuation: 0,
+        strength,
+    })
+}
+
+pub(crate) fn discover_resource_wire_arrangements(
+    source: &impl World,
+    capture: (BlockPos, BlockPos),
+    discovery_bounds: (BlockPos, BlockPos),
+    entry: ScratchEntry,
+    piston_pos: BlockPos,
+    near: BlockPos,
+    far: BlockPos,
+    receiver: BlockPos,
+) -> Result<ResourceWireArrangements, ScratchError> {
+    let mut scratch = ScratchWorld::from_world(source, capture, entry)?;
+    let Block::Piston { mut piston } = scratch.world().get_block(piston_pos) else {
+        return Err(ScratchError {
+            position: Some(piston_pos),
+            reason: "resource arrangement requires a piston",
+        });
+    };
+    let face: BlockFace = piston.facing.into();
+    let initial_near = scratch.world().get_block(near);
+    let initial_far = scratch.world().get_block(far);
+    let extended_geometry = piston.extended
+        && matches!(initial_near, Block::PistonHead { head } if head.sticky && head.facing == piston.facing)
+        && initial_far == (Block::RedstoneBlock {});
+    let retracted_geometry = !piston.extended && initial_near == (Block::RedstoneBlock {}) && initial_far == Block::Air;
+    if !piston.sticky || piston_pos.offset(face) != near || near.offset(face) != far || !(extended_geometry || retracted_geometry) {
+        return Err(ScratchError {
+            position: Some(piston_pos),
+            reason: "unsupported resource arrangement geometry",
+        });
+    }
+    if retracted_geometry {
+        scratch.world_mut().set_block(near, Block::Air);
+        scratch.world_mut().set_block(far, Block::RedstoneBlock {});
+        scratch.world_mut().set_block(
+            near,
+            Block::PistonHead {
+                head: mchprs_blocks::blocks::RedstonePistonHead {
+                    facing: piston.facing,
+                    sticky: true,
+                    short: false,
+                },
+            },
+        );
+        piston.extended = true;
+        scratch.world_mut().set_block(piston_pos, Block::Piston { piston });
+    }
+    let at_far = discover_watched_wire_sources(scratch.world(), discovery_bounds)?;
+    let far_input = resource_receiver_input(scratch.world(), receiver, near, far)?;
+    scratch.world_mut().set_block(far, Block::Air);
+    scratch.world_mut().set_block(near, Block::Air);
+    piston.extended = false;
+    scratch.world_mut().set_block(piston_pos, Block::Piston { piston });
+    let in_motion = discover_watched_wire_sources(scratch.world(), discovery_bounds)?;
+    let motion_input = resource_receiver_input(scratch.world(), receiver, near, far)?;
+    scratch.world_mut().set_block(near, Block::RedstoneBlock {});
+    let at_near = discover_watched_wire_sources(scratch.world(), discovery_bounds)?;
+    let near_input = resource_receiver_input(scratch.world(), receiver, near, far)?;
+    scratch.finish_probe()?;
+    Ok(ResourceWireArrangements {
+        at_near,
+        at_far,
+        in_motion,
+        receiver: [near_input, far_input, motion_input],
+    })
 }
 
 pub(crate) fn discovered_wire_strength(world: &impl World, discovery: &WireDiscovery, wire: BlockPos) -> u8 {
