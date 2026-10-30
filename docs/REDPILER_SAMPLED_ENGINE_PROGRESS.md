@@ -7,6 +7,20 @@ remains Graph.
 
 ## Current implementation
 
+- The indexed-runtime increment of checkpoint 1 addresses inputs with
+  `set_input(source_index, powered)`, selecting the matching source rise/fall
+  program. Program construction builds incoming and outgoing link indexes once;
+  receiver reads and source refreshes visit only those indexes. Runtime retains
+  individual attenuated contributions and takes their maximum for each input.
+  Contribution changes alone do not execute receiver instructions.
+- Direct-program tests cover two independently addressed sources contributing
+  13 and 15 to a wire, masking, restoration to 13, final shutoff with the existing
+  four-game-tick lamp delay, and an electrical change without a lamp notification.
+  These tests establish competing contributions and update separation, not
+  watcher or source-ordering completeness. Checkpoint 1 remains incomplete:
+  watcher tables, receiver-port representation and full program validation remain.
+  World-derived multi-source extraction and piston execution follow afterward;
+  production admission remains the single-chain contract below.
 - `crates/core/src/redpiler/sampled.rs` contains a private compiler, immutable
   Program and separate Runtime. It records native callbacks in an isolated
   ScratchWorld, separately for rising and falling source changes.
@@ -35,6 +49,17 @@ the immediate boundary and four native game-tick boundaries. Loaded block states
 are retained and checked rather than normalized to a convenient probe state.
 
 ## Verified results
+
+Indexed-runtime increment verification:
+
+- `cargo test -p mchprs_core redpiler::sampled --lib`: 10 passed, 0 failed,
+  0 ignored, 1,035 filtered out. Both new direct-program tests and all eight
+  retained tests pass, including native comparison and compiler self-validation.
+- `cargo check -p mchprs_core --tests`: passed with four existing dead-code
+  warnings.
+- `git diff --check`: passed.
+- The event-netlist suite was not rerun for this increment; its separately
+  recorded ADDER1BIT failure below remains unresolved.
 
 Earlier run before the two boundary-read cases, `cargo test -p mchprs_core
 redpiler::sampled --lib`:

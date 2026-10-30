@@ -20,13 +20,19 @@ enum Operation {
     RefreshWire(usize),
     UpdateLamp(usize),
 }
+struct ElectricalLink {
+    source: usize,
+    target: usize,
+    attenuation: u8,
+}
 struct Program {
     positions: Vec<BlockPos>,
     initial: Vec<Block>,
-    source: Option<usize>,
-    transitions: [Vec<Operation>; 2],
-    wire: Option<usize>,
-    lamp: Option<usize>,
+    sources: Vec<usize>,
+    transitions: Vec<[Vec<Operation>; 2]>,
+    links: Vec<ElectricalLink>,
+    incoming: Vec<Vec<usize>>,
+    outgoing: Vec<Vec<usize>>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PistonActor {
@@ -44,25 +50,57 @@ struct Runtime<'a> {
     program: &'a Program,
     blocks: Vec<Block>,
     pending: TickScheduler<ScheduledBlockTick>,
+    contributions: Vec<u8>,
     operations: usize,
 }
 impl Program {
+    fn new(positions: Vec<BlockPos>, initial: Vec<Block>, sources: Vec<usize>, transitions: Vec<[Vec<Operation>; 2]>, links: Vec<ElectricalLink>) -> Self {
+        let mut incoming = vec![vec![]; initial.len()];
+        let mut outgoing = vec![vec![]; initial.len()];
+        for (id, link) in links.iter().enumerate() {
+            incoming[link.target].push(id);
+            outgoing[link.source].push(id);
+        }
+        Self { positions, initial, sources, transitions, links, incoming, outgoing }
+    }
     fn start(&self) -> Runtime<'_> {
         Runtime {
             program: self,
             blocks: self.initial.clone(),
             pending: TickScheduler::default(),
+            contributions: self.links.iter().map(|link| {
+                let strength: u8 = match self.initial[link.source] {
+                    Block::Lever { lever } => if lever.powered { 15 } else { 0 },
+                    Block::RedstoneWire { wire } => wire.power,
+                    _ => 0,
+                };
+                strength.saturating_sub(link.attenuation)
+            }).collect(),
             operations: 0,
         }
     }
 }
 impl Runtime<'_> {
-    fn set_input(&mut self, powered: bool) {
+    fn input_strength(&self, target: usize) -> u8 {
+        self.program.incoming[target].iter().map(|&id| self.contributions[id])
+            .max().unwrap_or(0)
+    }
+    fn refresh_contributions(&mut self, source: usize) {
+        let strength: u8 = match self.blocks[source] {
+            Block::Lever { lever } => if lever.powered { 15 } else { 0 },
+            Block::RedstoneWire { wire } => wire.power,
+            _ => 0,
+        };
+        for &id in &self.program.outgoing[source] {
+            self.contributions[id] = strength.saturating_sub(self.program.links[id].attenuation);
+        }
+    }
+    fn set_input(&mut self, source_index: usize, powered: bool) {
         assert!(
             self.pending.iter_entries().next().is_none(),
             "transition must settle before changing input"
         );
-        let Some(source) = self.program.source else { return };
+        let source = self.program.sources[source_index];
         let Block::Lever { lever } = self.blocks[source] else { unreachable!() };
         if lever.powered != powered {
             let Block::Lever { mut lever } = self.blocks[source] else {
@@ -70,25 +108,25 @@ impl Runtime<'_> {
             };
             lever.powered = powered;
             self.blocks[source] = Block::Lever { lever };
-            for operation in &self.program.transitions[usize::from(powered)] {
+            self.refresh_contributions(source);
+            for operation in &self.program.transitions[source_index][usize::from(powered)] {
                 match *operation {
                     Operation::RefreshWire(slot) => {
                         let Block::RedstoneWire { mut wire } = self.blocks[slot] else {
                             unreachable!()
                         };
-                        wire.power = if powered { 15 } else { 0 };
+                        wire.power = self.input_strength(slot);
                         self.blocks[slot] = Block::RedstoneWire { wire };
+                        self.refresh_contributions(slot);
                     }
                     Operation::UpdateLamp(slot) => {
-                        let Block::RedstoneWire { wire } = self.blocks[self.program.wire.unwrap()] else {
-                            unreachable!()
-                        };
+                        let power = self.input_strength(slot);
                         let Block::RedstoneLamp { lit } = self.blocks[slot] else {
                             unreachable!()
                         };
-                        if wire.power > 0 && !lit {
+                        if power > 0 && !lit {
                             self.blocks[slot] = Block::RedstoneLamp { lit: true };
-                        } else if wire.power == 0 && lit {
+                        } else if power == 0 && lit {
                             let tick = ScheduledBlockTick {
                                 pos: self.program.positions[slot],
                                 block_type: Some(self.blocks[slot].registry_id()),
@@ -105,12 +143,8 @@ impl Runtime<'_> {
     }
     fn drain_ticks(&mut self) {
         while let Some(tick) = self.pending.this_tick().pop_first() {
-            let lamp = self.program.lamp.unwrap();
-            if tick.pos == self.program.positions[lamp] {
-                let Block::RedstoneWire { wire } = self.blocks[self.program.wire.unwrap()] else {
-                    unreachable!()
-                };
-                if wire.power == 0 {
+            if let Some(lamp) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
+                if matches!(self.blocks[lamp], Block::RedstoneLamp { .. }) && self.input_strength(lamp) == 0 {
                     self.blocks[lamp] = Block::RedstoneLamp { lit: false };
                 }
                 self.operations += 1;
@@ -190,24 +224,26 @@ fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry
         }
     }
     let initial = positions.iter().map(|&p| world.get_block(p)).collect();
-    let mut program = Program {
-        positions,
-        initial,
-        source,
-        transitions: [vec![], vec![]],
-        wire: None,
-        lamp: None,
-    };
+    let mut links = vec![];
+    if let Some(source) = source {
+        let wire = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
+        let lamp = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
+        links.extend([
+            ElectricalLink { source, target: wire, attenuation: 0 },
+            ElectricalLink { source: wire, target: lamp, attenuation: 0 },
+        ]);
+    }
+    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links);
     if let Some(source) = source {
         let pos = program.positions[source];
-        program.wire = program
+        let wire = program
             .positions
             .iter()
-            .position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. }));
-        program.lamp = program
+            .position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
+        let lamp = program
             .positions
             .iter()
-            .position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. }));
+            .position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
         // shortcut: settled binary source only, add state-keyed probes before allowing overlapping input edges.
         let initial_power = match world.get_block(pos) {
             Block::Lever { lever } => lever.powered,
@@ -251,8 +287,6 @@ fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry
             } else {
                 first_edge = Some(frames.clone());
             }
-            let wire = program.wire.unwrap();
-            let lamp = program.lamp.unwrap();
             let operations: Vec<_> = frames[0]
                 .deliveries
                 .iter()
@@ -271,13 +305,13 @@ fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry
             {
                 return Err(error(pos, "probe did not observe wire and lamp updates"));
             }
-            program.transitions[usize::from(powered)] = operations;
+            program.transitions[0][usize::from(powered)] = operations;
             samples[usize::from(powered)] = Some(frames);
             scratch.finish_probe()?;
         }
         let mut runtime = program.start();
         for powered in [!initial_power, initial_power] {
-            runtime.set_input(powered);
+            runtime.set_input(0, powered);
             for (step, frame) in samples[usize::from(powered)].as_ref().unwrap().iter().enumerate() {
                 if step != 0 {
                     runtime.tick();
@@ -418,6 +452,64 @@ mod tests {
         p.start().tick();
     }
     #[test]
+    fn competing_sources_preserve_attenuation_masking_and_lamp_delay() {
+        let lever = Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) };
+        // Source indexes intentionally differ from component indexes.
+        let operations = vec![Operation::RefreshWire(1), Operation::UpdateLamp(3)];
+        let program = Program::new(
+            (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
+            vec![lever, Block::RedstoneWire { wire: RedstoneWire::default() }, lever, Block::RedstoneLamp { lit: false }],
+            vec![2, 0],
+            vec![[operations.clone(), operations.clone()], [operations.clone(), operations]],
+            vec![
+                ElectricalLink { source: 2, target: 1, attenuation: 2 },
+                ElectricalLink { source: 0, target: 1, attenuation: 0 },
+                ElectricalLink { source: 1, target: 3, attenuation: 0 },
+            ],
+        );
+        let mut runtime = program.start();
+        for (source, powered, expected) in [(0, true, 13), (1, true, 15), (0, false, 15), (0, true, 15), (1, false, 13), (0, false, 0)] {
+            runtime.set_input(source, powered);
+            let Block::RedstoneWire { wire } = runtime.blocks[1] else { panic!("expected wire") };
+            assert_eq!(wire.power, expected);
+            assert_eq!(runtime.input_strength(1), expected);
+            assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: true });
+            if expected > 0 {
+                assert!(runtime.pending.iter_entries().next().is_none());
+            } else {
+                assert_eq!(runtime.pending.iter_entries().count(), 1);
+                for tick in 1..=4 {
+                    runtime.tick();
+                    assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: tick < 4 });
+                    assert_eq!(runtime.pending.iter_entries().count(), usize::from(tick < 4));
+                }
+            }
+        }
+        assert_eq!(runtime.operations, 13);
+        // The external input is legal again after scheduled work settles.
+        runtime.set_input(0, true);
+        assert_eq!(runtime.input_strength(1), 13);
+        assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: true });
+    }
+    #[test]
+    fn electrical_change_without_notification_preserves_lamp_and_queue() {
+        let program = Program::new(
+            vec![BlockPos::new(0, 15, 15), BlockPos::new(1, 15, 15)],
+            vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) }, Block::RedstoneLamp { lit: true }],
+            vec![0], vec![[vec![], vec![]]],
+            vec![ElectricalLink { source: 0, target: 1, attenuation: 2 }],
+        );
+        let mut runtime = program.start();
+        assert_eq!(runtime.input_strength(1), 13);
+        for (powered, strength) in [(false, 0), (true, 13)] {
+            runtime.set_input(0, powered);
+            assert_eq!(runtime.input_strength(1), strength);
+            assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
+            assert!(runtime.pending.iter_entries().next().is_none());
+        }
+        assert_eq!(runtime.operations, 0);
+    }
+    #[test]
     fn rejects_unrepresented_blocks() {
         let mut w = host();
         let pos = BlockPos::new(15, 15, 15);
@@ -500,11 +592,11 @@ mod tests {
                     w.set_block(source, Block::Lever { lever });
                 }
                 crate::redstone::update_surrounding_blocks(&mut w, source);
-                r.set_input(powered);
+                r.set_input(0, powered);
                 compare(&r, &w);
                 if !powered {
                     assert_eq!(w.get_block(BlockPos::new(17, 15, 15)), Block::RedstoneLamp { lit: true });
-                    assert_eq!(r.blocks[p.lamp.unwrap()], Block::RedstoneLamp { lit: true });
+                    assert_eq!(r.blocks[p.initial.iter().position(|b| matches!(b, Block::RedstoneLamp { .. })).unwrap()], Block::RedstoneLamp { lit: true });
                 }
                 for tick in 1..=4 {
                     w.tick_interpreted();
@@ -512,7 +604,7 @@ mod tests {
                     compare(&r, &w);
                     if !powered {
                         assert_eq!(w.get_block(BlockPos::new(17, 15, 15)), Block::RedstoneLamp { lit: tick < 4 });
-                        assert_eq!(r.blocks[p.lamp.unwrap()], Block::RedstoneLamp { lit: tick < 4 });
+                        assert_eq!(r.blocks[p.initial.iter().position(|b| matches!(b, Block::RedstoneLamp { .. })).unwrap()], Block::RedstoneLamp { lit: tick < 4 });
                     }
                 }
                 assert!(w.scheduler().iter_entries().next().is_none());
