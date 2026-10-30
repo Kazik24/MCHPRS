@@ -7,6 +7,7 @@ use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonState, TickEntry};
 use std::collections::{HashMap, VecDeque};
 
+#[derive(Clone)]
 pub(crate) struct ScratchEntry {
     pub(crate) scheduled: Vec<TickEntry>,
     pub(crate) piston: PistonState,

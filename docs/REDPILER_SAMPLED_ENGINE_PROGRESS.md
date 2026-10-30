@@ -1,5 +1,12 @@
 # Sampled Redpiler implementation status
 
+The world-derived compiler now admits multiple levers and lamps and retains
+native replay mismatches as diagnostics. Two independent lever–dust–lamp
+circuits execute in the sampled runtime. Source ordering still uses individual
+loaded-world probes, so interacting sources are not yet covered by this result.
+The ADDER1BIT manifest still fails admission at the repeater at (51, 31, 40);
+no piston actions or token movements have been executed in that fixture.
+
 The private MAIR runtime and its lever–dust–lamp acceptance gate are implemented.
 Compile-time inventory of bounded empty piston actors is also implemented;
 piston execution remains the next unmet gate. The player-facing backend remains

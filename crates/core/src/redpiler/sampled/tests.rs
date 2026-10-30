@@ -762,6 +762,35 @@ use mchprs_world::TickPriority;
     }
 
     #[test]
+    fn world_compiler_runs_multiple_sources_and_lamps() {
+        let mut w = host();
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(25, 20, 25));
+        let mut sources = Vec::new();
+        let mut lamps = Vec::new();
+        for z in [14, 20] {
+            let source = BlockPos::new(15, 15, z);
+            let wire = BlockPos::new(16, 15, z);
+            let lamp = BlockPos::new(17, 15, z);
+            w.set_block(source, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+            w.set_block(wire, Block::RedstoneWire { wire: RedstoneWire::default() });
+            w.set_block(lamp, Block::RedstoneLamp { lit: false });
+            w.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+            w.set_block(wire.offset(BlockFace::Bottom), Block::Stone {});
+            sources.push(source);
+            lamps.push(lamp);
+        }
+        let program = compile(&w, bounds, entry(&w)).unwrap();
+        let mut runtime = program.start();
+        for (source, lamp) in sources.iter().zip(&lamps) {
+            let source_index = program.sources.iter().position(|&id| program.positions[id] == *source).unwrap();
+            let lamp_index = program.positions.iter().position(|pos| pos == lamp).unwrap();
+            runtime.set_input(source_index, true);
+            assert_eq!(runtime.blocks[lamp_index], Block::RedstoneLamp { lit: true });
+        }
+        assert!(runtime.operations > 0);
+    }
+
+    #[test]
     fn native_edges_and_host_preservation() {
         let source = BlockPos::new(15, 15, 15);
         let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
