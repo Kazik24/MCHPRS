@@ -27,7 +27,8 @@ removed; their results below are historical only.
   source positions to deterministic component indexes. The admitted chain now
   uses a discovered lever-to-lamp contribution; it no longer synthesizes a
   wire-to-lamp link. Electrical contribution updates remain separate from lamp
-  deliveries. Production admission remains one straight chain; multiple-source
+  deliveries. Production admission allows one floor/wall lever, multiple dust
+  wires, one lamp and decorative signs; multiple-source
   compilation, watcher installation and piston execution remain pending.
 - `Program::new` validates component records, external sources, rise/fall
   programs, electrical links, watcher records and instruction references before
@@ -84,19 +85,23 @@ remain the migration contract for future MAIR acceptance tests.
   the pinned IO schematic, checks its hash and dimensions, and checks host
   preservation before requiring compilation. It contains manifest action replay
   and the declared output windows, but these are not reached: compilation rejects
-  white wool at `(51,30,40)` in `prepared-0-0-0`. This is an admission failure,
+  a repeater at `(51,31,40)` in `prepared-0-0-0`. This is an admission failure,
   not the historical `prepared-0-1-0` runtime arithmetic failure. No new piston,
   token or observer runtime mechanism was implemented in this assignment so far.
-- With that active acceptance test, `cargo test -p mchprs_core redpiler::sampled
-  --lib`: **19 passed, 1 failed, 0 ignored**, 1,003 filtered out. The failure is
-  the new ADDER1BIT test; all retained sampled tests pass. Direct execution of
-  that test: 0 passed, 1 failed, 1,022 filtered out.
+- The latest full sampled run reported **22 passed, 1 failed, 0 ignored**,
+  1,003 filtered out. The ADDER1BIT test failed at admission; the wall-lever,
+  bent-dust and decorative-sign native comparison passed.
 - `cargo test -p mchprs_core redpiler::scratch --lib`: **15 passed, 0 failed,
-  0 ignored**, 1,008 filtered out. `cargo check -p mchprs_core --tests` passed
-  with five existing dead-code warnings. `git diff --check` passed.
+  0 ignored**, 1,011 filtered out. An earlier `cargo check -p mchprs_core
+  --tests` passed with five existing dead-code warnings.
 - ADDER1BIT execution, `prepared-0-1-0`, accepted action/movement/completion
   counters, and repeated rearm are still unverified. The test does not establish
   their support. The previous verification below predates this active failure.
+
+- The chain compiler retains wool, glowstone and slab geometry in scratch and
+  applies native attachment support rules for lever and dust. Native comparisons
+  exercise wool and mixed top-slab/glowstone supports; bottom slabs decline as
+  dust support. Other dynamic blocks and unsupported entities remain rejected.
 
 - `cargo test -p mchprs_core redpiler::sampled --lib`: 19 passed, 0 failed,
   0 ignored (1,003 filtered out). Includes initially-off sources, eligible

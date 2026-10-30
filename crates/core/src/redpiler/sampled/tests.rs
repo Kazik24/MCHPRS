@@ -417,6 +417,37 @@ use crate::redpiler::scratch::discover_lamp_sources;
         };
         assert_eq!(err.position, Some(pos));
     }
+    #[test]
+    fn rejects_unrelated_block_entities() {
+        let mut w = host();
+        let pos = BlockPos::new(15, 15, 15);
+        w.set_block_entity(pos, BlockEntity::Comparator { output_strength: 0 });
+        let error = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
+            Err(error) => error,
+            Ok(_) => panic!("unsupported entity admitted"),
+        };
+        assert_eq!(error.position, Some(pos));
+        assert_eq!(error.reason, "unsupported block entity");
+    }
+
+    #[test]
+    fn rejects_bottom_slab_as_dust_support() {
+        use mchprs_blocks::blocks::SlabType;
+        let mut w = host();
+        let source = BlockPos::new(15, 15, 15);
+        let wire = BlockPos::new(16, 15, 15);
+        w.set_block(source, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        w.set_block(wire, Block::RedstoneWire { wire: RedstoneWire::default() });
+        w.set_block(BlockPos::new(17, 15, 15), Block::RedstoneLamp { lit: false });
+        w.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+        w.set_block(wire.offset(BlockFace::Bottom), Block::SmoothStoneSlab {}.with_slab_type(SlabType::Bottom).unwrap());
+        let error = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20)), entry(&w)) {
+            Err(error) => error,
+            Ok(_) => panic!("bottom slab admitted as dust support"),
+        };
+        assert_eq!(error.position, Some(wire));
+        assert_eq!(error.reason, "invalid attachment support");
+    }
 
     #[test]
     fn lamp_input_discovery_keeps_off_sources_and_expands_only_eligible_contacts() {
@@ -495,6 +526,59 @@ use crate::redpiler::scratch::discover_lamp_sources;
         assert_eq!(merged.iter().find(|source| source.source == direct).unwrap().attenuation, 0);
     }
     #[test]
+    fn wall_lever_bent_dust_and_decorative_sign_match_native() {
+        let mut w = host();
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(23, 20, 23));
+        let source = BlockPos::new(15, 15, 15);
+        let wires = [BlockPos::new(16, 15, 15), BlockPos::new(17, 15, 15), BlockPos::new(17, 15, 16)];
+        let lamp = BlockPos::new(17, 15, 17);
+        let sign = BlockPos::new(20, 15, 20);
+        w.set_block(source, Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::East, false) });
+        w.set_block(source.offset(BlockFace::West), Block::Stone {});
+        for pos in wires {
+            w.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+            w.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
+        }
+        w.set_block(lamp, Block::RedstoneLamp { lit: false });
+        w.set_block(sign, Block::from_name("oak_sign").unwrap());
+        w.set_block(sign.offset(BlockFace::Bottom), Block::Stone {});
+        let mut sign_entity = mchprs_blocks::block_entities::SignBlockEntity::default();
+        sign_entity.rows[0] = "{\"text\":\"keep this\"}".into();
+        w.set_block_entity(sign, BlockEntity::Sign(Box::new(sign_entity)));
+        let sign_before = serde_json::to_value(w.get_block_entity(sign)).unwrap();
+        let scratch = ScratchWorld::from_world(&w, bounds, entry(&w)).unwrap();
+        assert_eq!(w.get_block(sign), scratch.world().get_block(sign));
+        assert_eq!(sign_before, serde_json::to_value(scratch.world().get_block_entity(sign)).unwrap());
+        scratch.finish_probe().unwrap();
+        let blocks_before: Vec<_> = (bounds.0.y..=bounds.1.y).flat_map(|y| (bounds.0.z..=bounds.1.z)
+            .flat_map(move |z| (bounds.0.x..=bounds.1.x).map(move |x| BlockPos::new(x, y, z))))
+            .map(|pos| w.get_block_raw(pos)).collect();
+        let program = compile(&w, bounds, entry(&w)).unwrap();
+        let blocks_after: Vec<_> = (bounds.0.y..=bounds.1.y).flat_map(|y| (bounds.0.z..=bounds.1.z)
+            .flat_map(move |z| (bounds.0.x..=bounds.1.x).map(move |x| BlockPos::new(x, y, z))))
+            .map(|pos| w.get_block_raw(pos)).collect();
+        assert_eq!(blocks_before, blocks_after);
+        assert_eq!(sign_before, serde_json::to_value(w.get_block_entity(sign)).unwrap());
+        let mut runtime = program.start();
+        for powered in [true, false, true, false, true, false] {
+            crate::interaction::use_redstone(w.get_block(source), &mut w, source, None);
+            runtime.set_input(0, powered);
+            for (index, pos) in wires.iter().enumerate() {
+                let Block::RedstoneWire { wire } = w.get_block(*pos) else { panic!("missing wire") };
+                assert_eq!(wire.power, if powered { 15 - index as u8 } else { 0 });
+            }
+            for tick in 0..=4 {
+                if tick > 0 { w.tick_interpreted(); runtime.tick(); }
+                assert_eq!(runtime.blocks, program.positions.iter().map(|&pos| w.get_block(pos)).collect::<Vec<_>>());
+                assert_eq!(runtime.pending.iter_entries().collect::<Vec<_>>(), w.scheduler().iter_entries().collect::<Vec<_>>());
+                assert_eq!(w.get_block(lamp), Block::RedstoneLamp { lit: powered || tick < 4 });
+            }
+            assert_eq!(sign_before, serde_json::to_value(w.get_block_entity(sign)).unwrap());
+        }
+        assert!(runtime.operations > 0);
+    }
+
+    #[test]
     fn native_edges_and_host_preservation() {
         let source = BlockPos::new(15, 15, 15);
         let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
@@ -510,7 +594,13 @@ use crate::redpiler::scratch::discover_lamp_sources;
             )
         };
 
-        for initially_powered in [false, true] {
+        let wool = Block::from_name("white_wool").unwrap();
+        let slab = Block::SmoothStoneSlab {};
+        for (initially_powered, supports) in [false, true].into_iter().flat_map(|on| [
+            (on, [Block::Stone {}, Block::Stone {}, Block::Stone {}]),
+            (on, [wool, wool, wool]),
+            (on, [slab, Block::Glowstone, wool]),
+        ]) {
             let mut w = host();
             w.set_block(
                 source,
@@ -525,8 +615,8 @@ use crate::redpiler::scratch::discover_lamp_sources;
                 },
             );
             w.set_block(BlockPos::new(17, 15, 15), Block::RedstoneLamp { lit: false });
-            for x in 15..=17 {
-                w.set_block(BlockPos::new(x, 14, 15), Block::Stone {});
+            for (x, block) in (15..=17).zip(supports) {
+                w.set_block(BlockPos::new(x, 14, 15), block);
             }
 
             if initially_powered {

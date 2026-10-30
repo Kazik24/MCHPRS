@@ -24,9 +24,10 @@ The graph and its existing optimizations remain the player-facing path. The
 sampled MAIR experiment uses a private compiler, validated immutable `Program`,
 and mutable `Runtime`. The compiler probes an isolated `ScratchWorld`; the
 runtime executes ordered instructions and its own scheduler without Graph or
-an interpreter. It currently admits only an empty selection or a straight
-floor-lever, single-dust, single-lamp chain with stone supports and settled
-input changes.
+an interpreter. It currently admits an empty selection or one floor/wall lever,
+one or more dust wires and one lamp, with supported stationary geometry,
+decorative signs and settled input changes. Native sampling and runtime
+self-validation can decline geometries whose behavior is not represented.
 
 The sampled implementation is split by responsibility:
 

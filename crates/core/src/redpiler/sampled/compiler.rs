@@ -1,5 +1,6 @@
 use super::{ElectricalLink, Operation, Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::world::World;
+use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::{BlockPos, BlockFacing, blocks::{Block, LeverFace}};
 #[derive(Clone, PartialEq, Eq)]
 struct Frame {
@@ -30,8 +31,10 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             for x in bounds.0.x..=bounds.1.x {
                 let pos = BlockPos::new(x, y, z);
                 match world.get_block(pos) {
-                    Block::Air | Block::Stone {} => {}
-                    Block::Lever { lever } if lever.face == LeverFace::Floor && source.is_none() => {
+                    Block::Air | Block::Stone {} | Block::Wool { .. } | Block::Glowstone => {}
+                    block if block.slab_type().is_some() => {}
+                    block if block.is_sign() => {}
+                    Block::Lever { lever } if matches!(lever.face, LeverFace::Floor | LeverFace::Wall) && source.is_none() => {
                         source = Some(positions.len());
                         positions.push(pos);
                     }
@@ -45,42 +48,21 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     }
                     _ => return Err(error(pos, "unsupported component")),
                 }
-                if world.get_block_entity(pos).is_some() {
+                if let Some(entity) = world.get_block_entity(pos)
+                    && !(world.get_block(pos).is_sign() && matches!(entity, BlockEntity::Sign(_))) {
                     return Err(error(pos, "unsupported block entity"));
                 }
             }
         }
     }
-    if !positions.is_empty() && (source.is_none() || wires != 1 || lamps != 1) {
-        return Err(error(bounds.0, "requires one lever, dust and lamp"));
+    if !positions.is_empty() && (source.is_none() || wires == 0 || lamps != 1) {
+        return Err(error(bounds.0, "requires one lever, dust and one lamp"));
     }
     if let Some(src) = source {
         let lever = positions[src];
-        let wire = *positions
-            .iter()
-            .find(|&&p| matches!(world.get_block(p), Block::RedstoneWire { .. }))
-            .unwrap();
-        let lamp = *positions
-            .iter()
-            .find(|&&p| matches!(world.get_block(p), Block::RedstoneLamp { .. }))
-            .unwrap();
-        let delta = wire - lever;
-        if delta.y != 0 || delta.x.abs() + delta.z.abs() != 1 || lamp != wire + delta {
-            return Err(error(wire, "requires straight horizontal lever-dust-lamp"));
-        }
-        for pos in [lever, wire, lamp] {
-            if world.get_block(pos - BlockPos::new(0, 1, 0)) != (Block::Stone {}) {
-                return Err(error(pos, "requires stone support"));
-            }
-        }
-    }
-    for y in bounds.0.y..=bounds.1.y {
-        for z in bounds.0.z..=bounds.1.z {
-            for x in bounds.0.x..=bounds.1.x {
-                let pos = BlockPos::new(x, y, z);
-                if world.get_block(pos) != Block::Air && !positions.contains(&pos) && !positions.iter().any(|&p| pos == p - BlockPos::new(0, 1, 0)) {
-                    return Err(error(pos, "unrepresented fixed connection"));
-                }
+        for pos in positions.iter().copied().filter(|&pos| pos == lever || matches!(world.get_block(pos), Block::RedstoneWire { .. })) {
+            if !crate::interaction::is_valid_position(world.get_block(pos), scratch.world(), pos) {
+                return Err(error(pos, "invalid attachment support"));
             }
         }
     }
@@ -110,14 +92,6 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         .map_err(|err| error(bounds.0, err.reason))?;
     if let Some(source) = source {
         let pos = program.positions[source];
-        let wire = program
-            .positions
-            .iter()
-            .position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
-        let lamp = program
-            .positions
-            .iter()
-            .position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
         // shortcut: settled binary source only, add state-keyed probes before allowing overlapping input edges.
         let initial_power = match world.get_block(pos) {
             Block::Lever { lever } => lever.powered,
@@ -127,17 +101,17 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         let mut samples: [Option<Vec<Frame>>; 2] = [None, None];
         for powered in [!initial_power, initial_power, !initial_power] {
             let w = scratch.world_mut();
-            if let Block::Lever { mut lever } = w.get_block(pos) {
+            if let Block::Lever { lever } = w.get_block(pos) {
                 if lever.powered == powered {
                     continue;
                 }
-                lever.powered = powered;
-                w.set_block(pos, Block::Lever { lever });
             }
             let mut frames = vec![];
             w.observe_redstone_updates(true);
-            crate::redstone::update_surrounding_blocks(w, pos);
-            for step in 0..=4 {
+            crate::interaction::use_redstone(w.get_block(pos), w, pos, None);
+            // Keep observing past the lamp delay while scheduled work remains.
+            const MAX_PROBE_TICKS: usize = 128;
+            for step in 0..=MAX_PROBE_TICKS {
                 if step > 0 {
                     w.tick_interpreted();
                 }
@@ -147,6 +121,9 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     deliveries: w.take_redstone_update_observations(),
                 });
                 w.observe_redstone_updates(true);
+                if step >= 4 && frames.last().unwrap().pending.is_empty() {
+                    break;
+                }
             }
             if !frames.last().unwrap().pending.is_empty() {
                 return Err(error(pos, "probe did not settle"));
@@ -164,12 +141,20 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             let mut operations: Vec<_> = program.links.iter().enumerate()
                 .filter(|(_, link)| link.source == source).map(|(id, _)| Operation::Contribution(id)).collect();
             for delivery in &frames[0].deliveries {
-                if delivery.pos == program.positions[wire] {
-                    operations.push(Operation::RefreshWire(wire));
-                    operations.extend(program.links.iter().enumerate()
-                        .filter(|(_, link)| link.source == wire).map(|(id, _)| Operation::Contribution(id)));
-                } else if delivery.pos == program.positions[lamp] {
-                    operations.push(Operation::UpdateLamp(lamp));
+                if let Some(slot) = program.positions.iter().position(|&pos| pos == delivery.pos) {
+                    match program.initial[slot] {
+                        Block::RedstoneWire { .. } => operations.push(Operation::RefreshWire(slot)),
+                        Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(slot)),
+                        _ => {}
+                    }
+                }
+            }
+            // Turbo dust propagation can change downstream wires without a neighbor callback.
+            for (slot, block) in program.initial.iter().enumerate() {
+                if matches!(block, Block::RedstoneWire { .. })
+                    && !operations.iter().any(|op| matches!(op, Operation::RefreshWire(id) if *id == slot))
+                {
+                    operations.push(Operation::RefreshWire(slot));
                 }
             }
             if !operations.iter().any(|op| matches!(op, Operation::RefreshWire(_)))
