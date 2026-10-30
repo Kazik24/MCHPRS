@@ -1,12 +1,55 @@
 use super::*;
+use super::program::RepeaterRecord;
 use crate::redpiler::scratch::discover_lamp_sources;
+use mchprs_world::TickPriority;
     use mchprs_blocks::block_entities::BlockEntity;
     use crate::plot::{PLOT_WIDTH, PlotWorld};
     use crate::world::storage::Chunk;
     use mchprs_blocks::{
         BlockDirection, BlockFace,
-        blocks::{Lever, RedstonePiston, RedstonePistonHead, RedstoneWire},
+        blocks::{Lever, RedstonePiston, RedstonePistonHead, RedstoneRepeater, RedstoneWire},
     };
+    fn test_program(
+        positions: Vec<BlockPos>,
+        initial: Vec<Block>,
+        sources: Vec<usize>,
+        source_programs: Vec<[Vec<Operation>; 2]>,
+        links: Vec<ElectricalLink>,
+        watched_wires: Vec<WatchedWire>,
+    ) -> Result<Program, ScratchError> {
+        if source_programs.len() != sources.len() {
+            return Err(ScratchError { position: None, reason: "sampled program source transition count mismatch" });
+        }
+        let mut output_programs = vec![[vec![], vec![]]; initial.len()];
+        for (&source, programs) in sources.iter().zip(source_programs) {
+            if let Some(output) = output_programs.get_mut(source) {
+                *output = programs;
+            }
+        }
+        Program::new(positions, initial, sources, output_programs, links, watched_wires, vec![])
+    }
+    fn repeater_program(delay: u8, powered: bool, locked: bool, output_is_diode: bool) -> Program {
+        let positions = (0..3).map(|x| BlockPos::new(x, 15, 15)).collect();
+        let initial = vec![
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+            Block::RedstoneRepeater { repeater: RedstoneRepeater { delay, facing: BlockDirection::East, locked, powered } },
+            Block::RedstoneLamp { lit: powered },
+        ];
+        let mut output_programs = vec![[vec![], vec![]]; 3];
+        output_programs[0] = [
+            vec![Operation::Contribution(0), Operation::UpdateRepeater(1)],
+            vec![Operation::Contribution(0), Operation::UpdateRepeater(1)],
+        ];
+        output_programs[1] = [
+            vec![Operation::Contribution(1), Operation::UpdateLamp(2)],
+            vec![Operation::Contribution(1), Operation::UpdateLamp(2)],
+        ];
+        Program::new(
+            positions, initial, vec![0], output_programs,
+            vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }, ElectricalLink { source: 1, target: 2, attenuation: 0 }],
+            vec![], vec![RepeaterRecord { component: 1, output_is_diode }],
+        ).unwrap()
+    }
     fn host() -> PlotWorld {
         PlotWorld::from_chunks(
             0,
@@ -21,9 +64,149 @@ use crate::redpiler::scratch::discover_lamp_sources;
             piston: w.piston_state().clone(),
         }
     }
+    fn assert_repeater_powered(runtime: &Runtime<'_>, powered: bool) {
+        assert!(matches!(runtime.blocks[1], Block::RedstoneRepeater { repeater } if repeater.powered == powered));
+    }
+    #[test]
+    fn repeater_delays_priorities_short_pulses_and_rearm() {
+        for delay in 1..=4 {
+            let program = repeater_program(delay, false, false, false);
+            let mut runtime = program.start();
+            runtime.set_input(0, true);
+            let queued = runtime.pending.iter_entries().next().unwrap();
+            assert_eq!(queued.ticks_left, u32::from(delay) * 2);
+            assert_eq!(queued.tick_priority, TickPriority::High);
+            let due_in = queued.ticks_left;
+            runtime.update_repeater(1);
+            assert_eq!(runtime.pending.iter_entries().count(), 1);
+            assert_eq!(runtime.pending.iter_entries().next().unwrap().ticks_left, due_in);
+            for _ in 1..u32::from(delay) * 2 {
+                runtime.tick();
+                assert_repeater_powered(&runtime, false);
+                assert_eq!(runtime.scheduled_repeater_ticks, 0);
+            }
+            runtime.tick();
+            assert_repeater_powered(&runtime, true);
+            assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: true });
+            assert_eq!(runtime.scheduled_repeater_ticks, 1);
+
+            runtime.set_input(0, false);
+            let queued = runtime.pending.iter_entries().next().unwrap();
+            assert_eq!(queued.ticks_left, u32::from(delay) * 2);
+            assert_eq!(queued.tick_priority, TickPriority::Higher);
+            for _ in 1..u32::from(delay) * 2 {
+                runtime.tick();
+                assert_repeater_powered(&runtime, true);
+            }
+            runtime.tick();
+            assert_repeater_powered(&runtime, false);
+            assert_eq!(runtime.scheduled_repeater_ticks, 2);
+            assert_eq!(runtime.pending.iter_entries().count(), 1);
+            for tick in 1..=4 {
+                runtime.tick();
+                assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: tick < 4 });
+            }
+            assert!(runtime.pending.iter_entries().next().is_none());
+        }
+
+        let diode_program = repeater_program(2, false, false, true);
+        let mut diode = diode_program.start();
+        diode.set_input(0, true);
+        assert_eq!(diode.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Highest);
+        let loaded_fall_program = repeater_program(2, true, false, false);
+        let mut falling = loaded_fall_program.start();
+        falling.set_input(0, true);
+        falling.tick();
+        falling.tick();
+        falling.set_input(0, false);
+        assert_eq!(falling.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Higher);
+
+        let short_program = repeater_program(2, false, false, false);
+        let mut short = short_program.start();
+        short.set_input(0, true);
+        let first = short.pending.iter_entries().next().unwrap();
+        short.set_input(0, false);
+        assert_eq!(short.pending.iter_entries().count(), 1);
+        assert_eq!(short.pending.iter_entries().next().unwrap().ticks_left, first.ticks_left);
+        for _ in 0..3 {
+            short.tick();
+            assert_repeater_powered(&short, false);
+        }
+        short.tick();
+        assert_repeater_powered(&short, true);
+        assert_eq!(short.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Higher);
+        for _ in 0..3 {
+            short.tick();
+            assert_repeater_powered(&short, true);
+        }
+        short.tick();
+        assert_repeater_powered(&short, false);
+        assert_eq!(short.scheduled_repeater_ticks, 2);
+    }
+    #[test]
+    fn repeater_loaded_output_locking_and_repeated_compiled_propagation() {
+        let loaded_program = repeater_program(1, true, false, false);
+        let loaded = loaded_program.start();
+        assert_repeater_powered(&loaded, true);
+        assert_eq!(loaded.contributions[1], 15);
+        assert_eq!(loaded.blocks[2], Block::RedstoneLamp { lit: true });
+        assert!(loaded.pending.iter_entries().next().is_none());
+        assert_eq!(loaded.deliveries, 0);
+
+        let locked_program = repeater_program(1, false, true, false);
+        let mut locked = locked_program.start();
+        locked.set_input(0, true);
+        assert!(locked.pending.iter_entries().next().is_none());
+        let tick = ScheduledBlockTick { pos: locked.program.positions[1], block_type: Some(locked.blocks[1].registry_id()) };
+        locked.pending.schedule_tick(tick, 1, TickPriority::Normal);
+        locked.tick();
+        locked.tick();
+        assert_repeater_powered(&locked, false);
+        assert_eq!(locked.scheduled_repeater_ticks, 1);
+        assert!(locked.pending.iter_entries().next().is_none());
+
+        let program = repeater_program(1, false, false, false);
+        let mut runtime = program.start();
+        for cycle in 1..=3 {
+            runtime.set_input(0, true);
+            assert_eq!(runtime.pending.iter_entries().count(), 1);
+            runtime.tick();
+            assert_repeater_powered(&runtime, false);
+            runtime.tick();
+            assert_repeater_powered(&runtime, true);
+            assert_eq!(runtime.contributions[1], 15);
+            assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: true });
+            runtime.set_input(0, false);
+            runtime.tick();
+            assert_repeater_powered(&runtime, true);
+            runtime.tick();
+            assert_repeater_powered(&runtime, false);
+            assert_eq!(runtime.contributions[1], 0);
+            assert_eq!(runtime.pending.iter_entries().count(), 1);
+            for tick in 1..=4 {
+                runtime.tick();
+                assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: tick < 4 });
+            }
+            assert!(runtime.pending.iter_entries().next().is_none());
+            assert_eq!(runtime.scheduled_repeater_ticks, cycle * 2);
+        }
+        assert!(runtime.operations > 0);
+    }
+    #[test]
+    fn malformed_repeater_program_records_and_instructions_reject() {
+        let program = repeater_program(1, false, false, false);
+        let mut outputs = program.output_programs.clone();
+        outputs[0][1] = vec![Operation::UpdateRepeater(2)];
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs, program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false }]).err().unwrap().reason, "sampled program UpdateRepeater target is not a repeater");
+        let outputs = program.output_programs.clone();
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![]).err().unwrap().reason, "sampled repeater has no repeater record");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false }, RepeaterRecord { component: 1, output_is_diode: true }]).err().unwrap().reason, "sampled repeater record is duplicated");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), outputs.clone(), program.links.clone(), vec![], vec![RepeaterRecord { component: 3, output_is_diode: false }]).err().unwrap().reason, "sampled repeater record index is not a repeater");
+        assert_eq!(Program::new(program.positions.clone(), program.initial.clone(), program.sources.clone(), vec![], program.links.clone(), vec![], vec![RepeaterRecord { component: 1, output_is_diode: false }]).err().unwrap().reason, "sampled output program count mismatch");
+    }
     #[test]
     fn explicit_deliveries_repeat_while_watchers_update_once() {
-        let program = Program::new(
+        let program = test_program(
             vec![BlockPos::new(0, 15, 15), BlockPos::new(1, 15, 15)],
             vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }, Block::RedstoneLamp { lit: false }],
             vec![0], vec![[vec![], vec![Operation::UpdateLamp(1), Operation::UpdateLamp(1)]]],
@@ -57,7 +240,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
             Operation::Contribution(2),
             Operation::UpdateLamp(3),
         ];
-        let program = Program::new(
+        let program = test_program(
             (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
             vec![lever, Block::RedstoneWire { wire: RedstoneWire::default() }, lever, Block::RedstoneLamp { lit: false }],
             vec![2, 0],
@@ -95,7 +278,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
     }
     #[test]
     fn electrical_change_without_notification_preserves_lamp_and_queue() {
-        let program = Program::new(
+        let program = test_program(
             vec![BlockPos::new(0, 15, 15), BlockPos::new(1, 15, 15)],
             vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) }, Block::RedstoneLamp { lit: true }],
             vec![0], vec![[vec![Operation::Contribution(0)], vec![Operation::Contribution(0)]]],
@@ -120,7 +303,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
             Block::RedstoneLamp { lit: false },
         ];
         let link = ElectricalLink { source: 0, target: 1, attenuation: 0 };
-        let ordered = Program::new(
+        let ordered = test_program(
             positions.clone(), initial.clone(), vec![0],
             vec![[vec![], vec![Operation::UpdateLamp(1), Operation::Contribution(0)]]],
             vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
@@ -131,7 +314,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
         assert_eq!(runtime.input_strength(1), 15);
         assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: false });
 
-        let reversed = Program::new(
+        let reversed = test_program(
             positions, initial, vec![0],
             vec![[vec![], vec![Operation::Contribution(0), Operation::UpdateLamp(1)]]],
             vec![link],
@@ -149,7 +332,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
         let lamp = Block::RedstoneLamp { lit: true };
         let a_ops = vec![Operation::Contribution(0), Operation::CheckWatchedWire(0), Operation::CheckWatchedWire(0)];
         let b_ops = vec![Operation::Contribution(1), Operation::CheckWatchedWire(0), Operation::CheckWatchedWire(0)];
-        let program = Program::new(
+        let program = test_program(
             (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
             vec![lever, wire, lever, lamp],
             vec![0, 2],
@@ -178,7 +361,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
     }
     #[test]
     fn watched_wire_notification_is_separate_from_lamp_power() {
-        let program = Program::new(
+        let program = test_program(
             (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
             vec![
                 Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
@@ -204,7 +387,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
     }
     #[test]
     fn watcher_updates_are_suppressed_per_phase() {
-        let program = Program::new(
+        let program = test_program(
             (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
             vec![
                 Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
@@ -246,7 +429,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
             Operation::Contribution(1),
             Operation::CheckWatchedWire(0),
         ];
-        let program = Program::new(
+        let program = test_program(
             (0..3).map(|x| BlockPos::new(x, 15, 15)).collect(),
             vec![
                 Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
@@ -290,7 +473,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
         ];
         let ops = vec![Operation::Contribution(0), Operation::RefreshWire(1), Operation::UpdateLamp(2)];
         let transitions = vec![[ops.clone(), ops.clone()]];
-        let make = |positions, initial, sources, transitions, links| Program::new(positions, initial, sources, transitions, links, vec![]);
+        let make = |positions, initial, sources, transitions, links| test_program(positions, initial, sources, transitions, links, vec![]);
         let assert_reason = |result: Result<Program, ScratchError>, reason| {
             assert_eq!(result.err().expect("malformed program was accepted").reason, reason);
         };
@@ -334,11 +517,11 @@ use crate::redpiler::scratch::discover_lamp_sources;
         );
         assert_reason(
             make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 2, target: 1, attenuation: 0 }]),
-            "sampled program link source must be lever or wire",
+            "sampled program link source must be lever, wire or repeater",
         );
         assert_reason(
             make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 0, target: 0, attenuation: 0 }]),
-            "sampled program link target must be wire or lamp",
+            "sampled program link target must be wire, lamp or repeater",
         );
         assert_reason(
             make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 0, target: 1, attenuation: 16 }]),
@@ -363,7 +546,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
             "sampled program UpdateLamp target is not a lamp",
         );
         assert_reason(
-            Program::new(
+            test_program(
                 vec![BlockPos::new(0, 0, 0)],
                 vec![Block::RedstoneWire { wire: RedstoneWire::default() }],
                 vec![], vec![], vec![], vec![WatchedWire { wire: 1, watchers: vec![] }],
@@ -371,7 +554,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
             "sampled watched-wire index is not a wire",
         );
         assert_reason(
-            Program::new(
+            test_program(
                 vec![BlockPos::new(0, 0, 0)],
                 vec![Block::RedstoneLamp { lit: false }],
                 vec![], vec![], vec![], vec![WatchedWire { wire: 0, watchers: vec![] }],
@@ -379,27 +562,27 @@ use crate::redpiler::scratch::discover_lamp_sources;
             "sampled watched-wire index is not a wire",
         );
         assert_reason(
-            Program::new(
+            test_program(
                 positions.clone(), initial.clone(), vec![0], vec![[vec![Operation::CheckWatchedWire(0)], vec![]]], links.clone(), vec![],
             ),
             "sampled program watched-wire index is out of bounds",
         );
         assert_reason(
-            Program::new(
+            test_program(
                 positions.clone(), initial.clone(), vec![0], vec![[vec![], vec![]]], links.clone(),
                 vec![WatchedWire { wire: 3, watchers: vec![] }],
             ),
             "sampled watched-wire index is not a wire",
         );
         assert_reason(
-            Program::new(
+            test_program(
                 positions.clone(), initial.clone(), vec![0], vec![[vec![], vec![]]], links.clone(),
                 vec![WatchedWire { wire: 1, watchers: vec![3] }],
             ),
             "sampled watched-wire receiver is not a lamp",
         );
         assert_reason(
-            Program::new(
+            test_program(
                 positions, initial, vec![0], vec![[vec![], vec![]]], links,
                 vec![WatchedWire { wire: 1, watchers: vec![1] }],
             ),
@@ -642,7 +825,7 @@ use crate::redpiler::scratch::discover_lamp_sources;
                 && p.positions[link.target] == BlockPos::new(17, 15, 15) && link.attenuation == 0).unwrap();
             assert!(!p.links.iter().any(|link| p.positions[link.source] == BlockPos::new(16, 15, 15)
                 && p.positions[link.target] == BlockPos::new(17, 15, 15)), "lamp dependencies must use extracted source identities");
-            for operations in &p.transitions[0] {
+            for operations in &p.output_programs[0] {
                 assert!(operations.iter().any(|op| matches!(op, Operation::Contribution(id) if *id == discovered_link)));
                 assert!(operations.iter().any(|op| matches!(op, Operation::Contribution(id) if *id == lamp_link)));
             }

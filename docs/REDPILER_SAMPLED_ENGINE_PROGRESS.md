@@ -6,6 +6,11 @@ piston execution remains the next unmet gate. The player-facing backend remains
 Graph. The old `event_netlist` compiler, executor and executor tests have been
 removed; their results below are historical only.
 
+Repeater runtime mechanism is implemented and tested with manually constructed
+lever → repeater → lamp programs. World-derived repeater compilation remains
+pending, full side-locking behavior remains pending, and ADDER1BIT remains
+incomplete.
+
 ## Current implementation
 
 - The MAIR module is split into `sampled/compiler.rs`, `sampled/program.rs`,
@@ -31,8 +36,9 @@ removed; their results below are historical only.
   wires, one lamp and decorative signs; multiple-source
   compilation, watcher installation and piston execution remain pending.
 - `Program::new` validates component records, external sources, rise/fall
-  programs, electrical links, watcher records and instruction references before
-  building incoming indexes. Partial instruction sequences remain valid.
+  programs indexed by component, electrical links, watcher records, repeater
+  records and instruction references before building incoming indexes. Partial
+  instruction sequences remain valid.
 - Rise/fall programs contain ordered `Contribution`, `RefreshWire`, watcher
   check and explicit lamp delivery instructions. Explicit `UpdateLamp` always
   dispatches. Watcher delivery uses phase-scoped `UpdateOnce`; contribution
@@ -41,6 +47,12 @@ removed; their results below are historical only.
 - The runtime uses its own scheduler and lamp tick dispatch. It drains the
   current bucket, advances once, then drains the new current bucket. The lamp
   off delay remains four game ticks for `schedule_tick(..., 2, ...)`.
+- The runtime supports rear-input repeater scheduling for loaded repeater state,
+  delays 1–4, tick priorities, duplicate suppression, short pulses, and compiled
+  rise/fall output programs. Repeater output contributions initialize from the
+  loaded powered state. Pending work can remain queued across external input
+  transitions. World compilation still rejects repeaters; side-input discovery
+  and changing lock state are unsupported.
 - Compile-time piston inventory records stable IDs, facing, sticky state,
   home/far cells, loaded extension/head state and transitive shared-cell groups.
   It rejects inconsistent, occupied, moving and out-of-capture contacts.
@@ -80,41 +92,30 @@ remain the migration contract for future MAIR acceptance tests.
 
 ## Current verification
 
-- ADDER1BIT implementation assignment: the active
-  `redpiler::sampled::adder_tests::adder1bit_mair_manifest_arithmetic` test loads
-  the pinned IO schematic, checks its hash and dimensions, and checks host
-  preservation before requiring compilation. It contains manifest action replay
-  and the declared output windows, but these are not reached: compilation rejects
-  a repeater at `(51,31,40)` in `prepared-0-0-0`. This is an admission failure,
-  not the historical `prepared-0-1-0` runtime arithmetic failure. No new piston,
-  token or observer runtime mechanism was implemented in this assignment so far.
-- The latest full sampled run reported **22 passed, 1 failed, 0 ignored**,
-  1,003 filtered out. The ADDER1BIT test failed at admission; the wall-lever,
-  bent-dust and decorative-sign native comparison passed.
+- `cargo test -p mchprs_core redpiler::sampled::tests --lib`: **28 passed, 0
+  failed, 0 ignored**, 1,004 filtered out. This includes repeater delay 1–4
+  boundaries, short-pulse replay, pending-tick deduplication, all three priority
+  cases, loaded powered and locked state, repeated lever–repeater–lamp propagation
+  and rearm, plus structural rejection. These mechanism tests use the sampled
+  runtime directly and do not use the native interpreter to calculate results.
 - `cargo test -p mchprs_core redpiler::scratch --lib`: **15 passed, 0 failed,
-  0 ignored**, 1,011 filtered out. An earlier `cargo check -p mchprs_core
-  --tests` passed with five existing dead-code warnings.
-- ADDER1BIT execution, `prepared-0-1-0`, accepted action/movement/completion
-  counters, and repeated rearm are still unverified. The test does not establish
-  their support. The previous verification below predates this active failure.
-
-- The chain compiler retains wool, glowstone and slab geometry in scratch and
-  applies native attachment support rules for lever and dust. Native comparisons
-  exercise wool and mixed top-slab/glowstone supports; bottom slabs decline as
-  dust support. Other dynamic blocks and unsupported entities remain rejected.
-
-- `cargo test -p mchprs_core redpiler::sampled --lib`: 19 passed, 0 failed,
-  0 ignored (1,003 filtered out). Includes initially-off sources, eligible
-  directional dust, one-hop conduction, shortest duplicate-path attenuation,
-  discovered link execution, native rise/fall self-validation, boundary
-  rejection and host preservation.
-- `cargo test -p mchprs_core redpiler::scratch --lib`: 15 passed, 0 failed,
-  0 ignored (1,007 filtered out). Wire-only checks cover source identity,
-  competing-path minimum attenuation and directional strong conduction.
-  Retained tests cover distances 14/15, directional emitters, stepped dust and
-  scratch isolation.
-- `cargo check -p mchprs_core --tests`: passed.
+  0 ignored**, 1,017 filtered out.
+- `cargo check -p mchprs_core --tests`: passed with five existing dead-code
+  warning groups.
 - `git diff --check`: passed.
+- `cargo test -p mchprs_core
+  redpiler::sampled::adder_tests::adder1bit_mair_manifest_arithmetic --lib`:
+  **0 passed, 1 failed**. The active case `prepared-0-0-0` is declined at
+  `(51,31,40)` because production world compilation still reports the repeater
+  as an unsupported component. Its manifest replay and output assertions are not
+  reached. This is an admission failure; ADDER1BIT remains incomplete.
+
+The native lamp chain still uses isolated sampling, component-state and pending
+tick self-checks, and host-preservation checks. The new repeater tests establish
+only the manually assembled rear-input mechanism. They do not establish
+world-derived repeater compilation, side-input discovery, changing lock state,
+overlapping circuit admission, or ADDER1BIT execution. Full side-locking behavior
+and piston execution remain pending.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).

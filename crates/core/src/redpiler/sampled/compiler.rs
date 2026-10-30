@@ -88,7 +88,8 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             links.push(ElectricalLink { source, target, attenuation: dependency.attenuation });
         }
     }
-    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links, vec![])
+    let output_programs = vec![[vec![], vec![]]; positions.len()];
+    let mut program = Program::new(positions, initial, source.into_iter().collect(), output_programs, links, vec![], vec![])
         .map_err(|err| error(bounds.0, err.reason))?;
     if let Some(source) = source {
         let pos = program.positions[source];
@@ -162,7 +163,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             {
                 return Err(error(pos, "probe did not observe wire and lamp updates"));
             }
-            program.transitions[0][usize::from(powered)] = operations;
+            program.output_programs[source][usize::from(powered)] = operations;
             samples[usize::from(powered)] = Some(frames);
             scratch.finish_probe()?;
         }
