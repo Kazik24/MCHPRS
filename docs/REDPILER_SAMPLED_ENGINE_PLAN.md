@@ -1,5 +1,10 @@
 # Interpreter-sampled Redpiler engine plan
 
+The current assignment targets the complete ADDER1BIT executable gate, including
+its actual IO schematic, eight prepared vectors, token/motion execution and
+rearm. The new active manifest test currently fails at admission; see progress
+for evidence. None of the mechanism milestones below substitutes for that gate.
+
 The goal is a separate experimental compiler and runtime inspired by the
 reference engine. The compiler uses the native interpreter in isolated scratch
 worlds to discover update behavior; the runtime executes a compiled netlist.
@@ -12,22 +17,28 @@ fit. Keep native fixtures and declared output boundaries when migrating useful
 scenarios. The superseded event executor is retired; its results remain
 historical evidence.
 
-Status verified 30 October 2026: the sampled lever–dust–lamp gate passes for
+Status verified 30 October 2026: lamp input extraction now collects directional
+weak sources, expands eligible dust through the shared extractor, and observes
+strong sources through at most one solid conductor. It deduplicates source
+paths by minimum attenuation and maps them to the current chain's lever-to-lamp
+link. Unsupported executable inputs reject with their position. This does not
+admit multiple sources. The sampled lever–dust–lamp gate passes for
 initially-off and initially-on entry, including repeated transitions, scheduler
 wrap, four-game-tick lamp-off timing, host preservation and positioned rejection
-of reads outside capture. Dust-source extraction now feeds the admitted chain
-through the shared scratch search, with escaped-read validation and resolved
-contribution indexes. The lamp link remains chain-specific; wider source/receiver
-admission and world-derived watcher installation are subsequent compiler work.
-Current verification: sampled suite 17 passed, scratch suite 15 passed, with
-zero failures or ignored tests in either suite. Broader extraction fixtures do
-not widen executable admission.
+of reads outside capture. The compiler checks escaped reads before lowering and
+updates discovered contributions separately from receiver deliveries.
 Compile-time empty-piston inventory is
 complete; the next unmet sampled gate is piston extension, retraction and
 rearm. The former event executor result is historical: its final suite recorded
 45 passed, 1 failed and 1 ignored, with ADDER1BIT failing and COUNTER ignored.
-Those adapters do not count as MAIR coverage. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
-and the [detailed implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
+Those adapters do not count as MAIR coverage. Multiple-source admission,
+world-derived watcher installation and piston execution remain later gates. See
+[current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md).
+
+Current verification: `cargo test -p mchprs_core redpiler::sampled --lib`
+passed 19 tests; `cargo test -p mchprs_core redpiler::scratch --lib` passed 15
+tests. Both had zero failures and ignored tests. `cargo check -p mchprs_core
+--tests` and `git diff --check` passed.
 
 ## 1. Engine boundary
 

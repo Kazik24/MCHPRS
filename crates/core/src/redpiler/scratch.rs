@@ -214,6 +214,64 @@ pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> R
     Ok(sources)
 }
 
+/// Collect a lamp's weak and one-hop conducted inputs, expanding each dust
+/// contact through the shared wire graph.
+pub(crate) fn discover_lamp_sources(world: &impl World, lamp: BlockPos) -> Result<Vec<WireSource>, ScratchError> {
+    let mut sources = HashMap::new();
+    let mut add = |source: BlockPos, attenuation: u8| {
+        sources.entry(source).and_modify(|old: &mut u8| *old = (*old).min(attenuation)).or_insert(attenuation);
+    };
+    let supported_source = |block: Block| {
+        is_supported_dynamic_source(block) || block == Block::RedstoneBlock || block.pressure_plate_powered().is_some()
+    };
+    for face in BlockFace::values() {
+        let neighbor = lamp.offset(face);
+        let block = world.get_block(neighbor);
+        if matches!(block, Block::RedstoneWire { .. }) {
+            if crate::redstone::power::emits_weak_power(block, world, neighbor, face, true) {
+                for source in discover_wire_sources(world, &[neighbor])? {
+                    add(source.source, source.attenuation);
+                }
+            }
+        } else if block.is_solid() {
+            for source_face in BlockFace::values() {
+                let source_pos = neighbor.offset(source_face);
+                let source_block = world.get_block(source_pos);
+                if !crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, true) {
+                    continue;
+                }
+                if matches!(source_block, Block::RedstoneWire { .. }) {
+                    for source in discover_wire_sources(world, &[source_pos])? {
+                        add(source.source, source.attenuation);
+                    }
+                } else if supported_source(source_block) {
+                    add(source_pos, 0);
+                } else {
+                    return Err(ScratchError {
+                        position: Some(source_pos),
+                        reason: "unsupported lamp input source",
+                    });
+                }
+            }
+        } else if crate::redstone::power::emits_weak_power(block, world, neighbor, face, true) {
+            if supported_source(block) {
+                add(neighbor, 0);
+            } else {
+                return Err(ScratchError {
+                    position: Some(neighbor),
+                    reason: "unsupported lamp input source",
+                });
+            }
+        }
+    }
+    let mut sources: Vec<_> = sources
+        .into_iter()
+        .map(|(source, attenuation)| WireSource { wire: lamp, source, attenuation })
+        .collect();
+    sources.sort_by_key(|source| (source.source.x, source.source.y, source.source.z));
+    Ok(sources)
+}
+
 fn is_supported_dynamic_source(block: Block) -> bool {
     matches!(
         block,

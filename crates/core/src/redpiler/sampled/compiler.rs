@@ -85,16 +85,19 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         }
     }
     let wire_positions: Vec<_> = positions.iter().copied().filter(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneWire { .. })).collect();
-    let discovery = crate::redpiler::scratch::discover_wire_sources(scratch.world(), &wire_positions);
+    let lamp_pos = positions.iter().copied().find(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneLamp { .. }));
+    let discovery = (|| {
+        let mut dependencies = crate::redpiler::scratch::discover_wire_sources(scratch.world(), &wire_positions)?;
+        if let Some(lamp) = lamp_pos {
+            dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), lamp)?);
+        }
+        Ok::<_, ScratchError>(dependencies)
+    })();
     scratch.finish_probe()?;
     let discovery = discovery?;
     let initial = positions.iter().map(|&p| world.get_block(p)).collect();
     let mut links = vec![];
     if source.is_some() {
-        let wire = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneWire { .. })).unwrap();
-        let lamp = positions.iter().position(|&p| matches!(world.get_block(p), Block::RedstoneLamp { .. })).unwrap();
-        // The lamp dependency remains restricted to the admitted straight chain.
-        links.push(ElectricalLink { source: wire, target: lamp, attenuation: 0 });
         for dependency in discovery {
             let source = positions.iter().position(|&pos| pos == dependency.source)
                 .ok_or_else(|| error(dependency.source, "unrepresented discovered wire source"))?;

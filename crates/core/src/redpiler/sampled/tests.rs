@@ -1,9 +1,10 @@
 use super::*;
+use crate::redpiler::scratch::discover_lamp_sources;
     use mchprs_blocks::block_entities::BlockEntity;
     use crate::plot::{PLOT_WIDTH, PlotWorld};
     use crate::world::storage::Chunk;
     use mchprs_blocks::{
-        BlockDirection,
+        BlockDirection, BlockFace,
         blocks::{Lever, RedstonePiston, RedstonePistonHead, RedstoneWire},
     };
     fn host() -> PlotWorld {
@@ -416,6 +417,83 @@ use super::*;
         };
         assert_eq!(err.position, Some(pos));
     }
+
+    #[test]
+    fn lamp_input_discovery_keeps_off_sources_and_expands_only_eligible_contacts() {
+        let lamp = BlockPos::new(20, 20, 20);
+        let lever_pos = lamp.offset(BlockFace::West);
+        let mut world = host();
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        world.set_block(
+            lever_pos,
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+        );
+        assert_eq!(
+            discover_lamp_sources(&world, lamp).unwrap().iter().map(|source| (source.source, source.attenuation)).collect::<Vec<_>>(),
+            [(lever_pos, 0)],
+        );
+
+        let mut dust_world = host();
+        let dust = lamp.offset(BlockFace::West);
+        let dust_source = dust.offset(BlockFace::West);
+        dust_world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        dust_world.set_block(dust, Block::RedstoneWire { wire: RedstoneWire::default() });
+        dust_world.set_block(
+            dust_source,
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+        );
+        let connected = discover_lamp_sources(&dust_world, lamp).unwrap();
+        assert!(connected.iter().any(|source| source.source == dust_source));
+        let lamp_above_dust = dust.offset(BlockFace::Top);
+        dust_world.set_block(lamp, Block::Air);
+        dust_world.set_block(lamp_above_dust, Block::RedstoneLamp { lit: false });
+        assert!(!discover_lamp_sources(&dust_world, lamp_above_dust).unwrap().iter().any(|source| source.source == dust_source));
+    }
+
+    #[test]
+    fn lamp_input_conduction_is_one_hop_and_merges_minimum_attenuation() {
+        let lamp = BlockPos::new(20, 20, 20);
+        let conductor = lamp.offset(BlockFace::West);
+        let lever_pos = conductor.offset(BlockFace::Top);
+        let mut world = host();
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        world.set_block(conductor, Block::Stone {});
+        world.set_block(
+            lever_pos,
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+        );
+        assert_eq!(
+            discover_lamp_sources(&world, lamp).unwrap().iter().map(|source| (source.source, source.attenuation)).collect::<Vec<_>>(),
+            [(lever_pos, 0)],
+        );
+        world.set_block(conductor.offset(BlockFace::West), Block::Stone {});
+        world.set_block(lever_pos, Block::Air);
+        let beyond_second_conductor = conductor.offset(BlockFace::West).offset(BlockFace::Top);
+        world.set_block(
+            beyond_second_conductor,
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+        );
+        assert!(discover_lamp_sources(&world, lamp).unwrap().is_empty());
+
+        let lamp = BlockPos::new(30, 20, 30);
+        let direct = lamp.offset(BlockFace::West);
+        let root = lamp.offset(BlockFace::Top);
+        let bridge = root.offset(BlockFace::West);
+        let mut world = host();
+        world.set_block(lamp, Block::RedstoneLamp { lit: false });
+        world.set_block(
+            direct,
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+        );
+        for pos in [root, bridge] {
+            world.set_block(pos, Block::RedstoneWire { wire: RedstoneWire::default() });
+        }
+        let dust_path = crate::redpiler::scratch::discover_wire_sources(&world, &[root]).unwrap();
+        assert_eq!(dust_path.iter().find(|source| source.source == direct).unwrap().attenuation, 1);
+        let merged = discover_lamp_sources(&world, lamp).unwrap();
+        assert_eq!(merged.iter().filter(|source| source.source == direct).count(), 1);
+        assert_eq!(merged.iter().find(|source| source.source == direct).unwrap().attenuation, 0);
+    }
     #[test]
     fn native_edges_and_host_preservation() {
         let source = BlockPos::new(15, 15, 15);
@@ -470,9 +548,13 @@ use super::*;
             let p = compile(&w, bounds, entry(&w)).unwrap();
             let discovered_link = p.links.iter().position(|link| p.positions[link.source] == source
                 && matches!(p.initial[link.target], Block::RedstoneWire { .. }) && link.attenuation == 0).unwrap();
-            assert_ne!(discovered_link, 0, "discovered contributions must not depend on link zero");
+            let lamp_link = p.links.iter().position(|link| p.positions[link.source] == source
+                && p.positions[link.target] == BlockPos::new(17, 15, 15) && link.attenuation == 0).unwrap();
+            assert!(!p.links.iter().any(|link| p.positions[link.source] == BlockPos::new(16, 15, 15)
+                && p.positions[link.target] == BlockPos::new(17, 15, 15)), "lamp dependencies must use extracted source identities");
             for operations in &p.transitions[0] {
                 assert!(operations.iter().any(|op| matches!(op, Operation::Contribution(id) if *id == discovered_link)));
+                assert!(operations.iter().any(|op| matches!(op, Operation::Contribution(id) if *id == lamp_link)));
             }
             assert_eq!(before, snapshot(&w));
             assert_eq!(p.initial, p.positions.iter().map(|&pos| w.get_block(pos)).collect::<Vec<_>>());

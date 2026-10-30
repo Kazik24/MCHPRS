@@ -20,10 +20,15 @@ removed; their results below are historical only.
   dust geometry. The compiler runs it against captured scratch state, checks
   escaped reads, maps positions to deterministic component indexes and resolves
   contribution instructions by their actual link indexes.
-- Production admission remains one straight lever/dust/lamp chain. The lamp
-  dependency is still constructed specifically for that chain. Broader discovery
-  fixtures do not establish multiple-source executable compilation, watcher
-  ordering completeness or piston execution.
+- Lamp inputs come from all six directional neighbors. The compiler collects
+  weak sources, expands eligible dust with `discover_wire_sources`, and collects
+  strong sources through one solid conductor hop. It deduplicates source
+  identities by minimum attenuation, checks escaped scratch reads, and resolves
+  source positions to deterministic component indexes. The admitted chain now
+  uses a discovered lever-to-lamp contribution; it no longer synthesizes a
+  wire-to-lamp link. Electrical contribution updates remain separate from lamp
+  deliveries. Production admission remains one straight chain; multiple-source
+  compilation, watcher installation and piston execution remain pending.
 - `Program::new` validates component records, external sources, rise/fall
   programs, electrical links, watcher records and instruction references before
   building incoming indexes. Partial instruction sequences remain valid.
@@ -74,15 +79,37 @@ remain the migration contract for future MAIR acceptance tests.
 
 ## Current verification
 
-- `cargo test -p mchprs_core redpiler::sampled --lib`: 17 passed, 0 failed,
-  0 ignored (1,003 filtered out). Includes explicit repeated delivery versus
-  watcher suppression, discovered-link execution with a nonzero link index,
-  native rise/fall self-validation, boundary rejection and host preservation.
+- ADDER1BIT implementation assignment: the active
+  `redpiler::sampled::adder_tests::adder1bit_mair_manifest_arithmetic` test loads
+  the pinned IO schematic, checks its hash and dimensions, and checks host
+  preservation before requiring compilation. It contains manifest action replay
+  and the declared output windows, but these are not reached: compilation rejects
+  white wool at `(51,30,40)` in `prepared-0-0-0`. This is an admission failure,
+  not the historical `prepared-0-1-0` runtime arithmetic failure. No new piston,
+  token or observer runtime mechanism was implemented in this assignment so far.
+- With that active acceptance test, `cargo test -p mchprs_core redpiler::sampled
+  --lib`: **19 passed, 1 failed, 0 ignored**, 1,003 filtered out. The failure is
+  the new ADDER1BIT test; all retained sampled tests pass. Direct execution of
+  that test: 0 passed, 1 failed, 1,022 filtered out.
+- `cargo test -p mchprs_core redpiler::scratch --lib`: **15 passed, 0 failed,
+  0 ignored**, 1,008 filtered out. `cargo check -p mchprs_core --tests` passed
+  with five existing dead-code warnings. `git diff --check` passed.
+- ADDER1BIT execution, `prepared-0-1-0`, accepted action/movement/completion
+  counters, and repeated rearm are still unverified. The test does not establish
+  their support. The previous verification below predates this active failure.
+
+- `cargo test -p mchprs_core redpiler::sampled --lib`: 19 passed, 0 failed,
+  0 ignored (1,003 filtered out). Includes initially-off sources, eligible
+  directional dust, one-hop conduction, shortest duplicate-path attenuation,
+  discovered link execution, native rise/fall self-validation, boundary
+  rejection and host preservation.
 - `cargo test -p mchprs_core redpiler::scratch --lib`: 15 passed, 0 failed,
-  0 ignored (1,005 filtered out). New wire-only checks cover competing path
-  minimum attenuation and directional strong conduction without pistons.
-  Retained tests cover competing initially-off sources, distances 14/15,
-  directional emitters, stepped dust and scratch isolation.
+  0 ignored (1,007 filtered out). Wire-only checks cover source identity,
+  competing-path minimum attenuation and directional strong conduction.
+  Retained tests cover distances 14/15, directional emitters, stepped dust and
+  scratch isolation.
+- `cargo check -p mchprs_core --tests`: passed.
+- `git diff --check`: passed.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).

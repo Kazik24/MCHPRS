@@ -12,8 +12,7 @@ Method names below refer to `MAIR.Core.Rsc.Compilation/Compiler.cs` and
 `MAIR.Core.Rsc.Engine/Engine.cs`; search by name if line numbers differ.
 Detailed investigation and replay limitations: [investigation](REDGEAR_ENGINE_INVESTIGATION.md).
 See the [milestones](REDPILER_SAMPLED_ENGINE_PLAN.md),
-[verified implementation status](REDPILER_SAMPLED_ENGINE_PROGRESS.md), and
-[implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md). The reference
+[verified implementation status](REDPILER_SAMPLED_ENGINE_PROGRESS.md). The reference
 algorithms below describe the inspected MAIR binary; they are not claims that
 the current Rust prototypes implement those algorithms.
 

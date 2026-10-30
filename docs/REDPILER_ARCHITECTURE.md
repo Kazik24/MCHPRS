@@ -8,6 +8,11 @@ as evidence, not as current implementation or acceptance status.
 
 ## Current execution paths
 
+The active `sampled/adder_tests.rs` manifest acceptance test currently fails at
+world admission. Its presence is a required future execution boundary, not
+evidence of ADDER1BIT compilation or runtime support. Current verification and
+the exact failure are recorded in the progress document.
+
 Graph compiles selected regions into `CircuitProgram` and `CircuitState`, then
 runs them in `GraphBackend`:
 
@@ -41,12 +46,14 @@ work, and report reads beyond capture. Compilation does not mutate the host.
 Rise and fall use separate ordered programs. `Contribution` recalculates one
 attenuated link from its source's live output; `RefreshWire` stores the wire's
 current incoming strength. Neither operation dispatches a receiver by itself.
-The compiler now obtains dust-source links from the shared scratch electrical
-extractor, independently of watcher construction. Captured-world reads are
-checked before discovered positions are mapped to deterministic component IDs.
-Contribution instructions resolve the resulting link indexes. The wire-to-lamp
-link is still specific to the admitted straight chain; this does not admit
-multiple-source world compilation.
+For each lamp, the compiler examines all six neighboring cells. It collects
+possible directional weak-power sources, expands eligible dust through the
+shared scratch wire extractor, and checks one neighboring layer for strong
+sources through a solid conductor. Solid conduction does not recurse. Repeated
+source paths keep their minimum attenuation. Captured-world reads are checked
+before source positions are resolved to deterministic component indexes; the
+admitted chain now gets its lever-to-lamp contribution from discovery. This
+does not widen executable admission to multiple sources.
 Explicit `UpdateLamp` always delivers. Watcher delivery uses `UpdateOnce`,
 which suppresses repeated watcher callbacks in an input phase; a relevant
 contribution change invalidates the marker. Production compilation currently
@@ -96,7 +103,10 @@ expected outputs and boundaries when each scenario is migrated.
 
 ## Verification
 
-Current sampled verification: `cargo test -p mchprs_core redpiler::sampled
---lib` reported 16 passed, 0 failed and 0 ignored (1,001 filtered out). The
-checks are `cargo test -p mchprs_core redpiler::sampled --lib`,
-`cargo check -p mchprs_core --tests` and `git diff --check`.
+Current verification on 30 October 2026:
+
+- `cargo test -p mchprs_core redpiler::sampled --lib`: 19 passed, 0 failed,
+  0 ignored (1,003 filtered out).
+- `cargo test -p mchprs_core redpiler::scratch --lib`: 15 passed, 0 failed,
+  0 ignored (1,007 filtered out).
+- `cargo check -p mchprs_core --tests` and `git diff --check`: passed.

@@ -5,6 +5,9 @@ mod executor;
 mod program;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+#[path = "sampled/adder_tests.rs"]
+mod adder_tests;
 
 #[cfg(test)]
 use compiler::{assign_piston_groups, compile, discover_piston_actors, PistonActor};

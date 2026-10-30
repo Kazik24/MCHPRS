@@ -188,9 +188,9 @@ event_netlist.rs and `graph/wire_probe.rs` were small prototypes,
 not a complete implementation. The event-netlist compiler and executor have
 since been retired; their recorded findings are historical. The current private
 target is the sampled MAIR compiler using native ScratchWorld probes and its
-independent runtime. Graph-derived discovery is not part of that compiler. See the [architecture](REDPILER_ARCHITECTURE.md),
-[current status](REDPILER_SAMPLED_ENGINE_PROGRESS.md) and
-[implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
+independent runtime. Graph-derived discovery is not part of that compiler. See
+the [architecture](REDPILER_ARCHITECTURE.md) and
+[current status](REDPILER_SAMPLED_ENGINE_PROGRESS.md).
 
 Suggested boundaries, each independently testable:
 
