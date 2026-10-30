@@ -393,8 +393,14 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
     program.compile_movement_flips()?;
     let mut ordering_probe = ScratchWorld::from_world(world, bounds, entry.clone())?;
     let output_sources: Vec<_> = sources.iter().copied().chain(program.repeaters.iter().map(|record| record.component)).chain(program.initial.iter().enumerate().filter_map(|(index, block)| matches!(block, Block::RedstoneComparator { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }).then_some(index))).collect();
+    let racing_sources: std::collections::HashSet<_> = output_sources.iter().copied().filter(|&source| feeds_two_racers(&program, source)).collect();
     let mut comparisons = Vec::new();
     for (output_index, &source) in output_sources.iter().enumerate() {
+        if !racing_sources.contains(&source) {
+            let operations = source_operations(&program, source);
+            program.output_programs[source] = [operations.clone(), operations];
+            continue;
+        }
         ordering_probe.revert();
         let scratch = &mut ordering_probe;
         let loaded = program.start();
@@ -558,6 +564,65 @@ fn within_two(pos: BlockPos) -> Vec<BlockPos> {
         if !cells.contains(&cell) { cells.push(cell); }
     }
     cells
+}
+
+fn feeds_two_racers(program: &Program, source: usize) -> bool {
+    let mut targets = Vec::new();
+    for link in program.links.iter().filter(|link| link.source == source) {
+        if !targets.contains(&link.target) { targets.push(link.target); }
+    }
+    for link in program.arrangement_links.iter().filter(|link| link.source == ArrangementSource::Component(source)) {
+        if !targets.contains(&link.target) { targets.push(link.target); }
+    }
+    for link in program.side_links.iter().filter(|link| link.source == source) {
+        if !targets.contains(&link.target) { targets.push(link.target); }
+    }
+    for record in &program.repeaters {
+        if record.side_sources.as_ref().is_some_and(|side| side.contains(&source)) && !targets.contains(&record.component) {
+            targets.push(record.component);
+        }
+    }
+    targets.into_iter().filter(|&target| matches!(program.initial[target],
+        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } |
+        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } |
+        Block::Observer { .. } | Block::Piston { .. } | Block::RedstoneWire { .. } | Block::RedstoneBlock
+    )).take(2).count() == 2
+}
+
+fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
+    let mut targets = Vec::new();
+    for link in program.links.iter().filter(|link| link.source == source) {
+        if !targets.contains(&link.target) { targets.push(link.target); }
+    }
+    for link in program.arrangement_links.iter().filter(|link| link.source == ArrangementSource::Component(source)) {
+        if !targets.contains(&link.target) { targets.push(link.target); }
+    }
+    for link in program.side_links.iter().filter(|link| link.source == source) {
+        if !targets.contains(&link.target) { targets.push(link.target); }
+    }
+    for record in &program.repeaters {
+        if record.side_sources.as_ref().is_some_and(|side| side.contains(&source)) && !targets.contains(&record.component) {
+            targets.push(record.component);
+        }
+    }
+    let mut operations = Vec::new();
+    for target in targets {
+        operations.extend(program.links.iter().enumerate().filter_map(|(index, link)| (link.source == source && link.target == target).then_some(Operation::Contribution(index))));
+        operations.extend(program.arrangement_links.iter().enumerate().filter_map(|(index, link)| (link.source == ArrangementSource::Component(source) && link.target == target).then_some(Operation::ArrangementContribution(index))));
+        match program.initial[target] {
+            Block::RedstoneWire { .. } => {
+                operations.push(Operation::RefreshWire(target));
+                if let Some(record) = program.watched_wires.iter().position(|record| record.wire == target) { operations.push(Operation::CheckWatchedWire(record)); }
+            }
+            Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
+            Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),
+            Block::RedstoneComparator { .. } => operations.push(Operation::UpdateComparator(target)),
+            Block::Piston { .. } => {},
+            Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => operations.push(Operation::UpdateTorch(target)),
+            _ => {}
+        }
+    }
+    operations
 }
 
 fn track_reactive(world: &impl World, entry: &ScratchEntry, program: &mut Program) -> Result<(), ScratchError> {

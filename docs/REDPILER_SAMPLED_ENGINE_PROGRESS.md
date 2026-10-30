@@ -289,7 +289,7 @@ port of `TrackBudded`, `ReactsTo`, `IndexBudded`, `PropagateChangeWithBudded`
 and `UpdateBudded`. These implementations need further reference parity tests.
 The focused replay passed all four included samples, including every declared
 TEST_PISTION output and scenario, with reference SHA-256
-`5829ce8d437d028c7ae93e53766912e50b20edc21ec82fcc64c7cfbb28f650a8`.
+`bd32d2372253788f53031939d4f8de9fa34803eb2869150b576627a3c98eabfa`.
 The pinned compiler does not classify copper bulbs as active nodes; the sample
 also demonstrates that they conduct diode inputs. Comparator node 5 maps to
 world (40, 32, 54), starts in compare mode, unpowered with stored output zero,
@@ -299,3 +299,36 @@ This is not yet a complete comparator/reactive acceptance: composter-reader
 behavior, broad analog and conditional inputs, priority and reactive ordering
 need targeted verification. Pending work import, full piston interruption and
 independent motion-part completion remain unimplemented.
+
+## Sampled compiler probe reuse
+
+The compiler reuses one captured world for token-movement probes and one for
+source-order probes. This was already present in the checked-out baseline. This
+change makes `ScratchWorld::revert` restore only positions written during a
+probe: `PlotWorld` tracks block and block-entity mutations, and rollback restores
+those cells plus scheduled ticks, piston state, observation buffers, waveform
+state and derived caches. Writes and block-entity reads outside capture bounds
+are rejected and reported through the existing boundary check. The compiler
+currently has five `ScratchWorld::from_world` call sites: initial capture,
+piston actor discovery, movement probes, GroupProbe, and source ordering.
+
+The legacy token-source extraction was also already skipped in this checkout;
+token-source maps contain empty per-cell entries, while conditional GroupProbe
+arrangements supply movement dependencies. The saved ADDER1BIT and ADDER11BIT
+profile evidence found zero legacy entries surviving conditional-group
+filtering (45/45 and 485/485 filtered respectively). This change aligns source
+ordering with MAIR's `FeedsTwoRacers` selection: sources with fewer than two
+eligible targets get direct compiled operations, while racing sources retain
+native ordering probes on the reused scratch world.
+
+After the changes, `cargo test -p mchprs_core redpiler::sampled --lib` passed
+48 tests, including ADDER11BIT's 41-case acceptance and the focused comparator
+replay. The scratch suite passed 15 tests, `cargo check -p mchprs_core --tests`
+passed, and `git diff --check` passed. No post-change compile profile or release
+benchmark was run. The earlier 7,239 ms development sample is a baseline only;
+this change makes no measured latency claim.
+
+Remaining risk: the source-order classifier uses compiled target records to
+identify MAIR racing sources. Existing sampled acceptance passes, but there is
+no broad circuit corpus or matched post-change profile to measure that
+classifier or rollback's speed benefit.
