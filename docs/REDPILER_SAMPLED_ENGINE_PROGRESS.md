@@ -251,6 +251,10 @@ from the Luna investigation. `TEST_PISTION` is still excluded because comparator
 and reactive semantics remain unimplemented; the other 14 samples have not
 been compared by this focused test.
 
+Watched-wire contribution changes now clear their phase marker on any change
+in level, including changes masked by a stronger source. Comparator readers
+and MAIR reactive propagation are still absent.
+
 The final combined run `mair-groupprobe-final-suite.log` passed all 44 sampled
 tests, including those focused comparisons; the corresponding `cargo check`
 passed. A separate ADDER diagnostic run produced no reported differences on

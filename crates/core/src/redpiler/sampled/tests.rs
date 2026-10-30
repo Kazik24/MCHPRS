@@ -694,6 +694,28 @@ use mchprs_world::TickPriority;
         assert_eq!(runtime.deliveries, 4, "the next external transition starts a fresh update phase");
     }
     #[test]
+    fn watched_wire_level_changes_invalidate_even_when_masked() {
+        let positions = (0..3).map(|x| BlockPos::new(x, 15, 15)).collect();
+        let wire = |power| Block::RedstoneWire { wire: RedstoneWire { power, ..Default::default() } };
+        let mut output_programs = vec![[vec![], vec![]]; 3];
+        output_programs[0][0].push(Operation::Contribution(0));
+        output_programs[1][0].push(Operation::Contribution(1));
+        let program = Program::new(
+            positions, vec![wire(7), wire(10), wire(10)], vec![], output_programs,
+            vec![ElectricalLink { source: 0, target: 2, attenuation: 0 }, ElectricalLink { source: 1, target: 2, attenuation: 0 }],
+            vec![WatchedWire { wire: 2, watchers: vec![] }], vec![],
+        ).unwrap();
+        let mut runtime = program.start();
+        runtime.updated_in_phase[2] = Some(runtime.phase);
+        runtime.blocks[0] = wire(6);
+        runtime.execute_output_program(0, false);
+        assert_eq!(runtime.updated_in_phase[2], None);
+        assert_eq!(runtime.input_strength(2), 10);
+        runtime.blocks[1] = wire(0);
+        runtime.execute_output_program(1, false);
+        assert_eq!(runtime.input_strength(2), 6);
+    }
+    #[test]
     fn program_construction_rejects_malformed_records() {
         let positions = vec![BlockPos::new(0, 0, 0), BlockPos::new(1, 0, 0), BlockPos::new(2, 0, 0)];
         let initial = vec![

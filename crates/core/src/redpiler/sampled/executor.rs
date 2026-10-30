@@ -478,7 +478,8 @@ impl Runtime<'_> {
                     let contribution = if link.active[self.group_arrangements[link.group]] {
                         self.arrangement_output(link.source).saturating_sub(link.attenuation)
                     } else { 0 };
-                    if (self.arrangement_contributions[index] > 0) != (contribution > 0) {
+                    if (self.arrangement_contributions[index] > 0) != (contribution > 0)
+                        || (self.arrangement_contributions[index] != contribution && self.program.watched_wires.iter().any(|wire| wire.wire == link.target)) {
                         self.updated_in_phase[link.target] = None;
                     }
                     self.arrangement_contributions[index] = contribution;
@@ -489,7 +490,8 @@ impl Runtime<'_> {
                     let contribution = self.output(link.source).saturating_sub(link.attenuation);
                     self.contributions[link_index] = contribution;
                     if self.trace_enabled && old_contribution != contribution { self.trace(format!("link {:?} -> {:?} strength={old_contribution}->{contribution}", self.program.positions[link.source], self.program.positions[link.target])); }
-                    if (old_contribution > 0) != (contribution > 0) {
+                    if (old_contribution > 0) != (contribution > 0)
+                        || (old_contribution != contribution && self.program.watched_wires.iter().any(|wire| wire.wire == link.target)) {
                         self.updated_in_phase[link.target] = None;
                     }
                 }
