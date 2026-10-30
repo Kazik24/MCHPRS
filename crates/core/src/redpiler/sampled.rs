@@ -17,9 +17,11 @@ struct Frame {
 }
 #[derive(Clone)]
 enum Operation {
+    Contribution(usize),
     RefreshWire(usize),
     UpdateLamp(usize),
 }
+#[derive(Clone)]
 struct ElectricalLink {
     source: usize,
     target: usize,
@@ -32,7 +34,6 @@ struct Program {
     transitions: Vec<[Vec<Operation>; 2]>,
     links: Vec<ElectricalLink>,
     incoming: Vec<Vec<usize>>,
-    outgoing: Vec<Vec<usize>>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PistonActor {
@@ -54,14 +55,88 @@ struct Runtime<'a> {
     operations: usize,
 }
 impl Program {
-    fn new(positions: Vec<BlockPos>, initial: Vec<Block>, sources: Vec<usize>, transitions: Vec<[Vec<Operation>; 2]>, links: Vec<ElectricalLink>) -> Self {
+    fn new(
+        positions: Vec<BlockPos>,
+        initial: Vec<Block>,
+        sources: Vec<usize>,
+        transitions: Vec<[Vec<Operation>; 2]>,
+        links: Vec<ElectricalLink>,
+    ) -> Result<Self, ScratchError> {
+        let invalid = |reason| ScratchError { position: None, reason };
+        if positions.len() != initial.len() {
+            return Err(invalid("sampled program position/initial length mismatch"));
+        }
+        let mut unique_positions = std::collections::HashSet::new();
+        if positions.iter().any(|position| !unique_positions.insert(*position)) {
+            return Err(invalid("sampled program has duplicate component positions"));
+        }
+        for block in &initial {
+            match block {
+                Block::Lever { .. } | Block::RedstoneLamp { .. } => {}
+                Block::RedstoneWire { wire } if wire.power <= 15 => {}
+                Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
+                _ => return Err(invalid("sampled program contains unsupported component")),
+            }
+        }
+        let mut unique_sources = std::collections::HashSet::new();
+        for &source in &sources {
+            let Some(block) = initial.get(source) else {
+                return Err(invalid("sampled program source index is out of bounds"));
+            };
+            if !unique_sources.insert(source) {
+                return Err(invalid("sampled program source is duplicated"));
+            }
+            if !matches!(block, Block::Lever { .. }) {
+                return Err(invalid("sampled program source is not a lever"));
+            }
+        }
+        if transitions.len() != sources.len() {
+            return Err(invalid("sampled program source transition count mismatch"));
+        }
+        for link in &links {
+            let Some(source) = initial.get(link.source) else {
+                return Err(invalid("sampled program link source is out of bounds"));
+            };
+            let Some(target) = initial.get(link.target) else {
+                return Err(invalid("sampled program link target is out of bounds"));
+            };
+            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. }) {
+                return Err(invalid("sampled program link source must be lever or wire"));
+            }
+            if !matches!(target, Block::RedstoneWire { .. } | Block::RedstoneLamp { .. }) {
+                return Err(invalid("sampled program link target must be wire or lamp"));
+            }
+            if link.attenuation > 15 {
+                return Err(invalid("sampled program attenuation exceeds 15"));
+            }
+        }
+        for source_transitions in &transitions {
+            for operations in source_transitions {
+                for operation in operations {
+                    match *operation {
+                        Operation::Contribution(link) if link >= links.len() => {
+                            return Err(invalid("sampled program contribution link is out of bounds"));
+                        }
+                        Operation::RefreshWire(slot)
+                            if !matches!(initial.get(slot), Some(Block::RedstoneWire { .. })) =>
+                        {
+                            return Err(invalid("sampled program RefreshWire target is not a wire"));
+                        }
+                        Operation::UpdateLamp(slot)
+                            if !matches!(initial.get(slot), Some(Block::RedstoneLamp { .. })) =>
+                        {
+                            return Err(invalid("sampled program UpdateLamp target is not a lamp"));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
         let mut incoming = vec![vec![]; initial.len()];
-        let mut outgoing = vec![vec![]; initial.len()];
         for (id, link) in links.iter().enumerate() {
             incoming[link.target].push(id);
-            outgoing[link.source].push(id);
         }
-        Self { positions, initial, sources, transitions, links, incoming, outgoing }
+        Ok(Self { positions, initial, sources, transitions, links, incoming })
     }
     fn start(&self) -> Runtime<'_> {
         Runtime {
@@ -85,14 +160,11 @@ impl Runtime<'_> {
         self.program.incoming[target].iter().map(|&id| self.contributions[id])
             .max().unwrap_or(0)
     }
-    fn refresh_contributions(&mut self, source: usize) {
-        let strength: u8 = match self.blocks[source] {
+    fn output(&self, source: usize) -> u8 {
+        match self.blocks[source] {
             Block::Lever { lever } => if lever.powered { 15 } else { 0 },
             Block::RedstoneWire { wire } => wire.power,
             _ => 0,
-        };
-        for &id in &self.program.outgoing[source] {
-            self.contributions[id] = strength.saturating_sub(self.program.links[id].attenuation);
         }
     }
     fn set_input(&mut self, source_index: usize, powered: bool) {
@@ -108,16 +180,18 @@ impl Runtime<'_> {
             };
             lever.powered = powered;
             self.blocks[source] = Block::Lever { lever };
-            self.refresh_contributions(source);
             for operation in &self.program.transitions[source_index][usize::from(powered)] {
                 match *operation {
+                    Operation::Contribution(link_index) => {
+                        let link = &self.program.links[link_index];
+                        self.contributions[link_index] = self.output(link.source).saturating_sub(link.attenuation);
+                    }
                     Operation::RefreshWire(slot) => {
                         let Block::RedstoneWire { mut wire } = self.blocks[slot] else {
                             unreachable!()
                         };
                         wire.power = self.input_strength(slot);
                         self.blocks[slot] = Block::RedstoneWire { wire };
-                        self.refresh_contributions(slot);
                     }
                     Operation::UpdateLamp(slot) => {
                         let power = self.input_strength(slot);
@@ -233,7 +307,8 @@ fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry
             ElectricalLink { source: wire, target: lamp, attenuation: 0 },
         ]);
     }
-    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links);
+    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links)
+        .map_err(|err| error(bounds.0, err.reason))?;
     if let Some(source) = source {
         let pos = program.positions[source];
         let wire = program
@@ -287,19 +362,15 @@ fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry
             } else {
                 first_edge = Some(frames.clone());
             }
-            let operations: Vec<_> = frames[0]
-                .deliveries
-                .iter()
-                .filter_map(|delivery| {
-                    if delivery.pos == program.positions[wire] {
-                        Some(Operation::RefreshWire(wire))
-                    } else if delivery.pos == program.positions[lamp] {
-                        Some(Operation::UpdateLamp(lamp))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let mut operations = vec![Operation::Contribution(0)];
+            for delivery in &frames[0].deliveries {
+                if delivery.pos == program.positions[wire] {
+                    operations.push(Operation::RefreshWire(wire));
+                    operations.push(Operation::Contribution(1));
+                } else if delivery.pos == program.positions[lamp] {
+                    operations.push(Operation::UpdateLamp(lamp));
+                }
+            }
             if !operations.iter().any(|op| matches!(op, Operation::RefreshWire(_)))
                 || !operations.iter().any(|op| matches!(op, Operation::UpdateLamp(_)))
             {
@@ -455,7 +526,13 @@ mod tests {
     fn competing_sources_preserve_attenuation_masking_and_lamp_delay() {
         let lever = Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) };
         // Source indexes intentionally differ from component indexes.
-        let operations = vec![Operation::RefreshWire(1), Operation::UpdateLamp(3)];
+        let operations = vec![
+            Operation::Contribution(0),
+            Operation::Contribution(1),
+            Operation::RefreshWire(1),
+            Operation::Contribution(2),
+            Operation::UpdateLamp(3),
+        ];
         let program = Program::new(
             (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
             vec![lever, Block::RedstoneWire { wire: RedstoneWire::default() }, lever, Block::RedstoneLamp { lit: false }],
@@ -466,7 +543,7 @@ mod tests {
                 ElectricalLink { source: 0, target: 1, attenuation: 0 },
                 ElectricalLink { source: 1, target: 3, attenuation: 0 },
             ],
-        );
+        ).unwrap();
         let mut runtime = program.start();
         for (source, powered, expected) in [(0, true, 13), (1, true, 15), (0, false, 15), (0, true, 15), (1, false, 13), (0, false, 0)] {
             runtime.set_input(source, powered);
@@ -485,7 +562,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(runtime.operations, 13);
+        assert_eq!(runtime.operations, 31);
         // The external input is legal again after scheduled work settles.
         runtime.set_input(0, true);
         assert_eq!(runtime.input_strength(1), 13);
@@ -496,9 +573,9 @@ mod tests {
         let program = Program::new(
             vec![BlockPos::new(0, 15, 15), BlockPos::new(1, 15, 15)],
             vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) }, Block::RedstoneLamp { lit: true }],
-            vec![0], vec![[vec![], vec![]]],
+            vec![0], vec![[vec![Operation::Contribution(0)], vec![Operation::Contribution(0)]]],
             vec![ElectricalLink { source: 0, target: 1, attenuation: 2 }],
-        );
+        ).unwrap();
         let mut runtime = program.start();
         assert_eq!(runtime.input_strength(1), 13);
         for (powered, strength) in [(false, 0), (true, 13)] {
@@ -507,7 +584,122 @@ mod tests {
             assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
             assert!(runtime.pending.iter_entries().next().is_none());
         }
-        assert_eq!(runtime.operations, 0);
+        assert_eq!(runtime.operations, 2);
+    }
+    #[test]
+    fn contribution_order_does_not_implicitly_notify_receiver() {
+        let positions = vec![BlockPos::new(0, 15, 15), BlockPos::new(1, 15, 15)];
+        let initial = vec![
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+            Block::RedstoneLamp { lit: false },
+        ];
+        let link = ElectricalLink { source: 0, target: 1, attenuation: 0 };
+        let ordered = Program::new(
+            positions.clone(), initial.clone(), vec![0],
+            vec![[vec![], vec![Operation::UpdateLamp(1), Operation::Contribution(0)]]],
+            vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+        ).unwrap();
+        let mut runtime = ordered.start();
+        runtime.set_input(0, true);
+        assert_eq!(runtime.input_strength(1), 15);
+        assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: false });
+
+        let reversed = Program::new(
+            positions, initial, vec![0],
+            vec![[vec![], vec![Operation::Contribution(0), Operation::UpdateLamp(1)]]],
+            vec![link],
+        ).unwrap();
+        let mut runtime = reversed.start();
+        runtime.set_input(0, true);
+        assert_eq!(runtime.input_strength(1), 15);
+        assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
+    }
+    #[test]
+    fn program_construction_rejects_malformed_records() {
+        let positions = vec![BlockPos::new(0, 0, 0), BlockPos::new(1, 0, 0), BlockPos::new(2, 0, 0)];
+        let initial = vec![
+            Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) },
+            Block::RedstoneWire { wire: RedstoneWire::default() },
+            Block::RedstoneLamp { lit: false },
+        ];
+        let links = vec![
+            ElectricalLink { source: 0, target: 1, attenuation: 0 },
+            ElectricalLink { source: 1, target: 2, attenuation: 0 },
+        ];
+        let ops = vec![Operation::Contribution(0), Operation::RefreshWire(1), Operation::UpdateLamp(2)];
+        let transitions = vec![[ops.clone(), ops.clone()]];
+        let make = |positions, initial, sources, transitions, links| Program::new(positions, initial, sources, transitions, links);
+        let assert_reason = |result: Result<Program, ScratchError>, reason| {
+            assert_eq!(result.err().expect("malformed program was accepted").reason, reason);
+        };
+        assert!(make(positions.clone(), initial.clone(), vec![0], vec![[vec![], vec![]]], links.clone()).is_ok());
+
+        assert_reason(
+            make(positions[..2].to_vec(), initial.clone(), vec![0], transitions.clone(), links.clone()),
+            "sampled program position/initial length mismatch",
+        );
+        assert_reason(
+            make(vec![positions[0]; 3], initial.clone(), vec![0], transitions.clone(), links.clone()),
+            "sampled program has duplicate component positions",
+        );
+        assert_reason(
+            make(positions.clone(), vec![initial[0], Block::Stone {}, initial[2]], vec![0], transitions.clone(), links.clone()),
+            "sampled program contains unsupported component",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![3], transitions.clone(), links.clone()),
+            "sampled program source index is out of bounds",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0, 0], vec![[vec![], vec![]]; 2], links.clone()),
+            "sampled program source is duplicated",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![1], vec![[vec![], vec![]]], links.clone()),
+            "sampled program source is not a lever",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], vec![], links.clone()),
+            "sampled program source transition count mismatch",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 3, target: 1, attenuation: 0 }]),
+            "sampled program link source is out of bounds",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 0, target: 3, attenuation: 0 }]),
+            "sampled program link target is out of bounds",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 2, target: 1, attenuation: 0 }]),
+            "sampled program link source must be lever or wire",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 0, target: 0, attenuation: 0 }]),
+            "sampled program link target must be wire or lamp",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], transitions.clone(), vec![ElectricalLink { source: 0, target: 1, attenuation: 16 }]),
+            "sampled program attenuation exceeds 15",
+        );
+        let mut overpowered_wire = initial.clone();
+        overpowered_wire[1] = Block::RedstoneWire { wire: RedstoneWire { power: 16, ..Default::default() } };
+        assert_reason(
+            make(positions.clone(), overpowered_wire, vec![0], transitions.clone(), links.clone()),
+            "sampled program wire power exceeds 15",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], vec![[vec![Operation::Contribution(2)], vec![]]], links.clone()),
+            "sampled program contribution link is out of bounds",
+        );
+        assert_reason(
+            make(positions.clone(), initial.clone(), vec![0], vec![[vec![Operation::RefreshWire(2)], vec![]]], links.clone()),
+            "sampled program RefreshWire target is not a wire",
+        );
+        assert_reason(
+            make(positions, initial, vec![0], vec![[vec![Operation::UpdateLamp(1)], vec![]]], links),
+            "sampled program UpdateLamp target is not a lamp",
+        );
     }
     #[test]
     fn rejects_unrepresented_blocks() {

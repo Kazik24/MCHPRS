@@ -9,24 +9,33 @@ remains Graph.
 
 - The indexed-runtime increment of checkpoint 1 addresses inputs with
   `set_input(source_index, powered)`, selecting the matching source rise/fall
-  program. Program construction builds incoming and outgoing link indexes once;
-  receiver reads and source refreshes visit only those indexes. Runtime retains
-  individual attenuated contributions and takes their maximum for each input.
-  Contribution changes alone do not execute receiver instructions.
+  program. Runtime retains each attenuated contribution and computes an
+  electrical input as the maximum of its incoming links. `Contribution(link)`
+  recalculates one link from its source's live output; `RefreshWire` stores the
+  wire's current input power without implicitly refreshing outgoing links.
+  Source changes update the source output, then run the selected ordered
+  program. Contribution changes alone do not execute receiver instructions.
+- The compiler places `Contribution(0)` (lever → wire) before sampled delivery
+  instructions and inserts `Contribution(1)` (wire → lamp) immediately after
+  every sampled `RefreshWire`. Repeated sampled deliveries and their order are
+  retained. This lowering is valid only for the currently admitted single-chain
+  topology; it is not generalized to undiscovered geometry.
 - Direct-program tests cover two independently addressed sources contributing
   13 and 15 to a wire, masking, restoration to 13, final shutoff with the existing
   four-game-tick lamp delay, and an electrical change without a lamp notification.
   These tests establish competing contributions and update separation, not
-  watcher or source-ordering completeness. Checkpoint 1 remains incomplete:
-  watcher tables, receiver-port representation and full program validation remain.
+  watcher or source-ordering completeness. Structural Program validation is
+  implemented; checkpoint 1 remains incomplete because watcher tables,
+  receiver-port representation and semantic program validation remain.
   World-derived multi-source extraction and piston execution follow afterward;
   production admission remains the single-chain contract below.
 - `crates/core/src/redpiler/sampled.rs` contains a private compiler, immutable
   Program and separate Runtime. It records native callbacks in an isolated
   ScratchWorld, separately for rising and falling source changes.
-- Runtime instructions are `RefreshWire` and `UpdateLamp`. They read live
-  runtime state; delayed lamp off uses TickScheduler and rechecks power. Earlier
-  state-delta and frame-replay implementations have been superseded.
+- Runtime instructions are `Contribution`, `RefreshWire` and `UpdateLamp`. They
+  read live runtime state; delayed lamp off uses TickScheduler and rechecks
+  power. Earlier state-delta and frame-replay implementations have been
+  superseded.
 - Compilation repeats the first edge, rejects divergent samples, checks return
   to the loaded settled state, and executes both edge programs against recorded
   blocks and pending ticks before accepting a program.
@@ -50,14 +59,23 @@ are retained and checked rather than normalized to a convenient probe state.
 
 ## Verified results
 
-Indexed-runtime increment verification:
+Explicit ordered-contribution increment verification:
 
-- `cargo test -p mchprs_core redpiler::sampled --lib`: 10 passed, 0 failed,
-  0 ignored, 1,035 filtered out. Both new direct-program tests and all eight
-  retained tests pass, including native comparison and compiler self-validation.
+- `cargo test -p mchprs_core redpiler::sampled --lib`: 12 passed, 0 failed,
+  0 ignored, 1,035 filtered out. The new order test confirms that a receiver
+  instruction sees the prior contribution if it precedes `Contribution(link)`;
+  reversing the instructions lights the lamp. The electrical-change-without-
+  notification test executes contribution instructions and contains no lamp
+  update instruction. A malformed-program test covers record lengths, unique
+  positions, supported block types and ranges, source bindings, rise/fall pair
+  count, link endpoints and types, attenuation, and operation references.
+  Empty/partial operation programs remain valid. The eleven previous tests,
+  native comparison and compiler self-validation pass.
 - `cargo check -p mchprs_core --tests`: passed with four existing dead-code
   warnings.
 - `git diff --check`: passed.
+- Watcher dispatch and MAIR's special reactive/BUD batching path remain
+  subsequent work and are not implemented by this change.
 - The event-netlist suite was not rerun for this increment; its separately
   recorded ADDER1BIT failure below remains unresolved.
 

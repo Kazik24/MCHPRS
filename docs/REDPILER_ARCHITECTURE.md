@@ -48,8 +48,12 @@ has no public backend selector. Offline real-circuit compilation does not
 establish that the independent core can replace Graph for player-facing use.
 
 `sampled.rs` has its own immutable Program and mutable Runtime, with separate
-rise/fall receiver instructions and a TickScheduler. Its runtime refreshes the
-wire from the live lever and the lamp from the live wire; it does not replay
+rise/fall ordered instructions and a TickScheduler. Explicit `Contribution`
+operations update individual attenuated links; `RefreshWire` stores the
+incoming level without implicitly propagating it. The sampled compiler places
+the lever-to-wire contribution before observed deliveries and inserts the
+wire-to-lamp contribution after each sampled wire refresh. This ordering is
+limited to the admitted single-chain topology. The runtime does not replay
 stored output frames. It admits only a straight floor-lever, single-dust,
 single-lamp chain with stone supports and settled input changes. Every runtime
 tick drains the current scheduler bucket, advances the ring once, then drains
@@ -58,10 +62,17 @@ phases. `schedule_tick(..., 2, ...)` retains its four-game-tick lamp-off delay.
 The sampled acceptance test passes for initially-off and initially-on entry,
 including host preservation, 12 alternating transitions per entry state,
 pending-work comparisons through scheduler wrap, and lamp-off timing. The
-compiler's sampled-runtime self-check remains enabled. This narrow test does not
-establish piston, observer, resource or general-circuit support. Latest
-verification with `cargo test -p mchprs_core redpiler::sampled --lib`: 8 passed,
-0 failed, 0 ignored (1,035 filtered out), including boundary-read rejection.
+compiler's sampled-runtime self-check remains enabled. Program construction
+validates component records, source bindings, rise/fall pairs, links, value
+ranges and operation references before building incoming indexes; compiler
+errors use the existing positioned error path. Partial operation programs are
+allowed. The sampled suite has 12 passing tests, including an instruction-order check where the receiver sees
+the old contribution before `Contribution(link)` and lights after the reversed
+order. Watcher dispatch and MAIR's reactive/BUD batching path remain unimplemented.
+This narrow test does not establish piston execution, observer, resource or
+general-circuit support. Latest verification with
+`cargo test -p mchprs_core redpiler::sampled --lib`: 12 passed, 0 failed,
+0 ignored (1,035 filtered out), including boundary-read rejection.
 
 The same private module has a separate compile-time inventory pass for empty
 piston actors, with stable scan-order IDs, home/far cells, loaded base/head
