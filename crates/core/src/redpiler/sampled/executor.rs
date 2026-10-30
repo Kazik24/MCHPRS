@@ -256,13 +256,12 @@ impl Runtime<'_> {
     }
 
     pub(super) fn input_strength(&self, target: usize) -> u8 {
-        let group = self.program.input_arrangements.iter().find(|group| group.target == target);
         let fixed = self.program.incoming[target].iter().filter_map(|&id| {
             let source = ArrangementSource::Component(self.program.links[id].source);
-            (!group.is_some_and(|group| group.conditional_sources.contains(&source))).then_some(self.contributions[id])
+            (!self.program.input_arrangements.iter().any(|group| group.target == target && !group.side && group.conditional_sources.contains(&source))).then_some(self.contributions[id])
         }).max().unwrap_or(0);
         self.program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
-            (link.target == target).then_some(self.arrangement_contributions[index])
+            (link.target == target && !link.side).then_some(self.arrangement_contributions[index])
         }).fold(fixed, u8::max)
     }
 
@@ -360,9 +359,8 @@ impl Runtime<'_> {
     // shortcut: receiver signatures omit geometry-dependent fixed links, extend arrangement groups to all readers.
     fn token_dependency_signature(&self, changed: usize, target: usize, position: Option<mchprs_blocks::BlockPos>) -> Vec<(ArrangementSource, u8)> {
         let token_position = |token: usize| if token == changed { position } else { self.token_positions[token] };
-        let group = self.program.input_arrangements.iter().find(|group| group.target == target);
         let mut result = Vec::new();
-        if let Some(group) = group {
+        for group in self.program.input_arrangements.iter().filter(|group| group.target == target) {
             let mut index = 0;
             let mut stride = 1;
             for &token in &group.tokens {
@@ -374,7 +372,7 @@ impl Runtime<'_> {
             result.extend(group.inputs[index].iter().copied());
         }
         for (token, record) in self.program.tokens.iter().enumerate() {
-            if group.is_some_and(|group| group.conditional_sources.contains(&ArrangementSource::Token(token))) { continue; }
+            if self.program.input_arrangements.iter().any(|group| group.target == target && group.conditional_sources.contains(&ArrangementSource::Token(token))) { continue; }
             let Some(cell) = token_position(token).and_then(|pos| record.cells.iter().position(|&cell| cell == pos)) else { continue; };
             if let Some(inputs) = self.program.token_sources.get(token).and_then(|cells| cells.get(cell)) {
                 result.extend(inputs.iter().filter_map(|&(receiver, attenuation)| (receiver == target).then_some((ArrangementSource::Token(token), attenuation))));
@@ -543,7 +541,8 @@ impl Runtime<'_> {
             unreachable!()
         };
         if let Some(side_sources) = self.program.repeaters.iter().find(|record| record.component == component).and_then(|record| record.side_sources.as_ref()) {
-            repeater.locked = side_sources.iter().any(|&source| self.output(source) > 0);
+            repeater.locked = side_sources.iter().any(|&source| !self.program.input_arrangements.iter().any(|group| group.target == component && group.side && group.conditional_sources.contains(&ArrangementSource::Component(source))) && self.output(source) > 0)
+                || self.program.arrangement_links.iter().enumerate().any(|(index, link)| link.target == component && link.side && self.arrangement_contributions[index] > 0);
             self.blocks[component] = Block::RedstoneRepeater { repeater };
         }
         if repeater.locked {

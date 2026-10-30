@@ -81,7 +81,7 @@ incomplete.
   in its three token states.
   This does not yet implement MAIR's full per-dependency group growth.
 
-## Acceptance boundaries
+## Earlier acceptance boundaries
 
 The native comparison covers initially-off and initially-on entry. The initially
 on fixture is activated and settled for four native game ticks before compile.
@@ -113,7 +113,7 @@ passed. None of those results are current MAIR coverage or an active test suite.
 The fixture manifests and their expected outputs and observation boundaries
 remain the migration contract for future MAIR acceptance tests.
 
-## Current verification
+## Verification before dependency-growth port
 
 - `cargo test -p mchprs_core redpiler::sampled::tests --lib`: **31 passed, 0
   failed, 0 ignored**, 1,004 filtered out. This includes repeater delay 1–4
@@ -155,6 +155,38 @@ See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).
 
 ## Full-port baseline recheck
+
+Continuation: receiver strength and movement diagnostics account for all
+arrangement groups at a target. `group_probe.rs` discovers touched wire
+networks and nearby readers, compares source/port maps for single-token
+alternatives, grows influencing-token sets through joint probes, then extracts
+groups with the reference arrangement limit. Group inputs retain port and silent
+classification; groups with the same token axes share a runtime arrangement.
+The previous proximity Cartesian-product compiler loop has been removed.
+
+The masked conductor test and a conditional repeater-side input test pass.
+The existing ADDER arithmetic and joint-arrangement tests passed in a sampled
+run after the GroupProbe change. COUNTER compiled and executed and its memory,
+output dust and repeater bank matched the SHA-checked reference timeline for
+all 24 saved-idle and 102 release ticks, including moving markers. Token
+redstone sources now use the
+reference's stable cell-to-virtual-constant index. Further equivalence work
+remains for unsupported component and entry-state paths, overlapping-token
+arrangements, and the remaining movement/piston ordering differences.
+
+Reference mapping: `TouchedWires`/`CloseNetwork` and reader proximity are in
+`group_probe::run`; `InputsOf` is `inputs_of`; `FindChangedLinks` is
+`compiler::find_changed_links`; single and joint probe rounds and extraction
+are in `group_probe::run`; `compile_movement_flips` combines equal token axes
+and constructs runtime flips. The extractor covers the node families admitted
+by this private engine, not all reference component roles.
+
+The pinned counter timeline was copied unchanged from
+`E:/codex-builds/luna-counter-test-investigation-20261030/counter-mair-timeline.csv`
+into `test_data/instant-pistons-io/reference/`; its SHA-256 is
+`929a9c6a49aaf381780a3177bca97264a135019588cfe5061d08c85c8bec5f37`.
+The corresponding capture and decoder provenance are in that investigation's
+`REPORT.md`.
 
 Compiled movement now uses arrangement-indexed flip programs, stored conditional
 link contributions, and ordered per-cell `MoveStep` records. Remaining recipients
@@ -200,22 +232,35 @@ output piston (56,32,41); MAIR places it before. Token (54,33,41)'s departure
 still lacks that recipient. These callback/order differences remain unresolved;
 no internal MAIR runtime event sequence is inferred from these records.
 
-Final check for this continuation: `mair-final-sampled.log` records **36 passing
-mechanism tests and two integration failures**: ADDER still has eight window
-mismatches; COUNTER still declines the proximity-based arrangement explosion.
-The temporary increase to 11 mismatches was corrected by preserving MAIR's
-silent piston-input rule: electrical link application must not directly update
-a piston. `mair-final-scratch.log` records 15 passing scratch tests;
-`mair-final-check.log` records a passing `cargo check -p mchprs_core --tests`.
-`git diff --check` passes. Geometry/head projection checks are included in the
-mechanism suite. The full 18-sample matrix, comparator/reactive cases and supported
-pending/moving entries have not been verified and remain required. No fixture,
-action, decoder, expected output or observation-window changes were made.
+Latest check: `mair-groupprobe-anchor.log` records **42 passing sampled tests**,
+including ADDER and the counter reference timeline. `mair-groupprobe-scratch.log`
+records 15 passing scratch tests; `mair-groupprobe-final-check.log` records a
+passing `cargo check -p mchprs_core --tests`. `git diff --check` passes. The
+full 18-sample matrix, comparator/reactive cases and supported pending/moving
+entries have not been verified and remain required. No fixture, action, decoder,
+expected output or observation-window changes were made.
+
+After property-based passive geometry admission and its glass/sandstone movement
+test, `mair-groupprobe-passive.log` records 43 passing sampled tests. Three
+focused TEST samples (`TEST_PISTION_2`, `TEST_BUD_1`, `TEST_XOR`) also passed
+saved-idle, rise/fall, and 1/2/3-tick pulse output comparisons in
+`mair-focused-comparison.log`. Their unmodified reference replay is stored in
+`test_data/instant-pistons-io/reference/test-mair-focused-replays.json`, SHA-256
+`5829ce8d437d028c7ae93e53766912e50b20edc21ec82fcc64c7cfbb28f650a8`, copied
+from the Luna investigation. `TEST_PISTION` is still excluded because comparator
+and reactive semantics remain unimplemented; the other 14 samples have not
+been compared by this focused test.
+
+The final combined run `mair-groupprobe-final-suite.log` passed all 44 sampled
+tests, including those focused comparisons; the corresponding `cargo check`
+passed. A separate ADDER diagnostic run produced no reported differences on
+the three selected observed ports where reference frames were available. This
+does not compare every internal state or establish full MAIR compliance.
 
 | Reference algorithm | Rust implementation | Behavior check | Unresolved gap |
 | --- | --- | --- | --- |
 | Extractor and CollectInputs | scratch source discovery and sampled input tables | scratch directional and dust tests | General ports, conditional paths and passive families incomplete |
-| GroupProbe and ExtractGroups | proximity-based arrangement enumeration | ADDER joint tables | Dependency growth is not ported |
+| GroupProbe and ExtractGroups | `sampled/group_probe.rs` and compiled arrangement groups | masked conductor and ADDER joint tables | Side/control extraction and overlapping token identity need broader reference comparisons |
 | SourceOrdering and PropagateChange | immediate qualified probes and interleaved target programs | ordered conditional-contribution test | Reactive branch, complete ports and watcher parity remain |
 | MoveRecorder and SetTokenPos | compiled arrangement flips and ordered move steps | masking, discovery-order and rearm tests | Callback records and wire-watcher ordering differ |
 | QueueEvent and motion completion | three event identities and combined motion records | per-kind queue identity and two-tick movement tests | Landing-phase classification, interruption and paired motion incomplete |

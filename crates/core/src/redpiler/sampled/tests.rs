@@ -89,7 +89,7 @@ use mchprs_world::TickPriority;
         let mut program = test_program(positions.clone(), vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: true }, Block::RedstoneLamp { lit: true }], vec![], vec![], vec![], vec![]).unwrap();
         program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
         for target in [2, 1] {
-            program.input_arrangements.push(InputArrangement { target, tokens: vec![0], conditional_sources: vec![ArrangementSource::Token(0)], inputs: vec![vec![], vec![(ArrangementSource::Token(0), 0)]] });
+            program.input_arrangements.push(InputArrangement { target, side: false, silent: false, tokens: vec![0], conditional_sources: vec![ArrangementSource::Token(0)], inputs: vec![vec![], vec![(ArrangementSource::Token(0), 0)]] });
         }
         program.compile_movement_flips().unwrap();
         let mut runtime = program.start();
@@ -98,7 +98,7 @@ use mchprs_world::TickPriority;
         runtime.set_token_pos(0, Some(cell));
         assert_eq!(runtime.input_strength(1), 15);
         runtime.set_token_pos(0, None);
-        assert_eq!(runtime.group_arrangements, vec![0, 0]);
+        assert_eq!(runtime.group_arrangements, vec![0]);
     }
     #[test]
     fn conditional_source_changes_wait_for_their_ordered_link_instruction() {
@@ -108,7 +108,7 @@ use mchprs_world::TickPriority;
             vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }, Block::RedstoneLamp { lit: false }],
             vec![0], vec![[vec![], vec![Operation::UpdateLamp(1)]]], vec![], vec![]).unwrap();
         program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: Some(cell.offset(BlockFace::Top)), cells: vec![cell.offset(BlockFace::Top)] });
-        program.input_arrangements.push(InputArrangement { target: 1, tokens: vec![0], conditional_sources: vec![ArrangementSource::Component(0)], inputs: vec![vec![], vec![(ArrangementSource::Component(0), 1)]] });
+        program.input_arrangements.push(InputArrangement { target: 1, side: false, silent: false, tokens: vec![0], conditional_sources: vec![ArrangementSource::Component(0)], inputs: vec![vec![], vec![(ArrangementSource::Component(0), 1)]] });
         program.compile_movement_flips().unwrap();
         let mut runtime = program.start();
         runtime.set_input(0, true).unwrap();
@@ -121,6 +121,74 @@ use mchprs_world::TickPriority;
         assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
         runtime.set_token_pos(0, None);
         assert_eq!(runtime.input_strength(1), 0);
+    }
+    #[test]
+    fn separate_arrangement_groups_mask_each_of_their_fixed_sources() {
+        use super::program::{ArrangementSource, InputArrangement};
+        let cell = BlockPos::new(10, 10, 10);
+        let lever = |powered| Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, powered) };
+        let mut program = test_program(vec![cell, cell.offset(BlockFace::East), cell.offset(BlockFace::West)],
+            vec![lever(false), lever(true), Block::RedstoneLamp { lit: false }], vec![0, 1],
+            vec![[vec![], vec![]], [vec![], vec![]]],
+            vec![ElectricalLink { source: 0, target: 2, attenuation: 0 }, ElectricalLink { source: 1, target: 2, attenuation: 0 }], vec![]).unwrap();
+        program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: None, cells: vec![cell.offset(BlockFace::Top)] });
+        for source in [0, 1] {
+            program.input_arrangements.push(InputArrangement { target: 2, side: false, silent: false, tokens: vec![0], conditional_sources: vec![ArrangementSource::Component(source)], inputs: vec![vec![], vec![(ArrangementSource::Component(source), 0)]] });
+        }
+        program.compile_movement_flips().unwrap();
+        let runtime = program.start();
+        assert_eq!(runtime.input_strength(2), 0);
+    }
+    #[test]
+    fn changed_links_include_masked_sources_additions_removals_and_attenuation() {
+        use super::program::ArrangementSource::Component;
+        let before = [(Component(0), 0), (Component(1), 4), (Component(2), 2)].into_iter().collect();
+        let after = [(Component(0), 0), (Component(1), 5), (Component(3), 3)].into_iter().collect();
+        assert_eq!(super::compiler::find_changed_links(&before, &after), vec![Component(1), Component(2), Component(3)]);
+        let before = [((Component(0), false), 1), ((Component(0), true), 3)].into_iter().collect();
+        let after = [((Component(0), false), 1), ((Component(0), true), 4)].into_iter().collect();
+        assert_eq!(super::compiler::find_changed_links(&before, &after), vec![(Component(0), true)]);
+    }
+    #[test]
+    fn group_probe_finds_masked_conductor_dependency() {
+        use super::program::ArrangementSource;
+        let cell = BlockPos::new(15, 15, 15);
+        let lever_pos = cell.offset(BlockFace::West);
+        let lamp_pos = cell.offset(BlockFace::East);
+        let constant_pos = lamp_pos.offset(BlockFace::Top);
+        let mut world = host();
+        let lever = Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::West, true) };
+        world.set_block(cell, Block::Stone {});
+        world.set_block(lever_pos, lever);
+        world.set_block(lamp_pos, Block::RedstoneLamp { lit: true });
+        world.set_block(constant_pos, Block::RedstoneBlock);
+        let mut program = test_program(vec![lever_pos, constant_pos, lamp_pos], vec![lever, Block::RedstoneBlock, Block::RedstoneLamp { lit: true }], vec![0], vec![[vec![], vec![]]], vec![], vec![]).unwrap();
+        program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: Some(cell), cells: vec![cell] });
+        let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program).unwrap();
+        let group = groups.iter().find(|group| group.target == 2 && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(0))).unwrap();
+        assert_eq!(group.tokens, vec![0]);
+        assert_eq!(group.inputs[0], vec![]);
+        assert_eq!(group.inputs[1], vec![(ArrangementSource::Component(0), 0)]);
+    }
+    #[test]
+    fn conditional_side_input_locks_repeater_without_powering_its_rear() {
+        use super::program::{ArrangementSource, InputArrangement};
+        let cell = BlockPos::new(10, 10, 10);
+        let repeater = |powered| Block::RedstoneRepeater { repeater: RedstoneRepeater { delay: 1, facing: BlockDirection::East, locked: false, powered } };
+        let mut program = Program::new(vec![cell, cell.offset(BlockFace::North)], vec![repeater(false), repeater(true)], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], vec![
+            RepeaterRecord { component: 0, output_is_diode: false, side_sources: Some(vec![1]) },
+            RepeaterRecord { component: 1, output_is_diode: false, side_sources: Some(vec![]) },
+        ]).unwrap();
+        let token_cell = cell.offset(BlockFace::Top);
+        program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: None, cells: vec![token_cell] });
+        program.input_arrangements.push(InputArrangement { target: 0, side: true, silent: false, tokens: vec![0], conditional_sources: vec![ArrangementSource::Component(1)], inputs: vec![vec![], vec![(ArrangementSource::Component(1), 0)]] });
+        program.compile_movement_flips().unwrap();
+        let mut runtime = program.start();
+        runtime.update_repeater(0);
+        assert!(matches!(runtime.blocks[0], Block::RedstoneRepeater { repeater } if !repeater.locked));
+        runtime.set_token_pos(0, Some(token_cell));
+        assert_eq!(runtime.input_strength(0), 0);
+        assert!(matches!(runtime.blocks[0], Block::RedstoneRepeater { repeater } if repeater.locked));
     }
     #[test]
     fn compiled_floor_and_wall_torches_delay_recheck_and_rearm() {
@@ -765,6 +833,22 @@ use mchprs_world::TickPriority;
             Ok(_) => panic!("unsupported block admitted"),
         };
         assert_eq!(err.position, Some(pos));
+    }
+    #[test]
+    fn passive_geometry_preserves_material_properties_and_can_move() {
+        let mut world = host();
+        let base = BlockPos::new(15, 15, 15);
+        let home = base.offset(BlockFace::East);
+        let sandstone = base.offset(BlockFace::North);
+        world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+        world.set_block(home, Block::Glass {});
+        world.set_block(sandstone, Block::Sandstone {});
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+        let program = compile(&world, bounds, entry(&world)).unwrap();
+        assert_eq!(program.tokens[0].block, Block::Glass {});
+        assert_eq!(program.start().project(sandstone), Some(Block::Sandstone {}));
+        assert!(!world.get_block(home).is_solid());
+        assert!(world.get_block(sandstone).is_solid());
     }
     #[test]
     fn rejects_unrelated_block_entities() {

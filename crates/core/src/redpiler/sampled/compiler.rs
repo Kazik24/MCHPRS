@@ -1,8 +1,15 @@
 use super::{ElectricalLink, Operation, Program, ScratchEntry, ScratchError, ScratchWorld};
-use super::program::{ArrangementSource, InputArrangement, RepeaterRecord, WatchedWire};
+use super::program::{ArrangementSource, RepeaterRecord, WatchedWire};
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::{BlockPos, BlockFacing, blocks::{Block, LeverFace}};
+pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
+    before: &std::collections::BTreeMap<K, V>,
+    after: &std::collections::BTreeMap<K, V>,
+) -> Vec<K> {
+    before.keys().chain(after.keys()).copied().collect::<std::collections::BTreeSet<_>>()
+        .into_iter().filter(|source| before.get(source) != after.get(source)).collect()
+}
 #[derive(Clone, PartialEq, Eq)]
 struct Frame {
     blocks: Vec<Block>,
@@ -26,6 +33,13 @@ pub(super) struct PistonToken {
     pub(super) block: Block,
     pub(super) position: Option<BlockPos>,
     pub(super) cells: Vec<BlockPos>,
+}
+
+fn is_passive_geometry(block: Block) -> bool {
+    !crate::redstone::has_neighbor_update(block)
+        && !matches!(block, Block::Unknown { .. } | Block::Composter { .. } | Block::StoneButton { .. } | Block::Lever { .. })
+        && block.pressure_plate_powered().is_none()
+        && (block.is_solid() || (block.is_cube() && block.is_transparent()))
 }
 
 pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor]) -> Result<Vec<PistonToken>, ScratchError> {
@@ -52,7 +66,7 @@ pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor])
             if world.get_block_entity(cell).is_some() {
                 return Err(ScratchError { position: Some(cell), reason: "unsupported carried block entity" });
             }
-            if !matches!(block, Block::Stone {} | Block::Wool { .. } | Block::Glowstone | Block::RedstoneBlock | Block::Target) && block.slab_type().is_none() {
+            if !matches!(block, Block::RedstoneBlock) && block.slab_type().is_none() && !is_passive_geometry(block) {
                 return Err(ScratchError { position: Some(cell), reason: "unsupported movable block" });
             }
             if home && members.iter().filter(|p| p.home == cell).all(|p| !p.sticky) && !members.iter().any(|p| p.far == cell) {
@@ -110,6 +124,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                         });
                         positions.push(pos);
                     }
+                    block if is_passive_geometry(block) => {}
                     _ => return Err(error(pos, "unsupported component")),
                 }
                 if let Some(entity) = world.get_block_entity(pos)
@@ -380,110 +395,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         }
         program.move_steps.push(programs);
     }
-    // shortcut: group tokens near a target or its nearby wires; replace with MAIR's network and per-dependency growth.
-    for (wire, &pos) in program.positions.iter().enumerate() {
-        if !matches!(program.initial[wire], Block::RedstoneWire { .. } | Block::Piston { .. } | Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }) { continue; }
-        let mut tokens: Vec<_> = program.tokens.iter().enumerate().filter_map(|(index, token)| {
-            (token.cells.iter().any(|cell| cell.x.abs_diff(pos.x) <= 2 && cell.y.abs_diff(pos.y) <= 2 && cell.z.abs_diff(pos.z) <= 2)
-                || program.positions.iter().enumerate().any(|(index, &at)| matches!(program.initial[index], Block::RedstoneWire { .. })
-                    && at.x.abs_diff(pos.x) <= 2 && at.y.abs_diff(pos.y) <= 2 && at.z.abs_diff(pos.z) <= 2
-                    && token.cells.iter().any(|cell| cell.x.abs_diff(at.x) <= 1 && cell.y.abs_diff(at.y) <= 1 && cell.z.abs_diff(at.z) <= 1))
-                || program.token_sources[index].iter().flatten().any(|&(target, _)| target == wire)).then_some(index)
-        }).collect();
-        if tokens.is_empty() { continue; }
-        let count = tokens.iter().try_fold(1usize, |n, &token| n.checked_mul(program.tokens[token].cells.len() + 1)).unwrap_or(usize::MAX);
-        if count > 4096 { return Err(error(pos, "too many local input arrangements")); }
-        let mut inputs = Vec::with_capacity(count);
-        let mut probe = ScratchWorld::from_world(world, bounds, entry.clone())?;
-        let mut cells = Vec::new();
-        for &token in &tokens {
-            for &cell in &program.tokens[token].cells {
-                if !cells.contains(&cell) { cells.push(cell); }
-            }
-        }
-        for arrangement in 0..count {
-            for &cell in &cells { probe.world_mut().set_block(cell, world.get_block(cell)); }
-            for &token in &tokens {
-                if let Some(at) = program.tokens[token].position { probe.world_mut().set_block(at, Block::Air); }
-            }
-            let mut positions: Vec<_> = program.tokens.iter().map(|token| token.position).collect();
-            let mut digits = arrangement;
-            for &token in &tokens {
-                let record = &program.tokens[token];
-                let radix = record.cells.len() + 1;
-                let digit = digits % radix;
-                digits /= radix;
-                positions[token] = digit.checked_sub(1).map(|cell| record.cells[cell]);
-                if let Some(at) = positions[token] { probe.world_mut().set_block(at, record.block); }
-            }
-            let mut found = Vec::new();
-            let dependencies = match program.initial[wire] {
-                Block::RedstoneWire { .. } => crate::redpiler::scratch::discover_wire_sources(probe.world(), &[pos])?,
-                Block::Piston { piston } => crate::redpiler::scratch::discover_piston_sources(probe.world(), pos, piston.facing)?,
-                Block::RedstoneLamp { .. } => crate::redpiler::scratch::discover_lamp_sources(probe.world(), pos)?,
-                block @ (Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }) => crate::redpiler::scratch::discover_torch_sources(probe.world(), pos, block)?,
-                Block::RedstoneRepeater { repeater } => {
-                    let w = probe.world();
-                    let face = repeater.facing.block_face();
-                    let rear = pos.offset(face);
-                    let block = w.get_block(rear);
-                    let mut found = Vec::new();
-                    if matches!(block, Block::RedstoneWire { .. }) {
-                        for mut source in crate::redpiler::scratch::discover_wire_sources(w, &[rear])? { source.wire = pos; found.push(source); }
-                    } else if block.is_solid() {
-                        for side in mchprs_blocks::BlockFace::values() {
-                            let at = rear.offset(side);
-                            if crate::redstone::power::emits_strong_power(w.get_block(at), w, at, side, true) {
-                                found.push(crate::redpiler::scratch::WireSource { wire: pos, source: at, attenuation: 0 });
-                            }
-                        }
-                    } else if crate::redstone::power::emits_weak_power(block, w, rear, face, true) {
-                        found.push(crate::redpiler::scratch::WireSource { wire: pos, source: rear, attenuation: 0 });
-                    }
-                    found
-                }
-                _ => unreachable!(),
-            };
-            for dependency in dependencies {
-                let source = if let Some(index) = positions.iter().rposition(|&at| at == Some(dependency.source)) {
-                    ArrangementSource::Token(index)
-                } else if let Some(index) = program.positions.iter().position(|&at| at == dependency.source) {
-                    ArrangementSource::Component(index)
-                } else {
-                    return Err(error(dependency.source, "unrepresented arrangement source"));
-                };
-                found.push((source, dependency.attenuation));
-            }
-            probe.finish_probe()?;
-            inputs.push(found);
-        }
-        let mut conditional_sources = Vec::new();
-        for &(source, _) in inputs.iter().flatten() {
-            if conditional_sources.contains(&source) { continue; }
-            let first = inputs[0].iter().find_map(|&(key, attenuation)| (key == source).then_some(attenuation));
-            if inputs.iter().any(|map| map.iter().find_map(|&(key, attenuation)| (key == source).then_some(attenuation)) != first) {
-                conditional_sources.push(source);
-            }
-        }
-        if !conditional_sources.is_empty() {
-            for map in &mut inputs { map.retain(|(source, _)| conditional_sources.contains(source)); }
-            for axis in (0..tokens.len()).rev() {
-                let stride = tokens[..axis].iter().map(|&token| program.tokens[token].cells.len() + 1).product::<usize>();
-                let radix = program.tokens[tokens[axis]].cells.len() + 1;
-                let relevant = (0..inputs.len()).filter(|&index| index / stride % radix == 0).any(|base| {
-                    (1..radix).any(|digit| conditional_sources.iter().any(|source| {
-                        let value = |index: usize| inputs[index].iter().find_map(|&(key, attenuation)| (key == *source).then_some(attenuation));
-                        value(base) != value(base + digit * stride)
-                    }))
-                });
-                if !relevant {
-                    inputs = inputs.into_iter().enumerate().filter_map(|(index, map)| (index / stride % radix == 0).then_some(map)).collect();
-                    tokens.remove(axis);
-                }
-            }
-            program.input_arrangements.push(InputArrangement { target: wire, tokens, conditional_sources, inputs });
-        }
-    }
+    program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program)?;
     program.compile_movement_flips()?;
     let output_sources: Vec<_> = sources.iter().copied().chain(program.repeaters.iter().map(|record| record.component)).chain(program.initial.iter().enumerate().filter_map(|(index, block)| matches!(block, Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }).then_some(index))).collect();
     let mut comparisons = Vec::new();
@@ -495,11 +407,11 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             let block = scratch.world().get_block(at);
             let constant_power = program.incoming[id].iter().filter_map(|&link| {
                 let link = &program.links[link];
-                let conditional = program.input_arrangements.iter().any(|group| group.target == id && group.conditional_sources.contains(&ArrangementSource::Component(link.source)));
+                let conditional = program.input_arrangements.iter().any(|group| group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source)));
                 (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional).then_some(15u8.saturating_sub(link.attenuation))
             }).chain(program.arrangement_links.iter().filter_map(|link| {
                 let constant = match link.source { ArrangementSource::Token(_) => true, ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock) };
-                (link.target == id && constant && link.active[loaded.group_arrangements[link.group]]).then_some(15u8.saturating_sub(link.attenuation))
+                (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]]).then_some(15u8.saturating_sub(link.attenuation))
             })).max().unwrap_or(0);
             let quiet = match block {
                 Block::Lever { mut lever } => { lever.powered = false; Block::Lever { lever } }
@@ -578,7 +490,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                 let Some(target) = program.positions.iter().position(|&pos| pos == delivery.pos) else { continue; };
                 if !targets.contains(&target) || ordered.contains(&target) || matches!(delivery.block, Block::RedstoneWire { .. }) { continue; }
                 let rear = program.links.iter().any(|link| link.source == source && link.target == target)
-                    || program.arrangement_links.iter().any(|link| link.source == ArrangementSource::Component(source) && link.target == target);
+                    || program.arrangement_links.iter().any(|link| link.source == ArrangementSource::Component(source) && link.target == target && !link.side);
                 if matches!(delivery.block, Block::Observer { .. }) || delivery.input_on.is_some_and(|(main, side)| (if rear { main } else { side }) == powered) {
                     ordered.push(target);
                 }

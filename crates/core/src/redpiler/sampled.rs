@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 mod compiler;
 mod executor;
+mod group_probe;
 mod program;
 #[cfg(test)]
 mod tests;

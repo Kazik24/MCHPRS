@@ -91,7 +91,7 @@ fn adder1bit_mair_manifest_arithmetic() {
             }
             let piston = BlockPos::new(56, 32, 41);
             let source = program.positions.iter().position(|&pos| pos == BlockPos::new(54, 34, 42)).unwrap();
-            let group = program.input_arrangements.iter().find(|group| program.positions[group.target] == piston).unwrap();
+            let group = program.input_arrangements.iter().find(|group| program.positions[group.target] == piston && !group.side && group.conditional_sources.contains(&super::program::ArrangementSource::Component(source))).unwrap();
             let token = program.tokens.iter().position(|token| token.position == Some(BlockPos::new(54, 33, 41))).unwrap();
             for (state, at) in [None, Some(BlockPos::new(53, 33, 41)), Some(BlockPos::new(54, 33, 41))].into_iter().enumerate() {
                 let mut index = 0;
@@ -173,7 +173,7 @@ fn adder1bit_mair_manifest_arithmetic() {
                 }
                 let source_id = program.tokens.iter().position(|token| token.position == Some(source_initial)).unwrap();
                 let other_id = program.tokens.iter().position(|token| token.position == Some(other_initial)).unwrap();
-                let group = program.input_arrangements.iter().find(|group| program.positions[group.target] == wire);
+                let group = program.input_arrangements.iter().find(|group| program.positions[group.target] == wire && !group.side && group.conditional_sources.contains(&super::program::ArrangementSource::Token(source_id)));
                 if let Some(group) = group {
                     for other_state in 0..=other_cells.len() {
                         for source_state in 0..=source_cells.len() {
@@ -265,8 +265,12 @@ fn counter_basic_mair_manifest_execution() {
     let bytes = std::fs::read(root.join(manifest["fixture"].as_str().unwrap())).unwrap();
     assert_eq!(format!("{:x}", Sha256::digest(&bytes)), manifest["sha256"].as_str().unwrap());
     let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
+    let timeline = std::fs::read(root.join("test_data/instant-pistons-io/reference/counter-mair-timeline.csv")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(&timeline)), "929a9c6a49aaf381780a3177bca97264a135019588cfe5061d08c85c8bec5f37");
+    let timeline = std::str::from_utf8(&timeline).unwrap();
     let origin = position(&manifest["coordinates"]["origin"]);
     let bounds = (origin - BlockPos::new(4, 4, 4), origin + BlockPos::new(27, 20, 38));
+    let mut mismatches = Vec::new();
     for case in manifest["cases"].as_array().unwrap() {
         let id = case["id"].as_str().unwrap();
         let mut world = PlotWorld::from_chunks(0, 0,
@@ -285,7 +289,101 @@ fn counter_basic_mair_manifest_execution() {
                 op => panic!("unsupported counter action {op}"),
             }
         }
-        for _ in 0..case["ticks"].as_u64().unwrap() { runtime.tick().unwrap(); }
+        for tick in 1..=case["ticks"].as_u64().unwrap() {
+            runtime.tick().unwrap();
+            let row = timeline.lines().skip(1).find(|line| line.starts_with(&format!("{id},{tick},"))).unwrap();
+            let parts: Vec<_> = row.split('"').collect();
+            let fields: Vec<_> = parts[0].split(',').collect();
+            let expected_dust: Vec<u8> = serde_json::from_str(parts[1]).unwrap();
+            let expected_repeaters = parts[2].split(',').nth(1).unwrap();
+            let observations = &manifest["ports"]["observations"];
+            let memory: String = observations["memory"].as_array().unwrap().iter().map(|p| match runtime.project(origin + position(p)) {
+                None => 'M',
+                Some(Block::Piston { piston }) => if piston.extended { '0' } else { '1' },
+                _ => '?',
+            }).collect();
+            let dust: Vec<_> = observations["output_input"].as_array().unwrap().iter().map(|p| match runtime.project(origin + position(p)) {
+                Some(Block::RedstoneWire { wire }) => wire.power,
+                _ => 255,
+            }).collect();
+            let repeaters: String = observations["repeater"].as_array().unwrap().iter().map(|p| match runtime.project(origin + position(p)) {
+                Some(Block::RedstoneRepeater { repeater }) => if repeater.powered { '0' } else { '1' },
+                None => 'M',
+                _ => '?',
+            }).collect();
+            if memory != fields[2] || dust != expected_dust || repeaters != expected_repeaters {
+                mismatches.push(format!("{id} tick {tick}: memory {memory} expected {}, dust {dust:?} expected {expected_dust:?}, repeaters {repeaters} expected {expected_repeaters}", fields[2]));
+            }
+        }
         eprintln!("{id}: operations={}, repeater_ticks={}, accepted_pistons={}, token_moves={}, completions={}", runtime.operations, runtime.scheduled_repeater_ticks, runtime.accepted_piston_actions, runtime.token_movements, runtime.motion_completions);
     }
+    for mismatch in mismatches.iter().take(16) { eprintln!("{mismatch}"); }
+    assert!(mismatches.is_empty(), "COUNTER_BASIC has {} reference timeline mismatches", mismatches.len());
+}
+
+#[test]
+fn focused_test_samples_match_mair_observations() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixture_dir = root.join("test_data/piston-research/test-prefix-20261008");
+    let manifest: Value = serde_json::from_slice(&std::fs::read(fixture_dir.join("download-manifest.json")).unwrap()).unwrap();
+    let reference = std::fs::read(root.join("test_data/instant-pistons-io/reference/test-mair-focused-replays.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(&reference)), "5829ce8d437d028c7ae93e53766912e50b20edc21ec82fcc64c7cfbb28f650a8");
+    let reference: Value = serde_json::from_slice(&reference).unwrap();
+    let origin = BlockPos::new(40, 30, 40);
+    let mut errors = Vec::new();
+    for sample in reference["samples"].as_array().unwrap().iter().filter(|sample| sample["name"] != "TEST_PISTION.schem") {
+        let name = sample["name"].as_str().unwrap();
+        let bytes = std::fs::read(fixture_dir.join(name)).unwrap();
+        let manifest_entry = manifest["files"].as_array().unwrap().iter().find(|entry| entry["name"] == name).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), manifest_entry["sha256"].as_str().unwrap());
+        let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
+        let mut world = PlotWorld::from_chunks(0, 0, (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(), Default::default());
+        paste_clipboard(&mut world, &clipboard, origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z), false);
+        for control in sample["added_controls"].as_array().unwrap() {
+            let pos = origin + BlockPos::new(control["x"].as_i64().unwrap() as i32, control["y"].as_i64().unwrap() as i32, control["z"].as_i64().unwrap() as i32);
+            world.set_block(pos, Block::Lever { lever: mchprs_blocks::blocks::Lever::new(LeverFace::Wall, mchprs_blocks::BlockDirection::North, false) });
+        }
+        for z in 0..clipboard.size_z as i32 {
+            for x in 0..clipboard.size_x as i32 {
+                let pos = origin + BlockPos::new(x, 0, z);
+                let below = pos.offset(mchprs_blocks::BlockFace::Bottom);
+                if crate::interaction::attachment_support(world.get_block(pos), pos).is_some_and(|(support, _)| support == below) && world.get_block(below) == Block::Air {
+                    world.set_block(below, Block::Stone {});
+                }
+            }
+        }
+        let bounds = (origin - BlockPos::new(4, 4, 4), origin + BlockPos::new(clipboard.size_x as i32 + 4, clipboard.size_y as i32 + 4, clipboard.size_z as i32 + 4));
+        let program = match compile(&world, bounds, ScratchEntry { scheduled: world.scheduler().iter_entries().collect(), piston: world.piston_state().clone() }) {
+            Ok(program) => program,
+            Err(error) => { errors.push(format!("{name}: compilation declined: {error:?}")); continue; }
+        };
+        for (scenario, record) in sample["scenarios"].as_object().unwrap() {
+            let mut runtime = program.start();
+            for frame in record["frames"].as_array().unwrap() {
+                let tick = frame["tick"].as_u64().unwrap();
+                for action in record["actions"].as_array().unwrap().iter().filter(|action| action["tick"].as_u64() == Some(tick)) {
+                    let pos = origin + position(&action["control"]);
+                    let source = program.sources.iter().position(|&node| program.positions[node] == pos).unwrap();
+                    runtime.set_input(source, action["event"] == "rise").unwrap();
+                }
+                runtime.tick().unwrap();
+                for (output, expected) in sample["outputs"].as_array().unwrap().iter().zip(frame["outputs"].as_array().unwrap()) {
+                    let pos = origin + BlockPos::new(output["x"].as_i64().unwrap() as i32, output["y"].as_i64().unwrap() as i32, output["z"].as_i64().unwrap() as i32);
+                    let expected = expected.as_str().unwrap();
+                    let actual = runtime.project(pos);
+                    let matches = match actual {
+                        Some(block @ Block::RedstoneRepeater { repeater }) => expected.starts_with("minecraft:repeater[")
+                            && expected.contains(&format!("powered={}", repeater.powered))
+                            && expected.contains(&format!("locked={}", repeater.locked))
+                            && expected.contains(&format!("delay={}", repeater.delay))
+                            && expected.contains(&format!("facing={}", block.properties()["facing"])),
+                        _ => false,
+                    };
+                    if !matches { errors.push(format!("{name} {scenario} tick {tick} at {pos:?}: {actual:?}, expected {expected}")); }
+                }
+            }
+        }
+    }
+    for error in errors.iter().take(16) { eprintln!("{error}"); }
+    assert!(errors.is_empty(), "{} focused TEST observations or admissions differ", errors.len());
 }

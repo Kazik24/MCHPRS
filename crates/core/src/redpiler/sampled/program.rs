@@ -48,6 +48,8 @@ pub(super) enum ArrangementSource {
 
 pub(super) struct InputArrangement {
     pub(super) target: usize,
+    pub(super) side: bool,
+    pub(super) silent: bool,
     pub(super) tokens: Vec<usize>,
     pub(super) conditional_sources: Vec<ArrangementSource>,
     pub(super) inputs: Vec<Vec<(ArrangementSource, u8)>>,
@@ -64,6 +66,8 @@ pub(super) struct ArrangementFlip {
 
 pub(super) struct ArrangementLink {
     pub(super) target: usize,
+    pub(super) side: bool,
+    pub(super) silent: bool,
     pub(super) source: ArrangementSource,
     pub(super) attenuation: u8,
     pub(super) group: usize,
@@ -149,9 +153,20 @@ impl Program {
         }
         let mut groups = Vec::new();
         let mut links = Vec::new();
-        for group in &self.input_arrangements {
-            let maps: Vec<Vec<_>> = group.inputs.iter().map(|inputs| inputs.iter().map(|&(source, attenuation)| (group.target, source, attenuation)).collect()).collect();
-            let (group, entries) = self.movement_group(&group.tokens, &maps, groups.len(), links.len());
+        let mut grouped: Vec<(Vec<usize>, Vec<Vec<(usize, ArrangementSource, u8, bool, bool)>>)> = Vec::new();
+        for input in &self.input_arrangements {
+            let index = if let Some(index) = grouped.iter().position(|(tokens, _)| *tokens == input.tokens) {
+                index
+            } else {
+                grouped.push((input.tokens.clone(), vec![Vec::new(); input.inputs.len()]));
+                grouped.len() - 1
+            };
+            for (state, entries) in input.inputs.iter().enumerate() {
+                grouped[index].1[state].extend(entries.iter().map(|&(source, attenuation)| (input.target, source, attenuation, input.side, input.silent)));
+            }
+        }
+        for (tokens, maps) in grouped {
+            let (group, entries) = self.movement_group(&tokens, &maps, groups.len(), links.len());
             groups.push(group);
             links.extend(entries);
         }
@@ -159,8 +174,8 @@ impl Program {
             let mut maps = vec![vec![]];
             maps.extend(cells.iter().map(|links| links.iter().filter_map(|&(target, attenuation)| {
                 let source = ArrangementSource::Token(token);
-                (!self.input_arrangements.iter().any(|group| group.target == target && group.conditional_sources.contains(&source)))
-                    .then_some((target, source, attenuation))
+                (!self.input_arrangements.iter().any(|group| group.target == target && !group.side && group.conditional_sources.contains(&source)))
+                    .then_some((target, source, attenuation, false, matches!(self.initial[target], Block::Piston { .. })))
             }).collect()));
             let (group, entries) = self.movement_group(&[token], &maps, groups.len(), links.len());
             groups.push(group);
@@ -180,7 +195,7 @@ impl Program {
         Ok(())
     }
 
-    fn movement_group(&self, tokens: &[usize], maps: &[Vec<(usize, ArrangementSource, u8)>], group: usize, link_start: usize) -> (MovementGroup, Vec<ArrangementLink>) {
+    fn movement_group(&self, tokens: &[usize], maps: &[Vec<(usize, ArrangementSource, u8, bool, bool)>], group: usize, link_start: usize) -> (MovementGroup, Vec<ArrangementLink>) {
         let mut conditions = Vec::new();
         for &entry in maps.iter().flatten() {
             if !conditions.contains(&entry) { conditions.push(entry); }
@@ -194,8 +209,8 @@ impl Program {
                 let digit = state / stride % radix;
                 if digit == 0 { continue; }
                 let empty = state - digit * stride;
-                for (index, &(target, source, attenuation)) in conditions.iter().enumerate() {
-                    let entry = (target, source, attenuation);
+                for (index, &(target, source, attenuation, side, silent)) in conditions.iter().enumerate() {
+                    let entry = (target, source, attenuation, side, silent);
                     if maps[state].contains(&entry) != maps[empty].contains(&entry) {
                         let flip = ArrangementFlip { target, source, attenuation, link: link_start + index, entering: maps[empty].contains(&entry) };
                         depart[state].push(flip);
@@ -207,8 +222,8 @@ impl Program {
             stride *= radix;
             axis
         }).collect();
-        let links = conditions.iter().map(|&(target, source, attenuation)| ArrangementLink {
-            target, source, attenuation, group, active: maps.iter().map(|map| map.contains(&(target, source, attenuation))).collect(),
+        let links = conditions.iter().map(|&(target, source, attenuation, side, silent)| ArrangementLink {
+            target, side, silent, source, attenuation, group, active: maps.iter().map(|map| map.contains(&(target, source, attenuation, side, silent))).collect(),
         }).collect();
         (MovementGroup { axes }, links)
     }
