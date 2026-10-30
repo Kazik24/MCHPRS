@@ -216,6 +216,8 @@ impl Program {
             operations: 0,
             deliveries: 0,
             scheduled_repeater_ticks: 0,
+            tick_operations: 0,
+            failure: None,
         }
     }
 }

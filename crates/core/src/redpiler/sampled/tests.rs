@@ -72,7 +72,7 @@ use mchprs_world::TickPriority;
         for delay in 1..=4 {
             let program = repeater_program(delay, false, false, false);
             let mut runtime = program.start();
-            runtime.set_input(0, true);
+            runtime.set_input(0, true).unwrap();
             let queued = runtime.pending.iter_entries().next().unwrap();
             assert_eq!(queued.ticks_left, u32::from(delay) * 2);
             assert_eq!(queued.tick_priority, TickPriority::High);
@@ -81,29 +81,29 @@ use mchprs_world::TickPriority;
             assert_eq!(runtime.pending.iter_entries().count(), 1);
             assert_eq!(runtime.pending.iter_entries().next().unwrap().ticks_left, due_in);
             for _ in 1..u32::from(delay) * 2 {
-                runtime.tick();
+                runtime.tick().unwrap();
                 assert_repeater_powered(&runtime, false);
                 assert_eq!(runtime.scheduled_repeater_ticks, 0);
             }
-            runtime.tick();
+            runtime.tick().unwrap();
             assert_repeater_powered(&runtime, true);
             assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: true });
             assert_eq!(runtime.scheduled_repeater_ticks, 1);
 
-            runtime.set_input(0, false);
+            runtime.set_input(0, false).unwrap();
             let queued = runtime.pending.iter_entries().next().unwrap();
             assert_eq!(queued.ticks_left, u32::from(delay) * 2);
             assert_eq!(queued.tick_priority, TickPriority::Higher);
             for _ in 1..u32::from(delay) * 2 {
-                runtime.tick();
+                runtime.tick().unwrap();
                 assert_repeater_powered(&runtime, true);
             }
-            runtime.tick();
+            runtime.tick().unwrap();
             assert_repeater_powered(&runtime, false);
             assert_eq!(runtime.scheduled_repeater_ticks, 2);
             assert_eq!(runtime.pending.iter_entries().count(), 1);
             for tick in 1..=4 {
-                runtime.tick();
+                runtime.tick().unwrap();
                 assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: tick < 4 });
             }
             assert!(runtime.pending.iter_entries().next().is_none());
@@ -111,35 +111,35 @@ use mchprs_world::TickPriority;
 
         let diode_program = repeater_program(2, false, false, true);
         let mut diode = diode_program.start();
-        diode.set_input(0, true);
+        diode.set_input(0, true).unwrap();
         assert_eq!(diode.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Highest);
         let loaded_fall_program = repeater_program(2, true, false, false);
         let mut falling = loaded_fall_program.start();
-        falling.set_input(0, true);
-        falling.tick();
-        falling.tick();
-        falling.set_input(0, false);
+        falling.set_input(0, true).unwrap();
+        falling.tick().unwrap();
+        falling.tick().unwrap();
+        falling.set_input(0, false).unwrap();
         assert_eq!(falling.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Higher);
 
         let short_program = repeater_program(2, false, false, false);
         let mut short = short_program.start();
-        short.set_input(0, true);
+        short.set_input(0, true).unwrap();
         let first = short.pending.iter_entries().next().unwrap();
-        short.set_input(0, false);
+        short.set_input(0, false).unwrap();
         assert_eq!(short.pending.iter_entries().count(), 1);
         assert_eq!(short.pending.iter_entries().next().unwrap().ticks_left, first.ticks_left);
         for _ in 0..3 {
-            short.tick();
+            short.tick().unwrap();
             assert_repeater_powered(&short, false);
         }
-        short.tick();
+        short.tick().unwrap();
         assert_repeater_powered(&short, true);
         assert_eq!(short.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Higher);
         for _ in 0..3 {
-            short.tick();
+            short.tick().unwrap();
             assert_repeater_powered(&short, true);
         }
-        short.tick();
+        short.tick().unwrap();
         assert_repeater_powered(&short, false);
         assert_eq!(short.scheduled_repeater_ticks, 2);
     }
@@ -155,12 +155,12 @@ use mchprs_world::TickPriority;
 
         let locked_program = repeater_program(1, false, true, false);
         let mut locked = locked_program.start();
-        locked.set_input(0, true);
+        locked.set_input(0, true).unwrap();
         assert!(locked.pending.iter_entries().next().is_none());
         let tick = ScheduledBlockTick { pos: locked.program.positions[1], block_type: Some(locked.blocks[1].registry_id()) };
         locked.pending.schedule_tick(tick, 1, TickPriority::Normal);
-        locked.tick();
-        locked.tick();
+        locked.tick().unwrap();
+        locked.tick().unwrap();
         assert_repeater_powered(&locked, false);
         assert_eq!(locked.scheduled_repeater_ticks, 1);
         assert!(locked.pending.iter_entries().next().is_none());
@@ -168,23 +168,23 @@ use mchprs_world::TickPriority;
         let program = repeater_program(1, false, false, false);
         let mut runtime = program.start();
         for cycle in 1..=3 {
-            runtime.set_input(0, true);
+            runtime.set_input(0, true).unwrap();
             assert_eq!(runtime.pending.iter_entries().count(), 1);
-            runtime.tick();
+            runtime.tick().unwrap();
             assert_repeater_powered(&runtime, false);
-            runtime.tick();
+            runtime.tick().unwrap();
             assert_repeater_powered(&runtime, true);
             assert_eq!(runtime.contributions[1], 15);
             assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: true });
-            runtime.set_input(0, false);
-            runtime.tick();
+            runtime.set_input(0, false).unwrap();
+            runtime.tick().unwrap();
             assert_repeater_powered(&runtime, true);
-            runtime.tick();
+            runtime.tick().unwrap();
             assert_repeater_powered(&runtime, false);
             assert_eq!(runtime.contributions[1], 0);
             assert_eq!(runtime.pending.iter_entries().count(), 1);
             for tick in 1..=4 {
-                runtime.tick();
+                runtime.tick().unwrap();
                 assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: tick < 4 });
             }
             assert!(runtime.pending.iter_entries().next().is_none());
@@ -213,7 +213,7 @@ use mchprs_world::TickPriority;
             vec![], vec![],
         ).unwrap();
         let mut runtime = program.start();
-        runtime.set_input(0, true);
+        runtime.set_input(0, true).unwrap();
         assert_eq!(runtime.operations, 2);
         assert_eq!(runtime.deliveries, 2);
         runtime.update_once(1);
@@ -227,7 +227,18 @@ use mchprs_world::TickPriority;
     fn empty() {
         let w = host();
         let p = compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)).unwrap();
-        p.start().tick();
+        p.start().tick().unwrap();
+    }
+
+    #[test]
+    fn runtime_stops_at_semantic_operation_limit() {
+        let program = repeater_program(1, false, false, false);
+        let mut runtime = program.start();
+        runtime.tick_operations = 999_999;
+        let error = runtime.set_input(0, true).unwrap_err();
+        assert_eq!(error.position, Some(program.positions[0]));
+        assert_eq!(error.reason, "runtime semantic operation limit exceeded");
+        assert_eq!(runtime.tick().unwrap_err(), error);
     }
     #[test]
     fn competing_sources_preserve_attenuation_masking_and_lamp_delay() {
@@ -254,7 +265,7 @@ use mchprs_world::TickPriority;
         ).unwrap();
         let mut runtime = program.start();
         for (source, powered, expected) in [(0, true, 13), (1, true, 15), (0, false, 15), (0, true, 15), (1, false, 13), (0, false, 0)] {
-            runtime.set_input(source, powered);
+            runtime.set_input(source, powered).unwrap();
             let Block::RedstoneWire { wire } = runtime.blocks[1] else { panic!("expected wire") };
             assert_eq!(wire.power, expected);
             assert_eq!(runtime.input_strength(1), expected);
@@ -264,7 +275,7 @@ use mchprs_world::TickPriority;
             } else {
                 assert_eq!(runtime.pending.iter_entries().count(), 1);
                 for tick in 1..=4 {
-                    runtime.tick();
+                    runtime.tick().unwrap();
                     assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: tick < 4 });
                     assert_eq!(runtime.pending.iter_entries().count(), usize::from(tick < 4));
                 }
@@ -272,7 +283,7 @@ use mchprs_world::TickPriority;
         }
         assert_eq!(runtime.operations, 31);
         // The external input is legal again after scheduled work settles.
-        runtime.set_input(0, true);
+        runtime.set_input(0, true).unwrap();
         assert_eq!(runtime.input_strength(1), 13);
         assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: true });
     }
@@ -288,7 +299,7 @@ use mchprs_world::TickPriority;
         let mut runtime = program.start();
         assert_eq!(runtime.input_strength(1), 13);
         for (powered, strength) in [(false, 0), (true, 13)] {
-            runtime.set_input(0, powered);
+            runtime.set_input(0, powered).unwrap();
             assert_eq!(runtime.input_strength(1), strength);
             assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
             assert!(runtime.pending.iter_entries().next().is_none());
@@ -310,7 +321,7 @@ use mchprs_world::TickPriority;
             vec![],
         ).unwrap();
         let mut runtime = ordered.start();
-        runtime.set_input(0, true);
+        runtime.set_input(0, true).unwrap();
         assert_eq!(runtime.input_strength(1), 15);
         assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: false });
 
@@ -321,7 +332,7 @@ use mchprs_world::TickPriority;
             vec![],
         ).unwrap();
         let mut runtime = reversed.start();
-        runtime.set_input(0, true);
+        runtime.set_input(0, true).unwrap();
         assert_eq!(runtime.input_strength(1), 15);
         assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
     }
@@ -345,15 +356,15 @@ use mchprs_world::TickPriority;
         ).unwrap();
         let mut runtime = program.start();
         assert_eq!(runtime.program.watched_wires[0].watchers, vec![3]);
-        runtime.set_input(1, false);
+        runtime.set_input(1, false).unwrap();
         assert_eq!(runtime.input_strength(1), 15, "source change is masked by the stronger source");
         assert_eq!(runtime.watched_strengths[0], 15);
         assert_eq!(runtime.deliveries, 0);
 
-        runtime.set_input(1, true);
+        runtime.set_input(1, true).unwrap();
         assert_eq!(runtime.input_strength(1), 15);
         assert_eq!(runtime.deliveries, 0);
-        runtime.set_input(0, false);
+        runtime.set_input(0, false).unwrap();
         assert_eq!(runtime.input_strength(1), 13);
         assert_eq!(runtime.watched_strengths[0], 13);
         assert_eq!(runtime.blocks[1], wire, "watch checks do not write physical wire state");
@@ -378,7 +389,7 @@ use mchprs_world::TickPriority;
             vec![WatchedWire { wire: 1, watchers: vec![3] }],
         ).unwrap();
         let mut runtime = program.start();
-        runtime.set_input(0, false);
+        runtime.set_input(0, false).unwrap();
         assert_eq!(runtime.input_strength(3), 15);
         assert_eq!(runtime.watched_strengths[0], 0);
         assert_eq!(runtime.blocks[1], Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } });
@@ -407,7 +418,7 @@ use mchprs_world::TickPriority;
             vec![WatchedWire { wire: 1, watchers: vec![3] }, WatchedWire { wire: 2, watchers: vec![3] }],
         ).unwrap();
         let mut runtime = program.start();
-        runtime.set_input(0, false);
+        runtime.set_input(0, false).unwrap();
         assert_eq!(runtime.watched_strengths, vec![0, 0]);
         assert_eq!(runtime.deliveries, 1, "two changed watched wires notify the same lamp once in one phase");
     }
@@ -446,16 +457,16 @@ use mchprs_world::TickPriority;
             vec![WatchedWire { wire: 1, watchers: vec![2, 2] }],
         ).unwrap();
         let mut runtime = program.start();
-        runtime.set_input(0, false);
+        runtime.set_input(0, false).unwrap();
         assert_eq!(runtime.watched_strengths[0], 0);
         assert_eq!(runtime.deliveries, 3, "two watcher updates plus the independent explicit delivery");
         let phase = runtime.phase;
         for _ in 0..4 {
-            runtime.tick();
+            runtime.tick().unwrap();
         }
         assert_eq!(runtime.phase, phase, "scheduler ticks do not define update phases");
         assert!(runtime.pending.iter_entries().next().is_none());
-        runtime.set_input(0, true);
+        runtime.set_input(0, true).unwrap();
         assert_eq!(runtime.watched_strengths[0], 15);
         assert_eq!(runtime.deliveries, 4, "the next external transition starts a fresh update phase");
     }
@@ -745,13 +756,13 @@ use mchprs_world::TickPriority;
         let mut runtime = program.start();
         for powered in [true, false, true, false, true, false] {
             crate::interaction::use_redstone(w.get_block(source), &mut w, source, None);
-            runtime.set_input(0, powered);
+            runtime.set_input(0, powered).unwrap();
             for (index, pos) in wires.iter().enumerate() {
                 let Block::RedstoneWire { wire } = w.get_block(*pos) else { panic!("missing wire") };
                 assert_eq!(wire.power, if powered { 15 - index as u8 } else { 0 });
             }
             for tick in 0..=4 {
-                if tick > 0 { w.tick_interpreted(); runtime.tick(); }
+                if tick > 0 { w.tick_interpreted(); runtime.tick().unwrap(); }
                 assert_eq!(runtime.blocks, program.positions.iter().map(|&pos| w.get_block(pos)).collect::<Vec<_>>());
                 assert_eq!(runtime.pending.iter_entries().collect::<Vec<_>>(), w.scheduler().iter_entries().collect::<Vec<_>>());
                 assert_eq!(w.get_block(lamp), Block::RedstoneLamp { lit: powered || tick < 4 });
@@ -778,15 +789,15 @@ use mchprs_world::TickPriority;
         let lamp_index = program.positions.iter().position(|&pos| pos == lamp).unwrap();
         assert!(program.output_programs[repeater_index][0].iter().any(|op| matches!(op, Operation::UpdateLamp(id) if *id == lamp_index)));
         let mut runtime = program.start();
-        runtime.set_input(0, true);
+        runtime.set_input(0, true).unwrap();
         assert!(!matches!(runtime.blocks[repeater_index], Block::RedstoneRepeater { repeater } if repeater.powered));
-        runtime.tick();
-        runtime.tick();
+        runtime.tick().unwrap();
+        runtime.tick().unwrap();
         assert!(matches!(runtime.blocks[repeater_index], Block::RedstoneRepeater { repeater } if repeater.powered));
         assert_eq!(runtime.blocks[lamp_index], Block::RedstoneLamp { lit: true });
         assert!(runtime.scheduled_repeater_ticks > 0);
-        runtime.set_input(0, false);
-        for _ in 0..6 { runtime.tick(); }
+        runtime.set_input(0, false).unwrap();
+        for _ in 0..6 { runtime.tick().unwrap(); }
         assert_eq!(runtime.blocks[lamp_index], Block::RedstoneLamp { lit: false });
     }
 
@@ -810,13 +821,13 @@ use mchprs_world::TickPriority;
         let source = |pos| program.sources.iter().position(|&id| program.positions[id] == pos).unwrap();
         let main_index = program.positions.iter().position(|&pos| pos == main).unwrap();
         let mut runtime = program.start();
-        runtime.set_input(source(side_lever), true);
-        runtime.tick();
-        runtime.tick();
+        runtime.set_input(source(side_lever), true).unwrap();
+        runtime.tick().unwrap();
+        runtime.tick().unwrap();
         assert!(matches!(runtime.blocks[main_index], Block::RedstoneRepeater { repeater } if repeater.locked));
-        runtime.set_input(source(main_lever), true);
-        runtime.tick();
-        runtime.tick();
+        runtime.set_input(source(main_lever), true).unwrap();
+        runtime.tick().unwrap();
+        runtime.tick().unwrap();
         assert!(matches!(runtime.blocks[main_index], Block::RedstoneRepeater { repeater } if repeater.locked && !repeater.powered));
     }
 
@@ -843,7 +854,7 @@ use mchprs_world::TickPriority;
         for (source, lamp) in sources.iter().zip(&lamps) {
             let source_index = program.sources.iter().position(|&id| program.positions[id] == *source).unwrap();
             let lamp_index = program.positions.iter().position(|pos| pos == lamp).unwrap();
-            runtime.set_input(source_index, true);
+            runtime.set_input(source_index, true).unwrap();
             assert_eq!(runtime.blocks[lamp_index], Block::RedstoneLamp { lit: true });
         }
         assert!(runtime.operations > 0);
@@ -937,7 +948,7 @@ use mchprs_world::TickPriority;
                     w.set_block(source, Block::Lever { lever });
                 }
                 crate::redstone::update_surrounding_blocks(&mut w, source);
-                r.set_input(0, powered);
+                r.set_input(0, powered).unwrap();
                 compare(&r, &w);
                 if !powered {
                     assert_eq!(w.get_block(BlockPos::new(17, 15, 15)), Block::RedstoneLamp { lit: true });
@@ -945,7 +956,7 @@ use mchprs_world::TickPriority;
                 }
                 for tick in 1..=4 {
                     w.tick_interpreted();
-                    r.tick();
+                    r.tick().unwrap();
                     compare(&r, &w);
                     if !powered {
                         assert_eq!(w.get_block(BlockPos::new(17, 15, 15)), Block::RedstoneLamp { lit: tick < 4 });

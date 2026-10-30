@@ -1,5 +1,5 @@
 use super::super::TickScheduler;
-use super::{Operation, Program, ScheduledBlockTick};
+use super::{Operation, Program, ScheduledBlockTick, ScratchError};
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
 
@@ -14,9 +14,21 @@ pub(super) struct Runtime<'a> {
     pub(super) operations: usize,
     pub(super) deliveries: usize,
     pub(super) scheduled_repeater_ticks: usize,
+    pub(super) tick_operations: usize,
+    pub(super) failure: Option<ScratchError>,
 }
 
 impl Runtime<'_> {
+    fn consume_operation(&mut self, position: mchprs_blocks::BlockPos) -> bool {
+        if self.failure.is_some() { return false; }
+        if self.tick_operations >= 1_000_000 {
+            self.failure = Some(ScratchError { position: Some(position), reason: "runtime semantic operation limit exceeded" });
+            return false;
+        }
+        self.tick_operations += 1;
+        true
+    }
+
     pub(super) fn input_strength(&self, target: usize) -> u8 {
         self.program.incoming[target].iter().map(|&id| self.contributions[id]).max().unwrap_or(0)
     }
@@ -91,6 +103,7 @@ impl Runtime<'_> {
 
     pub(super) fn execute_output_program(&mut self, component: usize, powered: bool) {
         for operation in &self.program.output_programs[component][usize::from(powered)] {
+            if !self.consume_operation(self.program.positions[component]) { return; }
             match *operation {
                 Operation::Contribution(link_index) => {
                     let link = &self.program.links[link_index];
@@ -154,11 +167,14 @@ impl Runtime<'_> {
         self.pending.schedule_tick(tick, repeater.delay as usize, priority);
     }
 
-    pub(super) fn set_input(&mut self, source_index: usize, powered: bool) {
-        let source = self.program.sources[source_index];
+    pub(super) fn set_input(&mut self, source_index: usize, powered: bool) -> Result<(), ScratchError> {
+        if let Some(error) = &self.failure { return Err(error.clone()); }
+        let Some(&source) = self.program.sources.get(source_index) else {
+            return Err(ScratchError { position: None, reason: "runtime set_input source index out of bounds" });
+        };
         let Block::Lever { lever } = self.blocks[source] else { unreachable!() };
         if lever.powered == powered {
-            return;
+            return Ok(());
         }
         self.begin_phase();
         let Block::Lever { mut lever } = self.blocks[source] else {
@@ -167,10 +183,12 @@ impl Runtime<'_> {
         lever.powered = powered;
         self.blocks[source] = Block::Lever { lever };
         self.execute_output_program(source, powered);
+        self.failure.clone().map_or(Ok(()), Err)
     }
 
     pub(super) fn drain_ticks(&mut self) {
         while let Some(tick) = self.pending.this_tick().pop_first() {
+            if !self.consume_operation(tick.pos) { return; }
             if let Some(component) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
                 match self.blocks[component] {
                     Block::RedstoneLamp { .. } => self.dispatch_receiver_tick(component),
@@ -222,9 +240,14 @@ impl Runtime<'_> {
         }
     }
 
-    pub(super) fn tick(&mut self) {
+    pub(super) fn tick(&mut self) -> Result<(), ScratchError> {
+        if let Some(error) = &self.failure { return Err(error.clone()); }
         self.drain_ticks();
+        if let Some(error) = &self.failure { return Err(error.clone()); }
         self.pending.end_last_tick_move_next();
         self.drain_ticks();
+        if let Some(error) = &self.failure { return Err(error.clone()); }
+        self.tick_operations = 0;
+        Ok(())
     }
 }

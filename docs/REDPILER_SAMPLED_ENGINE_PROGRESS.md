@@ -6,6 +6,9 @@ lever–repeater–lamp circuit executes a scheduled repeater transition. Quiet
 source probes preserve static redstone-block contributions; arrangement-aware
 ordering is not yet implemented. ADDER1BIT fails admission at the extended
 sticky piston at (49, 31, 42), before any fixture actions or token motions.
+Runtime input and tick calls return errors, and compiled instructions and
+scheduled events are limited to one million semantic operations per game tick.
+Piston and motion events are not yet implemented or counted.
 
 The private MAIR runtime and its lever–dust–lamp acceptance gate are implemented.
 Compile-time inventory of bounded empty piston actors is also implemented;

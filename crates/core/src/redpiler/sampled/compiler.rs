@@ -20,6 +20,54 @@ pub(super) struct PistonActor {
     pub(super) head_present: bool,
     pub(super) group: usize,
 }
+
+#[derive(Clone, Debug)]
+pub(super) struct PistonToken {
+    pub(super) block: Block,
+    pub(super) position: Option<BlockPos>,
+    pub(super) cells: Vec<BlockPos>,
+}
+
+pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor]) -> Result<Vec<PistonToken>, ScratchError> {
+    let mut tokens = Vec::new();
+    for group in 0..actors.iter().map(|p| p.group + 1).max().unwrap_or(0) {
+        let members: Vec<_> = actors.iter().filter(|p| p.group == group).collect();
+        let mut cells = Vec::new();
+        for piston in &members {
+            for cell in [piston.home, piston.far] {
+                if !cells.contains(&cell) { cells.push(cell); }
+            }
+        }
+        let at = members[0].base;
+        if cells.len() > 6 {
+            return Err(ScratchError { position: Some(at), reason: "piston group exceeds six contact cells" });
+        }
+        let start = tokens.len();
+        for &cell in &cells {
+            let block = world.get_block(cell);
+            if matches!(block, Block::Air | Block::PistonHead { .. }) { continue; }
+            let home = members.iter().any(|p| p.home == cell);
+            if !home && !members.iter().any(|p| p.sticky && p.far == cell) { continue; }
+            if world.get_block_entity(cell).is_some() {
+                return Err(ScratchError { position: Some(cell), reason: "unsupported carried block entity" });
+            }
+            if !matches!(block, Block::Stone {} | Block::Wool { .. } | Block::Glowstone | Block::RedstoneBlock) && block.slab_type().is_none() {
+                return Err(ScratchError { position: Some(cell), reason: "unsupported movable block" });
+            }
+            if home && members.iter().filter(|p| p.home == cell).all(|p| !p.sticky) && !members.iter().any(|p| p.far == cell) {
+                return Err(ScratchError { position: Some(cell), reason: "normal piston would push token out of its domain" });
+            }
+            tokens.push(PistonToken { block, position: Some(cell), cells: cells.clone() });
+        }
+        if tokens.len() - start > 2 {
+            return Err(ScratchError { position: Some(at), reason: "piston group exceeds two tokens" });
+        }
+        if tokens.len() - start == 2 && (members.len() != 2 || !members.iter().all(|p| p.sticky) || members[0].far != members[1].far || members[0].facing != members[1].facing.opposite()) {
+            return Err(ScratchError { position: Some(at), reason: "unsupported two-token piston group" });
+        }
+    }
+    Ok(tokens)
+}
 pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry) -> Result<Program, ScratchError> {
     let scratch = ScratchWorld::from_world(world, bounds, entry.clone())?;
     let mut positions = vec![];
@@ -245,10 +293,10 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
     for (output_index, pos, samples) in comparisons {
         let mut runtime = program.start();
         for powered in [true, false] {
-            runtime.set_input(output_index, powered);
+            runtime.set_input(output_index, powered)?;
             for (step, frame) in samples[usize::from(powered)].as_ref().unwrap().iter().enumerate() {
                 if step != 0 {
-                    runtime.tick();
+                    runtime.tick()?;
                 }
                 if runtime.blocks != frame.blocks || runtime.pending.iter_entries().collect::<Vec<_>>() != frame.pending {
                     eprintln!("sampled runtime at {pos:?}, edge={powered}, step={step}: expected blocks={:?}, pending={:?}; observed blocks={:?}, pending={:?}", frame.blocks, frame.pending, runtime.blocks, runtime.pending.iter_entries().collect::<Vec<_>>());
@@ -282,7 +330,6 @@ pub(super) fn discover_piston_actors(world: &impl World, bounds: (BlockPos, Bloc
                 let home = base.offset(facing.into());
                 let far = home.offset(facing.into());
                 let home_block = world.get_block(home);
-                let far_block = world.get_block(far);
                 if world.get_block_entity(home).is_some() {
                     return Err(error(home, "unsupported block entity at piston contact"));
                 }
@@ -297,12 +344,8 @@ pub(super) fn discover_piston_actors(world: &impl World, bounds: (BlockPos, Bloc
                     }
                     Block::PistonHead { .. } => return Err(error(home, "piston head does not match base state")),
                     Block::MovingPiston { .. } => return Err(error(home, "moving piston state is unsupported")),
-                    Block::Air => false,
-                    _ => return Err(error(home, "piston contact cell is occupied")),
+                    _ => false,
                 };
-                if far_block != Block::Air {
-                    return Err(error(far, "piston contact cell is occupied"));
-                }
                 if piston.extended != head_present {
                     return Err(error(base, "piston base and head state disagree"));
                 }

@@ -52,14 +52,14 @@ fn adder1bit_mair_manifest_arithmetic() {
                 "lever" => {
                     let pos = origin + position(&action["pos"]);
                     let source = program.sources.iter().position(|&index| program.positions[index] == pos).expect("manifest control represented");
-                    runtime.set_input(source, action["powered"].as_bool().unwrap());
+                    runtime.set_input(source, action["powered"].as_bool().unwrap()).unwrap();
                 }
-                "wait" | "wait_ready" => for _ in 0..action["ticks"].as_u64().unwrap() { runtime.tick(); },
+                "wait" | "wait_ready" => for _ in 0..action["ticks"].as_u64().unwrap() { runtime.tick().unwrap(); },
                 op => panic!("unsupported manifest action {op}"),
             }
         }
         for tick in 1..=case["ticks"].as_u64().unwrap() {
-            runtime.tick();
+            runtime.tick().unwrap();
             for (port, low, high, expected) in [("sum_payload", 1, 3, "sum"), ("sum_repeater", 3, 7, "sum"), ("carry_repeater", 5, 9, "carry")] {
                 if !(low..=high).contains(&tick) { continue; }
                 let pos = origin + position(&manifest["ports"]["observations"][port]);
