@@ -153,3 +153,71 @@ instrumented MAIR. The saved wrapper trace has no internal event sequence.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).
+
+## Full-port baseline recheck
+
+Compiled movement now uses arrangement-indexed flip programs, stored conditional
+link contributions, and ordered per-cell `MoveStep` records. Remaining recipients
+retain flip-discovery order. Watched-wire output changes occur at their movement
+steps, followed by remaining switched recipients and changed-wire notifications.
+Runtime dependency-signature scans no longer make movement decisions (the helper
+remains for trace diagnostics). Own groups precede shared groups. Piston flips
+retain the reference's special non-delivery treatment. Added validation checks
+group dimensions, source identities, movement references and token axes.
+
+Source-order probes now capture immediate qualifying reactions, including the
+observed rear/side input at callback time; they no longer require settling.
+Ordinary output programs interleave per-target link application and direct
+updates. Quiet probes retain active constant/token contributions. Conditional
+inputs use stored contributions rather than reading live source outputs before
+their ordered instruction. Source and piston-home watcher lists are compiled
+from reference update-footprint rules, with shape/update filtering at delivery.
+This is not complete notification parity: wire-watcher order, reactive-neighbor
+inventory and native movement callback capture still differ from the reference.
+
+Floor/wall torches now have support-input discovery, inversion, two-game-tick
+scheduling and revalidation, output programs and watcher delivery. The world-derived
+floor/wall torch test covers delay, repeated rearm and withdrawn-input rechecks.
+Piston requests now retain extension, normal-retract and early-retract identities,
+with per-kind deduplication. Landing-phase early classification and independent
+motion-part completion remain incomplete.
+
+Saved logs under `E:/codex-builds/`: `mair-movement-adder.log` preserves the first
+movement run's eight ADDER mismatches; `mair-compiled-flips-sampled.log` records
+33 passing mechanisms and the same eight mismatches. The later ordinary-source
+and watcher changes record 34 passing mechanisms but **11 ADDER mismatches** in
+`mair-watchers-sampled.log`, including additional window differences. This is a
+known regression, not a parity success. `mair-torch-sampled.log` demonstrates that
+COUNTER passes torch discovery but declines at (56,36,46) with too many local input
+arrangements. Dependency growth remains required; raising that cap is not a fix.
+The obsolete unsupported-torch rejection test was changed to an unsupported
+comparator. Scratch tests passed (15); the Graph/native family diagnostic passed
+(1 test covering its existing 13 samples), logged in `mair-torch-graph.log`.
+
+Departure-record comparison against the pinned `mair-compiled-records.txt`:
+Rust's token (53,32,41) program now contains (52,33,41), but places it after the
+output piston (56,32,41); MAIR places it before. Token (54,33,41)'s departure
+still lacks that recipient. These callback/order differences remain unresolved;
+no internal MAIR runtime event sequence is inferred from these records.
+
+Final check for this continuation: `mair-final-sampled.log` records **36 passing
+mechanism tests and two integration failures**: ADDER still has eight window
+mismatches; COUNTER still declines the proximity-based arrangement explosion.
+The temporary increase to 11 mismatches was corrected by preserving MAIR's
+silent piston-input rule: electrical link application must not directly update
+a piston. `mair-final-scratch.log` records 15 passing scratch tests;
+`mair-final-check.log` records a passing `cargo check -p mchprs_core --tests`.
+`git diff --check` passes. Geometry/head projection checks are included in the
+mechanism suite. The full 18-sample matrix, comparator/reactive cases and supported
+pending/moving entries have not been verified and remain required. No fixture,
+action, decoder, expected output or observation-window changes were made.
+
+| Reference algorithm | Rust implementation | Behavior check | Unresolved gap |
+| --- | --- | --- | --- |
+| Extractor and CollectInputs | scratch source discovery and sampled input tables | scratch directional and dust tests | General ports, conditional paths and passive families incomplete |
+| GroupProbe and ExtractGroups | proximity-based arrangement enumeration | ADDER joint tables | Dependency growth is not ported |
+| SourceOrdering and PropagateChange | immediate qualified probes and interleaved target programs | ordered conditional-contribution test | Reactive branch, complete ports and watcher parity remain |
+| MoveRecorder and SetTokenPos | compiled arrangement flips and ordered move steps | masking, discovery-order and rearm tests | Callback records and wire-watcher ordering differ |
+| QueueEvent and motion completion | three event identities and combined motion records | per-kind queue identity and two-tick movement tests | Landing-phase classification, interruption and paired motion incomplete |
+| DescribeNodes, Update and TickNode | sampled component handlers including torches | floor/wall torch delay, recheck and rearm test | Comparator and other reference roles incomplete |
+| TrackBudded and entry imports | stationary-entry admission | pending-work rejection test | Reactive state and supported pending or moving entries absent |

@@ -119,6 +119,9 @@ fn adder1bit_mair_manifest_arithmetic() {
                         eprintln!("  {:?} {} callbacks: {:?}", token.cells[cell], if arrival == 0 { "departure" } else { "arrival" }, recipients.iter().map(|&component| (program.positions[component], program.initial[component])).collect::<Vec<_>>());
                     }
                     eprintln!("  {:?} cell watchers: {:?}", token.cells[cell], program.token_watchers[index][cell].iter().map(|&component| (program.positions[component], program.initial[component])).collect::<Vec<_>>());
+                    for (arrival, steps) in program.move_steps[index][cell].iter().enumerate() {
+                        eprintln!("  {:?} {} move steps: {:?}", token.cells[cell], if arrival == 0 { "departure" } else { "arrival" }, steps.iter().map(|step| (program.positions[step.node], step.watcher, step.wire, step.wires.iter().map(|&node| program.positions[node]).collect::<Vec<_>>())).collect::<Vec<_>>());
+                    }
                 }
             }
             for (source_initial, other_initial, source_cells, other_cells, wire) in [

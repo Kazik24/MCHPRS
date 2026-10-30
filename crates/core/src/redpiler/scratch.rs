@@ -231,6 +231,19 @@ fn discover_wire_sources_inner(world: &impl World, wires: &[BlockPos], trace: bo
 /// Collect a lamp's weak and one-hop conducted inputs, expanding each dust
 /// contact through the shared wire graph.
 pub(crate) fn discover_lamp_sources(world: &impl World, lamp: BlockPos) -> Result<Vec<WireSource>, ScratchError> {
+    discover_signal_contacts(world, lamp, BlockFace::values())
+}
+
+pub(crate) fn discover_torch_sources(world: &impl World, pos: BlockPos, block: Block) -> Result<Vec<WireSource>, ScratchError> {
+    let face = match block {
+        Block::RedstoneTorch { .. } => BlockFace::Bottom,
+        Block::RedstoneWallTorch { facing, .. } => facing.opposite().block_face(),
+        _ => return Err(ScratchError { position: Some(pos), reason: "torch input requested for non-torch" }),
+    };
+    discover_signal_contacts(world, pos, [face])
+}
+
+fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl IntoIterator<Item = BlockFace>) -> Result<Vec<WireSource>, ScratchError> {
     let mut sources = HashMap::new();
     let mut add = |source: BlockPos, attenuation: u8| {
         sources.entry(source).and_modify(|old: &mut u8| *old = (*old).min(attenuation)).or_insert(attenuation);
@@ -238,7 +251,7 @@ pub(crate) fn discover_lamp_sources(world: &impl World, lamp: BlockPos) -> Resul
     let supported_source = |block: Block| {
         is_supported_dynamic_source(block) || block == Block::RedstoneBlock || block.pressure_plate_powered().is_some()
     };
-    for face in BlockFace::values() {
+    for face in faces {
         let neighbor = lamp.offset(face);
         let block = world.get_block(neighbor);
         if matches!(block, Block::RedstoneWire { .. }) {

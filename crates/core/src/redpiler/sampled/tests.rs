@@ -59,6 +59,99 @@ use mchprs_world::TickPriority;
         )
     }
     #[test]
+    fn token_move_notifies_wire_watchers_only_when_strength_changes() {
+        use super::program::MoveStep;
+        let cell = BlockPos::new(10, 10, 10);
+        for masked in [false, true] {
+            let mut program = test_program(
+                vec![BlockPos::new(12, 10, 10), BlockPos::new(13, 10, 10), BlockPos::new(14, 10, 10)],
+                vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, masked) },
+                    Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } }, Block::RedstoneLamp { lit: true }],
+                vec![0], vec![[vec![], vec![]]],
+                vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+                vec![WatchedWire { wire: 1, watchers: vec![2] }],
+            ).unwrap();
+            program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+            program.token_sources.push(vec![vec![(1, 0)]]);
+            program.move_steps.push(vec![[vec![MoveStep { node: 1, watcher: false, wire: true, wires: vec![] }, MoveStep { node: 2, watcher: false, wire: false, wires: vec![1] }], vec![]]]);
+            program.compile_movement_flips().unwrap();
+            let mut runtime = program.start();
+            runtime.set_token_pos(0, None);
+            assert_eq!(runtime.watched_strengths[0], if masked { 15 } else { 0 });
+            assert_eq!(runtime.updated_in_phase[2].is_some(), !masked);
+        }
+    }
+    #[test]
+    fn movement_flips_preserve_discovery_order_for_remaining_recipients() {
+        use super::program::{ArrangementSource, InputArrangement};
+        let cell = BlockPos::new(10, 10, 10);
+        let positions = vec![cell, cell.offset(BlockFace::East), cell.offset(BlockFace::West)];
+        let mut program = test_program(positions.clone(), vec![Block::RedstoneBlock, Block::RedstoneLamp { lit: true }, Block::RedstoneLamp { lit: true }], vec![], vec![], vec![], vec![]).unwrap();
+        program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+        for target in [2, 1] {
+            program.input_arrangements.push(InputArrangement { target, tokens: vec![0], conditional_sources: vec![ArrangementSource::Token(0)], inputs: vec![vec![], vec![(ArrangementSource::Token(0), 0)]] });
+        }
+        program.compile_movement_flips().unwrap();
+        let mut runtime = program.start();
+        runtime.set_token_pos(0, None);
+        assert_eq!(runtime.pending.iter_entries().map(|entry| entry.pos).collect::<Vec<_>>(), vec![positions[2], positions[1]]);
+        runtime.set_token_pos(0, Some(cell));
+        assert_eq!(runtime.input_strength(1), 15);
+        runtime.set_token_pos(0, None);
+        assert_eq!(runtime.group_arrangements, vec![0, 0]);
+    }
+    #[test]
+    fn conditional_source_changes_wait_for_their_ordered_link_instruction() {
+        use super::program::{ArrangementSource, InputArrangement};
+        let cell = BlockPos::new(10, 10, 10);
+        let mut program = test_program(vec![cell, cell.offset(BlockFace::East)],
+            vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }, Block::RedstoneLamp { lit: false }],
+            vec![0], vec![[vec![], vec![Operation::UpdateLamp(1)]]], vec![], vec![]).unwrap();
+        program.tokens.push(super::compiler::PistonToken { block: Block::Stone {}, position: Some(cell.offset(BlockFace::Top)), cells: vec![cell.offset(BlockFace::Top)] });
+        program.input_arrangements.push(InputArrangement { target: 1, tokens: vec![0], conditional_sources: vec![ArrangementSource::Component(0)], inputs: vec![vec![], vec![(ArrangementSource::Component(0), 1)]] });
+        program.compile_movement_flips().unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(0, true).unwrap();
+        assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: false });
+        drop(runtime);
+        program.output_programs[0][1] = vec![Operation::ArrangementContribution(0), Operation::UpdateLamp(1)];
+        let mut runtime = program.start();
+        runtime.set_input(0, true).unwrap();
+        assert_eq!(runtime.input_strength(1), 14);
+        assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
+        runtime.set_token_pos(0, None);
+        assert_eq!(runtime.input_strength(1), 0);
+    }
+    #[test]
+    fn compiled_floor_and_wall_torches_delay_recheck_and_rearm() {
+        for wall in [false, true] {
+            let support = BlockPos::new(16, 15, 15);
+            let torch = support.offset(if wall { BlockFace::South } else { BlockFace::Top });
+            let lever = support.offset(BlockFace::East);
+            let mut world = host();
+            world.set_block(support, Block::Stone {});
+            world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Wall, BlockDirection::East, false) });
+            world.set_block(torch, if wall { Block::RedstoneWallTorch { lit: true, facing: BlockDirection::South } } else { Block::RedstoneTorch { lit: true } });
+            let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), entry(&world)).unwrap();
+            let node = program.positions.iter().position(|&pos| pos == torch).unwrap();
+            let mut runtime = program.start();
+            assert_eq!(runtime.project(support), Some(Block::Stone {}));
+            for powered in [true, false, true, false] {
+                runtime.set_input(0, powered).unwrap();
+                assert_eq!(runtime.output(node), if powered { 15 } else { 0 });
+                runtime.tick().unwrap();
+                assert_eq!(runtime.output(node), if powered { 15 } else { 0 });
+                runtime.tick().unwrap();
+                assert_eq!(runtime.output(node), if powered { 0 } else { 15 });
+            }
+            runtime.set_input(0, true).unwrap();
+            runtime.tick().unwrap();
+            runtime.set_input(0, false).unwrap();
+            runtime.tick().unwrap();
+            assert_eq!(runtime.output(node), 15, "scheduled torch tick must recheck a withdrawn input");
+        }
+    }
+    #[test]
     fn piston_request_moves_token_after_two_motion_ticks() {
         let base = BlockPos::new(15, 15, 15);
         let home = base.offset(BlockFace::East);
@@ -94,7 +187,31 @@ use mchprs_world::TickPriority;
         assert_eq!(runtime.token_positions[0], Some(far));
         assert_eq!(runtime.project(far), Some(Block::Stone {}));
         assert!(runtime.piston_head_present[0]);
+        assert!(matches!(runtime.project(home), Some(Block::PistonHead { head }) if head.facing == BlockFacing::East && head.sticky));
         assert_eq!(runtime.motion_completions, 1);
+    }
+    #[test]
+    fn normal_and_early_retract_requests_keep_distinct_queue_identities() {
+        use super::executor::PistonEvent;
+        let base = BlockPos::new(15, 15, 15);
+        let home = base.offset(BlockFace::East);
+        let far = home.offset(BlockFace::East);
+        let mut world = host();
+        world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: true } });
+        world.set_block(home, Block::PistonHead { head: RedstonePistonHead { facing: BlockFacing::East, sticky: true, short: false } });
+        world.set_block(far, Block::Stone {});
+        let actors = discover_piston_actors(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20)), entry(&world)).unwrap();
+        let tokens = super::compiler::discover_piston_tokens(&world, &actors).unwrap();
+        let mut program = test_program(vec![base], vec![world.get_block(base)], vec![], vec![], vec![], vec![]).unwrap();
+        program.pistons = actors;
+        program.tokens = tokens;
+        let mut runtime = program.start();
+        runtime.update_piston(0);
+        runtime.update_piston(0);
+        runtime.motions.push((0, Some(0), far, 2, true));
+        runtime.update_piston(0);
+        runtime.update_piston(0);
+        assert_eq!(runtime.piston_events.into_iter().collect::<Vec<_>>(), vec![(0, PistonEvent::Retract), (0, PistonEvent::EarlyRetract)]);
     }
     fn entry(w: &PlotWorld) -> ScratchEntry {
         ScratchEntry {
@@ -642,7 +759,7 @@ use mchprs_world::TickPriority;
     fn rejects_unrepresented_blocks() {
         let mut w = host();
         let pos = BlockPos::new(15, 15, 15);
-        w.set_block(pos, Block::from_name("redstone_torch").unwrap());
+        w.set_block(pos, Block::from_name("comparator").unwrap());
         let err = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
             Err(err) => err,
             Ok(_) => panic!("unsupported block admitted"),

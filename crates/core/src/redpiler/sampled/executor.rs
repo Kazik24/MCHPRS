@@ -4,6 +4,17 @@ use super::program::ArrangementSource;
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PistonEvent {
+    Extend,
+    Retract,
+    EarlyRetract,
+}
+
+impl PistonEvent {
+    fn bit(self) -> u8 { 1 << self as u8 }
+}
+
 pub(super) struct Runtime<'a> {
     pub(super) program: &'a Program,
     pub(super) piston_extended: Vec<bool>,
@@ -11,7 +22,9 @@ pub(super) struct Runtime<'a> {
     pub(super) piston_head_moving: Vec<bool>,
     pub(super) piston_base_moving: Vec<bool>,
     pub(super) token_positions: Vec<Option<mchprs_blocks::BlockPos>>,
-    pub(super) piston_events: std::collections::VecDeque<(usize, bool)>,
+    pub(super) group_arrangements: Vec<usize>,
+    pub(super) arrangement_contributions: Vec<u8>,
+    pub(super) piston_events: std::collections::VecDeque<(usize, PistonEvent)>,
     pub(super) queued_piston_events: Vec<u8>,
     pub(super) motions: Vec<(usize, Option<usize>, mchprs_blocks::BlockPos, u64, bool)>,
     pub(super) motion_time: u64,
@@ -34,6 +47,23 @@ pub(super) struct Runtime<'a> {
 }
 
 impl Runtime<'_> {
+    fn notify_source_watchers(&mut self, source: usize, shape: bool, update: bool) {
+        let watchers = self.program.source_watchers[source].clone();
+        for watcher in watchers {
+            if !self.consume_operation(self.program.positions[watcher]) { return; }
+            if if matches!(self.blocks[watcher], Block::Observer { .. }) { shape } else { update } {
+                self.update_once(watcher);
+            }
+        }
+    }
+
+    fn notify_home_watchers(&mut self, piston: usize, shape_only: bool) {
+        let watchers = self.program.home_watchers.get(piston).cloned().unwrap_or_default();
+        for watcher in watchers {
+            if !self.consume_operation(self.program.positions[watcher]) { return; }
+            if !shape_only || matches!(self.blocks[watcher], Block::Observer { .. }) { self.update_once(watcher); }
+        }
+    }
     fn trace(&mut self, event: String) {
         if self.trace_enabled && self.trace_events.len() < 2048 {
             self.trace_events.push(format!("tick={} phase={} seq={} {event}", self.motion_time, self.phase, self.trace_events.len()));
@@ -46,11 +76,21 @@ impl Runtime<'_> {
         if let Some(index) = self.token_positions.iter().position(|&at| at == Some(position)) {
             return Some(self.program.tokens[index].block);
         }
+        for (index, piston) in self.program.pistons.iter().enumerate() {
+            if position == piston.base && self.piston_base_moving[index] { return None; }
+            if position == piston.home {
+                if self.piston_head_moving[index] { return None; }
+                if self.piston_head_present[index] {
+                    return Some(Block::PistonHead { head: mchprs_blocks::blocks::RedstonePistonHead { facing: piston.facing, sticky: piston.sticky, short: false } });
+                }
+            }
+        }
         if self.program.tokens.iter().any(|token| token.cells.contains(&position))
             && self.program.tokens.iter().any(|token| token.position == Some(position)) {
             return Some(Block::Air);
         }
-        Some(self.program.positions.iter().position(|&at| at == position).map(|index| self.blocks[index]).unwrap_or(Block::Air))
+        Some(self.program.positions.iter().position(|&at| at == position).map(|index| self.blocks[index])
+            .or_else(|| self.program.geometry.iter().find_map(|&(at, block)| (at == position).then_some(block))).unwrap_or(Block::Air))
     }
     fn notify_shape(&mut self, position: mchprs_blocks::BlockPos) {
         for index in 0..self.blocks.len() {
@@ -70,11 +110,11 @@ impl Runtime<'_> {
     pub(super) fn queue_piston_extension(&mut self, index: usize) {
         if self.queued_piston_events[index] & 1 == 0 {
             self.queued_piston_events[index] |= 1;
-            self.piston_events.push_back((index, true));
+            self.piston_events.push_back((index, PistonEvent::Extend));
         }
     }
 
-    fn update_piston(&mut self, component: usize) {
+    pub(super) fn update_piston(&mut self, component: usize) {
         let Some(index) = self.program.pistons.iter().position(|p| p.base == self.program.positions[component]) else { return; };
         if self.piston_base_moving[index] { return; }
         let powered = self.input_strength(component) > 0;
@@ -84,54 +124,53 @@ impl Runtime<'_> {
             self.trace(format!("piston sample {:?} powered={powered} extended={} fixed={fixed:?} token_inputs={token_inputs:?}", self.program.pistons[index].base, self.piston_extended[index]));
         }
         if powered == self.piston_extended[index] { return; }
-        let bit = if powered { 1 } else { 2 };
+        let piston = &self.program.pistons[index];
+        // shortcut: landing-phase age/order classification awaits independent motion-part records.
+        let pushing = self.motions.iter().any(|motion| motion.0 != usize::MAX && motion.1.is_some() && motion.4 && motion.2 == piston.far && self.program.pistons[motion.0].facing == piston.facing);
+        let event = if powered { PistonEvent::Extend } else if pushing { PistonEvent::EarlyRetract } else { PistonEvent::Retract };
+        let bit = event.bit();
         if self.queued_piston_events[index] & bit == 0 {
             self.queued_piston_events[index] |= bit;
-            self.piston_events.push_back((index, powered));
+            self.piston_events.push_back((index, event));
             if self.trace_enabled { self.trace(format!("piston request {:?} extending={powered}", self.program.pistons[index].base)); }
         }
     }
 
     fn run_piston_events(&mut self) {
-        while let Some((index, extending)) = self.piston_events.pop_front() {
+        while let Some((index, event)) = self.piston_events.pop_front() {
+            let extending = event == PistonEvent::Extend;
             let piston = &self.program.pistons[index];
             if !self.consume_operation(piston.base) { return; }
-            self.queued_piston_events[index] &= !(if extending { 1 } else { 2 });
+            self.queued_piston_events[index] &= !event.bit();
             let Some(component) = self.program.positions.iter().position(|&pos| pos == piston.base) else {
                 self.failure = Some(ScratchError { position: Some(piston.base), reason: "piston component missing" });
                 return;
             };
+            self.updated_in_phase[component] = None;
             if self.piston_base_moving[index] || (self.input_strength(component) > 0) != extending {
                 if self.trace_enabled { self.trace(format!("piston rejected {:?} extending={extending} reason=power_or_base_motion", piston.base)); }
                 continue;
             }
             if !extending {
-                if !self.piston_extended[index] { continue; }
-                let early = self.piston_head_moving[index];
-                if early {
+                let early = event == PistonEvent::EarlyRetract;
+                if self.piston_head_moving[index] {
                     if let Some(slot) = self.motions.iter().position(|motion| motion.0 == index && motion.4) {
                         let (_, token, destination, _, _) = self.motions[slot];
                         self.motions[slot].0 = usize::MAX;
                         self.motions[slot].1 = None;
                         self.piston_head_moving[index] = false;
                         if let Some(token) = token {
-                            self.token_positions[token] = Some(destination);
-                            self.refresh_token_wires(token);
-                            self.run_token_updates(token, destination, true);
-                            self.notify_shape(destination);
+                            self.set_token_pos(token, Some(destination));
                         }
                     }
                 }
                 self.piston_base_moving[index] = true;
-                self.notify_shape(piston.base);
+                self.notify_source_watchers(component, true, true);
                 let token = if piston.sticky && !early { self.token_positions.iter().position(|&position| position == Some(piston.far)) } else { None };
                 if let Some(token) = token {
-                    self.token_positions[token] = None;
                     self.token_movements += 1;
                     if self.trace_enabled { self.trace(format!("token {token} departs {:?} for {:?}", piston.far, piston.home)); }
-                    self.notify_shape(piston.far);
-                    self.refresh_token_wires(token);
-                    self.run_token_updates(token, piston.far, false);
+                    self.set_token_pos(token, None);
                 }
                 self.piston_head_present[index] = false;
                 self.motions.push((index, token, piston.home, self.motion_time + 2, false));
@@ -158,19 +197,16 @@ impl Runtime<'_> {
                     self.failure = Some(ScratchError { position: Some(piston.far), reason: "unsupported token destination" });
                     return;
                 }
-                self.token_positions[token] = None;
                 self.token_movements += 1;
                 if self.trace_enabled { self.trace(format!("token {token} departs {:?} for {:?}", piston.home, piston.far)); }
-                self.notify_shape(piston.home);
-                self.refresh_token_wires(token);
-                self.run_token_updates(token, piston.home, false);
+                self.set_token_pos(token, None);
             }
             self.piston_extended[index] = true;
             if let Block::Piston { mut piston } = self.blocks[component] {
                 piston.extended = true;
                 self.blocks[component] = Block::Piston { piston };
             }
-            self.notify_shape(piston.base);
+            self.notify_source_watchers(component, true, true);
             self.piston_head_moving[index] = true;
             self.motions.push((index, token, piston.far, self.motion_time + 2, true));
             if self.trace_enabled { self.trace(format!("piston accepted {:?} extend token={token:?} from={:?} to={:?} landing={}", piston.base, piston.home, piston.far, self.motion_time + 2)); }
@@ -188,7 +224,7 @@ impl Runtime<'_> {
             if piston == usize::MAX { continue; }
             if !self.consume_operation(self.program.pistons[piston].base) { return; }
             if extending {
-                if let Some(token) = token { self.token_positions[token] = Some(destination); self.refresh_token_wires(token); self.run_token_updates(token, destination, true); }
+                if let Some(token) = token { self.set_token_pos(token, Some(destination)); }
                 self.piston_head_moving[piston] = false;
                 self.piston_head_present[piston] = true;
             } else {
@@ -200,12 +236,12 @@ impl Runtime<'_> {
                     self.blocks[component] = Block::Piston { piston };
                 }
                 self.notify_shape(self.program.pistons[piston].base);
-                if let Some(token) = token { self.token_positions[token] = Some(destination); self.refresh_token_wires(token); self.run_token_updates(token, destination, true); }
+                if let Some(token) = token { self.set_token_pos(token, Some(destination)); }
             }
             self.motion_completions += 1;
             if self.trace_enabled { self.trace(format!("motion complete {:?} token={token:?} destination={destination:?} extending={extending}", self.program.pistons[piston].base)); }
-            self.notify_shape(destination);
             self.notify_shape(self.program.pistons[piston].home);
+            self.notify_home_watchers(piston, false);
             if let Some(component) = self.program.positions.iter().position(|&pos| pos == self.program.pistons[piston].base) { self.update_piston(component); }
         }
     }
@@ -225,91 +261,100 @@ impl Runtime<'_> {
             let source = ArrangementSource::Component(self.program.links[id].source);
             (!group.is_some_and(|group| group.conditional_sources.contains(&source))).then_some(self.contributions[id])
         }).max().unwrap_or(0);
-        let conditional = group.map_or(0, |group| {
-            let mut index = 0;
-            let mut stride = 1;
-            for &token in &group.tokens {
-                let record = &self.program.tokens[token];
-                let digit = self.token_positions[token].and_then(|pos| record.cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1);
-                index += digit * stride;
-                stride *= record.cells.len() + 1;
-            }
-            group.inputs[index].iter().map(|&(source, attenuation)| {
-                let strength: u8 = match source {
-                    ArrangementSource::Component(component) => self.output(component),
-                    ArrangementSource::Token(token) => if self.token_positions[token].is_some() { 15 } else { 0 },
-                };
-                strength.saturating_sub(attenuation)
-            }).max().unwrap_or(0)
-        });
-        self.program.tokens.iter().enumerate().filter_map(|(index, token)| {
-            if group.is_some_and(|group| group.conditional_sources.contains(&ArrangementSource::Token(index))) { return None; }
-            let position = self.token_positions[index]?;
-            let cell = token.cells.iter().position(|&candidate| candidate == position)?;
-            self.program.token_sources.get(index)?.get(cell)?.iter()
-                .filter_map(|&(receiver, attenuation)| (receiver == target).then_some(15u8.saturating_sub(attenuation))).max()
-        }).fold(fixed.max(conditional), u8::max)
+        self.program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
+            (link.target == target).then_some(self.arrangement_contributions[index])
+        }).fold(fixed, u8::max)
     }
 
-    fn refresh_token_wires(&mut self, token: usize) {
-        let mut wires = Vec::new();
-        if let Some(arrangements) = self.program.token_sources.get(token) {
-            for &(target, _) in arrangements.iter().flatten() {
-                if matches!(self.blocks[target], Block::RedstoneWire { .. }) && !wires.contains(&target) { wires.push(target); }
-            }
-        }
-        for group in &self.program.input_arrangements {
-            if group.tokens.contains(&token) && !wires.contains(&group.target) { wires.push(group.target); }
-        }
-        for wire in wires {
-            if !self.consume_operation(self.program.positions[wire]) { return; }
-            if let Block::RedstoneWire { wire: mut state } = self.blocks[wire] {
-                state.power = self.input_strength(wire);
-                self.blocks[wire] = Block::RedstoneWire { wire: state };
-            }
-            if let Some(record) = self.program.watched_wires.iter().position(|record| record.wire == wire) {
-                self.check_watched_wire(record);
-            }
+    pub(super) fn arrangement_output(&self, source: ArrangementSource) -> u8 {
+        match source {
+            ArrangementSource::Component(node) => self.output(node),
+            ArrangementSource::Token(token) => if matches!(self.program.tokens[token].block, Block::RedstoneBlock) { 15 } else { 0 },
         }
     }
 
-    fn run_token_updates(&mut self, token: usize, position: mchprs_blocks::BlockPos, arrival: bool) {
-        let Some(cell) = self.program.tokens[token].cells.iter().position(|&candidate| candidate == position) else { return; };
-        let Some(updates) = self.program.token_updates.get(token).and_then(|cells| cells.get(cell)) else { return; };
-        let watchers = self.program.token_watchers.get(token).and_then(|cells| cells.get(cell));
-        for &component in &updates[usize::from(arrival)] {
-            if !self.consume_operation(self.program.positions[component]) { return; }
-            let watched = watchers.is_some_and(|watchers| watchers.contains(&component));
-            let from = if arrival { None } else { Some(position) };
-            let to = if arrival { Some(position) } else { None };
-            let before = self.token_dependency_signature(token, component, from);
-            let after = self.token_dependency_signature(token, component, to);
-            let switched = before != after;
-            if switched && before.iter().chain(&after).any(|&(source, attenuation)| {
-                let strength: u8 = match source {
-                    ArrangementSource::Component(index) => self.output(index),
-                    ArrangementSource::Token(index) => if index == token || self.token_positions[index].is_some() { 15 } else { 0 },
-                };
-                strength > attenuation && (before.contains(&(source, attenuation)) != after.contains(&(source, attenuation)))
-            }) {
-                self.updated_in_phase[component] = None;
-            }
-            match self.blocks[component] {
-                Block::Piston { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneLamp { .. } if watched || switched => self.update_once(component),
-                Block::RedstoneWire { mut wire } => {
-                    wire.power = self.input_strength(component);
-                    self.blocks[component] = Block::RedstoneWire { wire };
+    pub(super) fn set_token_pos(&mut self, token: usize, position: Option<mchprs_blocks::BlockPos>) {
+        let old = self.token_positions[token];
+        if old == position { return; }
+        let Some(cell_pos) = position.or(old) else { return; };
+        let Some(cell) = self.program.tokens[token].cells.iter().position(|&at| at == cell_pos) else {
+            self.failure = Some(ScratchError { position: Some(cell_pos), reason: "unsupported token position" });
+            return;
+        };
+        if old.is_some() && position.is_some() {
+            self.failure = Some(ScratchError { position: Some(cell_pos), reason: "token relocation requires departure before arrival" });
+            return;
+        }
+        self.token_positions[token] = position;
+        let mut switched = Vec::new();
+        let bindings = self.program.token_movement_groups.get(token).cloned().unwrap_or_default();
+        for (group, axis) in bindings {
+            let record = &self.program.movement_groups[group].axes[axis];
+            let before = self.group_arrangements[group];
+            let delta = (cell + 1) * record.stride;
+            let after = if position.is_some() { before + delta } else { before - delta };
+            self.group_arrangements[group] = after;
+            let flips = if position.is_some() { &record.arrive[after] } else { &record.depart[before] };
+            for flip in flips {
+                if !self.consume_operation(self.program.positions[flip.target]) { return; }
+                let strength = self.arrangement_output(flip.source);
+                self.arrangement_contributions[flip.link] = if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 };
+                if strength > flip.attenuation { self.updated_in_phase[flip.target] = None; }
+                // MAIR's WithMoveStep reserves -2 for pistons: flips do not deliver them.
+                if !matches!(self.blocks[flip.target], Block::Piston { .. }) && !switched.contains(&flip.target) {
+                    switched.push(flip.target);
                 }
-                _ => {}
+                self.operations += 1;
+            }
+        }
+        let steps = self.program.move_steps.get(token).and_then(|cells| cells.get(cell))
+            .map(|edges| edges[usize::from(position.is_some())].clone()).unwrap_or_default();
+        let mut changed_wires = Vec::new();
+        for step in steps {
+            if !self.consume_operation(self.program.positions[step.node]) { return; }
+            if step.wire {
+                if let Some(index) = switched.iter().position(|&node| node == step.node) {
+                    switched.remove(index);
+                    if self.mark_changed_wire(step.node) { changed_wires.push(step.node); }
+                }
+            } else if switched.contains(&step.node) || step.watcher || step.wires.iter().any(|wire| changed_wires.contains(wire)) {
+                switched.retain(|&node| node != step.node);
+                self.update_once(step.node);
             }
             self.operations += 1;
         }
-        if let Some(watchers) = self.program.token_watchers.get(token).and_then(|cells| cells.get(cell)) {
-            for &component in watchers {
-                if !self.consume_operation(self.program.positions[component]) { return; }
-                self.update_once(component);
+        for node in switched {
+            if !self.consume_operation(self.program.positions[node]) { return; }
+            if self.program.watched_wires.iter().any(|wire| wire.wire == node) {
+                if self.mark_changed_wire(node) { changed_wires.push(node); }
+            } else if let Block::RedstoneWire { mut wire } = self.blocks[node] {
+                wire.power = self.input_strength(node);
+                self.blocks[node] = Block::RedstoneWire { wire };
+            } else {
+                self.update_once(node);
             }
         }
+        for wire in changed_wires {
+            if let Some(record) = self.program.watched_wires.iter().find(|record| record.wire == wire) {
+                let watchers = record.watchers.clone();
+                for watcher in watchers {
+                    if !self.consume_operation(self.program.positions[watcher]) { return; }
+                    self.update_once(watcher);
+                }
+            }
+        }
+    }
+
+    fn mark_changed_wire(&mut self, wire: usize) -> bool {
+        let Some(index) = self.program.watched_wires.iter().position(|record| record.wire == wire) else { return false; };
+        let strength = self.input_strength(wire);
+        if let Block::RedstoneWire { wire: mut state } = self.blocks[wire] {
+            state.power = strength;
+            self.blocks[wire] = Block::RedstoneWire { wire: state };
+        }
+        if strength == self.watched_strengths[index] { return false; }
+        self.watched_strengths[index] = strength;
+        true
     }
 
     // shortcut: receiver signatures omit geometry-dependent fixed links, extend arrangement groups to all readers.
@@ -356,6 +401,7 @@ impl Runtime<'_> {
             }
             Block::RedstoneWire { wire } => wire.power,
             Block::Observer { observer } => if observer.powered { 15 } else { 0 },
+            Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => if lit { 15 } else { 0 },
             Block::RedstoneRepeater { repeater } => {
                 if repeater.powered {
                     15
@@ -401,6 +447,7 @@ impl Runtime<'_> {
             Block::RedstoneLamp { .. } => self.dispatch_receiver(receiver),
             Block::Piston { .. } => self.update_piston(receiver),
             Block::RedstoneRepeater { .. } => self.update_repeater(receiver),
+            Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.update_torch(receiver),
             Block::Observer { observer } if !observer.powered => {
                 let tick = ScheduledBlockTick { pos: self.program.positions[receiver], block_type: Some(self.blocks[receiver].registry_id()) };
                 if !self.pending.contains(&tick) { self.pending.schedule_tick(tick, 1, TickPriority::Normal); }
@@ -428,6 +475,16 @@ impl Runtime<'_> {
         for operation in &self.program.output_programs[component][usize::from(powered)] {
             if !self.consume_operation(self.program.positions[component]) { return; }
             match *operation {
+                Operation::ArrangementContribution(index) => {
+                    let link = &self.program.arrangement_links[index];
+                    let contribution = if link.active[self.group_arrangements[link.group]] {
+                        self.arrangement_output(link.source).saturating_sub(link.attenuation)
+                    } else { 0 };
+                    if (self.arrangement_contributions[index] > 0) != (contribution > 0) {
+                        self.updated_in_phase[link.target] = None;
+                    }
+                    self.arrangement_contributions[index] = contribution;
+                }
                 Operation::Contribution(link_index) => {
                     let link = &self.program.links[link_index];
                     let old_contribution = self.contributions[link_index];
@@ -449,9 +506,36 @@ impl Runtime<'_> {
                 Operation::UpdateLamp(slot) => self.dispatch_receiver(slot),
                 Operation::UpdateRepeater(slot) => self.update_repeater(slot),
                 Operation::UpdatePiston(slot) => self.update_piston(slot),
+                Operation::UpdateTorch(slot) => self.update_torch(slot),
             }
             self.operations += 1;
         }
+    }
+
+    fn update_torch(&mut self, component: usize) {
+        let lit = match self.blocks[component] {
+            Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => lit,
+            _ => return,
+        };
+        if lit == (self.input_strength(component) > 0) {
+            let tick = ScheduledBlockTick { pos: self.program.positions[component], block_type: Some(self.blocks[component].registry_id()) };
+            if !self.pending.contains(&tick) { self.pending.schedule_tick(tick, 1, TickPriority::Normal); }
+        }
+    }
+
+    fn tick_torch(&mut self, component: usize) {
+        let lit = match self.blocks[component] {
+            Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => lit,
+            _ => return,
+        };
+        if lit != (self.input_strength(component) > 0) { return; }
+        self.blocks[component] = match self.blocks[component] {
+            Block::RedstoneTorch { .. } => Block::RedstoneTorch { lit: !lit },
+            Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { lit: !lit, facing },
+            _ => unreachable!(),
+        };
+        self.execute_output_program(component, !lit);
+        self.notify_source_watchers(component, true, true);
     }
 
     pub(super) fn update_repeater(&mut self, component: usize) {
@@ -513,6 +597,7 @@ impl Runtime<'_> {
         self.blocks[source] = Block::Lever { lever };
         if self.trace_enabled { self.trace(format!("input {:?} powered={powered}", self.program.positions[source])); }
         self.execute_output_program(source, powered);
+        self.notify_source_watchers(source, true, true);
         self.failure.clone().map_or(Ok(()), Err)
     }
 
@@ -521,6 +606,7 @@ impl Runtime<'_> {
             if !self.consume_operation(tick.pos) { return; }
             if let Some(component) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
                 match self.blocks[component] {
+                    Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.tick_torch(component),
                     Block::RedstoneLamp { .. } => self.dispatch_receiver_tick(component),
                     Block::RedstoneRepeater { .. } => {
                         self.scheduled_repeater_ticks += 1;
@@ -530,10 +616,12 @@ impl Runtime<'_> {
                         observer.powered = !observer.powered;
                         if self.trace_enabled { self.trace(format!("observer tick {:?} powered={}", self.program.positions[component], observer.powered)); }
                         self.blocks[component] = Block::Observer { observer };
+                        self.notify_source_watchers(component, true, false);
                         if observer.powered {
                             self.pending.schedule_tick(tick, 1, TickPriority::Normal);
                         }
                         self.execute_output_program(component, observer.powered);
+                        self.notify_source_watchers(component, false, true);
                     }
                     _ => {}
                 }
@@ -558,6 +646,7 @@ impl Runtime<'_> {
             repeater.powered = false;
             self.blocks[component] = Block::RedstoneRepeater { repeater };
             self.execute_output_program(component, false);
+            self.notify_source_watchers(component, true, true);
         } else {
             if !rear_powered {
                 let tick = ScheduledBlockTick {
@@ -569,6 +658,7 @@ impl Runtime<'_> {
             repeater.powered = true;
             self.blocks[component] = Block::RedstoneRepeater { repeater };
             self.execute_output_program(component, true);
+            self.notify_source_watchers(component, true, true);
         }
     }
 

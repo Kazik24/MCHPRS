@@ -173,6 +173,7 @@ pub struct RedstoneUpdateObservation {
     pub pos: BlockPos,
     pub block: Block,
     pub direction: Option<BlockFace>,
+    pub input_on: Option<(bool, bool)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

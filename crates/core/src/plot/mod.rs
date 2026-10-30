@@ -639,8 +639,24 @@ impl PlotWorld {
 
 impl World for PlotWorld {
     fn observe_redstone_update(&mut self, pos: BlockPos, block: Block, direction: Option<BlockFace>) {
+        if self.redstone_update_observations.is_none() { return; }
+        let input_on = match block {
+            Block::RedstoneRepeater { repeater } => {
+                let rear = crate::redstone::diode_get_input_strength(self, pos, repeater.facing) > 0;
+                let side = crate::redstone::repeater::get_state_for_placement(self, pos, repeater.facing).locked;
+                Some((rear, side))
+            }
+            Block::Piston { piston } => Some((crate::redstone::piston::should_piston_extend(self, piston.facing, pos), false)),
+            Block::RedstoneTorch { .. } => Some((crate::redstone::torch_should_be_off(self, pos), false)),
+            Block::RedstoneWallTorch { facing, .. } => Some((crate::redstone::wall_torch_should_be_off(self, pos, facing), false)),
+            Block::RedstoneLamp { .. } => Some((BlockFace::values().iter().any(|&face| {
+                let at = pos.offset(face);
+                crate::redstone::get_redstone_power(self.get_block(at), self, at, face) > 0
+            }), false)),
+            _ => None,
+        };
         if let Some(observations) = &mut self.redstone_update_observations {
-            observations.push(RedstoneUpdateObservation { pos, block, direction });
+            observations.push(RedstoneUpdateObservation { pos, block, direction, input_on });
         }
     }
 
