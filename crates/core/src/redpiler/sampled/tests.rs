@@ -66,10 +66,16 @@ use mchprs_world::TickPriority;
         let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
         let mut world = host();
         world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
-        world.set_block(home, Block::RedstoneBlock);
+        world.set_block(home, Block::Stone {});
         let actors = discover_piston_actors(&world, bounds, entry(&world)).unwrap();
         let tokens = super::compiler::discover_piston_tokens(&world, &actors).unwrap();
-        let mut program = test_program(vec![], vec![], vec![], vec![], vec![], vec![]).unwrap();
+        let lever = BlockPos::new(14, 15, 15);
+        let mut program = test_program(
+            vec![lever, base],
+            vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) }, world.get_block(base)],
+            vec![0], vec![[vec![], vec![]]],
+            vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }], vec![],
+        ).unwrap();
         program.pistons = actors;
         program.tokens = tokens;
         let mut runtime = program.start();
@@ -80,8 +86,13 @@ use mchprs_world::TickPriority;
         assert_eq!(runtime.token_movements, 1);
         assert_eq!(runtime.token_positions[0], None);
         assert_eq!(runtime.motion_completions, 0);
+        assert_eq!(runtime.project(far), None);
+        runtime.tick().unwrap();
+        assert_eq!(runtime.token_positions[0], None);
+        assert_eq!(runtime.motion_completions, 0);
         runtime.tick().unwrap();
         assert_eq!(runtime.token_positions[0], Some(far));
+        assert_eq!(runtime.project(far), Some(Block::Stone {}));
         assert!(runtime.piston_head_present[0]);
         assert_eq!(runtime.motion_completions, 1);
     }
@@ -491,7 +502,7 @@ use mchprs_world::TickPriority;
         for _ in 0..4 {
             runtime.tick().unwrap();
         }
-        assert_eq!(runtime.phase, phase, "scheduler ticks do not define update phases");
+        assert_eq!(runtime.phase, phase + 4, "each scheduler tick starts an update phase");
         assert!(runtime.pending.iter_entries().next().is_none());
         runtime.set_input(0, true).unwrap();
         assert_eq!(runtime.watched_strengths[0], 15);
@@ -617,21 +628,21 @@ use mchprs_world::TickPriority;
                 positions.clone(), initial.clone(), vec![0], vec![[vec![], vec![]]], links.clone(),
                 vec![WatchedWire { wire: 1, watchers: vec![3] }],
             ),
-            "sampled watched-wire receiver is not a lamp",
+            "sampled watched-wire receiver is not a lamp, piston or observer",
         );
         assert_reason(
             test_program(
                 positions, initial, vec![0], vec![[vec![], vec![]]], links,
                 vec![WatchedWire { wire: 1, watchers: vec![1] }],
             ),
-            "sampled watched-wire receiver is not a lamp",
+            "sampled watched-wire receiver is not a lamp, piston or observer",
         );
     }
     #[test]
     fn rejects_unrepresented_blocks() {
         let mut w = host();
         let pos = BlockPos::new(15, 15, 15);
-        w.set_block(pos, Block::from_name("observer").unwrap());
+        w.set_block(pos, Block::from_name("redstone_torch").unwrap());
         let err = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
             Err(err) => err,
             Ok(_) => panic!("unsupported block admitted"),
@@ -797,6 +808,26 @@ use mchprs_world::TickPriority;
             assert_eq!(sign_before, serde_json::to_value(w.get_block_entity(sign)).unwrap());
         }
         assert!(runtime.operations > 0);
+    }
+
+    #[test]
+    fn world_compiler_drives_empty_piston() {
+        let mut world = host();
+        let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+        let lever = BlockPos::new(15, 15, 15);
+        let base = BlockPos::new(16, 15, 15);
+        world.set_block(lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } });
+        let program = compile(&world, bounds, entry(&world)).unwrap();
+        assert_eq!(program.pistons.len(), 1);
+        let mut runtime = program.start();
+        runtime.set_input(0, true).unwrap();
+        runtime.tick().unwrap();
+        runtime.tick().unwrap();
+        runtime.tick().unwrap();
+        assert_eq!(runtime.accepted_piston_actions, 1);
+        assert!(runtime.piston_head_present[0]);
     }
 
     #[test]
@@ -1112,7 +1143,7 @@ use mchprs_world::TickPriority;
                 serde_json::to_value(world.piston_state()).unwrap(),
             )
         );
-        assert!(compile(&world, bounds, entry(&world)).is_err(), "lamp-only runtime admission must reject pistons");
+        assert_eq!(compile(&world, bounds, entry(&world)).unwrap().pistons.len(), 3);
     }
 
     #[test]
@@ -1151,9 +1182,7 @@ use mchprs_world::TickPriority;
 
         let mut entity = host();
         entity.set_block_entity(BlockPos::new(16, 15, 16), BlockEntity::Comparator { output_strength: 0 });
-        let error = discover_piston_actors(&entity, bounds, entry(&entity)).unwrap_err();
-        assert_eq!(error.position, Some(BlockPos::new(16, 15, 16)));
-        assert_eq!(error.reason, "unsupported block entity in piston capture");
+        assert!(discover_piston_actors(&entity, bounds, entry(&entity)).unwrap().is_empty());
 
         let mut escaped = host();
         let edge = BlockPos::new(22, 15, 15);

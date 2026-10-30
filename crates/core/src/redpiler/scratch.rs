@@ -112,6 +112,15 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
 
 /// Electrical extraction alone; watcher construction and executable admission are separate.
 pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> Result<Vec<WireSource>, ScratchError> {
+    discover_wire_sources_inner(world, wires, false)
+}
+
+#[cfg(test)]
+pub(crate) fn trace_wire_sources(world: &impl World, wires: &[BlockPos]) -> Result<Vec<WireSource>, ScratchError> {
+    discover_wire_sources_inner(world, wires, true)
+}
+
+fn discover_wire_sources_inner(world: &impl World, wires: &[BlockPos], trace: bool) -> Result<Vec<WireSource>, ScratchError> {
     // Dust attenuation follows the shortest represented wire path; dynamic source
     // states are included even when currently off (e.g. an unpowered lever).
     let mut sources = HashMap::new();
@@ -120,8 +129,10 @@ pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> R
         let mut queue = VecDeque::from([wire]);
         while let Some(current) = queue.pop_front() {
             let distance = distances[&current];
+            if trace { eprintln!("wire traversal target={wire:?} current={current:?} distance={distance}"); }
             for face in BlockFace::values() {
                 let neighbor = current.offset(face);
+                if trace { eprintln!("  neighbor={neighbor:?} face={face:?} block={:?}", world.get_block(neighbor)); }
                 match world.get_block(neighbor) {
                     Block::RedstoneWire { .. } => {
                         if distance >= 14 || matches!(face, BlockFace::Top | BlockFace::Bottom) {
@@ -146,6 +157,7 @@ pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> R
                         for source_face in BlockFace::values() {
                             let source_pos = neighbor.offset(source_face);
                             let source_block = world.get_block(source_pos);
+                            if trace { eprintln!("    conductor source={source_pos:?} face={source_face:?} block={source_block:?} strong={}", crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)); }
                             if (is_supported_dynamic_source(source_block) || source_block == Block::RedstoneBlock)
                                 && crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)
                             {
@@ -194,6 +206,7 @@ pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> R
                             queue.push_back(neighbor);
                         }
                     }
+                    if trace { eprintln!("  diagonal from={current:?} via={adjacent:?} block={block:?} above_solid={above_solid} candidate={diagonal:?}"); }
                 }
             }
         }
@@ -271,6 +284,46 @@ pub(crate) fn discover_lamp_sources(world: &impl World, lamp: BlockPos) -> Resul
         .collect();
     sources.sort_by_key(|source| (source.source.x, source.source.y, source.source.z));
     Ok(sources)
+}
+
+/// Discover the direct and quasi-connected inputs sampled by a piston.
+pub(crate) fn discover_piston_sources(world: &impl World, pos: BlockPos, facing: mchprs_blocks::BlockFacing) -> Result<Vec<WireSource>, ScratchError> {
+    let mut contacts: Vec<_> = BlockFace::values().into_iter().filter(|&face| face != facing.into()).map(|face| (pos, face)).collect();
+    let above = pos.offset(BlockFace::Top);
+    contacts.extend(BlockFace::values().into_iter().map(|face| (above, face)));
+    let mut sources = HashMap::new();
+    for (origin, face) in contacts {
+        let at = origin.offset(face);
+        let block = world.get_block(at);
+        let mut add = |source: BlockPos, attenuation: u8| {
+            sources.entry(source).and_modify(|old: &mut u8| *old = (*old).min(attenuation)).or_insert(attenuation);
+        };
+        if matches!(block, Block::RedstoneWire { .. }) {
+            if crate::redstone::power::emits_weak_power(block, world, at, face, true) {
+                for source in discover_wire_sources(world, &[at])? { add(source.source, source.attenuation); }
+            }
+        } else if block.is_solid() {
+            for side in BlockFace::values() {
+                let source_pos = at.offset(side);
+                let source = world.get_block(source_pos);
+                if crate::redstone::power::emits_strong_power(source, world, source_pos, side, true) {
+                    if matches!(source, Block::RedstoneWire { .. }) {
+                        for source in discover_wire_sources(world, &[source_pos])? { add(source.source, source.attenuation); }
+                    } else if is_supported_dynamic_source(source) || source == Block::RedstoneBlock {
+                        add(source_pos, 0);
+                    } else {
+                        return Err(ScratchError { position: Some(source_pos), reason: "unsupported piston input source" });
+                    }
+                }
+            }
+        } else if crate::redstone::power::emits_weak_power(block, world, at, face, true) {
+            if is_supported_dynamic_source(block) || block == Block::RedstoneBlock { add(at, 0); }
+            else { return Err(ScratchError { position: Some(at), reason: "unsupported piston input source" }); }
+        }
+    }
+    let mut result: Vec<_> = sources.into_iter().map(|(source, attenuation)| WireSource { wire: pos, source, attenuation }).collect();
+    result.sort_by_key(|source| (source.source.x, source.source.y, source.source.z));
+    Ok(result)
 }
 
 fn is_supported_dynamic_source(block: Block) -> bool {

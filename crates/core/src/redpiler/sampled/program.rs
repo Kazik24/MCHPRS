@@ -9,6 +9,7 @@ pub(super) enum Operation {
     CheckWatchedWire(usize),
     UpdateLamp(usize),
     UpdateRepeater(usize),
+    UpdatePiston(usize),
 }
 
 #[derive(Clone)]
@@ -29,9 +30,27 @@ pub(super) struct RepeaterRecord {
     pub(super) side_sources: Option<Vec<usize>>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub(super) enum ArrangementSource {
+    Component(usize),
+    Token(usize),
+}
+
+pub(super) struct InputArrangement {
+    pub(super) target: usize,
+    pub(super) tokens: Vec<usize>,
+    pub(super) conditional_sources: Vec<ArrangementSource>,
+    pub(super) inputs: Vec<Vec<(ArrangementSource, u8)>>,
+}
+
 pub(super) struct Program {
     pub(super) pistons: Vec<super::compiler::PistonActor>,
     pub(super) tokens: Vec<super::compiler::PistonToken>,
+    pub(super) piston_scenery: Vec<BlockPos>,
+    pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
+    pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
+    pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
+    pub(super) input_arrangements: Vec<InputArrangement>,
     pub(super) positions: Vec<BlockPos>,
     pub(super) initial: Vec<Block>,
     pub(super) sources: Vec<usize>,
@@ -65,7 +84,7 @@ impl Program {
         }
         for block in &initial {
             match block {
-                Block::Lever { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock => {}
+                Block::Lever { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock | Block::Piston { .. } | Block::Observer { .. } => {}
                 Block::RedstoneWire { wire } if wire.power <= 15 => {}
                 Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
                 Block::RedstoneRepeater { repeater } if (1..=4).contains(&repeater.delay) => {}
@@ -109,12 +128,12 @@ impl Program {
             let Some(target) = initial.get(link.target) else {
                 return Err(invalid("sampled program link target is out of bounds"));
             };
-            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneBlock) {
+            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneBlock | Block::Observer { .. }) {
                 return Err(invalid("sampled program link source must be lever, wire or repeater"));
             }
             if !matches!(
                 target,
-                Block::RedstoneWire { .. } | Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. }
+                Block::RedstoneWire { .. } | Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. } | Block::Piston { .. }
             ) {
                 return Err(invalid("sampled program link target must be wire, lamp or repeater"));
             }
@@ -129,8 +148,8 @@ impl Program {
             let mut recipients = std::collections::HashSet::new();
             record.watchers.retain(|watcher| recipients.insert(*watcher));
             for &watcher in &record.watchers {
-                if !matches!(initial.get(watcher), Some(Block::RedstoneLamp { .. })) {
-                    return Err(invalid("sampled watched-wire receiver is not a lamp"));
+                if !matches!(initial.get(watcher), Some(Block::RedstoneLamp { .. } | Block::Piston { .. } | Block::Observer { .. })) {
+                    return Err(invalid("sampled watched-wire receiver is not a lamp, piston or observer"));
                 }
             }
         }
@@ -153,6 +172,9 @@ impl Program {
                         Operation::UpdateRepeater(slot) if !matches!(initial.get(slot), Some(Block::RedstoneRepeater { .. })) => {
                             return Err(invalid("sampled program UpdateRepeater target is not a repeater"));
                         }
+                        Operation::UpdatePiston(slot) if !matches!(initial.get(slot), Some(Block::Piston { .. })) => {
+                            return Err(invalid("sampled program UpdatePiston target is not a piston"));
+                        }
                         _ => {}
                     }
                 }
@@ -165,6 +187,11 @@ impl Program {
         Ok(Self {
             pistons: Vec::new(),
             tokens: Vec::new(),
+            piston_scenery: Vec::new(),
+            token_sources: Vec::new(),
+            token_updates: Vec::new(),
+            token_watchers: Vec::new(),
+            input_arrangements: Vec::new(),
             positions,
             initial,
             sources,
@@ -182,6 +209,7 @@ impl Program {
             piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
             piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
             piston_head_moving: vec![false; self.pistons.len()],
+            piston_base_moving: vec![false; self.pistons.len()],
             token_positions: self.tokens.iter().map(|t| t.position).collect(),
             piston_events: std::collections::VecDeque::new(),
             queued_piston_events: vec![0; self.pistons.len()],
@@ -190,6 +218,8 @@ impl Program {
             accepted_piston_actions: 0,
             token_movements: 0,
             motion_completions: 0,
+            trace_enabled: false,
+            trace_events: Vec::new(),
             blocks: self.initial.clone(),
             pending: TickScheduler::default(),
             contributions: self
@@ -205,7 +235,8 @@ impl Program {
                             }
                         }
                         Block::RedstoneWire { wire } => wire.power,
-                        Block::RedstoneBlock => 15,
+                        Block::RedstoneBlock => if self.tokens.iter().any(|token| token.position == Some(self.positions[link.source])) { 0 } else { 15 },
+                        Block::Observer { observer } => if observer.powered { 15 } else { 0 },
                         Block::RedstoneRepeater { repeater } => {
                             if repeater.powered {
                                 15

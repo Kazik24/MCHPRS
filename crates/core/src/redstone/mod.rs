@@ -384,7 +384,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
     }
 }
 
-fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
+pub(crate) fn on_observer_state_change(facing: BlockFacing, world: &mut impl World, pos: BlockPos) {
     observer_notifications(facing, pos, |pos, dir| update(world.get_block(pos), world, pos, dir));
 }
 

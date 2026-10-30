@@ -4,16 +4,16 @@ The world-derived compiler admits multiple levers, lamps, repeaters and static
 redstone blocks, and retains native replay mismatches as diagnostics. A
 lever–repeater–lamp circuit executes a scheduled repeater transition. Quiet
 source probes preserve static redstone-block contributions; arrangement-aware
-ordering is not yet implemented. ADDER1BIT fails admission at the extended
-sticky piston at (49, 31, 42), before any fixture actions or token motions.
+ordering is not yet implemented. ADDER1BIT compiles and replays its eight
+manifest cases with piston and token motion, but its outputs are incorrect.
 Runtime input and tick calls return errors, and compiled instructions and
 scheduled events are limited to one million semantic operations per game tick.
-An isolated, manually queued extension now counts accepted actions, token
-departures and landings; it is not connected to world compilation or power.
+Compiled pistons now have sampled inputs and explicit callback instructions;
+the runtime counts accepted actions, token departures and landings.
 
 The private MAIR runtime and its lever–dust–lamp acceptance gate are implemented.
-Compile-time inventory and preliminary token discovery are implemented;
-connected piston execution remains the next unmet gate. The player-facing backend remains
+Compile-time inventory and preliminary token discovery are connected, and a
+world-derived empty piston extension executes. The player-facing backend remains
 Graph. The old `event_netlist` compiler, executor and executor tests have been
 removed; their results below are historical only.
 
@@ -53,8 +53,9 @@ incomplete.
 - Rise/fall programs contain ordered `Contribution`, `RefreshWire`, watcher
   check and explicit lamp delivery instructions. Explicit `UpdateLamp` always
   dispatches. Watcher delivery uses phase-scoped `UpdateOnce`; contribution
-  changes can invalidate that marker. Production compilation still installs an
-  empty watcher table.
+  changes can invalidate that marker. Production compilation installs watched
+  wires for nearby pistons and observers; ordering and the full watcher graph
+  remain incomplete.
 - The runtime uses its own scheduler and lamp tick dispatch. It drains the
   current bucket, advances once, then drains the new current bucket. The lamp
   off delay remains four game ticks for `schedule_tick(..., 2, ...)`.
@@ -68,7 +69,17 @@ incomplete.
   home/far cells, loaded extension/head state and transitive shared-cell groups.
   It rejects inconsistent, moving and out-of-capture contacts. Preliminary
   token discovery distinguishes static far-cell scenery and checks group limits.
-  Neither inventory nor discovery is connected to production admission.
+  Scenery is retained separately from tokens. Individual redstone-token source
+  alternatives and basic departure/arrival callbacks are probed; joint
+  arrangement links and MAIR's ordered movement programs are incomplete.
+  Fresh-scratch extraction reproduces the reference's 12 source maps at
+  (48,33,40) and (54,33,42), including the masked conditional source. A local
+  local input-arrangement tables switch varying source identities; both
+  compiled reference wires reduce to the expected two tokens and 12 states.
+  Piston and lamp arrangements have also been added. The conditional stationary
+  source at (54,34,42) feeding the piston at (56,32,41) matches the reference
+  in its three token states.
+  This does not yet implement MAIR's full per-dependency group growth.
 
 ## Acceptance boundaries
 
@@ -104,7 +115,7 @@ remain the migration contract for future MAIR acceptance tests.
 
 ## Current verification
 
-- `cargo test -p mchprs_core redpiler::sampled::tests --lib`: **30 passed, 0
+- `cargo test -p mchprs_core redpiler::sampled::tests --lib`: **31 passed, 0
   failed, 0 ignored**, 1,004 filtered out. This includes repeater delay 1–4
   boundaries, short-pulse replay, pending-tick deduplication, all three priority
   cases, loaded powered and locked state, repeated lever–repeater–lamp propagation
@@ -117,15 +128,28 @@ remain the migration contract for future MAIR acceptance tests.
 - `git diff --check`: passed.
 - `cargo test -p mchprs_core
   redpiler::sampled::adder_tests::adder1bit_mair_manifest_arithmetic --lib`:
-  **0 passed, 1 failed**. The active case `prepared-0-0-0` is declined at
-  `(49,31,42)` because production world compilation reports the piston as an
-  unsupported component. Its manifest replay and output assertions are not
-  reached. This is an admission failure; ADDER1BIT remains incomplete.
+  ADDER1BIT's eight cases ran and reported 8 output-window mismatches, all in
+  `prepared-1-1-1`. The runtime counted 339 accepted piston actions, 302 token
+  movements, 336 completions and 28 repeater ticks. Interrupted motion slots
+  are not included in the completion counter.
 
-The manually queued piston test records one accepted action, one token
-departure and one completion. Power callbacks, live revalidation, retraction,
-movement programs and arrangement-dependent links are not connected. No fixture
-with pistons executes yet, and no ADDER1BIT outputs have been observed.
+The world-derived empty-piston test records one accepted action and completion;
+the manually queued token test records one token departure and completion.
+Retraction, observer handling and individual-token source probes are preliminary.
+Full dependency-group growth, reference-ordered movement programs and complete
+notification behavior remain absent. The manifest diagnostics show incorrect sum ones
+and incorrect carry zeroes in several observation windows. COUNTER_BASIC's
+saved-idle case fails compilation at (47, 38, 42), a redstone wall torch; it
+has not executed.
+
+Against the supplied MAIR replay, `prepared-0-1-0` matches the recorded visible
+states. For `prepared-0-1-1` and `prepared-1-1-0`, the first visible difference
+is response tick 10 at the carry repeater, outside its declared observation
+window. For `prepared-1-1-1`, the first visible difference is response tick 1:
+Rust retains the sum payload while MAIR reports air. The Rust trace shows the
+piston at (56,32,41) receiving an unpowered retraction request after token 2
+departs; live-power and event ordering around that request need comparison with
+instrumented MAIR. The saved wrapper trace has no internal event sequence.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).
