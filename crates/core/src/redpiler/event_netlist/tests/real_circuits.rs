@@ -5,7 +5,6 @@ use crate::plot::{
 };
 use crate::redpiler::event_netlist::executor::EventState;
 use crate::redpiler::event_netlist::scratch::{ScratchEntry, ScratchWorld, discover_watched_wire_sources, discovered_wire_strength};
-use crate::redpiler::physical_signal_network::{EntryWork, PhysicalSignalNetwork};
 use crate::redpiler::program_graph::{
     CircuitNodeKind, ComponentState, ContactId, InputPort, LoweredCircuit, PistonId, PistonLane, PowerPort, PowerTarget, ResourceId,
 };
@@ -223,8 +222,6 @@ fn real_fixture_inventory_reports_executable_admission() {
             };
             *lanes.entry((piston.sticky, kind)).or_insert(0usize) += 1;
         }
-        let entry = EntryWork::capture(&world, bounds);
-        let signal = PhysicalSignalNetwork::compile(&lowered.program, &lowered.state, &entry).err();
         let event = crate::redpiler::event_netlist::compiler::compile(&lowered).err();
         println!(
             "{id}: dimensions={} nodes={} wires={} pistons={} resources={} contacts={} routes={} power_links={} scheduled={} kinds={kinds:?} lanes={lanes:?}",
@@ -238,7 +235,7 @@ fn real_fixture_inventory_reports_executable_admission() {
             lowered.program.power_links().len(),
             world.scheduler().iter_entries().count()
         );
-        println!("{id}: signal admission={signal:?}; event admission={event:?}");
+        println!("{id}: event admission={event:?}");
         assert!(!lowered.program.pistons().is_empty(), "fixture must contain real piston actors");
     }
 }
@@ -350,6 +347,23 @@ fn counter_basic_manifest_runs_through_event_program() {
             let native_updates = world.take_redstone_update_observations();
             let prior = event.counts();
             event.tick().unwrap();
+            if case["id"] == "release" && tick == 4 {
+                let node = lowered
+                    .program
+                    .pistons()
+                    .iter()
+                    .find(|piston| piston.position == traced_pos)
+                    .unwrap()
+                    .node;
+                for &id in &compiled.program.input_links[compiled.program.input_ranges[node.index()].clone()] {
+                    let link = &compiled.program.links[id];
+                    let source_pos = lowered.program.nodes().get(link.source.index()).and_then(|source| source.position);
+                    eprintln!(
+                        "counter input source={source_pos:?} state={:?} link={link:?}",
+                        event.component(link.source)
+                    );
+                }
+            }
             let after = event.counts();
             let counts_delta = (
                 after.notifications - prior.notifications,

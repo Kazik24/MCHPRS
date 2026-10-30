@@ -160,12 +160,8 @@ pub(crate) mod backend;
 mod components;
 #[allow(dead_code)]
 mod event_netlist;
-#[allow(dead_code)]
-pub(crate) mod event_repeater;
 mod options;
 mod passes;
-#[allow(dead_code)]
-mod physical_signal_network;
 mod power_rules;
 pub(crate) mod program_graph;
 mod statistics;
