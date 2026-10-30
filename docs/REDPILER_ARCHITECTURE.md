@@ -62,16 +62,22 @@ phases. `schedule_tick(..., 2, ...)` retains its four-game-tick lamp-off delay.
 The sampled acceptance test passes for initially-off and initially-on entry,
 including host preservation, 12 alternating transitions per entry state,
 pending-work comparisons through scheduler wrap, and lamp-off timing. The
-compiler's sampled-runtime self-check remains enabled. Program construction
+compiler's sampled-runtime self-check remains enabled. Lamp-only watched-wire
+records and explicit `CheckWatchedWire` instructions are supported as a
+mechanism: they compare raw observed strength and dispatch ordered lamp watchers
+through per-phase `UpdateOnce`; duplicate recipients keep their first position.
+Production compilation still supplies no watcher records, so this is not
+world-derived watcher discovery. Program construction
 validates component records, source bindings, rise/fall pairs, links, value
 ranges and operation references before building incoming indexes; compiler
 errors use the existing positioned error path. Partial operation programs are
-allowed. The sampled suite has 12 passing tests, including an instruction-order check where the receiver sees
+allowed. The sampled suite has 16 passing tests, including instruction-order and
+watcher-dispatch checks. In the contribution-order check, the receiver sees
 the old contribution before `Contribution(link)` and lights after the reversed
-order. Watcher dispatch and MAIR's reactive/BUD batching path remain unimplemented.
+order. MAIR's reactive/BUD batching path remains unimplemented.
 This narrow test does not establish piston execution, observer, resource or
 general-circuit support. Latest verification with
-`cargo test -p mchprs_core redpiler::sampled --lib`: 12 passed, 0 failed,
+`cargo test -p mchprs_core redpiler::sampled --lib`: 16 passed, 0 failed,
 0 ignored (1,035 filtered out), including boundary-read rejection.
 
 The same private module has a separate compile-time inventory pass for empty
@@ -139,7 +145,7 @@ histories. This establishes narrow runtime integration, not general admission.
 
 Verification on 30 October 2026:
 
-- `cargo test -p mchprs_core redpiler::sampled --lib`: latest run, 8 passed,
+- `cargo test -p mchprs_core redpiler::sampled --lib`: latest run, 16 passed,
   0 failed, 0 ignored (1,035 filtered out). Native rise/fall execution passes
   for initially-off and initially-on entry, including 12 alternating edges,
   settled pending-work comparisons through scheduler wrap, host preservation,

@@ -19,6 +19,7 @@ struct Frame {
 enum Operation {
     Contribution(usize),
     RefreshWire(usize),
+    CheckWatchedWire(usize),
     UpdateLamp(usize),
 }
 #[derive(Clone)]
@@ -27,6 +28,10 @@ struct ElectricalLink {
     target: usize,
     attenuation: u8,
 }
+struct WatchedWire {
+    wire: usize,
+    watchers: Vec<usize>,
+}
 struct Program {
     positions: Vec<BlockPos>,
     initial: Vec<Block>,
@@ -34,6 +39,7 @@ struct Program {
     transitions: Vec<[Vec<Operation>; 2]>,
     links: Vec<ElectricalLink>,
     incoming: Vec<Vec<usize>>,
+    watched_wires: Vec<WatchedWire>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PistonActor {
@@ -52,7 +58,11 @@ struct Runtime<'a> {
     blocks: Vec<Block>,
     pending: TickScheduler<ScheduledBlockTick>,
     contributions: Vec<u8>,
+    watched_strengths: Vec<u8>,
+    phase: u64,
+    updated_in_phase: Vec<Option<u64>>,
     operations: usize,
+    deliveries: usize,
 }
 impl Program {
     fn new(
@@ -61,6 +71,7 @@ impl Program {
         sources: Vec<usize>,
         transitions: Vec<[Vec<Operation>; 2]>,
         links: Vec<ElectricalLink>,
+        mut watched_wires: Vec<WatchedWire>,
     ) -> Result<Self, ScratchError> {
         let invalid = |reason| ScratchError { position: None, reason };
         if positions.len() != initial.len() {
@@ -110,12 +121,27 @@ impl Program {
                 return Err(invalid("sampled program attenuation exceeds 15"));
             }
         }
+        for record in &mut watched_wires {
+            if !matches!(initial.get(record.wire), Some(Block::RedstoneWire { .. })) {
+                return Err(invalid("sampled watched-wire index is not a wire"));
+            }
+            let mut recipients = std::collections::HashSet::new();
+            record.watchers.retain(|watcher| recipients.insert(*watcher));
+            for &watcher in &record.watchers {
+                if !matches!(initial.get(watcher), Some(Block::RedstoneLamp { .. })) {
+                    return Err(invalid("sampled watched-wire receiver is not a lamp"));
+                }
+            }
+        }
         for source_transitions in &transitions {
             for operations in source_transitions {
                 for operation in operations {
                     match *operation {
                         Operation::Contribution(link) if link >= links.len() => {
                             return Err(invalid("sampled program contribution link is out of bounds"));
+                        }
+                        Operation::CheckWatchedWire(record) if record >= watched_wires.len() => {
+                            return Err(invalid("sampled program watched-wire index is out of bounds"));
                         }
                         Operation::RefreshWire(slot)
                             if !matches!(initial.get(slot), Some(Block::RedstoneWire { .. })) =>
@@ -136,7 +162,7 @@ impl Program {
         for (id, link) in links.iter().enumerate() {
             incoming[link.target].push(id);
         }
-        Ok(Self { positions, initial, sources, transitions, links, incoming })
+        Ok(Self { positions, initial, sources, transitions, links, incoming, watched_wires })
     }
     fn start(&self) -> Runtime<'_> {
         Runtime {
@@ -151,7 +177,14 @@ impl Program {
                 };
                 strength.saturating_sub(link.attenuation)
             }).collect(),
+            watched_strengths: self.watched_wires.iter().map(|record| match self.initial[record.wire] {
+                Block::RedstoneWire { wire } => wire.power,
+                _ => unreachable!(),
+            }).collect(),
+            phase: 0,
+            updated_in_phase: vec![None; self.initial.len()],
             operations: 0,
+            deliveries: 0,
         }
     }
 }
@@ -167,6 +200,46 @@ impl Runtime<'_> {
             _ => 0,
         }
     }
+    fn begin_phase(&mut self) {
+        self.phase = self.phase.wrapping_add(1);
+        self.updated_in_phase.fill(None);
+    }
+    fn dispatch_receiver(&mut self, receiver: usize) {
+        let power = self.input_strength(receiver);
+        let Block::RedstoneLamp { lit } = self.blocks[receiver] else { unreachable!() };
+        if power > 0 && !lit {
+            self.blocks[receiver] = Block::RedstoneLamp { lit: true };
+        } else if power == 0 && lit {
+            let tick = ScheduledBlockTick {
+                pos: self.program.positions[receiver],
+                block_type: Some(self.blocks[receiver].registry_id()),
+            };
+            if !self.pending.contains(&tick) {
+                self.pending.schedule_tick(tick, 2, TickPriority::Normal);
+            }
+        }
+    }
+    fn update_once(&mut self, receiver: usize) {
+        if self.updated_in_phase[receiver] == Some(self.phase) {
+            return;
+        }
+        self.updated_in_phase[receiver] = Some(self.phase);
+        self.deliveries += 1;
+        self.dispatch_receiver(receiver);
+    }
+    fn check_watched_wire(&mut self, record_index: usize) {
+        let wire = self.program.watched_wires[record_index].wire;
+        let new_strength = self.input_strength(wire);
+        if new_strength == self.watched_strengths[record_index] {
+            return;
+        }
+        self.watched_strengths[record_index] = new_strength;
+        let watcher_count = self.program.watched_wires[record_index].watchers.len();
+        for index in 0..watcher_count {
+            let watcher = self.program.watched_wires[record_index].watchers[index];
+            self.update_once(watcher);
+        }
+    }
     fn set_input(&mut self, source_index: usize, powered: bool) {
         assert!(
             self.pending.iter_entries().next().is_none(),
@@ -175,6 +248,7 @@ impl Runtime<'_> {
         let source = self.program.sources[source_index];
         let Block::Lever { lever } = self.blocks[source] else { unreachable!() };
         if lever.powered != powered {
+            self.begin_phase();
             let Block::Lever { mut lever } = self.blocks[source] else {
                 unreachable!()
             };
@@ -184,7 +258,12 @@ impl Runtime<'_> {
                 match *operation {
                     Operation::Contribution(link_index) => {
                         let link = &self.program.links[link_index];
-                        self.contributions[link_index] = self.output(link.source).saturating_sub(link.attenuation);
+                        let old_contribution = self.contributions[link_index];
+                        let contribution = self.output(link.source).saturating_sub(link.attenuation);
+                        self.contributions[link_index] = contribution;
+                        if (old_contribution > 0) != (contribution > 0) {
+                            self.updated_in_phase[link.target] = None;
+                        }
                     }
                     Operation::RefreshWire(slot) => {
                         let Block::RedstoneWire { mut wire } = self.blocks[slot] else {
@@ -193,23 +272,8 @@ impl Runtime<'_> {
                         wire.power = self.input_strength(slot);
                         self.blocks[slot] = Block::RedstoneWire { wire };
                     }
-                    Operation::UpdateLamp(slot) => {
-                        let power = self.input_strength(slot);
-                        let Block::RedstoneLamp { lit } = self.blocks[slot] else {
-                            unreachable!()
-                        };
-                        if power > 0 && !lit {
-                            self.blocks[slot] = Block::RedstoneLamp { lit: true };
-                        } else if power == 0 && lit {
-                            let tick = ScheduledBlockTick {
-                                pos: self.program.positions[slot],
-                                block_type: Some(self.blocks[slot].registry_id()),
-                            };
-                            if !self.pending.contains(&tick) {
-                                self.pending.schedule_tick(tick, 2, TickPriority::Normal);
-                            }
-                        }
-                    }
+                    Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
+                    Operation::UpdateLamp(slot) => self.update_once(slot),
                 }
                 self.operations += 1;
             }
@@ -218,11 +282,16 @@ impl Runtime<'_> {
     fn drain_ticks(&mut self) {
         while let Some(tick) = self.pending.this_tick().pop_first() {
             if let Some(lamp) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
-                if matches!(self.blocks[lamp], Block::RedstoneLamp { .. }) && self.input_strength(lamp) == 0 {
-                    self.blocks[lamp] = Block::RedstoneLamp { lit: false };
+                if matches!(self.blocks[lamp], Block::RedstoneLamp { .. }) {
+                    self.dispatch_receiver_tick(lamp);
                 }
                 self.operations += 1;
             }
+        }
+    }
+    fn dispatch_receiver_tick(&mut self, receiver: usize) {
+        if self.input_strength(receiver) == 0 {
+            self.blocks[receiver] = Block::RedstoneLamp { lit: false };
         }
     }
     fn tick(&mut self) {
@@ -307,7 +376,7 @@ fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry
             ElectricalLink { source: wire, target: lamp, attenuation: 0 },
         ]);
     }
-    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links)
+    let mut program = Program::new(positions, initial, source.into_iter().collect(), source.map(|_| [vec![], vec![]]).into_iter().collect(), links, vec![])
         .map_err(|err| error(bounds.0, err.reason))?;
     if let Some(source) = source {
         let pos = program.positions[source];
@@ -543,6 +612,7 @@ mod tests {
                 ElectricalLink { source: 0, target: 1, attenuation: 0 },
                 ElectricalLink { source: 1, target: 3, attenuation: 0 },
             ],
+            vec![],
         ).unwrap();
         let mut runtime = program.start();
         for (source, powered, expected) in [(0, true, 13), (1, true, 15), (0, false, 15), (0, true, 15), (1, false, 13), (0, false, 0)] {
@@ -575,6 +645,7 @@ mod tests {
             vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) }, Block::RedstoneLamp { lit: true }],
             vec![0], vec![[vec![Operation::Contribution(0)], vec![Operation::Contribution(0)]]],
             vec![ElectricalLink { source: 0, target: 1, attenuation: 2 }],
+            vec![],
         ).unwrap();
         let mut runtime = program.start();
         assert_eq!(runtime.input_strength(1), 13);
@@ -598,6 +669,7 @@ mod tests {
             positions.clone(), initial.clone(), vec![0],
             vec![[vec![], vec![Operation::UpdateLamp(1), Operation::Contribution(0)]]],
             vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+            vec![],
         ).unwrap();
         let mut runtime = ordered.start();
         runtime.set_input(0, true);
@@ -608,11 +680,146 @@ mod tests {
             positions, initial, vec![0],
             vec![[vec![], vec![Operation::Contribution(0), Operation::UpdateLamp(1)]]],
             vec![link],
+            vec![],
         ).unwrap();
         let mut runtime = reversed.start();
         runtime.set_input(0, true);
         assert_eq!(runtime.input_strength(1), 15);
         assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
+    }
+    #[test]
+    fn watched_wire_observes_raw_strength_changes_only() {
+        let lever = Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) };
+        let wire = Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } };
+        let lamp = Block::RedstoneLamp { lit: true };
+        let a_ops = vec![Operation::Contribution(0), Operation::CheckWatchedWire(0), Operation::CheckWatchedWire(0)];
+        let b_ops = vec![Operation::Contribution(1), Operation::CheckWatchedWire(0), Operation::CheckWatchedWire(0)];
+        let program = Program::new(
+            (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
+            vec![lever, wire, lever, lamp],
+            vec![0, 2],
+            vec![[a_ops.clone(), a_ops], [b_ops.clone(), b_ops]],
+            vec![
+                ElectricalLink { source: 0, target: 1, attenuation: 0 },
+                ElectricalLink { source: 2, target: 1, attenuation: 2 },
+            ],
+            vec![WatchedWire { wire: 1, watchers: vec![3, 3] }],
+        ).unwrap();
+        let mut runtime = program.start();
+        assert_eq!(runtime.program.watched_wires[0].watchers, vec![3]);
+        runtime.set_input(1, false);
+        assert_eq!(runtime.input_strength(1), 15, "source change is masked by the stronger source");
+        assert_eq!(runtime.watched_strengths[0], 15);
+        assert_eq!(runtime.deliveries, 0);
+
+        runtime.set_input(1, true);
+        assert_eq!(runtime.input_strength(1), 15);
+        assert_eq!(runtime.deliveries, 0);
+        runtime.set_input(0, false);
+        assert_eq!(runtime.input_strength(1), 13);
+        assert_eq!(runtime.watched_strengths[0], 13);
+        assert_eq!(runtime.blocks[1], wire, "watch checks do not write physical wire state");
+        assert_eq!(runtime.deliveries, 1, "15 to 13 is still a raw strength change");
+    }
+    #[test]
+    fn watched_wire_notification_is_separate_from_lamp_power() {
+        let program = Program::new(
+            (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
+            vec![
+                Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
+                Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } },
+                Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
+                Block::RedstoneLamp { lit: true },
+            ],
+            vec![0],
+            vec![[vec![Operation::Contribution(0), Operation::CheckWatchedWire(0)], vec![Operation::Contribution(0), Operation::CheckWatchedWire(0)]]],
+            vec![
+                ElectricalLink { source: 0, target: 1, attenuation: 0 },
+                ElectricalLink { source: 2, target: 3, attenuation: 0 },
+            ],
+            vec![WatchedWire { wire: 1, watchers: vec![3] }],
+        ).unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(0, false);
+        assert_eq!(runtime.input_strength(3), 15);
+        assert_eq!(runtime.watched_strengths[0], 0);
+        assert_eq!(runtime.blocks[1], Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } });
+        assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: true });
+        assert_eq!(runtime.deliveries, 1);
+    }
+    #[test]
+    fn watcher_updates_are_suppressed_per_phase() {
+        let program = Program::new(
+            (0..4).map(|x| BlockPos::new(x, 15, 15)).collect(),
+            vec![
+                Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
+                Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } },
+                Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } },
+                Block::RedstoneLamp { lit: false },
+            ],
+            vec![0],
+            vec![[
+                vec![Operation::Contribution(0), Operation::CheckWatchedWire(0), Operation::Contribution(1), Operation::CheckWatchedWire(1)],
+                vec![Operation::Contribution(0), Operation::CheckWatchedWire(0), Operation::Contribution(1), Operation::CheckWatchedWire(1)],
+            ]],
+            vec![
+                ElectricalLink { source: 0, target: 1, attenuation: 0 },
+                ElectricalLink { source: 0, target: 2, attenuation: 0 },
+            ],
+            vec![WatchedWire { wire: 1, watchers: vec![3] }, WatchedWire { wire: 2, watchers: vec![3] }],
+        ).unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(0, false);
+        assert_eq!(runtime.watched_strengths, vec![0, 0]);
+        assert_eq!(runtime.deliveries, 1, "two changed watched wires notify the same lamp once in one phase");
+    }
+    #[test]
+    fn watcher_update_once_invalidates_on_effective_input_change_and_resets_per_phase() {
+        let operations_off = vec![
+            Operation::Contribution(0),
+            Operation::CheckWatchedWire(0),
+            Operation::UpdateLamp(2),
+            Operation::Contribution(2),
+            Operation::Contribution(1),
+            Operation::CheckWatchedWire(0),
+            Operation::CheckWatchedWire(0),
+        ];
+        let operations_on = vec![
+            Operation::Contribution(0),
+            Operation::CheckWatchedWire(0),
+            Operation::Contribution(2),
+            Operation::Contribution(1),
+            Operation::CheckWatchedWire(0),
+        ];
+        let program = Program::new(
+            (0..3).map(|x| BlockPos::new(x, 15, 15)).collect(),
+            vec![
+                Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, true) },
+                Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } },
+                Block::RedstoneLamp { lit: false },
+            ],
+            vec![0],
+            vec![[operations_off, operations_on]],
+            vec![
+                ElectricalLink { source: 0, target: 1, attenuation: 0 },
+                ElectricalLink { source: 0, target: 1, attenuation: 2 },
+                ElectricalLink { source: 0, target: 2, attenuation: 0 },
+            ],
+            vec![WatchedWire { wire: 1, watchers: vec![2, 2] }],
+        ).unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(0, false);
+        assert_eq!(runtime.watched_strengths[0], 0);
+        assert_eq!(runtime.deliveries, 2, "lamp input change permits a second watcher update in this phase");
+        let phase = runtime.phase;
+        for _ in 0..4 {
+            runtime.tick();
+        }
+        assert_eq!(runtime.phase, phase, "scheduler ticks do not define update phases");
+        assert!(runtime.pending.iter_entries().next().is_none());
+        runtime.set_input(0, true);
+        assert_eq!(runtime.watched_strengths[0], 15);
+        assert_eq!(runtime.deliveries, 3, "the next external transition starts a fresh update phase");
     }
     #[test]
     fn program_construction_rejects_malformed_records() {
@@ -628,7 +835,7 @@ mod tests {
         ];
         let ops = vec![Operation::Contribution(0), Operation::RefreshWire(1), Operation::UpdateLamp(2)];
         let transitions = vec![[ops.clone(), ops.clone()]];
-        let make = |positions, initial, sources, transitions, links| Program::new(positions, initial, sources, transitions, links);
+        let make = |positions, initial, sources, transitions, links| Program::new(positions, initial, sources, transitions, links, vec![]);
         let assert_reason = |result: Result<Program, ScratchError>, reason| {
             assert_eq!(result.err().expect("malformed program was accepted").reason, reason);
         };
@@ -697,8 +904,51 @@ mod tests {
             "sampled program RefreshWire target is not a wire",
         );
         assert_reason(
-            make(positions, initial, vec![0], vec![[vec![Operation::UpdateLamp(1)], vec![]]], links),
+            make(positions.clone(), initial.clone(), vec![0], vec![[vec![Operation::UpdateLamp(1)], vec![]]], links.clone()),
             "sampled program UpdateLamp target is not a lamp",
+        );
+        assert_reason(
+            Program::new(
+                vec![BlockPos::new(0, 0, 0)],
+                vec![Block::RedstoneWire { wire: RedstoneWire::default() }],
+                vec![], vec![], vec![], vec![WatchedWire { wire: 1, watchers: vec![] }],
+            ),
+            "sampled watched-wire index is not a wire",
+        );
+        assert_reason(
+            Program::new(
+                vec![BlockPos::new(0, 0, 0)],
+                vec![Block::RedstoneLamp { lit: false }],
+                vec![], vec![], vec![], vec![WatchedWire { wire: 0, watchers: vec![] }],
+            ),
+            "sampled watched-wire index is not a wire",
+        );
+        assert_reason(
+            Program::new(
+                positions.clone(), initial.clone(), vec![0], vec![[vec![Operation::CheckWatchedWire(0)], vec![]]], links.clone(), vec![],
+            ),
+            "sampled program watched-wire index is out of bounds",
+        );
+        assert_reason(
+            Program::new(
+                positions.clone(), initial.clone(), vec![0], vec![[vec![], vec![]]], links.clone(),
+                vec![WatchedWire { wire: 3, watchers: vec![] }],
+            ),
+            "sampled watched-wire index is not a wire",
+        );
+        assert_reason(
+            Program::new(
+                positions.clone(), initial.clone(), vec![0], vec![[vec![], vec![]]], links.clone(),
+                vec![WatchedWire { wire: 1, watchers: vec![3] }],
+            ),
+            "sampled watched-wire receiver is not a lamp",
+        );
+        assert_reason(
+            Program::new(
+                positions, initial, vec![0], vec![[vec![], vec![]]], links,
+                vec![WatchedWire { wire: 1, watchers: vec![1] }],
+            ),
+            "sampled watched-wire receiver is not a lamp",
         );
     }
     #[test]

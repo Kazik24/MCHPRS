@@ -20,12 +20,21 @@ remains Graph.
   every sampled `RefreshWire`. Repeated sampled deliveries and their order are
   retained. This lowering is valid only for the currently admitted single-chain
   topology; it is not generalized to undiscovered geometry.
+- `WatchedWire` records keep a wire index and ordered lamp receiver indexes.
+  Runtime stores each observed raw wire strength separately from physical wire
+  state and link contributions. `CheckWatchedWire` recomputes the maximum input
+  contribution, updates the observation only on a raw strength change, and
+  dispatches watchers in order. Duplicate recipients normalize to their first
+  occurrence. Lamp delivery uses `UpdateOnce` within explicit external-input
+  phases; an effective link activation change invalidates its target's marker.
+  Production compilation currently installs an empty watcher table.
 - Direct-program tests cover two independently addressed sources contributing
   13 and 15 to a wire, masking, restoration to 13, final shutoff with the existing
   four-game-tick lamp delay, and an electrical change without a lamp notification.
   These tests establish competing contributions and update separation, not
-  watcher or source-ordering completeness. Structural Program validation is
-  implemented; checkpoint 1 remains incomplete because watcher tables,
+  watcher discovery or source-ordering completeness. Structural Program
+  validation and the lamp-only watched-wire mechanism are implemented;
+  checkpoint 1 remains incomplete because world-derived watcher discovery,
   receiver-port representation and semantic program validation remain.
   World-derived multi-source extraction and piston execution follow afterward;
   production admission remains the single-chain contract below.
@@ -59,23 +68,23 @@ are retained and checked rather than normalized to a convenient probe state.
 
 ## Verified results
 
-Explicit ordered-contribution increment verification:
+Ordered contributions and lamp-watcher mechanism verification:
 
-- `cargo test -p mchprs_core redpiler::sampled --lib`: 12 passed, 0 failed,
-  0 ignored, 1,035 filtered out. The new order test confirms that a receiver
-  instruction sees the prior contribution if it precedes `Contribution(link)`;
-  reversing the instructions lights the lamp. The electrical-change-without-
-  notification test executes contribution instructions and contains no lamp
-  update instruction. A malformed-program test covers record lengths, unique
-  positions, supported block types and ranges, source bindings, rise/fall pair
-  count, link endpoints and types, attenuation, and operation references.
-  Empty/partial operation programs remain valid. The eleven previous tests,
-  native comparison and compiler self-validation pass.
+- `cargo test -p mchprs_core redpiler::sampled --lib`: 16 passed, 0 failed,
+  0 ignored, 1,035 filtered out. Tests cover raw-strength masking and 15→13
+  changes, unchanged repeated checks, independent lamp power, duplicate watcher
+  suppression, contribution-driven UpdateOnce invalidation, phase reset,
+  recipient normalization and malformed watcher records/instructions. Delivery
+  counts are asserted. The prior twelve tests, native comparison and compiler
+  self-validation pass.
+- Explicit-contribution order and malformed-Program tests remain passing;
+  empty and partial operation programs remain valid.
 - `cargo check -p mchprs_core --tests`: passed with four existing dead-code
   warnings.
 - `git diff --check`: passed.
-- Watcher dispatch and MAIR's special reactive/BUD batching path remain
-  subsequent work and are not implemented by this change.
+- No world-derived watcher discovery is connected to production compilation.
+  Observer filtering, movement phases, receiver ports and MAIR's reactive/BUD
+  batching path remain subsequent work and are not implemented here.
 - The event-netlist suite was not rerun for this increment; its separately
   recorded ADDER1BIT failure below remains unresolved.
 
