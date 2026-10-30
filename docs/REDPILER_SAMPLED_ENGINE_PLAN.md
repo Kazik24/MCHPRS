@@ -31,7 +31,7 @@ Compile-time empty-piston inventory is
 complete; the next unmet sampled gate is piston extension, retraction and
 rearm. The former event executor result is historical: its final suite recorded
 45 passed, 1 failed and 1 ignored, with ADDER1BIT failing and COUNTER ignored.
-Those adapters do not count as MAIR coverage. Multiple-source admission,
+Those adapters do not count as reference coverage. Multiple-source admission,
 world-derived watcher installation and piston execution remain later gates. See
 [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md).
 

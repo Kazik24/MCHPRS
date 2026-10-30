@@ -1,7 +1,7 @@
 # Redpiler architecture
 
 The player-facing Redpiler uses the physical Graph backend. A separate private
-MAIR experiment lives in `redpiler/sampled.rs` and `redpiler/sampled/`; it is
+reference experiment lives in `redpiler/sampled.rs` and `redpiler/sampled/`; it is
 not selectable on player plots. The former `event_netlist` executor and compiler
 have been removed. Historical results from that experiment are retained below
 as evidence, not as current implementation or acceptance status.
@@ -21,7 +21,7 @@ World selection -> graph discovery -> ordered plans -> GraphBackend
 ```
 
 The graph and its existing optimizations remain the player-facing path. The
-sampled MAIR experiment uses a private compiler, validated immutable `Program`,
+sampled reference experiment uses a private compiler, validated immutable `Program`,
 and mutable `Runtime`. The compiler probes an isolated `ScratchWorld`; the
 runtime executes ordered instructions and its own scheduler without Graph or
 an interpreter. It currently admits an empty selection or one floor/wall lever,
@@ -34,7 +34,7 @@ The sampled implementation is split by responsibility:
 - `sampled/compiler.rs`: world discovery, native sampling, self-check and lowering.
 - `sampled/program.rs`: immutable records and structural validation.
 - `sampled/executor.rs`: runtime state, ordered instructions and scheduler.
-- `sampled/tests.rs`: MAIR acceptance and mechanism tests.
+- `sampled/tests.rs`: reference acceptance and mechanism tests.
 - `scratch.rs`: captured isolated interpreter worlds, entry-state validation,
   boundary detection and native observation/electrical-discovery helpers.
 
@@ -88,7 +88,7 @@ recorded piston divergence at `(56,36,44)`. Selected static-piston and
 one-resource BUD comparisons passed through those adapters. These results are
 historical and are not run by current test commands.
 
-Those useful scenarios remain future MAIR acceptance coverage, using the
+Those useful scenarios remain future reference acceptance coverage, using the
 existing fixture manifests and their declared outputs and observation windows:
 
 - Static piston and event-torch comparisons against native execution.
@@ -99,7 +99,7 @@ existing fixture manifests and their declared outputs and observation windows:
 - ADDER11BIT, CPU_BUBBLESORT, FPU_27 and TEST fixtures after required
   components and interactions are represented.
 
-Do not treat old executor results as MAIR coverage. Preserve the fixture inputs,
+Do not treat old executor results as reference coverage. Preserve the fixture inputs,
 expected outputs and boundaries when each scenario is migrated.
 
 ## Verification

@@ -1,19 +1,19 @@
 # Reference engine: algorithms and implementation notes
 
-This is an independent functional description of the managed MAIR engine bundled
+This is an independent functional description of the managed reference engine bundled
 with RedGear, based on decompilation and bounded fixture replays. It is a guide
 for a Rust implementation, not original source or a proof of equivalence for all
 circuits. The original engine source was unavailable. Do not paste decompiled code.
 
-Reference: `E:/codex-builds/RedGear-mair-decompiled`.
+Reference: `E:/codex-builds/RedGear-reference-decompiled`.
 Inspected DLL SHA-256:
 `DD963AA133042E70550E3C96D4AB0886D7DE460F49204B985FA34A01BF1A4DF1`.
-Method names below refer to `MAIR.Core.Rsc.Compilation/Compiler.cs` and
-`MAIR.Core.Rsc.Engine/Engine.cs`; search by name if line numbers differ.
+Method names below refer to `Rsc.Compilation/Compiler.cs` and
+`Rsc.Engine/Engine.cs`; search by name if line numbers differ.
 Detailed investigation and replay limitations: [investigation](REDGEAR_ENGINE_INVESTIGATION.md).
 See the [milestones](REDPILER_SAMPLED_ENGINE_PLAN.md),
 [verified implementation status](REDPILER_SAMPLED_ENGINE_PROGRESS.md). The reference
-algorithms below describe the inspected MAIR binary; they are not claims that
+algorithms below describe the inspected reference binary; they are not claims that
 the current Rust prototypes implement those algorithms.
 
 ## 1. Architecture
@@ -191,7 +191,7 @@ on source transition:
 This is a conceptual summary; the reference uses separate paths for ordinary
 sources and initially reactive nodes. A changed input link does not automatically
 mean every receiver was notified. In particular, quasi power may change while a
-piston remains in its prior state until a qualifying update. MAIR's
+piston remains in its prior state until a qualifying update. The reference's
 `TrackBudded` / `Logic.CanReact` is a distinct mechanism for certain initially
 reactive electrical components; its inspected predicate does not include
 pistons. Do not conflate that name with all piston BUD behavior.
@@ -249,7 +249,7 @@ wire strength changes, explicit watchers and observer shapes; `UpdateOnce`
 deduplicates relevant recipients within an update phase. It also handles
 remaining switched nodes and changed-wire watchers after ordered steps.
 
-Piston base/head notifications are separate from token-cell events. MAIR's
+Piston base/head notifications are separate from token-cell events. The reference's
 `TryExtend`, `Retract`, `NotifyHome`, `NotifyCell` and `FinishPistonPart`
 execute applicable notifications even when no token moves. Motion records
 retain piston/token identity and direction through completion. `FinishMotion`
@@ -332,12 +332,12 @@ storage; profile checked real workloads before packing or unsafe optimizations.
 ## 11. Evidence and open questions
 
 - The pinned reference executed COUNTER_BASIC outputs 1–16 at sampled ticks
-  `6n+5`; see `E:/codex-builds/counter-boundary-audit/mair-counter.log`.
+  `6n+5`; see `E:/codex-builds/counter-boundary-audit/reference-counter.log`.
   The event prototype read zero at those same boundaries in a separate replay.
 - A native counter trace identified a piston-base shape update to an observer
-  before the first memory-piston activation. MAIR's static watcher relationships
+  before the first memory-piston activation. The reference's static watcher relationships
   support investigation but do not by themselves establish its firing order;
-  see `E:/codex-builds/counter-mair-relationships-20261030/REPORT.md`.
+  see `E:/codex-builds/counter-reference-relationships-20261030/REPORT.md`.
 - FPU schematic performance and output samples in the investigation report do
   not establish saved-plot correctness or current server TPS.
 - Full binary parity, all update orders, arbitrary resource interactions,
@@ -349,4 +349,4 @@ storage; profile checked real workloads before packing or unsafe optimizations.
   COUNTER. Wire/resource discovery adapters exist, but still use LoweredCircuit.
   One operation range per source, simplified repeaters and rejection of
   in-flight piston actions remain port gaps. Passing mechanism tests are not
-  evidence of general MAIR compatibility.
+  evidence of general compatibility with the reference engine.

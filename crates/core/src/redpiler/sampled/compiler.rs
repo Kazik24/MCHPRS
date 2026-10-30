@@ -241,7 +241,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         let rear = pos.offset(comparator.facing.block_face());
         let override_at = |at| {
             let block = world.get_block(at);
-            // The pinned MAIR registry treats copper bulbs as inert, non-analog blocks.
+            // The pinned reference registry treats copper bulbs as inert, non-analog blocks.
             (crate::redstone::comparator::has_override(block) && !block.is_copper_bulb())
                 .then(|| crate::redstone::comparator::get_override(block, world, at))
         };
@@ -286,13 +286,15 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         }
     }
     // shortcut: only single-token source changes are sampled, replace with joint dependency groups before relying on interacting arrangements.
+    let mut movement_probe = ScratchWorld::from_world(world, bounds, entry.clone())?;
     for token in &program.tokens {
-        let mut arrangements = Vec::new();
+        let arrangements = vec![Vec::new(); token.cells.len()];
         let mut updates = Vec::new();
         for &cell in &token.cells {
             let mut cell_updates = [Vec::new(), Vec::new()];
             for arrival in [false, true] {
-                let mut probe = ScratchWorld::from_world(world, bounds, entry.clone())?;
+                movement_probe.revert();
+                let probe = &mut movement_probe;
                 if let Some(initial) = token.position { probe.world_mut().set_block(initial, Block::Air); }
                 if !arrival { probe.world_mut().set_block(cell, token.block); }
                 let w = probe.world_mut();
@@ -308,47 +310,6 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                 probe.finish_probe()?;
             }
             updates.push(cell_updates);
-            let mut links = Vec::new();
-            if matches!(token.block, Block::RedstoneBlock) {
-                let mut probe = ScratchWorld::from_world(world, bounds, entry.clone())?;
-                if let Some(initial) = token.position { probe.world_mut().set_block(initial, Block::Air); }
-                probe.world_mut().set_block(cell, token.block);
-                let w = probe.world();
-                let wires: Vec<_> = program.positions.iter().copied().filter(|&pos| matches!(w.get_block(pos), Block::RedstoneWire { .. })).collect();
-                let mut found = crate::redpiler::scratch::discover_wire_sources(w, &wires)?;
-                for &pos in &program.positions {
-                    match w.get_block(pos) {
-                        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found.extend(crate::redpiler::scratch::discover_torch_sources(w, pos, w.get_block(pos))?),
-                        Block::RedstoneLamp { .. } => found.extend(crate::redpiler::scratch::discover_lamp_sources(w, pos)?),
-                        Block::Piston { piston } => found.extend(crate::redpiler::scratch::discover_piston_sources(w, pos, piston.facing)?),
-                        Block::RedstoneRepeater { repeater } => {
-                            let face = repeater.facing.block_face();
-                            let rear = pos.offset(face);
-                            let block = w.get_block(rear);
-                            if matches!(block, Block::RedstoneWire { .. }) {
-                                for mut source in crate::redpiler::scratch::discover_wire_sources(w, &[rear])? { source.wire = pos; found.push(source); }
-                            } else if block.is_solid() {
-                                for side in mchprs_blocks::BlockFace::values() {
-                                    let at = rear.offset(side);
-                                    if crate::redstone::power::emits_strong_power(w.get_block(at), w, at, side, true) {
-                                        found.push(crate::redpiler::scratch::WireSource { wire: pos, source: at, attenuation: 0 });
-                                    }
-                                }
-                            } else if crate::redstone::power::emits_weak_power(block, w, rear, face, true) {
-                                found.push(crate::redpiler::scratch::WireSource { wire: pos, source: rear, attenuation: 0 });
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                for dependency in found.into_iter().filter(|dependency| dependency.source == cell) {
-                    if let Some(target) = program.positions.iter().position(|&position| position == dependency.wire) {
-                        if !links.contains(&(target, dependency.attenuation)) { links.push((target, dependency.attenuation)); }
-                    }
-                }
-                probe.finish_probe()?;
-            }
-            arrangements.push(links);
         }
         program.token_sources.push(arrangements);
         program.token_updates.push(updates);
@@ -430,10 +391,12 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
     }
     program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program)?;
     program.compile_movement_flips()?;
+    let mut ordering_probe = ScratchWorld::from_world(world, bounds, entry.clone())?;
     let output_sources: Vec<_> = sources.iter().copied().chain(program.repeaters.iter().map(|record| record.component)).chain(program.initial.iter().enumerate().filter_map(|(index, block)| matches!(block, Block::RedstoneComparator { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }).then_some(index))).collect();
     let mut comparisons = Vec::new();
     for (output_index, &source) in output_sources.iter().enumerate() {
-        let mut scratch = ScratchWorld::from_world(world, bounds, entry.clone())?;
+        ordering_probe.revert();
+        let scratch = &mut ordering_probe;
         let loaded = program.start();
         let pos = program.positions[source];
         for (id, &at) in program.positions.iter().enumerate() {
@@ -551,7 +514,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
                     Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),
                     Block::RedstoneComparator { .. } => operations.push(Operation::UpdateComparator(target)),
-                    // MAIR CollectInputs marks piston electrical links silent; watchers deliver updates.
+                    // CollectInputs marks piston electrical links silent; watchers deliver updates.
                     Block::Piston { .. } => {},
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => operations.push(Operation::UpdateTorch(target)),
                     _ => {}

@@ -291,7 +291,7 @@ Directional emission, dust shape and occupancy determine the guards.
 This is an electrical projection, not a replacement for notification or
 scheduling. Comparator overrides and side eligibility still use section 10.
 The [compiled architecture](REDPILER_ARCHITECTURE.md) describes the physical Graph
-backend and the private sampled MAIR experiment; the interpreter evaluates these guards and sources for all supported input histories.
+backend and the private sampled reference experiment; the interpreter evaluates these guards and sources for all supported input histories.
 
 ## 4. Immediate callbacks and ordered notification procedures
 
@@ -1375,7 +1375,7 @@ Piston transport limits are specified in [the piston model](PISTON_MODEL.md#31-f
 
 Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
 
-Piston event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents physical Graph admission, including supported pistons and resources, and the limits of the private sampled MAIR experiment. Compiler admission does not alter the physical rules specified here.
+Piston event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents physical Graph admission, including supported pistons and resources, and the limits of the private sampled reference experiment. Compiler admission does not alter the physical rules specified here.
 
 ### 16.5 Implementation distinctions to preserve
 

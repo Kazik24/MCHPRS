@@ -1,4 +1,4 @@
-//! Manifest acceptance boundary for the independent MAIR executor.
+//! Manifest acceptance boundary for the independent reference executor.
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
@@ -31,7 +31,7 @@ fn compare_reference_frame(runtime: &Runtime<'_>, manifest: &Value, origin: Bloc
             else if state.starts_with("minecraft:repeater") { "repeater_off" }
             else { "other" };
         if observed != expected {
-            eprintln!("first visible reference divergence: {phase} tick {tick} {port} at {at:?}: Rust={observed}, MAIR={expected}");
+            eprintln!("first visible reference divergence: {phase} tick {tick} {port} at {at:?}: Rust={observed}, reference={expected}");
             *reported = true;
             return;
         }
@@ -39,7 +39,7 @@ fn compare_reference_frame(runtime: &Runtime<'_>, manifest: &Value, origin: Bloc
 }
 
 #[test]
-fn adder1bit_mair_manifest_arithmetic() {
+fn adder1bit_reference_manifest_arithmetic() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let manifest: Value = serde_json::from_slice(&std::fs::read(root.join("test_data/instant-pistons-io/fixtures/adder_1bit.json")).unwrap()).unwrap();
     let inspection: Value = serde_json::from_slice(&std::fs::read(root.join(manifest["inspection"].as_str().unwrap())).unwrap()).unwrap();
@@ -64,7 +64,7 @@ fn adder1bit_mair_manifest_arithmetic() {
     let mut cases = 0;
     let mut regression = false;
     let mut mismatches = 0usize;
-    let reference: Option<Value> = std::fs::read("E:/codex-builds/sampled-supervisor-mair-adder-20261030.json").ok().and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let reference: Option<Value> = std::fs::read("E:/codex-builds/sampled-supervisor-reference-adder-20261030.json").ok().and_then(|bytes| serde_json::from_slice(&bytes).ok());
     for case in manifest["cases"].as_array().unwrap().iter().filter(|case| case["inputs"].is_array()) {
         let id = case["id"].as_str().unwrap();
         let mut world = PlotWorld::from_chunks(0, 0,
@@ -75,7 +75,7 @@ fn adder1bit_mair_manifest_arithmetic() {
             scheduled: world.scheduler().iter_entries().collect(), piston: world.piston_state().clone(),
         });
         assert_eq!(before, snapshot(&world), "{id}: compilation changed host");
-        let program = compiled.unwrap_or_else(|error| panic!("{id}: MAIR compilation declined: {error:?}; block={:?}", error.position.map(|pos| world.get_block(pos))));
+        let program = compiled.unwrap_or_else(|error| panic!("{id}: reference compilation declined: {error:?}; block={:?}", error.position.map(|pos| world.get_block(pos))));
         if cases == 0 {
             eprintln!("compiled {} watched wires", program.watched_wires.len());
             for group in &program.input_arrangements {
@@ -259,13 +259,13 @@ fn adder1bit_mair_manifest_arithmetic() {
 }
 
 #[test]
-fn counter_basic_mair_manifest_execution() {
+fn counter_basic_reference_manifest_execution() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let manifest: Value = serde_json::from_slice(&std::fs::read(root.join("test_data/instant-pistons-io/fixtures/counter_basic.json")).unwrap()).unwrap();
     let bytes = std::fs::read(root.join(manifest["fixture"].as_str().unwrap())).unwrap();
     assert_eq!(format!("{:x}", Sha256::digest(&bytes)), manifest["sha256"].as_str().unwrap());
     let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
-    let timeline = std::fs::read(root.join("test_data/instant-pistons-io/reference/counter-mair-timeline.csv")).unwrap();
+    let timeline = std::fs::read(root.join("test_data/instant-pistons-io/reference/counter-reference-timeline.csv")).unwrap();
     assert_eq!(format!("{:x}", Sha256::digest(&timeline)), "929a9c6a49aaf381780a3177bca97264a135019588cfe5061d08c85c8bec5f37");
     let timeline = std::str::from_utf8(&timeline).unwrap();
     let origin = position(&manifest["coordinates"]["origin"]);
@@ -322,12 +322,12 @@ fn counter_basic_mair_manifest_execution() {
 }
 
 #[test]
-fn focused_test_samples_match_mair_observations() {
+fn focused_test_samples_match_reference_observations() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_dir = root.join("test_data/piston-research/test-prefix-20261008");
     let manifest: Value = serde_json::from_slice(&std::fs::read(fixture_dir.join("download-manifest.json")).unwrap()).unwrap();
-    let reference = std::fs::read(root.join("test_data/instant-pistons-io/reference/test-mair-focused-replays.json")).unwrap();
-    assert_eq!(format!("{:x}", Sha256::digest(&reference)), "5829ce8d437d028c7ae93e53766912e50b20edc21ec82fcc64c7cfbb28f650a8");
+    let reference = std::fs::read(root.join("test_data/instant-pistons-io/reference/test-reference-focused-replays.json")).unwrap();
+    assert_eq!(format!("{:x}", Sha256::digest(&reference)), "bd32d2372253788f53031939d4f8de9fa34803eb2869150b576627a3c98eabfa");
     let reference: Value = serde_json::from_slice(&reference).unwrap();
     let origin = BlockPos::new(40, 30, 40);
     let mut errors = Vec::new();
@@ -405,7 +405,7 @@ fn focused_test_samples_match_mair_observations() {
 }
 
 #[test]
-fn adder11bit_mair_manifest_acceptance() {
+fn adder11bit_reference_manifest_acceptance() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let manifest: Value = serde_json::from_slice(&std::fs::read(root.join("test_data/instant-pistons-io/fixtures/adder_11bits.json")).unwrap()).unwrap();
     let inspection: Value = serde_json::from_slice(&std::fs::read(root.join(manifest["inspection"].as_str().unwrap())).unwrap()).unwrap();

@@ -21,6 +21,9 @@ pub(crate) struct ScratchError {
 
 pub(crate) struct ScratchWorld {
     world: PlotWorld,
+    baseline: Vec<(BlockPos, u32, Option<(mchprs_blocks::block_entities::BlockEntity, Vec<u8>)>)>,
+    piston: mchprs_world::PistonState,
+    bounds: (BlockPos, BlockPos),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -841,23 +844,29 @@ impl ScratchWorld {
 
         let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
         let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::<ScheduledBlockTick>::default());
+        let mut baseline = Vec::new();
         for y in min.y..=max.y {
             for z in min.z..=max.z {
                 for x in min.x..=max.x {
                     let pos = BlockPos::new(x, y, z);
                     let raw = source.get_block_raw(pos);
+                    let entity = source.get_block_entity(pos).cloned();
+                    baseline.push((pos, raw, entity.clone().map(|entity| {
+                        let encoded = serde_json::to_vec(&entity).expect("block entity serialization");
+                        (entity, encoded)
+                    })));
                     if raw != Block::Air.get_id() {
                         world.set_block_raw(pos, raw);
                     }
-                    if let Some(entity) = source.get_block_entity(pos) {
-                        world.set_block_entity(pos, entity.clone());
+                    if let Some(entity) = entity {
+                        world.set_block_entity(pos, entity);
                     }
                 }
             }
         }
         world.piston_state_mut().clone_from(&entry.piston);
         world.configure_scratch(bounds);
-        Ok(Self { world })
+        Ok(Self { world, baseline, piston: entry.piston, bounds })
     }
 
     pub(crate) fn world(&self) -> &PlotWorld {
@@ -865,6 +874,27 @@ impl ScratchWorld {
     }
     pub(crate) fn world_mut(&mut self) -> &mut PlotWorld {
         &mut self.world
+    }
+
+    pub(crate) fn revert(&mut self) {
+        for (pos, raw, entity) in &self.baseline {
+            if self.world.get_block_raw(*pos) != *raw {
+                self.world.set_block_raw(*pos, *raw);
+            }
+            let matches = match (self.world.get_block_entity(*pos), entity) {
+                (None, None) => true,
+                (Some(current), Some((_, expected))) => serde_json::to_vec(current).is_ok_and(|current| current == *expected),
+                _ => false,
+            };
+            if !matches {
+                self.world.delete_block_entity(*pos);
+                if let Some((entity, _)) = entity { self.world.set_block_entity(*pos, entity.clone()); }
+            }
+        }
+        self.world.clear_scheduled_ticks();
+        self.world.piston_state_mut().clone_from(&self.piston);
+        self.world.observe_redstone_updates(false);
+        self.world.configure_scratch(self.bounds);
     }
 
     pub(crate) fn finish_probe(&self) -> Result<(), ScratchError> {

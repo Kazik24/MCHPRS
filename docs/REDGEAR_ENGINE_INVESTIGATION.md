@@ -32,9 +32,9 @@ A separate paired replay used RedGear's bundled MCHPRS interpreter and the compi
 
 ## Compilation and execution stages
 
-The decompiled binary under `E:/codex-builds/RedGear-mair-decompiled` shows a
+The decompiled binary under `E:/codex-builds/RedGear-reference-decompiled` shows a
 component-and-token simulation, not a whole-circuit Boolean frame. The entry
-point in `MAIR.Core.Rsc.Compilation/Compiler.cs` scans blocks, describes nodes,
+point in `Rsc.Compilation/Compiler.cs` scans blocks, describes nodes,
 builds power links and wire sources, discovers conditional links under token
 arrangements, samples source ordering, and tracks BUD inputs. Dust search uses
 minimum attenuation and a 14-edge bound. Candidate token arrangements are
@@ -49,7 +49,7 @@ and arrival are probed separately to build movement notification programs. A
 sampled order is evidence for that sampled environment, not a proof over every
 possible simultaneous input or resource arrangement.
 
-The `MAIR.Core.Rsc.Engine/Engine.cs` runtime keeps state for component nodes,
+The `Rsc.Engine/Engine.cs` runtime keeps state for component nodes,
 pistons, movable tokens, scheduled ticks and motions. A game tick processes
 priority buckets, then queued piston events, then motion landings. Events are
 deduplicated by piston and event kind, dequeued in order, and revalidated
@@ -116,7 +116,7 @@ foreign engine's ability to compile the fixture.
 The following is a functional description inferred from the bundled managed
 assembly, not a reconstruction of its original source or a proof of behavior
 on every state. Source references below identify local decompiler output under
-`E:/codex-builds/RedGear-mair-decompiled`; the assembly hash is recorded above.
+`E:/codex-builds/RedGear-reference-decompiled`; the assembly hash is recorded above.
 
 1. **Inventory and initial state.** `Compiler.cs::ScanBlocks`,
    `AnalyzePistons`, and `DescribeNodes` index supported components, wires,
@@ -187,7 +187,7 @@ and resource state, the scheduler, and the native interpreter. The former
 event_netlist.rs and `graph/wire_probe.rs` were small prototypes,
 not a complete implementation. The event-netlist compiler and executor have
 since been retired; their recorded findings are historical. The current private
-target is the sampled MAIR compiler using native ScratchWorld probes and its
+target is the sampled reference compiler using native ScratchWorld probes and its
 independent runtime. Graph-derived discovery is not part of that compiler. See
 the [architecture](REDPILER_ARCHITECTURE.md) and
 [current status](REDPILER_SAMPLED_ENGINE_PROGRESS.md).
@@ -207,8 +207,8 @@ Suggested boundaries, each independently testable:
 
 The earlier idealized FPU investigation required each movable resource to move
 at most once per declared computation cycle. That is stronger than the foreign
-runtime's observed phase deduplication and is not a demonstrated MAIR rule.
-Keep it separate from the base MAIR-style event port. If that later mode is
+runtime's observed phase deduplication and is not a demonstrated rule of the
+reference engine. Keep it separate from the base reference event port. If that later mode is
 implemented, define its cycle event explicitly and use a consumed marker keyed
 by the shared resource, set only after a represented move succeeds and cleared
 at the next declared cycle. Do not clear persistent memory or invent a cycle

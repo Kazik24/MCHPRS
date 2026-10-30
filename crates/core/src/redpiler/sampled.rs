@@ -1,4 +1,4 @@
-//! Private sampled MAIR compiler and runtime.
+//! Private sampled reference compiler and runtime.
 #![allow(dead_code)]
 mod compiler;
 mod executor;

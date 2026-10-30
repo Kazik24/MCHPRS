@@ -307,7 +307,7 @@ impl Runtime<'_> {
                 let strength = self.arrangement_output(flip.source);
                 self.arrangement_contributions[flip.link] = if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 };
                 if strength > flip.attenuation { self.updated_in_phase[flip.target] = None; }
-                // MAIR's WithMoveStep reserves -2 for pistons: flips do not deliver them.
+                // WithMoveStep reserves -2 for pistons: flips do not deliver them.
                 if !matches!(self.blocks[flip.target], Block::Piston { .. }) && !switched.contains(&flip.target) {
                     switched.push(flip.target);
                 }
