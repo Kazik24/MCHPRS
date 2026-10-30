@@ -8,16 +8,19 @@ Keep the existing Graph backend available while this engine is developed.
 Each step must deliver runnable code and a focused test. A successful discovery
 pass or generated program is not evidence that accelerated execution occurred.
 Use existing world, interpreter and scheduling mechanisms where their contracts
-fit. Preserve the existing experimental implementation as a reference until the
-replacement has passed the relevant gates.
+fit. Keep native fixtures and declared output boundaries when migrating useful
+scenarios. The superseded event executor is retired; its results remain
+historical evidence.
 
 Status verified 30 October 2026: the sampled lever–dust–lamp gate passes for
 initially-off and initially-on entry, including repeated transitions, scheduler
 wrap, four-game-tick lamp-off timing, host preservation and positioned rejection
-of reads outside capture. The latest sampled suite is 8 passed, 0 failed,
-0 ignored (1,035 filtered out). Compile-time empty-piston inventory is now
+of reads outside capture. The sampled suite after the module split is 16 passed,
+0 failed, 0 ignored (1,001 filtered out). Compile-time empty-piston inventory is
 complete; the next unmet sampled gate is piston extension, retraction and
-rearm. The former event executor result is historical: its final suite recorded 45 passed, 1 failed and 1 ignored, with ADDER1BIT failing and COUNTER ignored. Do not count those adapters as MAIR coverage. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
+rearm. The former event executor result is historical: its final suite recorded
+45 passed, 1 failed and 1 ignored, with ADDER1BIT failing and COUNTER ignored.
+Those adapters do not count as MAIR coverage. See [current progress](REDPILER_SAMPLED_ENGINE_PROGRESS.md)
 and the [detailed implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
 
 ## 1. Engine boundary

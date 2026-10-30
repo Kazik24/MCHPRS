@@ -183,13 +183,12 @@ behavior alone does not prove that arbitrary native handoff is correct.
 Implement the behavior independently using MCHPRS types and observable tests;
 do not copy the foreign assembly's code. The useful starting points are the
 physical `GraphBackend`, its circuit graph and source/delivery routes, piston
-and resource state, the scheduler, and the native interpreter. The existing
-experimental `event_netlist.rs` and `graph/wire_probe.rs` are small prototypes,
-not a complete implementation. The old instant/settled compiler paths have
-been removed; physical Graph execution must remain available. The current
-target is a world-derived compiler using native ScratchWorld probes and an
-independent event runtime. Graph-derived discovery remains a temporary adapter
-and a comparison tool. See the [architecture](REDPILER_ARCHITECTURE.md),
+and resource state, the scheduler, and the native interpreter. The former
+event_netlist.rs and `graph/wire_probe.rs` were small prototypes,
+not a complete implementation. The event-netlist compiler and executor have
+since been retired; their recorded findings are historical. The current private
+target is the sampled MAIR compiler using native ScratchWorld probes and its
+independent runtime. Graph-derived discovery is not part of that compiler. See the [architecture](REDPILER_ARCHITECTURE.md),
 [current status](REDPILER_SAMPLED_ENGINE_PROGRESS.md) and
 [implementation assignment](MAIR_PORT_IMPLEMENTATION_PROMPT.md).
 

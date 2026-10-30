@@ -20,7 +20,6 @@ pub(crate) struct ScratchError {
 
 pub(crate) struct ScratchWorld {
     world: PlotWorld,
-    bounds: (BlockPos, BlockPos),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -690,7 +689,7 @@ impl ScratchWorld {
         }
         world.piston_state_mut().clone_from(&entry.piston);
         world.configure_scratch(bounds);
-        Ok(Self { world, bounds })
+        Ok(Self { world })
     }
 
     pub(crate) fn world(&self) -> &PlotWorld {
@@ -698,9 +697,6 @@ impl ScratchWorld {
     }
     pub(crate) fn world_mut(&mut self) -> &mut PlotWorld {
         &mut self.world
-    }
-    pub(crate) fn bounds(&self) -> (BlockPos, BlockPos) {
-        self.bounds
     }
 
     pub(crate) fn finish_probe(&self) -> Result<(), ScratchError> {

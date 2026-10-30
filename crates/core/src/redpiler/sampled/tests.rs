@@ -3,7 +3,7 @@ use super::*;
     use crate::plot::{PLOT_WIDTH, PlotWorld};
     use crate::world::storage::Chunk;
     use mchprs_blocks::{
-        BlockDirection, BlockFacing,
+        BlockDirection,
         blocks::{Lever, RedstonePiston, RedstonePistonHead, RedstoneWire},
     };
     fn host() -> PlotWorld {

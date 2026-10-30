@@ -158,6 +158,7 @@
 pub mod analysis;
 pub(crate) mod backend;
 mod components;
+#[allow(dead_code)]
 mod scratch;
 mod options;
 mod passes;

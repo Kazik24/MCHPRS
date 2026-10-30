@@ -11,8 +11,8 @@ removed; their results below are historical only.
 - The MAIR module is split into `sampled/compiler.rs`, `sampled/program.rs`,
   `sampled/executor.rs` and `sampled/tests.rs`.
 - `scratch.rs` owns isolated native-interpreter worlds, entry-state validation,
-  boundary detection, and the native observation/electrical-discovery helpers
-  retained by the sampled compiler.
+  boundary detection, and native electrical-discovery helpers whose watcher
+  integration remains pending.
 - `Program::new` validates component records, external sources, rise/fall
   programs, electrical links, watcher records and instruction references before
   building incoming indexes. Partial instruction sequences remain valid.
@@ -61,11 +61,11 @@ passed. None of those results are current MAIR coverage or an active test suite.
 The fixture manifests and their expected outputs and observation boundaries
 remain the migration contract for future MAIR acceptance tests.
 
-## Historical sampled checks
+## Current verification
 
-Earlier sampled runs before the module split recorded the native transition,
-watcher and piston-inventory tests passing. Fresh verification results for the
-split tree will be recorded after this cleanup.
+cargo test -p mchprs_core redpiler::sampled --lib: 16 passed, 0 failed,
+0 ignored (1,001 filtered out) after splitting the module and retiring the
+event executor.
 
 See the [milestone plan](REDPILER_SAMPLED_ENGINE_PLAN.md) and
 [architecture](REDPILER_ARCHITECTURE.md).

@@ -90,11 +90,7 @@ expected outputs and boundaries when each scenario is migrated.
 
 ## Verification
 
-Current checks target the sampled MAIR implementation and shared scratch code:
-
-```text
-cargo test -p mchprs_core redpiler::sampled --lib
-cargo check -p mchprs_core --tests
-git diff --check
-```
-
+Current sampled verification: `cargo test -p mchprs_core redpiler::sampled
+--lib` reported 16 passed, 0 failed and 0 ignored (1,001 filtered out). The
+checks are `cargo test -p mchprs_core redpiler::sampled --lib`,
+`cargo check -p mchprs_core --tests` and `git diff --check`.

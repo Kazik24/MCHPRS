@@ -309,7 +309,7 @@ still needs a complete, isolated restoration operation and safe edit ordering.
 
 Keep the normal Graph backend. Build a separate sampled compiler and runtime;
 do not make its sealed program depend on `LoweredCircuit` or run Graph behind
-the event executor. `World` supplies reads and interpreter callbacks; private
+the sampled runtime. `World` supplies reads and interpreter callbacks; private
 scratch state supplies writes, scheduler and piston motion during probing.
 Existing `ScratchWorld` and observation hooks can be reused if their boundary,
 entry-work and callback coverage match the new compiler's requirements.
