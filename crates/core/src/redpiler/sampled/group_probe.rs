@@ -14,7 +14,7 @@ fn near(a: BlockPos, b: BlockPos, distance: u32) -> bool {
     a.x.abs_diff(b.x) <= distance && a.y.abs_diff(b.y) <= distance && a.z.abs_diff(b.z) <= distance
 }
 
-fn inputs_of(world: &impl World, program: &Program, member: usize) -> Result<Inputs, ScratchError> {
+pub(super) fn inputs_of(world: &impl World, program: &Program, member: usize) -> Result<Inputs, ScratchError> {
     let pos = program.positions[member];
     let block = program.initial[member];
     let mut found = Vec::new();
@@ -24,13 +24,14 @@ fn inputs_of(world: &impl World, program: &Program, member: usize) -> Result<Inp
         Block::Piston { piston } => found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?,
         Block::RedstoneLamp { .. } => found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?,
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
-        Block::RedstoneRepeater { repeater } => {
-            let face = repeater.facing.block_face();
+        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
+            let (facing, comparator) = match block { Block::RedstoneRepeater { repeater } => (repeater.facing, false), Block::RedstoneComparator { comparator } => (comparator.facing, true), _ => unreachable!() };
+            let face = facing.block_face();
             let rear = pos.offset(face);
             let block = world.get_block(rear);
             if matches!(block, Block::RedstoneWire { .. }) {
                 found = crate::redpiler::scratch::discover_wire_sources(world, &[rear])?;
-            } else if block.is_solid() {
+            } else if block.is_solid() || block.is_copper_bulb() {
                 for direction in BlockFace::values() {
                     let at = rear.offset(direction);
                     if crate::redstone::power::emits_strong_power(world.get_block(at), world, at, direction, true) {
@@ -52,11 +53,13 @@ fn inputs_of(world: &impl World, program: &Program, member: usize) -> Result<Inp
                     attenuation: 0,
                 });
             }
-            for direction in [repeater.facing.rotate(), repeater.facing.rotate_ccw()] {
+            for direction in [facing.rotate(), facing.rotate_ccw()] {
                 let face = direction.block_face();
                 let at = pos.offset(face);
                 let block = world.get_block(at);
-                if crate::redstone::is_diode(block) && crate::redstone::power::emits_strong_power(block, world, at, face, false) {
+                if comparator && matches!(block, Block::RedstoneWire { .. }) {
+                    side.extend(crate::redpiler::scratch::discover_wire_sources(world, &[at])?);
+                } else if (comparator && matches!(block, Block::RedstoneBlock)) || ((comparator || crate::redstone::is_diode(block)) && crate::redstone::power::emits_strong_power(block, world, at, face, false)) {
                     side.push(crate::redpiler::scratch::WireSource {
                         wire: pos,
                         source: at,
@@ -177,6 +180,7 @@ pub(super) fn run(
                 Block::Piston { .. }
                     | Block::RedstoneLamp { .. }
                     | Block::RedstoneRepeater { .. }
+                    | Block::RedstoneComparator { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
             )

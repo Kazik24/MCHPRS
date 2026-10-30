@@ -59,6 +59,35 @@ use mchprs_world::TickPriority;
         )
     }
     #[test]
+    fn comparator_compare_and_subtract_levels() {
+        use mchprs_blocks::blocks::ComparatorMode::{Compare, Subtract};
+        for (rear, side, compare, subtract) in [
+            (0, 0, (0, false), (0, false)),
+            (10, 4, (10, true), (6, true)),
+            (10, 10, (10, true), (0, false)),
+            (10, 12, (0, false), (0, false)),
+        ] {
+            assert_eq!(super::executor::compare(rear, side, Compare), compare);
+            assert_eq!(super::executor::compare(rear, side, Subtract), subtract);
+        }
+    }
+    #[test]
+    fn unchanged_comparator_output_notifies_reactive_neighbor() {
+        use super::program::ComparatorRecord;
+        let comparator = Block::from_name("comparator").unwrap();
+        let positions = vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10), BlockPos::new(12, 10, 10)];
+        let mut program = test_program(positions.clone(), vec![comparator, Block::RedstoneLamp { lit: false }, Block::RedstoneBlock], vec![], vec![],
+            vec![ElectricalLink { source: 2, target: 1, attenuation: 0 }], vec![]).unwrap();
+        program.comparators.push(ComparatorRecord { component: 0, stored: 0, rear_override: None, far_override: None, output_is_diode: false });
+        program.reactive[1] = true;
+        program.reactive_neighbours[0].push(1);
+        let mut runtime = program.start();
+        runtime.pending.schedule_tick(super::ScheduledBlockTick { pos: positions[0], block_type: Some(comparator.registry_id()) }, 1, TickPriority::Normal);
+        runtime.tick().unwrap();
+        runtime.tick().unwrap();
+        assert_eq!(runtime.project(positions[1]), Some(Block::RedstoneLamp { lit: true }));
+    }
+    #[test]
     fn token_move_notifies_wire_watchers_only_when_strength_changes() {
         use super::program::MoveStep;
         let cell = BlockPos::new(10, 10, 10);
@@ -849,7 +878,7 @@ use mchprs_world::TickPriority;
     fn rejects_unrepresented_blocks() {
         let mut w = host();
         let pos = BlockPos::new(15, 15, 15);
-        w.set_block(pos, Block::from_name("comparator").unwrap());
+        w.set_block(pos, Block::from_name("note_block").unwrap());
         let err = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
             Err(err) => err,
             Ok(_) => panic!("unsupported block admitted"),

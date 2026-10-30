@@ -1,28 +1,37 @@
 # Sampled Redpiler implementation status
 
-The world-derived compiler admits multiple levers, lamps, repeaters and static
-redstone blocks, and retains native replay mismatches as diagnostics. A
-lever–repeater–lamp circuit executes a scheduled repeater transition. Quiet
-source probes preserve static redstone-block contributions; arrangement-aware
-ordering is not yet implemented. ADDER1BIT compiles and replays its eight
-manifest cases with piston and token motion, but its outputs are incorrect.
-Runtime input and tick calls return errors, and compiled instructions and
-scheduled events are limited to one million semantic operations per game tick.
-Compiled pistons now have sampled inputs and explicit callback instructions;
-the runtime counts accepted actions, token departures and landings.
+The private sampled engine compiles and independently executes ADDER1BIT,
+COUNTER_BASIC and three focused TEST samples. ADDER1BIT passes all eight
+arithmetic cases. COUNTER matches the pinned MAIR memory, dust and repeater
+timeline across 24 saved-idle ticks and 102 release ticks. TEST_PISTION_2,
+TEST_BUD_1 and TEST_XOR pass the focused saved-idle, rise/fall and 1/2/3-tick
+pulse output comparisons. The last independent combined run passed 44 sampled
+tests (`E:/codex-builds/mair-groupprobe-supervisor-verification.log`); the later
+analog-invalidation change reports 45 passing tests and is a separate run.
 
-The private MAIR runtime and its lever–dust–lamp acceptance gate are implemented.
-Compile-time inventory and preliminary token discovery are connected, and a
-world-derived empty piston extension executes. The player-facing backend remains
-Graph. The old `event_netlist` compiler, executor and executor tests have been
-removed; their results below are historical only.
+ADDER11BIT was also verified in an isolated acceptance harness at revision
+`336008b500bdf9f479e92fce2f40da00cbbbda58`: 41 manifest cases executed, including
+40 arithmetic cases with zero declared-window mismatches. Five fresh MAIR
+replays matched the exposed payload/repeater states across all 24 response
+ticks. Carry is not independently observable in that fixture. Its test diff and
+results are under `E:/codex-builds/luna-adder11-verification/`; that isolated
+acceptance test is not yet part of the shared sampled suite.
 
-Repeater runtime mechanism is implemented and tested with manually constructed
-lever → repeater → lamp programs and world-derived circuits. Full side-locking
-coverage remains pending, and ADDER1BIT remains
-incomplete.
+GroupProbe dependency growth, port-aware conditional inputs, compiled movement
+flips, ordered propagation, watchers and torch execution are connected. This is
+not a complete MAIR port: comparators, reactive propagation, full piston/motion
+semantics and pending/moving entry imports still have gaps. The remaining 15
+TEST samples and full internal-state parity have not been verified. Graph
+remains the player-facing backend.
 
-## Current implementation
+The earlier COUNTER/TEST investigation used compiler revision
+`8a52b6689f84be9107734d3076cce5c9825df4cf` and a copied executor. Its wall-torch
+rejection and all-18 TEST decline matrix describe that older snapshot, not the
+current engine. Both runs used the same pinned COUNTER fixture. The corrected
+historical report is
+`E:/codex-builds/luna-counter-test-investigation-20261030/REPORT.md`.
+
+## Earlier implementation notes (historical checkpoints)
 
 - The MAIR module is split into `sampled/compiler.rs`, `sampled/program.rs`,
   `sampled/executor.rs` and `sampled/tests.rs`.
@@ -270,3 +279,23 @@ does not compare every internal state or establish full MAIR compliance.
 | QueueEvent and motion completion | three event identities and combined motion records | per-kind queue identity and two-tick movement tests | Landing-phase classification, interruption and paired motion incomplete |
 | DescribeNodes, Update and TickNode | sampled component handlers including torches | floor/wall torch delay, recheck and rearm test | Comparator and other reference roles incomplete |
 | TrackBudded and entry imports | stationary-entry admission | pending-work rejection test | Reactive state and supported pending or moving entries absent |
+
+## Comparator and reactive work in progress
+
+The sampled compiler now records comparator ports, loaded output and mode, and
+includes comparators in GroupProbe and source programs. The runtime implements
+`GetRear`, `Compare`, comparator scheduling and tick revalidation, and an initial
+port of `TrackBudded`, `ReactsTo`, `IndexBudded`, `PropagateChangeWithBudded`
+and `UpdateBudded`. These implementations need further reference parity tests.
+The focused replay passed all four included samples, including every declared
+TEST_PISTION output and scenario, with reference SHA-256
+`5829ce8d437d028c7ae93e53766912e50b20edc21ec82fcc64c7cfbb28f650a8`.
+The pinned compiler does not classify copper bulbs as active nodes; the sample
+also demonstrates that they conduct diode inputs. Comparator node 5 maps to
+world (40, 32, 54), starts in compare mode, unpowered with stored output zero,
+and is marked reactive in the prepared circuit.
+
+This is not yet a complete comparator/reactive acceptance: composter-reader
+behavior, broad analog and conditional inputs, priority and reactive ordering
+need targeted verification. Pending work import, full piston interruption and
+independent motion-part completion remain unimplemented.

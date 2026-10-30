@@ -16,6 +16,8 @@ impl PistonEvent {
 }
 
 pub(super) struct Runtime<'a> {
+    pub(super) comparator_outputs: Vec<u8>,
+    pub(super) reactive_wire_strengths: Vec<u8>,
     pub(super) program: &'a Program,
     pub(super) piston_extended: Vec<bool>,
     pub(super) piston_head_present: Vec<bool>,
@@ -44,6 +46,12 @@ pub(super) struct Runtime<'a> {
     pub(super) scheduled_repeater_ticks: usize,
     pub(super) tick_operations: usize,
     pub(super) failure: Option<ScratchError>,
+}
+
+pub(super) fn compare(rear: u8, side: u8, mode: mchprs_blocks::blocks::ComparatorMode) -> (u8, bool) {
+    let subtract = mode == mchprs_blocks::blocks::ComparatorMode::Subtract;
+    let powered = rear > 0 && (rear > side || (rear == side && !subtract));
+    (if side > rear { 0 } else if subtract { rear - side } else { rear }, powered)
 }
 
 impl Runtime<'_> {
@@ -397,6 +405,7 @@ impl Runtime<'_> {
                     0
                 }
             }
+            Block::RedstoneComparator { comparator } => if comparator.powered { self.comparator_outputs[source] } else { 0 },
             Block::RedstoneWire { wire } => wire.power,
             Block::Observer { observer } => if observer.powered { 15 } else { 0 },
             Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => if lit { 15 } else { 0 },
@@ -441,7 +450,12 @@ impl Runtime<'_> {
             return;
         }
         self.updated_in_phase[receiver] = Some(self.phase);
+        self.update(receiver);
+    }
+
+    pub(super) fn update(&mut self, receiver: usize) {
         match self.blocks[receiver] {
+            Block::RedstoneComparator { .. } => self.update_comparator(receiver),
             Block::RedstoneLamp { .. } => self.dispatch_receiver(receiver),
             Block::Piston { .. } => self.update_piston(receiver),
             Block::RedstoneRepeater { .. } => self.update_repeater(receiver),
@@ -470,7 +484,38 @@ impl Runtime<'_> {
     }
 
     pub(super) fn execute_output_program(&mut self, component: usize, powered: bool) {
+        let reactive = self.program.reactive.iter().any(|&flag| flag);
+        if reactive {
+            for operation in &self.program.output_programs[component][usize::from(powered)] {
+                match *operation {
+                    Operation::Contribution(index) => {
+                        if !self.consume_operation(self.program.positions[component]) { return; }
+                        let link = &self.program.links[index];
+                        let value = self.output(link.source).saturating_sub(link.attenuation);
+                        if self.contributions[index] != value { self.updated_in_phase[link.target] = None; }
+                        self.contributions[index] = value;
+                        self.operations += 1;
+                    }
+                    Operation::ArrangementContribution(index) => {
+                        if !self.consume_operation(self.program.positions[component]) { return; }
+                        let link = &self.program.arrangement_links[index];
+                        let value = if link.active[self.group_arrangements[link.group]] { self.arrangement_output(link.source).saturating_sub(link.attenuation) } else { 0 };
+                        if self.arrangement_contributions[index] != value { self.updated_in_phase[link.target] = None; }
+                        self.arrangement_contributions[index] = value;
+                        self.operations += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
         for operation in &self.program.output_programs[component][usize::from(powered)] {
+            if reactive {
+                match *operation {
+                    Operation::Contribution(_) | Operation::ArrangementContribution(_) => continue,
+                    Operation::UpdateLamp(node) | Operation::UpdateRepeater(node) | Operation::UpdateComparator(node) | Operation::UpdateTorch(node) if self.program.reactive[node] => continue,
+                    _ => {}
+                }
+            }
             if !self.consume_operation(self.program.positions[component]) { return; }
             match *operation {
                 Operation::ArrangementContribution(index) => {
@@ -479,7 +524,7 @@ impl Runtime<'_> {
                         self.arrangement_output(link.source).saturating_sub(link.attenuation)
                     } else { 0 };
                     if (self.arrangement_contributions[index] > 0) != (contribution > 0)
-                        || (self.arrangement_contributions[index] != contribution && self.program.watched_wires.iter().any(|wire| wire.wire == link.target)) {
+                        || (self.arrangement_contributions[index] != contribution && (matches!(self.blocks[link.target], Block::RedstoneComparator { .. }) || self.program.watched_wires.iter().any(|wire| wire.wire == link.target))) {
                         self.updated_in_phase[link.target] = None;
                     }
                     self.arrangement_contributions[index] = contribution;
@@ -491,7 +536,7 @@ impl Runtime<'_> {
                     self.contributions[link_index] = contribution;
                     if self.trace_enabled && old_contribution != contribution { self.trace(format!("link {:?} -> {:?} strength={old_contribution}->{contribution}", self.program.positions[link.source], self.program.positions[link.target])); }
                     if (old_contribution > 0) != (contribution > 0)
-                        || (old_contribution != contribution && self.program.watched_wires.iter().any(|wire| wire.wire == link.target)) {
+                        || (old_contribution != contribution && (matches!(self.blocks[link.target], Block::RedstoneComparator { .. }) || self.program.watched_wires.iter().any(|wire| wire.wire == link.target))) {
                         self.updated_in_phase[link.target] = None;
                     }
                 }
@@ -507,8 +552,75 @@ impl Runtime<'_> {
                 Operation::UpdateRepeater(slot) => self.update_repeater(slot),
                 Operation::UpdatePiston(slot) => self.update_piston(slot),
                 Operation::UpdateTorch(slot) => self.update_torch(slot),
+                Operation::UpdateComparator(slot) => self.update_comparator(slot),
             }
             self.operations += 1;
+        }
+        if reactive { self.update_reactive(component); }
+    }
+
+    pub(super) fn side_strength(&self, component: usize) -> u8 {
+        let fixed = self.program.side_links.iter().filter(|link| link.target == component).filter(|link| {
+            !self.program.input_arrangements.iter().any(|group| group.target == component && group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source)))
+        }).map(|link| self.output(link.source).saturating_sub(link.attenuation)).max().unwrap_or(0);
+        self.program.arrangement_links.iter().enumerate().filter_map(|(index, link)| (link.target == component && link.side).then_some(self.arrangement_contributions[index])).fold(fixed, u8::max)
+    }
+
+    fn comparator_result(&self, component: usize) -> (u8, bool) {
+        let Block::RedstoneComparator { comparator } = self.blocks[component] else { unreachable!() };
+        let record = self.program.comparators.iter().find(|record| record.component == component).unwrap();
+        let mut rear = self.input_strength(component);
+        if let Some(level) = record.rear_override { rear = level; }
+        else if rear < 15 { if let Some(level) = record.far_override { rear = level; } }
+        compare(rear, self.side_strength(component), comparator.mode)
+    }
+
+    pub(super) fn update_comparator(&mut self, component: usize) {
+        let Block::RedstoneComparator { comparator } = self.blocks[component] else { unreachable!() };
+        let (level, powered) = self.comparator_result(component);
+        if level == self.comparator_outputs[component] && powered == comparator.powered { return; }
+        let tick = ScheduledBlockTick { pos: self.program.positions[component], block_type: Some(self.blocks[component].registry_id()) };
+        if !self.pending.contains(&tick) {
+            let diode = self.program.comparators.iter().find(|record| record.component == component).unwrap().output_is_diode;
+            self.pending.schedule_tick(tick, 1, if diode { TickPriority::High } else { TickPriority::Normal });
+        }
+    }
+
+    fn tick_comparator(&mut self, component: usize) {
+        let Block::RedstoneComparator { mut comparator } = self.blocks[component] else { unreachable!() };
+        let from = self.output(component);
+        let (level, powered) = self.comparator_result(component);
+        let previous = self.comparator_outputs[component];
+        self.comparator_outputs[component] = level;
+        if previous == level && comparator.mode == mchprs_blocks::blocks::ComparatorMode::Subtract { return; }
+        let shape = comparator.powered != powered;
+        comparator.powered = powered;
+        self.blocks[component] = Block::RedstoneComparator { comparator };
+        if from != self.output(component) { self.execute_output_program(component, self.output(component) > from); }
+        else { self.update_reactive(component); }
+        self.notify_source_watchers(component, shape, true);
+    }
+
+    fn update_reactive(&mut self, source: usize) {
+        for &index in &self.program.reactive_by_source[source] {
+            let record = &self.program.reactive_wires[index];
+            let mut strength = 0;
+            for &(source, attenuation) in &record.sources {
+                if !self.consume_operation(self.program.positions[source]) { return; }
+                let level = if matches!(self.blocks[source], Block::RedstoneBlock) { 15 } else { self.output(source) };
+                strength = strength.max(level.saturating_sub(attenuation));
+                self.operations += 1;
+            }
+            if self.reactive_wire_strengths[index] == strength { continue; }
+            self.reactive_wire_strengths[index] = strength;
+            for &target in &record.recipients {
+                if !self.consume_operation(self.program.positions[target]) { return; }
+                self.update(target);
+            }
+        }
+        for &target in &self.program.reactive_neighbours[source] {
+            if !self.consume_operation(self.program.positions[target]) { return; }
+            self.update(target);
         }
     }
 
@@ -607,6 +719,7 @@ impl Runtime<'_> {
             if !self.consume_operation(tick.pos) { return; }
             if let Some(component) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
                 match self.blocks[component] {
+                    Block::RedstoneComparator { .. } => self.tick_comparator(component),
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.tick_torch(component),
                     Block::RedstoneLamp { .. } => self.dispatch_receiver_tick(component),
                     Block::RedstoneRepeater { .. } => {

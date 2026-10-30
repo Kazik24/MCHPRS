@@ -12,6 +12,7 @@ pub(super) enum Operation {
     UpdateRepeater(usize),
     UpdatePiston(usize),
     UpdateTorch(usize),
+    UpdateComparator(usize),
 }
 
 #[derive(Clone)]
@@ -85,7 +86,27 @@ pub(super) struct MovementGroup {
     pub(super) axes: Vec<MovementAxis>,
 }
 
+pub(super) struct ComparatorRecord {
+    pub(super) component: usize,
+    pub(super) stored: u8,
+    pub(super) rear_override: Option<u8>,
+    pub(super) far_override: Option<u8>,
+    pub(super) output_is_diode: bool,
+}
+
+pub(super) struct ReactiveWire {
+    pub(super) wire: usize,
+    pub(super) sources: Vec<(usize, u8)>,
+    pub(super) recipients: Vec<usize>,
+}
+
 pub(super) struct Program {
+    pub(super) comparators: Vec<ComparatorRecord>,
+    pub(super) side_links: Vec<ElectricalLink>,
+    pub(super) reactive: Vec<bool>,
+    pub(super) reactive_wires: Vec<ReactiveWire>,
+    pub(super) reactive_by_source: Vec<Vec<usize>>,
+    pub(super) reactive_neighbours: Vec<Vec<usize>>,
     pub(super) pistons: Vec<super::compiler::PistonActor>,
     pub(super) tokens: Vec<super::compiler::PistonToken>,
     pub(super) piston_scenery: Vec<BlockPos>,
@@ -250,7 +271,7 @@ impl Program {
         }
         for block in &initial {
             match block {
-                Block::Lever { .. } | Block::RedstoneLamp { .. } | Block::RedstoneBlock | Block::Piston { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => {}
+                Block::Lever { .. } | Block::RedstoneLamp { .. } | Block::RedstoneComparator { .. } | Block::RedstoneBlock | Block::Piston { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => {}
                 Block::RedstoneWire { wire } if wire.power <= 15 => {}
                 Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
                 Block::RedstoneRepeater { repeater } if (1..=4).contains(&repeater.delay) => {}
@@ -278,7 +299,7 @@ impl Program {
             if !repeater_components.insert(record.component) {
                 return Err(invalid("sampled repeater record is duplicated"));
             }
-            if record.side_sources.iter().flatten().any(|&source| !matches!(initial.get(source), Some(Block::RedstoneRepeater { .. }))) {
+            if record.side_sources.iter().flatten().any(|&source| !matches!(initial.get(source), Some(Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }))) {
                 return Err(invalid("sampled repeater side source is not a repeater"));
             }
         }
@@ -294,12 +315,12 @@ impl Program {
             let Some(target) = initial.get(link.target) else {
                 return Err(invalid("sampled program link target is out of bounds"));
             };
-            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneBlock | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }) {
+            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::RedstoneBlock | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }) {
                 return Err(invalid("sampled program link source must be lever, wire or repeater"));
             }
             if !matches!(
                 target,
-                Block::RedstoneWire { .. } | Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. } | Block::Piston { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+                Block::RedstoneWire { .. } | Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::Piston { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
             ) {
                 return Err(invalid("sampled program link target must be wire, lamp or repeater"));
             }
@@ -341,6 +362,9 @@ impl Program {
                         Operation::UpdatePiston(slot) if !matches!(initial.get(slot), Some(Block::Piston { .. })) => {
                             return Err(invalid("sampled program UpdatePiston target is not a piston"));
                         }
+                        Operation::UpdateComparator(slot) if !matches!(initial.get(slot), Some(Block::RedstoneComparator { .. })) => {
+                            return Err(invalid("sampled UpdateComparator target is not a comparator"));
+                        }
                         Operation::UpdateTorch(slot) if !matches!(initial.get(slot), Some(Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })) => {
                             return Err(invalid("sampled program UpdateTorch target is not a torch"));
                         }
@@ -354,6 +378,12 @@ impl Program {
             incoming[link.target].push(id);
         }
         Ok(Self {
+            comparators: Vec::new(),
+            side_links: Vec::new(),
+            reactive: vec![false; initial.len()],
+            reactive_wires: Vec::new(),
+            reactive_by_source: vec![vec![]; initial.len()],
+            reactive_neighbours: vec![vec![]; initial.len()],
             pistons: Vec::new(),
             tokens: Vec::new(),
             piston_scenery: Vec::new(),
@@ -382,6 +412,8 @@ impl Program {
     pub(super) fn start(&self) -> Runtime<'_> {
         let mut runtime = Runtime {
             program: self,
+            comparator_outputs: { let mut outputs = vec![0; self.initial.len()]; for record in &self.comparators { outputs[record.component] = record.stored; } outputs },
+            reactive_wire_strengths: self.reactive_wires.iter().map(|record| match self.initial[record.wire] { Block::RedstoneWire { wire } => wire.power, _ => unreachable!() }).collect(),
             piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
             piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
             piston_head_moving: vec![false; self.pistons.len()],
@@ -414,6 +446,7 @@ impl Program {
                                 0
                             }
                         }
+                        Block::RedstoneComparator { comparator } => if comparator.powered { self.comparators.iter().find(|record| record.component == link.source).map_or(0, |record| record.stored) } else { 0 },
                         Block::RedstoneWire { wire } => wire.power,
                         Block::RedstoneBlock => if self.tokens.iter().any(|token| token.position == Some(self.positions[link.source])) { 0 } else { 15 },
                         Block::Observer { observer } => if observer.powered { 15 } else { 0 },

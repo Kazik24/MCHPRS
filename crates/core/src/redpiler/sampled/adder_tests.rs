@@ -331,7 +331,7 @@ fn focused_test_samples_match_mair_observations() {
     let reference: Value = serde_json::from_slice(&reference).unwrap();
     let origin = BlockPos::new(40, 30, 40);
     let mut errors = Vec::new();
-    for sample in reference["samples"].as_array().unwrap().iter().filter(|sample| sample["name"] != "TEST_PISTION.schem") {
+    for sample in reference["samples"].as_array().unwrap().iter() {
         let name = sample["name"].as_str().unwrap();
         let bytes = std::fs::read(fixture_dir.join(name)).unwrap();
         let manifest_entry = manifest["files"].as_array().unwrap().iter().find(|entry| entry["name"] == name).unwrap();
@@ -357,6 +357,14 @@ fn focused_test_samples_match_mair_observations() {
             Ok(program) => program,
             Err(error) => { errors.push(format!("{name}: compilation declined: {error:?}")); continue; }
         };
+        if name == "TEST_PISTION.schem" {
+            let pos = origin + BlockPos::new(0, 2, 14);
+            let node = program.positions.iter().position(|&p| p == pos).unwrap();
+            assert!(matches!(world.get_block(pos), Block::RedstoneComparator { comparator } if !comparator.powered && comparator.mode == mchprs_blocks::blocks::ComparatorMode::Compare));
+            assert!(matches!(world.get_block_entity(pos), Some(mchprs_blocks::block_entities::BlockEntity::Comparator { output_strength: 0 })));
+            assert_eq!(program.comparators.iter().find(|record| record.component == node).unwrap().stored, 0);
+            assert!(program.reactive[node]);
+        }
         for (scenario, record) in sample["scenarios"].as_object().unwrap() {
             let mut runtime = program.start();
             for frame in record["frames"].as_array().unwrap() {
@@ -377,6 +385,14 @@ fn focused_test_samples_match_mair_observations() {
                             && expected.contains(&format!("locked={}", repeater.locked))
                             && expected.contains(&format!("delay={}", repeater.delay))
                             && expected.contains(&format!("facing={}", block.properties()["facing"])),
+                        Some(block @ Block::RedstoneComparator { comparator }) => expected.starts_with("minecraft:comparator[")
+                            && expected.contains(&format!("powered={}", comparator.powered))
+                            && expected.contains(&format!("mode={}", block.properties()["mode"]))
+                            && expected.contains(&format!("facing={}", block.properties()["facing"])),
+                        Some(block) if block.is_copper_bulb() => {
+                            expected.starts_with(&format!("minecraft:{}[", block.get_name()))
+                                && block.properties().iter().all(|(key, value)| expected.contains(&format!("{key}={value}")))
+                        }
                         _ => false,
                     };
                     if !matches { errors.push(format!("{name} {scenario} tick {tick} at {pos:?}: {actual:?}, expected {expected}")); }
@@ -386,4 +402,108 @@ fn focused_test_samples_match_mair_observations() {
     }
     for error in errors.iter().take(16) { eprintln!("{error}"); }
     assert!(errors.is_empty(), "{} focused TEST observations or admissions differ", errors.len());
+}
+
+#[test]
+fn adder11bit_mair_manifest_acceptance() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let manifest: Value = serde_json::from_slice(&std::fs::read(root.join("test_data/instant-pistons-io/fixtures/adder_11bits.json")).unwrap()).unwrap();
+    let inspection: Value = serde_json::from_slice(&std::fs::read(root.join(manifest["inspection"].as_str().unwrap())).unwrap()).unwrap();
+    let bytes = std::fs::read(root.join(manifest["fixture"].as_str().unwrap())).unwrap();
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    assert_eq!(hash, "335ab94a3ba7f89cd0a497a2ac606372ff2743cfcd549f4863ead310af4138b9");
+    assert_eq!(manifest["sha256"], hash);
+    assert_eq!(inspection["sha256"], hash);
+    let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
+    assert_eq!((clipboard.size_x, clipboard.size_y, clipboard.size_z), (23, 7, 46));
+    let origin = position(&manifest["coordinates"]["origin"]);
+    let anchor = position(&manifest["coordinates"]["paste_anchor"]);
+    assert_eq!(anchor, origin + position(&manifest["coordinates"]["loader_offset"]));
+    assert_eq!(anchor, origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z));
+    let bounds = (origin - BlockPos::new(4, 4, 4), origin + BlockPos::new(27, 11, 50));
+    let positions: Vec<_> = (bounds.0.y..=bounds.1.y).flat_map(|y| (bounds.0.z..=bounds.1.z)
+        .flat_map(move |z| (bounds.0.x..=bounds.1.x).map(move |x| BlockPos::new(x, y, z)))).collect();
+    let snapshot = |world: &PlotWorld| {
+        (positions.iter().map(|&pos| (world.get_block_raw(pos), serde_json::to_value(world.get_block_entity(pos)).unwrap())).collect::<Vec<_>>(),
+         world.scheduler().iter_entries().collect::<Vec<_>>(), serde_json::to_value(world.piston_state()).unwrap())
+    };
+    let mut world = PlotWorld::from_chunks(0, 0,
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(), Default::default());
+    paste_clipboard(&mut world, &clipboard, anchor, false);
+    let before = snapshot(&world);
+    let compiled = compile(&world, bounds, ScratchEntry { scheduled: world.scheduler().iter_entries().collect(), piston: world.piston_state().clone() });
+    assert_eq!(before, snapshot(&world), "compilation changed host");
+    let mut first_program = Some(compiled.unwrap_or_else(|error| panic!("ADDER11BIT compilation declined: {error:?}; block={:?}", error.position.map(|pos| world.get_block(pos)))));
+    let mut mismatches = Vec::new();
+    let mut failures = Vec::new();
+    for (case_index, case) in manifest["cases"].as_array().unwrap().iter().enumerate() {
+        let id = case["id"].as_str().unwrap();
+        let program = if let Some(program) = first_program.take() { program } else {
+            let mut fresh = PlotWorld::from_chunks(0, 0, (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(), Default::default());
+            paste_clipboard(&mut fresh, &clipboard, anchor, false);
+            let before = snapshot(&fresh);
+            let result = compile(&fresh, bounds, ScratchEntry { scheduled: fresh.scheduler().iter_entries().collect(), piston: fresh.piston_state().clone() });
+            assert_eq!(before, snapshot(&fresh), "{id}: compilation changed host");
+            match result { Ok(program) => program, Err(error) => { failures.push(format!("{id}: compile {error:?}")); continue; } }
+        };
+        let mut runtime = program.start();
+        let mut actions = 0;
+        let mut prep_ticks = 0;
+        let mut error = None;
+        for action in case["actions"].as_array().unwrap() {
+            let result = match action["op"].as_str().unwrap() {
+                "lever" => {
+                    let pos = origin + position(&action["pos"]);
+                    let source = program.sources.iter().position(|&node| program.positions[node] == pos).unwrap();
+                    runtime.set_input(source, action["powered"].as_bool().unwrap())
+                }
+                "wait" | "wait_ready" => {
+                    let mut result = Ok(());
+                    for _ in 0..action["ticks"].as_u64().unwrap() { result = runtime.tick(); if result.is_err() { break; } prep_ticks += 1; }
+                    result
+                }
+                op => panic!("unsupported action {op}"),
+            };
+            if let Err(e) = result { error = Some(format!("action {actions}: {e:?}")); break; }
+            actions += 1;
+        }
+        let expected = case["expectation"]["sum"].as_u64().map(|n| n & 2047);
+        let mut frames = Vec::new();
+        if error.is_none() { for tick in 1..=case["ticks"].as_u64().unwrap() {
+            if let Err(e) = runtime.tick() { error = Some(format!("response tick {tick}: {e:?}")); break; }
+            let mut frame = serde_json::Map::new();
+            for port in ["sum_payload", "sum_repeater"] {
+                let mut word = Some(0u64);
+                let mut raw = Vec::new();
+                for (i, p) in manifest["ports"]["observations"][port].as_array().unwrap().iter().enumerate() {
+                    let pos = origin + position(p);
+                    let block = runtime.project(pos);
+                    let bit = match (port, block) {
+                        ("sum_payload", Some(Block::Air)) => Some(1),
+                        ("sum_payload", Some(Block::RedstoneBlock)) => Some(0),
+                        ("sum_repeater", Some(Block::RedstoneRepeater { repeater })) => Some(u64::from(!repeater.powered)),
+                        _ => None,
+                    };
+                    word = word.zip(bit).map(|(w,b)| w | (b << i));
+                    raw.push(format!("{block:?}"));
+                }
+                if let Some(expected) = expected && ((port == "sum_payload" && (1..=3).contains(&tick)) || (port == "sum_repeater" && (3..=7).contains(&tick))) && word != Some(expected) {
+                    let details = manifest["ports"]["observations"][port].as_array().unwrap().iter().enumerate().filter_map(|(i,p)| {
+                        let pos = origin + position(p); let block = runtime.project(pos);
+                        let bit = match (port, block) { ("sum_payload", Some(Block::Air)) => Some(1), ("sum_payload", Some(Block::RedstoneBlock)) => Some(0), ("sum_repeater", Some(Block::RedstoneRepeater { repeater })) => Some(u64::from(!repeater.powered)), _ => None };
+                        (bit != Some((expected >> i) & 1)).then(|| format!("{pos:?} raw={block:?}"))
+                    }).collect::<Vec<_>>();
+                    mismatches.push(format!("{id} response tick {tick} {port}: expected={expected} actual={word:?} cells={details:?}"));
+                }
+                frame.insert(port.to_string(), serde_json::json!({"word":word,"raw":raw}));
+            }
+            frames.push(serde_json::json!({"tick":tick,"ports":frame}));
+        }}
+        if let Some(e) = &error { failures.push(format!("{id}: {e}")); }
+        eprintln!("CASE_RESULT {}", serde_json::json!({"id":id,"index":case_index,"actions":actions,"preparation_ticks":prep_ticks,"response_ticks":frames.len(),"error":error,"frames":frames,"operations":runtime.operations,"repeater_ticks":runtime.scheduled_repeater_ticks,"piston_actions":runtime.accepted_piston_actions,"token_moves":runtime.token_movements,"completions":runtime.motion_completions}));
+    }
+    for mismatch in mismatches.iter().take(32) { eprintln!("MISMATCH {mismatch}"); }
+    for failure in &failures { eprintln!("FAILURE {failure}"); }
+    eprintln!("TOTAL mismatches={} runtime_failures={}", mismatches.len(), failures.len());
+    assert!(mismatches.is_empty() && failures.is_empty(), "ADDER11BIT acceptance failed");
 }

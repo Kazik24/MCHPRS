@@ -113,6 +113,8 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                         positions.push(pos);
                     }
                     Block::RedstoneBlock => positions.push(pos),
+                    Block::RedstoneComparator { .. } => positions.push(pos),
+                    block if block.is_copper_bulb() => {},
                     Block::Piston { .. } => positions.push(pos),
                     Block::PistonHead { .. } => {},
                     Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => positions.push(pos),
@@ -128,6 +130,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     _ => return Err(error(pos, "unsupported component")),
                 }
                 if let Some(entity) = world.get_block_entity(pos)
+                    && !matches!((world.get_block(pos), entity), (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }))
                     && !(world.get_block(pos).is_sign() && matches!(entity, BlockEntity::Sign(_))) {
                     return Err(error(pos, "unsupported block entity"));
                 }
@@ -184,7 +187,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                 let block = world.get_block(at);
                 if crate::redstone::is_diode(block) && crate::redstone::power::emits_strong_power(block, scratch.world(), at, side.block_face(), false) {
                     let source = positions.iter().position(|&position| position == at).ok_or_else(|| error(at, "unrepresented repeater side source"))?;
-                    if !matches!(block, Block::RedstoneRepeater { .. }) {
+                    if !matches!(block, Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }) {
                         return Err(error(at, "unsupported repeater side source"));
                     }
                     record.side_sources.as_mut().unwrap().push(source);
@@ -232,6 +235,36 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
         .map_err(|err| error(bounds.0, err.reason))?;
     program.pistons = pistons;
     program.tokens = tokens;
+    for component in 0..program.initial.len() {
+        let Block::RedstoneComparator { comparator } = program.initial[component] else { continue; };
+        let pos = program.positions[component];
+        let rear = pos.offset(comparator.facing.block_face());
+        let override_at = |at| {
+            let block = world.get_block(at);
+            // The pinned MAIR registry treats copper bulbs as inert, non-analog blocks.
+            (crate::redstone::comparator::has_override(block) && !block.is_copper_bulb())
+                .then(|| crate::redstone::comparator::get_override(block, world, at))
+        };
+        let front = world.get_block(pos.offset(comparator.facing.opposite().block_face()));
+        let front_facing = match front { Block::RedstoneRepeater { repeater } => Some(repeater.facing), Block::RedstoneComparator { comparator } => Some(comparator.facing), _ => None };
+        program.comparators.push(super::program::ComparatorRecord {
+            component,
+            stored: match world.get_block_entity(pos) { Some(BlockEntity::Comparator { output_strength }) => *output_strength, _ => 0 },
+            rear_override: override_at(rear),
+            far_override: if world.get_block(rear).is_solid() { override_at(rear.offset(comparator.facing.block_face())) } else { None },
+            output_is_diode: front_facing.is_some_and(|facing| facing != comparator.facing.opposite()),
+        });
+        for ((source, side), (attenuation, _)) in super::group_probe::inputs_of(world, &program, component)? {
+            let ArrangementSource::Component(source) = source else { continue; };
+            let link = ElectricalLink { source, target: component, attenuation };
+            if side { program.side_links.push(link); }
+            else if program.comparators.last().unwrap().rear_override.is_none() {
+                program.incoming[component].push(program.links.len());
+                program.links.push(link);
+            }
+        }
+    }
+
     for y in bounds.0.y..=bounds.1.y {
         for z in bounds.0.z..=bounds.1.z {
             for x in bounds.0.x..=bounds.1.x {
@@ -377,7 +410,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                 if !arrival { nodes.extend(observers.iter().copied()); }
                 nodes.extend(updates[usize::from(arrival)].iter().copied().filter(|&node| match program.initial[node] {
                     Block::RedstoneWire { .. } => program.watched_wires.iter().any(|wire| wire.wire == node),
-                    Block::Piston { .. } | Block::RedstoneRepeater { .. } | Block::Observer { .. } | Block::RedstoneLamp { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => true,
+                    Block::Piston { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::Observer { .. } | Block::RedstoneLamp { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => true,
                     _ => false,
                 }));
                 nodes.extend(watchers.iter().copied());
@@ -397,7 +430,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
     }
     program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program)?;
     program.compile_movement_flips()?;
-    let output_sources: Vec<_> = sources.iter().copied().chain(program.repeaters.iter().map(|record| record.component)).chain(program.initial.iter().enumerate().filter_map(|(index, block)| matches!(block, Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }).then_some(index))).collect();
+    let output_sources: Vec<_> = sources.iter().copied().chain(program.repeaters.iter().map(|record| record.component)).chain(program.initial.iter().enumerate().filter_map(|(index, block)| matches!(block, Block::RedstoneComparator { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }).then_some(index))).collect();
     let mut comparisons = Vec::new();
     for (output_index, &source) in output_sources.iter().enumerate() {
         let mut scratch = ScratchWorld::from_world(world, bounds, entry.clone())?;
@@ -416,6 +449,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             let quiet = match block {
                 Block::Lever { mut lever } => { lever.powered = false; Block::Lever { lever } }
                 Block::RedstoneRepeater { mut repeater } => { repeater.powered = false; repeater.locked = false; Block::RedstoneRepeater { repeater } }
+                Block::RedstoneComparator { mut comparator } => { comparator.powered = false; scratch.world_mut().set_block_entity(at, BlockEntity::Comparator { output_strength: 0 }); Block::RedstoneComparator { comparator } }
                 Block::Observer { mut observer } => { observer.powered = false; Block::Observer { observer } }
                 Block::RedstoneWire { mut wire } => { wire.power = constant_power; Block::RedstoneWire { wire } }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: constant_power > 0 },
@@ -444,6 +478,12 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     repeater.powered = powered;
                     w.set_block(pos, Block::RedstoneRepeater { repeater });
                     crate::redstone::on_state_change(repeater.facing.block_facing(), w, pos);
+                }
+                Block::RedstoneComparator { mut comparator } => {
+                    comparator.powered = powered;
+                    w.set_block_entity(pos, BlockEntity::Comparator { output_strength: if powered { 15 } else { 0 } });
+                    w.set_block(pos, Block::RedstoneComparator { comparator });
+                    crate::redstone::on_state_change(comparator.facing.block_facing(), w, pos);
                 }
                 Block::Observer { mut observer } if observer.powered != powered => {
                     observer.powered = powered;
@@ -480,6 +520,9 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             for link in program.arrangement_links.iter().filter(|link| link.source == ArrangementSource::Component(source)) {
                 if !targets.contains(&link.target) { targets.push(link.target); }
             }
+            for link in program.side_links.iter().filter(|link| link.source == source) {
+                if !targets.contains(&link.target) { targets.push(link.target); }
+            }
             for record in &program.repeaters {
                 if record.side_sources.as_ref().is_some_and(|side| side.contains(&source)) && !targets.contains(&record.component) {
                     targets.push(record.component);
@@ -507,6 +550,7 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
                     }
                     Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
                     Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),
+                    Block::RedstoneComparator { .. } => operations.push(Operation::UpdateComparator(target)),
                     // MAIR CollectInputs marks piston electrical links silent; watchers deliver updates.
                     Block::Piston { .. } => {},
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => operations.push(Operation::UpdateTorch(target)),
@@ -540,7 +584,87 @@ pub(super) fn compile(world: &impl World, bounds: (BlockPos, BlockPos), entry: S
             }
         }
     }
+    track_reactive(world, &entry, &mut program)?;
     Ok(program)
+}
+
+fn within_two(pos: BlockPos) -> Vec<BlockPos> {
+    let adjacent = |p: BlockPos| update_order().map(|face| p.offset(face));
+    let mut cells = Vec::new();
+    for cell in adjacent(pos).into_iter().flat_map(adjacent).chain(adjacent(pos)) {
+        if !cells.contains(&cell) { cells.push(cell); }
+    }
+    cells
+}
+
+fn track_reactive(world: &impl World, entry: &ScratchEntry, program: &mut Program) -> Result<(), ScratchError> {
+    let inputs = {
+        let runtime = program.start();
+        (0..program.initial.len()).map(|node| (runtime.input_strength(node), runtime.side_strength(node))).collect::<Vec<_>>()
+    };
+    for (node, &block) in program.initial.iter().enumerate() {
+        let pos = program.positions[node];
+        let pending = entry.scheduled.iter().any(|tick| tick.pos == pos);
+        program.reactive[node] = match block {
+            Block::RedstoneRepeater { repeater } => {
+                let locked = [repeater.facing.rotate(), repeater.facing.rotate_ccw()].into_iter().any(|side| {
+                    let at = pos.offset(side.block_face());
+                    let block = world.get_block(at);
+                    crate::redstone::is_diode(block) && crate::redstone::power::emits_weak_power(block, world, at, side.block_face(), false) && crate::redstone::source_strength(block, world, at) > 0
+                });
+                !pending && !locked && repeater.powered != (crate::redstone::diode_get_input_strength(world, pos, repeater.facing) > 0)
+            }
+            Block::RedstoneComparator { comparator } => {
+                let record = program.comparators.iter().find(|record| record.component == node).unwrap();
+                let mut rear = inputs[node].0;
+                if let Some(level) = record.rear_override { rear = level; }
+                else if rear < 15 { if let Some(level) = record.far_override { rear = level; } }
+                let side = inputs[node].1;
+                let (level, powered) = super::executor::compare(rear, side, comparator.mode);
+                !pending && (record.stored != level || comparator.powered != powered)
+            }
+            Block::RedstoneTorch { lit } => !pending && lit == crate::redstone::torch_should_be_off(world, pos),
+            Block::RedstoneWallTorch { lit, facing } => !pending && lit == crate::redstone::wall_torch_should_be_off(world, pos, facing),
+            Block::RedstoneLamp { lit } => lit != crate::redstone::redstone_lamp_should_be_lit(world, pos) && !(lit && pending),
+            _ => false,
+        };
+    }
+    for node in 0..program.initial.len() {
+        if !program.reactive[node] { continue; }
+        for at in within_two(program.positions[node]) {
+            let Some(wire) = program.positions.iter().position(|&pos| pos == at && matches!(world.get_block(pos), Block::RedstoneWire { .. })) else { continue; };
+            if let Some(record) = program.reactive_wires.iter_mut().find(|record| record.wire == wire) { record.recipients.push(node); }
+            else {
+                let sources = crate::redpiler::scratch::discover_wire_sources(world, &[at])?.into_iter().map(|source| {
+                    program.positions.iter().position(|&pos| pos == source.source).map(|node| (node, source.attenuation))
+                        .ok_or(ScratchError { position: Some(source.source), reason: "unrepresented reactive wire source" })
+                }).collect::<Result<Vec<_>, _>>()?;
+                program.reactive_wires.push(super::program::ReactiveWire { wire, sources, recipients: vec![node] });
+            }
+        }
+    }
+    for (wire, record) in program.reactive_wires.iter().enumerate() {
+        for &(source, _) in &record.sources {
+            if !program.reactive_by_source[source].contains(&wire) { program.reactive_by_source[source].push(wire); }
+        }
+    }
+    for node in 0..program.initial.len() {
+        let pos = program.positions[node];
+        let adjacent = |p: BlockPos| update_order().map(|face| p.offset(face));
+        let footprint = match program.initial[node] {
+            Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => within_two(pos),
+            Block::RedstoneRepeater { repeater } => { let front = pos.offset(repeater.facing.opposite().block_face()); adjacent(front).into_iter().chain([front]).collect() },
+            Block::RedstoneComparator { comparator } => { let front = pos.offset(comparator.facing.opposite().block_face()); adjacent(front).into_iter().chain([front]).collect() },
+            Block::Lever { .. } => update_footprint(pos, program.initial[node]),
+            _ => Vec::new(),
+        };
+        for at in footprint {
+            if let Some(target) = program.positions.iter().position(|&pos| pos == at) {
+                if target != node && program.reactive[target] && !program.reactive_neighbours[node].contains(&target) { program.reactive_neighbours[node].push(target); }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn update_order() -> [mchprs_blocks::BlockFace; 6] {
@@ -552,8 +676,8 @@ fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
     use mchprs_blocks::BlockFace;
     let neighbours = |pos: BlockPos| update_order().map(|face| pos.offset(face));
     match block {
-        Block::RedstoneRepeater { repeater } => {
-            let rear = repeater.facing.block_face();
+        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
+            let rear = match block { Block::RedstoneRepeater { repeater } => repeater.facing.block_face(), Block::RedstoneComparator { comparator } => comparator.facing.block_face(), _ => unreachable!() };
             let front = pos.offset(rear.opposite());
             std::iter::once(front).chain(update_order().into_iter().filter(|&face| face != rear).map(|face| front.offset(face))).collect()
         }
