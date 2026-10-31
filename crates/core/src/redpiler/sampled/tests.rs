@@ -2198,11 +2198,14 @@ fn command_block_without_entity_uses_native_default() {
     let pos = BlockPos::new(15, 15, 15);
     w.set_block(pos, Block::from_name("command_block").unwrap());
     let program = compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)).unwrap();
-    assert_eq!(
-        *program.command_blocks[&pos],
-        mchprs_blocks::block_entities::CommandBlockEntity::default()
-    );
+    assert!(program.command_blocks.is_empty());
     assert!(w.get_block_entity(pos).is_none(), "compilation must not mutate the host");
+    let mut runtime = program.start();
+    let component = runtime.program.component_indices[&pos];
+    runtime.update(component);
+    crate::redstone::command_block::update(&mut w, pos);
+    let Some(BlockEntity::CommandBlock(expected)) = w.get_block_entity(pos) else { panic!("missing native command entity"); };
+    assert_eq!(&runtime.command_blocks[&pos], expected);
 }
 #[test]
 fn passive_geometry_preserves_material_properties_and_can_move() {

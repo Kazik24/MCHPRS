@@ -101,7 +101,7 @@ fn interpreter_stays_awake_for_partial_ticks_pistons_and_history() {
 }
 
 #[test]
-fn unsupported_barrel_compile_keeps_the_open_container_in_native_mode() {
+fn rejected_circuit_compile_keeps_the_open_container_in_native_mode() {
     use mchprs_blocks::BlockFacing;
     use mchprs_blocks::block_entities::ContainerType;
     use mchprs_blocks::blocks::{RedstoneObserver, RedstonePiston};
@@ -136,6 +136,8 @@ fn unsupported_barrel_compile_keeps_the_open_container_in_native_mode() {
         },
     );
     plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
+    // A normal piston cannot push a token beyond this backend's captured movement domain.
+    plot.world.set_block(BlockPos::new(39, 20, 32), Block::Stone {});
     let pending_before = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
 
     plot.start_redpiler(CompilerOptions::default());

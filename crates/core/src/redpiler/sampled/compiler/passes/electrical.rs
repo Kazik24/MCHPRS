@@ -181,14 +181,21 @@ pub(in super::super) fn run<'a>(
     program.tokens = tokens;
     for (&pos, block) in program.positions.iter().zip(&program.initial) {
         if block.is_command_block() {
-            let entity = match world.get_block_entity(pos) {
-                Some(BlockEntity::CommandBlock(entity)) => entity.clone(),
-                _ => Box::default(),
-            };
-            program.command_blocks.insert(pos, entity);
+            if let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity(pos) {
+                program.command_blocks.insert(pos, entity.clone());
+            }
+            let face = block.facing().unwrap_or(mchprs_blocks::BlockFace::North);
+            let next = pos.offset(face);
+            let previous = pos.offset(face.opposite());
+            if world.get_block(next).get_name() == "chain_command_block" && !position_index.contains_key(&next) {
+                return Err(error(next, "command block chain leaves capture bounds"));
+            }
+            if block.conditional() == Some(true) && world.get_block(previous).is_command_block() && !position_index.contains_key(&previous) {
+                return Err(error(previous, "command block condition leaves capture bounds"));
+            }
         }
     }
-    if !program.command_blocks.is_empty() {
+    if program.initial.iter().any(|block| block.is_command_block()) {
         program.command_output_state = world.command_block_output_state();
     }
     for component in 0..program.initial.len() {

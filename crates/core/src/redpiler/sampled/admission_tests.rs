@@ -187,6 +187,7 @@ fn command_lifecycle_output_and_comparators_match_interpreter() {
                             Arc::new(TaskMonitor::default()),
                         )
                         .unwrap();
+                    published.clear_scheduled_ticks();
                 }
             }
             compiler.try_reset(&mut published, bounds).unwrap();

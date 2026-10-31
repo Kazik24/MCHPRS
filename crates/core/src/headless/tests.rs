@@ -206,23 +206,18 @@ fn input_batch_validates_before_mutating_and_preserves_order() {
 
 #[test]
 fn unsupported_compile_keeps_the_headless_session_native() {
-    use mchprs_blocks::block_entities::CommandBlockEntity;
     let pos = BlockPos::new(21, 4, 30);
     let mut input = snapshot();
-    input.blocks.push((pos, Block::from_name("command_block").unwrap()));
-    input.entities.push((
-        pos,
-        BlockEntity::CommandBlock(Box::new(CommandBlockEntity {
-            command: "say test".into(),
-            automatic: true,
-            ..Default::default()
-        })),
-    ));
+    let block = Block::Piston { piston: mchprs_blocks::blocks::RedstonePiston {
+        facing: mchprs_blocks::BlockFacing::East, sticky: false, extended: false,
+    }};
+    input.blocks.push((pos, block));
+    input.blocks.push((pos.offset(BlockFace::East), Block::Stone {}));
     let mut session = Session::new(input).unwrap();
     assert!(session.compile(CompilerOptions::default()).is_err());
     session.advance(1).unwrap();
     assert_eq!(session.ticks(), 1);
-    assert_eq!(session.get(pos).unwrap(), Block::from_name("command_block").unwrap());
+    assert_eq!(session.get(pos).unwrap(), block);
 }
 
 #[test]

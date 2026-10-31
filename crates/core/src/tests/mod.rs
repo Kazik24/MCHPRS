@@ -16,12 +16,13 @@ const TICK_MUL: u32 = 2;
 pub fn load_test_plot(path: impl AsRef<Path>) -> PlotWorld {
     let data = PlotData::load_from_file(path, false).unwrap();
 
-    let chunks: Vec<Chunk> = data
-        .chunk_data
-        .into_iter()
-        .enumerate()
-        .map(|(i, c)| Chunk::load(i as i32 / PLOT_WIDTH, i as i32 % PLOT_WIDTH, c))
-        .collect();
+    let width = data.chunk_data.len().isqrt();
+    assert!(width > 0 && width * width == data.chunk_data.len() && width <= PLOT_WIDTH as usize);
+    let mut chunks: Vec<_> = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
+    for (index, chunk) in data.chunk_data.into_iter().enumerate() {
+        let (x, z) = (index / width, index % width);
+        chunks[x * PLOT_WIDTH as usize + z] = Chunk::load(x as i32, z as i32, chunk);
+    }
 
     PlotWorld::from_chunks(0, 0, chunks, data.pending_ticks.into_iter().collect())
 }
@@ -48,7 +49,8 @@ fn can_load_chungus_plot() {
 
 fn calculate_world_hash(world: &PlotWorld) -> Box<[u8]> {
     let mut hasher = Sha256::new();
-    for chunk in world.get_chunks() {
+    // Keep the frozen checksum's original 16-by-16 chunk footprint after plot-width migration.
+    for chunk in world.get_chunks().iter().filter(|chunk| chunk.x < 16 && chunk.z < 16) {
         for x in 0..16 {
             for z in 0..16 {
                 for y in 0..256 {

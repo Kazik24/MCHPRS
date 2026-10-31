@@ -79,7 +79,7 @@ fn output_fixture(name: &str, automatic: bool) -> (PlotWorld, BlockPos, BlockPos
 }
 
 #[test]
-fn compiled_command_blocks_are_rejected_without_changing_native_state() {
+fn compiled_command_blocks_are_admitted_without_changing_native_state() {
     use crate::redpiler::{Compiler, CompilerOptions};
 
     let mut world = world();
@@ -95,9 +95,9 @@ fn compiled_command_blocks_are_rejected_without_changing_native_state() {
     assert!(
         compiler
             .compile(&world, world.get_corners(), CompilerOptions::default(), ticks.clone(), Default::default())
-            .is_err()
+            .is_ok()
     );
-    assert!(!compiler.is_active());
+    assert!(compiler.is_active());
     assert_eq!(world.get_block(pos), block);
     assert_eq!(format!("{:?}", world.get_block_entity(pos)), entity);
     assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
