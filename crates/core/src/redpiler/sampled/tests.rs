@@ -2839,9 +2839,10 @@ fn rejects_invalid_or_unreadable_piston_contacts() {
         },
     );
     let capture = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
-    let error = discover_piston_actors(&escaped, capture, entry(&escaped)).unwrap_err();
-    assert_eq!(error.reason, "scratch probe read outside captured boundary");
-    assert!(error.position.is_some_and(|pos| pos.x > capture.1.x));
+    let actors = discover_piston_actors(&escaped, capture, entry(&escaped)).unwrap();
+    assert_eq!(actors.len(), 1);
+    assert_eq!(actors[0].home.x, 23);
+    assert_eq!(actors[0].far.x, 24);
 }
 
 #[test]

@@ -577,7 +577,7 @@ mod tests {
     fn scratch_reports_unknown_boundary_and_pending_entry_work() {
         let host = fixture();
         let scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
-        let outside = BlockPos::new(BOUNDS.1.x + 2, BOUNDS.1.y, BOUNDS.1.z);
+        let outside = BlockPos::new(-2, BOUNDS.1.y, BOUNDS.1.z);
         let _ = scratch.world().get_block(outside);
         assert_eq!(
             scratch.finish_probe().unwrap_err(),

@@ -806,45 +806,40 @@ pub(crate) fn compile_monitored(
     sampling.racing_sources = racing_sources.len();
     let mut comparisons = Vec::new();
     let mut quiet_basis = Vec::with_capacity(program.positions.len());
-    for (output_index, &source) in output_sources.iter().enumerate() {
-        phases.detail("source transition", source);
-        check_cancelled(monitor)?;
-        check_cancelled(monitor)?;
-        if !racing_sources.contains(&source) {
-            phases.detail("ordered-program lowering", source);
-            let lowering_started = Instant::now();
-            let operations = source_operations(&program, source);
-            program.output_programs[source] = [operations.clone(), operations];
-            sampling.ordered_lowering += lowering_started.elapsed();
-            sampling.completed_sources += 1;
-            continue;
+    if !racing_sources.is_empty() {
+        let source = 0;
+        let mut groups_by_target = vec![Vec::new(); program.positions.len()];
+        for (index, group) in program.input_arrangements.iter().enumerate() {
+            if index % 1024 == 0 { check_cancelled(monitor)?; }
+            groups_by_target[group.target].push(index);
         }
-        phases.detail("scratch restore/setup", source);
-        let scratch_started = Instant::now();
-        ordering_probe.revert();
-        sampling.scratch_setup += scratch_started.elapsed();
-        let scratch = &mut ordering_probe;
+        let mut links_by_target = vec![Vec::new(); program.positions.len()];
+        for (index, link) in program.arrangement_links.iter().enumerate() {
+            if index % 1024 == 0 { check_cancelled(monitor)?; }
+            links_by_target[link.target].push(index);
+        }
         phases.detail("loaded-arrangement preparation", source);
         let arrangement_started = Instant::now();
         let loaded = program.start();
         sampling.loaded_arrangement += arrangement_started.elapsed();
         sampling.program_starts += 1;
-        let pos = program.positions[source];
         phases.detail("quiet-basis preparation", source);
         let quiet_started = Instant::now();
-        quiet_basis.clear();
         for (id, &at) in program.positions.iter().enumerate() {
-            let block = scratch.world().get_block(at);
+            if id % 1024 == 0 { check_cancelled(monitor)?; }
+            let block = ordering_probe.world().get_block(at);
             let constant_power = program.incoming[id]
                 .iter()
                 .filter_map(|&link| {
                     let link = &program.links[link];
-                    let conditional = program.input_arrangements.iter().any(|group| {
+                    let conditional = groups_by_target[id].iter().any(|&group| {
+                        let group = &program.input_arrangements[group];
                         group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                     });
                     (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional).then_some(15u8.saturating_sub(link.attenuation))
                 })
-                .chain(program.arrangement_links.iter().filter_map(|link| {
+                .chain(links_by_target[id].iter().filter_map(|&index| {
+                    let link = &program.arrangement_links[index];
                     let constant = match link.source {
                         ArrangementSource::Token(_) => true,
                         ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock),
@@ -854,6 +849,25 @@ pub(crate) fn compile_monitored(
                 }))
                 .max()
                 .unwrap_or(0);
+            #[cfg(test)]
+            if program.positions.len() < 1000 {
+                let original = program.incoming[id].iter().filter_map(|&index| {
+                    let link = &program.links[index];
+                    let conditional = program.input_arrangements.iter().any(|group| {
+                        group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
+                    });
+                    (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional)
+                        .then_some(15u8.saturating_sub(link.attenuation))
+                }).chain(program.arrangement_links.iter().filter_map(|link| {
+                    let constant = match link.source {
+                        ArrangementSource::Token(_) => true,
+                        ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock),
+                    };
+                    (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
+                        .then_some(15u8.saturating_sub(link.attenuation))
+                })).max().unwrap_or(0);
+                assert_eq!(constant_power, original);
+            }
             let quiet = match block {
                 Block::Lever { mut lever } => {
                     lever.powered = false;
@@ -870,7 +884,6 @@ pub(crate) fn compile_monitored(
                 }
                 Block::RedstoneComparator { mut comparator } => {
                     comparator.powered = false;
-                    scratch.world_mut().set_block_entity(at, BlockEntity::Comparator { output_strength: 0 });
                     Block::RedstoneComparator { comparator }
                 }
                 Block::Observer { mut observer } => {
@@ -890,9 +903,29 @@ pub(crate) fn compile_monitored(
         }
         sampling.quiet_basis += quiet_started.elapsed();
         sampling.quiet_component_walks += 1;
+    }
+    for (output_index, &source) in output_sources.iter().enumerate() {
+        phases.detail("source transition", source);
+        check_cancelled(monitor)?;
+        if !racing_sources.contains(&source) {
+            phases.detail("ordered-program lowering", source);
+            let lowering_started = Instant::now();
+            let operations = source_operations(&program, source);
+            program.output_programs[source] = [operations.clone(), operations];
+            sampling.ordered_lowering += lowering_started.elapsed();
+            sampling.completed_sources += 1;
+            continue;
+        }
+        phases.detail("scratch restore/setup", source);
+        let scratch_started = Instant::now();
+        ordering_probe.revert();
+        sampling.scratch_setup += scratch_started.elapsed();
+        let scratch = &mut ordering_probe;
+        let pos = program.positions[source];
         phases.detail("scratch quiet-state setup", source);
         let scratch_setup_started = Instant::now();
-        for (&at, &(quiet, comparator)) in program.positions.iter().zip(&quiet_basis) {
+        for (index, (&at, &(quiet, comparator))) in program.positions.iter().zip(&quiet_basis).enumerate() {
+            if index % 1024 == 0 { check_cancelled(monitor)?; }
             if comparator {
                 scratch.world_mut().set_block_entity(at, BlockEntity::Comparator { output_strength: 0 });
             }
