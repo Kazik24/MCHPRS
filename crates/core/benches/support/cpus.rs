@@ -455,39 +455,3 @@ pub fn click(world: &mut PlotWorld, local: BlockPos) {
     };
     redstone::update_surrounding_blocks(world, pos.offset(face));
 }
-
-pub fn load_manifest(descriptor: &serde_json::Value) -> anyhow::Result<PlotWorld> {
-    use anyhow::{Context, ensure};
-    use serde_json::json;
-    let bytes = std::fs::read(
-        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).join(descriptor["fixture"].as_str().context("missing schematic path")?),
-    )?;
-    ensure!(descriptor["sha256"] == format!("{:x}", Sha256::digest(&bytes)), "schematic hash changed");
-    let clipboard = load_schematic(std::io::Cursor::new(bytes))?;
-    ensure!(
-        descriptor["dimensions"] == json!([clipboard.size_x, clipboard.size_y, clipboard.size_z]),
-        "schematic dimensions changed"
-    );
-    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
-    let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
-    paste_clipboard(
-        &mut world,
-        &clipboard,
-        manifest_origin(descriptor) + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
-        false,
-    );
-    Ok(world)
-}
-
-pub fn manifest_origin(descriptor: &serde_json::Value) -> BlockPos {
-    let value = descriptor.get("origin").unwrap_or(&descriptor["coordinates"]["origin"]);
-    manifest_position(value)
-}
-
-pub fn manifest_position(value: &serde_json::Value) -> BlockPos {
-    BlockPos::new(
-        value[0].as_i64().unwrap() as i32,
-        value[1].as_i64().unwrap() as i32,
-        value[2].as_i64().unwrap() as i32,
-    )
-}

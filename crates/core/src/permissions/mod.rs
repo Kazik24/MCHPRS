@@ -69,7 +69,6 @@ pub struct PermissionsConfig {
 }
 
 impl PermissionsConfig {
-    /// Whether permissions come from the RedBox bridge instead of a database.
     pub fn from_redbox(&self) -> bool {
         matches!(self.source, Source::Redbox)
     }
@@ -78,6 +77,7 @@ struct Database {
     config: PermissionsConfig,
     mysql: Option<Pool>,
 }
+// TODO: Cleanup: Remove database connection code, we are using redbox.
 impl Database {
     fn new(config: PermissionsConfig) -> Result<Self> {
         if config.table_prefix.is_empty() || !config.table_prefix.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
@@ -249,7 +249,7 @@ pub struct PlayerPermissionsCache {
     plotsquared_compat: bool,
     pub rank_profile: Option<RankProfile>,
     waveform_rank: Option<Rank>,
-    rank_budget_expiry: i64,
+    rank_expiry: i64,
     mchprs_permissions: bool,
     valid_until: Option<Instant>,
 }
@@ -320,7 +320,7 @@ impl PlayerPermissionsCache {
             plotsquared_compat,
             rank_profile: None,
             waveform_rank: Rank::from_group(&group),
-            rank_budget_expiry: 0,
+            rank_expiry: 0,
             mchprs_permissions,
             valid_until: Some(Instant::now() + Duration::from_secs(30)),
         };
@@ -335,7 +335,7 @@ impl PlayerPermissionsCache {
     }
 
     pub(crate) fn waveform_rank(&self) -> Option<Rank> {
-        if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now()) || self.valid_until.is_none_or(|until| Instant::now() >= until) {
+        if (self.rank_expiry != 0 && self.rank_expiry <= now()) || self.valid_until.is_none_or(|until| Instant::now() >= until) {
             return None;
         }
         self.waveform_rank
@@ -357,15 +357,6 @@ impl PlayerPermissionsCache {
             (signals.min(config.waveform_max_signals) as usize).min(self.numeric_limit(&format!("{prefix}waveform.signals.limit.")).unwrap_or(0)),
             (ticks.min(config.waveform_max_ticks) as usize).min(self.numeric_limit(&format!("{prefix}waveform.ticks.limit.")).unwrap_or(0)),
         ))
-    }
-
-    pub fn compilation_budget_multiplier(&self) -> usize {
-        if (self.rank_budget_expiry != 0 && self.rank_budget_expiry <= now()) || self.valid_until.is_none_or(|until| Instant::now() >= until) {
-            return 1;
-        }
-        self.rank_profile
-            .as_ref()
-            .map_or(1, |profile| profile.rank.compilation_budget_multiplier())
     }
 
     /// Numeric limits are ordinary boolean nodes such as mchprs.history.limit.200.
@@ -446,7 +437,7 @@ impl PlayerPermissionsCache {
             nodes: Vec::new(),
             plotsquared_compat: config.plotsquared_compat,
             rank_profile: None,
-            rank_budget_expiry: 0,
+            rank_expiry: 0,
             mchprs_permissions: config.mchprs_permissions,
             waveform_rank: None,
             valid_until: Some(Instant::now() + Duration::from_secs(30)),
@@ -511,7 +502,7 @@ impl PlayerPermissionsCache {
         }
         result.waveform_rank = visited.keys().filter_map(|group| Rank::from_group(group)).max();
         if let Some(rank) = result.waveform_rank {
-            result.rank_budget_expiry = visited.get(rank.group()).map_or(0, |paths| {
+            result.rank_expiry = visited.get(rank.group()).map_or(0, |paths| {
                 if paths.iter().any(|&(_, expiry)| expiry == 0) {
                     0
                 } else {
@@ -668,36 +659,6 @@ mod tests {
             now(),
         );
         assert_eq!(denied.waveform_limits(&server).unwrap(), (0, 100));
-    }
-
-    #[test]
-    fn compilation_budget_follows_effective_rank_and_rejects_stale_cache() {
-        let mut config = config();
-        config.redstonefun_ranks = true;
-        for (group, multiplier) in [
-            ("default", 1),
-            ("builder", 1),
-            ("advanced", 2),
-            ("expert", 2),
-            ("engineer", 8),
-            ("moderator", 8),
-            ("admin", 8),
-        ] {
-            let mut cache = PlayerPermissionsCache::resolve(vec![node("", &format!("group.{group}"), true)], vec![], &config, now());
-            assert_eq!(cache.compilation_budget_multiplier(), multiplier);
-            cache.valid_until = Some(Instant::now() - Duration::from_secs(1));
-            assert_eq!(cache.compilation_budget_multiplier(), 1);
-        }
-        let mut expired = node("", "group.admin", true);
-        expired.expiry = now() - 1;
-        let cache = PlayerPermissionsCache::resolve(vec![expired], vec![], &config, now());
-        assert_eq!(cache.compilation_budget_multiplier(), 1);
-        let mut temporary = node("", "group.admin", true);
-        temporary.expiry = now() + 60;
-        let mut cache = PlayerPermissionsCache::resolve(vec![temporary], vec![], &config, now());
-        assert_eq!(cache.compilation_budget_multiplier(), 8);
-        cache.rank_budget_expiry = now() - 1;
-        assert_eq!(cache.compilation_budget_multiplier(), 1);
     }
 
     #[test]

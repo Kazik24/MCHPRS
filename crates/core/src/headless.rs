@@ -196,7 +196,10 @@ impl Session {
                     self.failed = true;
                     bail!("compiled tick failed: {error:?}");
                 }
-                self.compiler.flush(&mut self.world);
+                if let Err(error) = self.compiler.try_flush(&mut self.world) {
+                    self.failed = true;
+                    bail!("compiled flush failed: {error}");
+                }
             } else {
                 self.world.tick_interpreted();
             }
@@ -229,7 +232,7 @@ impl Session {
                 ),
                 Input::Plate(_, _) => block.pressure_plate_powered().is_some(),
             };
-            let supported = supported && (!self.compiler.is_active() || self.compiler.accepts_control(pos, matches!(input, Input::Plate(..))));
+            let supported = supported && (!self.compiler.is_active() || matches!(input, Input::Use(_)) && self.compiler.accepts_control(pos));
             if !supported {
                 bail!("unsupported input at {pos}");
             }
@@ -254,14 +257,17 @@ impl Session {
             if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. }) {
                 bail!("unsupported compiled control at {pos}");
             }
-            if !self.compiler.accepts_control(pos, false) {
-                bail!("control is not present in compiled graph at {pos}");
+            if !self.compiler.accepts_control(pos) {
+                bail!("control is not present in the compiled circuit at {pos}");
             }
             if let Err(error) = self.compiler.try_on_use_block(pos) {
                 self.failed = true;
                 bail!("compiled use failed: {error:?}");
             }
-            self.compiler.flush(&mut self.world);
+            if let Err(error) = self.compiler.try_flush(&mut self.world) {
+                self.failed = true;
+                bail!("compiled flush failed: {error}");
+            }
         } else if crate::interaction::use_redstone(block, &mut self.world, pos, None) != Some(crate::interaction::ActionResult::Success) {
             bail!("unsupported control at {pos}");
         }
@@ -275,14 +281,8 @@ impl Session {
             bail!("not a pressure plate at {pos}");
         }
         if self.compiler.is_active() {
-            if !self.compiler.accepts_control(pos, true) {
-                bail!("pressure plate is not present in compiled graph at {pos}");
-            }
-            if let Err(error) = self.compiler.try_set_pressure_plate(pos, powered) {
-                self.failed = true;
-                bail!("compiled plate failed: {error:?}");
-            }
-            self.compiler.flush(&mut self.world);
+            self.failed = true;
+            bail!("pressure plate inputs are unsupported in compiled mode at {pos}");
         } else {
             redstone::set_pressure_plate(&mut self.world, pos, block, powered);
         }
@@ -329,7 +329,9 @@ impl Session {
     pub fn reset(&mut self) -> Result<()> {
         self.ready()?;
         if self.compiler.is_active() {
-            self.compiler.reset(&mut self.world, self.bounds);
+            self.compiler
+                .try_reset(&mut self.world, self.bounds)
+                .map_err(|error| anyhow::anyhow!("compiled reset failed: {error}"))?;
         }
         Ok(())
     }
@@ -447,11 +449,8 @@ mod tests {
     fn compiled_reset_hands_pending_ticks_back_once() {
         let pos = BlockPos::new(21, 4, 30);
         let mut input = snapshot();
-        let Block::StoneButton { mut button } = Block::from_name("stone_button").unwrap() else {
-            unreachable!()
-        };
-        button.powered = true;
-        let block = Block::StoneButton { button };
+        input.min = BlockPos::new(20, 3, 29);
+        let block = Block::RedstoneLamp { lit: false };
         input.blocks.push((pos, block));
         input.ticks.push(TickEntry {
             pos,
@@ -516,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn compiled_execution_error_fails_the_session() {
+    fn unsupported_compile_keeps_the_headless_session_native() {
         use mchprs_blocks::block_entities::CommandBlockEntity;
         let pos = BlockPos::new(21, 4, 30);
         let mut input = snapshot();
@@ -530,12 +529,10 @@ mod tests {
             })),
         ));
         let mut session = Session::new(input).unwrap();
-        session.compile(CompilerOptions::default()).unwrap();
-        assert!(session.advance(1).is_err());
-        assert_eq!(session.ticks(), 0);
-        assert!(session.advance(1).is_err());
-        assert!(session.get(pos).is_err());
-        assert!(session.drain_changes().is_err());
+        assert!(session.compile(CompilerOptions::default()).is_err());
+        session.advance(1).unwrap();
+        assert_eq!(session.ticks(), 1);
+        assert_eq!(session.get(pos).unwrap(), Block::from_name("command_block").unwrap());
     }
 
     #[test]

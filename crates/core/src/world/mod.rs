@@ -14,20 +14,13 @@ use mchprs_world::TickPriority;
 use storage::Chunk;
 
 pub trait World {
-    /// Observe an interpreter power callback without changing its dispatch.
-    fn observe_redstone_update(&mut self, _pos: BlockPos, _block: Block, _direction: Option<BlockFace>) {}
-
-    /// Observe the ordered recipients of piston shape and neighbor notifications.
-    fn observe_piston_notification(&mut self, _source: BlockPos, _target: BlockPos, _direction: BlockFace, _shape: bool) {}
-
-    /// Set the actor/action context while a queued piston event mutates the world.
-    fn observe_piston_event_context(&mut self, _event: Option<mchprs_world::PistonEvent>) {}
-
-    fn piston_motion_origin(&self, _identity: u64) -> Option<mchprs_world::PistonEvent> {
-        None
+    /// Returns the plot coordinates whose block space this world uses.
+    fn plot_coordinates(&self) -> (i32, i32) {
+        (0, 0)
     }
 
-    fn observe_piston_motion_context(&mut self, _motion: Option<PistonMotionObservation>) {}
+    /// Observe an interpreter power callback without changing its dispatch.
+    fn observe_redstone_update(&mut self, _pos: BlockPos, _block: Block, _direction: Option<BlockFace>) {}
 
     /// Returns the block located at `pos`
     fn get_block(&self, pos: BlockPos) -> Block {
@@ -176,28 +169,6 @@ pub struct RedstoneUpdateObservation {
     pub input_on: Option<(bool, bool)>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct PistonNotificationObservation {
-    pub source: BlockPos,
-    pub target: BlockPos,
-    pub target_block: Block,
-    pub direction: BlockFace,
-    pub shape: bool,
-    pub phase: mchprs_world::AdvancePhase,
-    pub event: Option<mchprs_world::PistonEvent>,
-    pub motion: Option<PistonMotionObservation>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PistonMotionObservation {
-    pub identity: u64,
-    pub actor: BlockPos,
-    pub action: mchprs_world::PistonAction,
-    pub part: BlockPos,
-    pub source: bool,
-    pub extending: bool,
-}
-
 // https://wiki.vg/Block_Actions#Piston
 pub enum BlockAction {
     Piston { action: PistonAction, piston: RedstonePiston },
@@ -226,27 +197,6 @@ where
             for_each_position(first, last, |pos| f(world, pos));
         }
     }
-}
-
-pub(crate) fn try_for_each_block_optimized<E>(
-    world: &impl World,
-    first: BlockPos,
-    last: BlockPos,
-    mut visit: impl FnMut(BlockPos) -> Result<(), E>,
-) -> Result<(), E> {
-    for (first, last) in section_bounds(first, last) {
-        if !section_has_blocks(world, first) {
-            continue;
-        }
-        for y in first.y..=last.y {
-            for z in first.z..=last.z {
-                for x in first.x..=last.x {
-                    visit(BlockPos::new(x, y, z))?;
-                }
-            }
-        }
-    }
-    Ok(())
 }
 
 /// Intersect the selection with each aligned section, including partial sections.

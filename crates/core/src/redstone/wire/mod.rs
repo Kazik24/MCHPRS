@@ -226,6 +226,7 @@ pub(crate) fn get_raw_sides_from(wire: RedstoneWire, pos: BlockPos, read: impl F
 }
 
 /// Query only geometry that can affect a side; the caller performs no callbacks between reads.
+#[cfg(test)]
 pub(crate) fn get_raw_sides_from_neighbor_read(mut wire: RedstoneWire, read: impl Fn(usize) -> Block) -> RedstoneWire {
     let up_solid = read(3).is_solid();
     for (side, neighbor, above, below) in [
@@ -254,6 +255,7 @@ pub(crate) fn get_raw_sides_from_neighbor_read(mut wire: RedstoneWire, read: imp
     wire
 }
 
+#[cfg(test)]
 pub(crate) fn get_raw_sides_from_neighbors(mut wire: RedstoneWire, neighbors: &[Block; 24]) -> RedstoneWire {
     let up_solid = neighbors[3].is_solid();
     for (side, neighbor, above, below) in [

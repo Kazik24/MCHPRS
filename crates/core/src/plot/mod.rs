@@ -41,8 +41,7 @@ pub mod worldedit;
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
-use crate::redpiler::backend::ScheduledBlockTick;
-use crate::redpiler::{Compiler, CompilerOptions, TickScheduler};
+use crate::redpiler::{Compiler, CompilerOptions, ScheduledBlockTick, TickScheduler};
 use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
@@ -61,7 +60,7 @@ use monitor::TimingsMonitor;
 use scoreboard::RedpilerState;
 use serde_json::json;
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -95,7 +94,6 @@ pub struct Plot {
     pub redpiler: Compiler,
     /// In-flight compilation owns a snapshot; the live plot stays on this thread.
     compilation: Option<redpiler_compilation::CompilationJob>,
-    analysis: Option<redpiler_compilation::AnalysisJob>,
 
     // Thread communication
     message_receiver: BusReader<BroadcastMessage>,
@@ -167,10 +165,6 @@ pub struct PlotWorld {
     update_stats: UpdateStats,
     bulb_light: block_light::BulbLight,
     redstone_update_observations: Option<Vec<RedstoneUpdateObservation>>,
-    piston_notification_observations: Option<Vec<crate::world::PistonNotificationObservation>>,
-    current_piston_event: Option<mchprs_world::PistonEvent>,
-    piston_motion_origins: HashMap<u64, mchprs_world::PistonEvent>,
-    current_piston_motion: Option<crate::world::PistonMotionObservation>,
     scratch_capture_bounds: Option<(BlockPos, BlockPos)>,
     scratch_boundary_read: std::cell::Cell<Option<BlockPos>>,
     scratch_touched_blocks: Option<HashSet<BlockPos>>,
@@ -221,10 +215,6 @@ impl PlotWorld {
             update_stats: Default::default(),
             bulb_light: Default::default(),
             redstone_update_observations: None,
-            piston_notification_observations: None,
-            current_piston_event: None,
-            piston_motion_origins: HashMap::new(),
-            current_piston_motion: None,
             scratch_capture_bounds: None,
             scratch_boundary_read: std::cell::Cell::new(None),
             scratch_touched_blocks: None,
@@ -422,16 +412,6 @@ impl PlotWorld {
         self.redstone_update_observations.take().unwrap_or_default()
     }
 
-    #[cfg(test)]
-    pub(crate) fn observe_piston_notifications(&mut self, enabled: bool) {
-        self.piston_notification_observations = enabled.then(Vec::new);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn take_piston_notification_observations(&mut self) -> Vec<crate::world::PistonNotificationObservation> {
-        self.piston_notification_observations.take().unwrap_or_default()
-    }
-
     pub(crate) fn configure_scratch(&mut self, bounds: (BlockPos, BlockPos)) {
         self.scratch_capture_bounds = Some(bounds);
         self.scratch_boundary_read.set(None);
@@ -441,7 +421,10 @@ impl PlotWorld {
     }
 
     pub(crate) fn take_scratch_changes(&mut self) -> (HashSet<BlockPos>, HashSet<BlockPos>) {
-        (self.scratch_touched_blocks.take().unwrap_or_default(), self.scratch_touched_entities.take().unwrap_or_default())
+        (
+            self.scratch_touched_blocks.take().unwrap_or_default(),
+            self.scratch_touched_entities.take().unwrap_or_default(),
+        )
     }
 
     pub(crate) fn reset_scratch_probe_state(&mut self, piston: &mchprs_world::PistonState, bounds: (BlockPos, BlockPos)) {
@@ -449,7 +432,6 @@ impl PlotWorld {
         self.piston_state_mut().clone_from(piston);
         self.observe_redstone_updates(false);
         #[cfg(test)]
-        self.observe_piston_notifications(false);
         self.piston_index.get_mut().invalidate();
         self.wire_topology.get_mut().clear();
         self.instant_pistons.clear();
@@ -489,20 +471,10 @@ impl PlotWorld {
             last_tick: state.logical_tick,
             carried_entity: None,
         });
-        if let Some(event) = self.current_piston_event {
-            self.piston_motion_origins.insert(state.next_identity, event);
-        }
         self.piston_index.get_mut().inserted(pos, state.motions.len() - 1);
     }
 
     fn remove_motions_at(&mut self, pos: BlockPos) {
-        let identities: Vec<_> = self
-            .piston_state
-            .motions
-            .iter()
-            .filter(|motion| motion.pos == pos)
-            .map(|motion| motion.identity)
-            .collect();
         if let Some(index) = self.piston_motion_index(pos, None) {
             if self.piston_state.motions.len() <= 8 || self.piston_index.get_mut().has_duplicate_motions(pos) {
                 // Legacy saves can contain repeated positions; remove all of
@@ -512,9 +484,6 @@ impl PlotWorld {
                 self.piston_state.motions.remove(index);
             }
             self.piston_index.get_mut().removed(pos);
-        }
-        for identity in identities {
-            self.piston_motion_origins.remove(&identity);
         }
     }
 
@@ -661,8 +630,14 @@ impl PlotWorld {
 }
 
 impl World for PlotWorld {
+    fn plot_coordinates(&self) -> (i32, i32) {
+        (self.x, self.z)
+    }
+
     fn observe_redstone_update(&mut self, pos: BlockPos, block: Block, direction: Option<BlockFace>) {
-        if self.redstone_update_observations.is_none() { return; }
+        if self.redstone_update_observations.is_none() {
+            return;
+        }
         let input_on = match block {
             Block::RedstoneRepeater { repeater } => {
                 let rear = crate::redstone::diode_get_input_strength(self, pos, repeater.facing) > 0;
@@ -672,43 +647,23 @@ impl World for PlotWorld {
             Block::Piston { piston } => Some((crate::redstone::piston::should_piston_extend(self, piston.facing, pos), false)),
             Block::RedstoneTorch { .. } => Some((crate::redstone::torch_should_be_off(self, pos), false)),
             Block::RedstoneWallTorch { facing, .. } => Some((crate::redstone::wall_torch_should_be_off(self, pos, facing), false)),
-            Block::RedstoneLamp { .. } => Some((BlockFace::values().iter().any(|&face| {
-                let at = pos.offset(face);
-                crate::redstone::get_redstone_power(self.get_block(at), self, at, face) > 0
-            }), false)),
+            Block::RedstoneLamp { .. } => Some((
+                BlockFace::values().iter().any(|&face| {
+                    let at = pos.offset(face);
+                    crate::redstone::get_redstone_power(self.get_block(at), self, at, face) > 0
+                }),
+                false,
+            )),
             _ => None,
         };
         if let Some(observations) = &mut self.redstone_update_observations {
-            observations.push(RedstoneUpdateObservation { pos, block, direction, input_on });
-        }
-    }
-
-    fn observe_piston_notification(&mut self, source: BlockPos, target: BlockPos, direction: BlockFace, shape: bool) {
-        let target_block = self.get_block(target);
-        if let Some(observations) = &mut self.piston_notification_observations {
-            observations.push(crate::world::PistonNotificationObservation {
-                source,
-                target,
-                target_block,
+            observations.push(RedstoneUpdateObservation {
+                pos,
+                block,
                 direction,
-                shape,
-                phase: self.piston_state.phase,
-                event: self.current_piston_event,
-                motion: self.current_piston_motion,
+                input_on,
             });
         }
-    }
-
-    fn observe_piston_event_context(&mut self, event: Option<mchprs_world::PistonEvent>) {
-        self.current_piston_event = event;
-    }
-
-    fn piston_motion_origin(&self, identity: u64) -> Option<mchprs_world::PistonEvent> {
-        self.piston_motion_origins.get(&identity).copied()
-    }
-
-    fn observe_piston_motion_context(&mut self, motion: Option<crate::world::PistonMotionObservation>) {
-        self.current_piston_motion = motion;
     }
 
     fn execute_command_block(&mut self, command: &str, source: &str) -> Result<(), String> {
@@ -746,7 +701,9 @@ impl World for PlotWorld {
                 self.scratch_boundary_read.set(Some(pos));
                 return false;
             }
-            if let Some(touched) = &mut self.scratch_touched_blocks { touched.insert(pos); }
+            if let Some(touched) = &mut self.scratch_touched_blocks {
+                touched.insert(pos);
+            }
         }
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
@@ -827,7 +784,9 @@ impl World for PlotWorld {
     }
 
     fn delete_block_entity(&mut self, pos: BlockPos) {
-        if let Some(touched) = &mut self.scratch_touched_entities { touched.insert(pos); }
+        if let Some(touched) = &mut self.scratch_touched_entities {
+            touched.insert(pos);
+        }
         if self.get_block_entity(pos).is_some() {
             self.instant_pistons.entity_changed(pos);
         }
@@ -864,7 +823,9 @@ impl World for PlotWorld {
             self.scratch_boundary_read.set(Some(pos));
             return None;
         }
-        if let Some(touched) = &mut self.scratch_touched_entities { touched.insert(pos); }
+        if let Some(touched) = &mut self.scratch_touched_entities {
+            touched.insert(pos);
+        }
         let index = self.get_chunk_index_for_block(pos.x, pos.z)?;
         self.instant_pistons.entity_changed(pos);
         self.chunks[index].get_block_entity_mut(BlockPos::new(pos.x & 15, pos.y, pos.z & 15))
@@ -877,7 +838,9 @@ impl World for PlotWorld {
             self.scratch_boundary_read.set(Some(pos));
             return;
         }
-        if let Some(touched) = &mut self.scratch_touched_entities { touched.insert(pos); }
+        if let Some(touched) = &mut self.scratch_touched_entities {
+            touched.insert(pos);
+        }
         let Some(index) = self.get_chunk_index_for_block(pos.x, pos.z) else {
             return;
         };
@@ -964,7 +927,9 @@ impl World for PlotWorld {
                 self.scratch_boundary_read.set(Some(pos));
                 return;
             }
-            if let Some(touched) = &mut self.scratch_touched_entities { touched.insert(pos); }
+            if let Some(touched) = &mut self.scratch_touched_entities {
+                touched.insert(pos);
+            }
         }
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
@@ -1242,9 +1207,13 @@ impl Plot {
         self.timings.tick();
         if self.redpiler.is_active() {
             if let Err(error) = self.redpiler.tick_with_world(&mut self.world) {
-                tracing::error!(%error, "graph backend execution failed; resetting compiler");
-                let bounds = self.world.get_corners();
-                self.redpiler.reset(&mut self.world, bounds);
+                tracing::error!(%error, "sampled execution failed");
+                if let Err(export_error) = self.reset_redpiler() {
+                    tracing::error!(%export_error, "compiled state export failed; keeping compiler ownership");
+                    for player in &self.players {
+                        player.send_error_message(&format!("Compiled state could not be returned to native simulation: {export_error}"));
+                    }
+                }
                 self.auto_redpiler = false;
                 return false;
             }
@@ -1333,8 +1302,10 @@ impl Plot {
 
     fn set_pressure_plate(&mut self, pos: BlockPos, powered: bool) {
         if self.redpiler.is_active() {
-            self.redpiler.set_pressure_plate(pos, powered);
-            return;
+            if let Err(error) = self.reset_redpiler() {
+                tracing::error!(%error, "cannot hand off compiled state for a pressure-plate input");
+                return;
+            }
         }
 
         let block = self.world.get_block(pos);
@@ -1496,8 +1467,7 @@ impl Plot {
     }
 
     /// Redpiler needs to reset implicitly in the case of any block changes done by a player. This can be
-    fn reset_redpiler(&mut self) {
-        self.cancel_redpiler_analysis();
+    fn reset_redpiler(&mut self) -> Result<(), crate::redpiler::ExecutionError> {
         if self.compiling_redpiler() {
             self.cancel_redpiler_compilation();
             self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
@@ -1505,15 +1475,16 @@ impl Plot {
             self.reset_timings();
         }
         if self.redpiler.is_active() {
-            debug!("Discarding redpiler");
+            debug!("Resetting redpiler");
             let bounds = self.world.get_corners();
-            self.redpiler.reset(&mut self.world, bounds);
+            self.redpiler.try_reset(&mut self.world, bounds)?;
             self.scoreboard.set_redpiler_state(&self.players, RedpilerState::Stopped);
             self.scoreboard.set_redpiler_options(&self.players, &Default::default());
 
             // reseting redpiler could cause a large amount of block updates
             self.reset_timings();
         }
+        Ok(())
     }
 
     fn destroy_entity(&mut self, entity_id: u32) {
@@ -1900,7 +1871,6 @@ impl Plot {
         self.handle_messages();
         self.update_render_mode();
         self.poll_redpiler_compilation();
-        self.poll_redpiler_analysis();
 
         // Only tick if there are players in the plot
         if !self.players.is_empty() {
@@ -2194,7 +2164,6 @@ impl Plot {
             always_running,
             redpiler: Default::default(),
             compilation: None,
-            analysis: None,
             timings: TimingsMonitor::new(tps),
             owner,
             async_rt: Plot::create_async_rt(),
@@ -2305,7 +2274,6 @@ impl Plot {
 impl Drop for Plot {
     fn drop(&mut self) {
         self.cancel_redpiler_compilation();
-        self.cancel_redpiler_analysis();
         // Packet-handler tests own an in-memory world, with no persistent saves
         // or server thread to receive crash-recovery messages.
         #[cfg(any(test, feature = "plot-bench"))]
@@ -2336,9 +2304,12 @@ impl Drop for Plot {
             }
         }
 
-        self.reset_redpiler();
-        self.world.chunks.iter_mut().for_each(|chunk| chunk.compress());
-        self.save();
+        if let Err(error) = self.reset_redpiler() {
+            tracing::error!(%error, "compiled state export failed during plot shutdown; skipping save");
+        } else {
+            self.world.chunks.iter_mut().for_each(|chunk| chunk.compress());
+            self.save();
+        }
         let world = &self.world;
         self.message_sender.send(Message::PlotUnload(world.x, world.z)).unwrap();
     }

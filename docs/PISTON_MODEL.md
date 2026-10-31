@@ -190,13 +190,10 @@ Let $f$ be the live base facing, $h=p+f$, and $r=p+2f$. Let $f_c$ be the event's
 
 A nonsticky base does not pull. RetractWithoutPull suppresses the ordinary stationary-payload pull branch. The pull branch has no separate full extension-scan validation and does not reject every block excluded by Minecraft's general piston rules.
 
-Graph parity coverage for these notification boundaries lives in
-[`graph_fuzz_tests.rs`](../crates/core/src/redpiler/backend/graph/tests/fuzz.rs):
-`settled_retraction_notifies_the_present_head_before_removal`,
-`moving_base_updates_do_not_dispatch_as_stationary_piston_samples`, and
-`isolated_piston_baselines_match_interpreter`. Extension publication and
-payload notification order are covered by
-`extension_publication_does_not_resample_the_installing_head` and
+Native piston regressions for notification and movement boundaries live in
+[`piston/tests.rs`](../crates/core/src/redstone/piston/tests.rs) and
+[`instant_piston_tests.rs`](../crates/core/src/redstone/instant_piston_tests.rs).
+These checks exercise interpreter behavior and do not imply compiled support.
 `payload_extension_preserves_native_near_notification_order` in the same file.
 
 ### 3.5 Movement snapshot and identity
@@ -418,11 +415,11 @@ Electrical boundary strength uses the
 Directional eligibility, attenuation, fixed contributors and comparator channels
 remain electrical properties when a logical result uses a falling-event decoder.
 
-A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) covers piston-free compiled graphs; piston timing and ordering remain interpreter behavior.
+A first-response function $\mathbf y=F(\mathbf d,\mathbf e,\mathbf q)$ is a derived projection over a declared input protocol and observation window. Complete reuse adds retained reset/read/clock state $z$ and transitions $z^+=H(z,\sigma)$ for the ordered actions $\sigma$. No universal reset period or universal observation window follows from a piston truth table. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents compiled admission and state handoff; unsupported piston behavior remains with the interpreter.
 
 ## 6. General rules and implementation limits
 
-The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. Stationary piston builds within the admitted subset compile to the graph backend described in the [Redpiler architecture](REDPILER_ARCHITECTURE.md); other builds remain interpreter work.
+The power/notification separation, event revalidation, identity-based motion and strength/occupancy projections explain broad classes of instant and BUD circuits. They do not require recognizing an adder, counter or memory by its name, bit coordinates or schematic hash. Compiled piston support is limited to the mechanisms admitted by the sampled compiler; other builds remain interpreter work.
 
 Transport/ownership limits follow section 3; event facing and early retraction
 follow section 2. Notification exclusions and restore-time support are defined

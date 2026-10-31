@@ -6,7 +6,6 @@ use crate::plot::data::sleep_time_for_tps;
 use crate::profile::PlayerProfile;
 use crate::redpiler::CompilerOptions;
 use crate::server::Message;
-use mchprs_blocks::BlockPos;
 use mchprs_network::PlayerPacketSender;
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::{
@@ -49,62 +48,25 @@ pub(super) fn complete_redpiler(id: i32, text: &str) -> Option<CTabComplete> {
     if !matches!(words.first(), Some(&"/rp" | &"/redpiler")) {
         return None;
     }
-    let analyze = match words.get(1) {
-        Some(&"compile" | &"c" | &"inspect" | &"i") => false,
-        Some(&"analyze") => true,
+    match words.get(1) {
+        Some(&"compile" | &"c") => {}
         _ => return None,
-    };
+    }
     let prefix = &text[start..];
-    let matches = [
-        "--optimize",
-        "--io-only",
-        "--update",
-        "--graph",
-        "-o",
-        "-i",
-        "-u",
-        "-O0",
-        "-O1",
-        "-O2",
-        "-O3",
-        "-O4",
-        "-O5",
-        "-O6",
-    ]
-    .into_iter()
-    .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
-    .filter(|flag| match *flag {
-        "--graph" => analyze,
-        _ => true,
-    })
-    .map(|flag| CTabCompleteMatch {
-        match_: flag.to_owned(),
-        tooltip: None,
-    })
-    .collect();
+    let matches = ["--io-only", "--update", "-i", "-u"]
+        .into_iter()
+        .filter(|flag| flag.starts_with(prefix) && !words[2..].contains(flag))
+        .map(|flag| CTabCompleteMatch {
+            match_: flag.to_owned(),
+            tooltip: None,
+        })
+        .collect();
     Some(CTabComplete {
         id,
         start: text[..start].encode_utf16().count() as i32,
         length: prefix.encode_utf16().count() as i32,
         matches,
     })
-}
-
-fn inspect_options(args: &[&str], budget_multiplier: usize) -> Result<CompilerOptions, String> {
-    let mut options = CompilerOptions::parse(&format!("-O6 {}", args.join(" ")))?;
-    options.budget_multiplier = budget_multiplier;
-    Ok(options)
-}
-
-fn inspect_arguments(args: &[&str], budget_multiplier: usize) -> Result<(Option<BlockPos>, CompilerOptions), String> {
-    if args.first().is_some_and(|arg| arg.parse::<i32>().is_ok()) {
-        let coordinates = args.get(..3).ok_or("Use /rp inspect [x y z] [compiler flags].")?;
-        let x = coordinates[0].parse::<i32>().map_err(|_| "Invalid inspection x coordinate.")?;
-        let y = coordinates[1].parse::<i32>().map_err(|_| "Invalid inspection y coordinate.")?;
-        let z = coordinates[2].parse::<i32>().map_err(|_| "Invalid inspection z coordinate.")?;
-        return Ok((Some(BlockPos::new(x, y, z)), inspect_options(&args[3..], budget_multiplier)?));
-    }
-    Ok((None, inspect_options(args, budget_multiplier)?))
 }
 
 impl RelativeCoordinate for f64 {
@@ -428,64 +390,29 @@ impl Plot {
     /// Handles a command that starts with `/redpiler` or `/rp`
     fn handle_redpiler_command(&mut self, player: usize, command: &str, args: &[&str]) {
         match command {
-            "analyze" => {
-                if self.redpiler.is_active() {
-                    self.players[player].send_error_message("Reset Redpiler before analyzing live geometry.");
-                    return;
-                }
-                let flags = args.iter().copied().filter(|&arg| arg != "--graph").collect::<Vec<_>>().join(" ");
-                let mut options = match CompilerOptions::parse(&flags) {
-                    Ok(options) => options,
-                    Err(error) => {
-                        self.players[player].send_error_message(&error);
-                        return;
-                    }
-                };
-                options.budget_multiplier = self.players[player].compilation_budget_multiplier();
-                self.start_redpiler_analysis(player, options, args.contains(&"--graph"), None);
-                return;
-            }
             "compile" | "c" => {
-                if self.compilation.is_some() || self.analysis.is_some() {
+                if self.compilation.is_some() {
                     self.players[player].send_error_message(messages::REDPILER_COMPILATION_BUSY);
                     return;
                 }
                 let args = args.join(" ");
-                let mut options = match CompilerOptions::parse(&args) {
+                let options = match CompilerOptions::parse(&args) {
                     Ok(options) => options,
                     Err(error) => {
                         self.players[player].send_error_message(&error);
                         return;
                     }
                 };
-                options.budget_multiplier = self.players[player].compilation_budget_multiplier();
-
-                self.reset_redpiler();
-                self.start_redpiler(options);
-            }
-            "inspect" | "i" => {
-                if self.redpiler.is_active() {
-                    self.players[player].send_error_message("Reset Redpiler before inspecting live geometry.");
+                if let Err(error) = self.reset_redpiler() {
+                    self.players[player].send_error_message(&error.to_string());
                     return;
                 }
-                let (position, options) = match inspect_arguments(args, self.players[player].compilation_budget_multiplier()) {
-                    Ok(arguments) => arguments,
-                    Err(error) => {
-                        self.players[player].send_error_message(&error);
-                        return;
-                    }
-                };
-                let viewer = &self.players[player];
-                let pos =
-                    position.or_else(|| worldedit::ray_trace_block(&self.world, viewer.eye_position(), viewer.pitch as f64, viewer.yaw as f64, 10.0));
-                let Some(pos) = pos else {
-                    viewer.send_error_message(messages::BLOCK_TRACE_FAILED);
-                    return;
-                };
-                self.start_redpiler_analysis(player, options, false, Some(pos));
+                self.start_redpiler(options);
             }
             "reset" | "r" => {
-                self.reset_redpiler();
+                if let Err(error) = self.reset_redpiler() {
+                    self.players[player].send_error_message(&error.to_string());
+                }
             }
             _ => self.players[player].send_error_message(messages::REDPILER_INVALID_ARGUMENT),
         }
@@ -1119,8 +1046,6 @@ fn native_command_permission(command: &str, args: &[&str]) -> Option<String> {
             match args.first().copied() {
                 Some("c" | "compile") => "compile",
                 Some("r" | "reset") => "reset",
-                Some("i" | "inspect") => "inspect",
-                Some("analyze") => "analyze",
                 _ => "help",
             }
         ),
@@ -1135,7 +1060,7 @@ fn changes_plot(command: &str, args: &[&str]) -> bool {
         "/tps" => !args.is_empty() && args != ["timings"],
         "/visual" => args.len() > 1,
         "/adv" | "/toggleautorp" | "/curse" | "/bless" => true,
-        "/redpiler" | "/rp" => !matches!(args.first().copied(), Some("inspect" | "i" | "analyze")),
+        "/redpiler" | "/rp" => true,
         _ => false,
     }
 }
@@ -1279,13 +1204,13 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
         // /toggleautorp
         Node::literal("toggleautorp", &[]).executable(),
         // /redpiler
-        Node::literal("redpiler", &[63, 64, 65, 127, 143, 144, 145]),
+        Node::literal("redpiler", &[63, 65, 143, 145]),
         // /rp
         Node::redirect("rp", 61),
         // /redpiler compile
         Node::literal("compile", &[129]).executable(),
-        // /redpiler inspect
-        Node::literal("inspect", &[129]).executable(),
+        // Reserved protocol node ID; the inspection command was removed.
+        Node::literal("reserved", &[]),
         // /redpiler reset
         Node::literal("reset", &[]).executable(),
         // /worldsendrate
@@ -1387,13 +1312,12 @@ fn declared_command_nodes() -> Vec<Node<'static>> {
             .suggestions("minecraft:ask_server"),
         // /git uses the existing greedy, server-completed arguments node.
         Node::literal("git", &[105]).executable(),
-        // /redpiler analyze
-        Node::literal("analyze", &[128, 129]).executable(),
-        // read-only graph preparation and ordinary optimization flags.
-        Node::literal("--graph", &[129]).executable(),
         Node::argument("options", Parser::String(2), &[])
             .executable()
             .suggestions("minecraft:ask_server"),
+        // Reserved protocol node IDs; the removed command nodes stay unused.
+        Node::literal("reserved", &[]),
+        Node::literal("reserved", &[]),
         // gamemode alias, names, IDs and legacy shortcuts.
         Node::redirect("gm", 131),
         Node::literal("gamemode", &[132, 133, 134, 135, 136, 137, 161]),
@@ -1744,8 +1668,7 @@ mod security_tests {
         );
         assert!(!changes_plot("/tp", &["33.5", "21.5", "35.5", "--highlight"]));
         let nodes = declared_command_nodes();
-        let inspect = nodes.iter().find(|node| node.name == Some("inspect")).unwrap();
-        assert!(inspect.children.iter().any(|&id| nodes[id as usize].name == Some("options")));
+        assert!(!nodes.iter().any(|node| node.name == Some("inspect")));
     }
 
     #[test]
@@ -1978,251 +1901,33 @@ mod security_tests {
     }
 
     #[test]
-    fn redpiler_analysis_has_a_read_only_permission() {
-        for command in ["/rp", "/redpiler"] {
-            assert_eq!(
-                native_command_permission(command, &["analyze"]).as_deref(),
-                Some("commands.redpiler.analyze")
-            );
-            assert!(!changes_plot(command, &["analyze"]));
-            assert!(changes_plot(command, &["compile"]));
-        }
-    }
-
-    #[test]
-    fn redpiler_analysis_reports_the_unified_graph_and_compile_statistics() {
-        use crate::world::World;
-        use mchprs_blocks::blocks::{Block, Lever, LeverFace};
-        use mchprs_blocks::{BlockDirection, BlockPos};
-        use mchprs_network::packets::PacketDecoderExt;
-        use mchprs_network::test_support::read_frame;
-
-        for compressed in [false, true] {
-            let (mut plot, mut peer) = crate::plot::client_sync_tests::fixture(compressed);
-            let control = BlockPos::new(32, 21, 32);
-            let output = BlockPos::new(33, 21, 32);
-            plot.world.set_block(
-                control,
-                Block::Lever {
-                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
-                },
-            );
-            plot.world.set_block(output, Block::RedstoneLamp { lit: true });
-            let before = [plot.world.get_block(control), plot.world.get_block(output)];
-            let pending_before: Vec<_> = plot.world.scheduler().iter_entries().collect();
-            let mut messages = |last: &str, color: &str| {
-                let mut messages = Vec::new();
-                let mut coordinate_links = Vec::new();
-                // Read the bounded analysis response through its final status.
-                for _ in 0..256 {
-                    let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();
-                    assert_eq!(id, 0x72, "analysis must send system chat");
-                    // Wire text is an unnamed NBT compound; restore its empty
-                    // root name for the storage NBT reader.
-                    assert_eq!(frame.read_unsigned_byte().unwrap(), 10);
-                    let mut named = vec![10, 0, 0];
-                    named.extend(frame.read_to_end().unwrap());
-                    let mut named = std::io::Cursor::new(named);
-                    let component = nbt::Blob::from_reader(&mut named).unwrap();
-                    let component: serde_json::Value =
-                        serde_json::from_str(&mchprs_network::text::to_json(&nbt::Value::Compound(component.content))).unwrap();
-                    assert_eq!(component["color"], color);
-                    fn visit(component: &serde_json::Value, text: &mut String, links: &mut Vec<(String, String)>) {
-                        if let Some(value) = component.get("text").and_then(serde_json::Value::as_str) {
-                            text.push_str(value);
-                            if let Some(command) = component
-                                .get("click_event")
-                                .and_then(|event| event.get("command"))
-                                .and_then(serde_json::Value::as_str)
-                            {
-                                assert_eq!(component["color"], "aqua");
-                                assert_eq!(component["underlined"], true);
-                                assert_eq!(component["insertion"], format!("{command} --tp"));
-                                links.push((value.to_owned(), command.to_owned()));
-                            }
-                        }
-                        if let Some(extra) = component.get("extra").and_then(serde_json::Value::as_array) {
-                            for child in extra {
-                                visit(child, text, links);
-                            }
-                        }
-                    }
-                    let mut text = String::new();
-                    visit(&component, &mut text, &mut coordinate_links);
-                    assert!(!named.read_bool().unwrap());
-                    assert_eq!(named.position() as usize, named.get_ref().len());
-                    let complete = text.contains(last);
-                    messages.push(text);
-                    if complete {
-                        return (messages, coordinate_links);
-                    }
-                }
-                panic!("analysis response did not complete");
-            };
-            plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.redpiler.analyze"]);
-            for args in [vec!["--graph"], vec!["--graph", "--optimize", "--io-only"]] {
-                plot.handle_redpiler_command(0, "analyze", &args);
-                plot.wait_for_redpiler_analysis();
-                // Drain the timing footer too, so it cannot leak into the next response.
-                let (lines, _) = messages("Longest compile steps:", "yellow");
-                assert!(lines.len() <= 6, "graph analysis should stay compact: {lines:?}");
-                assert!(lines.iter().any(|line| line.starts_with("Prepared Graph:")));
-                let summary = lines.iter().find(|line| line.starts_with("Graph:")).unwrap();
-                assert!(summary.contains("passes configured:"));
-                let counts: Vec<usize> = summary
-                    .rsplit_once("passes configured: ")
-                    .unwrap()
-                    .1
-                    .split_whitespace()
-                    .filter_map(|part| part.parse().ok())
-                    .collect();
-                let [enabled, skipped] = counts.as_slice() else {
-                    panic!("missing enabled/skipped pass counts: {summary}");
-                };
-                // The pipeline registry tests exact names/order; this UI checks the selected mode.
-                if args.contains(&"--optimize") {
-                    assert!(*enabled > 0 && *skipped == 0, "{summary}");
-                } else {
-                    assert!(*enabled == 0 && *skipped > 0, "{summary}");
-                }
-                assert!(!plot.redpiler.is_active());
-            }
-            plot.handle_redpiler_command(0, "analyze", &[]);
-            plot.wait_for_redpiler_analysis();
-            let (lines, _) = messages("This plot can compile in O0 mode.", "yellow");
-            assert!(lines.len() <= 8, "compile analysis should stay compact: {lines:?}");
-            assert!(lines.iter().any(|line| line.contains(" pistons, ") && line.contains(" admission issues")));
-            assert!(
-                lines
-                    .iter()
-                    .any(|line| line.starts_with("Compiled O0 with Graph: ") && line.ends_with(" nodes."))
-            );
-            assert!(lines.iter().any(|line| line.contains("passes configured:")));
-            assert!(!lines.iter().any(|line| line.contains("Graph preparation table estimate")));
-            assert!(!plot.redpiler.is_active());
-            assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
-
-            let witness = BlockPos::new(38, 21, 32);
-            plot.world.set_block(witness, Block::from_name("piston").unwrap());
-            plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.redpiler.analyze", "commands.redpiler.inspect"]);
-            plot.players[0].pos = PlayerPos::new(38.5, 19.9, 35.5);
-            plot.players[0].pitch = 0.0;
-            plot.players[0].yaw = 180.0;
-            plot.handle_command(0, "/rp", vec!["inspect"]);
-            plot.wait_for_redpiler_analysis();
-            let (lines, links) = messages("Structural inspection only", "yellow");
-            assert!(lines.iter().any(|line| line.contains("Inspection mode: O6")), "{lines:?}");
-            assert!(lines.iter().any(|line| line.to_ascii_lowercase().contains("instant")), "{lines:?}");
-            assert!(lines.iter().any(|line| line.starts_with("Incoming callbacks:")));
-            assert!(links.iter().any(|(label, command)| label == "(38, 21, 32)" && command == "/hl 38 21 32"));
-            plot.handle_command(0, "/rp", vec!["inspect", "37", "25", "32", "-O0"]);
-            plot.wait_for_redpiler_analysis();
-            let (coordinate_lines, coordinate_links) = messages("Structural inspection only", "yellow");
-            assert!(
-                coordinate_lines.iter().any(|line| line.contains("Inspection mode: O0")),
-                "{coordinate_lines:?}"
-            );
-            assert!(
-                coordinate_lines.iter().any(|line| line.contains("No compiled component")),
-                "{coordinate_lines:?}"
-            );
-            assert!(
-                coordinate_links
-                    .iter()
-                    .any(|(label, command)| label == "(37, 25, 32)" && command == "/hl 37 25 32")
-            );
-            assert_eq!(plot.world.get_block(witness), Block::from_name("piston").unwrap());
-            assert_eq!([plot.world.get_block(control), plot.world.get_block(output)], before);
-            assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
-            assert!(!plot.redpiler.is_active());
-            for flag in ["--timing", "--updates", "--unproven"] {
-                plot.handle_command(0, "/rp", vec!["analyze", flag]);
-                let (lines, _) = messages(flag, "red");
-                assert!(lines.iter().any(|line| line.contains(flag)));
-                assert!(plot.analysis.is_none(), "removed flag must not start analysis");
-            }
-        }
-    }
-
-    #[test]
-    fn redpiler_flags_complete_aliases_prefixes_and_multiple_options() {
-        assert_eq!(inspect_options(&[], 8).unwrap().optimization_label(), "O6");
-        assert_eq!(inspect_options(&["--io-only"], 8).unwrap().optimization_label(), "O6");
-        let inspected = inspect_options(&["-O3"], 4).unwrap();
-        assert_eq!(inspected.optimization_label(), "O3");
-        assert_eq!(inspected.budget_multiplier, 4);
-        assert!(inspect_options(&["--unknown"], 1).is_err());
-        let (position, options) = inspect_arguments(&["-201", "82", "-244", "-O3"], 8).unwrap();
-        assert_eq!(position, Some(BlockPos::new(-201, 82, -244)));
-        assert_eq!(options.optimization_label(), "O3");
-        assert!(inspect_arguments(&["1", "2"], 1).is_err());
-        assert!(inspect_arguments(&["1", "nope", "3"], 1).is_err());
-        assert!(CompilerOptions::parse("--export-json").is_err());
-        for flag in ["--updates", "--timing", "--unproven", "--verify", "--repro"] {
-            assert!(CompilerOptions::parse(flag).is_err(), "removed flag {flag} must not be a compiler option");
-        }
+    fn retired_redpiler_commands_and_graph_flags_are_not_exposed() {
         let nodes = declared_command_nodes();
-        for command in ["compile", "analyze", "inspect"] {
-            let node = nodes.iter().find(|n| n.name == Some(command)).unwrap();
-            assert!(
-                node.children
-                    .iter()
-                    .any(|&id| { nodes[id as usize].suggestions_type == Some("minecraft:ask_server") })
-            );
-        }
-        assert!(
-            nodes
-                .iter()
-                .any(|node| { node.name == Some("c") && node.redirect_node.is_some_and(|target| nodes[target as usize].name == Some("compile")) })
+        assert!(!nodes.iter().any(|node| matches!(node.name, Some("analyze" | "inspect" | "--graph"))));
+        assert_eq!(
+            native_command_permission("/rp", &["compile"]).as_deref(),
+            Some("commands.redpiler.compile")
         );
+        assert_eq!(native_command_permission("/rp", &["reset"]).as_deref(), Some("commands.redpiler.reset"));
+        for flag in ["-O3", "--optimize", "--graph", "--export-json"] {
+            assert!(CompilerOptions::parse(flag).is_err(), "retired option {flag} must be rejected");
+        }
+        let options = CompilerOptions::parse("--io-only -u").unwrap();
+        assert!(options.io_only && options.update);
+    }
+
+    #[test]
+    fn redpiler_completion_offers_only_supported_compile_flags() {
         for (text, expected) in [
-            ("/rp compile --ass", vec![]),
-            ("/redpiler c --optimize --i", vec!["--io-only"]),
-            ("/rp analyze --graph --o", vec!["--optimize"]),
-            ("/rp analyze --u", vec!["--update"]),
-            (
-                "/rp compile -",
-                vec![
-                    "--optimize",
-                    "--io-only",
-                    "--update",
-                    "-o",
-                    "-i",
-                    "-u",
-                    "-O0",
-                    "-O1",
-                    "-O2",
-                    "-O3",
-                    "-O4",
-                    "-O5",
-                    "-O6",
-                ],
-            ),
-            ("/rp analyze --ex", vec![]),
-            ("/rp inspect -O", vec!["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "-O6"]),
-            ("/rp i --sta", vec![]),
-            ("/rp compile --stable", vec![]),
-            ("/rp compile --unknown", vec![]),
+            ("/rp compile --", vec!["--io-only", "--update"]),
+            ("/redpiler c -", vec!["--io-only", "--update", "-i", "-u"]),
+            ("/rp compile --graph", vec![]),
         ] {
             let response = complete_redpiler(42, text).unwrap();
-            let start = text.rfind(' ').unwrap() + 1;
-            assert_eq!(response.id, 42);
-            assert_eq!(response.start, text[..start].encode_utf16().count() as i32);
-            assert_eq!(response.length, text[start..].encode_utf16().count() as i32);
             assert_eq!(response.matches.iter().map(|m| m.match_.as_str()).collect::<Vec<_>>(), expected);
-            for item in response.matches {
-                // Tier-dependent flags are valid in their required O3 context.
-                assert!(item.match_ == "--graph" || CompilerOptions::parse(&format!("-O3 {}", item.match_)).is_ok());
-            }
         }
-        for prefix in ["--tim", "--updates", "--unproven"] {
-            assert!(complete_redpiler(0, &format!("/rp analyze {prefix}")).unwrap().matches.is_empty());
-        }
-        let response = complete_redpiler(0, "/rp analyze --graph ").unwrap();
-        assert!(!response.matches.iter().any(|m| m.match_ == "--graph"));
-        let response = complete_redpiler(0, "/rp compile --u").unwrap();
-        assert!(!response.matches.iter().any(|m| m.match_ == "--updates"));
+        assert!(complete_redpiler(0, "/rp analyze ").is_none());
+        assert!(complete_redpiler(0, "/rp inspect ").is_none());
         assert!(complete_redpiler(0, "/rp reset ").is_none());
-        assert!(complete_redpiler(0, "/git compile ").is_none());
     }
 }

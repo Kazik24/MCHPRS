@@ -4,31 +4,14 @@
 #[path = "support/cpus.rs"]
 mod cpu_support;
 use cpu_support::*;
-#[path = "support/graph_short.rs"]
-mod graph_short;
-#[cfg(feature = "plot-bench")]
-#[path = "support/plot_client.rs"]
-mod plot_client;
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
-    if args.iter().any(|arg| arg == "--plot-client") {
-        #[cfg(feature = "plot-bench")]
-        {
-            plot_client::main(&args).unwrap();
-            return;
-        }
-        #[cfg(not(feature = "plot-bench"))]
-        panic!("--plot-client requires --features plot-bench");
-    }
-    let short_graph = args.iter().any(|arg| arg == "--graph-short" || arg == "--admission-smoke");
-    if short_graph {
-        graph_short::main().unwrap();
-        return;
-    }
-    let graph_tier = args
-        .windows(2)
-        .find(|pair| pair[0] == "--graph-tier")
-        .map(|pair| pair[1].parse::<usize>().expect("--graph-tier needs 1, 2, 3, 4 or 5"));
+    assert!(
+        !args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "--plot-client" | "--graph-short" | "--admission-smoke" | "--graph-tier")),
+        "Graph benchmark modes were retired"
+    );
     let iterations = args
         .windows(2)
         .find(|pair| pair[0] == "--iterations")
@@ -49,7 +32,6 @@ fn main() {
     if let Some(name) = selected {
         assert!(CPUS.iter().any(|cpu| cpu.name == name), "unknown CPU {name}");
     }
-    assert!(graph_tier.is_none(), "--graph-tier requires --graph-short");
     for cpu in CPUS {
         if selected.is_some_and(|name| name != cpu.name) {
             continue;

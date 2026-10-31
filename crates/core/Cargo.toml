@@ -5,7 +5,6 @@ authors = ["kazik24", "lord225"]
 edition = "2024"
 
 [features]
-graph-trace = []
 plot-bench = ["mchprs_network/test-support"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -24,23 +23,11 @@ name = "chungus"
 harness = false
 
 [[bench]]
-name = "classic_baseline"
-harness = false
-
-[[bench]]
 name = "piston"
 harness = false
 
 [[bench]]
 name = "cpus"
-harness = false
-
-[[bench]]
-name = "cpu_bubblesort"
-harness = false
-
-[[bench]]
-name = "instant"
 harness = false
 
 [dependencies]

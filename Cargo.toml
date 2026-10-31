@@ -36,7 +36,6 @@ strip = "none"
 [features]
 default = ["static-log-levels"]
 static-log-levels = ["tracing/release_max_level_info", "tracing/max_level_debug"]
-graph-trace = ["mchprs_core/graph-trace"]
 
 [dependencies]
 mchprs_core = { path = "./crates/core" }

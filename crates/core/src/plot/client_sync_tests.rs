@@ -101,7 +101,7 @@ fn interpreter_stays_awake_for_partial_ticks_pistons_and_history() {
 }
 
 #[test]
-fn redpiler_activation_stages_barrel_close_notifications() {
+fn unsupported_barrel_compile_keeps_the_open_container_in_native_mode() {
     use mchprs_blocks::BlockFacing;
     use mchprs_blocks::block_entities::ContainerType;
     use mchprs_blocks::blocks::{RedstoneObserver, RedstonePiston};
@@ -136,50 +136,28 @@ fn redpiler_activation_stages_barrel_close_notifications() {
         },
     );
     plot.players[0].open_container(barrel, &[], ContainerType::Barrel);
+    let pending_before = plot.world.scheduler().iter_entries().collect::<Vec<_>>();
 
     plot.start_redpiler(CompilerOptions::default());
     plot.wait_for_redpiler();
 
-    assert!(plot.redpiler.is_active());
-    assert!(!plot.interpreter_idle());
-    assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
-    assert!(plot.players[0].open_container.is_none());
-    assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: false, .. }));
-    assert!(plot.world.scheduler().iter_entries().next().is_none());
-
-    plot.redpiler.tick().unwrap();
-    plot.redpiler.tick().unwrap();
-    plot.redpiler.flush(&mut plot.world);
-    assert!(matches!(
-        plot.world.get_block(observer),
-        Block::Observer { observer } if observer.powered
-    ));
+    assert!(!plot.redpiler.is_active());
+    assert!(plot.players[0].open_container.is_some());
+    assert!(matches!(plot.world.get_block(barrel), Block::Barrel { open: true, .. }));
+    assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending_before);
 }
 
 #[test]
-fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
-    use mchprs_blocks::blocks::RedstonePiston;
-
+fn unsupported_pressure_plate_compile_keeps_native_simulation_active() {
     let (mut plot, _peer) = fixture(false);
     let plate = BlockPos::new(34, 20, 34);
     let outside = PlayerPos::new(33.5, 20.0, 34.5);
     let on_plate = PlayerPos::new(34.5, 20.0, 34.5);
     plot.world.set_block(plate.offset(BlockFace::Bottom), Block::Stone {});
     plot.world.set_block(plate, Block::StonePressurePlate { powered: false });
-    plot.world.set_block(
-        BlockPos::new(38, 20, 34),
-        Block::Piston {
-            piston: RedstonePiston {
-                facing: mchprs_blocks::BlockFacing::East,
-                sticky: false,
-                extended: false,
-            },
-        },
-    );
     plot.start_redpiler(CompilerOptions::default());
     plot.wait_for_redpiler();
-    assert!(plot.redpiler.is_active());
-    assert_eq!(plot.redpiler.backend_kind(), Some(crate::redpiler::BackendKind::Graph));
+    assert!(!plot.redpiler.is_active());
     plot.players[0].on_ground = true;
 
     plot.players[0].pos = outside;
@@ -187,11 +165,10 @@ fn pressure_plate_enter_then_leave_before_flush_releases_graph_input() {
     plot.players[0].pos = outside;
     plot.on_player_move(0, on_plate, outside);
 
-    plot.redpiler.flush(&mut plot.world);
     assert_eq!(
         plot.world.get_block(plate).pressure_plate_powered(),
         Some(false),
-        "the graph must observe release even though its displayed state was never flushed"
+        "rejected compilation must leave pressure plate handling with the interpreter"
     );
 }
 
@@ -496,7 +473,7 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
     for compressed in [false, true] {
         let (mut plot, mut peer) = fixture(compressed);
         plot.players[0].set_test_permissions(&["mchprs.access.commands"]);
-        let text = "/rp c -O";
+        let text = "/rp c --";
         plot.handle_tab_complete(
             STabComplete {
                 transaction_id: 42,
@@ -509,8 +486,8 @@ fn redpiler_flag_suggestions_reach_the_chat_client() {
         assert_eq!(frame.read_varint().unwrap(), 42);
         assert_eq!(frame.read_varint().unwrap(), text.rfind(' ').unwrap() as i32 + 1);
         assert_eq!(frame.read_varint().unwrap(), 2);
-        assert_eq!(frame.read_varint().unwrap(), 7);
-        for expected in ["-O0", "-O1", "-O2", "-O3", "-O4", "-O5", "-O6"] {
+        assert_eq!(frame.read_varint().unwrap(), 2);
+        for expected in ["--io-only", "--update"] {
             assert_eq!(frame.read_string().unwrap(), expected);
             assert!(!frame.read_bool().unwrap());
         }

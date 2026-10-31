@@ -39,6 +39,7 @@ impl TeleportState {
     }
 }
 
+// TODO: Move tests to _tests.rs
 #[cfg(test)]
 mod tests {
     use super::*;

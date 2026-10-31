@@ -68,29 +68,8 @@ fn success(world: &PlotWorld, pos: BlockPos) -> i32 {
     }
 }
 
-fn compile_outputs(world: &mut PlotWorld, optimize: bool) -> crate::redpiler::Compiler {
-    let mut compiler = crate::redpiler::Compiler::default();
-    compiler
-        .compile(
-            world,
-            world.get_corners(),
-            crate::redpiler::CompilerOptions {
-                optimization_level: if optimize { None } else { Some(0) },
-                io_only: true,
-                ..Default::default()
-            },
-            world.scheduler().iter_entries().collect(),
-            Default::default(),
-        )
-        .unwrap();
-    world.to_be_ticked.clear();
-    world.tick_index.invalidate();
-    compiler
-}
-
 fn output_fixture(name: &str, automatic: bool) -> (PlotWorld, BlockPos, BlockPos) {
     let mut world = world();
-    world.disable_command_output_limits_for_replay();
     let pos = BlockPos::new(40, 30, 40);
     place(&mut world, pos, name, "say compiled", automatic, false);
     let lever = pos.offset(BlockFace::West);
@@ -100,119 +79,30 @@ fn output_fixture(name: &str, automatic: bool) -> (PlotWorld, BlockPos, BlockPos
 }
 
 #[test]
-fn compiled_command_outputs_follow_impulse_edges_without_render_flush() {
-    for optimize in [false, true] {
-        let (mut world, pos, lever) = output_fixture("command_block", false);
-        let mut compiler = compile_outputs(&mut world, optimize);
-        compiler.on_use_block(lever);
-        assert_eq!(world.command_output().count(), 0);
-        compiler.tick_with_world(&mut world).unwrap();
-        assert_eq!(world.command_output().count(), 1);
-        assert_eq!(success(&world, pos), 1);
-        for _ in 0..3 {
-            compiler.tick_with_world(&mut world).unwrap();
-        }
-        assert_eq!(world.command_output().count(), 1);
-        compiler.on_use_block(lever);
-        compiler.on_use_block(lever);
-        compiler.on_use_block(lever); // Short pulse still executes its queued callback.
-        compiler.tick_with_world(&mut world).unwrap();
-        assert_eq!(world.command_output().count(), 2);
-        let bounds = world.get_corners();
-        compiler.reset(&mut world, bounds);
-        advance(&mut world, 3);
-        assert_eq!(world.command_output().count(), 2);
-    }
-}
+fn compiled_command_blocks_are_rejected_without_changing_native_state() {
+    use crate::redpiler::{Compiler, CompilerOptions};
 
-#[test]
-fn compiled_repeating_chain_outputs_match_interpreter_and_preserve_reset_deadlines() {
-    let (mut reference, pos, _) = output_fixture("repeating_command_block", true);
-    let (mut compiled, _, _) = output_fixture("repeating_command_block", true);
-    let chain = pos.offset(BlockFace::East);
-    for world in [&mut reference, &mut compiled] {
-        place(world, chain, "chain_command_block", "tellraw @a \"chain\"", true, true);
-        redstone::command_block::update(world, pos);
-    }
-    let mut compiler = compile_outputs(&mut compiled, true);
-    for _ in 0..6 {
-        reference.tick_interpreted();
-        compiler.tick_with_world(&mut compiled).unwrap();
-        assert_eq!(
-            reference.command_output().collect::<Vec<_>>(),
-            compiled.command_output().collect::<Vec<_>>()
-        );
-        assert_eq!(success(&compiled, chain), 1);
-        assert_eq!(reference.piston_state.logical_tick, compiled.piston_state.logical_tick);
-    }
-    let bounds = compiled.get_corners();
-    compiler.reset(&mut compiled, bounds);
-    for _ in 0..4 {
-        reference.tick_interpreted();
-        compiled.tick_interpreted();
-        assert_eq!(
-            reference.command_output().collect::<Vec<_>>(),
-            compiled.command_output().collect::<Vec<_>>()
-        );
-    }
-}
+    let mut world = world();
+    let pos = BlockPos::new(40, 30, 40);
+    place(&mut world, pos, "repeating_command_block", "say pending", true, false);
+    world.schedule_tick(pos, 4, mchprs_world::TickPriority::Normal);
+    let block = world.get_block(pos);
+    let entity = format!("{:?}", world.get_block_entity(pos));
+    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let piston_state = format!("{:?}", world.piston_state());
 
-#[test]
-fn compiled_automatic_outputs_start_once_and_recompile_without_replaying_impulses() {
-    let (mut world, _, _) = output_fixture("command_block", true);
-    let mut compiler = compile_outputs(&mut world, true);
-    for _ in 0..3 {
-        compiler.tick_with_world(&mut world).unwrap();
-    }
-    assert_eq!(world.command_output().count(), 1);
-    let bounds = world.get_corners();
-    compiler.reset(&mut world, bounds);
-    let mut compiler = compile_outputs(&mut world, true);
-    compiler.tick_with_world(&mut world).unwrap();
-    assert_eq!(world.command_output().count(), 1);
+    let mut compiler = Compiler::default();
+    assert!(
+        compiler
+            .compile(&world, world.get_corners(), CompilerOptions::default(), ticks.clone(), Default::default())
+            .is_err()
+    );
+    assert!(!compiler.is_active());
+    assert_eq!(world.get_block(pos), block);
+    assert_eq!(format!("{:?}", world.get_block_entity(pos)), entity);
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
+    assert_eq!(format!("{:?}", world.piston_state()), piston_state);
 }
-
-#[test]
-fn compiled_commands_preserve_allowlist_and_update_comparator_success_output() {
-    for far in [false, true] {
-        let (mut world, pos, lever) = output_fixture("command_block", false);
-        let comparator = if far {
-            world.set_block(pos.offset(BlockFace::East), Block::Stone {});
-            pos.offset(BlockFace::East).offset(BlockFace::East)
-        } else {
-            pos.offset(BlockFace::East)
-        };
-        let lamp = comparator.offset(BlockFace::East);
-        world.set_block(lamp, Block::RedstoneLamp { lit: false });
-        let mut block = Block::from_name("comparator").unwrap();
-        block.set_properties(std::collections::HashMap::from([("facing", "west")]));
-        world.set_block(comparator, block);
-        let mut compiler = compile_outputs(&mut world, true);
-        compiler.on_use_block(lever);
-        for _ in 0..4 {
-            compiler.tick_with_world(&mut world).unwrap();
-        }
-        compiler.flush(&mut world);
-        assert_eq!(world.get_block(lamp), Block::RedstoneLamp { lit: true });
-        let bounds = world.get_corners();
-        compiler.reset(&mut world, bounds);
-        assert!(matches!(
-            world.get_block_entity(comparator),
-            Some(BlockEntity::Comparator { output_strength: 1 })
-        ));
-        let Some(BlockEntity::CommandBlock(entity)) = world.get_block_entity_mut(pos) else {
-            panic!()
-        };
-        entity.command = "stop".into();
-        let mut compiler = compile_outputs(&mut world, true);
-        compiler.on_use_block(lever); // Off.
-        compiler.on_use_block(lever); // On.
-        compiler.tick_with_world(&mut world).unwrap();
-        assert_eq!(success(&world, pos), 0);
-        assert_eq!(world.command_output().count(), 1);
-    }
-}
-
 #[test]
 fn command_success_changes_notify_comparators_through_a_solid_block() {
     let (mut world, pos, _) = output_fixture("command_block", true);

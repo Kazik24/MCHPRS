@@ -290,8 +290,9 @@ Directional emission, dust shape and occupancy determine the guards.
 
 This is an electrical projection, not a replacement for notification or
 scheduling. Comparator overrides and side eligibility still use section 10.
-The [compiled architecture](REDPILER_ARCHITECTURE.md) describes the physical Graph
-backend and the private sampled reference experiment; the interpreter evaluates these guards and sources for all supported input histories.
+The [compiled architecture](REDPILER_ARCHITECTURE.md) describes the sampled
+runtime and the circuits it admits; the interpreter evaluates these guards and
+sources for all supported input histories.
 
 ## 4. Immediate callbacks and ordered notification procedures
 
@@ -1373,15 +1374,23 @@ A quiescent state has no scheduled work, events, active motions, or immediate ca
 
 Piston transport limits are specified in [the piston model](PISTON_MODEL.md#31-forward-payload-line). This model also omits torch burnout, dynamic tripwire/projectile behavior, autonomous hopper transport, and general furnace processing.
 
-Redpiler's optimized graph can merge or remove nodes. Equality of ordinary lamp outputs alone does not establish equality of observer callbacks, transient dust states, analog overrides, piston motions, or pending-request traces. Compiled execution needs a separate equivalence argument for the selected observables.
+The sampled compiler lowers admitted components into source links and runtime
+operations. Equality of ordinary lamp outputs alone does not establish equality
+of observer callbacks, transient dust states, analog overrides, piston motions,
+or pending-request traces. Compiled execution needs a separate equivalence
+argument for the selected observables.
 
-Piston event values, retained storage and electrical boundary strengths need separate decoders. An internal falling event does not impose inverted polarity on every ordinary consumer. The [Redpiler architecture](REDPILER_ARCHITECTURE.md) documents physical Graph admission, including supported pistons and resources, and the limits of the private sampled reference experiment. Compiler admission does not alter the physical rules specified here.
+Piston event values, retained storage and electrical boundary strengths need
+separate decoders. An internal falling event does not impose inverted polarity
+on every ordinary consumer. The [Redpiler architecture](REDPILER_ARCHITECTURE.md)
+documents sampled admission and supported piston state. Compiler admission does
+not alter the physical rules specified here.
 
 ### 16.5 Implementation distinctions to preserve
 
 Several rules can be expressed more generally, but the current implementation has observable boundaries that a refactor must account for:
 
-- Emission is source strength multiplied by a directional connectivity predicate. [power.rs](../crates/core/src/redstone/power.rs) shares those predicates with compiler analysis; connection possibility and current nonzero strength are separate quantities.
+- Emission is source strength multiplied by a directional connectivity predicate. [power.rs](../crates/core/src/redstone/power.rs) shares those predicates with scratch input discovery; connection possibility and current nonzero strength are separate quantities.
 - Shape/state notifications and indirect power rechecks are different events. Observer exclusions in surrounding and wire notifications enforce that distinction at the callers. The observer handler itself has no previous-state comparison; combining all notification helpers into one loop would change it.
 - Wire Turbo stores per-walk block snapshots. Its non-wire callbacks can receive an old state. The note-block handler rereads its live powered bit, while other handlers generally use the supplied state. Equations over a simultaneous live snapshot cannot replace this procedure without an equivalence argument.
 - Initial dust evaluation and Turbo dust evaluation use different eligible neighborhoods. The attenuation equilibrium is common to them under its stated assumptions, but does not erase the difference in transient callbacks.

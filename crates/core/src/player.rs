@@ -1019,12 +1019,6 @@ impl Player {
         self.permissions_cache.as_ref().and_then(|cache| cache.numeric_limit(prefix))
     }
 
-    pub fn compilation_budget_multiplier(&self) -> usize {
-        self.permissions_cache
-            .as_ref()
-            .map_or(1, PlayerPermissionsCache::compilation_budget_multiplier)
-    }
-
     pub(crate) fn waveform_limits(&self) -> Result<(usize, usize), String> {
         let c = &*CONFIG;
         if c.luckperms.is_none() {

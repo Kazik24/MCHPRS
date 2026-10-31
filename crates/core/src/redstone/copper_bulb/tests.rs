@@ -1,6 +1,5 @@
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
-use crate::redpiler::{Compiler, CompilerOptions};
 use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{Block, ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneObserver};
@@ -114,81 +113,70 @@ fn powered_placement_and_same_type_state_edits_have_distinct_behavior() {
 }
 
 #[test]
-fn interpreter_and_compiled_bulbs_match_java_1_21_5() {
+fn interpreter_bulbs_match_java_1_21_5() {
     let reference: serde_json::Value = serde_json::from_str(include_str!("../../../../../test_data/copper-bulbs/java-1.21.5.json")).unwrap();
     assert_eq!(reference["version"], "1.21.5");
     for case in reference["cases"].as_array().unwrap() {
-        for flags in [None, Some(""), Some("-O"), Some("-iO")] {
-            let mut world = circuit(
-                case["variant"].as_str().unwrap(),
-                case["lit"].as_bool().unwrap(),
-                case["powered"].as_bool().unwrap(),
-            );
-            let mut compiler = Compiler::default();
-            if let Some(flags) = flags {
-                compiler
-                    .compile(
-                        &world,
-                        (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46)),
-                        CompilerOptions::parse(flags).unwrap(),
-                        vec![],
-                        Default::default(),
-                    )
-                    .unwrap();
+        let mut world = circuit(
+            case["variant"].as_str().unwrap(),
+            case["lit"].as_bool().unwrap(),
+            case["powered"].as_bool().unwrap(),
+        );
+        let mut powered = false;
+        for sample in case["trace"].as_array().unwrap() {
+            let target = sample["input"].as_bool().unwrap();
+            if target != powered {
+                let Block::Lever { mut lever } = world.get_block(INPUT) else {
+                    unreachable!()
+                };
+                lever.powered = target;
+                world.set_block(INPUT, Block::Lever { lever });
+                crate::redstone::update_surrounding_blocks(&mut world, INPUT);
+                crate::redstone::update_surrounding_blocks(&mut world, INPUT.offset(BlockFace::Bottom));
+                powered = target;
             }
-            let mut powered = false;
-            for sample in case["trace"].as_array().unwrap() {
-                let target = sample["input"].as_bool().unwrap();
-                if target != powered {
-                    if flags.is_some() {
-                        compiler.on_use_block(INPUT);
-                    } else {
-                        let Block::Lever { mut lever } = world.get_block(INPUT) else {
-                            unreachable!()
-                        };
-                        lever.powered = target;
-                        world.set_block(INPUT, Block::Lever { lever });
-                        crate::redstone::update_surrounding_blocks(&mut world, INPUT);
-                        crate::redstone::update_surrounding_blocks(&mut world, INPUT.offset(BlockFace::Bottom));
-                    }
-                    powered = target;
-                }
-                for _ in 0..sample["ticks"].as_u64().unwrap() {
-                    if flags.is_some() {
-                        compiler.tick_with_world(&mut world).unwrap();
-                    } else {
-                        world.tick_interpreted();
-                    }
-                }
-                if flags.is_some() {
-                    compiler.flush(&mut world);
-                }
-                let (lit, powered) = world.get_block(BULB).copper_bulb_state().unwrap();
-                let mut got = vec![serde_json::json!(lit), serde_json::json!(powered)];
-                for pos in [DIRECT, FAR] {
-                    let strength = if flags.is_some() {
-                        compiler.ordinary_sources().into_iter().find(|(source, _)| *source == pos).unwrap().1
-                    } else {
-                        match world.get_block_entity(pos) {
-                            Some(BlockEntity::Comparator { output_strength }) => *output_strength,
-                            _ => unreachable!(),
-                        }
-                    };
-                    got.push(serde_json::json!(strength));
-                }
-                got.push(serde_json::json!(
-                    matches!(world.get_block(OBSERVER), Block::Observer { observer } if observer.powered)
-                ));
-                assert_eq!(serde_json::Value::Array(got), sample["state"], "{case}, flags={flags:?}");
+            for _ in 0..sample["ticks"].as_u64().unwrap() {
+                world.tick_interpreted();
             }
-            if flags.is_some() {
-                compiler.reset(&mut world, (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46)));
-                let before = world.get_block(BULB);
-                crate::redstone::update(before, &mut world, BULB, None);
-                assert_eq!(world.get_block(BULB), before, "handoff must preserve the latch");
+            let (lit, powered) = world.get_block(BULB).copper_bulb_state().unwrap();
+            let mut got = vec![serde_json::json!(lit), serde_json::json!(powered)];
+            for pos in [DIRECT, FAR] {
+                let Some(BlockEntity::Comparator { output_strength }) = world.get_block_entity(pos) else {
+                    unreachable!()
+                };
+                got.push(serde_json::json!(output_strength));
             }
+            got.push(serde_json::json!(
+                matches!(world.get_block(OBSERVER), Block::Observer { observer } if observer.powered)
+            ));
+            assert_eq!(serde_json::Value::Array(got), sample["state"], "{case}");
         }
     }
+}
+
+#[test]
+fn compiled_copper_bulb_is_rejected_without_changing_native_state() {
+    use crate::redpiler::{Compiler, CompilerOptions};
+
+    let mut world = circuit("copper_bulb", false, false);
+    world.schedule_tick(DIRECT, 5, mchprs_world::TickPriority::Normal);
+    let positions = [BULB, INPUT, DIRECT, FAR, OBSERVER];
+    let blocks = positions.map(|pos| world.get_block(pos));
+    let entities = [DIRECT, FAR].map(|pos| format!("{:?}", world.get_block_entity(pos)));
+    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let piston_state = format!("{:?}", world.piston_state());
+
+    let mut compiler = Compiler::default();
+    assert!(
+        compiler
+            .compile(&world, world.get_corners(), CompilerOptions::default(), ticks.clone(), Default::default())
+            .is_err()
+    );
+    assert!(!compiler.is_active());
+    assert_eq!(positions.map(|pos| world.get_block(pos)), blocks);
+    assert_eq!([DIRECT, FAR].map(|pos| format!("{:?}", world.get_block_entity(pos))), entities);
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
+    assert_eq!(format!("{:?}", world.piston_state()), piston_state);
 }
 
 #[test]
@@ -227,83 +215,45 @@ fn copper_bulb_waxing_and_scraping_preserve_the_latch() {
 #[test]
 fn copper_bulbs_toggle_on_the_aggregate_input_edge() {
     let second = BULB.offset(BlockFace::Top);
-    for flags in [None, Some(""), Some("-O"), Some("-iO")] {
-        let mut world = circuit("waxed_copper_bulb", false, false);
-        world.set_block(
-            second,
-            Block::Lever {
-                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
-            },
-        );
-        let mut compiler = Compiler::default();
-        if let Some(flags) = flags {
-            compiler
-                .compile(
-                    &world,
-                    world.get_corners(),
-                    CompilerOptions::parse(flags).unwrap(),
-                    vec![],
-                    Default::default(),
-                )
-                .unwrap();
-        }
-        for (pos, state) in [
-            (INPUT, (true, true)),
-            (second, (true, true)),
-            (INPUT, (true, true)),
-            (second, (true, false)),
-            (INPUT, (false, true)),
-            (INPUT, (false, false)),
-        ] {
-            if flags.is_some() {
-                compiler.on_use_block(pos);
-                compiler.flush(&mut world);
-            } else {
-                let Block::Lever { mut lever } = world.get_block(pos) else {
-                    unreachable!()
-                };
-                lever.powered = !lever.powered;
-                world.set_block(pos, Block::Lever { lever });
-                crate::redstone::update_surrounding_blocks(&mut world, pos);
-            }
-            assert_eq!(world.get_block(BULB).copper_bulb_state(), Some(state), "{flags:?}");
-        }
+    let mut world = circuit("waxed_copper_bulb", false, false);
+    world.set_block(
+        second,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    for (pos, state) in [
+        (INPUT, (true, true)),
+        (second, (true, true)),
+        (INPUT, (true, true)),
+        (second, (true, false)),
+        (INPUT, (false, true)),
+        (INPUT, (false, false)),
+    ] {
+        let Block::Lever { mut lever } = world.get_block(pos) else {
+            unreachable!()
+        };
+        lever.powered = !lever.powered;
+        world.set_block(pos, Block::Lever { lever });
+        crate::redstone::update_surrounding_blocks(&mut world, pos);
+        assert_eq!(world.get_block(BULB).copper_bulb_state(), Some(state));
     }
 }
 
 #[test]
-fn copper_bulb_variants_do_not_age_during_simulation() {
+fn copper_bulb_variants_do_not_age_during_native_simulation() {
     for &(name, _, _, _, _) in mchprs_blocks::generated::BLOCKS {
         if !name.ends_with("copper_bulb") {
             continue;
         }
-        for flags in [None, Some(""), Some("-O"), Some("-iO")] {
-            let mut world = circuit(name, false, false);
-            let mut compiler = Compiler::default();
-            let bounds = (BlockPos::new(36, 28, 36), BlockPos::new(46, 34, 46));
-            if let Some(flags) = flags {
-                compiler
-                    .compile(&world, bounds, CompilerOptions::parse(flags).unwrap(), vec![], Default::default())
-                    .unwrap();
-                compiler.on_use_block(INPUT);
-            } else {
-                world.set_block(INPUT, Block::RedstoneBlock);
-                crate::redstone::update_surrounding_blocks(&mut world, INPUT);
-            }
-            for _ in 0..64 {
-                if flags.is_some() {
-                    compiler.tick_with_world(&mut world).unwrap();
-                } else {
-                    world.tick_interpreted();
-                }
-                assert_eq!(world.get_block(BULB).get_name(), name, "flags={flags:?}");
-            }
-            if flags.is_some() {
-                compiler.reset(&mut world, bounds);
-            }
-            assert_eq!(world.get_block(BULB).get_name(), name, "flags={flags:?}");
-            assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
+        let mut world = circuit(name, false, false);
+        world.set_block(INPUT, Block::RedstoneBlock);
+        crate::redstone::update_surrounding_blocks(&mut world, INPUT);
+        for _ in 0..64 {
+            world.tick_interpreted();
+            assert_eq!(world.get_block(BULB).get_name(), name);
         }
+        assert_eq!(world.get_block(BULB).copper_bulb_state(), Some((true, true)));
     }
 }
 

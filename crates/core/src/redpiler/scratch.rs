@@ -1,7 +1,7 @@
 //! Shared isolated native-interpreter world used by private compilers.
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld};
+use crate::redpiler::ScheduledBlockTick;
 use crate::redpiler::TickScheduler;
-use crate::redpiler::backend::ScheduledBlockTick;
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonState, TickEntry};
@@ -14,14 +14,15 @@ pub(crate) struct ScratchEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ScratchError {
-    pub(crate) position: Option<BlockPos>,
-    pub(crate) reason: &'static str,
+pub struct ScratchError {
+    pub position: Option<BlockPos>,
+    pub reason: &'static str,
 }
 
 pub(crate) struct ScratchWorld {
     world: PlotWorld,
     baseline: HashMap<BlockPos, (u32, Option<mchprs_blocks::block_entities::BlockEntity>)>,
+    scheduled: Vec<TickEntry>,
     piston: mchprs_world::PistonState,
     bounds: (BlockPos, BlockPos),
 }
@@ -44,6 +45,7 @@ pub(crate) struct WireDiscovery {
     pub(crate) watchers: Vec<WireWatcher>,
     pub(crate) sources: Vec<WireSource>,
 }
+#[cfg(test)]
 pub(crate) fn discovered_wire_strength(world: &impl World, discovery: &WireDiscovery, wire: BlockPos) -> u8 {
     discovery
         .sources
@@ -56,10 +58,12 @@ pub(crate) fn discovered_wire_strength(world: &impl World, discovery: &WireDisco
         .unwrap_or(0)
 }
 
+#[cfg(test)]
 pub(crate) fn wire_strength_changed(before: u8, after: u8) -> bool {
     before != after
 }
 
+#[cfg(test)]
 pub(crate) fn changed_wire_watchers(discovery: &WireDiscovery, before: &[(BlockPos, u8)], after: &[(BlockPos, u8)]) -> Vec<WireWatcher> {
     let after: HashMap<_, _> = after.iter().copied().collect();
     discovery
@@ -75,6 +79,7 @@ pub(crate) fn changed_wire_watchers(discovery: &WireDiscovery, before: &[(BlockP
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn max_attenuated_strength(contributions: impl IntoIterator<Item = (u8, u8)>) -> u8 {
     contributions
         .into_iter()
@@ -132,10 +137,14 @@ fn discover_wire_sources_inner(world: &impl World, wires: &[BlockPos], trace: bo
         let mut queue = VecDeque::from([wire]);
         while let Some(current) = queue.pop_front() {
             let distance = distances[&current];
-            if trace { eprintln!("wire traversal target={wire:?} current={current:?} distance={distance}"); }
+            if trace {
+                eprintln!("wire traversal target={wire:?} current={current:?} distance={distance}");
+            }
             for face in BlockFace::values() {
                 let neighbor = current.offset(face);
-                if trace { eprintln!("  neighbor={neighbor:?} face={face:?} block={:?}", world.get_block(neighbor)); }
+                if trace {
+                    eprintln!("  neighbor={neighbor:?} face={face:?} block={:?}", world.get_block(neighbor));
+                }
                 match world.get_block(neighbor) {
                     Block::RedstoneWire { .. } => {
                         if distance >= 14 || matches!(face, BlockFace::Top | BlockFace::Bottom) {
@@ -160,7 +169,12 @@ fn discover_wire_sources_inner(world: &impl World, wires: &[BlockPos], trace: bo
                         for source_face in BlockFace::values() {
                             let source_pos = neighbor.offset(source_face);
                             let source_block = world.get_block(source_pos);
-                            if trace { eprintln!("    conductor source={source_pos:?} face={source_face:?} block={source_block:?} strong={}", crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)); }
+                            if trace {
+                                eprintln!(
+                                    "    conductor source={source_pos:?} face={source_face:?} block={source_block:?} strong={}",
+                                    crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)
+                                );
+                            }
                             if (is_supported_dynamic_source(source_block) || source_block == Block::RedstoneBlock)
                                 && crate::redstone::power::emits_strong_power(source_block, world, source_pos, source_face, false)
                             {
@@ -209,7 +223,9 @@ fn discover_wire_sources_inner(world: &impl World, wires: &[BlockPos], trace: bo
                             queue.push_back(neighbor);
                         }
                     }
-                    if trace { eprintln!("  diagonal from={current:?} via={adjacent:?} block={block:?} above_solid={above_solid} candidate={diagonal:?}"); }
+                    if trace {
+                        eprintln!("  diagonal from={current:?} via={adjacent:?} block={block:?} above_solid={above_solid} candidate={diagonal:?}");
+                    }
                 }
             }
         }
@@ -241,7 +257,12 @@ pub(crate) fn discover_torch_sources(world: &impl World, pos: BlockPos, block: B
     let face = match block {
         Block::RedstoneTorch { .. } => BlockFace::Bottom,
         Block::RedstoneWallTorch { facing, .. } => facing.opposite().block_face(),
-        _ => return Err(ScratchError { position: Some(pos), reason: "torch input requested for non-torch" }),
+        _ => {
+            return Err(ScratchError {
+                position: Some(pos),
+                reason: "torch input requested for non-torch",
+            });
+        }
     };
     discover_signal_contacts(world, pos, [face])
 }
@@ -249,11 +270,13 @@ pub(crate) fn discover_torch_sources(world: &impl World, pos: BlockPos, block: B
 fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl IntoIterator<Item = BlockFace>) -> Result<Vec<WireSource>, ScratchError> {
     let mut sources = HashMap::new();
     let mut add = |source: BlockPos, attenuation: u8| {
-        sources.entry(source).and_modify(|old: &mut u8| *old = (*old).min(attenuation)).or_insert(attenuation);
+        sources
+            .entry(source)
+            .and_modify(|old: &mut u8| *old = (*old).min(attenuation))
+            .or_insert(attenuation);
     };
-    let supported_source = |block: Block| {
-        is_supported_dynamic_source(block) || block == Block::RedstoneBlock || block.pressure_plate_powered().is_some()
-    };
+    let supported_source =
+        |block: Block| is_supported_dynamic_source(block) || block == Block::RedstoneBlock || block.pressure_plate_powered().is_some();
     for face in faces {
         let neighbor = lamp.offset(face);
         let block = world.get_block(neighbor);
@@ -296,15 +319,27 @@ fn discover_signal_contacts(world: &impl World, lamp: BlockPos, faces: impl Into
     }
     let mut sources: Vec<_> = sources
         .into_iter()
-        .map(|(source, attenuation)| WireSource { wire: lamp, source, attenuation })
+        .map(|(source, attenuation)| WireSource {
+            wire: lamp,
+            source,
+            attenuation,
+        })
         .collect();
     sources.sort_by_key(|source| (source.source.x, source.source.y, source.source.z));
     Ok(sources)
 }
 
 /// Discover the direct and quasi-connected inputs sampled by a piston.
-pub(crate) fn discover_piston_sources(world: &impl World, pos: BlockPos, facing: mchprs_blocks::BlockFacing) -> Result<Vec<WireSource>, ScratchError> {
-    let mut contacts: Vec<_> = BlockFace::values().into_iter().filter(|&face| face != facing.into()).map(|face| (pos, face)).collect();
+pub(crate) fn discover_piston_sources(
+    world: &impl World,
+    pos: BlockPos,
+    facing: mchprs_blocks::BlockFacing,
+) -> Result<Vec<WireSource>, ScratchError> {
+    let mut contacts: Vec<_> = BlockFace::values()
+        .into_iter()
+        .filter(|&face| face != facing.into())
+        .map(|face| (pos, face))
+        .collect();
     let above = pos.offset(BlockFace::Top);
     contacts.extend(BlockFace::values().into_iter().map(|face| (above, face)));
     let mut sources = HashMap::new();
@@ -312,11 +347,16 @@ pub(crate) fn discover_piston_sources(world: &impl World, pos: BlockPos, facing:
         let at = origin.offset(face);
         let block = world.get_block(at);
         let mut add = |source: BlockPos, attenuation: u8| {
-            sources.entry(source).and_modify(|old: &mut u8| *old = (*old).min(attenuation)).or_insert(attenuation);
+            sources
+                .entry(source)
+                .and_modify(|old: &mut u8| *old = (*old).min(attenuation))
+                .or_insert(attenuation);
         };
         if matches!(block, Block::RedstoneWire { .. }) {
             if crate::redstone::power::emits_weak_power(block, world, at, face, true) {
-                for source in discover_wire_sources(world, &[at])? { add(source.source, source.attenuation); }
+                for source in discover_wire_sources(world, &[at])? {
+                    add(source.source, source.attenuation);
+                }
             }
         } else if block.is_solid() {
             for side in BlockFace::values() {
@@ -324,20 +364,38 @@ pub(crate) fn discover_piston_sources(world: &impl World, pos: BlockPos, facing:
                 let source = world.get_block(source_pos);
                 if crate::redstone::power::emits_strong_power(source, world, source_pos, side, true) {
                     if matches!(source, Block::RedstoneWire { .. }) {
-                        for source in discover_wire_sources(world, &[source_pos])? { add(source.source, source.attenuation); }
+                        for source in discover_wire_sources(world, &[source_pos])? {
+                            add(source.source, source.attenuation);
+                        }
                     } else if is_supported_dynamic_source(source) || source == Block::RedstoneBlock {
                         add(source_pos, 0);
                     } else {
-                        return Err(ScratchError { position: Some(source_pos), reason: "unsupported piston input source" });
+                        return Err(ScratchError {
+                            position: Some(source_pos),
+                            reason: "unsupported piston input source",
+                        });
                     }
                 }
             }
         } else if crate::redstone::power::emits_weak_power(block, world, at, face, true) {
-            if is_supported_dynamic_source(block) || block == Block::RedstoneBlock { add(at, 0); }
-            else { return Err(ScratchError { position: Some(at), reason: "unsupported piston input source" }); }
+            if is_supported_dynamic_source(block) || block == Block::RedstoneBlock {
+                add(at, 0);
+            } else {
+                return Err(ScratchError {
+                    position: Some(at),
+                    reason: "unsupported piston input source",
+                });
+            }
         }
     }
-    let mut result: Vec<_> = sources.into_iter().map(|(source, attenuation)| WireSource { wire: pos, source, attenuation }).collect();
+    let mut result: Vec<_> = sources
+        .into_iter()
+        .map(|(source, attenuation)| WireSource {
+            wire: pos,
+            source,
+            attenuation,
+        })
+        .collect();
     result.sort_by_key(|source| (source.source.x, source.source.y, source.source.z));
     Ok(result)
 }
@@ -709,14 +767,31 @@ mod tests {
         world.set_block(PISTON, Block::Air);
         // Two paths from the first wire to the target: two edges and four edges.
         for (x, z) in [(42, 40), (43, 40), (41, 41), (42, 41), (43, 41)] {
-            world.set_block(BlockPos::new(x, 30, z), Block::RedstoneWire { wire: RedstoneWire::default() });
+            world.set_block(
+                BlockPos::new(x, 30, z),
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
         }
         let target = BlockPos::new(43, 30, 40);
         let scratch = ScratchWorld::from_world(&world, BOUNDS, entry(&world)).unwrap();
         let sources = discover_wire_sources(scratch.world(), &[target]).unwrap();
         scratch.finish_probe().unwrap();
-        assert_eq!(sources, vec![WireSource { wire: target, source: LEVER, attenuation: 2 }]);
-        assert_eq!(world.get_block(LEVER), Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        assert_eq!(
+            sources,
+            vec![WireSource {
+                wire: target,
+                source: LEVER,
+                attenuation: 2
+            }]
+        );
+        assert_eq!(
+            world.get_block(LEVER),
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false)
+            }
+        );
     }
 
     #[test]
@@ -727,16 +802,30 @@ mod tests {
             let mut world = fixture();
             world.set_block(LEVER, Block::Air);
             world.set_block(conductor, Block::Stone {});
-            world.set_block(target, Block::RedstoneWire { wire: RedstoneWire::default() });
+            world.set_block(
+                target,
+                Block::RedstoneWire {
+                    wire: RedstoneWire::default(),
+                },
+            );
             let source = conductor.offset(face);
-            let block = Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) };
+            let block = Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            };
             world.set_block(source, block);
             let scratch = ScratchWorld::from_world(&world, BOUNDS, entry(&world)).unwrap();
             let sources = discover_wire_sources(scratch.world(), &[target]).unwrap();
             scratch.finish_probe().unwrap();
             let emits = crate::redstone::power::emits_strong_power(block, &world, source, face, false);
             assert_eq!(emits, face == BlockFace::Top);
-            assert_eq!(sources.contains(&WireSource { wire: target, source, attenuation: 0 }), emits);
+            assert_eq!(
+                sources.contains(&WireSource {
+                    wire: target,
+                    source,
+                    attenuation: 0
+                }),
+                emits
+            );
         }
     }
 
@@ -795,32 +884,49 @@ mod tests {
 
 impl ScratchWorld {
     pub(crate) fn from_world(source: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry) -> Result<Self, ScratchError> {
+        Self::from_world_monitored(source, bounds, entry, None)
+    }
+
+    pub(crate) fn from_world_monitored(
+        source: &impl World,
+        bounds: (BlockPos, BlockPos),
+        entry: ScratchEntry,
+        monitor: Option<&super::TaskMonitor>,
+    ) -> Result<Self, ScratchError> {
         let (min, max) = bounds;
-        if min.x < 0
+        let invalid_bounds = || ScratchError {
+            position: Some(min),
+            reason: "invalid scratch capture bounds",
+        };
+        let (plot_x, plot_z) = source.plot_coordinates();
+        let Some(plot_min_x) = plot_x.checked_mul(PLOT_BLOCK_WIDTH) else {
+            return Err(invalid_bounds());
+        };
+        let Some(plot_min_z) = plot_z.checked_mul(PLOT_BLOCK_WIDTH) else {
+            return Err(invalid_bounds());
+        };
+        let Some(plot_max_x) = plot_min_x.checked_add(PLOT_BLOCK_WIDTH - 1) else {
+            return Err(invalid_bounds());
+        };
+        let Some(plot_max_z) = plot_min_z.checked_add(PLOT_BLOCK_WIDTH - 1) else {
+            return Err(invalid_bounds());
+        };
+        if min.x < plot_min_x
             || min.y < 0
-            || min.z < 0
-            || max.x >= PLOT_BLOCK_WIDTH
+            || min.z < plot_min_z
+            || max.x > plot_max_x
             || max.y >= PLOT_BLOCK_HEIGHT
-            || max.z >= PLOT_BLOCK_WIDTH
+            || max.z > plot_max_z
             || min.x > max.x
             || min.y > max.y
             || min.z > max.z
         {
-            return Err(ScratchError {
-                position: Some(min),
-                reason: "invalid scratch capture bounds",
-            });
+            return Err(invalid_bounds());
         }
         if entry.piston.phase != AdvancePhase::BetweenTicks {
             return Err(ScratchError {
                 position: None,
                 reason: "scratch entry is mid-tick",
-            });
-        }
-        if let Some(tick) = entry.scheduled.first() {
-            return Err(ScratchError {
-                position: Some(tick.pos),
-                reason: "scratch entry has scheduled block work",
             });
         }
         if let Some(event) = entry.piston.events.front() {
@@ -842,28 +948,42 @@ impl ScratchWorld {
             });
         }
 
-        let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
-        let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::<ScheduledBlockTick>::default());
+        let chunks = (0..PLOT_WIDTH)
+            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(plot_x * PLOT_WIDTH + x, plot_z * PLOT_WIDTH + z)))
+            .collect();
+        let mut world = PlotWorld::from_chunks(plot_x, plot_z, chunks, TickScheduler::<ScheduledBlockTick>::default());
         let mut baseline = HashMap::new();
         for y in min.y..=max.y {
-            for z in min.z..=max.z {
-                for x in min.x..=max.x {
-                    let pos = BlockPos::new(x, y, z);
-                    let raw = source.get_block_raw(pos);
-                    let entity = source.get_block_entity(pos).cloned();
+            if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
+            crate::world::for_each_block_optimized(source, BlockPos::new(min.x, y, min.z), BlockPos::new(max.x, y, max.z), |pos| {
+                let raw = source.get_block_raw(pos);
+                let entity = source.get_block_entity(pos).cloned();
+                if raw != Block::Air.get_id() || entity.is_some() {
                     baseline.insert(pos, (raw, entity.clone()));
-                    if raw != Block::Air.get_id() {
-                        world.set_block_raw(pos, raw);
-                    }
+                    world.set_block_raw(pos, raw);
                     if let Some(entity) = entity {
                         world.set_block_entity(pos, entity);
                     }
                 }
-            }
+            });
+        }
+        for tick in entry.scheduled.iter().cloned() {
+            world.restore_scheduled_tick(tick);
         }
         world.piston_state_mut().clone_from(&entry.piston);
         world.configure_scratch(bounds);
-        Ok(Self { world, baseline, piston: entry.piston, bounds })
+        Ok(Self {
+            world,
+            baseline,
+            scheduled: entry.scheduled,
+            piston: entry.piston,
+            bounds,
+        })
     }
 
     pub(crate) fn world(&self) -> &PlotWorld {
@@ -878,13 +998,19 @@ impl ScratchWorld {
         let mut changed: Vec<_> = blocks.union(&entities).copied().collect();
         changed.sort_unstable_by_key(|pos| (pos.y, pos.z, pos.x));
         for pos in changed {
-            if let Some((raw, entity)) = self.baseline.get(&pos) {
-                if self.world.get_block_raw(pos) != *raw { self.world.set_block_raw(pos, *raw); }
-                self.world.delete_block_entity(pos);
-                if let Some(entity) = entity { self.world.set_block_entity(pos, entity.clone()); }
+            let (raw, entity) = self.baseline.get(&pos).cloned().unwrap_or((Block::Air.get_id(), None));
+            if self.world.get_block_raw(pos) != raw {
+                self.world.set_block_raw(pos, raw);
+            }
+            self.world.delete_block_entity(pos);
+            if let Some(entity) = entity {
+                self.world.set_block_entity(pos, entity);
             }
         }
         self.world.reset_scratch_probe_state(&self.piston, self.bounds);
+        for tick in self.scheduled.iter().cloned() {
+            self.world.restore_scheduled_tick(tick);
+        }
     }
 
     pub(crate) fn finish_probe(&self) -> Result<(), ScratchError> {

@@ -9,9 +9,7 @@ compatibility, logical execution, and individual fixture results are separate cl
 | [Redstone model](REDSTONE_MODEL.md) | Electrical rules, component transitions, notifications, and scheduled work. |
 | [Piston model](PISTON_MODEL.md) | Physical movement, BUD transactions, reset, and instant ordering. |
 | [Interpreter architecture](INTERPRETER_ARCHITECTURE.md) | Physical execution, caches, verification, and reproduction commands. |
-| [Redpiler architecture](REDPILER_ARCHITECTURE.md) | Graph and logical programs, ownership, timing, and interpreter handoff. |
-| [Optimization levels](REDPILER_OPTIMIZATION_LEVELS.md) | O0–O6 selection, stable-input policy, and graph inspection. |
-| [Development plan](REDPILER_DEVELOPMENT.md) | Consolidated compiler direction, unfinished work, and acceptance gates. |
+| [Redpiler architecture](REDPILER_ARCHITECTURE.md) | Sampled compilation, supported lifecycle, and interpreter handoff. |
 | [Permissions](MCHPRS_PERMISSIONS.md) | Permission checks, configurable limits, and rank metadata. |
 | [Waveform analyzer design](../scraps/docs/WAVEFORM_ANALYZER_DESIGN.md) | Interpreter capture, binary probes, public HTTP/SSE API and React viewer. |
 | [Waveform analyzer plan](../scraps/docs/WAVEFORM_ANALYZER_PLAN.md) | Implementation sequence and acceptance gates. |
@@ -19,9 +17,7 @@ compatibility, logical execution, and individual fixture results are separate cl
 | [Waveform viewer specification](../scraps/docs/VAPORVIEW_VIEWER_SPEC.md) | Screenshot layout, context menus, tick navigation and VaporView scrolling behavior. |
 | [Waveform deployment](../scraps/docs/WAVEFORM_DEPLOYMENT.md) | Separate Docker frontend, private backend routing and proposed redstonefun.pl integration. |
 
-For compiler work, read the architecture and development plan alongside the
-physical models. The architecture and tier guide distinguish tagged v0.6.0 from
-the original checkout's experimental work; their command policies differ.
+For compiler work, read the architecture alongside the physical models.
 The root [TODO](../TODO.md) tracks remaining work.
 [Minecraft data](../mc_data/README.md) documents registry inputs and generation.
 

@@ -1,4 +1,8 @@
-# Interpreter-sampled Redpiler engine plan
+# Historical interpreter-sampled Redpiler engine plan
+
+This plan records the development direction before the 31 October 2026 Graph
+removal. It is superseded by the current [Redpiler architecture](REDPILER_ARCHITECTURE.md)
+and the completed [Graph removal scope](../scraps/docs/REDPILER_GRAPH_REMOVAL_SCOPE_2026-10-31.md).
 
 The current assignment targets the complete ADDER1BIT executable gate, including
 its actual IO schematic, eight prepared vectors, token/motion execution and

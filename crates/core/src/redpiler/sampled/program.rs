@@ -22,6 +22,7 @@ pub(super) struct ElectricalLink {
     pub(super) attenuation: u8,
 }
 
+#[derive(Clone)]
 pub(super) struct WatchedWire {
     pub(super) wire: usize,
     pub(super) watchers: Vec<usize>,
@@ -35,6 +36,7 @@ pub(super) struct MoveStep {
     pub(super) wires: Vec<usize>,
 }
 
+#[derive(Clone)]
 pub(super) struct RepeaterRecord {
     pub(super) component: usize,
     pub(super) output_is_diode: bool,
@@ -47,6 +49,7 @@ pub(super) enum ArrangementSource {
     Token(usize),
 }
 
+#[derive(Clone)]
 pub(super) struct InputArrangement {
     pub(super) target: usize,
     pub(super) side: bool,
@@ -65,6 +68,7 @@ pub(super) struct ArrangementFlip {
     pub(super) entering: bool,
 }
 
+#[derive(Clone)]
 pub(super) struct ArrangementLink {
     pub(super) target: usize,
     pub(super) side: bool,
@@ -75,6 +79,7 @@ pub(super) struct ArrangementLink {
     pub(super) active: Vec<bool>,
 }
 
+#[derive(Clone)]
 pub(super) struct MovementAxis {
     pub(super) token: usize,
     pub(super) stride: usize,
@@ -82,10 +87,12 @@ pub(super) struct MovementAxis {
     pub(super) arrive: Vec<Vec<ArrangementFlip>>,
 }
 
+#[derive(Clone)]
 pub(super) struct MovementGroup {
     pub(super) axes: Vec<MovementAxis>,
 }
 
+#[derive(Clone)]
 pub(super) struct ComparatorRecord {
     pub(super) component: usize,
     pub(super) stored: u8,
@@ -94,13 +101,15 @@ pub(super) struct ComparatorRecord {
     pub(super) output_is_diode: bool,
 }
 
+#[derive(Clone)]
 pub(super) struct ReactiveWire {
     pub(super) wire: usize,
     pub(super) sources: Vec<(usize, u8)>,
     pub(super) recipients: Vec<usize>,
 }
 
-pub(super) struct Program {
+#[derive(Clone)]
+pub(crate) struct Program {
     pub(super) comparators: Vec<ComparatorRecord>,
     pub(super) side_links: Vec<ElectricalLink>,
     pub(super) reactive: Vec<bool>,
@@ -134,7 +143,10 @@ pub(super) struct Program {
 impl Program {
     pub(super) fn compile_movement_flips(&mut self) -> Result<(), ScratchError> {
         for group in &self.input_arrangements {
-            let invalid = |reason| ScratchError { position: self.positions.get(group.target).copied(), reason };
+            let invalid = |reason| ScratchError {
+                position: self.positions.get(group.target).copied(),
+                reason,
+            };
             if group.target >= self.initial.len() || group.tokens.iter().any(|&token| token >= self.tokens.len()) {
                 return Err(invalid("invalid movement group reference"));
             }
@@ -142,33 +154,53 @@ impl Program {
             if group.tokens.iter().any(|&token| !seen.insert(token)) {
                 return Err(invalid("duplicate token in movement group"));
             }
-            let count = group.tokens.iter().try_fold(1usize, |count, &token| count.checked_mul(self.tokens[token].cells.len() + 1));
+            let count = group
+                .tokens
+                .iter()
+                .try_fold(1usize, |count, &token| count.checked_mul(self.tokens[token].cells.len() + 1));
             if count != Some(group.inputs.len()) || group.inputs.len() > 4096 {
                 return Err(invalid("invalid movement group dimensions"));
             }
             for &(source, attenuation) in group.inputs.iter().flatten() {
-                let valid = match source { ArrangementSource::Component(node) => node < self.initial.len(), ArrangementSource::Token(token) => token < self.tokens.len() };
-                if !valid || attenuation > 15 { return Err(invalid("invalid movement group source")); }
+                let valid = match source {
+                    ArrangementSource::Component(node) => node < self.initial.len(),
+                    ArrangementSource::Token(token) => token < self.tokens.len(),
+                };
+                if !valid || attenuation > 15 {
+                    return Err(invalid("invalid movement group source"));
+                }
             }
         }
         for (token, cells) in self.token_sources.iter().enumerate() {
             if token >= self.tokens.len() || cells.len() != self.tokens[token].cells.len() {
-                return Err(ScratchError { position: None, reason: "invalid token source dimensions" });
+                return Err(ScratchError {
+                    position: None,
+                    reason: "invalid token source dimensions",
+                });
             }
             for &(target, attenuation) in cells.iter().flatten() {
                 if target >= self.initial.len() || attenuation > 15 {
-                    return Err(ScratchError { position: self.tokens[token].position, reason: "invalid token source reference" });
+                    return Err(ScratchError {
+                        position: self.tokens[token].position,
+                        reason: "invalid token source reference",
+                    });
                 }
             }
         }
         for (token, cells) in self.move_steps.iter().enumerate() {
             if token >= self.tokens.len() || cells.len() != self.tokens[token].cells.len() {
-                return Err(ScratchError { position: None, reason: "invalid movement step dimensions" });
+                return Err(ScratchError {
+                    position: None,
+                    reason: "invalid movement step dimensions",
+                });
             }
             for step in cells.iter().flat_map(|edges| edges.iter().flatten()) {
                 let watched = |node| self.watched_wires.iter().any(|wire| wire.wire == node);
                 if step.node >= self.initial.len() || (step.wire && !watched(step.node)) || step.wires.iter().any(|&wire| !watched(wire)) {
-                    return Err(ScratchError { position: self.tokens[token].position, reason: "invalid movement step reference" });
+                    return Err(ScratchError {
+                        position: self.tokens[token].position,
+                        reason: "invalid movement step reference",
+                    });
                 }
             }
         }
@@ -183,7 +215,11 @@ impl Program {
                 grouped.len() - 1
             };
             for (state, entries) in input.inputs.iter().enumerate() {
-                grouped[index].1[state].extend(entries.iter().map(|&(source, attenuation)| (input.target, source, attenuation, input.side, input.silent)));
+                grouped[index].1[state].extend(
+                    entries
+                        .iter()
+                        .map(|&(source, attenuation)| (input.target, source, attenuation, input.side, input.silent)),
+                );
             }
         }
         for (tokens, maps) in grouped {
@@ -193,11 +229,19 @@ impl Program {
         }
         for (token, cells) in self.token_sources.iter().enumerate() {
             let mut maps = vec![vec![]];
-            maps.extend(cells.iter().map(|links| links.iter().filter_map(|&(target, attenuation)| {
-                let source = ArrangementSource::Token(token);
-                (!self.input_arrangements.iter().any(|group| group.target == target && !group.side && group.conditional_sources.contains(&source)))
-                    .then_some((target, source, attenuation, false, matches!(self.initial[target], Block::Piston { .. })))
-            }).collect()));
+            maps.extend(cells.iter().map(|links| {
+                links
+                    .iter()
+                    .filter_map(|&(target, attenuation)| {
+                        let source = ArrangementSource::Token(token);
+                        (!self
+                            .input_arrangements
+                            .iter()
+                            .any(|group| group.target == target && !group.side && group.conditional_sources.contains(&source)))
+                        .then_some((target, source, attenuation, false, matches!(self.initial[target], Block::Piston { .. })))
+                    })
+                    .collect()
+            }));
             let (group, entries) = self.movement_group(&[token], &maps, groups.len(), links.len());
             groups.push(group);
             links.extend(entries);
@@ -207,7 +251,9 @@ impl Program {
         self.token_movement_groups = vec![vec![]; self.tokens.len()];
         for shared in [false, true] {
             for (group, record) in self.movement_groups.iter().enumerate() {
-                if (record.axes.len() > 1) != shared { continue; }
+                if (record.axes.len() > 1) != shared {
+                    continue;
+                }
                 for (axis, record) in record.axes.iter().enumerate() {
                     self.token_movement_groups[record.token].push((group, axis));
                 }
@@ -216,36 +262,75 @@ impl Program {
         Ok(())
     }
 
-    fn movement_group(&self, tokens: &[usize], maps: &[Vec<(usize, ArrangementSource, u8, bool, bool)>], group: usize, link_start: usize) -> (MovementGroup, Vec<ArrangementLink>) {
+    fn movement_group(
+        &self,
+        tokens: &[usize],
+        maps: &[Vec<(usize, ArrangementSource, u8, bool, bool)>],
+        group: usize,
+        link_start: usize,
+    ) -> (MovementGroup, Vec<ArrangementLink>) {
         let mut conditions = Vec::new();
         for &entry in maps.iter().flatten() {
-            if !conditions.contains(&entry) { conditions.push(entry); }
+            if !conditions.contains(&entry) {
+                conditions.push(entry);
+            }
         }
         let mut stride = 1;
-        let axes = tokens.iter().map(|&token| {
-            let radix = self.tokens[token].cells.len() + 1;
-            let mut depart = vec![vec![]; maps.len()];
-            let mut arrive = vec![vec![]; maps.len()];
-            for state in 0..maps.len() {
-                let digit = state / stride % radix;
-                if digit == 0 { continue; }
-                let empty = state - digit * stride;
-                for (index, &(target, source, attenuation, side, silent)) in conditions.iter().enumerate() {
-                    let entry = (target, source, attenuation, side, silent);
-                    if maps[state].contains(&entry) != maps[empty].contains(&entry) {
-                        let flip = ArrangementFlip { target, source, attenuation, link: link_start + index, entering: maps[empty].contains(&entry) };
-                        depart[state].push(flip);
-                        arrive[state].push(ArrangementFlip { entering: !flip.entering, ..flip });
+        let axes = tokens
+            .iter()
+            .map(|&token| {
+                let radix = self.tokens[token].cells.len() + 1;
+                let mut depart = vec![vec![]; maps.len()];
+                let mut arrive = vec![vec![]; maps.len()];
+                for state in 0..maps.len() {
+                    let digit = state / stride % radix;
+                    if digit == 0 {
+                        continue;
+                    }
+                    let empty = state - digit * stride;
+                    for (index, &(target, source, attenuation, side, silent)) in conditions.iter().enumerate() {
+                        let entry = (target, source, attenuation, side, silent);
+                        if maps[state].contains(&entry) != maps[empty].contains(&entry) {
+                            let flip = ArrangementFlip {
+                                target,
+                                source,
+                                attenuation,
+                                link: link_start + index,
+                                entering: maps[empty].contains(&entry),
+                            };
+                            depart[state].push(flip);
+                            arrive[state].push(ArrangementFlip {
+                                entering: !flip.entering,
+                                ..flip
+                            });
+                        }
                     }
                 }
-            }
-            let axis = MovementAxis { token, stride, depart, arrive };
-            stride *= radix;
-            axis
-        }).collect();
-        let links = conditions.iter().map(|&(target, source, attenuation, side, silent)| ArrangementLink {
-            target, side, silent, source, attenuation, group, active: maps.iter().map(|map| map.contains(&(target, source, attenuation, side, silent))).collect(),
-        }).collect();
+                let axis = MovementAxis {
+                    token,
+                    stride,
+                    depart,
+                    arrive,
+                };
+                stride *= radix;
+                axis
+            })
+            .collect();
+        let links = conditions
+            .iter()
+            .map(|&(target, source, attenuation, side, silent)| ArrangementLink {
+                target,
+                side,
+                silent,
+                source,
+                attenuation,
+                group,
+                active: maps
+                    .iter()
+                    .map(|map| map.contains(&(target, source, attenuation, side, silent)))
+                    .collect(),
+            })
+            .collect();
         (MovementGroup { axes }, links)
     }
 
@@ -271,7 +356,14 @@ impl Program {
         }
         for block in &initial {
             match block {
-                Block::Lever { .. } | Block::RedstoneLamp { .. } | Block::RedstoneComparator { .. } | Block::RedstoneBlock | Block::Piston { .. } | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => {}
+                Block::Lever { .. }
+                | Block::RedstoneLamp { .. }
+                | Block::RedstoneComparator { .. }
+                | Block::RedstoneBlock
+                | Block::Piston { .. }
+                | Block::Observer { .. }
+                | Block::RedstoneTorch { .. }
+                | Block::RedstoneWallTorch { .. } => {}
                 Block::RedstoneWire { wire } if wire.power <= 15 => {}
                 Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
                 Block::RedstoneRepeater { repeater } if (1..=4).contains(&repeater.delay) => {}
@@ -299,7 +391,12 @@ impl Program {
             if !repeater_components.insert(record.component) {
                 return Err(invalid("sampled repeater record is duplicated"));
             }
-            if record.side_sources.iter().flatten().any(|&source| !matches!(initial.get(source), Some(Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }))) {
+            if record.side_sources.iter().flatten().any(|&source| {
+                !matches!(
+                    initial.get(source),
+                    Some(Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. })
+                )
+            }) {
                 return Err(invalid("sampled repeater side source is not a repeater"));
             }
         }
@@ -315,12 +412,28 @@ impl Program {
             let Some(target) = initial.get(link.target) else {
                 return Err(invalid("sampled program link target is out of bounds"));
             };
-            if !matches!(source, Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::RedstoneBlock | Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }) {
+            if !matches!(
+                source,
+                Block::Lever { .. }
+                    | Block::RedstoneWire { .. }
+                    | Block::RedstoneRepeater { .. }
+                    | Block::RedstoneComparator { .. }
+                    | Block::RedstoneBlock
+                    | Block::Observer { .. }
+                    | Block::RedstoneTorch { .. }
+                    | Block::RedstoneWallTorch { .. }
+            ) {
                 return Err(invalid("sampled program link source must be lever, wire or repeater"));
             }
             if !matches!(
                 target,
-                Block::RedstoneWire { .. } | Block::RedstoneLamp { .. } | Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } | Block::Piston { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+                Block::RedstoneWire { .. }
+                    | Block::RedstoneLamp { .. }
+                    | Block::RedstoneRepeater { .. }
+                    | Block::RedstoneComparator { .. }
+                    | Block::Piston { .. }
+                    | Block::RedstoneTorch { .. }
+                    | Block::RedstoneWallTorch { .. }
             ) {
                 return Err(invalid("sampled program link target must be wire, lamp or repeater"));
             }
@@ -335,7 +448,10 @@ impl Program {
             let mut recipients = std::collections::HashSet::new();
             record.watchers.retain(|watcher| recipients.insert(*watcher));
             for &watcher in &record.watchers {
-                if !matches!(initial.get(watcher), Some(Block::RedstoneLamp { .. } | Block::Piston { .. } | Block::Observer { .. })) {
+                if !matches!(
+                    initial.get(watcher),
+                    Some(Block::RedstoneLamp { .. } | Block::Piston { .. } | Block::Observer { .. })
+                ) {
                     return Err(invalid("sampled watched-wire receiver is not a lamp, piston or observer"));
                 }
             }
@@ -365,7 +481,9 @@ impl Program {
                         Operation::UpdateComparator(slot) if !matches!(initial.get(slot), Some(Block::RedstoneComparator { .. })) => {
                             return Err(invalid("sampled UpdateComparator target is not a comparator"));
                         }
-                        Operation::UpdateTorch(slot) if !matches!(initial.get(slot), Some(Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })) => {
+                        Operation::UpdateTorch(slot)
+                            if !matches!(initial.get(slot), Some(Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })) =>
+                        {
                             return Err(invalid("sampled program UpdateTorch target is not a torch"));
                         }
                         _ => {}
@@ -409,19 +527,47 @@ impl Program {
         })
     }
 
-    pub(super) fn start(&self) -> Runtime<'_> {
+    pub(super) fn start(&self) -> Runtime {
         let mut runtime = Runtime {
-            program: self,
-            comparator_outputs: { let mut outputs = vec![0; self.initial.len()]; for record in &self.comparators { outputs[record.component] = record.stored; } outputs },
-            reactive_wire_strengths: self.reactive_wires.iter().map(|record| match self.initial[record.wire] { Block::RedstoneWire { wire } => wire.power, _ => unreachable!() }).collect(),
+            program: std::sync::Arc::new(self.clone()),
+            piston_state: mchprs_world::PistonState::default(),
+            comparator_outputs: {
+                let mut outputs = vec![0; self.initial.len()];
+                for record in &self.comparators {
+                    outputs[record.component] = record.stored;
+                }
+                outputs
+            },
+            reactive_wire_strengths: self
+                .reactive_wires
+                .iter()
+                .map(|record| match self.initial[record.wire] {
+                    Block::RedstoneWire { wire } => wire.power,
+                    _ => unreachable!(),
+                })
+                .collect(),
             piston_extended: self.pistons.iter().map(|p| p.extended).collect(),
             piston_head_present: self.pistons.iter().map(|p| p.head_present).collect(),
             piston_head_moving: vec![false; self.pistons.len()],
             piston_base_moving: vec![false; self.pistons.len()],
             token_positions: self.tokens.iter().map(|t| t.position).collect(),
-            group_arrangements: self.movement_groups.iter().map(|group| group.axes.iter().map(|axis| {
-                self.tokens[axis.token].position.and_then(|pos| self.tokens[axis.token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1) * axis.stride
-            }).sum()).collect(),
+            group_arrangements: self
+                .movement_groups
+                .iter()
+                .map(|group| {
+                    group
+                        .axes
+                        .iter()
+                        .map(|axis| {
+                            self.tokens[axis.token]
+                                .position
+                                .and_then(|pos| self.tokens[axis.token].cells.iter().position(|&cell| cell == pos))
+                                .map_or(0, |cell| cell + 1)
+                                * axis.stride
+                        })
+                        .sum()
+                })
+                .collect(),
             arrangement_contributions: vec![0; self.arrangement_links.len()],
             piston_events: std::collections::VecDeque::new(),
             queued_piston_events: vec![0; self.pistons.len()],
@@ -446,11 +592,38 @@ impl Program {
                                 0
                             }
                         }
-                        Block::RedstoneComparator { comparator } => if comparator.powered { self.comparators.iter().find(|record| record.component == link.source).map_or(0, |record| record.stored) } else { 0 },
+                        Block::RedstoneComparator { comparator } => {
+                            if comparator.powered {
+                                self.comparators
+                                    .iter()
+                                    .find(|record| record.component == link.source)
+                                    .map_or(0, |record| record.stored)
+                            } else {
+                                0
+                            }
+                        }
                         Block::RedstoneWire { wire } => wire.power,
-                        Block::RedstoneBlock => if self.tokens.iter().any(|token| token.position == Some(self.positions[link.source])) { 0 } else { 15 },
-                        Block::Observer { observer } => if observer.powered { 15 } else { 0 },
-                        Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => if lit { 15 } else { 0 },
+                        Block::RedstoneBlock => {
+                            if self.tokens.iter().any(|token| token.position == Some(self.positions[link.source])) {
+                                0
+                            } else {
+                                15
+                            }
+                        }
+                        Block::Observer { observer } => {
+                            if observer.powered {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } => {
+                            if lit {
+                                15
+                            } else {
+                                0
+                            }
+                        }
                         Block::RedstoneRepeater { repeater } => {
                             if repeater.powered {
                                 15

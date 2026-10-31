@@ -2,7 +2,7 @@ use mchprs_blocks::BlockPos;
 use mchprs_world::{PistonEvent, PistonState};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::redpiler::backend::{ScheduledBlockTick, TickScheduler};
+use crate::redpiler::{ScheduledBlockTick, TickScheduler};
 
 /// Membership only: the scheduler retains priority, FIFO and ring ordering.
 /// Counts also preserve duplicate entries imported from older saves.

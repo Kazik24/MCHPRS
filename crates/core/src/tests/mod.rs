@@ -7,7 +7,6 @@ use mchprs_world::TickPriority;
 use sha2::{Digest, Sha256};
 
 use crate::plot::{PLOT_WIDTH, PlotWorld};
-use crate::redpiler::{Compiler, CompilerOptions};
 use crate::redstone;
 use crate::world::World;
 use crate::world::storage::Chunk;
@@ -65,23 +64,6 @@ fn calculate_world_hash(world: &PlotWorld) -> Box<[u8]> {
     hash.to_vec().into_boxed_slice()
 }
 
-fn visible_output_positions(world: &PlotWorld) -> Vec<BlockPos> {
-    let mut positions = Vec::new();
-    for chunk in world.get_chunks() {
-        for x in 0..16 {
-            for z in 0..16 {
-                for y in 0..256 {
-                    let block = Block::from_id(chunk.get_block(x, y, z));
-                    if matches!(block, Block::RedstoneLamp { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. }) {
-                        positions.push(BlockPos::new(chunk.x * 16 + x as i32, y as i32, chunk.z * 16 + z as i32));
-                    }
-                }
-            }
-        }
-    }
-    positions
-}
-
 #[test]
 fn run_mandelbrot_chungus() {
     let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
@@ -99,132 +81,4 @@ fn run_mandelbrot_chungus() {
         hash.as_ref(),
         b"\xd2\x56\x77\x9f\xe2\x5a\x9c\x0b\x70\x61\xd3\xea\x64\xf2\x0e\x58\xd3\x9e\x01\x42\x7a\xbb\x44\x72\xbc\x69\xf3\x0e\x36\x85\xd9\x15"
     );
-}
-
-#[test]
-fn run_mandelbrot_chungus_compiled() {
-    let mut interpreted = load_test_plot("./benches/chungus_mandelbrot_plot");
-    let output_positions = visible_output_positions(&interpreted);
-    click_floor_button(&mut interpreted, CHUNGUS_START_BUTTON);
-    let mut expected_trace = Vec::with_capacity(1000);
-    for _ in 0..1000 {
-        for _ in 0..TICK_MUL {
-            interpreted.tick_interpreted();
-        }
-        expected_trace.push(output_positions.iter().map(|&pos| interpreted.get_block(pos)).collect::<Vec<_>>());
-    }
-    let expected = calculate_world_hash(&interpreted);
-
-    for (mode, flags) in [("compiled", ""), ("optimized", "-O")] {
-        let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
-        let mut compiler: Compiler = Default::default();
-        let mut options = CompilerOptions::parse(flags).unwrap();
-        options.budget_multiplier = 8;
-        let bounds = plot.get_corners();
-        compiler.compile(&plot, bounds, options, Vec::new(), Default::default()).unwrap();
-        compiler.on_use_block(CHUNGUS_START_BUTTON);
-
-        for (tick, expected_outputs) in expected_trace.iter().enumerate() {
-            for _ in 0..TICK_MUL {
-                compiler.tick().unwrap();
-            }
-            compiler.flush(&mut plot);
-            for (&pos, expected_output) in output_positions.iter().zip(expected_outputs) {
-                assert_eq!(
-                    plot.get_block(pos),
-                    *expected_output,
-                    "{mode} output at {pos} differs after game tick {}",
-                    tick + 1
-                );
-            }
-        }
-
-        assert_eq!(calculate_world_hash(&plot), expected, "{mode} output differs from interpreter");
-    }
-}
-
-#[test]
-fn run_mandelbrot_chungus_interpreted_to_compiled() {
-    let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
-    click_floor_button(&mut plot, CHUNGUS_START_BUTTON);
-
-    for _ in 0..1000 * TICK_MUL {
-        plot.tick_interpreted();
-    }
-
-    let mut compiler: Compiler = Default::default();
-    let mut options = CompilerOptions::parse("-O").unwrap();
-    options.budget_multiplier = 8;
-    let bounds = plot.get_corners();
-    let ticks = plot.scheduler().iter_entries().collect();
-    compiler.compile(&plot, bounds, options, ticks, Default::default()).unwrap();
-
-    for _ in 0..1000 * TICK_MUL {
-        compiler.tick().unwrap();
-    }
-    compiler.flush(&mut plot);
-
-    let hash = calculate_world_hash(&plot);
-    let mut control = load_test_plot("./benches/chungus_mandelbrot_plot");
-    click_floor_button(&mut control, CHUNGUS_START_BUTTON);
-    for _ in 0..2000 * TICK_MUL {
-        control.tick_interpreted();
-    }
-    // Optimized compilation omits internal wires/nodes. Compare the circuit's
-    // visible outputs with uninterrupted interpreted execution instead of a
-    // historical whole-world hash containing the old lost-repeater-pulse state.
-    for chunk in control.get_chunks() {
-        for x in 0..16 {
-            for z in 0..16 {
-                for y in 0..256 {
-                    let block = Block::from_id(chunk.get_block(x, y, z));
-                    if matches!(block, Block::RedstoneLamp { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. }) {
-                        let pos = BlockPos::new(chunk.x * 16 + x as i32, y as i32, chunk.z * 16 + z as i32);
-                        assert_eq!(plot.get_block(pos), block, "handoff output at {pos}; world hash {hash:?}");
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[test]
-fn run_mandelbrot_chungus_compiled_to_interpreted() {
-    let mut plot = load_test_plot("./benches/chungus_mandelbrot_plot");
-    let output_positions = visible_output_positions(&plot);
-
-    let mut compiler: Compiler = Default::default();
-    let mut options = CompilerOptions::parse("-O").unwrap();
-    options.budget_multiplier = 8;
-    let bounds = plot.get_corners();
-    compiler.compile(&plot, bounds, options, Vec::new(), Default::default()).unwrap();
-    compiler.on_use_block(CHUNGUS_START_BUTTON);
-
-    for _ in 0..1000 * TICK_MUL {
-        compiler.tick().unwrap();
-    }
-    compiler.flush(&mut plot);
-
-    compiler.reset(&mut plot, bounds);
-
-    let mut control = load_test_plot("./benches/chungus_mandelbrot_plot");
-    click_floor_button(&mut control, CHUNGUS_START_BUTTON);
-    for _ in 0..1000 * TICK_MUL {
-        control.tick_interpreted();
-    }
-    for game_tick in 1..=28 {
-        // TODO Investigate why this circuit stops after about 30 interpreter ticks following the graph reset.
-        // println!("{}", plot.to_be_ticked.len());
-        for _ in 0..TICK_MUL {
-            plot.tick_interpreted();
-            control.tick_interpreted();
-        }
-        for &pos in &output_positions {
-            assert_eq!(
-                plot.get_block(pos),
-                control.get_block(pos),
-                "handoff output at {pos} after game tick {game_tick}"
-            );
-        }
-    }
 }

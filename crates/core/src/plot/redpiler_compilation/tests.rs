@@ -3,20 +3,7 @@ use crate::plot::client_sync_tests::fixture;
 use mchprs_network::packets::serverbound::SKeepAlive;
 use std::sync::mpsc;
 
-#[path = "../../../benches/support/cpus.rs"]
-#[allow(dead_code)]
-mod cpu_fixture;
-
 impl Plot {
-    pub(in crate::plot) fn wait_for_redpiler_analysis(&mut self) {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while self.analysis.is_some() {
-            assert!(Instant::now() < deadline, "analysis worker did not finish");
-            self.poll_redpiler_analysis();
-            thread::sleep(Duration::from_millis(1));
-        }
-    }
-
     pub(in crate::plot) fn wait_for_redpiler(&mut self) {
         let deadline = Instant::now() + Duration::from_secs(20);
         while self.compilation.is_some() {
@@ -34,60 +21,9 @@ fn install_job(plot: &mut Plot, work: impl FnOnce(PlotWorld, Arc<TaskMonitor>) -
     plot.compilation = Some(CompilationJob {
         started: Instant::now(),
         entry: EntryVersion::capture(&plot.world),
-        mode: "O0".into(),
         monitor,
         worker: thread::spawn(move || work(world, worker_monitor)),
     });
-}
-
-#[test]
-#[ignore = "release-only CPU request-to-activation timing; run without competing builds"]
-fn cpu_bubblesort_request_to_activation_stays_within_ten_seconds() {
-    let mut samples = Vec::new();
-    for _ in 0..3 {
-        let (mut plot, _peer) = fixture(false);
-        let cpu = cpu_fixture::CPUS[2];
-        plot.world = cpu_fixture::load_cpu(cpu);
-        let sign = cpu.origin + BlockPos::new(186, 2, 184);
-        assert!(matches!(plot.world.get_block(sign), Block::WallSign { .. }));
-        assert!(plot.world.set_block(sign, Block::Air));
-        plot.world.flush_block_changes();
-        let started = Instant::now();
-        plot.start_redpiler(CompilerOptions {
-            optimization_level: Some(4),
-            budget_multiplier: 8,
-            ..Default::default()
-        });
-        let setup = started.elapsed();
-        let mut publication = Duration::ZERO;
-        while plot.compilation.is_some() {
-            assert!(started.elapsed() < Duration::from_secs(60), "compiler worker did not finish");
-            let poll = Instant::now();
-            plot.poll_redpiler_compilation();
-            if plot.compilation.is_none() {
-                publication = poll.elapsed();
-            } else {
-                thread::sleep(Duration::from_millis(1));
-            }
-        }
-        let elapsed = started.elapsed();
-        assert!(plot.redpiler.is_active(), "compilation rejected instead of activating");
-        let compile = plot.redpiler.stats().unwrap().total_duration;
-        samples.push(serde_json::json!({
-            "request_to_activation_seconds": elapsed.as_secs_f64(),
-            "request_setup_seconds": setup.as_secs_f64(),
-            "final_poll_seconds": publication.as_secs_f64(),
-            "worker_compile_seconds": compile.as_secs_f64(),
-        }));
-    }
-    let report = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/compilation-simplification/activation.json");
-    std::fs::create_dir_all(report.parent().unwrap()).unwrap();
-    std::fs::write(report, serde_json::to_vec_pretty(&samples).unwrap()).unwrap();
-    println!("CPU request-to-activation: {samples:?}");
-    assert!(
-        samples.iter().all(|row| row["request_to_activation_seconds"].as_f64().unwrap() <= 10.0),
-        "ten-second activation target not met"
-    );
 }
 
 fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
@@ -100,62 +36,6 @@ fn blocked_compile(plot: &mut Plot) -> mpsc::Sender<()> {
         CompilationResult { world, compiler, result }
     });
     release
-}
-
-fn blocked_analysis(plot: &mut Plot) -> mpsc::Sender<()> {
-    let (release, gate) = mpsc::channel();
-    let monitor = Arc::new(TaskMonitor::default());
-    plot.analysis = Some(AnalysisJob {
-        started: Instant::now(),
-        player: plot.players[0].entity_id,
-        monitor,
-        worker: thread::spawn(move || {
-            gate.recv_timeout(Duration::from_secs(20)).unwrap();
-            Ok(AnalysisOutput {
-                lines: vec!["completed".to_owned()],
-                error: None,
-            })
-        }),
-    });
-    release
-}
-
-#[test]
-fn analysis_does_not_pause_ticks_or_report_after_requester_leaves() {
-    let (mut plot, _peer) = fixture(false);
-    let release = blocked_analysis(&mut plot);
-    let logical_tick = plot.world.piston_state.logical_tick;
-    assert!(plot.tick());
-    assert!(plot.world.piston_state.logical_tick > logical_tick);
-
-    let connection = mchprs_network::test_support::connection(false).unwrap();
-    plot.players[0].client = connection.player;
-    let received = Instant::now() - Duration::from_secs(20);
-    plot.players[0].last_keep_alive_received = received;
-    connection.incoming.send(Box::new(SKeepAlive { id: 7 })).unwrap();
-    plot.update();
-    assert!(plot.players[0].last_keep_alive_received > received);
-    assert!(plot.players[0].client.alive());
-
-    plot.start_redpiler(Default::default());
-    assert!(plot.compilation.is_none(), "analysis must reserve the plot worker slot");
-    let worker_id = plot.analysis.as_ref().unwrap().worker.thread().id();
-    plot.start_redpiler_analysis(0, Default::default(), true, Default::default());
-    assert_eq!(
-        plot.analysis.as_ref().unwrap().worker.thread().id(),
-        worker_id,
-        "a second analysis must be rejected while the first drains"
-    );
-    plot.cancel_redpiler_analysis();
-    plot.players.clear();
-    release.send(()).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while plot.analysis.is_some() {
-        assert!(Instant::now() < deadline, "analysis worker did not finish");
-        plot.poll_redpiler_analysis();
-        thread::sleep(Duration::from_millis(1));
-    }
-    assert!(!plot.redpiler.is_active());
 }
 
 #[test]
@@ -175,7 +55,7 @@ fn activation_waits_for_poll_and_preserves_imported_deadlines() {
     plot.wait_for_redpiler();
     assert!(plot.redpiler.is_active());
     assert!(plot.world.scheduler().iter_entries().next().is_none());
-    plot.reset_redpiler();
+    plot.reset_redpiler().unwrap();
     assert_eq!(plot.world.scheduler().iter_entries().collect::<Vec<_>>(), pending);
 }
 
@@ -236,7 +116,7 @@ fn reset_discards_even_an_already_completed_compilation() {
         assert!(Instant::now() < deadline);
         thread::sleep(Duration::from_millis(1));
     }
-    plot.reset_redpiler();
+    plot.reset_redpiler().unwrap();
     plot.poll_redpiler_compilation();
     assert!(plot.compilation.is_none());
     assert!(!plot.redpiler.is_active());
@@ -246,7 +126,7 @@ fn reset_discards_even_an_already_completed_compilation() {
 fn cancelling_and_recompiling_cannot_overlap_large_workers() {
     let (mut plot, _peer) = fixture(false);
     let release = blocked_compile(&mut plot);
-    plot.reset_redpiler();
+    plot.reset_redpiler().unwrap();
     let original = plot.compilation.as_ref().unwrap().worker.thread().id();
     plot.start_redpiler(Default::default());
     assert_eq!(plot.compilation.as_ref().unwrap().worker.thread().id(), original);

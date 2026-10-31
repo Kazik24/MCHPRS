@@ -123,7 +123,6 @@ impl Block {
         let index = *crate::generated::STATE_TO_BLOCK_INDEX.get(self.get_id() as usize)?;
         crate::generated::BLOCKS.get(index as usize)
     }
-    /// Dynamic lookup for commands and serialization; prefer typed accessors in runtime code.
     pub fn property(self, name: &str) -> Option<&'static str> {
         crate::generated::STATE_PROPERTIES
             .get(self.get_id() as usize)?

@@ -116,6 +116,7 @@ impl Diff {
     }
 
     pub fn near(&self, center: PlayerPos, radius: f64, limit: usize) -> Result<Vec<Marker>> {
+        // TODO: This sections vector is very hard to follow, need to extract a helpers.
         let mut sections: Vec<_> = self
             .sections
             .iter()
@@ -129,6 +130,7 @@ impl Diff {
             })
             .collect();
         sections.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        // TODO: Heap has very abstract type here (tuple of 5 values without known meaning). Need to extract a struct with named fields for clarity.
         let mut heap = BinaryHeap::new();
         if limit == 0 {
             return Ok(Vec::new());

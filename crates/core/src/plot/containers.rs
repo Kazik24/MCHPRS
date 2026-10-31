@@ -102,7 +102,10 @@ impl Plot {
                 self.close_open_container(player_idx);
                 return;
             }
-            self.reset_redpiler();
+            if let Err(error) = self.reset_redpiler() {
+                self.players[player_idx].send_error_message(&error.to_string());
+                return;
+            }
         }
         let Some(BlockEntity::Container { inventory, ty, .. }) = self.world.get_block_entity(pos) else {
             return;

@@ -1,4 +1,7 @@
-use mchprs_blocks::{BlockPos, blocks::Block};
+use mchprs_blocks::{
+    BlockDirection, BlockPos,
+    blocks::{Block, Lever, LeverFace},
+};
 use mchprs_core::headless::{CompilerOptions, Input, Session, Snapshot};
 
 #[test]
@@ -9,7 +12,12 @@ fn host_runs_a_compiled_lever_with_only_the_public_api() {
         max: BlockPos::new(6, 6, 6),
         blocks: vec![
             (BlockPos::new(5, 4, 5), Block::from_name("stone").unwrap()),
-            (pos, Block::from_name("lever").unwrap()),
+            (
+                pos,
+                Block::Lever {
+                    lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+                },
+            ),
         ],
         entities: vec![],
         ticks: vec![],

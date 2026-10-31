@@ -113,9 +113,7 @@ pub fn piston_tick(world: &mut impl World, piston: RedstonePiston, pos: BlockPos
 }
 
 pub(crate) fn execute_event(world: &mut impl World, event: PistonEvent) {
-    world.observe_piston_event_context(Some(event));
     execute_event_inner(world, event);
-    world.observe_piston_event_context(None);
 }
 
 fn execute_event_inner(world: &mut impl World, event: PistonEvent) {
@@ -332,11 +330,6 @@ pub(crate) fn tick_motion(world: &mut impl World, pos: BlockPos, identity: u64) 
     }
 }
 
-#[cfg(test)]
-pub(crate) fn finish_interrupted_for_test(world: &mut impl World, pos: BlockPos) {
-    finish(world, pos, true);
-}
-
 fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     if !matches!(world.get_block(pos), Block::MovingPiston { .. }) {
         return;
@@ -355,16 +348,6 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     let motion = world.piston_motion_index(pos, None);
     let carried_entity = motion.and_then(|i| world.piston_state().motions[i].carried_entity.clone());
     let identity = motion.map(|index| world.piston_state().motions[index].identity);
-    let motion_context = identity.and_then(|identity| {
-        world.piston_motion_origin(identity).map(|event| crate::world::PistonMotionObservation {
-            identity,
-            actor: event.pos,
-            action: event.action,
-            part: pos,
-            source: entity.source,
-            extending: entity.extending,
-        })
-    });
     world.delete_piston_entity(pos);
     world.set_block(pos, block);
     if let Some(entity) = carried_entity {
@@ -395,9 +378,7 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
     if !matches!(restored, Block::Observer { .. } | Block::PistonHead { .. }) {
         super::update(restored, world, pos, None);
     }
-    world.observe_piston_motion_context(motion_context);
     notify(world, pos);
-    world.observe_piston_motion_context(None);
     if world.instant_piston_cache().is_some_and(|cache| !cache.is_empty()) {
         if let Some(identity) = identity {
             instant::completed(world, pos, entity, identity, interrupted);
@@ -407,7 +388,6 @@ fn finish(world: &mut impl World, pos: BlockPos, interrupted: bool) {
 
 fn shape_changed(world: &mut impl World, pos: BlockPos) {
     shape_notifications(pos, |neighbor, face| {
-        world.observe_piston_notification(pos, neighbor, face, true);
         // interaction::change takes the direction from the changed block to
         // its neighbor; observer callbacks below take the opposite direction.
         crate::interaction::change(world.get_block(neighbor), world, neighbor, face);
@@ -436,7 +416,6 @@ pub(crate) fn notify(world: &mut impl World, pos: BlockPos) {
     let _source = super::instant_piston_tests::notification_source(Some(pos));
     shape_changed(world, pos);
     neighbor_notifications(pos, |neighbor, direction| {
-        world.observe_piston_notification(pos, neighbor, direction, false);
         let block = world.get_block(neighbor);
         if !matches!(block, Block::Observer { .. }) {
             super::update(block, world, neighbor, Some(direction));

@@ -42,6 +42,7 @@ fn coordinate_component(message: &str, color: &str) -> Value {
     json!({"text": "", "color": color, "extra": extra})
 }
 
+// TODO: Move tests to _tests.rs
 #[cfg(test)]
 mod tests {
     use super::*;

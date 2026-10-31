@@ -1,5 +1,10 @@
 # RedGear engine investigation
 
+**Historical investigation:** this report describes Redpiler as it existed on
+27 October 2026, before the sampled runtime replaced the Graph backend. See
+[current architecture](REDPILER_ARCHITECTURE.md) for the implementation now in
+this repository.
+
 27 October 2026. RedGear was examined at commit `14a5966da55296bb839500f9034043fb5ff0042f` in the separate checkout `E:/codex-builds/RedGear-reference`. Its [repository](https://github.com/Brzechuu/RedGear) is a Paper plugin that runs either its MCHPRS/MROWW adapter or a separate compiled-engine adapter in a separate process. The adapters accept JSON lines for region load, compile, tick, use, and report. The MCHPRS adapter can run the physical interpreter; the compiled-engine adapter does not silently fall back.
 
 RedGear's own LICENSE is MIT. The compiled engine's referenced source repository returned 404, and the checkout does not establish a separate license for its bundled binary. No separate PDK or PDK documentation was found in the checkout; the inspected interface was the compiled engine DLL and its RedGear wrapper. Do not assume RedGear's MIT license grants permission to reuse that engine's code. The DLL's assembly metadata identifies source commit `2e7be125bc4dc8a21bd05a60785a262cf2342f85`; this does not identify the sibling MCHPRS version used to build the Rust binary.

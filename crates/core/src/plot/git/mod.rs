@@ -75,6 +75,7 @@ fn limits() -> Limits {
     }
 }
 
+// TODO: Simplify, track what permissions are used in prod and remove unessesery code.
 fn storage_permission_prefix() -> &'static str {
     if permissions::dedicated_permissions() {
         "mchprs.git.storage."
@@ -119,6 +120,7 @@ static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
     let receiver = Arc::new(Mutex::new(receiver));
     for index in 0..2 {
         let receiver = receiver.clone();
+        // TODO: cleanup this code, quite unreadable.
         std::thread::Builder::new()
             .name(format!("plot-git-{index}"))
             .spawn(move || {
@@ -267,7 +269,7 @@ impl Plot {
             self.world.piston_state.phase == AdvancePhase::BetweenTicks,
             messages::GIT_FINISH_PARTIAL_TICK
         );
-        self.reset_redpiler(); // Exports compiled block state and its scheduled ticks.
+        self.reset_redpiler().context("could not export active compiled state")?;
         for chunk in &mut self.world.chunks {
             chunk.prepare_history();
             for entity in chunk.block_entities.values() {
@@ -385,7 +387,7 @@ impl Plot {
             );
         }
         let inspection = if args == ["inspect"] {
-            self.reset_redpiler();
+            self.reset_redpiler().context("could not export active compiled state")?;
             let viewer = &self.players[player];
             let pos = super::worldedit::ray_trace_block(&self.world, viewer.eye_position(), f64::from(pitch), f64::from(yaw), 10.0)
                 .context(messages::GIT_INSPECT_TARGET_REQUIRED)?;
@@ -509,6 +511,9 @@ impl Plot {
         }
         match result {
             Ok(reply) => {
+                let previous_head = self.git.head.clone();
+                let previous_names = self.git.names.clone();
+                let previous_commits = self.git.commits.clone();
                 if let Some(head) = reply.head {
                     self.git.head = Some(head);
                 }
@@ -523,7 +528,16 @@ impl Plot {
                     Payload::Checkout(snapshot, message, _reservation) => {
                         tracing::info!(actor = %format_args!("{:032x}", pending.actor),
                             plot_x = self.world.x, plot_z = self.world.z, %message, "Git restore completed");
-                        self.apply_git(snapshot);
+                        if let Err(error) = self.apply_git(snapshot) {
+                            self.git.head = previous_head;
+                            self.git.names = previous_names;
+                            self.git.commits = previous_commits;
+                            tracing::error!(%error, "Git restore could not export compiled state");
+                            if let Some(player) = actor {
+                                self.players[player].send_error_message(&error.to_string());
+                            }
+                            return;
+                        }
                         for viewer in &self.players {
                             viewer.send_color_message(ColorCode::Green, &message);
                         }
@@ -724,9 +738,9 @@ impl Plot {
         }
     }
 
-    fn apply_git(&mut self, snapshot: Snapshot) {
+    fn apply_git(&mut self, snapshot: Snapshot) -> Result<()> {
+        self.reset_redpiler().context("could not export active compiled state")?;
         self.close_all_containers();
-        self.reset_redpiler();
         let coords = snapshot.plot;
         self.world.chunks = snapshot
             .data
@@ -766,6 +780,7 @@ impl Plot {
             }
             self.update_view_pos_for_player(player, true);
         }
+        Ok(())
     }
 
     fn git_player_clear(&self, pos: PlayerPos, scale: f64) -> bool {

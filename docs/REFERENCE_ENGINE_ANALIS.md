@@ -10,11 +10,12 @@ Inspected DLL SHA-256:
 `DD963AA133042E70550E3C96D4AB0886D7DE460F49204B985FA34A01BF1A4DF1`.
 Method names below refer to `Rsc.Compilation/Compiler.cs` and
 `Rsc.Engine/Engine.cs`; search by name if line numbers differ.
-Detailed investigation and replay limitations: [investigation](REDGEAR_ENGINE_INVESTIGATION.md).
-See the [milestones](REDPILER_SAMPLED_ENGINE_PLAN.md),
-[verified implementation status](REDPILER_SAMPLED_ENGINE_PROGRESS.md). The reference
-algorithms below describe the inspected reference binary; they are not claims that
-the current Rust prototypes implement those algorithms.
+Detailed investigation and replay limitations: [historical investigation](REDGEAR_ENGINE_INVESTIGATION.md).
+The [sampled engine plan](REDPILER_SAMPLED_ENGINE_PLAN.md) records the
+superseded development stages. See [current architecture](REDPILER_ARCHITECTURE.md)
+and [current status](REDPILER_SAMPLED_ENGINE_PROGRESS.md) for this repository.
+The reference algorithms below describe the inspected reference binary; they are
+not claims that the current Rust runtime implements those algorithms in full.
 
 ## 1. Architecture
 
@@ -306,12 +307,14 @@ still needs a complete, isolated restoration operation and safe edit ordering.
 
 ## 10. MCHPRS integration and implementation sequence
 
-Keep the normal Graph backend. Build a separate sampled compiler and runtime;
-do not make its sealed program depend on `LoweredCircuit` or run Graph behind
-the sampled runtime. `World` supplies reads and interpreter callbacks; private
-scratch state supplies writes, scheduler and piston motion during probing.
-Existing `ScratchWorld` and observation hooks can be reused if their boundary,
-entry-work and callback coverage match the new compiler's requirements.
+This integration sequence records the pre-removal plan and is retained as
+historical context. It was superseded on 31 October 2026 when the sampled
+runtime became the sole compiled engine; see the [current architecture](REDPILER_ARCHITECTURE.md).
+At the time, the proposal was to keep Graph while developing the sampled
+compiler. `World` supplies reads and interpreter callbacks; private scratch
+state supplies writes, scheduler and piston motion during probing. Existing
+`ScratchWorld` and observation hooks can be reused if their boundary, entry-work
+and callback coverage match the compiler's requirements.
 
 Implement in small, executable gates:
 

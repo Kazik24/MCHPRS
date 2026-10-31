@@ -25,7 +25,11 @@ pub(super) fn inputs_of(world: &impl World, program: &Program, member: usize) ->
         Block::RedstoneLamp { .. } => found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?,
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
         Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
-            let (facing, comparator) = match block { Block::RedstoneRepeater { repeater } => (repeater.facing, false), Block::RedstoneComparator { comparator } => (comparator.facing, true), _ => unreachable!() };
+            let (facing, comparator) = match block {
+                Block::RedstoneRepeater { repeater } => (repeater.facing, false),
+                Block::RedstoneComparator { comparator } => (comparator.facing, true),
+                _ => unreachable!(),
+            };
             let face = facing.block_face();
             let rear = pos.offset(face);
             let block = world.get_block(rear);
@@ -59,7 +63,9 @@ pub(super) fn inputs_of(world: &impl World, program: &Program, member: usize) ->
                 let block = world.get_block(at);
                 if comparator && matches!(block, Block::RedstoneWire { .. }) {
                     side.extend(crate::redpiler::scratch::discover_wire_sources(world, &[at])?);
-                } else if (comparator && matches!(block, Block::RedstoneBlock)) || ((comparator || crate::redstone::is_diode(block)) && crate::redstone::power::emits_strong_power(block, world, at, face, false)) {
+                } else if (comparator && matches!(block, Block::RedstoneBlock))
+                    || ((comparator || crate::redstone::is_diode(block)) && crate::redstone::power::emits_strong_power(block, world, at, face, false))
+                {
                     side.push(crate::redpiler::scratch::WireSource {
                         wire: pos,
                         source: at,

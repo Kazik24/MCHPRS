@@ -12,7 +12,6 @@ pub fn with_client(mut world: PlotWorld, player: Player, tps: Tps) -> Plot {
         players: vec![player],
         redpiler: Default::default(),
         compilation: None,
-        analysis: None,
         message_receiver: bus::Bus::new(4).add_rx(),
         message_sender,
         priv_message_receiver,

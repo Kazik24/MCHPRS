@@ -139,16 +139,10 @@ impl Connection {
                         Ok(json!({"mode":"interpreter"}))
                     }
                     Some("compiled") => {
-                        let level = request
-                            .get("optimization")
-                            .map(|value| value.as_u64().filter(|level| *level <= 6).ok_or("invalid optimization"))
-                            .transpose()?
-                            .unwrap_or(0);
-                        s.compile(CompilerOptions {
-                            optimization_level: Some(level as usize),
-                            ..Default::default()
-                        })
-                        .map_err(|e| e.to_string())?;
+                        if request.get("optimization").is_some() {
+                            return Err("compiled mode no longer accepts optimization levels".into());
+                        }
+                        s.compile(CompilerOptions::default()).map_err(|e| e.to_string())?;
                         self.compiled = true;
                         Ok(json!({"mode":"compiled"}))
                     }

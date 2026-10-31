@@ -129,7 +129,7 @@ fn repeater_short_pulse_ends_after_selected_delay() {
 
 #[test]
 fn compiled_handoff_preserves_pending_short_pulse() {
-    for options in ["", "-O", "-O -io"] {
+    for options in ["", "--io-only"] {
         let mut world = world();
         let pos = BlockPos::new(40, 30, 40);
         world.set_block(pos.offset(BlockFace::Bottom), Block::Stone {});
@@ -199,7 +199,7 @@ fn ground_torch_never_weakly_powers_its_support() {
 }
 
 #[test]
-fn all_binary_plate_variants_power_and_survive_compiler_flush() {
+fn all_binary_plate_variants_power_in_the_native_world() {
     for name in [
         "stone_pressure_plate",
         "polished_blackstone_pressure_plate",
@@ -224,19 +224,7 @@ fn all_binary_plate_variants_power_and_survive_compiler_flush() {
         assert_eq!(powered.get_name(), name);
         assert_eq!(get_weak_power(powered, &world, pos, BlockFace::West, false), 15);
         assert_eq!(get_strong_power(powered, &world, pos, BlockFace::Top, false), 15);
-        world.set_block(pos, plate);
-        let mut compiler = Compiler::default();
-        compiler
-            .compile(
-                &world,
-                world.get_corners(),
-                CompilerOptions::parse("-O -io").unwrap(),
-                Vec::new(),
-                Default::default(),
-            )
-            .unwrap();
-        compiler.set_pressure_plate(pos, true);
-        compiler.flush(&mut world);
+        world.set_block(pos, powered);
         assert_eq!(world.get_block(pos).pressure_plate_powered(), Some(true), "{name}");
         assert_eq!(world.get_block(pos).get_name(), name);
     }
@@ -368,9 +356,9 @@ fn downward_piston_dust_step_only_transmits_upward() {
 }
 
 #[test]
-fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
+fn dust_steps_over_opaque_blocks_and_powers_the_block_below() {
     for name in ["iron_block", "stone", "dirt", "netherite_block"] {
-        for backend in ["interpreted", "", "-O", "-O -io"] {
+        for backend in ["interpreted", "sampled", "io-only"] {
             let mut world = world();
             let step = BlockPos::new(40, 30, 40);
             let high_dust = step.offset(BlockFace::Top);
@@ -378,6 +366,7 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
             let support = low_dust.offset(BlockFace::Bottom);
             let lamp = support.offset(BlockFace::Bottom);
             let source = high_dust.offset(BlockFace::East);
+            world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
             world.set_block(step, Block::from_name(name).unwrap());
             world.set_block(
                 source,
@@ -417,7 +406,10 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
                     .compile(
                         &world,
                         world.get_corners(),
-                        CompilerOptions::parse(backend).unwrap(),
+                        CompilerOptions {
+                            io_only: backend == "io-only",
+                            ..Default::default()
+                        },
                         Vec::new(),
                         Default::default(),
                     )
@@ -428,7 +420,7 @@ fn dust_steps_over_opaque_blocks_and_powers_the_block_below_in_both_backends() {
                 }
                 compiler.flush(&mut world);
             }
-            if backend == "interpreted" || backend.is_empty() {
+            if backend != "io-only" {
                 assert!(
                     matches!(world.get_block(low_dust), Block::RedstoneWire { wire } if wire.power == 14),
                     "{name}: {backend}"

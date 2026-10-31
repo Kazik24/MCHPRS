@@ -292,7 +292,11 @@ impl Plot {
                     }
                     _ => {}
                 }
-                self.reset_redpiler();
+                if let Err(error) = self.reset_redpiler() {
+                    self.players[player].send_error_message(&error.to_string());
+                    cancel(self);
+                    return;
+                }
             }
         }
 
@@ -395,7 +399,11 @@ impl Plot {
                 _ => {}
             }
 
-            self.reset_redpiler();
+            if let Err(error) = self.reset_redpiler() {
+                self.players[player].send_error_message(&error.to_string());
+                self.send_block_change(block_pos, block.get_id());
+                return;
+            }
 
             interaction::destroy(block, &mut self.world, block_pos);
             if self.world.screen_only() && !matches!(block, Block::Air) {
@@ -555,7 +563,10 @@ impl ServerBoundPacketHandler for Plot {
         if !old.is_command_block() {
             return;
         }
-        self.reset_redpiler();
+        if let Err(error) = self.reset_redpiler() {
+            self.players[player].send_error_message(&error.to_string());
+            return;
+        }
         let name = match packet.mode {
             0 => "chain_command_block",
             1 => "repeating_command_block",

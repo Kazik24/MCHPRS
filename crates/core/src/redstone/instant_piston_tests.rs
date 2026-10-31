@@ -16,7 +16,6 @@ use std::path::{Path, PathBuf};
 
 mod io;
 mod reference_contract;
-mod response_patterns;
 
 thread_local! {
     static RECORDER: RefCell<Option<Recorder>> = const { RefCell::new(None) };

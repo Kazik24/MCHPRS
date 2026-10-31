@@ -450,8 +450,9 @@ impl Plot {
                     session.invalidate();
                     session.set_status(messages::WIRE_STALE);
                 } else {
-                    self.reset_redpiler();
-                    if !plan.reads.is_current(&self.world) {
+                    if let Err(error) = self.reset_redpiler() {
+                        session.set_status(&error.to_string());
+                    } else if !plan.reads.is_current(&self.world) {
                         session.invalidate();
                         session.set_status(messages::WIRE_STALE);
                     } else {

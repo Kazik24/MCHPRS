@@ -244,12 +244,11 @@ impl Repository {
 
     fn check_growth(&self, previous: u64) -> Result<()> {
         let bytes = self.database_bytes()?;
-        // Operations that reduce/preserve storage must still allow recovery when
-        // an operator lowers a quota below the existing repository's size.
         if bytes <= previous {
             return Ok(());
         }
         ensure!(bytes <= self.limits.plot_bytes, messages::GIT_PLOT_STORAGE_FULL);
+        // TODO: Other bytes are required? It previusly made a lot of debugging bsc of this code.
         let total = bytes.saturating_add(self.other_database_bytes()?);
         ensure!(total <= self.limits.total_bytes, messages::GIT_GLOBAL_STORAGE_FULL);
         Ok(())

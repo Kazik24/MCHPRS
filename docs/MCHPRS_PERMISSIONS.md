@@ -185,25 +185,13 @@ metadata denies new allocation. Dedicated mode uses `mchprs.`; legacy mode omits
 that prefix. Standalone servers without a permission provider use the configured
 other-rank ceiling. Permission-cache refresh can take up to 30 seconds.
 
-[Rank](../crates/core/src/permissions/rank.rs) also selects a compilation-budget
-multiplier when valid rank metadata is enabled:
+[Rank](../crates/core/src/permissions/rank.rs) supplies display rank priority
+from default through admin; database prefixes may override fallback colors.
+Configure inheritance and action grants through the deployment's LuckPerms
+installation and preserve the selected server/world contexts when changing them.
 
-| Groups | Multiplier |
-| --- | --- |
-| `default`, `builder` | 1 |
-| `advanced`, `expert` | 2 |
-| `engineer`, `moderator`, `admin` | 8 |
-
-Expiry/stale metadata falls back to multiplier 1. These multipliers raise
-bounded compiler work limits; they do not permit unsupported semantics. Display
-rank priority follows the same group order from default through admin; database
-prefixes may override fallback colors. Configure inheritance and action grants
-through the deployment's LuckPerms installation and preserve the selected
-server/world contexts when changing them.
-
-The intended Redpiler access policy starts at Z (`advanced`): Z and E (`expert`)
-use a 2× budget, while I (`engineer`) and higher use 8×. G (`default`) and B
-(`builder`) should not receive Redpiler access. Enforce command access in
+The intended Redpiler access policy starts at Z (`advanced`). G (`default`) and
+B (`builder`) should not receive Redpiler access. Enforce command access in
 LuckPerms using `mchprs.commands.redpiler.*` (and
 `mchprs.commands.toggleautorp` for automatic compilation), preserving the
 deployment's contexts and higher-rank grants. The budget table does not grant

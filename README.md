@@ -7,11 +7,11 @@ Authors: **kazik24** and **lord225**.
 MROWW is a creative redstone server based on
 [MCHPRS](https://github.com/MCHPR/MCHPRS). This checkout targets Minecraft Java
 1.21.5, protocol 770, DataVersion 4325. Each plot has its own simulation thread.
-The physical interpreter executes spatial redstone and piston updates; redpiler
-compiles supported circuits into a graph and logical runtime.
+The physical interpreter executes spatial redstone and piston updates; Redpiler
+compiles its supported circuit subset into the sampled logical runtime.
 
 Read [the documentation index](docs/README.md) for the current architecture,
-mathematical models, parser, optimizer, and [test suites](docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
+mathematical models and [test suites](docs/INTERPRETER_ARCHITECTURE.md#8-verification-and-reproduction).
 Supported server mechanics are defined by the implementation; do not assume
 complete vanilla physics or that every interpreted circuit can be compiled.
 

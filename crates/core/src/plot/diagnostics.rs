@@ -49,10 +49,9 @@ impl Plot {
             }
             ["plot"] => self.diagnostics(),
             ["settings"] => {
-                let limits = crate::redpiler::analysis::AnalysisLimits::default();
                 let (used, limit) = super::git::memory_usage();
                 format!(
-                    "Players advertised {}; view distance {}; default TPS {}; auto Redpiler {}\nHistory work budget {} MiB (stored usage: /rhistory limit)\nGit RAM reserved {}/{} MiB; snapshot cap {} MiB; plot default/ceiling {}/{} MiB; total disk {} MiB\nRedpiler base limits: {} cells, {} pistons; rank multiplier 1-8; no shared RAM cap\nCommand steps {}; work time {} ms; WorldEdit operation/history blocks {}/{}",
+                    "Players advertised {}; view distance {}; default TPS {}; auto Redpiler {}\nHistory work budget {} MiB (stored usage: /rhistory limit)\nGit RAM reserved {}/{} MiB; snapshot cap {} MiB; plot default/ceiling {}/{} MiB; total disk {} MiB\nCommand steps {}; work time {} ms; WorldEdit operation/history blocks {}/{}",
                     CONFIG.max_players,
                     CONFIG.view_distance,
                     CONFIG.default_tps,
@@ -64,8 +63,6 @@ impl Plot {
                     CONFIG.git_default_plot_storage_mib,
                     CONFIG.git_plot_storage_mib,
                     CONFIG.git_total_storage_mib,
-                    limits.max_cells,
-                    limits.max_pistons,
                     CONFIG.max_command_ticks,
                     CONFIG.command_work_time_ms,
                     CONFIG.worldedit_max_blocks,
@@ -109,7 +106,7 @@ impl Plot {
         );
         if let Some(stats) = self.redpiler.stats() {
             text.push('\n');
-            text.push_str(&stats.summary_lines().join("\n"));
+            text.push_str(&stats.chat_summary_lines().join("\n"));
         }
         text
     }

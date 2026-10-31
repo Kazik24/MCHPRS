@@ -153,7 +153,10 @@ pub fn execute_command(plot: &mut Plot, player_idx: usize, command: &str, args: 
         return true;
     }
     if command.mutates_world {
-        plot.reset_redpiler();
+        if let Err(error) = plot.reset_redpiler() {
+            plot.players[player_idx].send_error_message(&error.to_string());
+            return true;
+        }
     }
     let previous = command.mutates_world.then(|| plot.world.set_authoritative_updates(true));
     let ctx = CommandExecuteContext {
