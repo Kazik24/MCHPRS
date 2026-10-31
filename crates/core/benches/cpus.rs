@@ -1,5 +1,5 @@
-//! Deterministic end-to-end interpreter benchmarks, with frozen-state assertions.
-//! Run once by default; CPU initialization and verification are excluded from timing.
+//! Deterministic end-to-end interpreter/Redpiler CPU benchmarks with frozen-state assertions.
+//! CPU initialization, Redpiler compilation and verification are excluded from tick timing.
 #![recursion_limit = "256"]
 #[path = "support/cpus.rs"]
 mod cpu_support;
@@ -18,6 +18,9 @@ fn main() {
         .map_or(1, |pair| pair[1].parse::<usize>().expect("--iterations needs a positive integer"));
     assert!(iterations > 0);
     let selected = args.windows(2).find(|pair| pair[0] == "--cpu").map(|pair| pair[1].as_str());
+    let engine = args.windows(2).find(|pair| pair[0] == "--engine").map_or("interpreter", |pair| pair[1].as_str());
+    assert!(matches!(engine, "interpreter" | "redpiler"), "unknown engine {engine}");
+    let redpiler = engine == "redpiler";
     let output = args.windows(2).find(|pair| pair[0] == "--output").map(|pair| &pair[1]);
     let label = args
         .windows(2)
@@ -39,11 +42,16 @@ fn main() {
         let expected = reference(cpu);
         let mut times = Vec::new();
         let mut active_times = Vec::new();
+        let mut compile_times = Vec::new();
         let mut active_ticks = 0;
         let mut visual_counts = Vec::new();
         let mut instant_cache_stats = Vec::new();
         for sample in 1..=iterations {
-            let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every);
+            let timing = replay_with_visuals(cpu, &expected, screen_only, flush_every, redpiler);
+            if let Some(compile) = timing.compile {
+                println!("{} compile: {:.3}s (excluded from tick timing)", cpu.name, compile.as_secs_f64());
+                compile_times.push(compile);
+            }
             println!(
                 "{} sample {sample}: {:.6}s / 50,000 game ticks ({:.1} TPS); active window: {} ticks / {:.6}s ({:.1} TPS); all assertions passed",
                 cpu.name,
@@ -67,9 +75,11 @@ fn main() {
         }
         times.sort();
         active_times.sort();
+        compile_times.sort();
         println!("{} median: {:.6}s", cpu.name, times[times.len() / 2].as_secs_f64());
         reports.push(serde_json::json!({
             "cpu":cpu.name,"schematic_sha256":cpu.sha256,"game_ticks":50_000,
+            "engine":engine,
             "samples_seconds":times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
             "median_seconds":times[times.len()/2].as_secs_f64(),
             "median_tps":50_000.0/times[times.len()/2].as_secs_f64(),
@@ -77,7 +87,9 @@ fn main() {
             "active_samples_seconds":active_times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
             "active_median_seconds":active_times[active_times.len()/2].as_secs_f64(),
             "active_median_tps":f64::from(active_ticks)/active_times[active_times.len()/2].as_secs_f64(),
-            "assertions":"whole-world checkpoints, ordered chat, per-tick Pong screen and BubbleSort RAM, BubbleSort halt boundary",
+            "compile_samples_seconds":compile_times.iter().map(|time| time.as_secs_f64()).collect::<Vec<_>>(),
+            "compile_median_seconds":compile_times.get(compile_times.len()/2).map(|time| time.as_secs_f64()),
+            "assertions":"whole-world checkpoints, ordered chat, per-tick screen and BubbleSort RAM; halt boundary where applicable",
             "visual_mode":if screen_only { "screen" } else { "all" },
             "visual_flush_every_game_ticks":flush_every,
             "visual_counts":visual_counts,
@@ -85,7 +97,7 @@ fn main() {
         }));
     }
     if let Some(path) = output {
-        let report = serde_json::json!({"schema":1,"label":label,"profile":"bench/release","samples":reports});
+        let report = serde_json::json!({"schema":1,"label":label,"profile":"bench/release","engine":engine,"samples":reports});
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();

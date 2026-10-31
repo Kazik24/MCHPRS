@@ -576,7 +576,9 @@ fn group_probe_finds_masked_conductor_dependency() {
         position: Some(cell),
         cells: vec![cell],
     });
-    let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program, None).unwrap();
+    let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+    let indexes = super::group_probe::ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+    let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program, &indexes, None).unwrap();
     let group = groups
         .iter()
         .find(|group| group.target == 2 && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(0)))

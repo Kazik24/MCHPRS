@@ -5,9 +5,10 @@ use mchprs_blocks::{
 };
 use mchprs_core::{
     plot::{
-        PLOT_WIDTH, PlotWorld,
+        PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld,
         worldedit::{load_schematic, paste_clipboard},
     },
+    redpiler::{Compiler, CompilerOptions, TaskMonitor},
     redstone,
     world::{World, storage::Chunk},
 };
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::time::{Duration, Instant};
 use std::{fs::File, path::Path};
+use std::sync::Arc;
 
 #[derive(Clone, Copy)]
 pub struct Cpu {
@@ -26,9 +28,20 @@ pub struct Cpu {
     pub stop: Option<BlockPos>,
     pub origin: BlockPos,
     pub active_ticks: u32,
+    pub screen: Option<Screen>,
 }
 
-pub const CPUS: [Cpu; 3] = [
+#[derive(Clone, Copy)]
+pub struct Screen {
+    pub x: i32,
+    pub top_y: i32,
+    pub bottom_y: i32,
+    pub left_z: i32,
+    pub right_z: i32,
+    pub sparse: bool,
+}
+
+pub const CPUS: [Cpu; 4] = [
     Cpu {
         name: "pm1_sort",
         schematic: "instant-pistons/PM1_SORT.schem",
@@ -37,6 +50,7 @@ pub const CPUS: [Cpu; 3] = [
         stop: Some(BlockPos::new(187, 32, 72)),
         origin: BlockPos::new(8, 8, 8),
         active_ticks: 12_051,
+        screen: None,
     },
     Cpu {
         name: "anpu_pong",
@@ -46,6 +60,14 @@ pub const CPUS: [Cpu; 3] = [
         stop: None,
         origin: BlockPos::new(8, 8, 8),
         active_ticks: 5_000,
+        screen: Some(Screen {
+            x: 148,
+            top_y: 97,
+            bottom_y: 66,
+            left_z: 46,
+            right_z: 77,
+            sparse: false,
+        }),
     },
     Cpu {
         name: "cpu_bubblesort",
@@ -55,6 +77,24 @@ pub const CPUS: [Cpu; 3] = [
         stop: None,
         origin: BlockPos::new(2, 8, 2),
         active_ticks: 10_035,
+        screen: None,
+    },
+    Cpu {
+        name: "zcore12b_sierpinski",
+        schematic: "ZCore12B_FIX.schem",
+        sha256: "7f074b967a043f36915f5980cbd4da54f62e45832cc385c1ce53fb21dbe9bac8",
+        start: BlockPos::new(194, 16, 120),
+        stop: None,
+        origin: BlockPos::new(8, 8, 8),
+        active_ticks: 50_000,
+        screen: Some(Screen {
+            x: 219,
+            top_y: 88,
+            bottom_y: 50,
+            left_z: 10,
+            right_z: 71,
+            sparse: true,
+        }),
     },
 ];
 
@@ -85,26 +125,28 @@ pub struct Reference {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ScreenFrame {
     pub tick: u32,
-    /// Row-major 32x32 lamp pixels. The upper row is first.
+    /// Row-major lamp pixels. The upper row is first; sparse screens omit gaps.
     pub pixels: String,
 }
 
-pub fn screen(world: &PlotWorld) -> String {
-    let mut pixels = String::with_capacity(1024);
-    for y in (58..=89).rev() {
-        for z in 38..=69 {
-            let pos = BlockPos::new(148, y + 8, z + 8);
-            let Block::RedstoneLamp { lit } = world.get_block(pos) else {
-                panic!("screen pixel missing at {pos}");
-            };
-            pixels.push(if lit { '1' } else { '0' });
+pub fn screen(world: &PlotWorld, cpu: Cpu) -> String {
+    let screen = cpu.screen.expect("CPU has no screen");
+    let mut pixels = String::new();
+    for y in (screen.bottom_y..=screen.top_y).rev() {
+        for z in screen.left_z..=screen.right_z {
+            let pos = BlockPos::new(screen.x, y, z);
+            match world.get_block(pos) {
+                Block::RedstoneLamp { lit } => pixels.push(if lit { '1' } else { '0' }),
+                _ if screen.sparse => {},
+                _ => panic!("screen pixel missing at {pos}"),
+            }
         }
     }
     pixels
 }
 
-pub fn collect_screen(world: &PlotWorld, tick: u32, trace: &mut Vec<ScreenFrame>) {
-    let pixels = screen(world);
+pub fn collect_screen(world: &PlotWorld, cpu: Cpu, tick: u32, trace: &mut Vec<ScreenFrame>) {
+    let pixels = screen(world, cpu);
     if trace.last().is_none_or(|frame| frame.pixels != pixels) {
         trace.push(ScreenFrame { tick, pixels });
     }
@@ -312,39 +354,94 @@ pub fn reference(cpu: Cpu) -> Reference {
     reference
 }
 
-/// Load and validate outside the measured region. Only interpreter tick calls are timed.
+/// Load, compile and verify outside timing; simulation plus output flushes are timed.
 pub struct RunTiming {
     pub total: Duration,
     pub active: Duration,
     pub active_ticks: u32,
+    pub compile: Option<Duration>,
     pub visual_counts: (u64, u64, u64),
     pub instant_piston_cache_stats: Option<(usize, usize, u64)>,
 }
 
-pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, flush_every: u32) -> RunTiming {
+pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration) {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+    let clip = load_schematic(File::open(path).unwrap()).unwrap();
+    let bounds = (
+        cpu.origin,
+        cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
+    );
+    let ticks = world.scheduler().iter_entries().collect();
+    let timeout = Duration::from_secs(
+        std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|seconds| seconds.parse().ok())
+            .unwrap_or(300),
+    );
+    let monitor = Arc::new(TaskMonitor::default());
+    let worker_monitor = monitor.clone();
+    let compile_started = Instant::now();
+    let (world, compiler, result, timed_out) = std::thread::scope(|scope| {
+        let worker = scope.spawn(move || {
+            let mut compiler = Compiler::default();
+            let result = compiler.compile(&world, bounds, CompilerOptions::default(), ticks, worker_monitor);
+            (world, compiler, result)
+        });
+        let mut timed_out = false;
+        while !worker.is_finished() {
+            if compile_started.elapsed() >= timeout && !monitor.cancelled() {
+                timed_out = true;
+                monitor.cancel();
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let (world, compiler, result) = worker.join().unwrap();
+        (world, compiler, result, timed_out)
+    });
+    assert!(!timed_out, "Redpiler compile timed out after {timeout:?}");
+    result.unwrap_or_else(|error| panic!("Redpiler rejected {}: {error}", cpu.name));
+    (world, compiler, compile_started.elapsed())
+}
+
+pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, flush_every: u32, redpiler: bool) -> RunTiming {
     let mut world = load_cpu(cpu);
     if flush_every != 0 {
         // Flush imported initial blocks outside timing in both modes.
         world.flush_block_changes();
     }
+    let (mut world, mut compiler, compile) = if redpiler {
+        let (world, compiler, elapsed) = compile_cpu(world, cpu);
+        (world, Some(compiler), Some(elapsed))
+    } else {
+        (world, None, None)
+    };
     world.set_screen_only(screen_only);
     let initial_visual_counts = world.visual_update_counts();
     let mut trace = Vec::new();
     let mut screen_trace = Vec::new();
     let mut ram_trace = Vec::new();
     collect_ram(&world, cpu, 0, &mut ram_trace);
-    if cpu.name == "anpu_pong" {
-        collect_screen(&world, 0, &mut screen_trace);
+    if cpu.screen.is_some() {
+        collect_screen(&world, cpu, 0, &mut screen_trace);
     }
     assert_eq!(checkpoint(&world, 0, &trace), expected.checkpoints[0], "{} initial state", cpu.name);
-    click_cpu(&mut world, cpu, cpu.start);
+    if let Some(compiler) = &mut compiler {
+        compiler.try_on_use_block(cpu.start + cpu.origin).unwrap();
+    } else {
+        click_cpu(&mut world, cpu, cpu.start);
+    }
     let mut elapsed = Duration::ZERO;
     let active_ticks = cpu.active_ticks;
     let mut active = Duration::ZERO;
     let mut next_checkpoint = 1;
     for tick in 1..=50_000 {
         let now = Instant::now();
-        world.tick_interpreted();
+        if let Some(compiler) = &mut compiler {
+            compiler.tick().unwrap();
+            compiler.try_flush(&mut world).unwrap();
+        } else {
+            world.tick_interpreted();
+        }
         if flush_every != 0 && tick % flush_every == 0 {
             world.flush_block_changes();
         }
@@ -355,11 +452,11 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
         }
         collect_chat(&world, tick, &mut trace);
         collect_ram(&world, cpu, tick, &mut ram_trace);
-        if cpu.name == "cpu_bubblesort" && tick >= active_ticks {
+        if cpu.name == "cpu_bubblesort" && compiler.is_none() && tick >= active_ticks {
             assert_eq!(quiet(&world), tick > active_ticks, "BubbleSort stop boundary at {tick}");
         }
-        if cpu.name == "anpu_pong" {
-            collect_screen(&world, tick, &mut screen_trace);
+        if cpu.screen.is_some() {
+            collect_screen(&world, cpu, tick, &mut screen_trace);
         }
         if CHECKPOINTS.contains(&tick) {
             assert_eq!(
@@ -372,9 +469,18 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
         }
     }
     if let Some(stop) = cpu.stop {
-        click_cpu(&mut world, cpu, stop);
+        if let Some(compiler) = &mut compiler {
+            compiler.try_on_use_block(stop + cpu.origin).unwrap();
+        } else {
+            click_cpu(&mut world, cpu, stop);
+        }
         for tick in 50_001..=50_100 {
-            world.tick_interpreted();
+            if let Some(compiler) = &mut compiler {
+                compiler.tick().unwrap();
+                compiler.try_flush(&mut world).unwrap();
+            } else {
+                world.tick_interpreted();
+            }
             collect_chat(&world, tick, &mut trace);
         }
         assert_eq!(
@@ -398,11 +504,11 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
         assert_eq!(trace.len(), 1535); // Includes the manual stop message after SORT halted.
         assert!(trace.iter().any(|(tick, text)| *tick == 12_051 && text.contains("shut")));
     }
-    if cpu.name == "anpu_pong" {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references/anpu_screen.json");
+    if cpu.screen.is_some() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references").join(format!("{}_screen.json", cpu.name));
         let frames: Vec<ScreenFrame> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
-        assert!(frames.len() > 1, "Pong must draw on its screen");
-        assert_eq!(screen_trace, frames, "ANPU exact per-game-tick screen output");
+        assert!(!frames.is_empty(), "CPU must have a captured screen frame");
+        assert_eq!(screen_trace, frames, "{} exact per-game-tick screen output", cpu.name);
     }
     // A disconnected start button must not pass merely by reaching an idle final state.
     assert_ne!(expected.checkpoints[0].blocks, expected.checkpoints[3].blocks);
@@ -411,6 +517,7 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
         total: elapsed,
         active,
         active_ticks,
+        compile,
         instant_piston_cache_stats: world.instant_piston_cache().map(|cache| cache.stats()),
         visual_counts: {
             let final_counts = world.visual_update_counts();
@@ -431,7 +538,11 @@ fn load_at(name: &str, origin: BlockPos) -> PlotWorld {
     clip.offset_y = 0;
     clip.offset_z = 0;
     assert!(origin.x >= 0 && origin.y >= 0 && origin.z >= 0);
-    assert!(clip.size_x as i32 + origin.x <= 256 && clip.size_z as i32 + origin.z <= 256 && clip.size_y as i32 + origin.y <= 256);
+    assert!(
+        clip.size_x as i32 + origin.x <= PLOT_BLOCK_WIDTH
+            && clip.size_z as i32 + origin.z <= PLOT_BLOCK_WIDTH
+            && clip.size_y as i32 + origin.y <= 256
+    );
     let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     let mut world = PlotWorld::from_chunks(0, 0, chunks, Default::default());
     paste_clipboard(&mut world, &clip, origin, false);

@@ -309,6 +309,11 @@ pub(crate) fn compile_monitored(
             copper_bulbs.len()
         );
     }
+    let index_started = Instant::now();
+    let position_index: std::collections::HashMap<_, _> = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+    if phases.enabled {
+        eprintln!("Redpiler compile position index: {} ms", index_started.elapsed().as_millis());
+    }
     phases.next("electrical dependency discovery");
     let discovery = (|| {
         let mut dependencies = if let Some(monitor) = monitor {
@@ -381,9 +386,9 @@ pub(crate) fn compile_monitored(
                 if crate::redstone::is_diode(block)
                     && crate::redstone::power::emits_strong_power(block, scratch.world(), at, side.block_face(), false)
                 {
-                    let source = positions
-                        .iter()
-                        .position(|&position| position == at)
+                    let source = position_index
+                        .get(&at)
+                        .copied()
                         .ok_or_else(|| error(at, "unrepresented repeater side source"))?;
                     if !matches!(block, Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. }) {
                         return Err(error(at, "unsupported repeater side source"));
@@ -397,17 +402,18 @@ pub(crate) fn compile_monitored(
     scratch.finish_probe()?;
     let discovery = discovery?;
     phases.next("link and watcher construction");
-    let initial = positions.iter().map(|&p| world.get_block(p)).collect();
+    let initial: Vec<_> = positions.iter().map(|&p| world.get_block(p)).collect();
+    let probe_indexes = super::group_probe::ProbeIndexes::new(&position_index, &positions, &initial, &tokens, monitor)?;
     let mut links = vec![];
     {
         for dependency in discovery {
-            let source = positions
-                .iter()
-                .position(|&pos| pos == dependency.source)
+            let source = position_index
+                .get(&dependency.source)
+                .copied()
                 .ok_or_else(|| error(dependency.source, "unrepresented discovered wire source"))?;
-            let target = positions
-                .iter()
-                .position(|&pos| pos == dependency.wire)
+            let target = position_index
+                .get(&dependency.wire)
+                .copied()
                 .ok_or_else(|| error(dependency.wire, "unrepresented discovered wire"))?;
             links.push(ElectricalLink {
                 source,
@@ -417,10 +423,10 @@ pub(crate) fn compile_monitored(
         }
     }
     let mut watched_wires: Vec<WatchedWire> = Vec::new();
-    let watcher_discovery = crate::redpiler::scratch::discover_watched_wire_sources(scratch.world(), bounds)?;
-    for watch in watcher_discovery.watchers {
-        let wire = positions.iter().position(|&pos| pos == watch.wire).unwrap();
-        let piston = positions.iter().position(|&pos| pos == watch.piston).unwrap();
+    let piston_positions: Vec<_> = pistons.iter().map(|piston| piston.base).collect();
+    for watch in crate::redpiler::scratch::discover_wire_watchers(&wire_positions, &piston_positions) {
+        let wire = position_index[&watch.wire];
+        let piston = position_index[&watch.piston];
         if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
             record.watchers.push(piston);
         } else {
@@ -433,10 +439,7 @@ pub(crate) fn compile_monitored(
     for (observer, &pos) in positions.iter().enumerate() {
         if let Block::Observer { observer: state } = world.get_block(pos) {
             let at = pos.offset(state.facing.into());
-            if let Some(wire) = positions
-                .iter()
-                .position(|&position| position == at && matches!(world.get_block(position), Block::RedstoneWire { .. }))
-            {
+            if let Some(&wire) = position_index.get(&at).filter(|_| matches!(world.get_block(at), Block::RedstoneWire { .. })) {
                 if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
                     record.watchers.push(observer);
                 } else {
@@ -486,7 +489,7 @@ pub(crate) fn compile_monitored(
             },
             output_is_diode: front_facing.is_some_and(|facing| facing != comparator.facing.opposite()),
         });
-        for ((source, side), (attenuation, _)) in super::group_probe::inputs_of(world, &program, component, monitor)? {
+        for ((source, side), (attenuation, _)) in super::group_probe::inputs_of(world, &program, component, monitor, &probe_indexes)? {
             let ArrangementSource::Component(source) = source else {
                 continue;
             };
@@ -551,7 +554,7 @@ pub(crate) fn compile_monitored(
                 w.set_block(cell, if arrival { token.block } else { Block::Air });
                 crate::redstone::skipping_update_surrounding_blocks(w, cell, false);
                 for event in w.take_redstone_update_observations() {
-                    if let Some(index) = program.positions.iter().position(|&position| position == event.pos)
+                    if let Some(&index) = probe_indexes.components.get(&event.pos)
                         && !cell_updates[usize::from(arrival)].contains(&index)
                     {
                         cell_updates[usize::from(arrival)].push(index);
@@ -586,7 +589,7 @@ pub(crate) fn compile_monitored(
                 mchprs_blocks::BlockFace::South,
             ] {
                 let at = cell.offset(face);
-                if let Some(component) = program.positions.iter().position(|&pos| pos == at) {
+                if let Some(&component) = probe_indexes.components.get(&at) {
                     let watch = match program.initial[component] {
                         Block::Piston { .. } => true,
                         Block::Observer { observer } => at.offset(observer.facing.into()) == cell,
@@ -601,31 +604,36 @@ pub(crate) fn compile_monitored(
         }
         program.token_watchers.push(cells);
     }
+    let mut observers_by_target: std::collections::HashMap<BlockPos, Vec<usize>> = std::collections::HashMap::new();
+    for (node, block) in program.initial.iter().enumerate() {
+        if let Block::Observer { observer } = block {
+            observers_by_target.entry(program.positions[node].offset(observer.facing.into())).or_default().push(node);
+        }
+    }
     for (source, &pos) in program.positions.iter().enumerate() {
         let footprint = update_footprint(pos, program.initial[source]);
-        let mut watchers: Vec<_> = program
-            .initial
-            .iter()
-            .enumerate()
-            .filter_map(|(node, block)| {
-                if node == source {
-                    return None;
-                }
-                match block {
-                    Block::Piston { .. } if footprint.contains(&program.positions[node]) => Some(node),
-                    Block::Observer { observer } if program.positions[node].offset(observer.facing.into()) == pos => Some(node),
-                    _ => None,
-                }
-            })
-            .collect();
-        watchers.sort_by_key(|&node| footprint.iter().position(|&pos| pos == program.positions[node]).unwrap_or(usize::MAX));
-        program.source_watchers[source] = watchers;
+        let mut watchers = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for (order, &at) in footprint.iter().enumerate() {
+            if let Some(&node) = probe_indexes.components.get(&at)
+                && node != source
+                && matches!(program.initial[node], Block::Piston { .. })
+                && seen.insert(node)
+            {
+                watchers.push((order, node));
+            }
+        }
+        if let Some(observers) = observers_by_target.get(&pos) {
+            watchers.extend(observers.iter().copied().filter(|&node| node != source && seen.insert(node)).map(|node| (usize::MAX, node)));
+        }
+        watchers.sort_by_key(|&(order, _)| order);
+        program.source_watchers[source] = watchers.into_iter().map(|(_, node)| node).collect();
     }
     for piston in &program.pistons {
         let mut watchers = Vec::new();
         for face in update_order() {
             let at = piston.home.offset(face);
-            if let Some(node) = program.positions.iter().position(|&pos| pos == at) {
+            if let Some(&node) = probe_indexes.components.get(&at) {
                 match program.initial[node] {
                     Block::Piston { .. } => watchers.push(node),
                     Block::Observer { observer } if at.offset(observer.facing.into()) == piston.home => watchers.push(node),
@@ -692,7 +700,7 @@ pub(crate) fn compile_monitored(
     }
     phases.next("piston arrangement discovery");
     check_cancelled(monitor)?;
-    program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program, monitor)?;
+    program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program, &probe_indexes, monitor)?;
     if phases.enabled {
         eprintln!("Redpiler inventory: piston_arrangement_groups={}", program.input_arrangements.len());
     }
@@ -890,7 +898,7 @@ pub(crate) fn compile_monitored(
             }
             let mut ordered = Vec::new();
             for delivery in &frames[0].deliveries {
-                let Some(target) = program.positions.iter().position(|&pos| pos == delivery.pos) else {
+                let Some(&target) = probe_indexes.components.get(&delivery.pos) else {
                     continue;
                 };
                 if !targets.contains(&target) || ordered.contains(&target) || matches!(delivery.block, Block::RedstoneWire { .. }) {
@@ -991,7 +999,7 @@ pub(crate) fn compile_monitored(
     }
     phases.next("reactive dependency tracking");
     check_cancelled(monitor)?;
-    track_reactive(world, &entry, &mut program, monitor)?;
+    track_reactive(world, &entry, &mut program, &probe_indexes.components, monitor)?;
     phases.next("program finalization");
     check_cancelled(monitor)?;
     program.prepare_projection();
@@ -1115,6 +1123,7 @@ fn track_reactive(
     world: &impl World,
     entry: &ScratchEntry,
     program: &mut Program,
+    components: &std::collections::HashMap<BlockPos, usize>,
     monitor: Option<&TaskMonitor>,
 ) -> Result<(), ScratchError> {
     let inputs = {
@@ -1164,11 +1173,7 @@ fn track_reactive(
             continue;
         }
         for at in within_two(program.positions[node]) {
-            let Some(wire) = program
-                .positions
-                .iter()
-                .position(|&pos| pos == at && matches!(world.get_block(pos), Block::RedstoneWire { .. }))
-            else {
+            let Some(&wire) = components.get(&at).filter(|_| matches!(world.get_block(at), Block::RedstoneWire { .. })) else {
                 continue;
             };
             if let Some(record) = program.reactive_wires.iter_mut().find(|record| record.wire == wire) {
@@ -1177,10 +1182,9 @@ fn track_reactive(
                 let sources = crate::redpiler::scratch::discover_wire_sources(world, &[at])?
                     .into_iter()
                     .map(|source| {
-                        program
-                            .positions
-                            .iter()
-                            .position(|&pos| pos == source.source)
+                        components
+                            .get(&source.source)
+                            .copied()
                             .map(|node| (node, source.attenuation))
                             .ok_or(ScratchError {
                                 position: Some(source.source),
@@ -1220,7 +1224,7 @@ fn track_reactive(
             _ => Vec::new(),
         };
         for at in footprint {
-            if let Some(target) = program.positions.iter().position(|&pos| pos == at) {
+            if let Some(&target) = components.get(&at) {
                 if target != node && program.reactive[target] && !program.reactive_neighbours[node].contains(&target) {
                     program.reactive_neighbours[node].push(target);
                 }

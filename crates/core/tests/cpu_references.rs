@@ -108,19 +108,31 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
 #[test]
 #[ignore = "50,000-tick CPU regression; run with --release -- --ignored"]
 fn pm1_sort_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[0], &cpus::reference(cpus::CPUS[0]), false, 0);
+    cpus::replay_with_visuals(cpus::CPUS[0], &cpus::reference(cpus::CPUS[0]), false, 0, false);
 }
 
 #[test]
 #[ignore = "50,000-tick CPU regression; run with --release -- --ignored"]
 fn anpu_pong_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[1], &cpus::reference(cpus::CPUS[1]), false, 0);
+    cpus::replay_with_visuals(cpus::CPUS[1], &cpus::reference(cpus::CPUS[1]), false, 0, false);
 }
 
 #[test]
 #[ignore = "50,000-tick CPU regression; run explicitly"]
 fn bubblesort_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[2], &cpus::reference(cpus::CPUS[2]), false, 0);
+    cpus::replay_with_visuals(cpus::CPUS[2], &cpus::reference(cpus::CPUS[2]), false, 0, false);
+}
+
+#[test]
+#[ignore = "50,000-tick interpreter baseline; run explicitly"]
+fn zcore12b_sierpinski_frozen_reference() {
+    cpus::replay_with_visuals(cpus::CPUS[3], &cpus::reference(cpus::CPUS[3]), false, 0, false);
+}
+
+#[test]
+#[ignore = "full CPU Redpiler compile plus 50,000-tick replay; run explicitly"]
+fn zcore12b_sierpinski_redpiler_matches_interpreter_reference() {
+    cpus::replay_with_visuals(cpus::CPUS[3], &cpus::reference(cpus::CPUS[3]), false, 0, true);
 }
 
 #[test]

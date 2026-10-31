@@ -4,12 +4,150 @@ use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::world::World;
 use crate::redpiler::TaskMonitor;
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 type InputKey = (ArrangementSource, bool);
 type InputValue = (u8, bool);
 type Inputs = BTreeMap<InputKey, InputValue>;
 type Dependency = (usize, ArrangementSource, bool);
+
+pub(super) struct ProbeIndexes<'a> {
+    pub(super) components: &'a HashMap<BlockPos, usize>,
+    redstone_tokens: HashMap<BlockPos, usize>,
+    wire_at: HashMap<BlockPos, usize>,
+    wire_neighbors: Vec<Vec<usize>>,
+    readers: HashMap<BlockPos, usize>,
+}
+
+impl ProbeIndexes<'_> {
+    pub(super) fn new<'a>(
+        components: &'a HashMap<BlockPos, usize>,
+        positions: &[BlockPos],
+        initial: &[Block],
+        tokens: &[super::compiler::PistonToken],
+        monitor: Option<&TaskMonitor>,
+    ) -> Result<ProbeIndexes<'a>, ScratchError> {
+        let mut redstone_tokens = HashMap::new();
+        let mut wire_at = HashMap::new();
+        let mut readers = HashMap::new();
+        for (&pos, &block) in positions.iter().zip(initial) {
+            if monitor.is_some_and(TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
+            let index = components[&pos];
+            if matches!(
+                block,
+                Block::Piston { .. }
+                    | Block::RedstoneLamp { .. }
+                    | Block::RedstoneRepeater { .. }
+                    | Block::RedstoneComparator { .. }
+                    | Block::RedstoneTorch { .. }
+                    | Block::RedstoneWallTorch { .. }
+            ) {
+                readers.insert(pos, index);
+            }
+            if matches!(block, Block::RedstoneWire { .. }) {
+                wire_at.insert(pos, index);
+            }
+        }
+        for (token, record) in tokens.iter().enumerate() {
+            if matches!(record.block, Block::RedstoneBlock) {
+                for &cell in &record.cells {
+                    redstone_tokens.insert(cell, token);
+                }
+            }
+        }
+        let mut wire_neighbors = vec![Vec::new(); positions.len()];
+        for (&pos, &wire) in &wire_at {
+            if monitor.is_some_and(TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
+            let neighbors = &mut wire_neighbors[wire];
+            for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                for dy in -1..=1 {
+                    if let Some(&neighbor) = wire_at.get(&BlockPos::new(pos.x + dx, pos.y + dy, pos.z + dz)) {
+                        neighbors.push(neighbor);
+                    }
+                }
+            }
+            neighbors.sort_unstable();
+        }
+        Ok(Self {
+            components,
+            redstone_tokens,
+            wire_at,
+            wire_neighbors,
+            readers,
+        })
+    }
+}
+
+#[derive(Default)]
+struct ProbeMetrics {
+    samples: usize,
+    member_reads: usize,
+    affected_members: usize,
+}
+
+fn affected_members(
+    token_cells: &[BlockPos],
+    positions: &[BlockPos],
+    indexes: &ProbeIndexes<'_>,
+    monitor: Option<&TaskMonitor>,
+) -> Result<BTreeSet<usize>, ScratchError> {
+    let mut touched = HashSet::new();
+    let mut queue = VecDeque::new();
+    for &cell in token_cells {
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    if let Some(&wire) = indexes.wire_at.get(&BlockPos::new(cell.x + dx, cell.y + dy, cell.z + dz))
+                        && touched.insert(wire)
+                    {
+                        queue.push_back((wire, 0));
+                    }
+                }
+            }
+        }
+    }
+    while let Some((wire, depth)) = queue.pop_front() {
+        if monitor.is_some_and(TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compilation cancelled",
+            });
+        }
+        if depth < 15 {
+            queue.extend(indexes.wire_neighbors[wire].iter().copied().filter_map(|neighbor| touched.insert(neighbor).then_some((neighbor, depth + 1))));
+        }
+    }
+
+    let mut members: BTreeSet<_> = touched.iter().copied().collect();
+    for center in token_cells.iter().copied().chain(touched.iter().map(|&wire| positions[wire])) {
+        if monitor.is_some_and(TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compilation cancelled",
+            });
+        }
+        for dx in -2..=2 {
+            for dy in -2..=2 {
+                for dz in -2..=2 {
+                    if let Some(&reader) = indexes.readers.get(&BlockPos::new(center.x + dx, center.y + dy, center.z + dz)) {
+                        members.insert(reader);
+                    }
+                }
+            }
+        }
+    }
+    Ok(members)
+}
 
 fn wire_sources(world: &impl World, wires: &[BlockPos], monitor: Option<&TaskMonitor>) -> Result<Vec<super::super::scratch::WireSource>, ScratchError> {
     if let Some(monitor) = monitor {
@@ -28,6 +166,7 @@ pub(super) fn inputs_of(
     program: &Program,
     member: usize,
     monitor: Option<&TaskMonitor>,
+    indexes: &ProbeIndexes<'_>,
 ) -> Result<Inputs, ScratchError> {
     let pos = program.positions[member];
     let block = program.initial[member];
@@ -92,13 +231,9 @@ pub(super) fn inputs_of(
     }
     let mut result = Inputs::new();
     for (is_side, source) in found.into_iter().map(|s| (false, s)).chain(side.into_iter().map(|s| (true, s))) {
-        let identity = if let Some(index) = program
-            .tokens
-            .iter()
-            .rposition(|token| matches!(token.block, Block::RedstoneBlock) && token.cells.contains(&source.source))
-        {
+        let identity = if let Some(&index) = indexes.redstone_tokens.get(&source.source) {
             ArrangementSource::Token(index)
-        } else if let Some(index) = program.positions.iter().position(|&p| p == source.source) {
+        } else if let Some(&index) = indexes.components.get(&source.source) {
             ArrangementSource::Component(index)
         } else {
             return Err(ScratchError {
@@ -119,12 +254,13 @@ pub(super) fn inputs_of(
 }
 
 fn sample(
-    world: &impl World,
     scratch: &mut ScratchWorld,
     program: &Program,
     placements: &[(usize, usize)],
     members: &[usize],
     monitor: Option<&TaskMonitor>,
+    indexes: &ProbeIndexes<'_>,
+    metrics: &mut ProbeMetrics,
 ) -> Result<Vec<Inputs>, ScratchError> {
     if monitor.is_some_and(TaskMonitor::cancelled) {
         return Err(ScratchError {
@@ -132,11 +268,7 @@ fn sample(
             reason: "compilation cancelled",
         });
     }
-    for token in &program.tokens {
-        for &cell in &token.cells {
-            scratch.world_mut().set_block(cell, world.get_block(cell));
-        }
-    }
+    scratch.revert();
     for &(token, digit) in placements {
         let record = &program.tokens[token];
         let next = digit.checked_sub(1).map(|cell| record.cells[cell]);
@@ -150,6 +282,8 @@ fn sample(
         }
     }
     let mut result = Vec::with_capacity(members.len());
+    metrics.samples += 1;
+    metrics.member_reads += members.len();
     for &member in members {
         if monitor.is_some_and(TaskMonitor::cancelled) {
             return Err(ScratchError {
@@ -157,7 +291,7 @@ fn sample(
                 reason: "compilation cancelled",
             });
         }
-        result.push(inputs_of(scratch.world(), program, member, monitor)?);
+        result.push(inputs_of(scratch.world(), program, member, monitor, indexes)?);
     }
     scratch.finish_probe()?;
     Ok(result)
@@ -195,64 +329,29 @@ pub(super) fn run(
     bounds: (BlockPos, BlockPos),
     entry: &ScratchEntry,
     program: &Program,
+    indexes: &ProbeIndexes<'_>,
     monitor: Option<&TaskMonitor>,
 ) -> Result<Vec<InputArrangement>, ScratchError> {
-    let mut scratch = ScratchWorld::from_world(world, bounds, entry.clone())?;
-    let wires: Vec<_> = program
-        .initial
-        .iter()
-        .enumerate()
-        .filter_map(|(i, b)| matches!(b, Block::RedstoneWire { .. }).then_some(i))
-        .collect();
-    let readers: Vec<_> = program
-        .initial
-        .iter()
-        .enumerate()
-        .filter_map(|(i, b)| {
-            matches!(
-                b,
-                Block::Piston { .. }
-                    | Block::RedstoneLamp { .. }
-                    | Block::RedstoneRepeater { .. }
-                    | Block::RedstoneComparator { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-            )
-            .then_some(i)
-        })
-        .collect();
-    let mut affects = Vec::new();
+    let mut scratch = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
+    let mut affected_started = std::time::Instant::now();
+    let mut affects = Vec::with_capacity(program.tokens.len());
     for token in &program.tokens {
-        let mut touched = HashSet::new();
-        let mut queue = VecDeque::new();
-        for &wire in &wires {
-            if token.cells.iter().any(|&cell| near(cell, program.positions[wire], 1)) {
-                touched.insert(wire);
-                queue.push_back((wire, 0));
-            }
-        }
-        while let Some((wire, depth)) = queue.pop_front() {
-            if depth == 15 {
-                continue;
-            }
-            let pos = program.positions[wire];
-            for &next in &wires {
-                let at = program.positions[next];
-                if pos.x.abs_diff(at.x) + pos.z.abs_diff(at.z) == 1 && pos.y.abs_diff(at.y) <= 1 && touched.insert(next) {
-                    queue.push_back((next, depth + 1));
-                }
-            }
-        }
-        let mut members: BTreeSet<_> = touched.iter().copied().collect();
-        for &reader in &readers {
-            if token.cells.iter().any(|&cell| near(cell, program.positions[reader], 2))
-                || touched.iter().any(|&wire| near(program.positions[wire], program.positions[reader], 2))
-            {
-                members.insert(reader);
-            }
-        }
-        affects.push(members);
+        affects.push(affected_members(&token.cells, &program.positions, indexes, monitor)?);
     }
+    if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
+        eprintln!("Redpiler arrangement affected-region construction: {} ms", affected_started.elapsed().as_millis());
+    }
+    let mut metrics = ProbeMetrics {
+        affected_members: affects.iter().map(BTreeSet::len).sum(),
+        ..ProbeMetrics::default()
+    };
+    let mut tokens_near = vec![Vec::new(); program.positions.len()];
+    for (token, members) in affects.iter().enumerate() {
+        for &member in members {
+            tokens_near[member].push(token);
+        }
+    }
+    let mut single_started = std::time::Instant::now();
     let mut depends: BTreeMap<Dependency, BTreeSet<usize>> = BTreeMap::new();
     let mut grown = BTreeSet::new();
     for token in 0..program.tokens.len() {
@@ -266,7 +365,7 @@ pub(super) fn run(
         if members.is_empty() {
             continue;
         }
-        let baseline = sample(world, &mut scratch, program, &[], &members, monitor)?;
+        let baseline = sample(&mut scratch, program, &[], &members, monitor, indexes, &mut metrics)?;
         let initial = program.tokens[token]
             .position
             .and_then(|p| program.tokens[token].cells.iter().position(|&c| c == p))
@@ -281,7 +380,7 @@ pub(super) fn run(
             if digit == initial {
                 continue;
             }
-            let changed = sample(world, &mut scratch, program, &[(token, digit)], &members, monitor)?;
+            let changed = sample(&mut scratch, program, &[(token, digit)], &members, monitor, indexes, &mut metrics)?;
             for (i, &member) in members.iter().enumerate() {
                 for (source, side) in find_changed_links(&baseline[i], &changed[i]) {
                     let dep = (member, source, side);
@@ -292,6 +391,10 @@ pub(super) fn run(
             }
         }
     }
+    if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
+        eprintln!("Redpiler arrangement individual-token probes: {} ms", single_started.elapsed().as_millis());
+    }
+    let mut joint_started = std::time::Instant::now();
     let mut first = true;
     loop {
         let mut grouped: BTreeMap<Vec<usize>, Vec<Dependency>> = BTreeMap::new();
@@ -310,10 +413,11 @@ pub(super) fn run(
                 continue;
             }
             let members: Vec<_> = deps.iter().map(|dep| dep.0).collect::<BTreeSet<_>>().into_iter().collect();
-            let candidates: Vec<_> = (0..program.tokens.len())
+            let nearby_tokens: BTreeSet<_> = members.iter().flat_map(|&member| tokens_near[member].iter().copied()).collect();
+            let candidates: Vec<_> = nearby_tokens
+                .into_iter()
                 .filter(|candidate| {
                     !tokens.contains(candidate)
-                        && members.iter().any(|member| affects[*candidate].contains(member))
                         && tokens.iter().any(|&own| {
                             program.tokens[own]
                                 .cells
@@ -346,7 +450,7 @@ pub(super) fn run(
                 if base.iter().map(|pair| pair.1).eq(initial.iter().copied()) {
                     continue;
                 }
-                let baseline = sample(world, &mut scratch, program, &base, &members, monitor)?;
+                let baseline = sample(&mut scratch, program, &base, &members, monitor, indexes, &mut metrics)?;
                 for &candidate in &candidates {
                     if monitor.is_some_and(TaskMonitor::cancelled) {
                         return Err(ScratchError {
@@ -370,7 +474,7 @@ pub(super) fn run(
                         }
                         let mut joint = base.clone();
                         joint.push((candidate, digit));
-                        let changed = sample(world, &mut scratch, program, &joint, &members, monitor)?;
+                        let changed = sample(&mut scratch, program, &joint, &members, monitor, indexes, &mut metrics)?;
                         for (i, &member) in members.iter().enumerate() {
                             if !affects[candidate].contains(&member) {
                                 continue;
@@ -412,7 +516,15 @@ pub(super) fn run(
         let size = count(program, &tokens, program.positions[target])?;
         let mut inputs = Vec::with_capacity(size);
         for state in 0..size {
-            let map = sample(world, &mut scratch, program, &placements(program, &tokens, state), &[target], monitor)?
+            let map = sample(
+                &mut scratch,
+                program,
+                &placements(program, &tokens, state),
+                &[target],
+                monitor,
+                indexes,
+                &mut metrics,
+            )?
                 .pop()
                 .unwrap();
             inputs.push(
@@ -429,6 +541,17 @@ pub(super) fn run(
             conditional_sources: sources,
             inputs,
         });
+    }
+    if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
+        eprintln!("Redpiler arrangement joint probes: {} ms", joint_started.elapsed().as_millis());
+        eprintln!(
+            "Redpiler arrangement work: tokens={} affected_members={} samples={} member_reads={} input_groups={}",
+            program.tokens.len(),
+            metrics.affected_members,
+            metrics.samples,
+            metrics.member_reads,
+            result.len()
+        );
     }
     Ok(result)
 }

@@ -21,16 +21,19 @@ fn main() {
         }
         let path = destination.join(format!("{}.json", cpu.name));
         assert!(!path.exists(), "refusing to replace reference {}", path.display());
-        if cpu.name == "anpu_pong" {
-            assert!(!destination.join("anpu_screen.json").exists(), "refusing to replace screen reference");
+        if cpu.screen.is_some() {
+            assert!(
+                !destination.join(format!("{}_screen.json", cpu.name)).exists(),
+                "refusing to replace screen reference"
+            );
         }
         let mut world = load_cpu(cpu);
         let mut trace = Vec::new();
         let mut ram_trace = Vec::new();
         collect_ram(&world, cpu, 0, &mut ram_trace);
         let mut frames = Vec::new();
-        if cpu.name == "anpu_pong" {
-            collect_screen(&world, 0, &mut frames);
+        if cpu.screen.is_some() {
+            collect_screen(&world, cpu, 0, &mut frames);
         }
         let mut checkpoints = vec![checkpoint(&world, 0, &trace)];
         click_cpu(&mut world, cpu, cpu.start);
@@ -41,8 +44,8 @@ fn main() {
             elapsed += now.elapsed();
             collect_chat(&world, tick, &mut trace);
             collect_ram(&world, cpu, tick, &mut ram_trace);
-            if cpu.name == "anpu_pong" {
-                collect_screen(&world, tick, &mut frames);
+            if cpu.screen.is_some() {
+                collect_screen(&world, cpu, tick, &mut frames);
             }
             if CHECKPOINTS.contains(&tick) {
                 let sample = checkpoint(&world, tick, &trace);
@@ -66,9 +69,13 @@ fn main() {
             ram_trace,
         };
         std::fs::write(path, serde_json::to_vec_pretty(&reference).unwrap()).unwrap();
-        if cpu.name == "anpu_pong" {
-            println!("screen: {} distinct frames", frames.len());
-            std::fs::write(destination.join("anpu_screen.json"), serde_json::to_vec_pretty(&frames).unwrap()).unwrap();
+        if cpu.screen.is_some() {
+            println!("{} screen: {} distinct frames", cpu.name, frames.len());
+            std::fs::write(
+                destination.join(format!("{}_screen.json", cpu.name)),
+                serde_json::to_vec_pretty(&frames).unwrap(),
+            )
+            .unwrap();
         }
         println!("{}: tick-only time {elapsed:?}", cpu.name);
     }

@@ -107,18 +107,35 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
             }
         }
     }
-    let watchers = wires
-        .iter()
-        .flat_map(|&wire| {
-            pistons.iter().filter_map(move |&piston| {
-                let distance = wire.x.abs_diff(piston.x) + wire.y.abs_diff(piston.y) + wire.z.abs_diff(piston.z);
-                (distance <= 2).then_some(WireWatcher { wire, piston })
-            })
-        })
-        .collect();
+    let watchers = discover_wire_watchers(&wires, &pistons);
 
     let sources = discover_wire_sources(world, &wires)?;
     Ok(WireDiscovery { watchers, sources })
+}
+
+pub(crate) fn discover_wire_watchers(wires: &[BlockPos], pistons: &[BlockPos]) -> Vec<WireWatcher> {
+    let piston_index: HashMap<_, _> = pistons.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+    let mut watchers = Vec::new();
+    for &wire in wires {
+        let mut nearby = Vec::new();
+        for dx in -2i32..=2 {
+            for dy in -2i32..=2 {
+                for dz in -2i32..=2 {
+                    if dx.abs() + dy.abs() + dz.abs() <= 2
+                        && let Some(&index) = piston_index.get(&BlockPos::new(wire.x + dx, wire.y + dy, wire.z + dz))
+                    {
+                        nearby.push(index);
+                    }
+                }
+            }
+        }
+        nearby.sort_unstable();
+        watchers.extend(nearby.into_iter().map(|index| WireWatcher {
+            wire,
+            piston: pistons[index],
+        }));
+    }
+    watchers
 }
 
 /// Electrical extraction alone; watcher construction and executable admission are separate.
