@@ -1,3 +1,4 @@
+#[path = "schematic/regression.rs"]
 mod regression;
 use super::*;
 use nbt::Value;

@@ -11,8 +11,6 @@ pub(super) struct BulbLight {
     dirty: bool,
 }
 
-// TODO: If this is a mc light engine, it should be totaly **removed**.
-
 impl PlotWorld {
     pub(super) fn rebuild_bulb_light(&mut self) {
         self.bulb_light.sources = self

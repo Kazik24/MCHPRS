@@ -1,3 +1,4 @@
+#[path = "../redstone/piston/cache.rs"]
 mod instant_piston;
 pub mod storage;
 pub use instant_piston::InstantPistonCache;

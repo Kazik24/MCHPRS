@@ -5,8 +5,6 @@ use mchprs_network::test_support::read_frame;
 use std::io::Cursor;
 use std::net::TcpStream;
 
-// TODO: These are test utils, identify who is using them and move all to a tests module. 
-
 pub(super) fn read_blocks(peer: &mut TcpStream, compressed: bool) -> Vec<(BlockPos, u32)> {
     let (id, mut frame) = read_frame(peer, compressed).unwrap();
     decode_blocks(id, &mut frame)

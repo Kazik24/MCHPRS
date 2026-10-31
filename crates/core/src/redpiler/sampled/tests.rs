@@ -2578,7 +2578,7 @@ fn native_edges_and_host_preservation() {
 }
 
 #[test]
-fn rejects_probe_reads_outside_capture_without_mutating_host() {
+fn probe_context_reads_snapshot_air_and_rejects_external_sources() {
     let source = BlockPos::new(15, 15, 15);
     let wire = BlockPos::new(16, 15, 15);
     let lamp = BlockPos::new(17, 15, 15);
@@ -2618,32 +2618,30 @@ fn rejects_probe_reads_outside_capture_without_mutating_host() {
         world
     };
 
-    for (bounds, add_outside_source) in [
-        ((BlockPos::new(15, 14, 15), BlockPos::new(17, 15, 15)), false),
-        ((BlockPos::new(10, 10, 10), BlockPos::new(22, 15, 20)), true),
-    ] {
-        let mut world = chain();
-        if add_outside_source {
-            world.set_block(BlockPos::new(16, 16, 15), Block::RedstoneBlock {});
-        }
-        let before = snapshot(&world);
-        let error = match compile(&world, bounds, entry(&world)) {
-            Err(error) => error,
-            Ok(_) => panic!("probe reading outside capture was admitted"),
-        };
-        assert_eq!(error.reason, "scratch probe read outside captured boundary");
-        let position = error.position.expect("boundary error includes escaped read position");
-        assert!(
-            position.x < bounds.0.x
-                || position.x > bounds.1.x
-                || position.y < bounds.0.y
-                || position.y > bounds.1.y
-                || position.z < bounds.0.z
-                || position.z > bounds.1.z,
-            "reported boundary position {position:?} is inside {bounds:?}"
-        );
-        assert_eq!(before, snapshot(&world));
-    }
+    let bounds = (BlockPos::new(15, 14, 15), BlockPos::new(17, 15, 15));
+    let world = chain();
+    let before = snapshot(&world);
+    compile(&world, bounds, entry(&world)).expect("known Air in the probe context should compile");
+    assert_eq!(before, snapshot(&world));
+
+    let mut world = chain();
+    let source = BlockPos::new(18, 15, 15);
+    world.set_block(BlockPos::new(18, 14, 15), Block::Stone {});
+    world.set_block(
+        source,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+        },
+    );
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(17, 15, 20));
+    let before = snapshot(&world);
+    let error = match compile(&world, bounds, entry(&world)) {
+        Ok(_) => panic!("outside source was omitted"),
+        Err(error) => error,
+    };
+    assert_eq!(error.position, Some(source));
+    assert_eq!(error.reason, "unrepresented discovered wire source");
+    assert_eq!(before, snapshot(&world));
 }
 
 #[test]

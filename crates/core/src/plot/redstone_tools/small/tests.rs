@@ -10,8 +10,6 @@ use mchprs_network::test_support::{connection, read_frame};
 use std::io::Cursor;
 use std::net::TcpStream;
 
-// TODO: Where is code related to small player logic?
-// Is anything worth moving here?
 
 fn fixture(compressed: bool) -> (Plot, TcpStream, TcpStream) {
     let (mut plot, owner) = crate::plot::client_sync_tests::fixture(compressed);

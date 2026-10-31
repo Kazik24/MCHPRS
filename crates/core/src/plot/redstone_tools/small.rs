@@ -1,11 +1,9 @@
-use super::Plot;
+use super::super::Plot;
 use crate::messages;
 use crate::player::{PacketSender, Player, SmallAnimal, SmallModel};
 use crate::world::World;
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::*;
-
-// TODO: This is tool, move to redstone_tools.
 
 fn fox_mouth_equipment(player: &Player, entity_id: u32) -> PacketEncoder {
     CEntityEquipment {
@@ -20,7 +18,7 @@ fn fox_mouth_equipment(player: &Player, entity_id: u32) -> PacketEncoder {
     .encode()
 }
 
-pub(super) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
+pub(in crate::plot) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
     let Some(model) = &player.small_model else {
         return;
     };
@@ -66,7 +64,7 @@ pub(super) fn spawn_model(viewer: &impl PacketSender, player: &Player) {
 }
 
 impl Plot {
-    pub(super) fn set_small_animal(&mut self, player: usize, animal: SmallAnimal) {
+    pub(in crate::plot) fn set_small_animal(&mut self, player: usize, animal: SmallAnimal) {
         if self.players[player].small_animal == animal {
             self.players[player].send_system_message(&messages::small_animal(animal.name()));
             return;
@@ -95,7 +93,7 @@ impl Plot {
         self.players[player].send_system_message(&messages::small_animal(animal.name()));
     }
 
-    pub(super) fn set_small(&mut self, player: usize, enabled: bool) -> bool {
+    pub(in crate::plot) fn set_small(&mut self, player: usize, enabled: bool) -> bool {
         let current = &self.players[player];
         if current.small_model.is_some() == enabled {
             current.send_system_message(if enabled { messages::SMALL_ENABLED } else { messages::SMALL_DISABLED });
@@ -139,7 +137,7 @@ impl Plot {
         true
     }
 
-    pub(super) fn sync_small_models(&mut self) {
+    pub(in crate::plot) fn sync_small_models(&mut self) {
         for owner in 0..self.players.len() {
             let (model_id, position, head, mouth_changed) = {
                 let player = &mut self.players[owner];

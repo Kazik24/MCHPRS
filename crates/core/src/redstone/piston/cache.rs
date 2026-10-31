@@ -4,7 +4,6 @@ use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use rustc_hash::FxHashMap;
 use std::cell::Cell;
 
-// TODO: If this code is not dead, we should move it to the redstone folder. this is piston related code.
 #[derive(Clone, Copy)]
 pub(crate) struct PowerRoute {
     pub source: WireNeighbor,

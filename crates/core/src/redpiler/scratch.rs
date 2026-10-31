@@ -1083,6 +1083,12 @@ impl ScratchWorld {
         // The selection owns writes; its one-cell probe context is read-only.
         let mut contract_air = HashSet::new();
         for y in read_min.y..=read_max.y {
+            if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
             for z in read_min.z..=read_max.z {
                 for x in read_min.x..=read_max.x {
                     let pos = BlockPos::new(x, y, z);

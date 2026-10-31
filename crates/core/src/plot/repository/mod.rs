@@ -17,9 +17,6 @@ impl Warp {
     }
 }
 
-// TODO: It would be nice to keep the symetric relationship between the database and plot - just like in other places. We
-// Probably should create an 'repository' folder and put the db stuff in there.
-
 fn init_warps(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS warp(

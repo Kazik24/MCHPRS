@@ -1,7 +1,6 @@
-use super::*;
+use crate::plot::*;
 use mchprs_blocks::block_entities::CommandBlockEntity;
 
-// TODO: Create ./command_block submodule and put related files here.
 fn world() -> PlotWorld {
     PlotWorld::from_chunks(
         0,

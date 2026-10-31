@@ -32,8 +32,13 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
         cpu.origin,
         cpu.origin + mchprs_blocks::BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
     );
+    let mut inventory = std::collections::BTreeMap::new();
+    mchprs_core::world::for_each_block_optimized(&world, bounds.0, bounds.1, |at| {
+        *inventory.entry(world.get_block(at).get_name()).or_insert(0usize) += 1;
+    });
+    println!("CPU_BUBBLESORT block inventory: {inventory:?}");
     let timeout = std::time::Duration::from_secs(
-        std::env::var("MCHPRS_REDpILER_COMPILE_TIMEOUT_SECS")
+        std::env::var("MCHPRS_REDPILER_COMPILE_TIMEOUT_SECS")
             .ok()
             .and_then(|seconds| seconds.parse().ok())
             .unwrap_or(300),

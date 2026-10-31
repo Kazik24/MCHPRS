@@ -163,6 +163,16 @@ fn entry_versions_ignore_flushes_but_detect_piston_state_changes() {
 }
 
 #[test]
+fn entry_versions_detect_edits_in_read_only_probe_context() {
+    let (mut plot, _peer) = fixture(false);
+    let entry = EntryVersion::capture(&plot.world);
+    let selected_cell = BlockPos::new(16, 20, 34);
+    let outside_selection = selected_cell.offset(mchprs_blocks::BlockFace::West);
+    plot.world.set_block(outside_selection, Block::Stone {});
+    assert!(!entry.matches(&plot.world));
+}
+
+#[test]
 fn entry_versions_ignore_light_updates_but_detect_entity_changes() {
     let (mut plot, _peer) = fixture(false);
     let entry = EntryVersion::capture(&plot.world);

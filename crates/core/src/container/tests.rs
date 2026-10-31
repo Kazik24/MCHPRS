@@ -1,6 +1,5 @@
 use super::*;
 
-// TODO: Folder container, contains only tests for containers. Where is logic? We should move logic into this folder as well. 
 #[test]
 fn hopper_and_furnace_creation_locking_and_cake_bites() {
     use crate::world::{World, storage::Chunk};

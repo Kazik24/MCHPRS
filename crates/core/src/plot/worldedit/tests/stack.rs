@@ -3,7 +3,6 @@ use crate::world::storage::Chunk;
 use mchprs_blocks::block_entities::SignalStrength;
 use mchprs_blocks::items::ItemStack;
 
-// TODO: Move all tests to common ./worldedit/tests/... folder (including schematic/tests/...)
 
 #[test]
 fn overlapping_stacks_use_one_source_and_restore_original_entities() {

@@ -4,20 +4,23 @@ use crate::messages;
 pub mod benchmark;
 mod block_light;
 #[cfg(test)]
+#[path = "tests/client_sync.rs"]
 mod client_sync_tests;
 #[cfg(test)]
+#[path = "tests/client_test_utils.rs"]
 mod client_test_utils;
-#[cfg(test)]
-mod command_block_tests;
+mod command_block;
 pub mod commands;
-mod compass;
+use redstone_tools::compass;
 mod containers;
 mod data;
+#[path = "repository/mod.rs"]
 pub mod database;
 mod diagnostics;
 mod git;
 mod help;
 mod history;
+#[path = "interpreter/cache.rs"]
 mod interpreter_cache;
 pub(crate) mod memory_budget;
 mod monitor;
@@ -25,6 +28,7 @@ mod neighbors;
 mod packet_handlers;
 mod picking;
 #[cfg(test)]
+#[path = "../redstone/piston/tests/plot.rs"]
 mod piston_tests;
 mod preview;
 mod redpiler_compilation;
@@ -33,9 +37,9 @@ mod scoreboard;
 mod screen_updates;
 #[cfg(test)]
 mod sign_tests;
-mod small;
+use redstone_tools::small;
 mod visuals;
-mod waveform;
+use redstone_tools::waveform;
 pub mod worldedit;
 
 use crate::chat::ChatComponent;
@@ -803,7 +807,10 @@ impl World for PlotWorld {
     /// Returns the block state id of the block at `pos`
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
         if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
-            self.scratch_boundary_read.set(Some(pos));
+            let first = self.scratch_boundary_read.replace(Some(pos)).is_none();
+            if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
+                eprintln!("Redpiler unknown block read at {pos:?}\n{}", std::backtrace::Backtrace::force_capture());
+            }
             return 0;
         }
         if self.scratch_read_bounds.is_some() {
@@ -811,7 +818,10 @@ impl World for PlotWorld {
             if !self.scratch_read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
                 && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
             {
-                self.scratch_boundary_read.set(Some(pos));
+                let first = self.scratch_boundary_read.replace(Some(pos)).is_none();
+                if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
+                    eprintln!("Redpiler unknown unloaded block read at {pos:?}\n{}", std::backtrace::Backtrace::force_capture());
+                }
                 return 0;
             }
         }

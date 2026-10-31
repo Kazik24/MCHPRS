@@ -1,14 +1,17 @@
 //! [Worldedit](https://github.com/EngineHub/WorldEdit) and [RedstoneTools](https://github.com/paulikauro/RedstoneTools) implementation
 use crate::messages;
 
+pub(super) mod stack;
 mod execute;
 mod safety;
 mod schematic;
 mod schematic_paths;
 pub(super) use schematic_paths::complete_names as complete_schematic_names;
 #[cfg(test)]
+#[path = "tests/stack.rs"]
 mod stack_tests;
 #[cfg(test)]
+#[path = "tests/update.rs"]
 mod update_tests;
 
 use super::{Plot, PlotWorld};

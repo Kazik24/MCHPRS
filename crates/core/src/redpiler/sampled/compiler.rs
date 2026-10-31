@@ -20,7 +20,7 @@ impl CompilePhases {
     fn new() -> Self {
         let now = Instant::now();
         Self {
-            enabled: std::env::var_os("MCHPRS_REDpILER_PHASE_TIMINGS").is_some(),
+            enabled: std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some(),
             total: now,
             started: now,
             phase: "scratch snapshot",
@@ -199,6 +199,16 @@ pub(crate) fn compile_monitored(
     phases.next("piston actor and token discovery");
     let pistons = discover_piston_actors_monitored(world, bounds, entry.clone(), monitor)?;
     let tokens = discover_piston_tokens(scratch.world(), &pistons)?;
+    if phases.enabled {
+        let piston_groups = pistons.iter().map(|piston| piston.group).max().map_or(0, |group| group + 1);
+        let token_cells: usize = tokens.iter().map(|token| token.cells.len()).sum();
+        eprintln!(
+            "Redpiler inventory: piston_actors={} piston_groups={} tokens={} token_cells={token_cells}",
+            pistons.len(),
+            piston_groups,
+            tokens.len()
+        );
+    }
     phases.next("component scan");
     let mut positions = vec![];
     let mut sources = Vec::new();
@@ -289,6 +299,16 @@ pub(crate) fn compile_monitored(
         .copied()
         .filter(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneLamp { .. }))
         .collect();
+    if phases.enabled {
+        eprintln!(
+            "Redpiler inventory: sampled_components={} wires={} lamps={} repeaters={} copper_bulbs={}",
+            positions.len(),
+            wire_positions.len(),
+            lamp_positions.len(),
+            repeaters.len(),
+            copper_bulbs.len()
+        );
+    }
     phases.next("electrical dependency discovery");
     let discovery = (|| {
         let mut dependencies = if let Some(monitor) = monitor {
@@ -466,7 +486,7 @@ pub(crate) fn compile_monitored(
             },
             output_is_diode: front_facing.is_some_and(|facing| facing != comparator.facing.opposite()),
         });
-        for ((source, side), (attenuation, _)) in super::group_probe::inputs_of(world, &program, component)? {
+        for ((source, side), (attenuation, _)) in super::group_probe::inputs_of(world, &program, component, monitor)? {
             let ArrangementSource::Component(source) = source else {
                 continue;
             };
@@ -509,7 +529,7 @@ pub(crate) fn compile_monitored(
     phases.next("movement transition sampling");
     check_cancelled(monitor)?;
     let mut movement_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
-    for token in &program.tokens {
+    for (token_index, token) in program.tokens.iter().enumerate() {
         check_cancelled(monitor)?;
         let arrangements = vec![Vec::new(); token.cells.len()];
         let mut updates = Vec::new();
@@ -537,7 +557,16 @@ pub(crate) fn compile_monitored(
                         cell_updates[usize::from(arrival)].push(index);
                     }
                 }
-                probe.finish_probe()?;
+                if let Err(error) = probe.finish_probe() {
+                    if std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
+                        eprintln!(
+                            "Redpiler movement probe token={token_index} block={:?} initial={:?} cell={cell:?} arrival={arrival}: {error:?}",
+                            token.block,
+                            token.position
+                        );
+                    }
+                    return Err(error);
+                }
             }
             updates.push(cell_updates);
         }
@@ -664,6 +693,9 @@ pub(crate) fn compile_monitored(
     phases.next("piston arrangement discovery");
     check_cancelled(monitor)?;
     program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program, monitor)?;
+    if phases.enabled {
+        eprintln!("Redpiler inventory: piston_arrangement_groups={}", program.input_arrangements.len());
+    }
     phases.next("movement program validation");
     check_cancelled(monitor)?;
     program.compile_movement_flips()?;
@@ -1269,12 +1301,6 @@ fn discover_piston_actors_monitored(
     let error = |pos, reason| ScratchError { position: Some(pos), reason };
     let mut actors = Vec::new();
     for y in bounds.0.y..=bounds.1.y {
-        if monitor.is_some_and(TaskMonitor::cancelled) {
-            return Err(ScratchError {
-                position: None,
-                reason: "compilation cancelled",
-            });
-        }
         if monitor.is_some_and(TaskMonitor::cancelled) {
             return Err(ScratchError {
                 position: None,

@@ -42,16 +42,6 @@ pub(super) fn parse_block(input: &str) -> Option<Block> {
             }
         }
     }
-    // TODO: Remove handling for invalid properites.
-    // Older MCHPRS exports exposed the internal piston `sticky` flag. The block
-    // name already carries that property; accept only a consistent legacy flag.
-    if matches!(name, "piston" | "sticky_piston") {
-        if let Some(sticky) = properties.remove("sticky") {
-            if sticky != if name == "sticky_piston" { "true" } else { "false" } {
-                return None;
-            }
-        }
-    }
     let defaults = mchprs_blocks::generated::STATE_PROPERTIES[registry.4 as usize];
     if properties.keys().any(|k| !defaults.iter().any(|p| p.0 == *k)) {
         return None;
@@ -96,9 +86,46 @@ struct Schema<'a> {
     encoded: &'a [i8],
     entities: &'a [nbt::Value],
 }
+
+fn read_dimensions(root: &Compound) -> Result<[u32; 3]> {
+    let mut dimensions = [0; 3];
+    for (i, key) in ["Width", "Height", "Length"].into_iter().enumerate() {
+        dimensions[i] = match root.get(key) {
+            Some(Value::Short(n)) => *n as u16 as u32,
+            _ => bail!(messages::schematic_expected_dimension(key)),
+        };
+        if dimensions[i] == 0 {
+            bail!(messages::schematic_zero_dimension(key));
+        }
+    }
+    Ok(dimensions)
+}
+
+fn read_offset(root: &Compound, version: i32) -> Result<[i32; 3]> {
+    let metadata = match root.get("Metadata") {
+        None => None,
+        Some(Value::Compound(m)) => Some(m),
+        _ => bail!(messages::SCHEMATIC_METADATA_COMPOUND_REQUIRED),
+    };
+    let keys = ["WEOffsetX", "WEOffsetY", "WEOffsetZ"];
+    let legacy_present = metadata.is_some_and(|m| keys.iter().any(|k| m.contains_key(*k)));
+    let displacement = if version == 2 && legacy_present {
+        let m = metadata.unwrap();
+        [integer(m, keys[0])?, integer(m, keys[1])?, integer(m, keys[2])?]
+    } else if root.contains_key("Offset") {
+        vector(root, "Offset")?
+    } else {
+        [0; 3]
+    };
+    let mut offset = [0; 3];
+    for i in 0..3 {
+        offset[i] = displacement[i].checked_neg().context(messages::SCHEMATIC_OFFSET_DISPLACEMENT_OVERFLOW)?;
+    }
+    Ok(offset)
+}
+
 impl<'a> Schema<'a> {
     fn read(nbt: &'a nbt::Blob) -> Result<Self> {
-        // TODO: Analize this code, it is very unreadable. I want to see the structure of the schematic in clear way here. Consider creating some abstraction, helper functions ect.
         let wrapped = nbt.get("Schematic").is_some();
         let root = if wrapped { compound(&nbt.content, "Schematic")? } else { &nbt.content };
         let version = integer(root, "Version")?;
@@ -109,35 +136,8 @@ impl<'a> Schema<'a> {
             bail!(messages::SCHEMATIC_V3_NESTED_SCHEMA_REQUIRED);
         }
         let data_version = integer(root, "DataVersion")?;
-        let mut dimensions = [0; 3];
-        for (i, key) in ["Width", "Height", "Length"].into_iter().enumerate() {
-            dimensions[i] = match root.get(key) {
-                Some(Value::Short(n)) => *n as u16 as u32,
-                _ => bail!(messages::schematic_expected_dimension(key)),
-            };
-            if dimensions[i] == 0 {
-                bail!(messages::schematic_zero_dimension(key));
-            }
-        }
-        let metadata = match root.get("Metadata") {
-            None => None,
-            Some(Value::Compound(m)) => Some(m),
-            _ => bail!(messages::SCHEMATIC_METADATA_COMPOUND_REQUIRED),
-        };
-        let keys = ["WEOffsetX", "WEOffsetY", "WEOffsetZ"];
-        let legacy_present = metadata.is_some_and(|m| keys.iter().any(|k| m.contains_key(*k)));
-        let displacement = if version == 2 && legacy_present {
-            let m = metadata.unwrap();
-            [integer(m, keys[0])?, integer(m, keys[1])?, integer(m, keys[2])?]
-        } else if root.contains_key("Offset") {
-            vector(root, "Offset")?
-        } else {
-            [0; 3]
-        };
-        let mut offset = [0; 3];
-        for i in 0..3 {
-            offset[i] = displacement[i].checked_neg().context(messages::SCHEMATIC_OFFSET_DISPLACEMENT_OVERFLOW)?;
-        }
+        let dimensions = read_dimensions(root)?;
+        let offset = read_offset(root, version)?;
         let container = if version == 3 {
             compound(root, "Blocks").context(messages::SCHEMATIC_BLOCK_CONTENT_REQUIRED)?
         } else {
@@ -528,4 +528,5 @@ fn write_schematic(mut file: impl std::io::Write, clipboard: &WorldEditClipboard
 }
 
 #[cfg(test)]
+#[path = "../tests/schematic.rs"]
 mod tests;

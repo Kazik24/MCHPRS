@@ -1,4 +1,5 @@
-use super::{Plot, PlotWorld, SelectionBounds, ToolNotice};
+use super::{Plot, PlotWorld};
+use crate::plot::redstone_tools::{SelectionBounds, ToolCommand, ToolNotice};
 use crate::messages;
 use crate::player::Player;
 use crate::plot::worldedit::{self, AirPolicy};
@@ -7,7 +8,6 @@ use anyhow::{Context, Result, bail};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFacing, BlockPos};
 
-// TODO: rstack can be moved to worldedit module.
 const MAX_COPIES: u32 = 4096;
 const MAX_STACK_BLOCKS: u64 = 16_777_216;
 
@@ -147,7 +147,7 @@ impl AutoStack {
 }
 
 impl Plot {
-    pub(super) fn auto_stack(&mut self, player: usize, args: &[&str]) -> Result<()> {
+    pub(in crate::plot) fn auto_stack(&mut self, player: usize, args: &[&str]) -> Result<()> {
         if args == ["off"] {
             self.players[player].redstone_tools.auto_stack = None;
             ToolNotice::AutoStackDisabled.send(&self.players[player]);
@@ -172,7 +172,7 @@ impl Plot {
         if self.players[player].redstone_tools.auto_stack.is_none() {
             return;
         }
-        if self.check_tool_access(player, super::ToolCommand::AutoStack).is_err() {
+        if self.check_tool_access(player, ToolCommand::AutoStack).is_err() {
             self.players[player].redstone_tools.auto_stack = None;
             ToolNotice::AutoStackDisabled.send(&self.players[player]);
             return;
@@ -182,7 +182,7 @@ impl Plot {
         }
     }
 
-    pub(super) fn redstone_stack(&mut self, player: usize, args: &[&str]) -> Result<()> {
+    pub(in crate::plot) fn redstone_stack(&mut self, player: usize, args: &[&str]) -> Result<()> {
         let look = look_direction(&self.players[player]);
         let request = RStackRequest::parse(args, look)?;
         let bounds = SelectionBounds::from_player(&self.players[player], &self.world)?;
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn auto_stack_overlaps_without_recursive_copies_and_ignores_outside_edits() {
-        let mut world = super::super::tests::test_world();
+        let mut world = crate::plot::redstone_tools::tests::test_world();
         let pos = BlockPos::new(10, 30, 10);
         let stack = session(&world, pos, BlockPos::new(12, 30, 10), &["east", "2", "1"]);
         crate::interaction::place_in_world(Block::Stone {}, &mut world, pos, &None);
@@ -323,7 +323,7 @@ mod tests {
     fn auto_stack_copies_container_data_and_cleans_replaced_entities() {
         use mchprs_blocks::block_entities::{ContainerType, SignalStrength};
         use mchprs_blocks::items::ItemStack;
-        let mut world = super::super::tests::test_world();
+        let mut world = crate::plot::redstone_tools::tests::test_world();
         let pos = BlockPos::new(10, 30, 10);
         let stack = session(&world, pos, pos, &["east", "2", "2"]);
         let item = ItemStack::container_with_ss(ContainerType::Chest, SignalStrength::new(13).unwrap());
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn auto_stack_updates_redstone_at_the_destinations() {
-        let mut world = super::super::tests::test_world();
+        let mut world = crate::plot::redstone_tools::tests::test_world();
         let pos = BlockPos::new(10, 30, 10);
         let stack = session(&world, pos, pos, &["east", "1", "4"]);
         let lamp = BlockPos::new(15, 30, 10);
@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn auto_stack_rejects_noop_and_out_of_bounds_configurations() {
-        let world = super::super::tests::test_world();
+        let world = crate::plot::redstone_tools::tests::test_world();
         let pos = BlockPos::new(crate::plot::PLOT_BLOCK_WIDTH - 6, 30, 10);
         let bounds = SelectionBounds::new(pos, pos, &world).unwrap();
         for args in [["east", "0", "2"], ["east", "2", "0"]] {
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn every_destination_is_checked_before_mutation() {
-        let world = super::super::tests::test_world();
+        let world = crate::plot::redstone_tools::tests::test_world();
         let start = BlockPos::new(crate::plot::PLOT_BLOCK_WIDTH - 6, 10, 10);
         let bounds = SelectionBounds::new(start, start, &world).unwrap();
         let request = RStackRequest::parse(&["east", "4", "2"], BlockPos::new(0, 0, 1)).unwrap();

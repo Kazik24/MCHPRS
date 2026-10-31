@@ -476,7 +476,12 @@ fn powered_source_in_probe_context_rejects_compilation() {
         },
     );
     world.set_block(BlockPos::new(40, 32, 40), Block::Stone {});
-    world.set_block(source, Block::RedstoneBlock);
+    world.set_block(
+        source,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+        },
+    );
     let bounds = (BlockPos::new(38, 29, 38), BlockPos::new(42, 32, 42));
     let mut compiler = Compiler::default();
     let error = compiler
@@ -494,6 +499,30 @@ fn powered_source_in_probe_context_rejects_compilation() {
             position: Some(position),
             reason: "unrepresented discovered wire source"
         }) if position == source
+    ));
+    assert!(!compiler.is_active());
+}
+
+#[test]
+fn missing_source_chunk_is_not_captured_as_air() {
+    let world = PlotWorld::from_chunks(0, 0, vec![Chunk::empty(0, 0)], TickScheduler::default());
+    let missing = BlockPos::new(32, 30, 32);
+    let mut compiler = Compiler::default();
+    let error = compiler
+        .compile(
+            &world,
+            (missing, BlockPos::new(34, 32, 34)),
+            CompilerOptions::default(),
+            Vec::new(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        CompileError::Unsupported(ScratchError {
+            position: Some(position),
+            reason: "scratch capture contains an unloaded chunk"
+        }) if position == missing
     ));
     assert!(!compiler.is_active());
 }

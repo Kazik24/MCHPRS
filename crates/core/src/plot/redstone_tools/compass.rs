@@ -1,4 +1,4 @@
-use super::{PLOT_BLOCK_HEIGHT, Plot};
+use super::super::{PLOT_BLOCK_HEIGHT, Plot};
 use crate::messages;
 use crate::player::{PacketSender, PlayerPos};
 use crate::world::World;
@@ -10,11 +10,10 @@ use std::time::{Duration, Instant};
 const RANGE: f64 = 1024.0;
 const SEARCH_DISTANCE: f64 = 8.0;
 
-// TODO: Find all tools in the repo. Let's move all of tools / custom behavior into **redstone_tools** module.
 
 impl Plot {
     /// Returns true when the held item consumes this interaction, even on a miss.
-    pub(super) fn use_compass(&mut self, player: usize, hand: i32, yaw: f32, pitch: f32) -> bool {
+    pub(in crate::plot) fn use_compass(&mut self, player: usize, hand: i32, yaw: f32, pitch: f32) -> bool {
         let data = &self.players[player];
         let slot = match hand {
             0 => 36 + data.selected_slot as usize,
@@ -76,7 +75,7 @@ fn pointed_block(eye: PlayerPos, yaw: f32, pitch: f32, read: &impl Fn(BlockPos) 
     })
 }
 
-pub(super) fn ray_trace(
+pub(in crate::plot) fn ray_trace(
     eye: PlayerPos,
     yaw: f32,
     pitch: f32,
@@ -145,8 +144,8 @@ pub(super) fn ray_trace(
     }
 }
 
-pub(super) struct RayHit {
-    pub(super) block: BlockPos,
+pub(in crate::plot) struct RayHit {
+    pub(in crate::plot) block: BlockPos,
     distance: f64,
     origin: [f64; 3],
     direction: [f64; 3],
@@ -209,9 +208,9 @@ fn compass_destination(eye: PlayerPos, yaw: f32, pitch: f32, scale: f64, read: &
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct Bounds {
-    pub(super) min: [f64; 3],
-    pub(super) max: [f64; 3],
+pub(in crate::plot) struct Bounds {
+    pub(in crate::plot) min: [f64; 3],
+    pub(in crate::plot) max: [f64; 3],
 }
 
 impl Bounds {
@@ -346,7 +345,7 @@ fn landing_position(target: BlockPos, scale: f64, read: &impl Fn(BlockPos) -> Op
 }
 
 /// Standing-body clearance shared by compass landing and plot restoration.
-pub(super) fn body_clear(pos: PlayerPos, scale: f64, read: &impl Fn(BlockPos) -> Option<Block>) -> bool {
+pub(in crate::plot) fn body_clear(pos: PlayerPos, scale: f64, read: &impl Fn(BlockPos) -> Option<Block>) -> bool {
     if !pos.is_valid() {
         return false;
     }

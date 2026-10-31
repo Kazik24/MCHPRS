@@ -7,7 +7,6 @@ use std::thread::JoinHandle;
 #[cfg(test)]
 mod tests;
 
-// TODO: Redpiler compilation and tests should have their own module. 
 
 pub(super) struct CompilationJob {
     /// Time the request started, including snapshot preparation.
@@ -30,7 +29,7 @@ struct CompilationResult {
 }
 
 struct EntryVersion {
-    /// Chunk identities and revisions detect edits, entity changes and world replacement.
+    /// All plot chunks also cover the compiler's read-only probe context.
     chunks: Vec<(u64, u64)>,
     /// Ordered pending work detects scheduling changes without block edits.
     ticks: Vec<TickEntry>,

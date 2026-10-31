@@ -59,7 +59,7 @@ impl FurnaceRules {
         static RULES: std::sync::OnceLock<FurnaceRules> = std::sync::OnceLock::new();
 
         RULES.get_or_init(|| {
-            serde_json::from_str(include_str!("../../../mc_data/1.21.5/furnace_menu.json")).expect("checked-in Java furnace menu rules")
+            serde_json::from_str(include_str!("../../../../mc_data/1.21.5/furnace_menu.json")).expect("checked-in Java furnace menu rules")
         })
     }
 

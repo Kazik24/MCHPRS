@@ -1,14 +1,13 @@
-use super::*;
+use super::super::*;
 use crate::waveform::{Probe, Recorder, signal_value};
 use mchprs_network::packets::clientbound::{CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser, CTabComplete, CTabCompleteMatch};
 
-// TODO: THis is tool, move to redstone_tools
 pub(crate) const HELP: &str = "/waveform add <name> [x y z]: watch a block.\n/waveform addbulk <name> <bits>: left-click low to high; cancel with /waveform cancel.\n/waveform on [ticks] | off | status | list | remove <name> | web\n/waveform clear: clear history, keep watches and recording. /waveform reset confirm: remove all watches and history, stop recording.\non/off discard history; off keeps probes. Recorded command output is public.";
 const ACTIONS: [&str; 12] = [
     "on", "off", "status", "add", "addbulk", "cancel", "remove", "list", "clear", "reset", "web", "help",
 ];
 
-pub(super) fn viewer_link(url: &str) -> serde_json::Value {
+pub(in crate::plot) fn viewer_link(url: &str) -> serde_json::Value {
     serde_json::json!({
         "text": url,
         "color": "aqua",
@@ -68,7 +67,7 @@ fn probe_limit_error(limit: usize) -> String {
     }
 }
 
-pub(super) fn command_node(nodes: &mut Vec<Node<'static>>) -> i32 {
+pub(in crate::plot) fn command_node(nodes: &mut Vec<Node<'static>>) -> i32 {
     fn child(nodes: &mut Vec<Node<'static>>, parent: usize, node: Node<'static>) -> usize {
         let id = nodes.len();
         let mut children = nodes[parent].children.to_vec();
@@ -185,7 +184,7 @@ impl PlotWorld {
         }
         Ok(next)
     }
-    pub(super) fn reset_waveform(&mut self) {
+    pub(in crate::plot) fn reset_waveform(&mut self) {
         if self.waveform.capture.is_none() {
             return;
         }
@@ -196,7 +195,7 @@ impl PlotWorld {
             values,
         );
     }
-    pub(super) fn record_waveform_change(&mut self, pos: BlockPos) {
+    pub(in crate::plot) fn record_waveform_change(&mut self, pos: BlockPos) {
         for watched in self.waveform.affected(pos) {
             let value = signal_value(self, watched);
             self.waveform.changed(watched, value, self.piston_state.logical_tick);
@@ -231,7 +230,7 @@ impl Plot {
         Ok(())
     }
 
-    pub(super) fn complete_waveform(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
+    pub(in crate::plot) fn complete_waveform(&self, player: usize, id: i32, text: &str) -> Option<CTabComplete> {
         if text.split_once(char::is_whitespace)?.0 != "/waveform" {
             return None;
         }
@@ -325,7 +324,7 @@ impl Plot {
         self.players.iter_mut().for_each(|player| player.redstone_tools.waveform = None);
         Ok("Waveform reset; watches and history removed, recording off".into())
     }
-    pub(super) fn handle_waveform(&mut self, player: usize, args: &[&str]) -> Result<String, String> {
+    pub(in crate::plot) fn handle_waveform(&mut self, player: usize, args: &[&str]) -> Result<String, String> {
         check_syntax(args)?;
         if args == ["help"] {
             return Ok(HELP.into());
@@ -535,7 +534,7 @@ impl Plot {
         Ok((signals, ticks))
     }
 
-    pub(super) fn select_waveform_bit(&mut self, player: usize, pos: BlockPos) -> Result<String, String> {
+    pub(in crate::plot) fn select_waveform_bit(&mut self, player: usize, pos: BlockPos) -> Result<String, String> {
         let actor = &self.players[player];
         let Some(selection) = &actor.redstone_tools.waveform else {
             return Err("Start selection with /waveform addbulk <name> <bits>.".into());
@@ -614,7 +613,7 @@ mod tests {
     use mchprs_network::packets::serverbound::{SPlayerBlockPlacemnt, SPlayerDigging, ServerBoundPacketHandler};
 
     fn fixture() -> (Plot, std::net::TcpStream, [BlockPos; 3]) {
-        let (mut plot, peer) = super::super::client_sync_tests::fixture(false);
+        let (mut plot, peer) = crate::plot::client_sync_tests::fixture(false);
         plot.owner = Some(plot.players[0].uuid);
         plot.players[0].set_test_permissions(&["mchprs.access.commands", "commands.waveform", "commands.waveform.addbulk"]);
         let positions = [BlockPos::new(32, 21, 34), BlockPos::new(33, 21, 34), BlockPos::new(34, 21, 34)];
@@ -630,7 +629,7 @@ mod tests {
         use mchprs_network::test_support::read_frame;
 
         for compressed in [false, true] {
-            let (plot, mut peer) = super::super::client_sync_tests::fixture(compressed);
+            let (plot, mut peer) = crate::plot::client_sync_tests::fixture(compressed);
             let url = "https://redstonefun.pl/waveform/?x=3&y=-2";
             plot.players[0].send_raw_system_message(viewer_link(url).to_string());
             let (id, mut frame) = read_frame(&mut peer, compressed).unwrap();

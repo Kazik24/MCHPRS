@@ -11,17 +11,30 @@ type InputValue = (u8, bool);
 type Inputs = BTreeMap<InputKey, InputValue>;
 type Dependency = (usize, ArrangementSource, bool);
 
+fn wire_sources(world: &impl World, wires: &[BlockPos], monitor: Option<&TaskMonitor>) -> Result<Vec<super::super::scratch::WireSource>, ScratchError> {
+    if let Some(monitor) = monitor {
+        crate::redpiler::scratch::discover_wire_sources_monitored(world, wires, monitor)
+    } else {
+        crate::redpiler::scratch::discover_wire_sources(world, wires)
+    }
+}
+
 fn near(a: BlockPos, b: BlockPos, distance: u32) -> bool {
     a.x.abs_diff(b.x) <= distance && a.y.abs_diff(b.y) <= distance && a.z.abs_diff(b.z) <= distance
 }
 
-pub(super) fn inputs_of(world: &impl World, program: &Program, member: usize) -> Result<Inputs, ScratchError> {
+pub(super) fn inputs_of(
+    world: &impl World,
+    program: &Program,
+    member: usize,
+    monitor: Option<&TaskMonitor>,
+) -> Result<Inputs, ScratchError> {
     let pos = program.positions[member];
     let block = program.initial[member];
     let mut found = Vec::new();
     let mut side = Vec::new();
     match block {
-        Block::RedstoneWire { .. } => found = crate::redpiler::scratch::discover_wire_sources(world, &[pos])?,
+        Block::RedstoneWire { .. } => found = wire_sources(world, &[pos], monitor)?,
         Block::Piston { piston } => found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?,
         Block::RedstoneLamp { .. } => found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?,
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
@@ -35,13 +48,13 @@ pub(super) fn inputs_of(world: &impl World, program: &Program, member: usize) ->
             let rear = pos.offset(face);
             let block = world.get_block(rear);
             if matches!(block, Block::RedstoneWire { .. }) {
-                found = crate::redpiler::scratch::discover_wire_sources(world, &[rear])?;
+                found = wire_sources(world, &[rear], monitor)?;
             } else if block.is_solid() || block.is_copper_bulb() {
                 for direction in BlockFace::values() {
                     let at = rear.offset(direction);
                     if crate::redstone::power::emits_strong_power(world.get_block(at), world, at, direction, true) {
                         if matches!(world.get_block(at), Block::RedstoneWire { .. }) {
-                            found.extend(crate::redpiler::scratch::discover_wire_sources(world, &[at])?);
+                            found.extend(wire_sources(world, &[at], monitor)?);
                         } else {
                             found.push(crate::redpiler::scratch::WireSource {
                                 wire: pos,
@@ -63,7 +76,7 @@ pub(super) fn inputs_of(world: &impl World, program: &Program, member: usize) ->
                 let at = pos.offset(face);
                 let block = world.get_block(at);
                 if comparator && matches!(block, Block::RedstoneWire { .. }) {
-                    side.extend(crate::redpiler::scratch::discover_wire_sources(world, &[at])?);
+                    side.extend(wire_sources(world, &[at], monitor)?);
                 } else if (comparator && matches!(block, Block::RedstoneBlock))
                     || ((comparator || crate::redstone::is_diode(block)) && crate::redstone::power::emits_strong_power(block, world, at, face, false))
                 {
@@ -136,10 +149,16 @@ fn sample(
             scratch.world_mut().set_block(next, record.block);
         }
     }
-    let result = members
-        .iter()
-        .map(|&member| inputs_of(scratch.world(), program, member))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut result = Vec::with_capacity(members.len());
+    for &member in members {
+        if monitor.is_some_and(TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compilation cancelled",
+            });
+        }
+        result.push(inputs_of(scratch.world(), program, member, monitor)?);
+    }
     scratch.finish_probe()?;
     Ok(result)
 }

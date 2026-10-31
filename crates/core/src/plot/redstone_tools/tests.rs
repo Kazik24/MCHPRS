@@ -67,7 +67,7 @@ fn chest_entity_survives_chunk_save_and_disappears_with_the_block() {
     assert!(restored.get_block_entity(position).is_none());
 }
 
-pub(super) fn test_world() -> PlotWorld {
+pub(in crate::plot) fn test_world() -> PlotWorld {
     let chunks = (0..super::super::PLOT_WIDTH)
         .flat_map(|x| (0..super::super::PLOT_WIDTH).map(move |z| crate::world::storage::Chunk::empty(x, z)))
         .collect();

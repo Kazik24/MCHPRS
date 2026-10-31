@@ -1,13 +1,16 @@
+pub(super) mod compass;
+pub(super) mod small;
+pub(super) mod waveform;
 use crate::messages;
 mod completion;
 mod items;
 mod search;
 pub(super) mod selection;
-mod stack;
+use super::worldedit::stack;
 mod wire;
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 use super::{PLOT_BLOCK_HEIGHT, Plot, PlotWorld};
 use crate::player::{PacketSender, Player};
@@ -19,7 +22,7 @@ use serde_json::{Value, json};
 /// Session state only: none of these preferences or caches alter player saves.
 #[derive(Default)]
 pub(crate) struct PlayerTools {
-    pub waveform: Option<super::waveform::Selection>,
+    pub waveform: Option<waveform::Selection>,
     pub wire: Option<wire::Session>,
     /// Explicit opt-out survives route cleanup until an enabling command succeeds.
     wire_disabled: bool,
@@ -31,7 +34,7 @@ pub(crate) struct PlayerTools {
 }
 
 #[derive(Clone, Copy)]
-enum ToolCommand {
+pub(super) enum ToolCommand {
     Wire,
     Find,
     SignSearch,
@@ -79,7 +82,7 @@ impl ToolCommand {
     }
 }
 
-enum ToolNotice {
+pub(super) enum ToolNotice {
     Error(String),
     SelectionEnabled,
     SelectionDisabled,
@@ -90,7 +93,7 @@ enum ToolNotice {
 }
 
 impl ToolNotice {
-    fn send(self, player: &Player) {
+    pub(super) fn send(self, player: &Player) {
         let (text, color) = match self {
             Self::Error(error) => (error, "red"),
             Self::SelectionEnabled => (messages::SELECTION_SIDEBAR_ENABLED.into(), "light_purple"),
@@ -126,26 +129,26 @@ impl ResultAction {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct SelectionBounds {
-    start: BlockPos,
-    end: BlockPos,
+pub(super) struct SelectionBounds {
+    pub(super) start: BlockPos,
+    pub(super) end: BlockPos,
 }
 
 impl SelectionBounds {
-    fn from_player(player: &Player, world: &PlotWorld) -> Result<Self> {
+    pub(super) fn from_player(player: &Player, world: &PlotWorld) -> Result<Self> {
         let first = player.first_position.ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_FIRST))?;
         let second = player.second_position.ok_or_else(|| anyhow::anyhow!(messages::SELECT_POSITION_SECOND))?;
         Self::new(first.min(second), first.max(second), world)
     }
 
-    fn new(start: BlockPos, end: BlockPos, world: &PlotWorld) -> Result<Self> {
+    pub(super) fn new(start: BlockPos, end: BlockPos, world: &PlotWorld) -> Result<Self> {
         if !world.contains_position(start) || !world.contains_position(end) {
             bail!(messages::COMPLETE_SELECTION_MUST_INSIDE_PLOT_WORLD);
         }
         Ok(Self { start, end })
     }
 
-    fn volume(self) -> u64 {
+    pub(super) fn volume(self) -> u64 {
         let width = i64::from(self.end.x) - i64::from(self.start.x) + 1;
         let height = i64::from(self.end.y) - i64::from(self.start.y) + 1;
         let depth = i64::from(self.end.z) - i64::from(self.start.z) + 1;
@@ -192,7 +195,7 @@ impl Plot {
         true
     }
 
-    fn check_tool_access(&self, player: usize, command: ToolCommand) -> Result<()> {
+    pub(super) fn check_tool_access(&self, player: usize, command: ToolCommand) -> Result<()> {
         let player = &self.players[player];
         if !player.has_permission(command.permission()) {
             bail!(messages::TOOL_PERMISSION_DENIED);

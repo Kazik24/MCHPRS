@@ -5,8 +5,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::redpiler::{ScheduledBlockTick, TickScheduler};
 
 
-// TODO: Shouldnt this be moved to interpreter related module? Like redstone? 
-
 /// Membership only: the scheduler retains priority, FIFO and ring ordering.
 /// Counts also preserve duplicate entries imported from older saves.
 pub(super) struct TickIndex {

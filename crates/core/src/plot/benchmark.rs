@@ -1,8 +1,6 @@
 //! In-memory plot adapter for production-profile client benchmarks and packet tests.
 use super::*;
 
-// TODO: Is this the right place for this? Consider alternatives.
-
 pub fn with_client(mut world: PlotWorld, player: Player, tps: Tps) -> Plot {
     world.packet_senders.push(PlayerPacketSender::new(&player.client));
     let (message_sender, _) = std::sync::mpsc::channel();
