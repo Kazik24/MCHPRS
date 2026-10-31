@@ -192,7 +192,9 @@ pub(super) fn inputs_of(
     match block {
         Block::RedstoneWire { .. } => found = wire_sources(world, &[pos], monitor)?,
         Block::Piston { piston } => found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?,
-        Block::RedstoneLamp { .. } | Block::Hopper { .. } => found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?,
+        Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::NoteBlock { .. } => {
+            found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?
+        }
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
         Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
             let (facing, comparator) = match block {

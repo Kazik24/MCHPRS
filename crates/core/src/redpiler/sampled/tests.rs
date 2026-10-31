@@ -2116,6 +2116,41 @@ fn compiled_hopper_enabled_state_matches_native_redstone_updates() {
 }
 
 #[test]
+fn compiled_note_block_tracks_power_and_support_instrument() {
+    let source = BlockPos::new(15, 15, 15);
+    let note_block = source.offset(BlockFace::East);
+    let mut native = host();
+    native.set_block(
+        source,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    native.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+    native.set_block(note_block.offset(BlockFace::Bottom), Block::Stone {});
+    native.set_block(
+        note_block,
+        Block::NoteBlock {
+            instrument: mchprs_blocks::blocks::Instrument::Harp,
+            note: 1,
+            powered: false,
+        },
+    );
+
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20));
+    let program = compile(&native, bounds, entry(&native)).unwrap();
+    let source_index = program.sources.iter().position(|&index| program.positions[index] == source).unwrap();
+    let note_index = program.positions.iter().position(|&pos| pos == note_block).unwrap();
+    let mut runtime = program.start();
+
+    for powered in [true, false] {
+        crate::interaction::use_redstone(native.get_block(source), &mut native, source, None);
+        runtime.set_input(source_index, powered).unwrap();
+        assert_eq!(runtime.blocks[note_index], native.get_block(note_block));
+    }
+}
+
+#[test]
 fn rejects_bottom_slab_as_dust_support() {
     use mchprs_blocks::blocks::SlabType;
     let mut w = host();

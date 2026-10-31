@@ -912,6 +912,24 @@ impl Runtime {
         }
     }
 
+    fn update_note_block(&mut self, component: usize) {
+        let Block::NoteBlock { note, powered, .. } = self.blocks[component] else {
+            unreachable!()
+        };
+        let powered_now = self.input_strength(component) > 0;
+        if powered == powered_now {
+            return;
+        }
+        let below = self
+            .project(self.program.positions[component].offset(mchprs_blocks::BlockFace::Bottom))
+            .unwrap_or(Block::Air);
+        self.blocks[component] = Block::NoteBlock {
+            instrument: mchprs_blocks::blocks::Instrument::from_block_below(below),
+            note,
+            powered: powered_now,
+        };
+    }
+
     pub(super) fn update_once(&mut self, receiver: usize) {
         if self.updated_in_phase[receiver] == Some(self.phase) {
             if self.trace_enabled {
@@ -931,6 +949,7 @@ impl Runtime {
             Block::RedstoneComparator { .. } => self.update_comparator(receiver),
             Block::RedstoneLamp { .. } => self.dispatch_receiver(receiver),
             Block::Hopper { .. } => self.update_hopper(receiver),
+            Block::NoteBlock { .. } => self.update_note_block(receiver),
             Block::Piston { .. } => self.update_piston(receiver),
             Block::RedstoneRepeater { .. } => self.update_repeater(receiver),
             Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.update_torch(receiver),
@@ -1011,6 +1030,7 @@ impl Runtime {
                     Operation::Contribution(_) | Operation::ArrangementContribution(_) => continue,
                     Operation::UpdateLamp(node)
                     | Operation::UpdateHopper(node)
+                    | Operation::UpdateNoteBlock(node)
                     | Operation::UpdateRepeater(node)
                     | Operation::UpdateComparator(node)
                     | Operation::UpdateTorch(node)
@@ -1067,6 +1087,7 @@ impl Runtime {
                 Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
                 Operation::UpdateLamp(slot) => self.dispatch_receiver(slot),
                 Operation::UpdateHopper(slot) => self.update_hopper(slot),
+                Operation::UpdateNoteBlock(slot) => self.update_note_block(slot),
                 Operation::UpdateRepeater(slot) => self.update_repeater(slot),
                 Operation::UpdatePiston(slot) => self.update_piston(slot),
                 Operation::UpdateTorch(slot) => self.update_torch(slot),

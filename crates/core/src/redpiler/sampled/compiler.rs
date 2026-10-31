@@ -325,6 +325,7 @@ pub(crate) fn compile_monitored(
                         positions.push(pos);
                     }
                     Block::Hopper { .. } => positions.push(pos),
+                    Block::NoteBlock { .. } => positions.push(pos),
                     Block::RedstoneBlock => positions.push(pos),
                     Block::RedstoneComparator { .. } => positions.push(pos),
                     block if block.is_copper_bulb() => copper_bulbs.push(pos),
@@ -391,6 +392,11 @@ pub(crate) fn compile_monitored(
         .copied()
         .filter(|&pos| matches!(scratch.world().get_block(pos), Block::Hopper { .. }))
         .collect();
+    let note_positions: Vec<_> = positions
+        .iter()
+        .copied()
+        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::NoteBlock { .. }))
+        .collect();
     if phases.enabled {
         eprintln!(
             "Redpiler inventory: sampled_components={} wires={} lamps={} repeaters={} copper_bulbs={}",
@@ -420,6 +426,10 @@ pub(crate) fn compile_monitored(
         for hopper in hopper_positions {
             check_cancelled(monitor)?;
             dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), hopper)?);
+        }
+        for note_block in note_positions {
+            check_cancelled(monitor)?;
+            dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), note_block)?);
         }
         for &bulb in &copper_bulbs {
             check_cancelled(monitor)?;
@@ -779,6 +789,7 @@ pub(crate) fn compile_monitored(
                     | Block::Observer { .. }
                     | Block::RedstoneLamp { .. }
                     | Block::Hopper { .. }
+                    | Block::NoteBlock { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. } => true,
                     _ => false,
@@ -950,6 +961,11 @@ pub(crate) fn compile_monitored(
                 }
                 Block::RedstoneLamp { .. } => Block::RedstoneLamp { lit: constant_power > 0 },
                 Block::Hopper { facing, .. } => Block::Hopper { facing, enabled: constant_power == 0 },
+                Block::NoteBlock { instrument, note, .. } => Block::NoteBlock {
+                    instrument,
+                    note,
+                    powered: constant_power > 0,
+                },
                 Block::RedstoneTorch { .. } => Block::RedstoneTorch { lit: false },
                 Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { lit: false, facing },
                 _ => block,
@@ -1260,6 +1276,7 @@ impl SourceIndex {
                     }
                     Block::RedstoneLamp { .. } => record.operations.push(Operation::UpdateLamp(target)),
                     Block::Hopper { .. } => record.operations.push(Operation::UpdateHopper(target)),
+                    Block::NoteBlock { .. } => record.operations.push(Operation::UpdateNoteBlock(target)),
                     Block::RedstoneRepeater { .. } => record.operations.push(Operation::UpdateRepeater(target)),
                     Block::RedstoneComparator { .. } => record.operations.push(Operation::UpdateComparator(target)),
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => record.operations.push(Operation::UpdateTorch(target)),
@@ -1398,6 +1415,7 @@ fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
             }
             Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
             Block::Hopper { .. } => operations.push(Operation::UpdateHopper(target)),
+            Block::NoteBlock { .. } => operations.push(Operation::UpdateNoteBlock(target)),
             Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),
             Block::RedstoneComparator { .. } => operations.push(Operation::UpdateComparator(target)),
             Block::Piston { .. } => {}
@@ -1454,6 +1472,7 @@ fn track_reactive(
             Block::RedstoneWallTorch { lit, facing } => !pending && lit == crate::redstone::wall_torch_should_be_off(world, pos, facing),
             Block::RedstoneLamp { lit } => lit != crate::redstone::redstone_lamp_should_be_lit(world, pos) && !(lit && pending),
             Block::Hopper { enabled, .. } => enabled == crate::redstone::redstone_lamp_should_be_lit(world, pos),
+            Block::NoteBlock { powered, .. } => powered != crate::redstone::redstone_lamp_should_be_lit(world, pos),
             _ => false,
         };
     }
