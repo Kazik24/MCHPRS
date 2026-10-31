@@ -1015,7 +1015,6 @@ impl ScratchWorld {
         let Some(probe_max_z) = max.z.checked_add(1) else { return Err(invalid_bounds()) };
         let probe_min = BlockPos::new(probe_min_x, probe_min_y, probe_min_z);
         let probe_max = BlockPos::new(probe_max_x, probe_max_y, probe_max_z);
-        let probe_bounds = (probe_min, probe_max);
         let read_bounds = (
             BlockPos::new(plot_min_x, 0, plot_min_z),
             BlockPos::new(plot_max_x, PLOT_BLOCK_HEIGHT - 1, plot_max_z),

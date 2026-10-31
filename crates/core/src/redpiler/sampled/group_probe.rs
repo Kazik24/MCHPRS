@@ -19,8 +19,8 @@ pub(super) struct ProbeIndexes<'a> {
     readers: HashMap<BlockPos, usize>,
 }
 
-impl ProbeIndexes<'_> {
-    pub(super) fn new<'a>(
+impl<'a> ProbeIndexes<'a> {
+    pub(super) fn new(
         components: &'a HashMap<BlockPos, usize>,
         positions: &[BlockPos],
         initial: &[Block],
@@ -333,7 +333,7 @@ pub(super) fn run(
     monitor: Option<&TaskMonitor>,
 ) -> Result<Vec<InputArrangement>, ScratchError> {
     let mut scratch = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
-    let mut affected_started = std::time::Instant::now();
+    let affected_started = std::time::Instant::now();
     let mut affects = Vec::with_capacity(program.tokens.len());
     for token in &program.tokens {
         affects.push(affected_members(&token.cells, &program.positions, indexes, monitor)?);
@@ -351,7 +351,7 @@ pub(super) fn run(
             tokens_near[member].push(token);
         }
     }
-    let mut single_started = std::time::Instant::now();
+    let single_started = std::time::Instant::now();
     let mut depends: BTreeMap<Dependency, BTreeSet<usize>> = BTreeMap::new();
     let mut grown = BTreeSet::new();
     for token in 0..program.tokens.len() {
@@ -394,7 +394,7 @@ pub(super) fn run(
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
         eprintln!("Redpiler arrangement individual-token probes: {} ms", single_started.elapsed().as_millis());
     }
-    let mut joint_started = std::time::Instant::now();
+    let joint_started = std::time::Instant::now();
     let mut first = true;
     loop {
         let mut grouped: BTreeMap<Vec<usize>, Vec<Dependency>> = BTreeMap::new();
@@ -554,4 +554,93 @@ pub(super) fn run(
         );
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn indexed_affected_regions_match_full_scan() {
+        let mut positions = Vec::new();
+        let mut wire_at = HashMap::new();
+        for x in 20..=42 {
+            let pos = BlockPos::new(x, 10 + (x % 3 == 0) as i32, 30);
+            wire_at.insert(pos, positions.len());
+            positions.push(pos);
+        }
+        let reader_positions = [
+            BlockPos::new(20, 12, 32),
+            BlockPos::new(28, 12, 32),
+            BlockPos::new(42, 10, 30),
+            BlockPos::new(50, 10, 30),
+        ];
+        let readers: HashMap<_, _> = reader_positions
+            .into_iter()
+            .map(|pos| {
+                let index = positions.len();
+                positions.push(pos);
+                (pos, index)
+            })
+            .collect();
+        let wire_neighbors = positions
+            .iter()
+            .enumerate()
+            .map(|(wire, &pos)| {
+                if wire >= wire_at.len() {
+                    return Vec::new();
+                }
+                let mut neighbors = Vec::new();
+                for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    for dy in -1..=1 {
+                        if let Some(&next) = wire_at.get(&BlockPos::new(pos.x + dx, pos.y + dy, pos.z + dz)) {
+                            neighbors.push(next);
+                        }
+                    }
+                }
+                neighbors.sort_unstable();
+                neighbors
+            })
+            .collect();
+        let components: HashMap<_, _> = positions.iter().enumerate().map(|(i, &pos)| (pos, i)).collect();
+        let indexes = ProbeIndexes {
+            components: &components,
+            redstone_tokens: HashMap::new(),
+            wire_at: wire_at.clone(),
+            wire_neighbors,
+            readers: readers.clone(),
+        };
+        let mut wire_list: Vec<_> = wire_at.values().copied().collect();
+        wire_list.sort_unstable();
+        let token_cells = [BlockPos::new(19, 10, 30), BlockPos::new(30, 11, 31)];
+        let mut expected = BTreeSet::new();
+        let mut touched = HashSet::new();
+        let mut queue = VecDeque::new();
+        for &wire in &wire_list {
+            if token_cells.iter().any(|&cell| near(cell, positions[wire], 1)) {
+                touched.insert(wire);
+                queue.push_back((wire, 0));
+            }
+        }
+        while let Some((wire, depth)) = queue.pop_front() {
+            if depth == 15 {
+                continue;
+            }
+            let pos = positions[wire];
+            for &next in &wire_list {
+                let at = positions[next];
+                if pos.x.abs_diff(at.x) + pos.z.abs_diff(at.z) == 1 && pos.y.abs_diff(at.y) <= 1 && touched.insert(next) {
+                    queue.push_back((next, depth + 1));
+                }
+            }
+        }
+        expected.extend(touched.iter().copied());
+        for (&pos, &reader) in &readers {
+            if token_cells.iter().any(|&cell| near(cell, pos, 2)) || touched.iter().any(|&wire| near(positions[wire], pos, 2)) {
+                expected.insert(reader);
+            }
+        }
+
+        assert_eq!(affected_members(&token_cells, &positions, &indexes, None).unwrap(), expected);
+    }
 }

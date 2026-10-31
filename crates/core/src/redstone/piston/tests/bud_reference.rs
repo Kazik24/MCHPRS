@@ -81,7 +81,7 @@ fn capture_episode() -> BudReference {
     assert_eq!(memory.len(), 896);
     let mut updates = Vec::new();
     let mut frames = Vec::new();
-    cpus::collect_screen(&world, 0, &mut frames);
+    cpus::collect_screen(&world, cpu, 0, &mut frames);
     assert_eq!(cpus::checkpoint(&world, 0, &[]), frozen.checkpoints[0]);
     if let Some(entry) = sample(0, &trace::capture(|| cpus::click(&mut world, cpu.start)), &memory) {
         updates.push(entry);
@@ -90,7 +90,7 @@ fn capture_episode() -> BudReference {
         if let Some(entry) = sample(tick, &trace::capture(|| world.tick_interpreted()), &memory) {
             updates.push(entry);
         }
-        cpus::collect_screen(&world, tick, &mut frames);
+        cpus::collect_screen(&world, cpu, tick, &mut frames);
         if let Some(expected) = frozen.checkpoints.iter().find(|c| c.tick == tick) {
             assert_eq!(cpus::checkpoint(&world, tick, &[]), *expected);
         }
