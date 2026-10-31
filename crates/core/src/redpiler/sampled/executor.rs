@@ -901,6 +901,17 @@ impl Runtime {
         }
     }
 
+    fn update_hopper(&mut self, component: usize) {
+        let Block::Hopper { facing, .. } = self.blocks[component] else {
+            unreachable!()
+        };
+        let enabled = self.input_strength(component) == 0;
+        let updated = Block::Hopper { facing, enabled };
+        if self.blocks[component] != updated {
+            self.blocks[component] = updated;
+        }
+    }
+
     pub(super) fn update_once(&mut self, receiver: usize) {
         if self.updated_in_phase[receiver] == Some(self.phase) {
             if self.trace_enabled {
@@ -919,6 +930,7 @@ impl Runtime {
         match self.blocks[receiver] {
             Block::RedstoneComparator { .. } => self.update_comparator(receiver),
             Block::RedstoneLamp { .. } => self.dispatch_receiver(receiver),
+            Block::Hopper { .. } => self.update_hopper(receiver),
             Block::Piston { .. } => self.update_piston(receiver),
             Block::RedstoneRepeater { .. } => self.update_repeater(receiver),
             Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.update_torch(receiver),
@@ -998,6 +1010,7 @@ impl Runtime {
                 match *operation {
                     Operation::Contribution(_) | Operation::ArrangementContribution(_) => continue,
                     Operation::UpdateLamp(node)
+                    | Operation::UpdateHopper(node)
                     | Operation::UpdateRepeater(node)
                     | Operation::UpdateComparator(node)
                     | Operation::UpdateTorch(node)
@@ -1053,6 +1066,7 @@ impl Runtime {
                 }
                 Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
                 Operation::UpdateLamp(slot) => self.dispatch_receiver(slot),
+                Operation::UpdateHopper(slot) => self.update_hopper(slot),
                 Operation::UpdateRepeater(slot) => self.update_repeater(slot),
                 Operation::UpdatePiston(slot) => self.update_piston(slot),
                 Operation::UpdateTorch(slot) => self.update_torch(slot),

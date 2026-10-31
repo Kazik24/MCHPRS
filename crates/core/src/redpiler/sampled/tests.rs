@@ -2051,6 +2051,71 @@ fn rejects_unrelated_block_entities() {
 }
 
 #[test]
+fn container_comparator_override_is_compiled_as_static_analog_input() {
+    use mchprs_blocks::block_entities::ContainerType;
+
+    let mut world = host();
+    let comparator_pos = BlockPos::new(15, 15, 15);
+    let comparator = Block::from_name("comparator").unwrap();
+    let Block::RedstoneComparator { comparator: state } = comparator else {
+        unreachable!()
+    };
+    let barrel_pos = comparator_pos.offset(state.facing.block_face());
+    world.set_block(comparator_pos, comparator);
+    world.set_block_entity(comparator_pos, BlockEntity::Comparator { output_strength: 0 });
+    world.set_block(barrel_pos, Block::from_name("barrel").unwrap());
+    world.set_block_entity(
+        barrel_pos,
+        BlockEntity::Container {
+            comparator_override: 15,
+            inventory: Vec::new().into(),
+            ty: ContainerType::Barrel,
+        },
+    );
+
+    let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
+    assert_eq!(program.comparators.len(), 1);
+    assert_eq!(program.comparators[0].rear_override, Some(15));
+}
+
+#[test]
+fn compiled_hopper_enabled_state_matches_native_redstone_updates() {
+    use mchprs_blocks::block_entities::ContainerType;
+
+    let source = BlockPos::new(15, 15, 15);
+    let hopper = source.offset(BlockFace::East);
+    let mut native = host();
+    native.set_block(
+        source,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    native.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+    native.set_block(hopper, Block::from_name("hopper").unwrap());
+    native.set_block_entity(
+        hopper,
+        BlockEntity::Container {
+            comparator_override: 0,
+            inventory: Vec::new().into(),
+            ty: ContainerType::Hopper,
+        },
+    );
+
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20));
+    let program = compile(&native, bounds, entry(&native)).unwrap();
+    let source_index = program.sources.iter().position(|&index| program.positions[index] == source).unwrap();
+    let hopper_index = program.positions.iter().position(|&pos| pos == hopper).unwrap();
+    let mut runtime = program.start();
+
+    for powered in [true, false] {
+        crate::interaction::use_redstone(native.get_block(source), &mut native, source, None);
+        runtime.set_input(source_index, powered).unwrap();
+        assert_eq!(runtime.blocks[hopper_index], native.get_block(hopper));
+    }
+}
+
+#[test]
 fn rejects_bottom_slab_as_dust_support() {
     use mchprs_blocks::blocks::SlabType;
     let mut w = host();

@@ -10,6 +10,7 @@ pub(super) enum Operation {
     RefreshWire(usize),
     CheckWatchedWire(usize),
     UpdateLamp(usize),
+    UpdateHopper(usize),
     UpdateRepeater(usize),
     UpdatePiston(usize),
     UpdateTorch(usize),
@@ -418,6 +419,7 @@ impl Program {
                 Block::Lever { .. }
                 | Block::StoneButton { .. }
                 | Block::RedstoneLamp { .. }
+                | Block::Hopper { .. }
                 | Block::RedstoneComparator { .. }
                 | Block::RedstoneBlock
                 | Block::Piston { .. }
@@ -490,6 +492,7 @@ impl Program {
                 target,
                 Block::RedstoneWire { .. }
                     | Block::RedstoneLamp { .. }
+                    | Block::Hopper { .. }
                     | Block::RedstoneRepeater { .. }
                     | Block::RedstoneComparator { .. }
                     | Block::Piston { .. }
@@ -532,6 +535,9 @@ impl Program {
                         }
                         Operation::UpdateLamp(slot) if !matches!(initial.get(slot), Some(Block::RedstoneLamp { .. })) => {
                             return Err(invalid("sampled program UpdateLamp target is not a lamp"));
+                        }
+                        Operation::UpdateHopper(slot) if !matches!(initial.get(slot), Some(Block::Hopper { .. })) => {
+                            return Err(invalid("sampled program UpdateHopper target is not a hopper"));
                         }
                         Operation::UpdateRepeater(slot) if !matches!(initial.get(slot), Some(Block::RedstoneRepeater { .. })) => {
                             return Err(invalid("sampled program UpdateRepeater target is not a repeater"));
