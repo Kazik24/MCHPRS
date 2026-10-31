@@ -11,6 +11,27 @@ type InputValue = (u8, bool);
 type Inputs = BTreeMap<InputKey, InputValue>;
 type Dependency = (usize, ArrangementSource, bool);
 
+#[derive(Clone, Copy)]
+enum ReaderKind {
+    Wire,
+    Piston,
+    Lamp,
+    Torch,
+    Diode,
+}
+
+fn reader_kind(block: Block) -> Option<ReaderKind> {
+    match block {
+        Block::RedstoneWire { .. } => Some(ReaderKind::Wire),
+        Block::Piston { .. } => Some(ReaderKind::Piston),
+        Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::NoteBlock { .. } => Some(ReaderKind::Lamp),
+        block if block.is_copper_bulb() || block.is_command_block() => Some(ReaderKind::Lamp),
+        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => Some(ReaderKind::Torch),
+        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => Some(ReaderKind::Diode),
+        _ => None,
+    }
+}
+
 pub(super) struct ProbeIndexes<'a> {
     pub(super) components: &'a HashMap<BlockPos, usize>,
     redstone_tokens: HashMap<BlockPos, usize>,
@@ -38,15 +59,7 @@ impl<'a> ProbeIndexes<'a> {
                 });
             }
             let index = components[&pos];
-            if matches!(
-                block,
-                Block::Piston { .. }
-                    | Block::RedstoneLamp { .. }
-                    | Block::RedstoneRepeater { .. }
-                    | Block::RedstoneComparator { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-            ) {
+            if reader_kind(block).is_some_and(|kind| !matches!(kind, ReaderKind::Wire)) {
                 readers.insert(pos, index);
             }
             if matches!(block, Block::RedstoneWire { .. }) {
@@ -189,17 +202,17 @@ pub(super) fn inputs_of(
     let block = program.initial[member];
     let mut found = Vec::new();
     let mut side = Vec::new();
-    match block {
-        Block::RedstoneWire { .. } => found = wire_sources(world, &[pos], monitor)?,
-        Block::Piston { piston } => found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?,
-        Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::NoteBlock { .. } => {
+    match reader_kind(block) {
+        Some(ReaderKind::Wire) => found = wire_sources(world, &[pos], monitor)?,
+        Some(ReaderKind::Piston) => {
+            let Block::Piston { piston } = block else { unreachable!() };
+            found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?;
+        }
+        Some(ReaderKind::Lamp) => {
             found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?
         }
-        block if block.is_copper_bulb() || block.is_command_block() => {
-            found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?
-        }
-        Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
-        Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
+        Some(ReaderKind::Torch) => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
+        Some(ReaderKind::Diode) => {
             let (facing, comparator) = match block {
                 Block::RedstoneRepeater { repeater } => (repeater.facing, false),
                 Block::RedstoneComparator { comparator } => (comparator.facing, true),
@@ -249,7 +262,7 @@ pub(super) fn inputs_of(
                 }
             }
         }
-        _ => return Ok(Inputs::new()),
+        None => return Ok(Inputs::new()),
     }
     let mut result = Inputs::new();
     for (is_side, source) in found.into_iter().map(|s| (false, s)).chain(side.into_iter().map(|s| (true, s))) {

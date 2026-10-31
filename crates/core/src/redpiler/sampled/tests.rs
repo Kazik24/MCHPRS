@@ -583,6 +583,27 @@ fn group_probe_finds_masked_conductor_dependency() {
     assert_eq!(group.inputs[0], vec![]);
     assert_eq!(group.inputs[1], vec![(ArrangementSource::Component(0), 0)]);
 }
+
+#[test]
+fn group_probe_finds_direct_token_inputs_for_all_reader_families() {
+    use super::program::ArrangementSource;
+    let cell = BlockPos::new(15, 15, 15);
+    let reader = cell.offset(BlockFace::East);
+    for name in ["hopper", "note_block", "copper_bulb", "command_block"] {
+        let block = Block::from_name(name).unwrap();
+        let mut world = host();
+        world.set_block(cell, Block::RedstoneBlock);
+        world.set_block(reader, block);
+        let mut program = test_program(vec![cell, reader], vec![Block::RedstoneBlock, block], vec![], vec![], vec![], vec![]).unwrap();
+        program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+        let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+        let indexes = super::group_probe::ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
+        let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program, &indexes, None).unwrap();
+        let group = groups.iter().find(|group| group.target == 1 && !group.side).unwrap_or_else(|| panic!("missing group for {name}"));
+        assert_eq!(group.inputs[0], vec![], "{name}");
+        assert_eq!(group.inputs[1], vec![(ArrangementSource::Token(0), 0)], "{name}");
+    }
+}
 #[test]
 fn conditional_side_input_locks_repeater_without_powering_its_rear() {
     use super::program::{ArrangementSource, InputArrangement};
@@ -637,6 +658,40 @@ fn conditional_side_input_locks_repeater_without_powering_its_rear() {
     runtime.set_token_pos(0, Some(token_cell));
     assert_eq!(runtime.input_strength(0), 0);
     assert!(matches!(runtime.blocks[0], Block::RedstoneRepeater { repeater } if repeater.locked));
+}
+
+#[test]
+fn lamp_and_repeater_state_changes_notify_observers() {
+    let positions = vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)];
+    let observer = Block::from_name("observer").unwrap();
+    let repeater = Block::RedstoneRepeater { repeater: RedstoneRepeater {
+        delay: 1, facing: BlockDirection::East, locked: false, powered: false,
+    }};
+    for source in [Block::RedstoneLamp { lit: false }, repeater] {
+        let records = if matches!(source, Block::RedstoneRepeater { .. }) {
+            vec![RepeaterRecord { component: 0, output_is_diode: false, side_sources: Some(vec![]) }]
+        } else { vec![] };
+        let mut program = Program::new(positions.clone(), vec![source, observer], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], records).unwrap();
+        program.source_watchers[0].push(1);
+        let mut runtime = program.start();
+        let channel = usize::from(matches!(source, Block::RedstoneRepeater { .. }));
+        runtime.input_levels[0][channel].change(0, 15, &mut runtime.input_histograms);
+        if channel == 0 { runtime.dispatch_receiver(0); } else { runtime.update_repeater(0); }
+        assert!(runtime.pending_entries().iter().any(|entry| entry.pos == positions[1]), "observer missed {source:?}");
+    }
+    let locked = Block::RedstoneRepeater { repeater: RedstoneRepeater {
+        delay: 1, facing: BlockDirection::East, locked: true, powered: false,
+    }};
+    for source in [Block::RedstoneLamp { lit: true }, locked] {
+        let records = if matches!(source, Block::RedstoneRepeater { .. }) {
+            vec![RepeaterRecord { component: 0, output_is_diode: false, side_sources: Some(vec![]) }]
+        } else { vec![] };
+        let mut program = Program::new(positions.clone(), vec![source, observer], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], records).unwrap();
+        program.source_watchers[0].push(1);
+        let mut runtime = program.start();
+        if matches!(source, Block::RedstoneLamp { .. }) { runtime.dispatch_receiver_tick(0); } else { runtime.update_repeater(0); }
+        assert!(runtime.pending_entries().iter().any(|entry| entry.pos == positions[1]), "observer missed {source:?}");
+    }
 }
 #[test]
 fn compiled_floor_and_wall_torches_delay_recheck_and_rearm() {
@@ -2195,6 +2250,26 @@ fn compiled_note_block_tracks_power_and_support_instrument() {
         crate::interaction::use_redstone(native.get_block(source), &mut native, source, None);
         runtime.set_input(source_index, powered).unwrap();
         assert_eq!(runtime.blocks[note_index], native.get_block(note_block));
+    }
+}
+
+#[test]
+fn note_effects_only_queue_for_unblocked_rising_edges() {
+    let source = BlockPos::new(15, 15, 15);
+    let note_pos = source.offset(BlockFace::East);
+    for blocked in [false, true] {
+        let mut world = host();
+        world.set_block(source, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
+        world.set_block(note_pos, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+        if blocked { world.set_block(note_pos.offset(BlockFace::Top), Block::Stone {}); }
+        let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
+        let source_index = program.sources.iter().position(|&index| program.positions[index] == source).unwrap();
+        let mut runtime = program.start();
+        runtime.set_input(source_index, true).unwrap();
+        assert_eq!(runtime.notes.len(), usize::from(!blocked));
+        runtime.set_input(source_index, false).unwrap();
+        assert_eq!(runtime.notes.len(), usize::from(!blocked));
     }
 }
 

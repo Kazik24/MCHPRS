@@ -1153,6 +1153,8 @@ impl Program {
             pending_counts: vec![0; self.initial.len()],
             pending_passive_positions: Vec::new(),
             input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
+            input_histograms: Vec::new(),
+            notes: Vec::with_capacity(self.initial.iter().filter(|block| matches!(block, Block::NoteBlock { .. })).count()),
             contributions: self
                 .links
                 .iter()
@@ -1233,6 +1235,19 @@ impl Program {
             failure: None,
             program: std::sync::Arc::new(self),
         };
+        for (component, block) in runtime.program.initial.iter().enumerate() {
+            let channels = match block {
+                Block::RedstoneComparator { .. } => 2,
+                Block::RedstoneWire { .. } => 1,
+                _ => 0,
+            };
+            if channels != 0 {
+                for state in &mut runtime.input_levels[component][..channels] {
+                    state.analog = runtime.input_histograms.len();
+                    runtime.input_histograms.push(super::input::Histogram::default());
+                }
+            }
+        }
         for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
             if link.active[runtime.group_arrangements[link.group]] {
                 runtime.arrangement_contributions[index] = runtime.arrangement_output(link.source).saturating_sub(link.attenuation);
@@ -1240,17 +1255,17 @@ impl Program {
         }
         for (index, link) in runtime.program.links.iter().enumerate() {
             if runtime.program.effective_links[index] {
-                runtime.input_levels[link.target][0].change(0, runtime.contributions[index]);
+                runtime.input_levels[link.target][0].change(0, runtime.contributions[index], &mut runtime.input_histograms);
             }
         }
         for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
-            runtime.input_levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index]);
+            runtime.input_levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index], &mut runtime.input_histograms);
         }
         for source in 0..runtime.program.side_outputs.len() {
             let level = runtime.output(source);
             for index in 0..runtime.program.side_outputs[source].len() {
                 let (target, attenuation) = runtime.program.side_outputs[source][index];
-                runtime.input_levels[target][1].change(0, level.saturating_sub(attenuation));
+                runtime.input_levels[target][1].change(0, level.saturating_sub(attenuation), &mut runtime.input_histograms);
             }
         }
         runtime

@@ -98,6 +98,8 @@ pub(crate) struct Runtime {
     pub(super) pending_passive_positions: Vec<mchprs_blocks::BlockPos>,
     pub(super) contributions: Vec<u8>,
     pub(super) input_levels: Vec<[super::input::InputState; 2]>,
+    pub(super) input_histograms: Vec<super::input::Histogram>,
+    pub(crate) notes: Vec<(mchprs_blocks::BlockPos, mchprs_blocks::blocks::Instrument, u32)>,
     pub(super) watched_strengths: Vec<u8>,
     pub(super) phase: u64,
     pub(super) updated_in_phase: Vec<Option<u64>>,
@@ -652,7 +654,17 @@ impl Runtime {
     }
 
     pub(super) fn input_strength(&self, target: usize) -> u8 {
-        self.input_levels[target][0].maximum()
+        let input = &self.input_levels[target][0];
+        if input.analog != usize::MAX {
+            return input.maximum(&self.input_histograms);
+        }
+        let fixed = self.program.incoming[target].iter().copied()
+            .filter(|&index| self.program.effective_links[index])
+            .map(|index| self.contributions[index]);
+        let arranged = self.program.arrangement_links.iter().enumerate()
+            .filter(|(_, link)| link.target == target && !link.side)
+            .map(|(index, _)| self.arrangement_contributions[index]);
+        fixed.chain(arranged).max().unwrap_or(0)
     }
 
     fn has_input(&self, target: usize) -> bool {
@@ -663,7 +675,7 @@ impl Runtime {
         let old = self.contributions[index];
         self.contributions[index] = value;
         if self.program.effective_links[index] {
-            self.input_levels[self.program.links[index].target][0].change(old, value);
+            self.input_levels[self.program.links[index].target][0].change(old, value, &mut self.input_histograms);
         }
     }
 
@@ -671,7 +683,7 @@ impl Runtime {
         let old = self.arrangement_contributions[index];
         self.arrangement_contributions[index] = value;
         let link = &self.program.arrangement_links[index];
-        self.input_levels[link.target][usize::from(link.side)].change(old, value);
+        self.input_levels[link.target][usize::from(link.side)].change(old, value, &mut self.input_histograms);
     }
 
     fn update_side_inputs(&mut self, source: usize, old: u8, new: u8) {
@@ -680,7 +692,7 @@ impl Runtime {
         }
         for index in 0..self.program.side_outputs[source].len() {
             let (target, attenuation) = self.program.side_outputs[source][index];
-            self.input_levels[target][1].change(old.saturating_sub(attenuation), new.saturating_sub(attenuation));
+            self.input_levels[target][1].change(old.saturating_sub(attenuation), new.saturating_sub(attenuation), &mut self.input_histograms);
         }
     }
 
@@ -1024,6 +1036,7 @@ impl Runtime {
         };
         if powered && !lit {
             self.set_component(receiver, Block::RedstoneLamp { lit: true });
+            self.notify_source_watchers(receiver, true, false);
         } else if !powered && lit {
             let tick = ScheduledComponentTick {
                 component: receiver,
@@ -1057,10 +1070,15 @@ impl Runtime {
         let below = self
             .project(self.program.positions[component].offset(mchprs_blocks::BlockFace::Bottom))
             .unwrap_or(Block::Air);
+        let instrument = mchprs_blocks::blocks::Instrument::from_block_below(below);
+        let pos = self.program.positions[component];
+        if powered_now && self.project(pos.offset(mchprs_blocks::BlockFace::Top)) == Some(Block::Air) {
+            self.notes.push((pos, instrument, note));
+        }
         self.set_component(
             component,
             Block::NoteBlock {
-                instrument: mchprs_blocks::blocks::Instrument::from_block_below(below),
+                instrument,
                 note,
                 powered: powered_now,
             },
@@ -1262,7 +1280,7 @@ impl Runtime {
     }
 
     pub(super) fn side_strength(&self, component: usize) -> u8 {
-        self.input_levels[component][1].maximum()
+        self.input_levels[component][1].maximum(&self.input_histograms)
     }
 
     fn comparator_result(&self, component: usize) -> (u8, bool) {
@@ -1412,8 +1430,12 @@ impl Runtime {
             unreachable!()
         };
         if self.program.repeater_by_component[component].is_some_and(|index| self.program.repeaters[index].side_sources.is_some()) {
-            repeater.locked = self.input_levels[component][1].active != 0;
-            self.set_component(component, Block::RedstoneRepeater { repeater });
+            let locked = self.input_levels[component][1].active != 0;
+            if repeater.locked != locked {
+                repeater.locked = locked;
+                self.set_component(component, Block::RedstoneRepeater { repeater });
+                self.notify_source_watchers(component, true, false);
+            }
         }
         if repeater.locked {
             #[cfg(any(test, feature = "redpiler-trace"))]
@@ -1640,8 +1662,9 @@ impl Runtime {
     }
 
     pub(super) fn dispatch_receiver_tick(&mut self, receiver: usize) {
-        if !self.has_input(receiver) {
+        if !self.has_input(receiver) && matches!(self.blocks[receiver], Block::RedstoneLamp { lit: true }) {
             self.set_component(receiver, Block::RedstoneLamp { lit: false });
+            self.notify_source_watchers(receiver, true, false);
         }
     }
 

@@ -122,6 +122,21 @@ fn redstone_flush_then_reset_exports_active_motion() {
 }
 
 #[test]
+fn flush_consumes_queued_note_once() {
+    let (mut world, lever, _base, _home, _far, _comparator, _lamp, bounds) = piston_world();
+    let note = lever.offset(BlockFace::North);
+    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    let mut compiler = Compiler::default();
+    compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    assert_eq!(compiler.runtime.as_ref().unwrap().notes.len(), 1);
+    compiler.try_flush(&mut world).unwrap();
+    assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
+    compiler.try_flush(&mut world).unwrap();
+    assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
+}
+
+#[test]
 #[cfg(feature = "redpiler-full-publication")]
 fn dirty_publication_matches_full_projection_through_sticky_piston_lifecycle() {
     let (mut world, lever, base, home, far, comparator, lamp, bounds) = piston_world();

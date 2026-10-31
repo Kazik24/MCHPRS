@@ -336,7 +336,11 @@ impl Compiler {
             state.movement_work.clear();
             state.movement_cursor = 0;
         }
-        self.runtime.as_mut().unwrap().mark_published(io_only || !full);
+        let runtime = self.runtime.as_mut().unwrap();
+        for (pos, instrument, note) in runtime.notes.drain(..) {
+            redstone::noteblock::play_note(world, pos, instrument, note);
+        }
+        runtime.mark_published(io_only || !full);
         Ok(())
     }
 }
