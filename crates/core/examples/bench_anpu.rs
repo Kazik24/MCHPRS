@@ -115,7 +115,10 @@ fn main() {
             }));
         } else if let Err(error) = result {
             let (native_seconds, screen_frames) = native_prefix(cpu, game_ticks, &expected);
-            let rejected_at = BlockPos::new(60, 33, 15);
+            let rejected_at = match &error {
+                mchprs_core::redpiler::CompileError::Unsupported(error) => error.position.unwrap_or_else(BlockPos::zero),
+                _ => BlockPos::zero(),
+            };
             reports.push(serde_json::json!({
                 "run":run,"compile_seconds":compile.as_secs_f64(),"compile_timeout_seconds":timeout.as_secs(),
                 "compile_timed_out":timed_out,"compile_rejected":error.to_string(),

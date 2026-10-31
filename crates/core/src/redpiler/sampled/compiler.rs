@@ -2,7 +2,7 @@ use super::program::{ArrangementSource, RepeaterRecord, WatchedWire};
 use super::{ElectricalLink, Operation, Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
-use mchprs_blocks::block_entities::BlockEntity;
+use mchprs_blocks::block_entities::{BlockEntity, ContainerType};
 use mchprs_blocks::{
     BlockFacing, BlockPos,
     blocks::{Block, ButtonFace, LeverFace},
@@ -341,14 +341,19 @@ pub(crate) fn compile_monitored(
                     block if is_passive_geometry(block) => {}
                     _ => return Err(error(pos, "unsupported component")),
                 }
-                if let Some(entity) = world.get_block_entity(pos)
-                    && !matches!(
-                        (world.get_block(pos), entity),
-                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 })
-                    )
-                    && !(world.get_block(pos).is_sign() && matches!(entity, BlockEntity::Sign(_)))
-                {
-                    return Err(error(pos, "unsupported block entity"));
+                if let Some(entity) = world.get_block_entity(pos) {
+                    let block = world.get_block(pos);
+                    let supported = match (block, entity) {
+                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => true,
+                        (block, BlockEntity::Container { comparator_override, ty, .. }) => {
+                            *comparator_override <= 15 && ContainerType::from_block(block) == Some(*ty)
+                        }
+                        (block, BlockEntity::Sign(_)) => block.is_sign(),
+                        _ => false,
+                    };
+                    if !supported {
+                        return Err(error(pos, "unsupported block entity"));
+                    }
                 }
             }
         }
