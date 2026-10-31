@@ -1,5 +1,4 @@
-use super::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_SCALE, PLOT_WIDTH, block_light, history, in_bounds, screen_updates};
-use crate::messages;
+use super::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_SCALE, PLOT_WIDTH, history, in_bounds, screen_updates};
 use crate::redstone;
 use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 use crate::world::storage::Chunk;
@@ -14,6 +13,7 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 mod interpreter;
+mod scratch;
 
 pub struct PlotWorld {
     pub(super) x: i32,
@@ -40,17 +40,7 @@ pub struct PlotWorld {
     pub(super) history: history::TickHistory,
     pub(super) waveform: crate::waveform::Recorder,
     pub(super) update_stats: UpdateStats,
-    pub(super) bulb_light: block_light::BulbLight,
-    pub(super) redstone_update_observations: Option<Vec<RedstoneUpdateObservation>>,
-    pub(super) scratch_capture_bounds: Option<(BlockPos, BlockPos)>,
-    pub(super) scratch_read_bounds: Option<(BlockPos, BlockPos)>,
-    pub(super) scratch_read_chunks: Option<HashSet<(i32, i32)>>,
-    pub(super) scratch_contract_air: Option<HashSet<BlockPos>>,
-    pub(super) scratch_boundary_read: std::cell::Cell<Option<BlockPos>>,
-    pub(super) scratch_boundary_effect: std::cell::Cell<Option<BlockPos>>,
-    pub(super) scratch_touched_blocks: Option<HashSet<BlockPos>>,
-    pub(super) scratch_touched_entities: Option<HashSet<BlockPos>>,
-    pub(super) scratch_suppress_commands: bool,
+    scratch: scratch::ScratchState,
 }
 
 #[derive(Default)]
@@ -94,17 +84,7 @@ impl PlotWorld {
             history: Default::default(),
             waveform: Default::default(),
             update_stats: Default::default(),
-            bulb_light: Default::default(),
-            redstone_update_observations: None,
-            scratch_capture_bounds: None,
-            scratch_read_bounds: None,
-            scratch_read_chunks: None,
-            scratch_contract_air: None,
-            scratch_boundary_read: std::cell::Cell::new(None),
-            scratch_boundary_effect: std::cell::Cell::new(None),
-            scratch_touched_blocks: None,
-            scratch_touched_entities: None,
-            scratch_suppress_commands: false,
+            scratch: Default::default(),
         };
         // Position-only old saves bind to the loaded type once. They never
         // dispatch an observer tick into a subsequently moved/replaced block.
@@ -159,7 +139,6 @@ impl PlotWorld {
         for pos in repeating {
             redstone::command_block::update(&mut world, pos);
         }
-        world.rebuild_bulb_light();
         world
     }
 
@@ -179,7 +158,6 @@ impl PlotWorld {
     }
 
     pub fn flush_block_changes(&mut self) {
-        self.flush_bulb_light();
         if self.screen_only() {
             self.flush_screen_changes();
             return;
@@ -266,6 +244,11 @@ impl PlotWorld {
         snapshot.is_cursed = self.is_cursed;
         snapshot.fast_rendering = self.fast_rendering;
         snapshot.screen_updates = self.screen_updates.clone();
+        snapshot.command_messages = self.command_messages.clone();
+        snapshot.command_output_window = self.command_output_window;
+        snapshot.command_output_count = self.command_output_count;
+        snapshot.command_output_bytes = self.command_output_bytes;
+        snapshot.command_output_limits_enabled = self.command_output_limits_enabled;
         snapshot
     }
 
@@ -290,11 +273,11 @@ impl PlotWorld {
     }
 
     pub(crate) fn observe_redstone_updates(&mut self, enabled: bool) {
-        self.redstone_update_observations = enabled.then(Vec::new);
+        self.scratch.observations = enabled.then(Vec::new);
     }
 
     pub(crate) fn take_redstone_update_observations(&mut self) -> Vec<RedstoneUpdateObservation> {
-        self.redstone_update_observations.take().unwrap_or_default()
+        self.scratch.observations.take().unwrap_or_default()
     }
 
     pub(crate) fn configure_scratch(
@@ -304,21 +287,21 @@ impl PlotWorld {
         read_chunks: HashSet<(i32, i32)>,
         contract_air: HashSet<BlockPos>,
     ) {
-        self.scratch_capture_bounds = Some(bounds);
-        self.scratch_read_bounds = Some(read_bounds);
-        self.scratch_read_chunks = Some(read_chunks);
-        self.scratch_contract_air = Some(contract_air);
-        self.scratch_boundary_read.set(None);
-        self.scratch_boundary_effect.set(None);
-        self.scratch_touched_blocks = Some(HashSet::new());
-        self.scratch_touched_entities = Some(HashSet::new());
-        self.scratch_suppress_commands = true;
+        self.scratch.capture_bounds = Some(bounds);
+        self.scratch.read_bounds = Some(read_bounds);
+        self.scratch.read_chunks = Some(read_chunks);
+        self.scratch.contract_air = Some(contract_air);
+        self.scratch.boundary_read.set(None);
+        self.scratch.boundary_effect.set(None);
+        self.scratch.touched_blocks = Some(HashSet::new());
+        self.scratch.touched_entities = Some(HashSet::new());
+        self.scratch.suppress_commands = true;
     }
 
     pub(crate) fn take_scratch_changes(&mut self) -> (HashSet<BlockPos>, HashSet<BlockPos>) {
         (
-            self.scratch_touched_blocks.take().unwrap_or_default(),
-            self.scratch_touched_entities.take().unwrap_or_default(),
+            self.scratch.touched_blocks.take().unwrap_or_default(),
+            self.scratch.touched_entities.take().unwrap_or_default(),
         )
     }
 
@@ -331,19 +314,19 @@ impl PlotWorld {
         self.wire_topology.get_mut().clear();
         self.instant_pistons.clear();
         self.reset_waveform();
-        self.scratch_boundary_read.set(None);
-        self.scratch_boundary_effect.set(None);
-        self.scratch_touched_blocks = Some(HashSet::new());
-        self.scratch_touched_entities = Some(HashSet::new());
-        self.scratch_suppress_commands = true;
+        self.scratch.boundary_read.set(None);
+        self.scratch.boundary_effect.set(None);
+        self.scratch.touched_blocks = Some(HashSet::new());
+        self.scratch.touched_entities = Some(HashSet::new());
+        self.scratch.suppress_commands = true;
     }
 
     pub(crate) fn take_scratch_boundary_read(&self) -> Option<BlockPos> {
-        self.scratch_boundary_read.take()
+        self.scratch.boundary_read.take()
     }
 
     pub(crate) fn take_scratch_boundary_effect(&self) -> Option<BlockPos> {
-        self.scratch_boundary_effect.take()
+        self.scratch.boundary_effect.take()
     }
 
     pub(crate) fn clear_scheduled_ticks(&mut self) {
@@ -392,7 +375,6 @@ impl PlotWorld {
 
     pub(super) fn invalidate_interpreter_caches(&mut self) {
         self.reset_waveform();
-        self.rebuild_bulb_light();
         self.tick_index.invalidate();
         self.piston_index.get_mut().invalidate();
         self.wire_topology.get_mut().clear();
@@ -401,7 +383,6 @@ impl PlotWorld {
 
     pub(super) fn clear_interpreter_caches(&mut self) {
         self.reset_waveform();
-        self.rebuild_bulb_light();
         self.tick_index = Default::default();
         *self.piston_index.get_mut() = Default::default();
         self.wire_topology.get_mut().clear();
@@ -416,7 +397,7 @@ impl World for PlotWorld {
     }
 
     fn observe_redstone_update(&mut self, pos: BlockPos, block: Block, direction: Option<BlockFace>) {
-        if self.redstone_update_observations.is_none() {
+        if self.scratch.observations.is_none() {
             return;
         }
         let input_on = match block {
@@ -437,7 +418,7 @@ impl World for PlotWorld {
             )),
             _ => None,
         };
-        if let Some(observations) = &mut self.redstone_update_observations {
+        if let Some(observations) = &mut self.scratch.observations {
             observations.push(RedstoneUpdateObservation {
                 pos,
                 block,
@@ -451,38 +432,49 @@ impl World for PlotWorld {
         self.execute_command_block_at(BlockPos::new(0, 0, 0), command, source)
     }
     fn execute_command_block_at(&mut self, pos: BlockPos, command: &str, source: &str) -> Result<(), String> {
-        if self.scratch_suppress_commands {
+        if self.scratch.suppress_commands {
             return Err("command-block execution is suppressed in scratch worlds".into());
         }
-        if self.command_output_window.elapsed() >= Duration::from_secs(1) {
-            self.command_output_window = Instant::now();
-            self.command_output_count = 0;
-            self.command_output_bytes = 0;
-        }
-        if (self.command_output_limits_enabled && (self.command_messages.len() >= 64 || self.command_output_count >= 64))
-            || command.len() > 131_068
-            || source.len() > 256
-        {
-            return Err(messages::COMMAND_BLOCK_OUTPUT_LIMIT.into());
-        }
-        let message = crate::chat_commands::parse(command, source, None)?;
-        if self.command_output_limits_enabled && self.command_output_bytes.saturating_add(message.message.len()) > 65_536 {
-            return Err(messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.into());
-        }
-        self.command_output_count += 1;
-        self.command_output_bytes += message.message.len();
+        let mut state = self.command_block_output_state().unwrap();
+        let result = state.execute(command, source);
+        self.command_output_window = state.window;
+        self.command_output_count = state.count;
+        self.command_output_bytes = state.bytes;
+        let message = result?;
         self.waveform.text(pos, &message.message, self.piston_state.logical_tick);
         self.command_messages.push(message);
         Ok(())
     }
+    fn command_block_output_state(&self) -> Option<crate::world::CommandBlockOutputState> {
+        Some(crate::world::CommandBlockOutputState {
+            window: self.command_output_window,
+            count: self.command_output_count,
+            bytes: self.command_output_bytes,
+            queued: self.command_messages.len(),
+            limited: self.command_output_limits_enabled,
+        })
+    }
+    fn publish_command_block_output(
+        &mut self,
+        state: &crate::world::CommandBlockOutputState,
+        emissions: &mut Vec<crate::world::CommandBlockEmission>,
+    ) {
+        self.command_output_window = state.window;
+        self.command_output_count = state.count;
+        self.command_output_bytes = state.bytes;
+        for emission in emissions.drain(..) {
+            self.waveform.text(emission.pos, &emission.message.message, emission.tick);
+            self.command_messages.push(emission.message);
+        }
+    }
     /// Sets a block in storage. Returns true if a block was changed.
     fn set_block_raw(&mut self, pos: BlockPos, block: u32) -> bool {
-        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
-            self.scratch_boundary_effect.set(Some(pos));
+        if self.scratch.capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch.boundary_effect.set(Some(pos));
             return false;
         }
-        if self.scratch_capture_bounds.is_some() {
-            if let Some(touched) = &mut self.scratch_touched_blocks {
+        if self.scratch.capture_bounds.is_some() {
+            if let Some(touched) = &mut self.scratch.touched_blocks {
                 touched.insert(pos);
             }
         }
@@ -540,7 +532,6 @@ impl World for PlotWorld {
         }
         if changed {
             self.record_waveform_change(pos);
-            self.track_bulb_light(pos, old, new);
             if !self.instant_pistons.is_empty() {
                 self.instant_pistons.block_changed(pos, old, new);
             }
@@ -550,21 +541,21 @@ impl World for PlotWorld {
 
     /// Returns the block state id of the block at `pos`
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
-        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos))
-            && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+        if self.scratch.read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos))
+            && !self.scratch.contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
         {
-            let first = self.scratch_boundary_read.replace(Some(pos)).is_none();
+            let first = self.scratch.boundary_read.replace(Some(pos)).is_none();
             if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
                 eprintln!("Redpiler unknown block read at {pos:?}\n{}", std::backtrace::Backtrace::force_capture());
             }
             return 0;
         }
-        if self.scratch_read_bounds.is_some() {
+        if self.scratch.read_bounds.is_some() {
             let chunk = (pos.x.div_euclid(16), pos.z.div_euclid(16));
-            if !self.scratch_read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
-                && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+            if !self.scratch.read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
+                && !self.scratch.contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
             {
-                let first = self.scratch_boundary_read.replace(Some(pos)).is_none();
+                let first = self.scratch.boundary_read.replace(Some(pos)).is_none();
                 if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
                     eprintln!(
                         "Redpiler unknown unloaded block read at {pos:?}\n{}",
@@ -583,11 +574,11 @@ impl World for PlotWorld {
     }
 
     fn delete_block_entity(&mut self, pos: BlockPos) {
-        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
-            self.scratch_boundary_effect.set(Some(pos));
+        if self.scratch.capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
-        if let Some(touched) = &mut self.scratch_touched_entities {
+        if let Some(touched) = &mut self.scratch.touched_entities {
             touched.insert(pos);
         }
         if self.get_block_entity(pos).is_some() {
@@ -597,8 +588,8 @@ impl World for PlotWorld {
     }
 
     fn delete_piston_entity(&mut self, pos: BlockPos) {
-        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
-            self.scratch_boundary_effect.set(Some(pos));
+        if self.scratch.capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
         self.remove_motions_at(pos);
@@ -612,18 +603,18 @@ impl World for PlotWorld {
     }
 
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
-        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos))
-            && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+        if self.scratch.read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos))
+            && !self.scratch.contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
         {
-            self.scratch_boundary_read.set(Some(pos));
+            self.scratch.boundary_read.set(Some(pos));
             return None;
         }
-        if self.scratch_read_bounds.is_some() {
+        if self.scratch.read_bounds.is_some() {
             let chunk = (pos.x.div_euclid(16), pos.z.div_euclid(16));
-            if !self.scratch_read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
-                && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+            if !self.scratch.read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
+                && !self.scratch.contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
             {
-                self.scratch_boundary_read.set(Some(pos));
+                self.scratch.boundary_read.set(Some(pos));
                 return None;
             }
         }
@@ -633,11 +624,11 @@ impl World for PlotWorld {
     }
 
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
-        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
-            self.scratch_boundary_effect.set(Some(pos));
+        if self.scratch.capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch.boundary_effect.set(Some(pos));
             return None;
         }
-        if let Some(touched) = &mut self.scratch_touched_entities {
+        if let Some(touched) = &mut self.scratch.touched_entities {
             touched.insert(pos);
         }
         let index = self.get_chunk_index_for_block(pos.x, pos.z)?;
@@ -646,11 +637,11 @@ impl World for PlotWorld {
     }
 
     fn set_piston_progress(&mut self, pos: BlockPos, progress: f32) {
-        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
-            self.scratch_boundary_effect.set(Some(pos));
+        if self.scratch.capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
-        if let Some(touched) = &mut self.scratch_touched_entities {
+        if let Some(touched) = &mut self.scratch.touched_entities {
             touched.insert(pos);
         }
         let Some(index) = self.get_chunk_index_for_block(pos.x, pos.z) else {
@@ -677,10 +668,11 @@ impl World for PlotWorld {
     fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
         let pos = self.piston_state.motions[index].pos;
         if self
-            .scratch_capture_bounds
+            .scratch
+            .capture_bounds
             .is_some_and(|(min, max)| pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
         {
-            self.scratch_boundary_effect.set(Some(pos));
+            self.scratch.boundary_effect.set(Some(pos));
             return (false, 0.0);
         }
         let state = &mut self.piston_state;
@@ -690,10 +682,11 @@ impl World for PlotWorld {
     fn remove_piston_motion(&mut self, index: usize) {
         let pos = self.piston_state.motions[index].pos;
         if self
-            .scratch_capture_bounds
+            .scratch
+            .capture_bounds
             .is_some_and(|(min, max)| pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
         {
-            self.scratch_boundary_effect.set(Some(pos));
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
         let pos = self.piston_state.motions.remove(index).unwrap().pos;
@@ -703,10 +696,11 @@ impl World for PlotWorld {
 
     fn set_piston_carried_entity(&mut self, pos: BlockPos, entity: Option<Box<BlockEntity>>) {
         if self
-            .scratch_capture_bounds
+            .scratch
+            .capture_bounds
             .is_some_and(|(min, max)| pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
         {
-            self.scratch_boundary_effect.set(Some(pos));
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
         if entity.is_some() {
@@ -718,10 +712,10 @@ impl World for PlotWorld {
     }
 
     fn enqueue_piston_event(&mut self, event: mchprs_world::PistonEvent) {
-        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+        if self.scratch.capture_bounds.is_some_and(|(min, max)| {
             event.pos.x < min.x || event.pos.y < min.y || event.pos.z < min.z || event.pos.x > max.x || event.pos.y > max.y || event.pos.z > max.z
         }) {
-            self.scratch_boundary_effect.set(Some(event.pos));
+            self.scratch.boundary_effect.set(Some(event.pos));
             return;
         }
         if !self.piston_index.borrow_mut().has_event(&self.piston_state, event) {
@@ -747,7 +741,7 @@ impl World for PlotWorld {
     }
 
     fn get_wire_block_raw(&self, location: crate::world::WireNeighbor) -> u32 {
-        if self.scratch_read_bounds.is_some() {
+        if self.scratch.read_bounds.is_some() {
             return self.get_block_raw(location.pos);
         }
         let Some(cell) = location.cell else {
@@ -766,12 +760,12 @@ impl World for PlotWorld {
     }
 
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
-        if let Some((min, max)) = self.scratch_capture_bounds {
+        if let Some((min, max)) = self.scratch.capture_bounds {
             if pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z {
-                self.scratch_boundary_effect.set(Some(pos));
+                self.scratch.boundary_effect.set(Some(pos));
                 return;
             }
-            if let Some(touched) = &mut self.scratch_touched_entities {
+            if let Some(touched) = &mut self.scratch.touched_entities {
                 touched.insert(pos);
             }
         }
@@ -836,10 +830,11 @@ impl World for PlotWorld {
 
     fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
         if self
-            .scratch_capture_bounds
+            .scratch
+            .capture_bounds
             .is_some_and(|(min, max)| pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
         {
-            self.scratch_boundary_effect.set(Some(pos));
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
         let node = ScheduledBlockTick {
@@ -853,10 +848,10 @@ impl World for PlotWorld {
     }
 
     fn restore_scheduled_tick(&mut self, entry: TickEntry) {
-        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+        if self.scratch.capture_bounds.is_some_and(|(min, max)| {
             entry.pos.x < min.x || entry.pos.y < min.y || entry.pos.z < min.z || entry.pos.x > max.x || entry.pos.y > max.y || entry.pos.z > max.z
         }) {
-            self.scratch_boundary_effect.set(Some(entry.pos));
+            self.scratch.boundary_effect.set(Some(entry.pos));
             return;
         }
         let node = ScheduledBlockTick {
@@ -877,10 +872,11 @@ impl World for PlotWorld {
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
         if self
-            .scratch_capture_bounds
+            .scratch
+            .capture_bounds
             .is_some_and(|(min, max)| pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
         {
-            self.scratch_boundary_effect.set(Some(pos));
+            self.scratch.boundary_effect.set(Some(pos));
             return;
         }
         match block_action {

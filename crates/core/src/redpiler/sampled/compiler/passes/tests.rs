@@ -21,7 +21,7 @@ fn cancelled_optimization_keeps_instruction_storage_unchanged() {
     let monitor = TaskMonitor::default();
     monitor.cancel();
 
-    let error = optimize(&mut program, Some(&monitor), &mut CompilePhases::new()).unwrap_err();
+    let error = share_output_programs::run(&mut program, Some(&monitor), &mut CompilePhases::new()).unwrap_err();
 
     assert_eq!(error.reason, "compilation cancelled");
     assert_eq!(program.operations, before);
@@ -29,12 +29,12 @@ fn cancelled_optimization_keeps_instruction_storage_unchanged() {
 }
 
 #[test]
-fn optimization_passes_preserve_programs_pending_work_and_later_execution() {
+fn output_sharing_preserves_programs_pending_work_and_later_execution() {
     let mut program = lamp_program();
     let vectors = program.output_vectors();
     let mut original = program.start();
 
-    optimize(&mut program, None, &mut CompilePhases::new()).unwrap();
+    share_output_programs::run(&mut program, None, &mut CompilePhases::new()).unwrap();
 
     assert_eq!(program.output_vectors(), vectors);
     assert_eq!(program.operations.len(), 1);

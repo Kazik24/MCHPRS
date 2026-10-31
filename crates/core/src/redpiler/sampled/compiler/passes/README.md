@@ -14,10 +14,10 @@ compilation; the runtime and public `Compiler` API are unchanged.
 | `finalize` | Complete discovered program | Validated records and runtime/projection indexes |
 | `share_output_programs` | Validated instructions | Shared identical immutable rise/fall ranges, preserving component identity |
 
-Parsing and discovery are mandatory. Instruction rewrites are listed separately
-in `OPTIMIZATION_PASSES` in `mod.rs`, in execution order. The runner checks
-cancellation before and after each rewrite and validates the resulting program.
-Add a new proven rewrite there and keep its implementation in its own module.
+Parsing, discovery and instruction rewrites are sequential calls in
+`compiler.rs::compile_monitored`. Add each new pass directly to that pipeline
+and keep its implementation in its own module. Each rewrite checks cancellation
+before and after its work and validates the resulting program.
 
 Finalization prepares indexes before instruction sharing, preserving the existing
 compilation order. Rewrites that change component/link IDs or dependencies must

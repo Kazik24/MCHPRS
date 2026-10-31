@@ -3,32 +3,57 @@ use super::*;
 use std::io::Cursor;
 
 #[test]
-fn copper_bulb_light_packets_preserve_section_masks_and_nibbles() {
-    let packet = CUpdateLight {
-        chunk_x: -2,
-        chunk_z: 3,
-        block_light: vec![None, Some(vec![0xc4; 2048]), None],
+fn chunk_packets_use_fixed_daylight_without_block_lighting() {
+    for sections in [0, 16] {
+        let packet = CChunkData {
+            chunk_x: -2,
+            chunk_z: 3,
+            heightmaps: nbt::Blob::new(),
+            block_entities: vec![],
+            chunk_sections: (0..sections)
+                .map(|_| CChunkDataSection {
+                    block_count: 0,
+                    block_states: PalettedContainer {
+                        bits_per_entry: 0,
+                        data_array: vec![],
+                        palette: Some(vec![0]),
+                    },
+                    biomes: PalettedContainer {
+                        bits_per_entry: 0,
+                        data_array: vec![],
+                        palette: Some(vec![0]),
+                    },
+                })
+                .collect(),
+        }
+        .encode();
+        let mut encoded = Vec::new();
+        packet.write_uncompressed(&mut encoded).unwrap();
+        let mut input = Cursor::new(encoded);
+        input.read_varint().unwrap();
+        assert_eq!(input.read_varint().unwrap(), 0x27);
+        assert_eq!(PacketDecoderExt::read_int(&mut input).unwrap(), -2);
+        assert_eq!(PacketDecoderExt::read_int(&mut input).unwrap(), 3);
+        assert_eq!(input.read_varint().unwrap(), 0); // Heightmaps.
+        let length = input.read_varint().unwrap();
+        input.read_bytes(length as usize).unwrap();
+        assert_eq!(input.read_varint().unwrap(), 0); // Block entities.
+        let light_sections = sections + 2;
+        let mask = (1i64 << light_sections) - 1;
+        assert_eq!(input.read_varint().unwrap(), 1);
+        assert_eq!(input.read_long().unwrap(), mask); // Fixed skylight.
+        assert_eq!(input.read_varint().unwrap(), 0); // No block-light arrays.
+        assert_eq!(input.read_varint().unwrap(), 0); // No empty skylight sections.
+        assert_eq!(input.read_varint().unwrap(), 1);
+        assert_eq!(input.read_long().unwrap(), mask); // Clear all block lighting.
+        assert_eq!(input.read_varint().unwrap(), light_sections);
+        for _ in 0..light_sections {
+            assert_eq!(input.read_varint().unwrap(), 2048);
+            assert_eq!(input.read_bytes(2048).unwrap(), vec![0xff; 2048]);
+        }
+        assert_eq!(input.read_varint().unwrap(), 0);
+        assert_eq!(input.position(), input.get_ref().len() as u64);
     }
-    .encode();
-    let mut encoded = Vec::new();
-    packet.write_uncompressed(&mut encoded).unwrap();
-    let mut input = Cursor::new(encoded);
-    let length = input.read_varint().unwrap();
-    assert!(length > 2048);
-    assert_eq!(input.read_varint().unwrap(), 0x2a);
-    assert_eq!(input.read_varint().unwrap(), -2);
-    assert_eq!(input.read_varint().unwrap(), 3);
-    assert_eq!(input.read_varint().unwrap(), 0); // Skylight is unchanged.
-    assert_eq!(input.read_varint().unwrap(), 1);
-    assert_eq!(input.read_long().unwrap(), 0b010);
-    assert_eq!(input.read_varint().unwrap(), 0);
-    assert_eq!(input.read_varint().unwrap(), 1);
-    assert_eq!(input.read_long().unwrap(), 0b101);
-    assert_eq!(input.read_varint().unwrap(), 0);
-    assert_eq!(input.read_varint().unwrap(), 1);
-    assert_eq!(input.read_varint().unwrap(), 2048);
-    assert_eq!(input.read_bytes(2048).unwrap(), vec![0xc4; 2048]);
-    assert_eq!(input.position(), input.get_ref().len() as u64);
 }
 
 #[test]

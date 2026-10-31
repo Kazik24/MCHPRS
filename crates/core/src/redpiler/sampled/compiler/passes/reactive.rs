@@ -39,6 +39,10 @@ pub(in super::super) fn run(
                 let record = program.comparators.iter().find(|record| record.component == node).unwrap();
                 let override_level = |input: ComparatorInput| match input {
                     ComparatorInput::Static(level) => level,
+                    ComparatorInput::CommandBlock(source) => program
+                        .command_blocks
+                        .get(&program.positions[source])
+                        .map_or(0, |entity| entity.success_count.clamp(0, 15) as u8),
                     ComparatorInput::CopperBulb(source) => {
                         if world.get_block(program.positions[source]).copper_bulb_state().unwrap().0 {
                             15
@@ -63,6 +67,7 @@ pub(in super::super) fn run(
             Block::RedstoneWallTorch { lit, facing } => !pending && lit == crate::redstone::wall_torch_should_be_off(world, pos, facing),
             Block::RedstoneLamp { lit } => lit != crate::redstone::redstone_lamp_should_be_lit(world, pos) && !(lit && pending),
             Block::Hopper { enabled, .. } => enabled == crate::redstone::redstone_lamp_should_be_lit(world, pos),
+            Block::IronTrapdoor { powered, .. } => powered != crate::redstone::redstone_lamp_should_be_lit(world, pos),
             Block::NoteBlock { powered, .. } => powered != crate::redstone::redstone_lamp_should_be_lit(world, pos),
             block if block.is_copper_bulb() => block.copper_bulb_state().unwrap().1 != crate::redstone::redstone_lamp_should_be_lit(world, pos),
             _ => false,

@@ -3,6 +3,7 @@ pub mod storage;
 pub use crate::redstone::piston::InstantPistonCache;
 pub(crate) use crate::redstone::piston::PowerRoute;
 pub(crate) mod wire_cache;
+pub use crate::chat_commands::{CommandBlockEmission, CommandBlockOutputState};
 pub use wire_cache::Neighbor as WireNeighbor;
 
 use crate::messages;
@@ -151,6 +152,10 @@ pub trait World {
     fn execute_command_block(&mut self, _command: &str, _source: &str) -> Result<(), String> {
         Err(messages::COMMAND_BLOCK_EXECUTION_UNAVAILABLE.into())
     }
+    fn command_block_output_state(&self) -> Option<CommandBlockOutputState> {
+        None
+    }
+    fn publish_command_block_output(&mut self, _state: &CommandBlockOutputState, _emissions: &mut Vec<CommandBlockEmission>) {}
 
     fn play_sound(&mut self, pos: BlockPos, sound_id: i32, sound_category: i32, volume: f32, pitch: f32);
     /// Feedback for a successful player action, even while fast rendering.

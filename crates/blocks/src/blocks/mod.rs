@@ -210,7 +210,9 @@ impl Block {
         self.copper_bulb_state()?;
         let definition = self.definition()?;
         (definition.2..=definition.3)
-            .find(|&id| crate::generated::STATE_LIT[id as usize] == u8::from(lit) && crate::generated::STATE_POWERED[id as usize] == u8::from(powered))
+            .find(|&id| {
+                crate::generated::STATE_LIT[id as usize] == u8::from(lit) && crate::generated::STATE_POWERED[id as usize] == u8::from(powered)
+            })
             .map(|id| Self::Unknown { id })
     }
 
@@ -248,27 +250,6 @@ impl Block {
     pub fn with_copper_bulb_variant(self, name: &str) -> Option<Self> {
         let (lit, powered) = self.copper_bulb_state()?;
         Self::from_name(name)?.with_copper_bulb_state(lit, powered)
-    }
-
-    pub fn copper_bulb_light(self) -> u8 {
-        let Some((true, _)) = self.copper_bulb_state() else {
-            return 0;
-        };
-        let name = self.get_name().strip_prefix("waxed_").unwrap_or(self.get_name());
-        match name {
-            "copper_bulb" => 15,
-            "exposed_copper_bulb" => 12,
-            "weathered_copper_bulb" => 8,
-            "oxidized_copper_bulb" => 4,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn light_filter(self) -> u8 {
-        crate::generated::BLOCK_LIGHT_FILTERS
-            .get(self.registry_id() as usize)
-            .copied()
-            .unwrap_or(15)
     }
 
     pub fn is_sign(self) -> bool {

@@ -106,7 +106,6 @@ pub(super) struct PistonToken {
 fn is_passive_geometry(block: Block) -> bool {
     let plate_power = block.pressure_plate_powered();
     !crate::redstone::has_neighbor_update(block)
-        && (!matches!(block, Block::Unknown { .. }) || plate_power.is_some())
         && !matches!(block, Block::Composter { .. } | Block::Lever { .. })
         && plate_power != Some(true)
         && (block.is_solid()
@@ -217,19 +216,25 @@ pub(crate) fn compile_monitored(
     let (scratch, inventory) = passes::parse::run(&context, &mut phases)?;
     let index_started = Instant::now();
     let position_index: std::collections::HashMap<_, _> = inventory.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+
     if phases.enabled {
         eprintln!("Redpiler compile position index: {} ms", index_started.elapsed().as_millis());
     }
+
     let (mut program, probe_indexes) = passes::electrical::run(&context, scratch, inventory, &position_index, &mut phases)?;
+
     passes::movement::run(&context, &mut program, &probe_indexes, &mut phases)?;
     passes::arrangements::run(&context, &mut program, &probe_indexes, &mut phases)?;
     passes::source_order::run(&context, &mut program, &probe_indexes, &mut phases)?;
 
     phases.next("reactive dependency tracking");
+
     check_cancelled(monitor)?;
+
     passes::reactive::run(world, &entry, &mut program, probe_indexes.components, monitor)?;
     passes::finalize::run(&mut program, monitor, &mut phases)?;
-    passes::optimize(&mut program, monitor, &mut phases)?;
+    passes::share_output_programs::run(&mut program, monitor, &mut phases)?;
+
     Ok(program)
 }
 

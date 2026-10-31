@@ -445,16 +445,17 @@ pub(crate) fn discover_piston_sources(
 }
 
 fn is_supported_dynamic_source(block: Block) -> bool {
-    matches!(
-        block,
-        Block::Lever { .. }
-            | Block::StoneButton { .. }
-            | Block::RedstoneTorch { .. }
-            | Block::RedstoneWallTorch { .. }
-            | Block::RedstoneRepeater { .. }
-            | Block::RedstoneComparator { .. }
-            | Block::Observer { .. }
-    )
+    block.pressure_plate_powered().is_some()
+        || matches!(
+            block,
+            Block::Lever { .. }
+                | Block::StoneButton { .. }
+                | Block::RedstoneTorch { .. }
+                | Block::RedstoneWallTorch { .. }
+                | Block::RedstoneRepeater { .. }
+                | Block::RedstoneComparator { .. }
+                | Block::Observer { .. }
+        )
 }
 
 fn source_emits_to(block: Block, world: &impl World, pos: BlockPos, face: BlockFace) -> bool {
@@ -783,13 +784,12 @@ mod tests {
     }
 
     #[test]
-    fn initially_off_unsupported_source_is_rejected() {
+    fn initially_off_pressure_plate_is_a_dependency() {
         let mut world = fixture();
         let pos = BlockPos::new(41, 30, 41);
         world.set_block(pos, Block::StonePressurePlate { powered: false });
-        let error = discover_watched_wire_sources(&world, BOUNDS).unwrap_err();
-        assert_eq!(error.position, Some(pos));
-        assert_eq!(error.reason, "unsupported watched-wire source dependency");
+        let discovery = discover_watched_wire_sources(&world, BOUNDS).unwrap();
+        assert!(discovery.sources.iter().any(|source| source.source == pos));
     }
 
     #[test]
@@ -1135,10 +1135,14 @@ impl ScratchWorld {
             });
         }
 
-        if let Some(tick) = entry.scheduled.iter().find(|tick| tick.ticks_left as usize >= crate::world::scheduler::NUM_QUEUES
-            || (tick.ticks_left == 0 && tick.tick_priority != mchprs_world::TickPriority::NanoTick))
-        {
-            return Err(ScratchError { position: Some(tick.pos), reason: "scratch entry has invalid scheduled delay or priority" });
+        if let Some(tick) = entry.scheduled.iter().find(|tick| {
+            tick.ticks_left as usize >= crate::world::scheduler::NUM_QUEUES
+                || (tick.ticks_left == 0 && tick.tick_priority != mchprs_world::TickPriority::NanoTick)
+        }) {
+            return Err(ScratchError {
+                position: Some(tick.pos),
+                reason: "scratch entry has invalid scheduled delay or priority",
+            });
         }
 
         let mut read_chunks = HashSet::new();

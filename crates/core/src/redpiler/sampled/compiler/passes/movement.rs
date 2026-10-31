@@ -165,10 +165,11 @@ pub(in super::super) fn run(
                     | Block::Observer { .. }
                     | Block::RedstoneLamp { .. }
                     | Block::Hopper { .. }
+                    | Block::IronTrapdoor { .. }
                     | Block::NoteBlock { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. } => true,
-                    block if block.is_copper_bulb() => true,
+                    block if block.is_copper_bulb() || block.is_command_block() => true,
                     _ => false,
                 }));
                 nodes.extend(watchers.iter().copied());

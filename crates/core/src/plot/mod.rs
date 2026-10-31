@@ -2,18 +2,17 @@ use crate::messages;
 #[cfg(any(test, feature = "plot-bench"))]
 #[doc(hidden)]
 pub mod benchmark;
-mod block_light;
 #[cfg(test)]
 #[path = "tests/client_sync.rs"]
 mod client_sync_tests;
-#[cfg(test)]
-#[path = "tests/redpiler_notes.rs"]
-mod redpiler_notes_tests;
 #[cfg(test)]
 #[path = "tests/client_test_utils.rs"]
 mod client_test_utils;
 mod command_block;
 pub mod commands;
+#[cfg(test)]
+#[path = "tests/redpiler_notes.rs"]
+mod redpiler_notes_tests;
 use redstone_tools::compass;
 mod containers;
 mod data;

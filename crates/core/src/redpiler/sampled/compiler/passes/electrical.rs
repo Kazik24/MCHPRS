@@ -49,9 +49,7 @@ pub(in super::super) fn run<'a>(
         }
         for &pos in positions.iter().filter(|&&pos| world.get_block(pos).is_command_block()) {
             check_cancelled(monitor)?;
-            if !crate::redpiler::scratch::discover_lamp_sources(scratch.world(), pos)?.is_empty() {
-                return Err(error(pos, "command block execution is unsupported"));
-            }
+            dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), pos)?);
         }
         for &pos in &positions {
             check_cancelled(monitor)?;
@@ -181,6 +179,18 @@ pub(in super::super) fn run<'a>(
         .map_err(|err| error(bounds.0, err.reason))?;
     program.pistons = pistons;
     program.tokens = tokens;
+    for (&pos, block) in program.positions.iter().zip(&program.initial) {
+        if block.is_command_block() {
+            let entity = match world.get_block_entity(pos) {
+                Some(BlockEntity::CommandBlock(entity)) => entity.clone(),
+                _ => Box::default(),
+            };
+            program.command_blocks.insert(pos, entity);
+        }
+    }
+    if !program.command_blocks.is_empty() {
+        program.command_output_state = world.command_block_output_state();
+    }
     for component in 0..program.initial.len() {
         let Block::RedstoneComparator { comparator } = program.initial[component] else {
             continue;
@@ -192,7 +202,13 @@ pub(in super::super) fn run<'a>(
             if !crate::redstone::comparator::has_override(block) {
                 return Ok(None);
             }
-            if block.is_copper_bulb() {
+            if block.is_command_block() {
+                let source = position_index
+                    .get(&at)
+                    .copied()
+                    .ok_or_else(|| error(at, "unrepresented command block comparator input"))?;
+                Ok(Some(ComparatorInput::CommandBlock(source)))
+            } else if block.is_copper_bulb() {
                 let source = position_index
                     .get(&at)
                     .copied()

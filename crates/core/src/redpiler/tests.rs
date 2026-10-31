@@ -485,6 +485,9 @@ fn compile_rejection_preserves_pending_ticks_and_piston_state() {
         })),
     );
     world.schedule_tick(pos, 7, TickPriority::High);
+    let malformed = pos.offset(BlockFace::East);
+    world.set_block(malformed, Block::from_name("comparator").unwrap());
+    world.set_block_entity(malformed, BlockEntity::Comparator { output_strength: 255 });
     let before_block = world.get_block(pos);
     let before_entity = format!("{:?}", world.get_block_entity(pos));
     let before_ticks = world.scheduler().iter_entries().collect::<Vec<_>>();

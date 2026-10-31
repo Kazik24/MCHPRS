@@ -1,6 +1,4 @@
-//! Manifest acceptance boundary for the independent reference executor.
-#[path = "copper_reference_tests.rs"]
-mod copper_reference_tests;
+//! Manifest acceptance against MAIR and the Java-verified native component model.
 
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
@@ -727,8 +725,54 @@ fn counter_basic_reference_manifest_execution() {
     );
 }
 
+fn load_focused_sample(sample: &Value, bytes: &[u8], origin: BlockPos) -> (PlotWorld, (BlockPos, BlockPos)) {
+    let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
+    let mut world = PlotWorld::from_chunks(
+        0,
+        0,
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
+        Default::default(),
+    );
+    paste_clipboard(
+        &mut world,
+        &clipboard,
+        origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
+        false,
+    );
+    for control in sample["added_controls"].as_array().unwrap() {
+        let pos = origin
+            + BlockPos::new(
+                control["x"].as_i64().unwrap() as i32,
+                control["y"].as_i64().unwrap() as i32,
+                control["z"].as_i64().unwrap() as i32,
+            );
+        world.set_block(
+            pos,
+            Block::Lever {
+                lever: mchprs_blocks::blocks::Lever::new(LeverFace::Wall, mchprs_blocks::BlockDirection::North, false),
+            },
+        );
+    }
+    for z in 0..clipboard.size_z as i32 {
+        for x in 0..clipboard.size_x as i32 {
+            let pos = origin + BlockPos::new(x, 0, z);
+            let below = pos.offset(mchprs_blocks::BlockFace::Bottom);
+            if crate::interaction::attachment_support(world.get_block(pos), pos).is_some_and(|(support, _)| support == below)
+                && world.get_block(below) == Block::Air
+            {
+                world.set_block(below, Block::Stone {});
+            }
+        }
+    }
+    let bounds = (
+        origin - BlockPos::new(4, 4, 4),
+        origin + BlockPos::new(clipboard.size_x as i32 + 4, clipboard.size_y as i32 + 4, clipboard.size_z as i32 + 4),
+    );
+    (world, bounds)
+}
+
 #[test]
-fn focused_test_samples_match_reference_observations() {
+fn focused_test_samples_match_supported_oracles() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixture_dir = root.join("test_data/piston-research/test-prefix-20261008");
     let manifest: Value = serde_json::from_slice(&std::fs::read(fixture_dir.join("download-manifest.json")).unwrap()).unwrap();
@@ -740,53 +784,15 @@ fn focused_test_samples_match_reference_observations() {
     let reference: Value = serde_json::from_slice(&reference).unwrap();
     let origin = BlockPos::new(40, 30, 40);
     let mut errors = Vec::new();
+    let mut reference_observations = 0;
+    let mut native_observations = 0;
+    let mut changed_bulb_observations = 0;
     for sample in reference["samples"].as_array().unwrap().iter() {
         let name = sample["name"].as_str().unwrap();
         let bytes = std::fs::read(fixture_dir.join(name)).unwrap();
         let manifest_entry = manifest["files"].as_array().unwrap().iter().find(|entry| entry["name"] == name).unwrap();
         assert_eq!(format!("{:x}", Sha256::digest(&bytes)), manifest_entry["sha256"].as_str().unwrap());
-        let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
-        let mut world = PlotWorld::from_chunks(
-            0,
-            0,
-            (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
-            Default::default(),
-        );
-        paste_clipboard(
-            &mut world,
-            &clipboard,
-            origin + BlockPos::new(clipboard.offset_x, clipboard.offset_y, clipboard.offset_z),
-            false,
-        );
-        for control in sample["added_controls"].as_array().unwrap() {
-            let pos = origin
-                + BlockPos::new(
-                    control["x"].as_i64().unwrap() as i32,
-                    control["y"].as_i64().unwrap() as i32,
-                    control["z"].as_i64().unwrap() as i32,
-                );
-            world.set_block(
-                pos,
-                Block::Lever {
-                    lever: mchprs_blocks::blocks::Lever::new(LeverFace::Wall, mchprs_blocks::BlockDirection::North, false),
-                },
-            );
-        }
-        for z in 0..clipboard.size_z as i32 {
-            for x in 0..clipboard.size_x as i32 {
-                let pos = origin + BlockPos::new(x, 0, z);
-                let below = pos.offset(mchprs_blocks::BlockFace::Bottom);
-                if crate::interaction::attachment_support(world.get_block(pos), pos).is_some_and(|(support, _)| support == below)
-                    && world.get_block(below) == Block::Air
-                {
-                    world.set_block(below, Block::Stone {});
-                }
-            }
-        }
-        let bounds = (
-            origin - BlockPos::new(4, 4, 4),
-            origin + BlockPos::new(clipboard.size_x as i32 + 4, clipboard.size_y as i32 + 4, clipboard.size_z as i32 + 4),
-        );
+        let (world, bounds) = load_focused_sample(sample, &bytes, origin);
         let program = match compile(
             &world,
             bounds,
@@ -796,15 +802,16 @@ fn focused_test_samples_match_reference_observations() {
             },
         ) {
             Ok(program) => program,
-            // This full schematic also contains a connected copper bulb, which the engine declines.
-            Err(error) if name == "TEST_PISTION.schem" && error.reason == "unsupported copper bulb input" => continue,
             Err(error) => {
                 errors.push(format!("{name}: compilation declined: {error:?}"));
                 continue;
             }
         };
+        // MAIR treats bulbs as inert solids; their complete circuits use the Java-verified native oracle.
+        let native_oracle = program.initial.iter().any(|block| block.is_copper_bulb());
         for (scenario, record) in sample["scenarios"].as_object().unwrap() {
             let mut runtime = program.start();
+            let mut native = native_oracle.then(|| load_focused_sample(sample, &bytes, origin).0);
             for frame in record["frames"].as_array().unwrap() {
                 let tick = frame["tick"].as_u64().unwrap();
                 for action in record["actions"]
@@ -815,9 +822,21 @@ fn focused_test_samples_match_reference_observations() {
                 {
                     let pos = origin + position(&action["control"]);
                     let source = program.sources.iter().position(|&node| program.positions[node] == pos).unwrap();
-                    runtime.set_input(source, action["event"] == "rise").unwrap();
+                    let powered = action["event"] == "rise";
+                    runtime.set_input(source, powered).unwrap();
+                    if let Some(native) = &mut native {
+                        let Block::Lever { lever } = native.get_block(pos) else {
+                            panic!("missing control at {pos:?}")
+                        };
+                        if lever.powered != powered {
+                            crate::interaction::use_redstone(native.get_block(pos), native, pos, None);
+                        }
+                    }
                 }
                 runtime.tick().unwrap();
+                if let Some(native) = &mut native {
+                    native.tick_interpreted();
+                }
                 for (output, expected) in sample["outputs"].as_array().unwrap().iter().zip(frame["outputs"].as_array().unwrap()) {
                     let pos = origin
                         + BlockPos::new(
@@ -827,6 +846,34 @@ fn focused_test_samples_match_reference_observations() {
                         );
                     let expected = expected.as_str().unwrap();
                     let actual = runtime.project(pos);
+                    if let Some(native) = &native {
+                        native_observations += 1;
+                        let expected_native = native.get_block(pos);
+                        if expected_native.is_copper_bulb() {
+                            let saved = world.get_block(pos);
+                            assert!(
+                                saved.properties().iter().all(|(key, value)| expected.contains(&format!("{key}={value}"))),
+                                "the frozen MAIR bulb trace changed; recheck its supported component model"
+                            );
+                            changed_bulb_observations += usize::from(expected_native != saved);
+                        }
+                        if actual != Some(expected_native) {
+                            errors.push(format!(
+                                "{name} {scenario} tick {tick} at {pos:?}: {actual:?}, native expects {expected_native:?}"
+                            ));
+                        }
+                        if let Some(mchprs_blocks::block_entities::BlockEntity::Comparator { output_strength }) = native.get_block_entity(pos) {
+                            let component = program.component_indices[&pos];
+                            if runtime.comparator_outputs[component] != *output_strength {
+                                errors.push(format!(
+                                    "{name} {scenario} tick {tick} at {pos:?}: comparator output {}, native expects {output_strength}",
+                                    runtime.comparator_outputs[component]
+                                ));
+                            }
+                        }
+                        continue;
+                    }
+                    reference_observations += 1;
                     let matches = match actual {
                         Some(block @ Block::RedstoneRepeater { repeater }) => {
                             expected.starts_with("minecraft:repeater[")
@@ -841,10 +888,6 @@ fn focused_test_samples_match_reference_observations() {
                                 && expected.contains(&format!("mode={}", block.properties()["mode"]))
                                 && expected.contains(&format!("facing={}", block.properties()["facing"]))
                         }
-                        Some(block) if block.is_copper_bulb() => {
-                            expected.starts_with(&format!("minecraft:{}[", block.get_name()))
-                                && block.properties().iter().all(|(key, value)| expected.contains(&format!("{key}={value}")))
-                        }
                         _ => false,
                     };
                     if !matches {
@@ -857,6 +900,11 @@ fn focused_test_samples_match_reference_observations() {
     for error in errors.iter().take(16) {
         eprintln!("{error}");
     }
+    assert!(reference_observations > 0, "MAIR-supported fixtures must be replayed");
+    assert!(
+        native_observations > 0 && changed_bulb_observations > 0,
+        "native bulb scenarios must execute changing outputs"
+    );
     assert!(errors.is_empty(), "{} focused TEST observations or admissions differ", errors.len());
 }
 

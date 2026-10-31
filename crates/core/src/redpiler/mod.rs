@@ -342,6 +342,7 @@ impl Compiler {
             state.movement_cursor = 0;
         }
         let runtime = self.runtime.as_mut().unwrap();
+        runtime.publish_commands(world, io_only);
         for (component, pos, instrument, note) in runtime.notes.drain(..) {
             redstone::noteblock::play_note(world, pos, instrument, note);
             runtime.note_queued[component] = false;

@@ -173,15 +173,8 @@ fn entry_versions_detect_edits_in_read_only_probe_context() {
 }
 
 #[test]
-fn entry_versions_ignore_light_updates_but_detect_entity_changes() {
+fn entry_versions_detect_entity_changes() {
     let (mut plot, _peer) = fixture(false);
-    let entry = EntryVersion::capture(&plot.world);
-    let chunk = &mut plot.world.chunks[0];
-    let version = chunk.snapshot_version();
-    chunk.set_block_light(std::array::from_fn(|_| Some(vec![0; 2048])));
-    assert_ne!(chunk.snapshot_version(), version, "neighbor views still detect lighting changes");
-    assert!(entry.matches(&plot.world));
-
     let pos = BlockPos::new(2, 20, 2);
     plot.world.set_block_entity(pos, BlockEntity::Comparator { output_strength: 5 });
     let entry = EntryVersion::capture(&plot.world);

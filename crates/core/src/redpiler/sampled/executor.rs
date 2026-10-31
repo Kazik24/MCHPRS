@@ -54,6 +54,9 @@ pub(super) struct ScheduledComponentTick {
 }
 
 pub(crate) struct Runtime {
+    pub(super) command_blocks: std::collections::HashMap<mchprs_blocks::BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
+    pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
+    pub(super) command_emissions: Vec<crate::world::CommandBlockEmission>,
     pub(super) comparator_outputs: Vec<u8>,
     pub(super) reactive_wire_strengths: Vec<u8>,
     pub(super) program: std::sync::Arc<Program>,
@@ -141,7 +144,7 @@ impl Runtime {
         self.mark_dirty(self.program.piston_bindings[piston].home_cell);
     }
 
-    fn notify_source_watchers(&mut self, source: usize, shape: bool, update: bool) {
+    pub(super) fn notify_source_watchers(&mut self, source: usize, shape: bool, update: bool) {
         for index in 0..self.program.source_watchers[source].len() {
             let watcher = self.program.source_watchers[source][index];
             if !self.consume_operation(self.program.positions[watcher]) {
@@ -191,9 +194,7 @@ impl Runtime {
         self.program.cell_tokens[cell]
             .iter()
             .copied()
-            .find(|&token| {
-                self.token_positions[token] == Some(self.program.projection_positions[cell])
-            })
+            .find(|&token| self.token_positions[token] == Some(self.program.projection_positions[cell]))
     }
 
     pub(super) fn project_cell(&self, cell: usize) -> Option<Block> {
@@ -642,16 +643,22 @@ impl Runtime {
         if input.analog != u32::MAX {
             return input.maximum(&self.input_histograms);
         }
-        let fixed = self.program.incoming[target].iter().copied()
+        let fixed = self.program.incoming[target]
+            .iter()
+            .copied()
             .filter(|&index| self.program.effective_links[index])
             .map(|index| self.contributions[index]);
-        let arranged = self.program.arrangement_links.iter().enumerate()
+        let arranged = self
+            .program
+            .arrangement_links
+            .iter()
+            .enumerate()
             .filter(|(_, link)| link.target == target && !link.side)
             .map(|(index, _)| self.arrangement_contributions[index]);
         fixed.chain(arranged).max().unwrap_or(0)
     }
 
-    fn has_input(&self, target: usize) -> bool {
+    pub(super) fn has_input(&self, target: usize) -> bool {
         self.input_levels[target][0].active != 0
     }
 
@@ -675,7 +682,11 @@ impl Runtime {
         }
         for index in 0..self.program.side_outputs[source].len() {
             let (target, attenuation) = self.program.side_outputs[source][index];
-            self.input_levels[target][1].change(old.saturating_sub(attenuation), new.saturating_sub(attenuation), &mut self.input_histograms);
+            self.input_levels[target][1].change(
+                old.saturating_sub(attenuation),
+                new.saturating_sub(attenuation),
+                &mut self.input_histograms,
+            );
         }
     }
 
@@ -765,7 +776,12 @@ impl Runtime {
                     return;
                 }
                 let strength = self.arrangement_output(flip.source);
-                self.set_arrangement_contribution(flip.link, flip.target, flip.side, if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 });
+                self.set_arrangement_contribution(
+                    flip.link,
+                    flip.target,
+                    flip.side,
+                    if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 },
+                );
                 if strength > flip.attenuation {
                     self.updated_in_phase[flip.target] = None;
                 }
@@ -861,7 +877,7 @@ impl Runtime {
         true
     }
 
-    fn refresh_wire_power(&mut self, wire: usize, strength: u8) {
+    pub(super) fn refresh_wire_power(&mut self, wire: usize, strength: u8) {
         let Block::RedstoneWire { wire: mut state } = self.blocks[wire] else {
             unreachable!()
         };
@@ -950,6 +966,7 @@ impl Runtime {
 
     pub(super) fn output(&self, source: usize) -> u8 {
         match self.blocks[source] {
+            block if block.pressure_plate_powered().is_some() => u8::from(block.pressure_plate_powered() == Some(true)) * 15,
             Block::RedstoneBlock => {
                 if self.program.movable_sources[source] {
                     0
@@ -1042,6 +1059,20 @@ impl Runtime {
         }
     }
 
+    fn update_trapdoor(&mut self, component: usize) {
+        let Block::IronTrapdoor { facing, half, .. } = self.blocks[component] else {
+            unreachable!()
+        };
+        let updated = Block::IronTrapdoor {
+            facing,
+            half,
+            powered: self.has_input(component),
+        };
+        if self.blocks[component] != updated {
+            self.set_component(component, updated);
+        }
+    }
+
     fn update_note_block(&mut self, component: usize) {
         let Block::NoteBlock { note, powered, .. } = self.blocks[component] else {
             unreachable!()
@@ -1083,8 +1114,8 @@ impl Runtime {
             lit = !lit;
         }
         self.set_component(component, block.with_copper_bulb_state(lit, powered_now).unwrap());
-        for index in 0..self.program.comparators_by_copper_bulb[component].len() {
-            let comparator = self.program.comparators_by_copper_bulb[component][index];
+        for index in 0..self.program.comparators_by_override[component].len() {
+            let comparator = self.program.comparators_by_override[component][index];
             self.update_comparator(comparator);
         }
         self.notify_source_watchers(component, true, true);
@@ -1111,7 +1142,9 @@ impl Runtime {
             Block::RedstoneComparator { .. } => self.update_comparator(receiver),
             Block::RedstoneLamp { .. } => self.dispatch_receiver(receiver),
             Block::Hopper { .. } => self.update_hopper(receiver),
+            Block::IronTrapdoor { .. } => self.update_trapdoor(receiver),
             Block::NoteBlock { .. } => self.update_note_block(receiver),
+            block if block.is_command_block() => crate::redstone::command_block::update(self, self.program.positions[receiver]),
             block if block.is_copper_bulb() => self.update_copper_bulb(receiver),
             Block::Piston { .. } => self.update_piston(receiver),
             Block::RedstoneRepeater { .. } => self.update_repeater(receiver),
@@ -1194,6 +1227,8 @@ impl Runtime {
                     Operation::Contribution(_) | Operation::ArrangementContribution(_) => continue,
                     Operation::UpdateLamp(node)
                     | Operation::UpdateHopper(node)
+                    | Operation::UpdateTrapdoor(node)
+                    | Operation::UpdateCommandBlock(node)
                     | Operation::UpdateNoteBlock(node)
                     | Operation::UpdateCopperBulb(node)
                     | Operation::UpdateRepeater(node)
@@ -1250,6 +1285,8 @@ impl Runtime {
                 Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
                 Operation::UpdateLamp(slot) => self.dispatch_receiver(slot),
                 Operation::UpdateHopper(slot) => self.update_hopper(slot),
+                Operation::UpdateTrapdoor(slot) => self.update_trapdoor(slot),
+                Operation::UpdateCommandBlock(slot) => crate::redstone::command_block::update(self, self.program.positions[slot]),
                 Operation::UpdateNoteBlock(slot) => self.update_note_block(slot),
                 Operation::UpdateCopperBulb(slot) => self.update_copper_bulb(slot),
                 Operation::UpdateRepeater(slot) => self.update_repeater(slot),
@@ -1275,6 +1312,10 @@ impl Runtime {
         let record = &self.program.comparators[self.program.comparator_by_component[component].unwrap()];
         let override_level = |input: ComparatorInput| match input {
             ComparatorInput::Static(level) => level,
+            ComparatorInput::CommandBlock(source) => self
+                .command_blocks
+                .get(&self.program.positions[source])
+                .map_or(0, |entity| entity.success_count.clamp(0, 15) as u8),
             ComparatorInput::CopperBulb(source) => {
                 if self.blocks[source].copper_bulb_state().unwrap().0 {
                     15
@@ -1540,7 +1581,11 @@ impl Runtime {
     }
 
     fn schedule_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
-        if let Err(reason) = self.pending.schedule_half_tick(tick, delay * 2, priority) {
+        self.schedule_half_tick(tick, delay * 2, priority);
+    }
+
+    pub(super) fn schedule_half_tick(&mut self, tick: ScheduledComponentTick, delay: usize, priority: TickPriority) {
+        if let Err(reason) = self.pending.schedule_half_tick(tick, delay, priority) {
             self.failure = Some(ScratchError {
                 position: Some(self.program.positions[tick.component]),
                 reason,
@@ -1577,6 +1622,7 @@ impl Runtime {
                     continue;
                 }
                 match self.blocks[component] {
+                    block if block.is_command_block() => crate::redstone::command_block::tick(self, position),
                     Block::RedstoneComparator { .. } => self.tick_comparator(component),
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.tick_torch(component),
                     Block::RedstoneLamp { .. } => self.dispatch_receiver_tick(component),

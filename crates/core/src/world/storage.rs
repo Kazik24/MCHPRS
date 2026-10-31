@@ -428,10 +428,9 @@ pub struct Chunk {
     pub block_entities: FxHashMap<BlockPos, BlockEntity>,
     instance: u64,
     revision: u64,
-    /// Block and entity changes relevant to compilation, excluding display lighting.
+    /// Block and entity changes relevant to compilation.
     circuit_revision: u64,
     routing_revision: u64,
-    pub(crate) block_light: [Option<Vec<u8>>; PLOT_SECTIONS],
 }
 
 impl Chunk {
@@ -445,7 +444,6 @@ impl Chunk {
             revision: self.revision,
             circuit_revision: self.circuit_revision,
             routing_revision: self.routing_revision,
-            block_light: self.block_light.clone(),
         }
     }
 
@@ -492,47 +490,6 @@ impl Chunk {
             }
         }
         changes
-    }
-
-    pub(crate) fn light_arrays(&self) -> Vec<Option<Vec<u8>>> {
-        std::iter::once(None)
-            .chain(self.block_light.iter().cloned())
-            .chain(std::iter::once(None))
-            .collect()
-    }
-
-    pub(crate) fn set_block_light(&mut self, light: [Option<Vec<u8>>; PLOT_SECTIONS]) -> bool {
-        if self.block_light == light {
-            return false;
-        }
-        self.block_light = light;
-        self.revision = self.revision.wrapping_add(1);
-        true
-    }
-
-    pub(crate) fn copper_bulbs(&self) -> Vec<(BlockPos, Block)> {
-        let mut bulbs = Vec::new();
-        for (y, section) in self.sections.iter().enumerate() {
-            if section.block_count == 0
-                || (section.buffer.use_palette && !section.buffer.palette.iter().any(|&id| Block::from_id(id).is_copper_bulb()))
-            {
-                continue;
-            }
-            for index in 0..4096 {
-                let block = Block::from_id(section.get_block(index & 15, index >> 8, (index >> 4) & 15));
-                if block.is_copper_bulb() {
-                    bulbs.push((
-                        BlockPos::new(
-                            self.x * 16 + (index & 15) as i32,
-                            y as i32 * 16 + (index >> 8) as i32,
-                            self.z * 16 + ((index >> 4) & 15) as i32,
-                        ),
-                        block,
-                    ));
-                }
-            }
-        }
-        bulbs
     }
 
     /// Independent of local packet flushes, including replacement during rewind.
@@ -688,7 +645,6 @@ impl Chunk {
         }
         CChunkData {
             chunk_sections,
-            block_light: self.light_arrays(),
             chunk_x: self.x,
             chunk_z: self.z,
             heightmaps,
@@ -717,7 +673,6 @@ impl Chunk {
             chunk_z: z,
             heightmaps: nbt::Blob::new(),
             block_entities: vec![],
-            block_light: Vec::new(),
         }
         .encode()
     }
@@ -791,7 +746,6 @@ impl Chunk {
             revision: 0,
             circuit_revision: 0,
             routing_revision: 0,
-            block_light: std::array::from_fn(|_| None),
             sections: chunk_data.sections.map(ChunkSection::load),
             block_entities: chunk_data.block_entities,
         };
@@ -824,7 +778,6 @@ impl Chunk {
             revision: 0,
             circuit_revision: 0,
             routing_revision: 0,
-            block_light: std::array::from_fn(|_| None),
             block_entities: FxHashMap::default(),
         }
     }

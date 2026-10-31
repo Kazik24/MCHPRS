@@ -159,13 +159,18 @@ pub(in super::super) fn run(
                         let group = &program.input_arrangements[group];
                         group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                     });
-                    (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional).then_some(15u8.saturating_sub(link.attenuation))
+                    ((matches!(program.initial[link.source], Block::RedstoneBlock)
+                        || program.initial[link.source].pressure_plate_powered() == Some(true))
+                        && !conditional)
+                        .then_some(15u8.saturating_sub(link.attenuation))
                 })
                 .chain(links_by_target[id].iter().filter_map(|&index| {
                     let link = &program.arrangement_links[index];
                     let constant = match link.source {
                         ArrangementSource::Token(_) => true,
-                        ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock),
+                        ArrangementSource::Component(node) => {
+                            matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
+                        }
                     };
                     (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
                         .then_some(15u8.saturating_sub(link.attenuation))
@@ -181,13 +186,17 @@ pub(in super::super) fn run(
                         let conditional = program.input_arrangements.iter().any(|group| {
                             group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                         });
-                        (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional)
+                        ((matches!(program.initial[link.source], Block::RedstoneBlock)
+                            || program.initial[link.source].pressure_plate_powered() == Some(true))
+                            && !conditional)
                             .then_some(15u8.saturating_sub(link.attenuation))
                     })
                     .chain(program.arrangement_links.iter().filter_map(|link| {
                         let constant = match link.source {
                             ArrangementSource::Token(_) => true,
-                            ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock),
+                            ArrangementSource::Component(node) => {
+                                matches!(program.initial[node], Block::RedstoneBlock) || program.initial[node].pressure_plate_powered() == Some(true)
+                            }
                         };
                         (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
                             .then_some(15u8.saturating_sub(link.attenuation))
@@ -226,6 +235,11 @@ pub(in super::super) fn run(
                 Block::Hopper { facing, .. } => Block::Hopper {
                     facing,
                     enabled: constant_power == 0,
+                },
+                Block::IronTrapdoor { facing, half, .. } => Block::IronTrapdoor {
+                    facing,
+                    half,
+                    powered: constant_power > 0,
                 },
                 Block::NoteBlock { instrument, note, .. } => Block::NoteBlock {
                     instrument,
@@ -532,6 +546,8 @@ impl SourceIndex {
                     }
                     Block::RedstoneLamp { .. } => record.operations.push(Operation::UpdateLamp(target)),
                     Block::Hopper { .. } => record.operations.push(Operation::UpdateHopper(target)),
+                    Block::IronTrapdoor { .. } => record.operations.push(Operation::UpdateTrapdoor(target)),
+                    block if block.is_command_block() => record.operations.push(Operation::UpdateCommandBlock(target)),
                     Block::NoteBlock { .. } => record.operations.push(Operation::UpdateNoteBlock(target)),
                     block if block.is_copper_bulb() => record.operations.push(Operation::UpdateCopperBulb(target)),
                     Block::RedstoneRepeater { .. } => record.operations.push(Operation::UpdateRepeater(target)),
@@ -672,6 +688,8 @@ fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
             }
             Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
             Block::Hopper { .. } => operations.push(Operation::UpdateHopper(target)),
+            Block::IronTrapdoor { .. } => operations.push(Operation::UpdateTrapdoor(target)),
+            block if block.is_command_block() => operations.push(Operation::UpdateCommandBlock(target)),
             Block::NoteBlock { .. } => operations.push(Operation::UpdateNoteBlock(target)),
             block if block.is_copper_bulb() => operations.push(Operation::UpdateCopperBulb(target)),
             Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),

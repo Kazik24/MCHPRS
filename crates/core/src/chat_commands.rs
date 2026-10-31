@@ -24,6 +24,43 @@ pub struct ChatCommand {
     pub message: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct CommandBlockOutputState {
+    pub(crate) window: std::time::Instant,
+    pub(crate) count: usize,
+    pub(crate) bytes: usize,
+    pub(crate) queued: usize,
+    pub(crate) limited: bool,
+}
+
+impl CommandBlockOutputState {
+    pub(crate) fn execute(&mut self, command: &str, source: &str) -> Result<ChatCommand, String> {
+        if self.window.elapsed() >= std::time::Duration::from_secs(1) {
+            self.window = std::time::Instant::now();
+            self.count = 0;
+            self.bytes = 0;
+        }
+        if (self.limited && (self.queued >= 64 || self.count >= 64)) || command.len() > 131_068 || source.len() > 256 {
+            return Err(messages::COMMAND_BLOCK_OUTPUT_LIMIT.into());
+        }
+        let message = parse(command, source, None)?;
+        if self.limited && self.bytes.saturating_add(message.message.len()) > 65_536 {
+            return Err(messages::COMMAND_BLOCK_OUTPUT_BYTE_LIMIT.into());
+        }
+        self.count += 1;
+        self.bytes += message.message.len();
+        self.queued += 1;
+        Ok(message)
+    }
+}
+
+#[derive(Debug)]
+pub struct CommandBlockEmission {
+    pub(crate) pos: mchprs_blocks::BlockPos,
+    pub(crate) tick: u64,
+    pub(crate) message: ChatCommand,
+}
+
 // Preserve supported component structure and inheritance; discard unsupported fields.
 fn component(value: &Value, depth: usize) -> Result<Value, String> {
     if depth > 64 {

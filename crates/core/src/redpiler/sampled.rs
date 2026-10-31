@@ -3,6 +3,9 @@
 #[cfg(test)]
 #[path = "sampled/adder_tests.rs"]
 mod adder_tests;
+#[cfg(test)]
+mod admission_tests;
+mod commands;
 mod compiler;
 #[cfg(test)]
 mod cpu_trace;
@@ -13,10 +16,10 @@ mod incremental_input_tests;
 mod input;
 mod program;
 #[cfg(test)]
-mod runtime_index_tests;
-#[cfg(test)]
 #[path = "sampled/reviewed_fixes_tests.rs"]
 mod reviewed_fixes_tests;
+#[cfg(test)]
+mod runtime_index_tests;
 mod scheduler;
 #[cfg(test)]
 mod tests;
@@ -28,14 +31,14 @@ use crate::world::World;
 #[cfg(test)]
 use compiler::{PistonActor, assign_piston_groups, compile, discover_piston_actors};
 pub(super) use executor::Runtime;
-pub(super) use program::Program;
-#[cfg(test)]
-use program::WatchedWire;
-use program::{ElectricalLink, Operation};
 use mchprs_blocks::{
     block_entities::MovingPistonEntity,
     blocks::{Block, RedstonePistonHead},
 };
+pub(super) use program::Program;
+#[cfg(test)]
+use program::WatchedWire;
+use program::{ElectricalLink, Operation};
 
 pub(super) use compiler::compile_monitored as compile_program;
 
@@ -133,7 +136,10 @@ impl Runtime {
         self.motion_time
     }
 
-    pub(super) fn publication_changes(&self, full: bool) -> impl Iterator<Item = (mchprs_blocks::BlockPos, mchprs_blocks::blocks::Block, Option<u8>)> + '_ {
+    pub(super) fn publication_changes(
+        &self,
+        full: bool,
+    ) -> impl Iterator<Item = (mchprs_blocks::BlockPos, mchprs_blocks::blocks::Block, Option<u8>)> + '_ {
         self.dirty_cells.iter().filter_map(move |&cell| {
             let pos = self.program.projection_positions[cell];
             let block = if full {
@@ -315,7 +321,4 @@ impl Runtime {
     }
 }
 #[cfg(test)]
-use mchprs_blocks::{
-    BlockFacing, BlockPos,
-    blocks::LeverFace,
-};
+use mchprs_blocks::{BlockFacing, BlockPos, blocks::LeverFace};

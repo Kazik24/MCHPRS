@@ -24,7 +24,7 @@ fn reader_kind(block: Block) -> Option<ReaderKind> {
     match block {
         Block::RedstoneWire { .. } => Some(ReaderKind::Wire),
         Block::Piston { .. } => Some(ReaderKind::Piston),
-        Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::NoteBlock { .. } => Some(ReaderKind::Lamp),
+        Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::IronTrapdoor { .. } | Block::NoteBlock { .. } => Some(ReaderKind::Lamp),
         block if block.is_copper_bulb() || block.is_command_block() => Some(ReaderKind::Lamp),
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => Some(ReaderKind::Torch),
         Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => Some(ReaderKind::Diode),
@@ -208,9 +208,7 @@ pub(super) fn inputs_of(
             let Block::Piston { piston } = block else { unreachable!() };
             found = crate::redpiler::scratch::discover_piston_sources(world, pos, piston.facing)?;
         }
-        Some(ReaderKind::Lamp) => {
-            found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?
-        }
+        Some(ReaderKind::Lamp) => found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?,
         Some(ReaderKind::Torch) => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
         Some(ReaderKind::Diode) => {
             let (facing, comparator) = match block {

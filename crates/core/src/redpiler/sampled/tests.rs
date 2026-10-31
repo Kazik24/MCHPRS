@@ -131,10 +131,14 @@ fn unchanged_comparator_output_notifies_reactive_neighbor() {
     program.reactive[1] = true;
     program.reactive_neighbours[0].push(1);
     let mut runtime = program.start();
-    runtime.set_pending(vec![mchprs_world::TickEntry {
-        pos: positions[0], block_type: Some(comparator.registry_id()),
-        ticks_left: 2, tick_priority: TickPriority::Normal,
-    }]).unwrap();
+    runtime
+        .set_pending(vec![mchprs_world::TickEntry {
+            pos: positions[0],
+            block_type: Some(comparator.registry_id()),
+            ticks_left: 2,
+            tick_priority: TickPriority::Normal,
+        }])
+        .unwrap();
     runtime.tick().unwrap();
     runtime.tick().unwrap();
     assert_eq!(runtime.project(positions[1]), Some(Block::RedstoneLamp { lit: true }));
@@ -574,7 +578,15 @@ fn group_probe_finds_masked_conductor_dependency() {
     });
     let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
     let indexes = super::group_probe::ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
-    let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program, &indexes, None).unwrap();
+    let groups = super::group_probe::run(
+        &world,
+        (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)),
+        &entry(&world),
+        &program,
+        &indexes,
+        None,
+    )
+    .unwrap();
     let group = groups
         .iter()
         .find(|group| group.target == 2 && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(0)))
@@ -595,11 +607,26 @@ fn group_probe_finds_direct_token_inputs_for_all_reader_families() {
         world.set_block(cell, Block::RedstoneBlock);
         world.set_block(reader, block);
         let mut program = test_program(vec![cell, reader], vec![Block::RedstoneBlock, block], vec![], vec![], vec![], vec![]).unwrap();
-        program.tokens.push(super::compiler::PistonToken { block: Block::RedstoneBlock, position: Some(cell), cells: vec![cell] });
+        program.tokens.push(super::compiler::PistonToken {
+            block: Block::RedstoneBlock,
+            position: Some(cell),
+            cells: vec![cell],
+        });
         let components = program.positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
         let indexes = super::group_probe::ProbeIndexes::new(&components, &program.positions, &program.initial, &program.tokens, None).unwrap();
-        let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program, &indexes, None).unwrap();
-        let group = groups.iter().find(|group| group.target == 1 && !group.side).unwrap_or_else(|| panic!("missing group for {name}"));
+        let groups = super::group_probe::run(
+            &world,
+            (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)),
+            &entry(&world),
+            &program,
+            &indexes,
+            None,
+        )
+        .unwrap();
+        let group = groups
+            .iter()
+            .find(|group| group.target == 1 && !group.side)
+            .unwrap_or_else(|| panic!("missing group for {name}"));
         assert_eq!(group.inputs[0], vec![], "{name}");
         assert_eq!(group.inputs[1], vec![(ArrangementSource::Token(0), 0)], "{name}");
     }
@@ -611,12 +638,22 @@ fn shared_immutable_edges_keep_future_work_and_survive_finalization() {
     let operations = vec![Operation::Contribution(0), Operation::UpdateLamp(1)];
     let mut original = test_program(
         positions,
-        vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }, Block::RedstoneLamp { lit: false }],
+        vec![
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+            Block::RedstoneLamp { lit: false },
+        ],
         vec![0],
         vec![[operations.clone(), operations]],
-        vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+        vec![ElectricalLink {
+            source: 0,
+            target: 1,
+            attenuation: 0,
+        }],
         vec![],
-    ).unwrap();
+    )
+    .unwrap();
     original.set_output_program(1, false, vec![Operation::UpdateLamp(1)]);
     original.prepare_projection();
     let expected = original.output_vectors();
@@ -722,33 +759,87 @@ fn conditional_side_input_locks_repeater_without_powering_its_rear() {
 fn lamp_and_repeater_state_changes_notify_observers() {
     let positions = vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)];
     let observer = Block::from_name("observer").unwrap();
-    let repeater = Block::RedstoneRepeater { repeater: RedstoneRepeater {
-        delay: 1, facing: BlockDirection::East, locked: false, powered: false,
-    }};
+    let repeater = Block::RedstoneRepeater {
+        repeater: RedstoneRepeater {
+            delay: 1,
+            facing: BlockDirection::East,
+            locked: false,
+            powered: false,
+        },
+    };
     for source in [Block::RedstoneLamp { lit: false }, repeater] {
         let records = if matches!(source, Block::RedstoneRepeater { .. }) {
-            vec![RepeaterRecord { component: 0, output_is_diode: false, side_sources: Some(vec![]) }]
-        } else { vec![] };
-        let mut program = Program::new(positions.clone(), vec![source, observer], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], records).unwrap();
+            vec![RepeaterRecord {
+                component: 0,
+                output_is_diode: false,
+                side_sources: Some(vec![]),
+            }]
+        } else {
+            vec![]
+        };
+        let mut program = Program::new(
+            positions.clone(),
+            vec![source, observer],
+            vec![],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            records,
+        )
+        .unwrap();
         program.source_watchers[0].push(1);
         let mut runtime = program.start();
         let channel = usize::from(matches!(source, Block::RedstoneRepeater { .. }));
         runtime.input_levels[0][channel].change(0, 15, &mut runtime.input_histograms);
-        if channel == 0 { runtime.dispatch_receiver(0); } else { runtime.update_repeater(0); }
-        assert!(runtime.pending_entries().iter().any(|entry| entry.pos == positions[1]), "observer missed {source:?}");
+        if channel == 0 {
+            runtime.dispatch_receiver(0);
+        } else {
+            runtime.update_repeater(0);
+        }
+        assert!(
+            runtime.pending_entries().iter().any(|entry| entry.pos == positions[1]),
+            "observer missed {source:?}"
+        );
     }
-    let locked = Block::RedstoneRepeater { repeater: RedstoneRepeater {
-        delay: 1, facing: BlockDirection::East, locked: true, powered: false,
-    }};
+    let locked = Block::RedstoneRepeater {
+        repeater: RedstoneRepeater {
+            delay: 1,
+            facing: BlockDirection::East,
+            locked: true,
+            powered: false,
+        },
+    };
     for source in [Block::RedstoneLamp { lit: true }, locked] {
         let records = if matches!(source, Block::RedstoneRepeater { .. }) {
-            vec![RepeaterRecord { component: 0, output_is_diode: false, side_sources: Some(vec![]) }]
-        } else { vec![] };
-        let mut program = Program::new(positions.clone(), vec![source, observer], vec![], vec![[vec![], vec![]]; 2], vec![], vec![], records).unwrap();
+            vec![RepeaterRecord {
+                component: 0,
+                output_is_diode: false,
+                side_sources: Some(vec![]),
+            }]
+        } else {
+            vec![]
+        };
+        let mut program = Program::new(
+            positions.clone(),
+            vec![source, observer],
+            vec![],
+            vec![[vec![], vec![]]; 2],
+            vec![],
+            vec![],
+            records,
+        )
+        .unwrap();
         program.source_watchers[0].push(1);
         let mut runtime = program.start();
-        if matches!(source, Block::RedstoneLamp { .. }) { runtime.dispatch_receiver_tick(0); } else { runtime.update_repeater(0); }
-        assert!(runtime.pending_entries().iter().any(|entry| entry.pos == positions[1]), "observer missed {source:?}");
+        if matches!(source, Block::RedstoneLamp { .. }) {
+            runtime.dispatch_receiver_tick(0);
+        } else {
+            runtime.update_repeater(0);
+        }
+        assert!(
+            runtime.pending_entries().iter().any(|entry| entry.pos == positions[1]),
+            "observer missed {source:?}"
+        );
     }
 }
 #[test]
@@ -1242,10 +1333,14 @@ fn repeater_loaded_output_locking_and_repeated_compiled_propagation() {
     let mut locked = locked_program.start();
     locked.set_input(0, true).unwrap();
     assert!(locked.pending_entries().into_iter().next().is_none());
-    locked.set_pending(vec![mchprs_world::TickEntry {
-        pos: locked.program.positions[1], block_type: Some(locked.blocks[1].registry_id()),
-        ticks_left: 2, tick_priority: TickPriority::Normal,
-    }]).unwrap();
+    locked
+        .set_pending(vec![mchprs_world::TickEntry {
+            pos: locked.program.positions[1],
+            block_type: Some(locked.blocks[1].registry_id()),
+            ticks_left: 2,
+            tick_priority: TickPriority::Normal,
+        }])
+        .unwrap();
     locked.tick().unwrap();
     locked.tick().unwrap();
     assert_repeater_powered(&locked, false);
@@ -2098,15 +2193,16 @@ fn program_construction_rejects_malformed_records() {
     );
 }
 #[test]
-fn rejects_unrepresented_blocks() {
+fn command_block_without_entity_uses_native_default() {
     let mut w = host();
     let pos = BlockPos::new(15, 15, 15);
     w.set_block(pos, Block::from_name("command_block").unwrap());
-    let err = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
-        Err(err) => err,
-        Ok(_) => panic!("unsupported block admitted"),
-    };
-    assert_eq!(err.position, Some(pos));
+    let program = compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)).unwrap();
+    assert_eq!(
+        *program.command_blocks[&pos],
+        mchprs_blocks::block_entities::CommandBlockEntity::default()
+    );
+    assert!(w.get_block_entity(pos).is_none(), "compilation must not mutate the host");
 }
 #[test]
 fn passive_geometry_preserves_material_properties_and_can_move() {
@@ -2148,22 +2244,24 @@ fn projection_skips_stationary_geometry_but_keeps_components() {
     let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(15, 20, 15));
     let program = compile(&world, bounds, entry(&world)).unwrap();
 
-    assert_eq!(program.start().projected_blocks(), vec![(lamp, Block::RedstoneLamp { lit: false })]);
+    assert_eq!(
+        program.start().projected_blocks(),
+        vec![
+            (lamp, Block::RedstoneLamp { lit: false }),
+            (plate, Block::StonePressurePlate { powered: false })
+        ]
+    );
     assert_eq!(program.start().project(stone), Some(Block::Stone {}));
     assert_eq!(program.start().project(tripwire), Some(Block::from_name("tripwire_hook").unwrap()));
     assert_eq!(program.start().project(plate), Some(Block::StonePressurePlate { powered: false }));
 }
 #[test]
-fn rejects_unrelated_block_entities() {
+fn ignores_unrelated_block_entities_like_interpreter() {
     let mut w = host();
     let pos = BlockPos::new(15, 15, 15);
     w.set_block_entity(pos, BlockEntity::Comparator { output_strength: 0 });
-    let error = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
-        Err(error) => error,
-        Ok(_) => panic!("unsupported entity admitted"),
-    };
-    assert_eq!(error.position, Some(pos));
-    assert_eq!(error.reason, "unsupported block entity");
+    compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)).unwrap();
+    assert!(matches!(w.get_block_entity(pos), Some(BlockEntity::Comparator { output_strength: 0 })));
 }
 
 #[test]
@@ -2214,11 +2312,15 @@ fn command_block_success_count_is_a_static_comparator_input() {
 
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
     assert_eq!(program.comparators.len(), 1);
-    assert_eq!(program.comparators[0].rear_override, Some(super::program::ComparatorInput::Static(9)));
+    assert!(matches!(
+        program.comparators[0].rear_override,
+        Some(super::program::ComparatorInput::CommandBlock(_))
+    ));
+    assert_eq!(program.start().command_blocks[&command_pos].success_count, 9);
 }
 
 #[test]
-fn command_blocks_with_redstone_inputs_remain_rejected() {
+fn command_blocks_with_redstone_inputs_are_admitted() {
     let mut world = host();
     let command = BlockPos::new(15, 15, 15);
     let lever = command.offset(BlockFace::West);
@@ -2231,12 +2333,7 @@ fn command_blocks_with_redstone_inputs_remain_rejected() {
     world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
     world.set_block(command, Block::from_name("command_block").unwrap());
     world.set_block_entity(command, BlockEntity::CommandBlock(Box::default()));
-    let error = match compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)) {
-        Err(error) => error,
-        Ok(_) => panic!("powered command block was admitted"),
-    };
-    assert_eq!(error.position, Some(command));
-    assert_eq!(error.reason, "command block execution is unsupported");
+    compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
 }
 
 #[test]
@@ -2317,10 +2414,24 @@ fn note_effects_only_queue_for_unblocked_rising_edges() {
     let note_pos = source.offset(BlockFace::East);
     for blocked in [false, true] {
         let mut world = host();
-        world.set_block(source, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) });
+        world.set_block(
+            source,
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        );
         world.set_block(source.offset(BlockFace::Bottom), Block::Stone {});
-        world.set_block(note_pos, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
-        if blocked { world.set_block(note_pos.offset(BlockFace::Top), Block::Stone {}); }
+        world.set_block(
+            note_pos,
+            Block::NoteBlock {
+                instrument: mchprs_blocks::blocks::Instrument::Harp,
+                note: 1,
+                powered: false,
+            },
+        );
+        if blocked {
+            world.set_block(note_pos.offset(BlockFace::Top), Block::Stone {});
+        }
         let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
         let source_index = program.sources.iter().position(|&index| program.positions[index] == source).unwrap();
         let mut runtime = program.start();
@@ -2332,7 +2443,7 @@ fn note_effects_only_queue_for_unblocked_rising_edges() {
 }
 
 #[test]
-fn rejects_bottom_slab_as_dust_support() {
+fn imported_dust_on_bottom_slab_matches_interpreter() {
     use mchprs_blocks::blocks::SlabType;
     let mut w = host();
     let source = BlockPos::new(15, 15, 15);
@@ -2355,12 +2466,19 @@ fn rejects_bottom_slab_as_dust_support() {
         wire.offset(BlockFace::Bottom),
         Block::SmoothStoneSlab {}.with_slab_type(SlabType::Bottom).unwrap(),
     );
-    let error = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20)), entry(&w)) {
-        Err(error) => error,
-        Ok(_) => panic!("bottom slab admitted as dust support"),
-    };
-    assert_eq!(error.position, Some(wire));
-    assert_eq!(error.reason, "invalid attachment support");
+    let program = compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20)), entry(&w)).unwrap();
+    let mut runtime = program.start();
+    for powered in [true, false, true] {
+        crate::interaction::use_redstone(w.get_block(source), &mut w, source, None);
+        runtime.set_input(0, powered).unwrap();
+        for _ in 0..3 {
+            w.tick_interpreted();
+            runtime.tick().unwrap();
+            assert_eq!(runtime.project(wire), Some(w.get_block(wire)));
+            let lamp = BlockPos::new(17, 15, 15);
+            assert_eq!(runtime.project(lamp), Some(w.get_block(lamp)));
+        }
+    }
 }
 
 #[test]
@@ -2610,7 +2728,8 @@ fn world_compiler_runs_repeater_and_lamp() {
     let repeater_index = program.positions.iter().position(|&pos| pos == repeater).unwrap();
     let lamp_index = program.positions.iter().position(|&pos| pos == lamp).unwrap();
     assert!(
-        program.output_program(repeater_index, false)
+        program
+            .output_program(repeater_index, false)
             .iter()
             .any(|op| matches!(op, Operation::UpdateLamp(id) if *id == lamp_index))
     );
@@ -3175,4 +3294,3 @@ fn preserves_pending_ticks_and_rejects_boundary() {
     };
     assert!(compile(&w, (BlockPos::new(-1, 0, 0), pos), entry).is_err());
 }
-

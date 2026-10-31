@@ -13,7 +13,7 @@ fn world() -> PlotWorld {
 }
 
 #[test]
-fn copper_bulb_rewind_restores_state_and_light() {
+fn copper_bulb_rewind_restores_state() {
     let mut world = world();
     let pos = BlockPos::new(4, 30, 4);
     let bulb = Block::from_name("exposed_copper_bulb")
@@ -26,10 +26,9 @@ fn copper_bulb_rewind_restores_state_and_light() {
     world.set_block(pos, Block::Air);
     world.tick_interpreted();
     world.flush_block_changes();
-    assert_eq!(world.bulb_light_at(pos), 0);
+    assert_eq!(world.get_block(pos), Block::Air);
     world.rewind_ticks(2, false).unwrap();
     assert_eq!(world.get_block(pos), bulb);
-    assert_eq!(world.bulb_light_at(pos), 12);
 }
 
 #[derive(Debug, PartialEq)]

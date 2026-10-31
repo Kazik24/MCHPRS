@@ -41,7 +41,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                     Block::Air | Block::Stone {} | Block::Wool { .. } | Block::Glowstone | Block::Target => {}
                     block if block.slab_type().is_some() => {}
                     block if block.is_sign() => {}
-                    Block::Lever { lever } if matches!(lever.face, LeverFace::Floor | LeverFace::Wall) => {
+                    Block::Lever { .. } => {
                         sources.push(positions.len());
                         positions.push(pos);
                     }
@@ -49,6 +49,8 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                         sources.push(positions.len());
                         positions.push(pos);
                     }
+                    // Player contact resets Redpiler before changing a pressure plate.
+                    block if block.pressure_plate_powered().is_some() => positions.push(pos),
                     block if block.is_command_block() => positions.push(pos),
                     Block::RedstoneWire { .. } => {
                         positions.push(pos);
@@ -57,6 +59,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                         positions.push(pos);
                     }
                     Block::Hopper { .. } => positions.push(pos),
+                    Block::IronTrapdoor { .. } => positions.push(pos),
                     Block::NoteBlock { .. } => positions.push(pos),
                     Block::RedstoneBlock => positions.push(pos),
                     Block::RedstoneComparator { .. } => positions.push(pos),
@@ -75,27 +78,20 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
                         });
                         positions.push(pos);
                     }
-                    block if is_passive_geometry(block) => {}
+                    block if !crate::redstone::has_neighbor_update(block) => {}
                     _ => return Err(error(pos, "unsupported component")),
-                }
-                if world.get_block(pos).is_command_block() && world.get_block_entity(pos).is_none() {
-                    return Err(error(pos, "command block execution is unsupported"));
                 }
                 if let Some(entity) = world.get_block_entity(pos) {
                     let block = world.get_block(pos);
                     let supported = match (block, entity) {
                         (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => true,
-                        (block, BlockEntity::Container { comparator_override, ty, .. }) => {
-                            *comparator_override <= 15 && ContainerType::from_block(block) == Some(*ty)
+                        (Block::RedstoneComparator { .. }, BlockEntity::Comparator { .. }) => false,
+                        (block, BlockEntity::Container { comparator_override, .. }) if ContainerType::from_block(block).is_some() => {
+                            *comparator_override <= 15
                         }
-                        (block, BlockEntity::CommandBlock(command)) if block.is_command_block() => {
-                            if command.automatic || command.powered || entry.scheduled.iter().any(|tick| tick.pos == pos) {
-                                return Err(error(pos, "command block execution is unsupported"));
-                            }
-                            true
-                        }
-                        (block, BlockEntity::Sign(_)) => block.is_sign(),
-                        _ => false,
+                        (Block::MovingPiston { .. }, _) => false,
+                        // The interpreter ignores stale entities attached to other block types.
+                        _ => true,
                     };
                     if !supported {
                         return Err(error(pos, "unsupported block entity"));
@@ -104,23 +100,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
             }
         }
     }
-    {
-        check_cancelled(monitor)?;
-        for pos in positions.iter().copied().filter(|&pos| {
-            matches!(
-                world.get_block(pos),
-                Block::Lever { .. }
-                    | Block::StoneButton { .. }
-                    | Block::RedstoneWire { .. }
-                    | Block::RedstoneTorch { .. }
-                    | Block::RedstoneWallTorch { .. }
-            )
-        }) {
-            if !crate::interaction::is_valid_position(world.get_block(pos), scratch.world(), pos) {
-                return Err(error(pos, "invalid attachment support"));
-            }
-        }
-    }
+    // Existing saves need not satisfy placement rules; native redstone callbacks retain them too.
     let wire_positions: Vec<_> = positions
         .iter()
         .copied()
@@ -134,7 +114,7 @@ pub(in super::super) fn run(context: &Context<'_, impl World>, phases: &mut Comp
     let hopper_positions: Vec<_> = positions
         .iter()
         .copied()
-        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::Hopper { .. }))
+        .filter(|&pos| matches!(scratch.world().get_block(pos), Block::Hopper { .. } | Block::IronTrapdoor { .. }))
         .collect();
     let note_positions: Vec<_> = positions
         .iter()

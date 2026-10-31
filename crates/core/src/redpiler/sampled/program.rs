@@ -10,6 +10,8 @@ pub(super) enum Operation {
     CheckWatchedWire(usize),
     UpdateLamp(usize),
     UpdateHopper(usize),
+    UpdateTrapdoor(usize),
+    UpdateCommandBlock(usize),
     UpdateNoteBlock(usize),
     UpdateCopperBulb(usize),
     UpdateRepeater(usize),
@@ -117,6 +119,7 @@ pub(super) struct ComparatorRecord {
 pub(super) enum ComparatorInput {
     Static(u8),
     CopperBulb(usize),
+    CommandBlock(usize),
 }
 
 #[derive(Clone)]
@@ -140,6 +143,8 @@ pub(super) struct PistonBinding {
 
 #[derive(Clone)]
 pub(crate) struct Program {
+    pub(super) command_blocks: HashMap<BlockPos, Box<mchprs_blocks::block_entities::CommandBlockEntity>>,
+    pub(super) command_output_state: Option<crate::world::CommandBlockOutputState>,
     pub(super) piston_by_component: Vec<Option<usize>>,
     pub(super) piston_bindings: Vec<PistonBinding>,
     pub(super) repeater_by_component: Vec<Option<usize>>,
@@ -148,7 +153,7 @@ pub(crate) struct Program {
     pub(super) movable_sources: Vec<bool>,
     pub(super) has_reactive: bool,
     pub(super) comparators: Vec<ComparatorRecord>,
-    pub(super) comparators_by_copper_bulb: Vec<Vec<usize>>,
+    pub(super) comparators_by_override: Vec<Vec<usize>>,
     pub(super) side_links: Vec<ElectricalLink>,
     pub(super) reactive: Vec<bool>,
     pub(super) reactive_wires: Vec<ReactiveWire>,
@@ -226,6 +231,12 @@ fn validate_operation(
         Operation::UpdateHopper(slot) if !matches!(initial.get(slot), Some(Block::Hopper { .. })) => {
             return Err(invalid("sampled program UpdateHopper target is not a hopper"));
         }
+        Operation::UpdateTrapdoor(slot) if !matches!(initial.get(slot), Some(Block::IronTrapdoor { .. })) => {
+            return Err(invalid("sampled program UpdateTrapdoor target is not an iron trapdoor"));
+        }
+        Operation::UpdateCommandBlock(slot) if !initial.get(slot).is_some_and(|block| block.is_command_block()) => {
+            return Err(invalid("sampled program UpdateCommandBlock target is not a command block"));
+        }
         Operation::UpdateNoteBlock(slot) if !matches!(initial.get(slot), Some(Block::NoteBlock { .. })) => {
             return Err(invalid("sampled program UpdateNoteBlock target is not a note block"));
         }
@@ -250,14 +261,21 @@ fn validate_operation(
 }
 
 fn validate_histogram_bound(blocks: &[Block]) -> Result<(), ScratchError> {
-    if blocks.iter().try_fold(0u32, |count, block| {
-        count.checked_add(match block {
-            Block::RedstoneComparator { .. } => 2,
-            Block::RedstoneWire { .. } => 1,
-            _ => 0,
+    if blocks
+        .iter()
+        .try_fold(0u32, |count, block| {
+            count.checked_add(match block {
+                Block::RedstoneComparator { .. } => 2,
+                Block::RedstoneWire { .. } => 1,
+                _ => 0,
+            })
         })
-    }).is_none() {
-        return Err(ScratchError { position: None, reason: "compiled analog channel capacity exceeded" });
+        .is_none()
+    {
+        return Err(ScratchError {
+            position: None,
+            reason: "compiled analog channel capacity exceeded",
+        });
     }
     Ok(())
 }
@@ -531,19 +549,19 @@ impl Program {
             self.repeater_by_component[record.component] = Some(index);
         }
         self.comparator_by_component = vec![None; self.initial.len()];
-        self.comparators_by_copper_bulb = vec![vec![]; self.initial.len()];
+        self.comparators_by_override = vec![vec![]; self.initial.len()];
         for (index, record) in self.comparators.iter().enumerate() {
             self.comparator_by_component[record.component] = Some(index);
             for source in [record.rear_override, record.far_override]
                 .into_iter()
                 .flatten()
                 .filter_map(|input| match input {
-                    ComparatorInput::CopperBulb(source) => Some(source),
+                    ComparatorInput::CopperBulb(source) | ComparatorInput::CommandBlock(source) => Some(source),
                     ComparatorInput::Static(_) => None,
                 })
             {
-                if !self.comparators_by_copper_bulb[source].contains(&record.component) {
-                    self.comparators_by_copper_bulb[source].push(record.component);
+                if !self.comparators_by_override[source].contains(&record.component) {
+                    self.comparators_by_override[source].push(record.component);
                 }
             }
         }
@@ -730,6 +748,7 @@ impl Program {
                 | Block::StoneButton { .. }
                 | Block::RedstoneLamp { .. }
                 | Block::Hopper { .. }
+                | Block::IronTrapdoor { .. }
                 | Block::NoteBlock { .. }
                 | Block::RedstoneComparator { .. }
                 | Block::RedstoneBlock
@@ -737,7 +756,7 @@ impl Program {
                 | Block::Observer { .. }
                 | Block::RedstoneTorch { .. }
                 | Block::RedstoneWallTorch { .. } => {}
-                block if block.is_command_block() || block.is_copper_bulb() => {}
+                block if block.is_command_block() || block.is_copper_bulb() || block.pressure_plate_powered().is_some() => {}
                 Block::RedstoneWire { wire } if wire.power <= 15 => {}
                 Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
                 Block::RedstoneRepeater { repeater } if (1..=4).contains(&repeater.delay) => {}
@@ -799,6 +818,7 @@ impl Program {
                     | Block::RedstoneWallTorch { .. }
             ) && !source.is_copper_bulb()
                 && !source.is_command_block()
+                && source.pressure_plate_powered().is_none()
             {
                 return Err(invalid("sampled program link source must be lever, button, wire or repeater"));
             }
@@ -807,6 +827,7 @@ impl Program {
                 Block::RedstoneWire { .. }
                     | Block::RedstoneLamp { .. }
                     | Block::Hopper { .. }
+                    | Block::IronTrapdoor { .. }
                     | Block::NoteBlock { .. }
                     | Block::RedstoneRepeater { .. }
                     | Block::RedstoneComparator { .. }
@@ -861,6 +882,8 @@ impl Program {
             })
             .collect();
         Ok(Self {
+            command_blocks: HashMap::new(),
+            command_output_state: None,
             piston_by_component: Vec::new(),
             piston_bindings: Vec::new(),
             repeater_by_component: Vec::new(),
@@ -869,7 +892,7 @@ impl Program {
             movable_sources: Vec::new(),
             has_reactive: false,
             comparators: Vec::new(),
-            comparators_by_copper_bulb: vec![vec![]; component_count],
+            comparators_by_override: vec![vec![]; component_count],
             side_links: Vec::new(),
             reactive: vec![false; initial.len()],
             reactive_wires: Vec::new(),
@@ -994,7 +1017,12 @@ impl Program {
                             .arrangement_links
                             .get(flip.link)
                             .ok_or_else(|| invalid("invalid movement flip link"))?;
-                        if link.group != group || flip.target != link.target || flip.source != link.source || flip.attenuation != link.attenuation || flip.side != link.side {
+                        if link.group != group
+                            || flip.target != link.target
+                            || flip.source != link.source
+                            || flip.attenuation != link.attenuation
+                            || flip.side != link.side
+                        {
                             return Err(invalid("movement flip does not match its link"));
                         }
                     }
@@ -1050,6 +1078,7 @@ impl Program {
                 let valid = match input {
                     ComparatorInput::Static(level) => level <= 15,
                     ComparatorInput::CopperBulb(source) => self.initial.get(source).is_some_and(|block| block.is_copper_bulb()),
+                    ComparatorInput::CommandBlock(source) => self.initial.get(source).is_some_and(|block| block.is_command_block()),
                 };
                 if !valid {
                     return Err(invalid("invalid comparator override reference"));
@@ -1133,6 +1162,9 @@ impl Program {
             .and_then(|n| n.checked_add(self.tokens.len()))
             .expect("validated motion capacity");
         let mut runtime = Runtime {
+            command_blocks: self.command_blocks.clone(),
+            command_output_state: self.command_output_state.clone(),
+            command_emissions: Vec::new(),
             piston_state: mchprs_world::PistonState::default(),
             comparator_outputs: {
                 let mut outputs = vec![0; self.initial.len()];
@@ -1205,6 +1237,7 @@ impl Program {
                 .iter()
                 .map(|link| {
                     let strength: u8 = match self.initial[link.source] {
+                        block if block.pressure_plate_powered().is_some() => u8::from(block.pressure_plate_powered() == Some(true)) * 15,
                         Block::Lever { lever } => {
                             if lever.powered {
                                 15
@@ -1304,7 +1337,11 @@ impl Program {
             }
         }
         for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
-            runtime.input_levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index], &mut runtime.input_histograms);
+            runtime.input_levels[link.target][usize::from(link.side)].change(
+                0,
+                runtime.arrangement_contributions[index],
+                &mut runtime.input_histograms,
+            );
         }
         for source in 0..runtime.program.side_outputs.len() {
             let level = runtime.output(source);
