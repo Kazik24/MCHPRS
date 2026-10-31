@@ -1,8 +1,6 @@
-#[path = "../redstone/piston/cache.rs"]
-mod instant_piston;
 pub mod storage;
-pub use instant_piston::InstantPistonCache;
-pub(crate) use instant_piston::PowerRoute;
+pub use crate::redstone::piston::InstantPistonCache;
+pub(crate) use crate::redstone::piston::PowerRoute;
 pub(crate) mod wire_cache;
 pub use wire_cache::Neighbor as WireNeighbor;
 

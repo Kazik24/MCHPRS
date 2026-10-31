@@ -990,15 +990,19 @@ impl ScratchWorld {
         {
             return Err(invalid_bounds());
         }
-        let Some(read_min_x) = min.x.checked_sub(1) else { return Err(invalid_bounds()) };
-        let Some(read_min_y) = min.y.checked_sub(1) else { return Err(invalid_bounds()) };
-        let Some(read_min_z) = min.z.checked_sub(1) else { return Err(invalid_bounds()) };
-        let Some(read_max_x) = max.x.checked_add(1) else { return Err(invalid_bounds()) };
-        let Some(read_max_y) = max.y.checked_add(1) else { return Err(invalid_bounds()) };
-        let Some(read_max_z) = max.z.checked_add(1) else { return Err(invalid_bounds()) };
-        let read_min = BlockPos::new(read_min_x, read_min_y, read_min_z);
-        let read_max = BlockPos::new(read_max_x, read_max_y, read_max_z);
-        let read_bounds = (read_min, read_max);
+        let Some(probe_min_x) = min.x.checked_sub(1) else { return Err(invalid_bounds()) };
+        let Some(probe_min_y) = min.y.checked_sub(1) else { return Err(invalid_bounds()) };
+        let Some(probe_min_z) = min.z.checked_sub(1) else { return Err(invalid_bounds()) };
+        let Some(probe_max_x) = max.x.checked_add(1) else { return Err(invalid_bounds()) };
+        let Some(probe_max_y) = max.y.checked_add(1) else { return Err(invalid_bounds()) };
+        let Some(probe_max_z) = max.z.checked_add(1) else { return Err(invalid_bounds()) };
+        let probe_min = BlockPos::new(probe_min_x, probe_min_y, probe_min_z);
+        let probe_max = BlockPos::new(probe_max_x, probe_max_y, probe_max_z);
+        let probe_bounds = (probe_min, probe_max);
+        let read_bounds = (
+            BlockPos::new(plot_min_x, 0, plot_min_z),
+            BlockPos::new(plot_max_x, PLOT_BLOCK_HEIGHT - 1, plot_max_z),
+        );
         if entry.piston.phase != AdvancePhase::BetweenTicks {
             return Err(ScratchError {
                 position: None,
@@ -1030,17 +1034,31 @@ impl ScratchWorld {
             });
         }
 
-        let chunks = (0..PLOT_WIDTH)
-            .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(plot_x * PLOT_WIDTH + x, plot_z * PLOT_WIDTH + z)))
-            .collect();
-        let mut world = PlotWorld::from_chunks(plot_x, plot_z, chunks, TickScheduler::<ScheduledBlockTick>::default());
-        let mut baseline = HashMap::new();
-
-        let owned_chunks_x = min.x.div_euclid(16)..=max.x.div_euclid(16);
-        let owned_chunks_z = min.z.div_euclid(16)..=max.z.div_euclid(16);
-        for chunk_x in owned_chunks_x.clone() {
-            for chunk_z in owned_chunks_z.clone() {
-                if source.get_chunk(chunk_x, chunk_z).is_none() {
+        let mut read_chunks = HashSet::new();
+        let plot_chunk_min_x = plot_min_x.div_euclid(16);
+        let plot_chunk_max_x = plot_max_x.div_euclid(16);
+        let plot_chunk_min_z = plot_min_z.div_euclid(16);
+        let plot_chunk_max_z = plot_max_z.div_euclid(16);
+        let mut chunks = Vec::with_capacity((PLOT_WIDTH * PLOT_WIDTH) as usize);
+        for chunk_x in plot_chunk_min_x..=plot_chunk_max_x {
+            if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
+            for chunk_z in plot_chunk_min_z..=plot_chunk_max_z {
+                if let Some(chunk) = source.get_chunk(chunk_x, chunk_z) {
+                    read_chunks.insert((chunk_x, chunk_z));
+                    chunks.push(chunk.staging_clone());
+                } else {
+                    chunks.push(Chunk::empty(chunk_x, chunk_z));
+                }
+            }
+        }
+        for chunk_x in min.x.div_euclid(16)..=max.x.div_euclid(16) {
+            for chunk_z in min.z.div_euclid(16)..=max.z.div_euclid(16) {
+                if !read_chunks.contains(&(chunk_x, chunk_z)) {
                     return Err(ScratchError {
                         position: Some(BlockPos::new(chunk_x * 16, min.y, chunk_z * 16)),
                         reason: "scratch capture contains an unloaded chunk",
@@ -1048,18 +1066,8 @@ impl ScratchWorld {
                 }
             }
         }
-        let mut read_chunks = HashSet::new();
-        let plot_chunk_min_x = plot_min_x.div_euclid(16);
-        let plot_chunk_max_x = plot_max_x.div_euclid(16);
-        let plot_chunk_min_z = plot_min_z.div_euclid(16);
-        let plot_chunk_max_z = plot_max_z.div_euclid(16);
-        for chunk_x in (read_min.x.div_euclid(16).max(plot_chunk_min_x))..=(read_max.x.div_euclid(16).min(plot_chunk_max_x)) {
-            for chunk_z in (read_min.z.div_euclid(16).max(plot_chunk_min_z))..=(read_max.z.div_euclid(16).min(plot_chunk_max_z)) {
-                if source.get_chunk(chunk_x, chunk_z).is_some() {
-                    read_chunks.insert((chunk_x, chunk_z));
-                }
-            }
-        }
+        let mut world = PlotWorld::from_chunks(plot_x, plot_z, chunks, TickScheduler::<ScheduledBlockTick>::default());
+        let mut baseline = HashMap::new();
         for y in min.y..=max.y {
             if monitor.is_some_and(super::TaskMonitor::cancelled) {
                 return Err(ScratchError {
@@ -1071,26 +1079,22 @@ impl ScratchWorld {
                 let raw = source.get_block_raw(pos);
                 let entity = source.get_block_entity(pos).cloned();
                 if raw != Block::Air.get_id() || entity.is_some() {
-                    baseline.insert(pos, (raw, entity.clone()));
-                    world.set_block_raw(pos, raw);
-                    if let Some(entity) = entity {
-                        world.set_block_entity(pos, entity);
-                    }
+                    baseline.insert(pos, (raw, entity));
                 }
             });
         }
 
-        // The selection owns writes; its one-cell probe context is read-only.
+        // Out-of-plot Air is admitted only in the selection's adjacent probe context.
         let mut contract_air = HashSet::new();
-        for y in read_min.y..=read_max.y {
+        for y in probe_min.y..=probe_max.y {
             if monitor.is_some_and(super::TaskMonitor::cancelled) {
                 return Err(ScratchError {
                     position: None,
                     reason: "compilation cancelled",
                 });
             }
-            for z in read_min.z..=read_max.z {
-                for x in read_min.x..=read_max.x {
+            for z in probe_min.z..=probe_max.z {
+                for x in probe_min.x..=probe_max.x {
                     let pos = BlockPos::new(x, y, z);
                     if contains(bounds, pos) {
                         continue;
@@ -1103,18 +1107,6 @@ impl ScratchWorld {
                             contract_air.insert(pos);
                         }
                         continue;
-                    }
-                    if !read_chunks.contains(&(x.div_euclid(16), z.div_euclid(16))) {
-                        continue;
-                    }
-                    let raw = source.get_block_raw(pos);
-                    let entity = source.get_block_entity(pos).cloned();
-                    if raw != Block::Air.get_id() || entity.is_some() {
-                        baseline.insert(pos, (raw, entity.clone()));
-                        world.set_block_raw(pos, raw);
-                        if let Some(entity) = entity {
-                            world.set_block_entity(pos, entity);
-                        }
                     }
                 }
             }

@@ -1,5 +1,5 @@
 //! Historical native-cycle certificates cache addresses, never electrical results.
-use super::WireNeighbor;
+use crate::world::WireNeighbor;
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use rustc_hash::FxHashMap;
 use std::cell::Cell;

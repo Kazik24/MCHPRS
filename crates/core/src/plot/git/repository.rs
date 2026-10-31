@@ -37,7 +37,6 @@ pub(super) fn valid_branch(name: &str) -> bool {
         && !(name.len() >= 8 && name.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
-// TODO: Decouple database access from repository logic.
 impl Repository {
     pub fn sidebar_head(&self) -> Result<String> {
         let (head, tip) = self.head()?;
@@ -45,13 +44,11 @@ impl Repository {
     }
 
     pub fn head(&self) -> Result<(String, Option<String>)> {
-        let active: String = self.conn.query_row("SELECT value FROM meta WHERE key='active'", [], |r| r.get(0))?;
+        let active = self.active_reference()?;
         let tip = if let Some(id) = active.strip_prefix('@') {
             Some(id.to_owned())
         } else {
-            self.conn
-                .query_row("SELECT tip FROM branches WHERE name=?1", [&active], |r| r.get(0))
-                .optional()?
+            self.branch_tip(&active)?
         };
         Ok((active, tip))
     }
@@ -60,30 +57,19 @@ impl Repository {
         if reference == "HEAD" {
             return self.head()?.1.context(messages::GIT_NO_COMMITS_HINT);
         }
-        if let Some(tip) = self
-            .conn
-            .query_row("SELECT tip FROM branches WHERE name=?1", [reference], |r| r.get(0))
-            .optional()?
-        {
+        if let Some(tip) = self.branch_tip(reference)? {
             return Ok(tip);
         }
         ensure!(
             (8..=64).contains(&reference.len()) && reference.bytes().all(|b| b.is_ascii_hexdigit()),
             messages::git_unknown_reference(reference)
         );
-        let mut query = self.conn.prepare("SELECT id FROM commits WHERE id LIKE ?1 LIMIT 2")?;
-        let matches = query
-            .query_map([format!("{}%", reference.to_ascii_lowercase())], |r| r.get::<_, String>(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let matches = self.commit_matches(reference)?;
         match matches.as_slice() {
             [id] => Ok(id.clone()),
             [] => bail!(messages::git_unknown_commit(reference)),
             _ => bail!(messages::GIT_AMBIGUOUS_COMMIT),
         }
-    }
-
-    fn snapshot_id(&self, commit: &str) -> Result<String> {
-        Ok(self.conn.query_row("SELECT snapshot FROM commits WHERE id=?1", [commit], |r| r.get(0))?)
     }
 
     pub fn load(&self, commit: &str) -> Result<Snapshot> {
@@ -94,64 +80,11 @@ impl Repository {
         self.object_raw_size(&self.snapshot_id(commit)?)
     }
 
-    fn object_raw_size(&self, object: &str) -> Result<usize> {
-        let prefix: Vec<u8> = self
-            .conn
-            .query_row("SELECT substr(blob,1,4) FROM objects WHERE id=?1", [object], |r| r.get(0))?;
-        let size = u32::from_le_bytes(prefix.as_slice().try_into().context(messages::GIT_INVALID_SIZE_HEADER)?) as usize;
-        ensure!(size <= self.limits.snapshot, messages::GIT_OBJECT_SNAPSHOT_SIZE_LIMIT);
-        Ok(size)
-    }
-
     pub fn pending_size(&self) -> Result<usize> {
-        let (target, before): (String, String) = self
-            .conn
-            .query_row("SELECT commit_id,before_snapshot FROM checkout WHERE id=1", [], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })?;
+        let (_, target, before) = self.checkout_record()?;
         // Startup recovery decodes the before snapshot, drops it, then decodes
         // the target. Reserve the larger peak rather than both at once.
         Ok(self.raw_size(&target)?.max(self.object_raw_size(&before)?))
-    }
-
-    fn load_object(&self, id: &str) -> Result<Snapshot> {
-        let declared = self.object_raw_size(id)?;
-        let size: usize = self.conn.query_row("SELECT length(blob) FROM objects WHERE id=?1", [id], |r| r.get(0))?;
-        ensure!(size <= compressed_bound(declared), messages::GIT_OVERSIZED_OBJECT);
-        let bytes: Vec<u8> = self.conn.query_row("SELECT blob FROM objects WHERE id=?1", [id], |r| r.get(0))?;
-        let snapshot = Snapshot::decode(&bytes, self.plot, self.limits.snapshot)?;
-        ensure!(snapshot.fingerprints()?.full == id, messages::GIT_CHECKSUM_MISMATCH);
-        Ok(snapshot)
-    }
-
-    fn store(&self, snapshot: &Snapshot, fp: &Fingerprints) -> Result<()> {
-        snapshot.validate(self.plot)?;
-        if self
-            .conn
-            .query_row("SELECT 1 FROM objects WHERE id=?1", [&fp.full], |_| Ok(()))
-            .optional()?
-            .is_some()
-        {
-            return Ok(());
-        }
-        let bytes = snapshot.encode(self.limits.snapshot)?;
-        let used: u64 = self
-            .conn
-            .query_row("SELECT COALESCE(sum(length(blob)),0) FROM objects", [], |r| r.get(0))?;
-        ensure!(
-            used.saturating_add(bytes.len() as u64) <= self.limits.plot_bytes,
-            messages::GIT_PLOT_STORAGE_FULL
-        );
-        let total = self.other_database_bytes()?.saturating_add(self.database_bytes()?);
-        ensure!(
-            total.saturating_add(bytes.len() as u64 + 65536) <= self.limits.total_bytes,
-            messages::GIT_GLOBAL_STORAGE_FULL
-        );
-        self.conn.execute(
-            "INSERT INTO objects VALUES(?1,?2,?3,?4)",
-            params![fp.full, fp.content, fp.execution, bytes],
-        )?;
-        Ok(())
     }
 
     pub fn commit(&mut self, snapshot: &Snapshot, author: u128, name: &str, message: &str) -> Result<String> {
@@ -176,17 +109,11 @@ impl Repository {
                 now,
                 message,
             ))?));
-            repo.conn.execute(
-                "INSERT INTO commits(id,parent,snapshot,author,name,date,message,message_fold) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-                params![id, parent, fp.full, author.to_string(), name, now, message, message.to_lowercase()],
-            )?;
+            repo.insert_commit(database::CommitRecord { id: &id, parent: parent.as_deref(), snapshot: &fp.full, author, name, date: now, message })?;
             if branch.starts_with('@') {
-                repo.conn.execute("UPDATE meta SET value=?1 WHERE key='active'", [format!("@{id}")])?;
+                repo.set_active(&format!("@{id}"))?;
             } else {
-                repo.conn.execute(
-                    "INSERT INTO branches VALUES(?1,?2) ON CONFLICT(name) DO UPDATE SET tip=excluded.tip",
-                    params![branch, id],
-                )?;
+                repo.set_branch_tip(&branch, &id)?;
             }
             Ok(messages::git_committed(&id[..8], head_label(&branch), message))
         })
@@ -198,17 +125,13 @@ impl Repository {
             let tip = repo.resolve(reference)?;
             ensure!(repo.names()?.len() < 128, messages::GIT_BRANCH_LIMIT);
             ensure!(!repo.names()?.iter().any(|n| n == name), messages::GIT_BRANCH_EXISTS);
-            repo.conn.execute("INSERT INTO branches VALUES(?1,?2)", params![name, tip])?;
+            repo.insert_branch(name, &tip)?;
             Ok(messages::git_branch_created(name, &tip[..8]))
         })
     }
 
     pub fn names(&self) -> Result<Vec<String>> {
-        Ok(self
-            .conn
-            .prepare("SELECT name FROM branches ORDER BY name")?
-            .query_map([], |r| r.get(0))?
-            .collect::<rusqlite::Result<_>>()?)
+        self.branch_names()
     }
 
     pub fn branches(&self) -> Result<Value> {
@@ -230,25 +153,13 @@ impl Repository {
         Ok(json!({"text": messages::GIT_BRANCHES_HEADING, "color": "gray", "extra": extra}))
     }
 
-    fn branch_tips(&self) -> Result<Vec<(String, String)>> {
-        Ok(self
-            .conn
-            .prepare("SELECT name,tip FROM branches ORDER BY name")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<rusqlite::Result<_>>()?)
-    }
-
     pub fn status(&self, snapshot: &Snapshot) -> Result<String> {
         let (branch, tip) = self.head()?;
         let usage = self.database_bytes()?;
         let Some(tip) = tip else {
             return Ok(messages::GIT_CREATE_MASTER_HINT.into());
         };
-        let saved: (String, String) = self
-            .conn
-            .query_row("SELECT content,execution FROM objects WHERE id=?1", [self.snapshot_id(&tip)?], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })?;
+        let saved = self.object_fingerprints(&self.snapshot_id(&tip)?)?;
         let fp = snapshot.fingerprints()?;
         Ok(messages::git_status(
             head_label(&branch),
@@ -307,67 +218,6 @@ impl Repository {
             .collect())
     }
 
-    fn history_rows(&self, all: bool, query: Option<&str>, offset: usize, limit: usize) -> Result<Vec<Value>> {
-        let (active, tip) = self.head()?;
-        let Some(tip) = tip else {
-            return Ok(Vec::new());
-        };
-        let sql = if all {
-            "SELECT id,date,name,message FROM commits WHERE instr(message_fold,?2)>0 ORDER BY seq DESC LIMIT ?4 OFFSET ?3"
-        } else {
-            "WITH RECURSIVE history(id,parent,date,name,message,message_fold,depth) AS (SELECT id,parent,date,name,message,message_fold,0 FROM commits WHERE id=?1 UNION ALL SELECT c.id,c.parent,c.date,c.name,c.message,c.message_fold,h.depth+1 FROM commits c JOIN history h ON c.id=h.parent ORDER BY 7) SELECT id,date,name,message FROM history WHERE instr(message_fold,?2)>0 LIMIT ?4 OFFSET ?3"
-        };
-        let rows = self
-            .conn
-            .prepare(sql)?
-            .query_map(params![tip, query.unwrap_or("").to_lowercase(), offset as i64, limit as i64], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, i64>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                ))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        let branches = self.branch_tips()?;
-        Ok(rows
-            .into_iter()
-            .map(|(id, timestamp, author, message)| {
-                let date = chrono::Local
-                    .timestamp_opt(timestamp, 0)
-                    .single()
-                    .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
-                    .unwrap_or_default();
-                let mut extra = Vec::new();
-                let tips: Vec<_> = branches.iter().filter(|(_, tip)| tip == &id).collect();
-                if !tips.is_empty() || (active.starts_with('@') && active[1..] == id) {
-                    extra.push(json!({"text": " (", "color": "yellow"}));
-                    if active.starts_with('@') && active[1..] == id {
-                        extra.push(json!({"text": "HEAD", "color": "aqua"}));
-                        if !tips.is_empty() {
-                            extra.push(json!({"text": ", ", "color": "yellow"}));
-                        }
-                    }
-                    for (index, (branch, _)) in tips.iter().enumerate() {
-                        if index > 0 {
-                            extra.push(json!({"text": ", ", "color": "yellow"}));
-                        }
-                        if branch == &active {
-                            extra.push(json!({"text": "HEAD", "color": "aqua"}));
-                            extra.push(json!({"text": " -> ", "color": "yellow"}));
-                        }
-                        extra.push(json!({"text": branch, "color": "green"}));
-                    }
-                    extra.push(json!({"text": ")", "color": "yellow"}));
-                }
-                extra.push(json!({"text": format!("  {message}"), "color": "white"}));
-                json!({"text": format!("\n{}", &id[..8]), "color": "yellow", "extra": extra,
-                "hover_event": {"action": "show_text", "value": {"text": format!("Author: {author}\nDate: {date}\n{}", &id[..8])}},
-                "click_event": {"action": "copy_to_clipboard", "value": &id[..8]}})
-            })
-            .collect())
-    }
-
     pub fn log_count(&self, all: bool, count: usize) -> Result<Value> {
         // ponytail: cap one chat response at 1000 rows; use --page for longer trails.
         let rows = self.history_rows(all, None, 0, count.clamp(1, 1000))?;
@@ -402,10 +252,7 @@ impl Repository {
             let Some(commit) = id else {
                 break;
             };
-            let (parent, timestamp, author): (Option<String>, i64, String) =
-                self.conn.query_row("SELECT parent,date,name FROM commits WHERE id=?1", [&commit], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-                })?;
+            let (parent, timestamp, author) = self.commit_history_details(&commit)?;
             let Some(parent) = parent else {
                 break;
             };
@@ -454,11 +301,7 @@ impl Repository {
 
     pub fn show(&self, reference: &str) -> Result<String> {
         let id = self.resolve(reference)?;
-        let (name, date, message, parent): (String, i64, String, Option<String>) =
-            self.conn
-                .query_row("SELECT name,date,message,parent FROM commits WHERE id=?1", [&id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-                })?;
+        let (name, date, message, parent) = self.commit_details(&id)?;
         Ok(messages::git_commit_details(
             &id[..8],
             name,
@@ -470,18 +313,7 @@ impl Repository {
 
     pub fn recoveries(&self, page: usize) -> Result<Value> {
         ensure!((1..=100_000).contains(&page), messages::GIT_INVALID_PAGE);
-        let rows = self
-            .conn
-            .prepare("SELECT id,date,name,source FROM recoveries ORDER BY seq DESC LIMIT 11 OFFSET ?1")?
-            .query_map([((page - 1) * 10) as i64], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, i64>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                ))
-            })?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let rows = self.recovery_rows(page)?;
         let mut extra: Vec<_> = rows
             .iter()
             .take(10)
@@ -511,13 +343,7 @@ impl Repository {
         );
         self.transaction(|repo| {
             ensure!(repo.names()?.len() < 128, messages::GIT_BRANCH_LIMIT);
-            let rows = repo
-                .conn
-                .prepare("SELECT id,snapshot,parent FROM recoveries WHERE id LIKE ?1 LIMIT 2")?
-                .query_map([format!("{recovery}%")], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?))
-                })?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let rows = repo.recovery_matches(recovery)?;
             ensure!(rows.len() == 1, messages::GIT_UNKNOWN_RECOVERY_ID);
             let (recovery, snapshot, parent) = &rows[0];
             let now = chrono::Utc::now().timestamp();
@@ -531,17 +357,14 @@ impl Repository {
                 &message,
                 branch,
             ))?));
-            repo.conn.execute(
-                "INSERT INTO commits(id,parent,snapshot,author,name,date,message,message_fold) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-                params![id, parent, snapshot, author.to_string(), name, now, message, message.to_lowercase()],
-            )?;
-            repo.conn.execute("INSERT INTO branches VALUES(?1,?2)", params![branch, id])?;
+            repo.insert_commit(database::CommitRecord { id: &id, parent: Some(parent), snapshot, author, name, date: now, message: &message })?;
+            repo.insert_branch(branch, &id)?;
             Ok(())
         })
     }
 
     pub fn has_pending(&self) -> Result<bool> {
-        Ok(self.conn.query_row("SELECT 1 FROM checkout", [], |_| Ok(())).optional()?.is_some())
+        self.checkout_exists()
     }
 
     pub fn checkout(
@@ -639,14 +462,10 @@ impl Repository {
                     name,
                     chrono::Utc::now().timestamp_nanos_opt().unwrap(),
                 ))?));
-                repo.conn.execute(
-                    "INSERT INTO recoveries(id,snapshot,parent,author,name,date,source) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-                    params![id, fp.full, head, author.to_string(), name, now, source],
-                )?;
+                repo.insert_recovery(database::RecoveryRecord { id: &id, parent: &head, snapshot: &fp.full, author, name, date: now, source: &source })?;
                 recovery = Some(id);
             }
-            repo.conn
-                .execute("INSERT INTO checkout VALUES(1,?1,?2,?3)", params![destination, target, fp.full])?;
+            repo.insert_checkout(destination, target, &fp.full)?;
             Ok(())
         })?;
         let snapshot = self.finish_or_rollback(before, save)?;
@@ -664,7 +483,7 @@ impl Repository {
                 // Restore the exact captured working state, even if target save succeeded.
                 before.data.save_to_file(save).context(messages::GIT_ROLLBACK_NEEDS_RECOVERY)?;
                 self.transaction(|repo| {
-                    repo.conn.execute("DELETE FROM checkout", [])?;
+                    repo.clear_checkout()?;
                     Ok(())
                 })?;
                 Err(error)
@@ -681,11 +500,7 @@ impl Repository {
         save: &Path,
         settings: Option<(mchprs_save_data::plot_data::WorldSendRate, mchprs_save_data::plot_data::PistonAnimation)>,
     ) -> Result<Snapshot> {
-        let (branch, id, before): (String, String, String) =
-            self.conn
-                .query_row("SELECT branch,commit_id,before_snapshot FROM checkout WHERE id=1", [], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-                })?;
+        let (branch, id, before) = self.checkout_record()?;
         let (send_rate, piston_animation) = match settings {
             Some(settings) => settings,
             None => {
@@ -699,8 +514,8 @@ impl Repository {
         target.data.piston_animation = piston_animation;
         target.data.save_to_file(save)?;
         self.transaction(|repo| {
-            repo.conn.execute("UPDATE meta SET value=?1 WHERE key='active'", [branch])?;
-            repo.conn.execute("DELETE FROM checkout", [])?;
+            repo.set_active(&branch)?;
+            repo.clear_checkout()?;
             Ok(())
         })?;
         Ok(target)

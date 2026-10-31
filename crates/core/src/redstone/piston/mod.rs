@@ -5,6 +5,9 @@ use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use mchprs_world::{AdvancePhase, PistonAction, PistonEvent};
 use smallvec::SmallVec;
 
+mod cache;
+pub use cache::InstantPistonCache;
+pub(crate) use cache::PowerRoute;
 mod instant;
 
 #[cfg(test)]

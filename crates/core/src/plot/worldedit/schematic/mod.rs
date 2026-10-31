@@ -42,6 +42,14 @@ pub(super) fn parse_block(input: &str) -> Option<Block> {
             }
         }
     }
+    // Older MCHPRS exports included this redundant piston property.
+    if matches!(name, "piston" | "sticky_piston") {
+        if let Some(sticky) = properties.remove("sticky") {
+            if sticky != if name == "sticky_piston" { "true" } else { "false" } {
+                return None;
+            }
+        }
+    }
     let defaults = mchprs_blocks::generated::STATE_PROPERTIES[registry.4 as usize];
     if properties.keys().any(|k| !defaults.iter().any(|p| p.0 == *k)) {
         return None;
