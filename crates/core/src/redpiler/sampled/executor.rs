@@ -134,10 +134,12 @@ impl Runtime {
         {
             return None;
         }
-        if let Some(index) = self.token_positions.iter().position(|&at| at == Some(position)) {
+        let tokens = self.program.tokens_by_cell.get(&position).map_or(&[][..], Vec::as_slice);
+        if let Some(&index) = tokens.iter().find(|&&index| self.token_positions[index] == Some(position)) {
             return Some(self.program.tokens[index].block);
         }
-        for (index, piston) in self.program.pistons.iter().enumerate() {
+        for &index in self.program.pistons_by_cell.get(&position).map_or(&[][..], Vec::as_slice) {
+            let piston = &self.program.pistons[index];
             if position == piston.base && self.piston_base_moving[index] {
                 return None;
             }
@@ -156,9 +158,7 @@ impl Runtime {
                 }
             }
         }
-        if self.program.tokens.iter().any(|token| token.cells.contains(&position))
-            && self.program.tokens.iter().any(|token| token.position == Some(position))
-        {
+        if tokens.iter().any(|&index| self.program.tokens[index].position == Some(position)) {
             return Some(Block::Air);
         }
         Some(
@@ -171,7 +171,8 @@ impl Runtime {
         )
     }
     fn notify_shape(&mut self, position: mchprs_blocks::BlockPos) {
-        for index in 0..self.blocks.len() {
+        let observers = self.program.observers_by_target.get(&position).cloned().unwrap_or_default();
+        for index in observers {
             let block = self.blocks[index];
             if let Block::Observer { observer } = block
                 && self.program.positions[index].offset(observer.facing.into()) == position
@@ -612,11 +613,14 @@ impl Runtime {
             return;
         }
         self.token_positions[token] = position;
-        for piston in &self.program.pistons {
-            if self.program.tokens[token].cells.contains(&piston.home)
-                && let Some(component) = self.program.positions.iter().position(|&pos| pos == piston.base)
-            {
-                self.updated_in_phase[component] = None;
+        for cell in &self.program.tokens[token].cells {
+            if let Some(pistons) = self.program.pistons_by_cell.get(cell) {
+                for &index in pistons {
+                    let piston = &self.program.pistons[index];
+                    if piston.home == *cell {
+                        self.updated_in_phase[self.program.component_indices[&piston.base]] = None;
+                    }
+                }
             }
         }
         let mut switched = Vec::new();

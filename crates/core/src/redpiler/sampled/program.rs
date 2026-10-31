@@ -124,6 +124,9 @@ pub(crate) struct Program {
     pub(super) component_indices: HashMap<BlockPos, usize>,
     pub(super) geometry_indices: HashMap<BlockPos, Block>,
     pub(super) projection_positions: Vec<BlockPos>,
+    pub(super) tokens_by_cell: HashMap<BlockPos, Vec<usize>>,
+    pub(super) pistons_by_cell: HashMap<BlockPos, Vec<usize>>,
+    pub(super) observers_by_target: HashMap<BlockPos, Vec<usize>>,
     pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
     pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
     pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
@@ -289,6 +292,27 @@ impl Program {
 
     pub(super) fn prepare_projection(&mut self) {
         self.geometry_indices = self.geometry.iter().copied().collect();
+        self.tokens_by_cell.clear();
+        self.pistons_by_cell.clear();
+        self.observers_by_target.clear();
+        for (index, block) in self.initial.iter().enumerate() {
+            if let Block::Observer { observer } = block {
+                self.observers_by_target
+                    .entry(self.positions[index].offset(observer.facing.into()))
+                    .or_default()
+                    .push(index);
+            }
+        }
+        for (index, token) in self.tokens.iter().enumerate() {
+            for &cell in &token.cells {
+                self.tokens_by_cell.entry(cell).or_default().push(index);
+            }
+        }
+        for (index, piston) in self.pistons.iter().enumerate() {
+            for cell in [piston.base, piston.home] {
+                self.pistons_by_cell.entry(cell).or_default().push(index);
+            }
+        }
         let mut positions = self.positions.clone();
         positions.extend(self.tokens.iter().flat_map(|token| token.cells.iter().copied()));
         positions.extend(self.pistons.iter().flat_map(|piston| [piston.base, piston.home, piston.far]));
@@ -551,6 +575,9 @@ impl Program {
             component_indices,
             geometry_indices: HashMap::new(),
             projection_positions: Vec::new(),
+            tokens_by_cell: HashMap::new(),
+            pistons_by_cell: HashMap::new(),
+            observers_by_target: HashMap::new(),
             token_sources: Vec::new(),
             token_updates: Vec::new(),
             token_watchers: Vec::new(),
@@ -585,8 +612,10 @@ impl Program {
     }
 
     pub(super) fn start(&self) -> Runtime {
+        let mut program = self.clone();
+        program.prepare_projection();
         let mut runtime = Runtime {
-            program: std::sync::Arc::new(self.clone()),
+            program: std::sync::Arc::new(program),
             piston_state: mchprs_world::PistonState::default(),
             comparator_outputs: {
                 let mut outputs = vec![0; self.initial.len()];

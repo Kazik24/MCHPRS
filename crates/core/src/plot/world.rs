@@ -322,14 +322,7 @@ impl PlotWorld {
         )
     }
 
-    pub(crate) fn reset_scratch_probe_state(
-        &mut self,
-        piston: &mchprs_world::PistonState,
-        bounds: (BlockPos, BlockPos),
-        read_bounds: (BlockPos, BlockPos),
-        read_chunks: HashSet<(i32, i32)>,
-        contract_air: HashSet<BlockPos>,
-    ) {
+    pub(crate) fn reset_scratch_probe_state(&mut self, piston: &mchprs_world::PistonState) {
         self.clear_scheduled_ticks();
         self.piston_state_mut().clone_from(piston);
         self.observe_redstone_updates(false);
@@ -338,7 +331,11 @@ impl PlotWorld {
         self.wire_topology.get_mut().clear();
         self.instant_pistons.clear();
         self.reset_waveform();
-        self.configure_scratch(bounds, read_bounds, read_chunks, contract_air);
+        self.scratch_boundary_read.set(None);
+        self.scratch_boundary_effect.set(None);
+        self.scratch_touched_blocks = Some(HashSet::new());
+        self.scratch_touched_entities = Some(HashSet::new());
+        self.scratch_suppress_commands = true;
     }
 
     pub(crate) fn take_scratch_boundary_read(&self) -> Option<BlockPos> {

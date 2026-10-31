@@ -130,13 +130,17 @@ pub struct ScreenFrame {
 }
 
 pub fn screen(world: &PlotWorld, cpu: Cpu) -> String {
+    screen_from(cpu, |pos| Some(world.get_block(pos)))
+}
+
+pub fn screen_from(cpu: Cpu, mut read: impl FnMut(BlockPos) -> Option<Block>) -> String {
     let screen = cpu.screen.expect("CPU has no screen");
     let mut pixels = String::new();
     for y in (screen.bottom_y..=screen.top_y).rev() {
         for z in screen.left_z..=screen.right_z {
             let pos = BlockPos::new(screen.x, y, z);
-            match world.get_block(pos) {
-                Block::RedstoneLamp { lit } => pixels.push(if lit { '1' } else { '0' }),
+            match read(pos) {
+                Some(Block::RedstoneLamp { lit }) => pixels.push(if lit { '1' } else { '0' }),
                 _ if screen.sparse => {}
                 _ => panic!("screen pixel missing at {pos}"),
             }
@@ -146,7 +150,11 @@ pub fn screen(world: &PlotWorld, cpu: Cpu) -> String {
 }
 
 pub fn collect_screen(world: &PlotWorld, cpu: Cpu, tick: u32, trace: &mut Vec<ScreenFrame>) {
-    let pixels = screen(world, cpu);
+    collect_screen_from(cpu, tick, trace, |pos| Some(world.get_block(pos)));
+}
+
+pub fn collect_screen_from(cpu: Cpu, tick: u32, trace: &mut Vec<ScreenFrame>, read: impl FnMut(BlockPos) -> Option<Block>) {
+    let pixels = screen_from(cpu, read);
     if trace.last().is_none_or(|frame| frame.pixels != pixels) {
         trace.push(ScreenFrame { tick, pixels });
     }
@@ -291,6 +299,10 @@ pub fn click_cpu(world: &mut PlotWorld, cpu: Cpu, local: BlockPos) {
 }
 
 pub fn collect_ram(world: &PlotWorld, cpu: Cpu, tick: u32, trace: &mut Vec<(u32, Vec<Option<u16>>)>) {
+    collect_ram_from(cpu, tick, trace, |pos| Some(world.get_block(pos)));
+}
+
+pub fn collect_ram_from(cpu: Cpu, tick: u32, trace: &mut Vec<(u32, Vec<Option<u16>>)>, mut read: impl FnMut(BlockPos) -> Option<Block>) {
     if cpu.name != "cpu_bubblesort" {
         return;
     }
@@ -298,11 +310,9 @@ pub fn collect_ram(world: &PlotWorld, cpu: Cpu, tick: u32, trace: &mut Vec<(u32,
         .into_iter()
         .flat_map(|y| (0..16).map(move |row| (y, row)))
         .map(|(y, row)| {
-            (0..12).try_fold(0, |word, bit| {
-                match world.get_block(cpu.origin + BlockPos::new(175 + 4 * bit, y, 62 - 4 * row)) {
-                    Block::Piston { piston } => Some(word | (u16::from(!piston.extended) << bit)),
-                    _ => None,
-                }
+            (0..12).try_fold(0, |word, bit| match read(cpu.origin + BlockPos::new(175 + 4 * bit, y, 62 - 4 * row)) {
+                Some(Block::Piston { piston }) => Some(word | (u16::from(!piston.extended) << bit)),
+                _ => None,
             })
         })
         .collect::<Vec<_>>();

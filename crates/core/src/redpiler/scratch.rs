@@ -1357,13 +1357,7 @@ impl ScratchWorld {
                 self.world.set_block_entity(pos, entity);
             }
         }
-        self.world.reset_scratch_probe_state(
-            &self.piston,
-            self.bounds,
-            self.read_bounds,
-            self.read_chunks.clone(),
-            self.contract_air.clone(),
-        );
+        self.world.reset_scratch_probe_state(&self.piston);
         for tick in self.scheduled.iter().cloned() {
             self.world.restore_scheduled_tick(tick);
         }

@@ -595,7 +595,7 @@ pub(crate) fn compile_monitored(
             for x in bounds.0.x..=bounds.1.x {
                 let pos = BlockPos::new(x, y, z);
                 let block = world.get_block(pos);
-                if !matches!(block, Block::Air | Block::PistonHead { .. }) && !program.positions.contains(&pos) {
+                if !matches!(block, Block::Air | Block::PistonHead { .. }) && !probe_indexes.components.contains_key(&pos) {
                     program.geometry.push((pos, block));
                 }
             }
@@ -737,6 +737,10 @@ pub(crate) fn compile_monitored(
         }
         program.home_watchers.push(watchers);
     }
+    let mut watched_by_node = vec![None; program.positions.len()];
+    for (index, wire) in program.watched_wires.iter().enumerate() {
+        watched_by_node[wire.wire].get_or_insert(index);
+    }
     for (token, cells) in program.token_updates.iter().enumerate() {
         let mut programs = Vec::new();
         for (cell, updates) in cells.iter().enumerate() {
@@ -753,7 +757,7 @@ pub(crate) fn compile_monitored(
                     nodes.extend(observers.iter().copied());
                 }
                 nodes.extend(updates[usize::from(arrival)].iter().copied().filter(|&node| match program.initial[node] {
-                    Block::RedstoneWire { .. } => program.watched_wires.iter().any(|wire| wire.wire == node),
+                    Block::RedstoneWire { .. } => watched_by_node[node].is_some(),
                     Block::Piston { .. }
                     | Block::RedstoneRepeater { .. }
                     | Block::RedstoneComparator { .. }
@@ -774,16 +778,11 @@ pub(crate) fn compile_monitored(
                     .map(|&node| super::program::MoveStep {
                         node,
                         watcher: watchers.contains(&node),
-                        wire: program.watched_wires.iter().any(|wire| wire.wire == node),
+                        wire: watched_by_node[node].is_some(),
                         wires: nodes
                             .iter()
                             .copied()
-                            .filter(|&wire| {
-                                program
-                                    .watched_wires
-                                    .iter()
-                                    .any(|record| record.wire == wire && record.watchers.contains(&node))
-                            })
+                            .filter(|&wire| watched_by_node[wire].is_some_and(|index| program.watched_wires[index].watchers.contains(&node)))
                             .collect(),
                     })
                     .collect();

@@ -435,20 +435,31 @@ fn cpu_outputs_match_native(cpu_index: usize) {
     let mut native_screen = Vec::new();
     let mut compiled_screen = Vec::new();
     cpus::collect_ram(&native, cpu, 0, &mut native_ram);
-    cpus::collect_ram(&compiled, cpu, 0, &mut compiled_ram);
+    cpus::collect_ram_from(cpu, 0, &mut compiled_ram, |pos| compiler.runtime.as_ref().unwrap().project(pos));
     if cpu.screen.is_some() {
         cpus::collect_screen(&native, cpu, 0, &mut native_screen);
-        cpus::collect_screen(&compiled, cpu, 0, &mut compiled_screen);
+        cpus::collect_screen_from(cpu, 0, &mut compiled_screen, |pos| compiler.runtime.as_ref().unwrap().project(pos));
     }
     let work_before = compiler.runtime.as_ref().unwrap().operations;
     cpus::click_cpu(&mut native, cpu, run);
     compiler.try_on_use_block(cpu.origin + run).unwrap();
+    let execution = std::time::Instant::now();
+    let mut native_ticks = std::time::Duration::ZERO;
+    let mut compiled_ticks = std::time::Duration::ZERO;
+    let mut observation = std::time::Duration::ZERO;
+    let mut publication = std::time::Duration::ZERO;
+    let mut publish_samples = Vec::new();
+    let mut completion = None;
     for tick in 1..=50_000 {
+        let started = std::time::Instant::now();
         native.tick_interpreted();
+        native_ticks += started.elapsed();
+        let started = std::time::Instant::now();
         compiler.tick().unwrap();
-        compiler.try_flush(&mut compiled).unwrap();
+        compiled_ticks += started.elapsed();
+        let started = std::time::Instant::now();
         cpus::collect_ram(&native, cpu, tick, &mut native_ram);
-        cpus::collect_ram(&compiled, cpu, tick, &mut compiled_ram);
+        cpus::collect_ram_from(cpu, tick, &mut compiled_ram, |pos| compiler.runtime.as_ref().unwrap().project(pos));
         assert_eq!(
             compiled_ram.last(),
             native_ram.last(),
@@ -457,7 +468,7 @@ fn cpu_outputs_match_native(cpu_index: usize) {
         );
         if cpu.screen.is_some() {
             cpus::collect_screen(&native, cpu, tick, &mut native_screen);
-            cpus::collect_screen(&compiled, cpu, tick, &mut compiled_screen);
+            cpus::collect_screen_from(cpu, tick, &mut compiled_screen, |pos| compiler.runtime.as_ref().unwrap().project(pos));
             assert_eq!(
                 compiled_screen.last(),
                 native_screen.last(),
@@ -465,13 +476,44 @@ fn cpu_outputs_match_native(cpu_index: usize) {
                 cpu.name
             );
         }
+        observation += started.elapsed();
+        if cpus::CHECKPOINTS.contains(&tick) {
+            let started = std::time::Instant::now();
+            compiler.try_flush(&mut compiled).unwrap();
+            let elapsed = started.elapsed();
+            publication += elapsed;
+            publish_samples.push(json!({ "tick": tick, "ms": elapsed.as_secs_f64() * 1000.0 }));
+            let mut published_ram = Vec::new();
+            cpus::collect_ram(&compiled, cpu, tick, &mut published_ram);
+            assert_eq!(
+                published_ram.last().map(|(_, words)| words),
+                compiled_ram.last().map(|(_, words)| words),
+                "published RAM at {tick}"
+            );
+            if cpu.screen.is_some() {
+                assert_eq!(
+                    cpus::screen(&compiled, cpu),
+                    compiled_screen.last().unwrap().pixels,
+                    "published screen at {tick}"
+                );
+            }
+        }
         if tick % 1000 == 0 {
             eprintln!("{} matched Run tick {tick}", cpu.name);
         }
         if cpu_index == 2 && tick >= cpu.active_ticks {
             assert_eq!(quiet_compiled(&compiler), quiet_native(&native), "BubbleSort completion at tick {tick}");
+            if quiet_native(&native) && completion.is_none() {
+                completion = Some(
+                    json!({ "tick": tick, "native_ms": native_ticks.as_secs_f64() * 1000.0, "compiled_ms": compiled_ticks.as_secs_f64() * 1000.0 }),
+                );
+            }
         }
     }
+    eprintln!(
+        "{} 50,000 ticks: native={native_ticks:?} compiled={compiled_ticks:?} publication={publication:?} observation={observation:?}; completion={completion:?}",
+        cpu.name
+    );
     let work = compiler.runtime.as_ref().unwrap().operations - work_before;
     assert!(work > 0, "CPU must perform compiled work");
     assert_eq!(native_ram, compiled_ram);
@@ -489,6 +531,9 @@ fn cpu_outputs_match_native(cpu_index: usize) {
         serde_json::to_vec_pretty(&json!({
             "fixture_sha256": cpu.sha256, "compile_ms": compile_duration.as_millis(), "run_ticks": 50_000,
             "preparation_ticks": preparation_ticks, "compiled_operations": work,
+            "native_tick_ms": native_ticks.as_secs_f64() * 1000.0, "compiled_tick_ms": compiled_ticks.as_secs_f64() * 1000.0,
+            "observation_ms": observation.as_secs_f64() * 1000.0, "publication_ms": publication.as_secs_f64() * 1000.0,
+            "execution_wall_ms": execution.elapsed().as_secs_f64() * 1000.0, "completion": completion, "publication_samples": publish_samples,
             "native_ram": native_ram, "compiled_ram": compiled_ram,
             "native_screen": native_screen, "compiled_screen": compiled_screen,
         }))
