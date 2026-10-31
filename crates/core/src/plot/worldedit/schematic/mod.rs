@@ -41,6 +41,7 @@ pub(super) fn parse_block(input: &str) -> Option<Block> {
             }
         }
     }
+    // TODO: Remove handling for invalid properites.
     // Older MCHPRS exports exposed the internal piston `sticky` flag. The block
     // name already carries that property; accept only a consistent legacy flag.
     if matches!(name, "piston" | "sticky_piston") {

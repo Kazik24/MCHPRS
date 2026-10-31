@@ -366,17 +366,34 @@ impl Runtime {
                 continue;
             }
             let token = self.token_positions.iter().position(|&position| position == Some(piston.home));
-            if token.is_some()
-                && (self.program.piston_scenery.contains(&piston.far)
-                    || self.token_positions.contains(&Some(piston.far))
+            let onward = token.and_then(|_| self.token_positions.iter().position(|&position| position == Some(piston.far)));
+            let mate = self
+                .program
+                .pistons
+                .iter()
+                .position(|other| other.group == piston.group && other.far == piston.far && other.facing == piston.facing.opposite());
+            let mate_home_open = mate.is_some_and(|mate| {
+                let home = self.program.pistons[mate].home;
+                !self.program.piston_scenery.contains(&home)
+                    && !self.token_positions.contains(&Some(home))
+                    && !self
+                        .motions
+                        .iter()
+                        .any(|motion| motion.token.is_some() && !motion.token_done && motion.destination == home)
+                    && !self.piston_head_present[mate]
+                    && !self.piston_head_moving[mate]
+            });
+            let far_blocked =
+                self.program.piston_scenery.contains(&piston.far)
                     || self
                         .motions
                         .iter()
                         .any(|motion| motion.token.is_some() && !motion.token_done && motion.destination == piston.far)
                     || self.program.pistons.iter().enumerate().any(|(other, p)| {
                         other != index && p.home == piston.far && (self.piston_head_present[other] || self.piston_head_moving[other])
-                    }))
-            {
+                    })
+                    || (onward.is_some() && !mate_home_open);
+            if token.is_some() && far_blocked {
                 if self.trace_enabled {
                     self.trace(format!("piston rejected {:?} extend reason=far_blocked", piston.base));
                 }
@@ -388,6 +405,16 @@ impl Runtime {
                     reason: "unsupported token destination",
                 });
                 return;
+            }
+            if let Some(onward) = onward {
+                let mate = mate.expect("an opposed piston is required to push its mate token onward");
+                self.token_movements += 1;
+                self.set_token_pos(onward, None);
+                let slot = self.add_motion(mate, Some(onward), self.program.pistons[mate].home, true);
+                self.motions[slot].piston_done = true;
+                if self.failure.is_some() {
+                    return;
+                }
             }
             if let Some(token) = token {
                 self.token_movements += 1;
@@ -431,7 +458,7 @@ impl Runtime {
         }
     }
 
-    fn finish_piston_part(&mut self, slot: usize, interrupted: bool) {
+    pub(super) fn finish_piston_part(&mut self, slot: usize, interrupted: bool) {
         let motion = self.motions[slot];
         if motion.piston_done {
             return;
@@ -439,6 +466,9 @@ impl Runtime {
         self.motions[slot].piston_done = true;
         let base = self.program.pistons[motion.piston].base;
         let home = self.program.pistons[motion.piston].home;
+        if let Some(component) = self.program.positions.iter().position(|&pos| pos == base) {
+            self.updated_in_phase[component] = None;
+        }
         if motion.extending {
             self.piston_head_moving[motion.piston] = false;
             self.piston_head_present[motion.piston] = !interrupted;
@@ -578,6 +608,13 @@ impl Runtime {
             return;
         }
         self.token_positions[token] = position;
+        for piston in &self.program.pistons {
+            if self.program.tokens[token].cells.contains(&piston.home)
+                && let Some(component) = self.program.positions.iter().position(|&pos| pos == piston.base)
+            {
+                self.updated_in_phase[component] = None;
+            }
+        }
         let mut switched = Vec::new();
         let bindings = self.program.token_movement_groups.get(token).cloned().unwrap_or_default();
         for (group, axis) in bindings {

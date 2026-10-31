@@ -202,6 +202,207 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
         assert_eq!(runtime.updated_in_phase[2].is_some(), !masked);
     }
 }
+
+#[test]
+fn moving_token_invalidates_every_bound_piston_update_mark() {
+    let bases = [BlockPos::new(10, 10, 10), BlockPos::new(20, 10, 10)];
+    let homes = [BlockPos::new(11, 10, 10), BlockPos::new(21, 10, 10)];
+    let far = BlockPos::new(30, 10, 10);
+    let mut program = test_program(
+        bases.to_vec(),
+        vec![
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::East,
+                    sticky: true,
+                    extended: false,
+                },
+            },
+            Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::East,
+                    sticky: true,
+                    extended: false,
+                },
+            },
+        ],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    program.pistons = bases
+        .into_iter()
+        .zip(homes)
+        .enumerate()
+        .map(|(id, (base, home))| super::compiler::PistonActor {
+            id,
+            base,
+            facing: BlockFacing::East,
+            sticky: true,
+            home,
+            far,
+            extended: false,
+            head_present: false,
+            group: 0,
+        })
+        .collect();
+    program.tokens.push(super::compiler::PistonToken {
+        block: Block::Stone {},
+        position: Some(homes[0]),
+        cells: vec![homes[0], homes[1], far],
+    });
+    let mut runtime = program.start();
+    runtime.updated_in_phase.fill(Some(runtime.phase));
+
+    runtime.set_token_pos(0, None);
+
+    assert!(
+        bases
+            .iter()
+            .all(|base| runtime.updated_in_phase[program.positions.iter().position(|pos| pos == base).unwrap()].is_none())
+    );
+}
+
+#[test]
+fn finishing_piston_motion_invalidates_its_update_mark() {
+    let base = BlockPos::new(10, 10, 10);
+    let home = base.offset(BlockFace::East);
+    let far = home.offset(BlockFace::East);
+    let mut program = test_program(
+        vec![base],
+        vec![Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: true,
+                extended: true,
+            },
+        }],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    program.pistons.push(super::compiler::PistonActor {
+        id: 0,
+        base,
+        facing: BlockFacing::East,
+        sticky: true,
+        home,
+        far,
+        extended: true,
+        head_present: false,
+        group: 0,
+    });
+    let mut runtime = program.start();
+    runtime.motions.push(super::executor::Motion {
+        piston: 0,
+        token: None,
+        destination: far,
+        start: 0,
+        landing: 2,
+        order: 0,
+        extending: true,
+        piston_done: false,
+        token_done: true,
+    });
+    runtime.updated_in_phase[0] = Some(runtime.phase);
+
+    runtime.finish_piston_part(0, false);
+
+    assert_eq!(runtime.updated_in_phase[0], None);
+}
+
+#[test]
+fn opposed_pistons_can_push_a_shared_far_token_into_the_mate_home() {
+    let left_base = BlockPos::new(10, 10, 10);
+    let left_home = left_base.offset(BlockFace::East);
+    let far = left_home.offset(BlockFace::East);
+    let right_home = far.offset(BlockFace::East);
+    let right_base = right_home.offset(BlockFace::East);
+    let lever = BlockPos::new(10, 12, 10);
+    let positions = vec![left_base, right_base, lever];
+    let piston = |facing, extended| Block::Piston {
+        piston: RedstonePiston {
+            facing,
+            sticky: true,
+            extended,
+        },
+    };
+    let mut program = test_program(
+        positions.clone(),
+        vec![
+            piston(BlockFacing::East, false),
+            piston(BlockFacing::West, false),
+            Block::Lever {
+                lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+            },
+        ],
+        vec![2],
+        vec![[
+            vec![Operation::Contribution(0), Operation::UpdatePiston(0)],
+            vec![Operation::Contribution(0), Operation::UpdatePiston(0)],
+        ]],
+        vec![ElectricalLink {
+            source: 2,
+            target: 0,
+            attenuation: 0,
+        }],
+        vec![],
+    )
+    .unwrap();
+    program.pistons = vec![
+        super::compiler::PistonActor {
+            id: 0,
+            base: left_base,
+            facing: BlockFacing::East,
+            sticky: true,
+            home: left_home,
+            far,
+            extended: false,
+            head_present: false,
+            group: 0,
+        },
+        super::compiler::PistonActor {
+            id: 1,
+            base: right_base,
+            facing: BlockFacing::West,
+            sticky: true,
+            home: right_home,
+            far,
+            extended: false,
+            head_present: false,
+            group: 0,
+        },
+    ];
+    let cells = vec![left_home, far, right_home];
+    program.tokens = vec![
+        super::compiler::PistonToken {
+            block: Block::Stone {},
+            position: Some(left_home),
+            cells: cells.clone(),
+        },
+        super::compiler::PistonToken {
+            block: Block::Stone {},
+            position: Some(far),
+            cells,
+        },
+    ];
+    let mut runtime = program.start();
+    runtime.set_input(0, true).unwrap();
+    assert_eq!(runtime.input_strength(0), 15);
+    runtime.tick().unwrap();
+
+    assert_eq!(runtime.accepted_piston_actions, 1);
+    assert_eq!(runtime.token_movements, 2);
+    assert_eq!(runtime.motions.len(), 2);
+    runtime.tick().unwrap();
+    runtime.tick().unwrap();
+    assert_eq!(runtime.token_positions, vec![Some(far), Some(right_home)]);
+}
+
 #[test]
 fn movement_flips_preserve_discovery_order_for_remaining_recipients() {
     use super::program::{ArrangementSource, InputArrangement};

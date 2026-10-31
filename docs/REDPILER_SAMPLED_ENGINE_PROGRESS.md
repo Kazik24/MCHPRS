@@ -34,11 +34,39 @@ discovered inputs are also declined because their state is not modeled by the
 compiled runtime. Full FPU support and full internal-state parity remain
 outside this migration.
 
+## Repeated arithmetic follow-up — 31 October 2026
+
+The rebuilt decompiled MAIR reference, Rust native mode, and Rust compiled mode
+all passed two reconstructed 16-operation ADDER1BIT replays (all eight inputs,
+then repeated). The declared windows were raw sum ticks 1–3, sum repeater ticks
+3–7, and carry repeater ticks 5–9. The shared Rust acceptance test now reuses
+one compiled runtime for the rearm-wait protocol, checks outputs and pending
+work at preparation boundaries, asserts compiled work per operation, and runs
+past multiple scheduler-ring rotations. A six-operation ADDER11BIT test covers
+`2047+1` overflow, `1023+1` carry propagation, and return to zero.
+
+Focused piston tests cover phase invalidation on token movement and piston
+completion, plus pushing a second token into an open opposed-piston mate home.
+The runtime now clears update marks for all pistons in a moved token's cell
+domain and supports that onward push within a compiled piston group. These
+changes follow the MAIR mechanisms identified in the replay report; they do not
+claim parity for arbitrary piston arrangements.
+
+The CPU_BUBBLESORT compile attempt used its existing load/reset protocol and
+declined at `BlockPos { x: 168, y: 15, z: 158 }` with `unsupported component`,
+before the CPU start button. Compiled CPU execution remains unsupported.
+The report at `target/mair-crosscheck/REPORT.txt` records protocol details,
+2,304-frame native/compiled comparison, the 64 observed out-of-window port
+differences, and limits: no original pinned binary or pending-work parity.
+
 ## Verification
 
 Passed:
 
-- `cargo fmt --all -- --check`
+- `cargo test -p mchprs_core --lib adder1bit_reference_manifest_arithmetic` — 1 test
+- `cargo test -p mchprs_core --lib adder11bit_reference_manifest_acceptance` — 1 test
+- `cargo test -p mchprs_core --lib redpiler::sampled::` — 57 tests
+- `cargo fmt --all` (check mode still flags pre-existing trailing whitespace in untouched `crates/core/src/container/tests.rs`)
 - `cargo check --workspace --locked`
 - `cargo check -p mchprs_core --all-targets --locked`
 - `cargo test -p mchprs_core --lib redpiler::` — 69 tests

@@ -476,6 +476,135 @@ fn adder1bit_reference_manifest_arithmetic() {
     assert_eq!(mismatches, 0, "ADDER1BIT output mismatches (first 32 printed)");
 }
 
+fn run_repeated_adder(manifest_name: &str, cases: &[(u64, u64, u64)]) {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let manifest: Value =
+        serde_json::from_slice(&std::fs::read(root.join(format!("test_data/instant-pistons-io/fixtures/{manifest_name}.json"))).unwrap()).unwrap();
+    let bytes = std::fs::read(root.join(manifest["fixture"].as_str().unwrap())).unwrap();
+    let clipboard = load_schematic(std::io::Cursor::new(bytes)).unwrap();
+    let origin = position(&manifest["coordinates"]["origin"]);
+    let anchor = position(&manifest["coordinates"]["paste_anchor"]);
+    let width = if manifest["ports"]["inputs"]["A"][0].is_array() {
+        manifest["ports"]["inputs"]["A"].as_array().unwrap().len()
+    } else {
+        1
+    };
+    let mask = (1u64 << width) - 1;
+    let bounds = (
+        origin - BlockPos::new(4, 4, 4),
+        origin
+            + if width == 1 {
+                BlockPos::new(24, 10, 10)
+            } else {
+                BlockPos::new(27, 11, 50)
+            },
+    );
+    let mut world = PlotWorld::from_chunks(
+        0,
+        0,
+        (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect(),
+        Default::default(),
+    );
+    paste_clipboard(&mut world, &clipboard, anchor, false);
+    let program = compile(
+        &world,
+        bounds,
+        ScratchEntry {
+            scheduled: world.scheduler().iter_entries().collect(),
+            piston: world.piston_state().clone(),
+        },
+    )
+    .unwrap_or_else(|error| panic!("{manifest_name} repeated compile declined: {error:?}"));
+    let source = |relative: BlockPos| {
+        let pos = origin + relative;
+        program.sources.iter().position(|&node| program.positions[node] == pos).unwrap()
+    };
+    let trigger = source(position(&manifest["ports"]["inputs"]["trigger"]));
+    let mut runtime = program.start();
+    let mut elapsed_ticks = 0;
+    for (operation, &(a, b, cin)) in cases.iter().cycle().take(cases.len() * 2).enumerate() {
+        if operation != 0 {
+            runtime.set_input(trigger, true).unwrap();
+            for _ in 0..32 {
+                runtime.tick().unwrap();
+            }
+            elapsed_ticks += 32;
+            assert!(
+                runtime.pending.iter_entries().next().is_none(),
+                "{manifest_name} operation {operation}: rearm left pending work"
+            );
+        }
+        for (name, value) in [("A", a), ("B", b), ("Cin", cin)] {
+            if !manifest["ports"]["inputs"].get(name).is_some_and(Value::is_array) {
+                continue;
+            }
+            for bit in 0..width {
+                let port = if manifest["ports"]["inputs"][name][0].is_array() {
+                    &manifest["ports"]["inputs"][name][bit]
+                } else {
+                    &manifest["ports"]["inputs"][name]
+                };
+                let input = source(position(port));
+                runtime.set_input(input, value & (1 << bit) == 0).unwrap();
+            }
+        }
+        for _ in 0..32 {
+            runtime.tick().unwrap();
+        }
+        elapsed_ticks += 32;
+        assert!(
+            runtime.pending.iter_entries().next().is_none(),
+            "{manifest_name} operation {operation}: preparation left pending work"
+        );
+        let before = runtime.operations;
+        runtime.set_input(trigger, false).unwrap();
+        let sum = (a + b + cin) & mask;
+        let carry = (a + b + cin) >> width;
+        for tick in 1..=24 {
+            runtime.tick().unwrap();
+            elapsed_ticks += 1;
+            for (port, low, high, expected) in [("sum_payload", 1, 3, sum), ("sum_repeater", 3, 7, sum), ("carry_repeater", 5, 9, carry)] {
+                let Some(outputs) = manifest["ports"]["observations"][port].as_array() else {
+                    continue;
+                };
+                if !(low..=high).contains(&tick) {
+                    continue;
+                }
+                let output_count = if outputs[0].is_array() { outputs.len() } else { 1 };
+                let actual = (0..output_count).fold(0, |word, bit| {
+                    let output = if outputs[0].is_array() {
+                        &outputs[bit]
+                    } else {
+                        &manifest["ports"]["observations"][port]
+                    };
+                    let pos = origin + position(output);
+                    let value = match (port, runtime.project(pos)) {
+                        ("sum_payload", Some(Block::Air)) => 1,
+                        ("sum_payload", Some(Block::RedstoneBlock)) => 0,
+                        (_, Some(Block::RedstoneRepeater { repeater })) => u64::from(!repeater.powered),
+                        (_, block) => panic!("{manifest_name} operation {operation} tick {tick} {port}: invalid output {block:?}"),
+                    };
+                    word | (value << bit)
+                });
+                assert_eq!(actual, expected, "{manifest_name} operation {operation} tick {tick} {port}");
+            }
+        }
+        assert!(runtime.operations > before, "{manifest_name} operation {operation}: no compiled work");
+    }
+    assert!(elapsed_ticks > 2 * super::super::queue::NUM_QUEUES as u64);
+}
+
+#[test]
+fn adder1bit_repeated_operations_match_declared_ports() {
+    let cases: Vec<_> = (0u64..8).map(|input| ((input >> 2) & 1, (input >> 1) & 1, input & 1)).collect();
+    run_repeated_adder("adder_1bit", &cases);
+}
+
+#[test]
+fn adder11bit_repeated_carry_overflow_and_zero() {
+    run_repeated_adder("adder_11bits", &[(2047, 1, 0), (1023, 1, 0), (0, 0, 0)]);
+}
+
 #[test]
 fn counter_basic_reference_manifest_execution() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
