@@ -77,6 +77,7 @@ pub(super) struct ArrangementFlip {
     pub(super) attenuation: u8,
     pub(super) link: usize,
     pub(super) entering: bool,
+    pub(super) side: bool,
 }
 
 #[derive(Clone)]
@@ -248,6 +249,19 @@ fn validate_operation(
     Ok(())
 }
 
+fn validate_histogram_bound(blocks: &[Block]) -> Result<(), ScratchError> {
+    if blocks.iter().try_fold(0u32, |count, block| {
+        count.checked_add(match block {
+            Block::RedstoneComparator { .. } => 2,
+            Block::RedstoneWire { .. } => 1,
+            _ => 0,
+        })
+    }).is_none() {
+        return Err(ScratchError { position: None, reason: "compiled analog channel capacity exceeded" });
+    }
+    Ok(())
+}
+
 impl Program {
     pub(super) fn compile_movement_flips(&mut self) -> Result<(), ScratchError> {
         for group in &self.input_arrangements {
@@ -415,14 +429,8 @@ impl Program {
 
     pub(super) fn prepare_projection(&mut self) {
         let used: usize = self.output_programs.iter().flatten().map(|range| range.len()).sum();
-        if used != self.operations.len() {
-            let old = std::mem::take(&mut self.operations);
-            self.operations.reserve(used);
-            for range in self.output_programs.iter_mut().flatten() {
-                let start = self.operations.len();
-                self.operations.extend_from_slice(&old[range.clone()]);
-                *range = start..self.operations.len();
-            }
+        if used < self.operations.len() {
+            self.compact_output_programs(false);
         }
         self.geometry_indices = self.geometry.iter().copied().collect();
         let mut positions = self.positions.clone();
@@ -581,6 +589,39 @@ impl Program {
         }
     }
 
+    pub(super) fn compact_output_programs(&mut self, share_edges: bool) {
+        let old = std::mem::take(&mut self.operations);
+        for pair in &mut self.output_programs {
+            if share_edges && old[pair[0].clone()] == old[pair[1].clone()] {
+                pair[1] = pair[0].clone();
+            }
+        }
+        let mut ranges: Vec<_> = self.output_programs.iter().flatten().filter(|range| !range.is_empty()).cloned().collect();
+        ranges.sort_unstable_by_key(|range| range.start);
+        let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+        for range in ranges {
+            if let Some(last) = merged.last_mut().filter(|last| range.start <= last.end) {
+                last.end = last.end.max(range.end);
+            } else {
+                merged.push(range);
+            }
+        }
+        let mut starts = Vec::with_capacity(merged.len());
+        for range in &merged {
+            starts.push(self.operations.len());
+            self.operations.extend_from_slice(&old[range.clone()]);
+        }
+        for range in self.output_programs.iter_mut().flatten() {
+            if range.start == range.end {
+                *range = 0..0;
+            } else {
+                let index = merged.partition_point(|part| part.start <= range.start) - 1;
+                let start = starts[index] + range.start - merged[index].start;
+                *range = start..start + range.len();
+            }
+        }
+    }
+
     fn movement_group(
         &self,
         tokens: &[usize],
@@ -618,6 +659,7 @@ impl Program {
                                 attenuation,
                                 link: link_start + index,
                                 entering: maps[empty].contains(&entry),
+                                side,
                             };
                             flips.push(flip);
                         }
@@ -671,6 +713,7 @@ impl Program {
         repeaters: Vec<RepeaterRecord>,
     ) -> Result<Self, ScratchError> {
         let invalid = |reason| ScratchError { position: None, reason };
+        validate_histogram_bound(&initial)?;
         if positions.len() != initial.len() {
             return Err(invalid("sampled program position/initial length mismatch"));
         }
@@ -879,6 +922,7 @@ impl Program {
     }
 
     pub(super) fn validate(&self) -> Result<(), ScratchError> {
+        validate_histogram_bound(&self.initial)?;
         let invalid = |reason| ScratchError { position: None, reason };
         let nodes = self.initial.len();
         let motion_capacity = self.pistons.len().checked_mul(2).and_then(|n| n.checked_add(self.tokens.len()));
@@ -950,7 +994,7 @@ impl Program {
                             .arrangement_links
                             .get(flip.link)
                             .ok_or_else(|| invalid("invalid movement flip link"))?;
-                        if link.group != group || flip.target != link.target || flip.source != link.source || flip.attenuation != link.attenuation {
+                        if link.group != group || flip.target != link.target || flip.source != link.source || flip.attenuation != link.attenuation || flip.side != link.side {
                             return Err(invalid("movement flip does not match its link"));
                         }
                     }
@@ -1077,6 +1121,10 @@ impl Program {
 
     pub(super) fn into_runtime(mut self) -> Runtime {
         self.prepare_projection();
+        self.into_runtime_prepared()
+    }
+
+    pub(super) fn into_runtime_prepared(self) -> Runtime {
         let cell_count = self.projection_positions.len();
         let motion_capacity = self
             .pistons
@@ -1144,6 +1192,22 @@ impl Program {
             accepted_piston_actions: 0,
             token_movements: 0,
             motion_completions: 0,
+            #[cfg(feature = "plot-bench")]
+            extension_checks: 0,
+            #[cfg(feature = "plot-bench")]
+            empty_extensions: 0,
+            #[cfg(feature = "plot-bench")]
+            mate_checks: 0,
+            #[cfg(feature = "plot-bench")]
+            onward_pushes: 0,
+            #[cfg(feature = "plot-bench")]
+            token_queries: std::cell::Cell::new(0),
+            #[cfg(feature = "plot-bench")]
+            token_candidates: std::cell::Cell::new(0),
+            #[cfg(feature = "plot-bench")]
+            movement_flips: 0,
+            #[cfg(feature = "plot-bench")]
+            movement_steps: 0,
             #[cfg(test)]
             trace_enabled: false,
             #[cfg(test)]
@@ -1155,6 +1219,7 @@ impl Program {
             input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
             input_histograms: Vec::new(),
             notes: Vec::with_capacity(self.initial.iter().filter(|block| matches!(block, Block::NoteBlock { .. })).count()),
+            note_queued: vec![false; self.initial.len()],
             contributions: self
                 .links
                 .iter()
@@ -1243,7 +1308,7 @@ impl Program {
             };
             if channels != 0 {
                 for state in &mut runtime.input_levels[component][..channels] {
-                    state.analog = runtime.input_histograms.len();
+                    state.analog = u32::try_from(runtime.input_histograms.len()).expect("validated analog channel capacity");
                     runtime.input_histograms.push(super::input::Histogram::default());
                 }
             }

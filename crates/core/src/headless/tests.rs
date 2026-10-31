@@ -95,6 +95,47 @@ fn compiled_session_requires_full_projection() {
 }
 
 #[test]
+fn compiled_piston_projection_and_reset_match_native() {
+    use mchprs_blocks::{BlockDirection, BlockFacing, blocks::{Lever, LeverFace, RedstonePiston}};
+    let lever = BlockPos::new(15, 15, 15);
+    let base = lever.offset(BlockFace::East);
+    let home = base.offset(BlockFace::East);
+    let far = home.offset(BlockFace::East);
+    let make_snapshot = || Snapshot {
+        min: BlockPos::new(10, 10, 10),
+        max: BlockPos::new(22, 20, 20),
+        blocks: vec![
+            (lever.offset(BlockFace::Bottom), Block::Stone {}),
+            (lever, Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }),
+            (base, Block::Piston { piston: RedstonePiston { facing: BlockFacing::East, sticky: true, extended: false } }),
+            (home, Block::RedstoneBlock),
+        ],
+        entities: vec![],
+        ticks: vec![],
+    };
+    for reset_at in [None, Some(0), Some(1), Some(2), Some(3)] {
+        let mut native = Session::new(make_snapshot()).unwrap();
+        let mut compiled = Session::new(make_snapshot()).unwrap();
+        compiled.compile(CompilerOptions::default()).unwrap();
+        native.use_block(lever).unwrap();
+        compiled.use_block(lever).unwrap();
+        for tick in 0..6 {
+            for pos in [base, home, far] {
+                assert_eq!(compiled.get(pos).unwrap(), native.get(pos).unwrap(), "tick {tick}, reset {reset_at:?}, {pos:?}");
+            }
+            let native_changes: HashMap<_, _> = native.drain_changes().unwrap().into_iter().collect();
+            let compiled_changes: HashMap<_, _> = compiled.drain_changes().unwrap().into_iter().collect();
+            for pos in [base, home, far] {
+                assert_eq!(compiled_changes.get(&pos), native_changes.get(&pos), "changes at tick {tick}, reset {reset_at:?}, {pos:?}");
+            }
+            if reset_at == Some(tick) { compiled.reset().unwrap(); }
+            native.advance(1).unwrap();
+            compiled.advance(1).unwrap();
+        }
+    }
+}
+
+#[test]
 fn compiled_reset_hands_pending_ticks_back_once() {
     let pos = BlockPos::new(21, 4, 30);
     let mut input = snapshot();

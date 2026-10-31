@@ -88,6 +88,22 @@ pub(crate) struct Runtime {
     pub(super) accepted_piston_actions: usize,
     pub(super) token_movements: usize,
     pub(super) motion_completions: usize,
+    #[cfg(feature = "plot-bench")]
+    pub(super) extension_checks: usize,
+    #[cfg(feature = "plot-bench")]
+    pub(super) empty_extensions: usize,
+    #[cfg(feature = "plot-bench")]
+    pub(super) mate_checks: usize,
+    #[cfg(feature = "plot-bench")]
+    pub(super) onward_pushes: usize,
+    #[cfg(feature = "plot-bench")]
+    pub(super) token_queries: std::cell::Cell<usize>,
+    #[cfg(feature = "plot-bench")]
+    pub(super) token_candidates: std::cell::Cell<usize>,
+    #[cfg(feature = "plot-bench")]
+    pub(super) movement_flips: usize,
+    #[cfg(feature = "plot-bench")]
+    pub(super) movement_steps: usize,
     #[cfg(test)]
     pub(super) trace_enabled: bool,
     #[cfg(test)]
@@ -99,7 +115,8 @@ pub(crate) struct Runtime {
     pub(super) contributions: Vec<u8>,
     pub(super) input_levels: Vec<[super::input::InputState; 2]>,
     pub(super) input_histograms: Vec<super::input::Histogram>,
-    pub(crate) notes: Vec<(mchprs_blocks::BlockPos, mchprs_blocks::blocks::Instrument, u32)>,
+    pub(crate) notes: Vec<(usize, mchprs_blocks::BlockPos, mchprs_blocks::blocks::Instrument, u32)>,
+    pub(crate) note_queued: Vec<bool>,
     pub(super) watched_strengths: Vec<u8>,
     pub(super) phase: u64,
     pub(super) updated_in_phase: Vec<Option<u64>>,
@@ -206,10 +223,16 @@ impl Runtime {
     }
 
     fn token_at(&self, cell: usize) -> Option<usize> {
+        #[cfg(feature = "plot-bench")]
+        self.token_queries.set(self.token_queries.get() + 1);
         self.program.cell_tokens[cell]
             .iter()
             .copied()
-            .find(|&token| self.token_positions[token] == Some(self.program.projection_positions[cell]))
+            .find(|&token| {
+                #[cfg(feature = "plot-bench")]
+                self.token_candidates.set(self.token_candidates.get() + 1);
+                self.token_positions[token] == Some(self.program.projection_positions[cell])
+            })
     }
 
     pub(super) fn project_cell(&self, cell: usize) -> Option<Block> {
@@ -484,6 +507,13 @@ impl Runtime {
             let token = self.token_at(self.program.piston_bindings[index].home_cell);
             let onward = token.and_then(|_| self.token_at(self.program.piston_bindings[index].far_cell));
             let mate = self.program.piston_bindings[index].mate;
+            #[cfg(feature = "plot-bench")]
+            {
+                self.extension_checks += 1;
+                self.empty_extensions += usize::from(token.is_none());
+                self.mate_checks += usize::from(mate.is_some());
+                self.onward_pushes += usize::from(onward.is_some());
+            }
             let mate_home_open = mate.is_some_and(|mate| {
                 !self.program.piston_bindings[mate].home_blocked
                     && self.token_at(self.program.piston_bindings[mate].home_cell).is_none()
@@ -655,7 +685,7 @@ impl Runtime {
 
     pub(super) fn input_strength(&self, target: usize) -> u8 {
         let input = &self.input_levels[target][0];
-        if input.analog != usize::MAX {
+        if input.analog != u32::MAX {
             return input.maximum(&self.input_histograms);
         }
         let fixed = self.program.incoming[target].iter().copied()
@@ -679,11 +709,10 @@ impl Runtime {
         }
     }
 
-    fn set_arrangement_contribution(&mut self, index: usize, value: u8) {
+    fn set_arrangement_contribution(&mut self, index: usize, target: usize, side: bool, value: u8) {
         let old = self.arrangement_contributions[index];
         self.arrangement_contributions[index] = value;
-        let link = &self.program.arrangement_links[index];
-        self.input_levels[link.target][usize::from(link.side)].change(old, value, &mut self.input_histograms);
+        self.input_levels[target][usize::from(side)].change(old, value, &mut self.input_histograms);
     }
 
     fn update_side_inputs(&mut self, source: usize, old: u8, new: u8) {
@@ -696,14 +725,14 @@ impl Runtime {
         }
     }
 
-    fn arrangement_contribution(&self, index: usize) -> (usize, u8) {
+    fn arrangement_contribution(&self, index: usize) -> (usize, bool, u8) {
         let link = &self.program.arrangement_links[index];
         let value = if link.active[self.group_arrangements[link.group]] {
             self.arrangement_output(link.source).saturating_sub(link.attenuation)
         } else {
             0
         };
-        (link.target, value)
+        (link.target, link.side, value)
     }
 
     pub(super) fn arrangement_output(&self, source: ArrangementSource) -> u8 {
@@ -777,12 +806,14 @@ impl Runtime {
                 record.depart[state].clone()
             };
             for index in flips {
+                #[cfg(feature = "plot-bench")]
+                { self.movement_flips += 1; }
                 let flip = self.program.movement_flips[index];
                 if !self.consume_operation(self.program.positions[flip.target]) {
                     return;
                 }
                 let strength = self.arrangement_output(flip.source);
-                self.set_arrangement_contribution(flip.link, if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 });
+                self.set_arrangement_contribution(flip.link, flip.target, flip.side, if flip.entering { strength.saturating_sub(flip.attenuation) } else { 0 });
                 if strength > flip.attenuation {
                     self.updated_in_phase[flip.target] = None;
                 }
@@ -808,6 +839,8 @@ impl Runtime {
             }
         }
         for index in steps {
+            #[cfg(feature = "plot-bench")]
+            { self.movement_steps += 1; }
             let step = &self.program.movement_steps[index];
             let node = step.node;
             let wire = step.wire;
@@ -913,9 +946,9 @@ impl Runtime {
         }
         for offset in 0..self.program.outgoing_arrangements[wire].len() {
             let index = self.program.outgoing_arrangements[wire][offset];
-            let (target, contribution) = self.arrangement_contribution(index);
+            let (target, side, contribution) = self.arrangement_contribution(index);
             let old = self.arrangement_contributions[index];
-            self.set_arrangement_contribution(index, contribution);
+            self.set_arrangement_contribution(index, target, side, contribution);
             if (old > 0) != (contribution > 0)
                 || (old != contribution
                     && (matches!(self.blocks[target], Block::RedstoneComparator { .. }) || self.program.watched_by_component[target].is_some()))
@@ -1072,8 +1105,10 @@ impl Runtime {
             .unwrap_or(Block::Air);
         let instrument = mchprs_blocks::blocks::Instrument::from_block_below(below);
         let pos = self.program.positions[component];
-        if powered_now && self.project(pos.offset(mchprs_blocks::BlockFace::Top)) == Some(Block::Air) {
-            self.notes.push((pos, instrument, note));
+        // Coalesce like MAIR; capture native playback eligibility and instrument at the rising edge.
+        if powered_now && !self.note_queued[component] && self.project(pos.offset(mchprs_blocks::BlockFace::Top)) == Some(Block::Air) {
+            self.note_queued[component] = true;
+            self.notes.push((component, pos, instrument, note));
         }
         self.set_component(
             component,
@@ -1191,11 +1226,11 @@ impl Runtime {
                         if !self.consume_operation(self.program.positions[component]) {
                             return;
                         }
-                        let (target, value) = self.arrangement_contribution(index);
+                        let (target, side, value) = self.arrangement_contribution(index);
                         if self.arrangement_contributions[index] != value {
                             self.updated_in_phase[target] = None;
                         }
-                        self.set_arrangement_contribution(index, value);
+                        self.set_arrangement_contribution(index, target, side, value);
                         self.operations += 1;
                     }
                     _ => {}
@@ -1226,7 +1261,7 @@ impl Runtime {
             }
             match operation {
                 Operation::ArrangementContribution(index) => {
-                    let (target, contribution) = self.arrangement_contribution(index);
+                    let (target, side, contribution) = self.arrangement_contribution(index);
                     if (self.arrangement_contributions[index] > 0) != (contribution > 0)
                         || (self.arrangement_contributions[index] != contribution
                             && (matches!(self.blocks[target], Block::RedstoneComparator { .. })
@@ -1234,7 +1269,7 @@ impl Runtime {
                     {
                         self.updated_in_phase[target] = None;
                     }
-                    self.set_arrangement_contribution(index, contribution);
+                    self.set_arrangement_contribution(index, target, side, contribution);
                 }
                 Operation::Contribution(link_index) => {
                     let link = self.program.links[link_index];

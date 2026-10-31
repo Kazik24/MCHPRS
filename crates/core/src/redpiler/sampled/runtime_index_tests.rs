@@ -344,4 +344,8 @@ fn sealed_program_validation_rejects_bad_output_ranges_and_flip_links() {
     bad_flip.validate().unwrap();
     bad_flip.movement_flips[0].link = usize::MAX;
     assert_eq!(bad_flip.validate().unwrap_err().reason, "invalid movement flip link");
+
+    let mut bad_side = make_program();
+    bad_side.movement_flips[0].side = !bad_side.movement_flips[0].side;
+    assert_eq!(bad_side.validate().unwrap_err().reason, "movement flip does not match its link");
 }

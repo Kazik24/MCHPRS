@@ -240,6 +240,12 @@ pub struct ChunkSection {
 }
 
 impl ChunkSection {
+    #[cfg(feature = "plot-bench")]
+    #[doc(hidden)]
+    pub fn has_pending_block_changes(&self) -> bool {
+        self.changed_blocks.is_some()
+    }
+
     fn staging_clone(&self, chunk_x: i32, chunk_z: i32, section_y: u32) -> Self {
         Self {
             buffer: self.buffer.clone(),

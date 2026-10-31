@@ -90,6 +90,12 @@ pub struct Compiler {
 }
 
 impl Compiler {
+    #[cfg(feature = "plot-bench")]
+    #[doc(hidden)]
+    pub fn diagnostic_work(&self) -> Option<[usize; 14]> {
+        self.runtime.as_ref().map(Runtime::diagnostic_work)
+    }
+
     pub fn stats(&self) -> Option<&CompileStatistics> {
         self.statistics.as_ref()
     }
@@ -215,6 +221,10 @@ impl Compiler {
         self.publish(world, self.options.io_only, cfg!(feature = "redpiler-full-publication"))
     }
 
+    pub(crate) fn try_flush_complete<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
+        self.publish(world, false, true)
+    }
+
     fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
         self.runtime
             .as_mut()
@@ -269,10 +279,11 @@ impl Compiler {
             if full && !io_only && self.publication_positions.contains(&pos) {
                 continue;
             }
-            if !full && world.get_block(pos).registry_id() != block.registry_id() {
+            let previous = world.get_block(pos);
+            if !full && previous.registry_id() != block.registry_id() {
                 continue;
             }
-            if world.get_block(pos) != block {
+            if previous != block {
                 world.set_block(pos, block);
             }
             if !io_only && let Some(output_strength) = comparator {
@@ -337,8 +348,9 @@ impl Compiler {
             state.movement_cursor = 0;
         }
         let runtime = self.runtime.as_mut().unwrap();
-        for (pos, instrument, note) in runtime.notes.drain(..) {
+        for (component, pos, instrument, note) in runtime.notes.drain(..) {
             redstone::noteblock::play_note(world, pos, instrument, note);
+            runtime.note_queued[component] = false;
         }
         runtime.mark_published(io_only || !full);
         Ok(())

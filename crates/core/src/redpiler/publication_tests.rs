@@ -129,11 +129,31 @@ fn flush_consumes_queued_note_once() {
     let mut compiler = Compiler::default();
     compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
     compiler.try_on_use_block(lever).unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.try_on_use_block(lever).unwrap();
     assert_eq!(compiler.runtime.as_ref().unwrap().notes.len(), 1);
     compiler.try_flush(&mut world).unwrap();
     assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
     compiler.try_flush(&mut world).unwrap();
     assert!(compiler.runtime.as_ref().unwrap().notes.is_empty());
+}
+
+#[test]
+fn failed_publication_retains_pending_note_for_reset() {
+    let (mut world, lever, _base, _home, _far, _comparator, _lamp, bounds) = piston_world();
+    let note = lever.offset(BlockFace::North);
+    world.set_block(note, Block::NoteBlock { instrument: mchprs_blocks::blocks::Instrument::Harp, note: 1, powered: false });
+    let mut compiler = Compiler::default();
+    compiler.compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default())).unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.tick().unwrap();
+    assert!(compiler.runtime.as_ref().unwrap().has_motions());
+    world.piston_state_mut().next_identity = u64::MAX;
+    assert!(compiler.try_flush_complete(&mut world).is_err());
+    assert_eq!(compiler.runtime.as_ref().unwrap().notes.len(), 1);
+    world.piston_state_mut().next_identity = 0;
+    compiler.try_reset(&mut world, bounds).unwrap();
+    assert!(!compiler.is_active());
 }
 
 #[test]

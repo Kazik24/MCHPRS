@@ -202,7 +202,7 @@ impl Session {
                     self.failed = true;
                     bail!("compiled tick failed: {error:?}");
                 }
-                if let Err(error) = self.compiler.try_flush(&mut self.world) {
+                if let Err(error) = self.compiler.try_flush_complete(&mut self.world) {
                     self.failed = true;
                     bail!("compiled flush failed: {error}");
                 }
@@ -270,7 +270,7 @@ impl Session {
                 self.failed = true;
                 bail!("compiled use failed: {error:?}");
             }
-            if let Err(error) = self.compiler.try_flush(&mut self.world) {
+            if let Err(error) = self.compiler.try_flush_complete(&mut self.world) {
                 self.failed = true;
                 bail!("compiled flush failed: {error}");
             }

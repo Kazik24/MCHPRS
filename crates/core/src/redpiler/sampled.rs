@@ -14,6 +14,9 @@ mod input;
 mod program;
 #[cfg(test)]
 mod runtime_index_tests;
+#[cfg(test)]
+#[path = "sampled/reviewed_fixes_tests.rs"]
+mod reviewed_fixes_tests;
 mod scheduler;
 #[cfg(test)]
 mod tests;
@@ -57,13 +60,20 @@ pub(super) fn start_runtime(
     ticks: Vec<mchprs_world::TickEntry>,
     piston: mchprs_world::PistonState,
 ) -> Result<Runtime, ScratchError> {
-    let mut runtime = program.into_runtime();
+    let mut runtime = program.into_runtime_prepared();
     runtime.set_pending(ticks)?;
     runtime.piston_state = piston;
     Ok(runtime)
 }
 
 impl Runtime {
+    #[cfg(feature = "plot-bench")]
+    pub(super) fn diagnostic_work(&self) -> [usize; 14] {
+        [self.operations, self.deliveries, self.accepted_piston_actions, self.token_movements, self.motion_completions, self.scheduled_repeater_ticks,
+            self.extension_checks, self.empty_extensions, self.mate_checks, self.onward_pushes,
+            self.token_queries.get(), self.token_candidates.get(), self.movement_flips, self.movement_steps]
+    }
+
     pub(super) fn set_pending(&mut self, ticks: Vec<mchprs_world::TickEntry>) -> Result<(), ScratchError> {
         // Pending work has a fixed admission limit; exhaustion is an execution error.
         let limit = self

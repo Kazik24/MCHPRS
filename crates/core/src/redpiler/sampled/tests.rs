@@ -604,6 +604,60 @@ fn group_probe_finds_direct_token_inputs_for_all_reader_families() {
         assert_eq!(group.inputs[1], vec![(ArrangementSource::Token(0), 0)], "{name}");
     }
 }
+
+#[test]
+fn shared_immutable_edges_keep_future_work_and_survive_finalization() {
+    let positions = vec![BlockPos::new(10, 10, 10), BlockPos::new(11, 10, 10)];
+    let operations = vec![Operation::Contribution(0), Operation::UpdateLamp(1)];
+    let mut original = test_program(
+        positions,
+        vec![Block::Lever { lever: Lever::new(LeverFace::Floor, BlockDirection::North, false) }, Block::RedstoneLamp { lit: false }],
+        vec![0],
+        vec![[operations.clone(), operations]],
+        vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+        vec![],
+    ).unwrap();
+    original.set_output_program(1, false, vec![Operation::UpdateLamp(1)]);
+    original.prepare_projection();
+    let expected = original.output_vectors();
+    let mut shared = original.clone();
+    shared.compact_output_programs(true);
+    shared.validate().unwrap();
+    assert_eq!(shared.output_vectors(), expected);
+    assert_eq!(shared.output_programs[0][0], shared.output_programs[0][1]);
+    assert_ne!(shared.output_programs[1][0], shared.output_programs[1][1]);
+    assert!(shared.operations.len() < original.operations.len());
+    let ranges = shared.output_programs.clone();
+    shared.prepare_projection();
+    shared.compact_output_programs(true);
+    assert_eq!(shared.output_programs, ranges);
+    assert_eq!(shared.output_vectors(), expected);
+    let mut overlapping = original.clone();
+    let whole = overlapping.output_programs[0][0].clone();
+    overlapping.output_programs[1][0] = whole.start..whole.start + 1;
+    overlapping.output_programs[1][1] = whole.start + 1..whole.end;
+    let overlap_expected = overlapping.output_vectors();
+    overlapping.compact_output_programs(false);
+    assert_eq!(overlapping.output_vectors(), overlap_expected);
+    assert_eq!(overlapping.output_programs[1][0].start, overlapping.output_programs[0][0].start);
+    assert_eq!(overlapping.output_programs[1][1].start, overlapping.output_programs[0][0].start + 1);
+    let mut reference = original.into_runtime_prepared();
+    let mut actual = shared.into_runtime_prepared();
+    for powered in [true, false, true, false] {
+        reference.set_input(0, powered).unwrap();
+        actual.set_input(0, powered).unwrap();
+        assert_eq!(actual.blocks, reference.blocks);
+        assert_eq!(format!("{:?}", actual.pending_entries()), format!("{:?}", reference.pending_entries()));
+        for _ in 0..3 {
+            reference.tick().unwrap();
+            actual.tick().unwrap();
+            assert_eq!(actual.blocks, reference.blocks);
+            assert_eq!(format!("{:?}", actual.pending_entries()), format!("{:?}", reference.pending_entries()));
+            assert_eq!(actual.operations, reference.operations);
+            assert_eq!(actual.deliveries, reference.deliveries);
+        }
+    }
+}
 #[test]
 fn conditional_side_input_locks_repeater_without_powering_its_rear() {
     use super::program::{ArrangementSource, InputArrangement};
@@ -658,6 +712,10 @@ fn conditional_side_input_locks_repeater_without_powering_its_rear() {
     runtime.set_token_pos(0, Some(token_cell));
     assert_eq!(runtime.input_strength(0), 0);
     assert!(matches!(runtime.blocks[0], Block::RedstoneRepeater { repeater } if repeater.locked));
+    runtime.set_token_pos(0, None);
+    assert_eq!(runtime.input_strength(0), 0);
+    assert_eq!(runtime.input_levels[0][1].active, 0);
+    assert!(matches!(runtime.blocks[0], Block::RedstoneRepeater { repeater } if !repeater.locked));
 }
 
 #[test]

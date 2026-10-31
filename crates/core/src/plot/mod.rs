@@ -7,6 +7,9 @@ mod block_light;
 #[path = "tests/client_sync.rs"]
 mod client_sync_tests;
 #[cfg(test)]
+#[path = "tests/redpiler_notes.rs"]
+mod redpiler_notes_tests;
+#[cfg(test)]
 #[path = "tests/client_test_utils.rs"]
 mod client_test_utils;
 mod command_block;

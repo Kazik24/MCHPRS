@@ -1,14 +1,14 @@
 #[derive(Clone, Copy)]
 pub(super) struct InputState {
     pub(super) active: u32,
-    pub(super) analog: usize,
+    pub(super) analog: u32,
 }
 
 impl Default for InputState {
     fn default() -> Self {
         Self {
             active: 0,
-            analog: usize::MAX,
+            analog: u32::MAX,
         }
     }
 }
@@ -31,7 +31,7 @@ impl InputState {
         if new != 0 {
             self.active += 1;
         }
-        if let Some(histogram) = histograms.get_mut(self.analog) {
+        if let Some(histogram) = histograms.get_mut(self.analog as usize) {
             if old != 0 {
                 histogram.counts[old as usize] -= 1;
                 if histogram.counts[old as usize] == 0 {
@@ -46,7 +46,7 @@ impl InputState {
     }
 
     pub(super) fn maximum(&self, histograms: &[Histogram]) -> u8 {
-        match histograms.get(self.analog) {
+        match histograms.get(self.analog as usize) {
             Some(histogram) if histogram.levels != 0 => histogram.levels.ilog2() as u8,
             Some(_) => 0,
             None => {
@@ -66,6 +66,7 @@ mod tests {
 
     #[test]
     fn all_strength_changes_preserve_competing_contributions() {
+        assert_eq!(std::mem::size_of::<InputState>(), 8);
         for old in 0..=15 {
             for new in 0..=15 {
                 let mut input = InputState {
