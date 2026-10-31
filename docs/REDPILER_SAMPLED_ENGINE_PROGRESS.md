@@ -23,7 +23,12 @@ simulation.
 
 The maintained sampled tests cover ADDER1BIT, ADDER11BIT, COUNTER, and focused
 TEST outputs, plus scratch boundaries, wire discovery, repeaters, pistons,
-scheduling, and state handoff. The full `TEST_PISTION.schem` fixture declines
+scheduling, button controls, and state handoff. Stone buttons validate all six
+floor, ceiling, and wall attachment directions, sample press and release
+deliveries separately, power once per press, and schedule release after 20
+game ticks. Repeated presses do not extend a powered pulse. Powered buttons and
+their pending release ticks survive compile, flush, and reset. The full
+`TEST_PISTION.schem` fixture declines
 because it contains a connected copper bulb; the other focused TEST timelines
 remain covered. Unsupported blocks, block entities, attachments, boundary
 reads, and active piston entry states produce explicit errors so the world can
@@ -52,12 +57,24 @@ domain and supports that onward push within a compiled piston group. These
 changes follow the MAIR mechanisms identified in the replay report; they do not
 claim parity for arbitrary piston arrangements.
 
-The CPU_BUBBLESORT compile attempt used its existing load/reset protocol and
-declined at `BlockPos { x: 168, y: 15, z: 158 }` with `unsupported component`,
-before the CPU start button. Compiled CPU execution remains unsupported.
-The report at `target/mair-crosscheck/REPORT.txt` records protocol details,
-2,304-frame native/compiled comparison, the 64 observed out-of-window port
-differences, and limits: no original pinned binary or pending-work parity.
+The CPU_BUBBLESORT load/reset protocol now confirms that
+`BlockPos { x: 168, y: 15, z: 158 }` is an unpowered wall `StoneButton` facing
+West. Button admission succeeds. Compilation then declines with
+`scratch probe read outside captured boundary` at
+`BlockPos { x: 223, y: 50, z: 66 }`, whose state is Air; the captured schematic
+bounds end at y=49. The existing start button and frozen RAM/output checkpoints
+were not reached. A larger capture trial also encountered Air outside the
+plot at `(174,12,256)`; a two-block halo compile remained CPU-bound for more
+than five minutes and was stopped. Compiled CPU execution remains unsupported.
+
+The next executable gate is to define safe capture behavior for redstone
+probes that read known Air just outside a selected schematic, while retaining
+the boundary rejection for uncaptured world state. Then rerun the unchanged
+load/reset/start protocol, press the compiled start button, and compare its
+existing RAM and output checkpoints. Do not claim CPU support from compilation
+alone. The report at `target/mair-crosscheck/REPORT.txt` still records the
+repeated-adder replay details and its limits: no original pinned MAIR binary or
+full internal/pending-work parity.
 
 ## Verification
 
@@ -69,9 +86,12 @@ Passed:
 - `cargo fmt --all` (check mode still flags pre-existing trailing whitespace in untouched `crates/core/src/container/tests.rs`)
 - `cargo check --workspace --locked`
 - `cargo check -p mchprs_core --all-targets --locked`
-- `cargo test -p mchprs_core --lib redpiler::` — 69 tests
+- `cargo test -p mchprs_core --lib redpiler::` — 83 tests, including repeated
+  adders, piston regressions, and compiled button behavior
 - `cargo test -p mchprs_core --lib -- headless::` — 9 tests
-- `cargo test -p mchprs_core --test headless_api` — 1 test
+- `cargo test -p mchprs_core --test headless_api` — 2 tests
+- `cargo test -p mchprs_core --test review_graph_removal_probe` — 5 tests
+- `cargo check -p mchprs_core --all-targets --locked`
 - `cargo test -p mchprs_core --lib redstone::master_tests::dust_steps_over_opaque_blocks_and_powers_the_block_below -- --exact`
 
 The plot regression group passed except for the existing PM1 full-clipboard

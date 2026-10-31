@@ -1,9 +1,135 @@
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::{World, storage::Chunk};
-use mchprs_blocks::blocks::{Lever, LeverFace, RedstonePiston};
+use mchprs_blocks::blocks::{ButtonFace, Lever, LeverFace, RedstonePiston, StoneButton};
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing};
 use mchprs_world::{TickEntry, TickPriority};
+
+fn button_world(face: ButtonFace, facing: BlockDirection) -> (PlotWorld, BlockPos, BlockPos, (BlockPos, BlockPos)) {
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
+    let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());
+    let button_pos = BlockPos::new(15, 15, 15);
+    let support = match face {
+        ButtonFace::Floor => button_pos.offset(BlockFace::Bottom),
+        ButtonFace::Ceiling => button_pos.offset(BlockFace::Top),
+        ButtonFace::Wall => button_pos.offset(facing.opposite().block_face()),
+    };
+    let lamp_pos = match face {
+        ButtonFace::Ceiling => button_pos.offset(BlockFace::Bottom),
+        _ => button_pos.offset(BlockFace::Top),
+    };
+    world.set_block(support, Block::Stone {});
+    world.set_block(
+        button_pos,
+        Block::StoneButton {
+            button: StoneButton::new(face, facing, false),
+        },
+    );
+    world.set_block(lamp_pos, Block::RedstoneLamp { lit: false });
+    let bounds = (button_pos + BlockPos::new(-3, -3, -3), button_pos + BlockPos::new(3, 3, 3));
+    (world, button_pos, lamp_pos, bounds)
+}
+
+fn compile_button(world: &PlotWorld, bounds: (BlockPos, BlockPos)) -> Compiler {
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
+    compiler
+}
+
+#[test]
+fn compiled_button_matches_native_pulse_repeat_and_rearm() {
+    let (mut native, pos, lamp, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let (compiled, _, _, _) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let mut compiler = compile_button(&compiled, bounds);
+
+    crate::interaction::use_redstone(native.get_block(pos), &mut native, pos, None);
+    compiler.try_on_use_block(pos).unwrap();
+    let mut compiled = compiled;
+    compiler.try_flush(&mut compiled).unwrap();
+    assert!(matches!(compiled.get_block(lamp), Block::RedstoneLamp { lit: true }));
+    for tick in 1..=22 {
+        if tick == 9 {
+            crate::interaction::use_redstone(native.get_block(pos), &mut native, pos, None);
+            compiler.try_on_use_block(pos).unwrap();
+        }
+        native.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut compiled).unwrap();
+        assert_eq!(native.get_block(pos), compiled.get_block(pos), "button at tick {tick}");
+        assert_eq!(native.get_block(lamp), compiled.get_block(lamp), "lamp at tick {tick}");
+    }
+    assert_eq!(
+        native.get_block(pos),
+        Block::StoneButton {
+            button: StoneButton::new(ButtonFace::Floor, BlockDirection::North, false)
+        }
+    );
+
+    crate::interaction::use_redstone(native.get_block(pos), &mut native, pos, None);
+    compiler.try_on_use_block(pos).unwrap();
+    for tick in 1..=20 {
+        native.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut compiled).unwrap();
+        assert_eq!(native.get_block(pos), compiled.get_block(pos), "rearmed button at tick {tick}");
+    }
+}
+
+#[test]
+fn compiled_buttons_validate_every_supported_attachment() {
+    let attachments = [
+        (ButtonFace::Floor, BlockDirection::North),
+        (ButtonFace::Ceiling, BlockDirection::South),
+        (ButtonFace::Wall, BlockDirection::North),
+        (ButtonFace::Wall, BlockDirection::East),
+        (ButtonFace::Wall, BlockDirection::South),
+        (ButtonFace::Wall, BlockDirection::West),
+    ];
+    for (face, facing) in attachments {
+        let (mut native, pos, lamp, bounds) = button_world(face, facing);
+        let (mut world, _, _, _) = button_world(face, facing);
+        let mut compiler = compile_button(&world, bounds);
+        crate::interaction::use_redstone(native.get_block(pos), &mut native, pos, None);
+        compiler.try_on_use_block(pos).unwrap();
+        for tick in 1..=20 {
+            native.tick_interpreted();
+            compiler.tick().unwrap();
+            compiler.try_flush(&mut world).unwrap();
+            assert_eq!(native.get_block(pos), world.get_block(pos), "{face:?}/{facing:?} button tick {tick}");
+            assert_eq!(native.get_block(lamp), world.get_block(lamp), "{face:?}/{facing:?} lamp tick {tick}");
+        }
+    }
+}
+
+#[test]
+fn reset_preserves_button_state_and_pending_release() {
+    let (mut native, pos, lamp, bounds) = button_world(ButtonFace::Wall, BlockDirection::West);
+    let (mut compiled, _, _, _) = button_world(ButtonFace::Wall, BlockDirection::West);
+    crate::interaction::use_redstone(native.get_block(pos), &mut native, pos, None);
+    crate::interaction::use_redstone(compiled.get_block(pos), &mut compiled, pos, None);
+    let pending = compiled.scheduler().iter_entries().collect();
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(&compiled, bounds, CompilerOptions::default(), pending, Arc::new(TaskMonitor::default()))
+        .unwrap();
+    compiled.clear_scheduled_ticks();
+    compiler.try_on_use_block(pos).unwrap(); // A loaded powered button ignores another press.
+    compiler.try_flush(&mut compiled).unwrap();
+    compiler.try_reset(&mut compiled, bounds).unwrap();
+    assert!(matches!(compiled.get_block(pos), Block::StoneButton { button } if button.powered));
+    assert_eq!(
+        native.scheduler().iter_entries().collect::<Vec<_>>(),
+        compiled.scheduler().iter_entries().collect::<Vec<_>>()
+    );
+    for tick in 1..=20 {
+        native.tick_interpreted();
+        compiled.tick_interpreted();
+        assert_eq!(native.get_block(pos), compiled.get_block(pos), "reset button at tick {tick}");
+        assert_eq!(native.get_block(lamp), compiled.get_block(lamp), "reset lamp at tick {tick}");
+    }
+}
 
 #[test]
 fn flush_and_reset_preserve_an_in_flight_piston_payload() {
@@ -299,4 +425,75 @@ fn compile_rejection_preserves_pending_ticks_and_piston_state() {
     assert_eq!(format!("{:?}", world.get_block_entity(pos)), before_entity);
     assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), before_ticks);
     assert_eq!(format!("{:?}", world.piston_state()), before_pistons);
+}
+
+#[test]
+fn compile_success_preserves_host_blocks_entities_and_pending_work() {
+    let (mut world, button, _, bounds) = button_world(ButtonFace::Floor, BlockDirection::North);
+    let sign = button + BlockPos::new(1, 0, 0);
+    world.set_block(sign, Block::from_name("oak_sign").unwrap());
+    world.set_block_entity(sign, mchprs_blocks::block_entities::BlockEntity::Sign(Default::default()));
+    world.schedule_tick(button, 10, TickPriority::Normal);
+
+    let before_button = world.get_block(button);
+    let before_sign = world.get_block(sign);
+    let before_entity = format!("{:?}", world.get_block_entity(sign));
+    let before_ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
+    let before_pistons = format!("{:?}", world.piston_state());
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions::default(),
+            before_ticks.clone(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap();
+
+    assert!(compiler.is_active());
+    assert_eq!(world.get_block(button), before_button);
+    assert_eq!(world.get_block(sign), before_sign);
+    assert_eq!(format!("{:?}", world.get_block_entity(sign)), before_entity);
+    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), before_ticks);
+    assert_eq!(format!("{:?}", world.piston_state()), before_pistons);
+}
+
+#[test]
+fn powered_source_in_probe_context_rejects_compilation() {
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
+    let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());
+    let piston = BlockPos::new(40, 30, 40);
+    let source = BlockPos::new(40, 33, 40);
+    world.set_block(
+        piston,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    world.set_block(BlockPos::new(40, 32, 40), Block::Stone {});
+    world.set_block(source, Block::RedstoneBlock);
+    let bounds = (BlockPos::new(38, 29, 38), BlockPos::new(42, 32, 42));
+    let mut compiler = Compiler::default();
+    let error = compiler
+        .compile(
+            &world,
+            bounds,
+            CompilerOptions::default(),
+            Vec::new(),
+            Arc::new(TaskMonitor::default()),
+        )
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        CompileError::Unsupported(ScratchError {
+            position: Some(position),
+            reason: "unrepresented discovered wire source"
+        }) if position == source
+    ));
+    assert!(!compiler.is_active());
 }

@@ -776,6 +776,13 @@ impl Runtime {
                     0
                 }
             }
+            Block::StoneButton { button } => {
+                if button.powered {
+                    15
+                } else {
+                    0
+                }
+            }
             Block::RedstoneComparator { comparator } => {
                 if comparator.powered {
                     self.comparator_outputs[source]
@@ -1225,16 +1232,31 @@ impl Runtime {
                 reason: "runtime set_input source index out of bounds",
             });
         };
-        let Block::Lever { lever } = self.blocks[source] else { unreachable!() };
-        if lever.powered == powered {
-            return Ok(());
+        match self.blocks[source] {
+            Block::Lever { lever } if lever.powered != powered => {}
+            Block::StoneButton { button } if button.powered != powered => {}
+            Block::Lever { .. } | Block::StoneButton { .. } => return Ok(()),
+            _ => unreachable!(),
         }
         self.begin_phase();
-        let Block::Lever { mut lever } = self.blocks[source] else {
-            unreachable!()
-        };
-        lever.powered = powered;
-        self.blocks[source] = Block::Lever { lever };
+        match self.blocks[source] {
+            Block::Lever { mut lever } => {
+                lever.powered = powered;
+                self.blocks[source] = Block::Lever { lever };
+            }
+            Block::StoneButton { mut button } => {
+                button.powered = powered;
+                self.blocks[source] = Block::StoneButton { button };
+                if powered {
+                    let tick = ScheduledBlockTick {
+                        pos: self.program.positions[source],
+                        block_type: Some(self.blocks[source].registry_id()),
+                    };
+                    self.pending.schedule_tick(tick, 10, TickPriority::Normal);
+                }
+            }
+            _ => unreachable!(),
+        }
         if self.trace_enabled {
             self.trace(format!("input {:?} powered={powered}", self.program.positions[source]));
         }
@@ -1256,6 +1278,12 @@ impl Runtime {
                     Block::RedstoneComparator { .. } => self.tick_comparator(component),
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => self.tick_torch(component),
                     Block::RedstoneLamp { .. } => self.dispatch_receiver_tick(component),
+                    Block::StoneButton { mut button } if button.powered => {
+                        button.powered = false;
+                        self.blocks[component] = Block::StoneButton { button };
+                        self.execute_output_program(component, false);
+                        self.notify_source_watchers(component, true, true);
+                    }
                     Block::RedstoneRepeater { .. } => {
                         self.scheduled_repeater_ticks += 1;
                         self.tick_repeater(component);
@@ -1362,12 +1390,15 @@ impl Runtime {
         self.program.sources.iter().any(|&source| self.program.positions[source] == pos)
     }
 
-    pub(crate) fn toggle_control(&mut self, pos: mchprs_blocks::BlockPos) -> Result<(), ScratchError> {
+    pub(crate) fn use_control(&mut self, pos: mchprs_blocks::BlockPos) -> Result<(), ScratchError> {
         let Some(source) = self.program.sources.iter().position(|&source| self.program.positions[source] == pos) else {
             return Ok(());
         };
-        let powered = matches!(self.blocks[self.program.sources[source]], Block::Lever { lever } if !lever.powered);
-        self.set_input(source, powered)
+        match self.blocks[self.program.sources[source]] {
+            Block::Lever { lever } => self.set_input(source, !lever.powered),
+            Block::StoneButton { .. } => self.set_input(source, true),
+            _ => unreachable!(),
+        }
     }
 
     pub(crate) fn projected_blocks(&self) -> Vec<(mchprs_blocks::BlockPos, Block)> {

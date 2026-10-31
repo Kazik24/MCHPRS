@@ -7,6 +7,8 @@ use std::thread::JoinHandle;
 #[cfg(test)]
 mod tests;
 
+// TODO: Redpiler compilation and tests should have their own module. 
+
 pub(super) struct CompilationJob {
     /// Time the request started, including snapshot preparation.
     started: Instant,

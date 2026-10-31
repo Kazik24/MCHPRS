@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 const RANGE: f64 = 1024.0;
 const SEARCH_DISTANCE: f64 = 8.0;
 
+// TODO: Find all tools in the repo. Let's move all of tools / custom behavior into **redstone_tools** module.
+
 impl Plot {
     /// Returns true when the held item consumes this interaction, even on a miss.
     pub(super) fn use_compass(&mut self, player: usize, hand: i32, yaw: f32, pitch: f32) -> bool {

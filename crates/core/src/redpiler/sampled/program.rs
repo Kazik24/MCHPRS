@@ -371,6 +371,7 @@ impl Program {
         for block in &initial {
             match block {
                 Block::Lever { .. }
+                | Block::StoneButton { .. }
                 | Block::RedstoneLamp { .. }
                 | Block::RedstoneComparator { .. }
                 | Block::RedstoneBlock
@@ -393,8 +394,8 @@ impl Program {
             if !unique_sources.insert(source) {
                 return Err(invalid("sampled program source is duplicated"));
             }
-            if !matches!(block, Block::Lever { .. }) {
-                return Err(invalid("sampled program source is not a lever"));
+            if !matches!(block, Block::Lever { .. } | Block::StoneButton { .. }) {
+                return Err(invalid("sampled program source is not a lever or button"));
             }
         }
         let mut repeater_components = std::collections::HashSet::new();
@@ -429,6 +430,7 @@ impl Program {
             if !matches!(
                 source,
                 Block::Lever { .. }
+                    | Block::StoneButton { .. }
                     | Block::RedstoneWire { .. }
                     | Block::RedstoneRepeater { .. }
                     | Block::RedstoneComparator { .. }
@@ -437,7 +439,7 @@ impl Program {
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
             ) {
-                return Err(invalid("sampled program link source must be lever, wire or repeater"));
+                return Err(invalid("sampled program link source must be lever, button, wire or repeater"));
             }
             if !matches!(
                 target,
@@ -607,6 +609,13 @@ impl Program {
                     let strength: u8 = match self.initial[link.source] {
                         Block::Lever { lever } => {
                             if lever.powered {
+                                15
+                            } else {
+                                0
+                            }
+                        }
+                        Block::StoneButton { button } => {
+                            if button.powered {
                                 15
                             } else {
                                 0

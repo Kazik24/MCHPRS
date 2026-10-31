@@ -5,6 +5,8 @@ use crate::world::World;
 use mchprs_network::packets::PacketEncoder;
 use mchprs_network::packets::clientbound::*;
 
+// TODO: This is tool, move to redstone_tools.
+
 fn fox_mouth_equipment(player: &Player, entity_id: u32) -> PacketEncoder {
     CEntityEquipment {
         entity_id: entity_id as i32,

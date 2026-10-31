@@ -17,7 +17,7 @@ pub(crate) const CHANNEL: &str = "redbox:main";
 
 const STATE: &str = "STATE";
 /// MROWW has no death mechanic, so the DEATH message is defined for protocol
-/// completeness but not emitted yet.
+/// completeness but not emitted.
 #[allow(dead_code)]
 const DEATH: &str = "DEATH";
 const TELEPORT: &str = "TELEPORT";

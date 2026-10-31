@@ -36,6 +36,7 @@ pub(super) fn valid_branch(name: &str) -> bool {
         && !(name.len() >= 8 && name.bytes().all(|b| b.is_ascii_hexdigit()))
 }
 
+// TODO: Cleanup the repository: Make sure that the db is decupled from the logic. 
 impl Repository {
     pub fn sidebar_head(&self) -> Result<String> {
         let (head, tip) = self.head()?;

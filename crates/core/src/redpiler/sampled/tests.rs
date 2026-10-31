@@ -576,7 +576,7 @@ fn group_probe_finds_masked_conductor_dependency() {
         position: Some(cell),
         cells: vec![cell],
     });
-    let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program).unwrap();
+    let groups = super::group_probe::run(&world, (BlockPos::new(10, 10, 10), BlockPos::new(22, 21, 22)), &entry(&world), &program, None).unwrap();
     let group = groups
         .iter()
         .find(|group| group.target == 2 && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(0)))
@@ -1799,7 +1799,7 @@ fn program_construction_rejects_malformed_records() {
     );
     assert_reason(
         make(positions.clone(), initial.clone(), vec![1], vec![[vec![], vec![]]], links.clone()),
-        "sampled program source is not a lever",
+        "sampled program source is not a lever or button",
     );
     assert_reason(
         make(positions.clone(), initial.clone(), vec![0], vec![], links.clone()),
@@ -1845,7 +1845,7 @@ fn program_construction_rejects_malformed_records() {
                 attenuation: 0,
             }],
         ),
-        "sampled program link source must be lever, wire or repeater",
+        "sampled program link source must be lever, button, wire or repeater",
     );
     assert_reason(
         make(

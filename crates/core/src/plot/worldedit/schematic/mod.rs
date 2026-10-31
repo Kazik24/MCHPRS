@@ -16,6 +16,7 @@ use rustc_hash::FxHashMap;
 use std::fs::{self, File};
 use std::io::{Cursor, Read};
 use std::path::Path;
+use nbt::Value;
 
 type Compound = std::collections::HashMap<String, nbt::Value>;
 const MAX_BLOCKS: u32 = 67_108_864;
@@ -97,7 +98,7 @@ struct Schema<'a> {
 }
 impl<'a> Schema<'a> {
     fn read(nbt: &'a nbt::Blob) -> Result<Self> {
-        use nbt::Value;
+        // TODO: Analize this code, it is very unreadable. I want to see the structure of the schematic in clear way here. Consider creating some abstraction, helper functions ect.
         let wrapped = nbt.get("Schematic").is_some();
         let root = if wrapped { compound(&nbt.content, "Schematic")? } else { &nbt.content };
         let version = integer(root, "Version")?;
@@ -284,7 +285,6 @@ fn read_schematic(mut file: impl Read, max_cells: Option<u32>) -> Result<(WorldE
     decode_schematic(&schema).with_context(|| format!("Sponge v{} DataVersion {}", schema.version, schema.data_version))
 }
 fn decode_schematic(schema: &Schema<'_>) -> Result<(WorldEditClipboard, SchematicImportWarnings)> {
-    use nbt::Value;
     let [size_x, size_y, size_z] = schema.dimensions;
     let entries = size_x
         .checked_mul(size_y)

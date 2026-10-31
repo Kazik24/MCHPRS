@@ -2,6 +2,7 @@ use super::*;
 use mchprs_blocks::BlockFacing;
 use mchprs_blocks::blocks::RedstonePiston;
 
+// TODO: Tests related to piston, probably should be in same place as piston code.
 fn world() -> PlotWorld {
     let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
     PlotWorld::from_chunks(0, 0, chunks, Default::default())

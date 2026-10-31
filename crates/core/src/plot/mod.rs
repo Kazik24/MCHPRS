@@ -85,6 +85,10 @@ pub const PLOT_SECTIONS: usize = 16;
 /// The plot height in blocks
 pub const PLOT_BLOCK_HEIGHT: i32 = PLOT_SECTIONS as i32 * 16;
 
+fn in_bounds((min, max): (BlockPos, BlockPos), pos: BlockPos) -> bool {
+    (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y) && (min.z..=max.z).contains(&pos.z)
+}
+
 pub struct Plot {
     #[cfg(any(test, feature = "plot-bench"))]
     transient_test_fixture: bool,
@@ -166,7 +170,11 @@ pub struct PlotWorld {
     bulb_light: block_light::BulbLight,
     redstone_update_observations: Option<Vec<RedstoneUpdateObservation>>,
     scratch_capture_bounds: Option<(BlockPos, BlockPos)>,
+    scratch_read_bounds: Option<(BlockPos, BlockPos)>,
+    scratch_read_chunks: Option<HashSet<(i32, i32)>>,
+    scratch_contract_air: Option<HashSet<BlockPos>>,
     scratch_boundary_read: std::cell::Cell<Option<BlockPos>>,
+    scratch_boundary_effect: std::cell::Cell<Option<BlockPos>>,
     scratch_touched_blocks: Option<HashSet<BlockPos>>,
     scratch_touched_entities: Option<HashSet<BlockPos>>,
     scratch_suppress_commands: bool,
@@ -216,7 +224,11 @@ impl PlotWorld {
             bulb_light: Default::default(),
             redstone_update_observations: None,
             scratch_capture_bounds: None,
+            scratch_read_bounds: None,
+            scratch_read_chunks: None,
+            scratch_contract_air: None,
             scratch_boundary_read: std::cell::Cell::new(None),
+            scratch_boundary_effect: std::cell::Cell::new(None),
             scratch_touched_blocks: None,
             scratch_touched_entities: None,
             scratch_suppress_commands: false,
@@ -412,9 +424,19 @@ impl PlotWorld {
         self.redstone_update_observations.take().unwrap_or_default()
     }
 
-    pub(crate) fn configure_scratch(&mut self, bounds: (BlockPos, BlockPos)) {
+    pub(crate) fn configure_scratch(
+        &mut self,
+        bounds: (BlockPos, BlockPos),
+        read_bounds: (BlockPos, BlockPos),
+        read_chunks: HashSet<(i32, i32)>,
+        contract_air: HashSet<BlockPos>,
+    ) {
         self.scratch_capture_bounds = Some(bounds);
+        self.scratch_read_bounds = Some(read_bounds);
+        self.scratch_read_chunks = Some(read_chunks);
+        self.scratch_contract_air = Some(contract_air);
         self.scratch_boundary_read.set(None);
+        self.scratch_boundary_effect.set(None);
         self.scratch_touched_blocks = Some(HashSet::new());
         self.scratch_touched_entities = Some(HashSet::new());
         self.scratch_suppress_commands = true;
@@ -427,7 +449,14 @@ impl PlotWorld {
         )
     }
 
-    pub(crate) fn reset_scratch_probe_state(&mut self, piston: &mchprs_world::PistonState, bounds: (BlockPos, BlockPos)) {
+    pub(crate) fn reset_scratch_probe_state(
+        &mut self,
+        piston: &mchprs_world::PistonState,
+        bounds: (BlockPos, BlockPos),
+        read_bounds: (BlockPos, BlockPos),
+        read_chunks: HashSet<(i32, i32)>,
+        contract_air: HashSet<BlockPos>,
+    ) {
         self.clear_scheduled_ticks();
         self.piston_state_mut().clone_from(piston);
         self.observe_redstone_updates(false);
@@ -436,11 +465,15 @@ impl PlotWorld {
         self.wire_topology.get_mut().clear();
         self.instant_pistons.clear();
         self.reset_waveform();
-        self.configure_scratch(bounds);
+        self.configure_scratch(bounds, read_bounds, read_chunks, contract_air);
     }
 
     pub(crate) fn take_scratch_boundary_read(&self) -> Option<BlockPos> {
         self.scratch_boundary_read.take()
+    }
+
+    pub(crate) fn take_scratch_boundary_effect(&self) -> Option<BlockPos> {
+        self.scratch_boundary_effect.take()
     }
 
     pub(crate) fn clear_scheduled_ticks(&mut self) {
@@ -696,11 +729,11 @@ impl World for PlotWorld {
     }
     /// Sets a block in storage. Returns true if a block was changed.
     fn set_block_raw(&mut self, pos: BlockPos, block: u32) -> bool {
-        if let Some((min, max)) = self.scratch_capture_bounds {
-            if pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z {
-                self.scratch_boundary_read.set(Some(pos));
-                return false;
-            }
+        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return false;
+        }
+        if self.scratch_capture_bounds.is_some() {
             if let Some(touched) = &mut self.scratch_touched_blocks {
                 touched.insert(pos);
             }
@@ -769,11 +802,18 @@ impl World for PlotWorld {
 
     /// Returns the block state id of the block at `pos`
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
-        if let Some((min, max)) = self.scratch_capture_bounds
-            && (pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
-        {
+        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
             self.scratch_boundary_read.set(Some(pos));
             return 0;
+        }
+        if self.scratch_read_bounds.is_some() {
+            let chunk = (pos.x.div_euclid(16), pos.z.div_euclid(16));
+            if !self.scratch_read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
+                && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+            {
+                self.scratch_boundary_read.set(Some(pos));
+                return 0;
+            }
         }
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
@@ -784,6 +824,10 @@ impl World for PlotWorld {
     }
 
     fn delete_block_entity(&mut self, pos: BlockPos) {
+        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return;
+        }
         if let Some(touched) = &mut self.scratch_touched_entities {
             touched.insert(pos);
         }
@@ -794,6 +838,10 @@ impl World for PlotWorld {
     }
 
     fn delete_piston_entity(&mut self, pos: BlockPos) {
+        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return;
+        }
         self.remove_motions_at(pos);
         let chunk_index = match self.get_chunk_index_for_block(pos.x, pos.z) {
             Some(idx) => idx,
@@ -805,11 +853,18 @@ impl World for PlotWorld {
     }
 
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
-        if let Some((min, max)) = self.scratch_capture_bounds
-            && (pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
-        {
+        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
             self.scratch_boundary_read.set(Some(pos));
             return None;
+        }
+        if self.scratch_read_bounds.is_some() {
+            let chunk = (pos.x.div_euclid(16), pos.z.div_euclid(16));
+            if !self.scratch_read_chunks.as_ref().is_some_and(|chunks| chunks.contains(&chunk))
+                && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+            {
+                self.scratch_boundary_read.set(Some(pos));
+                return None;
+            }
         }
         let chunk_index = self.get_chunk_index_for_block(pos.x, pos.z)?;
         let chunk = &self.chunks[chunk_index];
@@ -817,10 +872,8 @@ impl World for PlotWorld {
     }
 
     fn get_block_entity_mut(&mut self, pos: BlockPos) -> Option<&mut BlockEntity> {
-        if let Some((min, max)) = self.scratch_capture_bounds
-            && (pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
-        {
-            self.scratch_boundary_read.set(Some(pos));
+        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch_boundary_effect.set(Some(pos));
             return None;
         }
         if let Some(touched) = &mut self.scratch_touched_entities {
@@ -832,10 +885,8 @@ impl World for PlotWorld {
     }
 
     fn set_piston_progress(&mut self, pos: BlockPos, progress: f32) {
-        if let Some((min, max)) = self.scratch_capture_bounds
-            && (pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z)
-        {
-            self.scratch_boundary_read.set(Some(pos));
+        if self.scratch_capture_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+            self.scratch_boundary_effect.set(Some(pos));
             return;
         }
         if let Some(touched) = &mut self.scratch_touched_entities {
@@ -863,17 +914,37 @@ impl World for PlotWorld {
     }
 
     fn advance_piston_motion(&mut self, index: usize) -> (bool, f32) {
+        let pos = self.piston_state.motions[index].pos;
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return (false, 0.0);
+        }
         let state = &mut self.piston_state;
         state.motions[index].advance(state.logical_tick)
     }
 
     fn remove_piston_motion(&mut self, index: usize) {
+        let pos = self.piston_state.motions[index].pos;
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return;
+        }
         let pos = self.piston_state.motions.remove(index).unwrap().pos;
         self.piston_index.get_mut().invalidate();
         self.piston_index.get_mut().removed(pos);
     }
 
     fn set_piston_carried_entity(&mut self, pos: BlockPos, entity: Option<Box<BlockEntity>>) {
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return;
+        }
         if entity.is_some() {
             self.instant_pistons.entity_changed(pos);
         }
@@ -883,6 +954,17 @@ impl World for PlotWorld {
     }
 
     fn enqueue_piston_event(&mut self, event: mchprs_world::PistonEvent) {
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            event.pos.x < min.x
+                || event.pos.y < min.y
+                || event.pos.z < min.z
+                || event.pos.x > max.x
+                || event.pos.y > max.y
+                || event.pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(event.pos));
+            return;
+        }
         if !self.piston_index.borrow_mut().has_event(&self.piston_state, event) {
             self.piston_state.events.push_back(event);
             self.piston_index.get_mut().pushed(event);
@@ -906,6 +988,9 @@ impl World for PlotWorld {
     }
 
     fn get_wire_block_raw(&self, location: crate::world::WireNeighbor) -> u32 {
+        if self.scratch_read_bounds.is_some() {
+            return self.get_block_raw(location.pos);
+        }
         let Some(cell) = location.cell else {
             return self.get_block_raw(location.pos);
         };
@@ -924,7 +1009,7 @@ impl World for PlotWorld {
     fn set_block_entity(&mut self, pos: BlockPos, block_entity: BlockEntity) {
         if let Some((min, max)) = self.scratch_capture_bounds {
             if pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z {
-                self.scratch_boundary_read.set(Some(pos));
+                self.scratch_boundary_effect.set(Some(pos));
                 return;
             }
             if let Some(touched) = &mut self.scratch_touched_entities {
@@ -991,6 +1076,12 @@ impl World for PlotWorld {
     }
 
     fn schedule_half_tick(&mut self, pos: BlockPos, delay: u32, priority: TickPriority) {
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return;
+        }
         let node = ScheduledBlockTick {
             pos,
             block_type: Some(self.get_block(pos).registry_id()),
@@ -1002,6 +1093,17 @@ impl World for PlotWorld {
     }
 
     fn restore_scheduled_tick(&mut self, entry: TickEntry) {
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            entry.pos.x < min.x
+                || entry.pos.y < min.y
+                || entry.pos.z < min.z
+                || entry.pos.x > max.x
+                || entry.pos.y > max.y
+                || entry.pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(entry.pos));
+            return;
+        }
         let node = ScheduledBlockTick {
             pos: entry.pos,
             block_type: entry.block_type,
@@ -1019,6 +1121,12 @@ impl World for PlotWorld {
     }
 
     fn block_action(&mut self, pos: BlockPos, block_action: BlockAction) {
+        if self.scratch_capture_bounds.is_some_and(|(min, max)| {
+            pos.x < min.x || pos.y < min.y || pos.z < min.z || pos.x > max.x || pos.y > max.y || pos.z > max.z
+        }) {
+            self.scratch_boundary_effect.set(Some(pos));
+            return;
+        }
         match block_action {
             BlockAction::Piston { action, piston } => {
                 if self.fast_rendering || self.screen_only() {

@@ -6,6 +6,8 @@ use mchprs_network::packets::serverbound::*;
 use mchprs_network::test_support::{connection, read_frame};
 use std::net::TcpStream;
 
+// TODO: Related to client_test_utils.
+
 pub(super) fn fixture(compressed: bool) -> (Plot, TcpStream) {
     let conn = connection(compressed).unwrap();
     let mut player = Player::test_player(conn.player);

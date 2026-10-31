@@ -5,7 +5,7 @@ use crate::redpiler::TickScheduler;
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonState, TickEntry};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Clone)]
 pub(crate) struct ScratchEntry {
@@ -25,6 +25,9 @@ pub(crate) struct ScratchWorld {
     scheduled: Vec<TickEntry>,
     piston: mchprs_world::PistonState,
     bounds: (BlockPos, BlockPos),
+    read_bounds: (BlockPos, BlockPos),
+    read_chunks: HashSet<(i32, i32)>,
+    contract_air: HashSet<BlockPos>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,22 +123,47 @@ pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPo
 
 /// Electrical extraction alone; watcher construction and executable admission are separate.
 pub(crate) fn discover_wire_sources(world: &impl World, wires: &[BlockPos]) -> Result<Vec<WireSource>, ScratchError> {
-    discover_wire_sources_inner(world, wires, false)
+    discover_wire_sources_inner(world, wires, false, None)
+}
+
+pub(crate) fn discover_wire_sources_monitored(
+    world: &impl World,
+    wires: &[BlockPos],
+    monitor: &super::TaskMonitor,
+) -> Result<Vec<WireSource>, ScratchError> {
+    discover_wire_sources_inner(world, wires, false, Some(monitor))
 }
 
 #[cfg(test)]
 pub(crate) fn trace_wire_sources(world: &impl World, wires: &[BlockPos]) -> Result<Vec<WireSource>, ScratchError> {
-    discover_wire_sources_inner(world, wires, true)
+    discover_wire_sources_inner(world, wires, true, None)
 }
 
-fn discover_wire_sources_inner(world: &impl World, wires: &[BlockPos], trace: bool) -> Result<Vec<WireSource>, ScratchError> {
+fn discover_wire_sources_inner(
+    world: &impl World,
+    wires: &[BlockPos],
+    trace: bool,
+    monitor: Option<&super::TaskMonitor>,
+) -> Result<Vec<WireSource>, ScratchError> {
     // Dust attenuation follows the shortest represented wire path; dynamic source
     // states are included even when currently off (e.g. an unpowered lever).
     let mut sources = HashMap::new();
     for &wire in wires {
+        if monitor.is_some_and(super::TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compilation cancelled",
+            });
+        }
         let mut distances = HashMap::from([(wire, 0u8)]);
         let mut queue = VecDeque::from([wire]);
         while let Some(current) = queue.pop_front() {
+            if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
             let distance = distances[&current];
             if trace {
                 eprintln!("wire traversal target={wire:?} current={current:?} distance={distance}");
@@ -420,7 +448,7 @@ fn source_emits_to(block: Block, world: &impl World, pos: BlockPos, face: BlockF
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plot::PlotWorld;
+    use crate::plot::{PLOT_BLOCK_WIDTH, PlotWorld};
     use crate::redstone;
     use crate::world::RedstoneUpdateObservation;
     use mchprs_blocks::{
@@ -533,7 +561,7 @@ mod tests {
     fn scratch_reports_unknown_boundary_and_pending_entry_work() {
         let host = fixture();
         let scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
-        let outside = BlockPos::new(BOUNDS.1.x + 1, BOUNDS.1.y, BOUNDS.1.z);
+        let outside = BlockPos::new(BOUNDS.1.x + 2, BOUNDS.1.y, BOUNDS.1.z);
         let _ = scratch.world().get_block(outside);
         assert_eq!(
             scratch.finish_probe().unwrap_err(),
@@ -561,6 +589,45 @@ mod tests {
                 reason: "scratch entry has queued piston work"
             }
         );
+    }
+
+    #[test]
+    fn scratch_reads_authoritative_air_in_probe_context() {
+        let mut host = fixture();
+        let bounds = (BlockPos::new(40, 30, 38), BlockPos::new(44, 32, 42));
+        host.set_block(BlockPos::new(42, 32, 40), Block::Stone {});
+        let outside_air = BlockPos::new(42, 33, 40);
+        assert_eq!(host.get_block(outside_air), Block::Air);
+
+        let scratch = ScratchWorld::from_world(&host, bounds, entry(&host)).unwrap();
+        assert_eq!(scratch.world().get_block(outside_air), Block::Air);
+        discover_piston_sources(scratch.world(), PISTON, BlockFacing::East).unwrap();
+        scratch.finish_probe().unwrap();
+    }
+
+    #[test]
+    fn scratch_plot_edge_context_uses_the_world_air_contract() {
+        let host = fixture();
+        let bounds = (
+            BlockPos::new(0, 30, 40),
+            BlockPos::new(2, 32, 42),
+        );
+        let scratch = ScratchWorld::from_world(&host, bounds, entry(&host)).unwrap();
+        let outside_plot = BlockPos::new(-1, 31, 41);
+        assert_eq!(host.get_block(outside_plot), Block::Air);
+        assert_eq!(scratch.world().get_block(outside_plot), Block::Air);
+        scratch.finish_probe().unwrap();
+
+        let plot_max_x = PLOT_BLOCK_WIDTH - 1;
+        let edge_bounds = (
+            BlockPos::new(plot_max_x - 2, 30, 40),
+            BlockPos::new(plot_max_x, 32, 42),
+        );
+        let edge_scratch = ScratchWorld::from_world(&host, edge_bounds, entry(&host)).unwrap();
+        let outside_plot = BlockPos::new(plot_max_x + 1, 31, 41);
+        assert_eq!(host.get_block(outside_plot), Block::Air);
+        assert_eq!(edge_scratch.world().get_block(outside_plot), Block::Air);
+        edge_scratch.finish_probe().unwrap();
     }
 
     #[test]
@@ -923,6 +990,15 @@ impl ScratchWorld {
         {
             return Err(invalid_bounds());
         }
+        let Some(read_min_x) = min.x.checked_sub(1) else { return Err(invalid_bounds()) };
+        let Some(read_min_y) = min.y.checked_sub(1) else { return Err(invalid_bounds()) };
+        let Some(read_min_z) = min.z.checked_sub(1) else { return Err(invalid_bounds()) };
+        let Some(read_max_x) = max.x.checked_add(1) else { return Err(invalid_bounds()) };
+        let Some(read_max_y) = max.y.checked_add(1) else { return Err(invalid_bounds()) };
+        let Some(read_max_z) = max.z.checked_add(1) else { return Err(invalid_bounds()) };
+        let read_min = BlockPos::new(read_min_x, read_min_y, read_min_z);
+        let read_max = BlockPos::new(read_max_x, read_max_y, read_max_z);
+        let read_bounds = (read_min, read_max);
         if entry.piston.phase != AdvancePhase::BetweenTicks {
             return Err(ScratchError {
                 position: None,
@@ -947,12 +1023,43 @@ impl ScratchWorld {
                 reason: "scratch entry has pending movement work",
             });
         }
+        if let Some(tick) = entry.scheduled.iter().find(|tick| !contains(bounds, tick.pos)) {
+            return Err(ScratchError {
+                position: Some(tick.pos),
+                reason: "scratch entry has scheduled work outside compiled region",
+            });
+        }
 
         let chunks = (0..PLOT_WIDTH)
             .flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(plot_x * PLOT_WIDTH + x, plot_z * PLOT_WIDTH + z)))
             .collect();
         let mut world = PlotWorld::from_chunks(plot_x, plot_z, chunks, TickScheduler::<ScheduledBlockTick>::default());
         let mut baseline = HashMap::new();
+
+        let owned_chunks_x = min.x.div_euclid(16)..=max.x.div_euclid(16);
+        let owned_chunks_z = min.z.div_euclid(16)..=max.z.div_euclid(16);
+        for chunk_x in owned_chunks_x.clone() {
+            for chunk_z in owned_chunks_z.clone() {
+                if source.get_chunk(chunk_x, chunk_z).is_none() {
+                    return Err(ScratchError {
+                        position: Some(BlockPos::new(chunk_x * 16, min.y, chunk_z * 16)),
+                        reason: "scratch capture contains an unloaded chunk",
+                    });
+                }
+            }
+        }
+        let mut read_chunks = HashSet::new();
+        let plot_chunk_min_x = plot_min_x.div_euclid(16);
+        let plot_chunk_max_x = plot_max_x.div_euclid(16);
+        let plot_chunk_min_z = plot_min_z.div_euclid(16);
+        let plot_chunk_max_z = plot_max_z.div_euclid(16);
+        for chunk_x in (read_min.x.div_euclid(16).max(plot_chunk_min_x))..=(read_max.x.div_euclid(16).min(plot_chunk_max_x)) {
+            for chunk_z in (read_min.z.div_euclid(16).max(plot_chunk_min_z))..=(read_max.z.div_euclid(16).min(plot_chunk_max_z)) {
+                if source.get_chunk(chunk_x, chunk_z).is_some() {
+                    read_chunks.insert((chunk_x, chunk_z));
+                }
+            }
+        }
         for y in min.y..=max.y {
             if monitor.is_some_and(super::TaskMonitor::cancelled) {
                 return Err(ScratchError {
@@ -972,17 +1079,54 @@ impl ScratchWorld {
                 }
             });
         }
+
+        // The selection owns writes; its one-cell probe context is read-only.
+        let mut contract_air = HashSet::new();
+        for y in read_min.y..=read_max.y {
+            for z in read_min.z..=read_max.z {
+                for x in read_min.x..=read_max.x {
+                    let pos = BlockPos::new(x, y, z);
+                    if contains(bounds, pos) {
+                        continue;
+                    }
+                    let in_plot = (plot_min_x..=plot_max_x).contains(&x)
+                        && (plot_min_z..=plot_max_z).contains(&z)
+                        && (0..PLOT_BLOCK_HEIGHT).contains(&y);
+                    if !in_plot {
+                        if source.get_block(pos) == Block::Air && source.get_block_entity(pos).is_none() {
+                            contract_air.insert(pos);
+                        }
+                        continue;
+                    }
+                    if !read_chunks.contains(&(x.div_euclid(16), z.div_euclid(16))) {
+                        continue;
+                    }
+                    let raw = source.get_block_raw(pos);
+                    let entity = source.get_block_entity(pos).cloned();
+                    if raw != Block::Air.get_id() || entity.is_some() {
+                        baseline.insert(pos, (raw, entity.clone()));
+                        world.set_block_raw(pos, raw);
+                        if let Some(entity) = entity {
+                            world.set_block_entity(pos, entity);
+                        }
+                    }
+                }
+            }
+        }
         for tick in entry.scheduled.iter().cloned() {
             world.restore_scheduled_tick(tick);
         }
         world.piston_state_mut().clone_from(&entry.piston);
-        world.configure_scratch(bounds);
+        world.configure_scratch(bounds, read_bounds, read_chunks.clone(), contract_air.clone());
         Ok(Self {
             world,
             baseline,
             scheduled: entry.scheduled,
             piston: entry.piston,
             bounds,
+            read_bounds,
+            read_chunks,
+            contract_air,
         })
     }
 
@@ -1007,13 +1151,55 @@ impl ScratchWorld {
                 self.world.set_block_entity(pos, entity);
             }
         }
-        self.world.reset_scratch_probe_state(&self.piston, self.bounds);
+        self.world.reset_scratch_probe_state(
+            &self.piston,
+            self.bounds,
+            self.read_bounds,
+            self.read_chunks.clone(),
+            self.contract_air.clone(),
+        );
         for tick in self.scheduled.iter().cloned() {
             self.world.restore_scheduled_tick(tick);
         }
     }
 
     pub(crate) fn finish_probe(&self) -> Result<(), ScratchError> {
+        if let Some(position) = self.world.take_scratch_boundary_effect() {
+            return Err(ScratchError {
+                position: Some(position),
+                reason: "scratch probe effect outside compiled region",
+            });
+        }
+        for event in &self.world.piston_state().events {
+            if !contains(self.bounds, event.pos) {
+                return Err(ScratchError {
+                    position: Some(event.pos),
+                    reason: "scratch probe queued piston work outside compiled region",
+                });
+            }
+        }
+        for (pos, _) in &self.world.piston_state().movement_work {
+            if !contains(self.bounds, *pos) {
+                return Err(ScratchError {
+                    position: Some(*pos),
+                    reason: "scratch probe queued piston work outside compiled region",
+                });
+            }
+        }
+        for motion in &self.world.piston_state().motions {
+            if !contains(self.bounds, motion.pos) {
+                return Err(ScratchError {
+                    position: Some(motion.pos),
+                    reason: "scratch probe piston motion outside compiled region",
+                });
+            }
+        }
+        if let Some(tick) = self.world.scheduler().iter_entries().find(|tick| !contains(self.bounds, tick.pos)) {
+            return Err(ScratchError {
+                position: Some(tick.pos),
+                reason: "scratch probe scheduled work outside compiled region",
+            });
+        }
         if let Some(position) = self.world.take_scratch_boundary_read() {
             return Err(ScratchError {
                 position: Some(position),
@@ -1022,4 +1208,8 @@ impl ScratchWorld {
         }
         Ok(())
     }
+}
+
+fn contains((min, max): (BlockPos, BlockPos), pos: BlockPos) -> bool {
+    (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y) && (min.z..=max.z).contains(&pos.z)
 }

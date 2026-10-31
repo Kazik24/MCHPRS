@@ -2,6 +2,7 @@ use super::*;
 use crate::waveform::{Probe, Recorder, signal_value};
 use mchprs_network::packets::clientbound::{CDeclareCommandsNode as Node, CDeclareCommandsNodeParser as Parser, CTabComplete, CTabCompleteMatch};
 
+// TODO: THis is tool, move to redstone_tools
 pub(crate) const HELP: &str = "/waveform add <name> [x y z]: watch a block.\n/waveform addbulk <name> <bits>: left-click low to high; cancel with /waveform cancel.\n/waveform on [ticks] | off | status | list | remove <name> | web\n/waveform clear: clear history, keep watches and recording. /waveform reset confirm: remove all watches and history, stop recording.\non/off discard history; off keeps probes. Recorded command output is public.";
 const ACTIONS: [&str; 12] = [
     "on", "off", "status", "add", "addbulk", "cancel", "remove", "list", "clear", "reset", "web", "help",

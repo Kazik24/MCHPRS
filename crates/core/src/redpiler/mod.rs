@@ -177,11 +177,7 @@ impl Compiler {
     }
 
     pub fn try_on_use_block(&mut self, pos: BlockPos) -> Result<(), ExecutionError> {
-        self.runtime
-            .as_mut()
-            .expect("compiler inactive")
-            .toggle_control(pos)
-            .map_err(ExecutionError)
+        self.runtime.as_mut().expect("compiler inactive").use_control(pos).map_err(ExecutionError)
     }
 
     pub(crate) fn accepts_control(&self, pos: BlockPos) -> bool {

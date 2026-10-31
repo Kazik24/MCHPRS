@@ -2,6 +2,7 @@ use super::compiler::find_changed_links;
 use super::program::{ArrangementSource, InputArrangement};
 use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::world::World;
+use crate::redpiler::TaskMonitor;
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
@@ -110,7 +111,14 @@ fn sample(
     program: &Program,
     placements: &[(usize, usize)],
     members: &[usize],
+    monitor: Option<&TaskMonitor>,
 ) -> Result<Vec<Inputs>, ScratchError> {
+    if monitor.is_some_and(TaskMonitor::cancelled) {
+        return Err(ScratchError {
+            position: None,
+            reason: "compilation cancelled",
+        });
+    }
     for token in &program.tokens {
         for &cell in &token.cells {
             scratch.world_mut().set_block(cell, world.get_block(cell));
@@ -168,6 +176,7 @@ pub(super) fn run(
     bounds: (BlockPos, BlockPos),
     entry: &ScratchEntry,
     program: &Program,
+    monitor: Option<&TaskMonitor>,
 ) -> Result<Vec<InputArrangement>, ScratchError> {
     let mut scratch = ScratchWorld::from_world(world, bounds, entry.clone())?;
     let wires: Vec<_> = program
@@ -228,20 +237,32 @@ pub(super) fn run(
     let mut depends: BTreeMap<Dependency, BTreeSet<usize>> = BTreeMap::new();
     let mut grown = BTreeSet::new();
     for token in 0..program.tokens.len() {
+        if monitor.is_some_and(TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compilation cancelled",
+            });
+        }
         let members: Vec<_> = affects[token].iter().copied().collect();
         if members.is_empty() {
             continue;
         }
-        let baseline = sample(world, &mut scratch, program, &[], &members)?;
+        let baseline = sample(world, &mut scratch, program, &[], &members, monitor)?;
         let initial = program.tokens[token]
             .position
             .and_then(|p| program.tokens[token].cells.iter().position(|&c| c == p))
             .map_or(0, |i| i + 1);
         for digit in 0..=program.tokens[token].cells.len() {
+            if monitor.is_some_and(TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
             if digit == initial {
                 continue;
             }
-            let changed = sample(world, &mut scratch, program, &[(token, digit)], &members)?;
+            let changed = sample(world, &mut scratch, program, &[(token, digit)], &members, monitor)?;
             for (i, &member) in members.iter().enumerate() {
                 for (source, side) in find_changed_links(&baseline[i], &changed[i]) {
                     let dep = (member, source, side);
@@ -260,6 +281,12 @@ pub(super) fn run(
         }
         let mut discovered = Vec::new();
         for (tokens, deps) in grouped {
+            if monitor.is_some_and(TaskMonitor::cancelled) {
+                return Err(ScratchError {
+                    position: None,
+                    reason: "compilation cancelled",
+                });
+            }
             if !first && !deps.iter().any(|dep| grown.contains(dep)) {
                 continue;
             }
@@ -290,23 +317,41 @@ pub(super) fn run(
                 })
                 .collect();
             for state in 0..size {
+                if monitor.is_some_and(TaskMonitor::cancelled) {
+                    return Err(ScratchError {
+                        position: None,
+                        reason: "compilation cancelled",
+                    });
+                }
                 let base = placements(program, &tokens, state);
                 if base.iter().map(|pair| pair.1).eq(initial.iter().copied()) {
                     continue;
                 }
-                let baseline = sample(world, &mut scratch, program, &base, &members)?;
+                let baseline = sample(world, &mut scratch, program, &base, &members, monitor)?;
                 for &candidate in &candidates {
+                    if monitor.is_some_and(TaskMonitor::cancelled) {
+                        return Err(ScratchError {
+                            position: None,
+                            reason: "compilation cancelled",
+                        });
+                    }
                     let initial_candidate = program.tokens[candidate]
                         .position
                         .and_then(|p| program.tokens[candidate].cells.iter().position(|&c| c == p))
                         .map_or(0, |i| i + 1);
                     for digit in 0..=program.tokens[candidate].cells.len() {
+                        if monitor.is_some_and(TaskMonitor::cancelled) {
+                            return Err(ScratchError {
+                                position: None,
+                                reason: "compilation cancelled",
+                            });
+                        }
                         if digit == initial_candidate {
                             continue;
                         }
                         let mut joint = base.clone();
                         joint.push((candidate, digit));
-                        let changed = sample(world, &mut scratch, program, &joint, &members)?;
+                        let changed = sample(world, &mut scratch, program, &joint, &members, monitor)?;
                         for (i, &member) in members.iter().enumerate() {
                             if !affects[candidate].contains(&member) {
                                 continue;
@@ -339,10 +384,16 @@ pub(super) fn run(
     }
     let mut result = Vec::new();
     for ((tokens, target, side), sources) in grouped {
+        if monitor.is_some_and(TaskMonitor::cancelled) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compilation cancelled",
+            });
+        }
         let size = count(program, &tokens, program.positions[target])?;
         let mut inputs = Vec::with_capacity(size);
         for state in 0..size {
-            let map = sample(world, &mut scratch, program, &placements(program, &tokens, state), &[target])?
+            let map = sample(world, &mut scratch, program, &placements(program, &tokens, state), &[target], monitor)?
                 .pop()
                 .unwrap();
             inputs.push(

@@ -5,8 +5,60 @@ use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::{
     BlockFacing, BlockPos,
-    blocks::{Block, LeverFace},
+    blocks::{Block, ButtonFace, LeverFace},
 };
+use std::time::Instant;
+
+struct CompilePhases {
+    enabled: bool,
+    total: Instant,
+    started: Instant,
+    phase: &'static str,
+}
+
+impl CompilePhases {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self {
+            enabled: std::env::var_os("MCHPRS_REDpILER_PHASE_TIMINGS").is_some(),
+            total: now,
+            started: now,
+            phase: "scratch snapshot",
+        }
+    }
+
+    fn next(&mut self, phase: &'static str) {
+        if self.enabled {
+            eprintln!("Redpiler compile phase {}: {} ms", self.phase, self.started.elapsed().as_millis());
+        }
+        self.phase = phase;
+        self.started = Instant::now();
+    }
+}
+
+impl Drop for CompilePhases {
+    fn drop(&mut self) {
+        if self.enabled {
+            eprintln!(
+                "Redpiler compile phase {}: {} ms; total {} ms",
+                self.phase,
+                self.started.elapsed().as_millis(),
+                self.total.elapsed().as_millis()
+            );
+        }
+    }
+}
+
+fn check_cancelled(monitor: Option<&TaskMonitor>) -> Result<(), ScratchError> {
+    if monitor.is_some_and(TaskMonitor::cancelled) {
+        Err(ScratchError {
+            position: None,
+            reason: "compilation cancelled",
+        })
+    } else {
+        Ok(())
+    }
+}
 pub(super) fn find_changed_links<K: Ord + Copy, V: PartialEq>(
     before: &std::collections::BTreeMap<K, V>,
     after: &std::collections::BTreeMap<K, V>,
@@ -48,10 +100,7 @@ pub(super) struct PistonToken {
 
 fn is_passive_geometry(block: Block) -> bool {
     !crate::redstone::has_neighbor_update(block)
-        && !matches!(
-            block,
-            Block::Unknown { .. } | Block::Composter { .. } | Block::StoneButton { .. } | Block::Lever { .. }
-        )
+        && !matches!(block, Block::Unknown { .. } | Block::Composter { .. } | Block::Lever { .. })
         && block.pressure_plate_powered().is_none()
         && (block.is_solid() || (block.is_cube() && block.is_transparent()))
 }
@@ -144,9 +193,13 @@ pub(crate) fn compile_monitored(
     entry: ScratchEntry,
     monitor: Option<&TaskMonitor>,
 ) -> Result<Program, ScratchError> {
+    let mut phases = CompilePhases::new();
+    check_cancelled(monitor)?;
     let scratch = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
+    phases.next("piston actor and token discovery");
     let pistons = discover_piston_actors_monitored(world, bounds, entry.clone(), monitor)?;
     let tokens = discover_piston_tokens(scratch.world(), &pistons)?;
+    phases.next("component scan");
     let mut positions = vec![];
     let mut sources = Vec::new();
     let mut repeaters = Vec::new();
@@ -167,6 +220,10 @@ pub(crate) fn compile_monitored(
                     block if block.slab_type().is_some() => {}
                     block if block.is_sign() => {}
                     Block::Lever { lever } if matches!(lever.face, LeverFace::Floor | LeverFace::Wall) => {
+                        sources.push(positions.len());
+                        positions.push(pos);
+                    }
+                    Block::StoneButton { .. } => {
                         sources.push(positions.len());
                         positions.push(pos);
                     }
@@ -206,10 +263,15 @@ pub(crate) fn compile_monitored(
         }
     }
     {
+        check_cancelled(monitor)?;
         for pos in positions.iter().copied().filter(|&pos| {
             matches!(
                 world.get_block(pos),
-                Block::Lever { .. } | Block::RedstoneWire { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }
+                Block::Lever { .. }
+                    | Block::StoneButton { .. }
+                    | Block::RedstoneWire { .. }
+                    | Block::RedstoneTorch { .. }
+                    | Block::RedstoneWallTorch { .. }
             )
         }) {
             if !crate::interaction::is_valid_position(world.get_block(pos), scratch.world(), pos) {
@@ -227,24 +289,33 @@ pub(crate) fn compile_monitored(
         .copied()
         .filter(|&pos| matches!(scratch.world().get_block(pos), Block::RedstoneLamp { .. }))
         .collect();
+    phases.next("electrical dependency discovery");
     let discovery = (|| {
-        let mut dependencies = crate::redpiler::scratch::discover_wire_sources(scratch.world(), &wire_positions)?;
+        let mut dependencies = if let Some(monitor) = monitor {
+            crate::redpiler::scratch::discover_wire_sources_monitored(scratch.world(), &wire_positions, monitor)?
+        } else {
+            crate::redpiler::scratch::discover_wire_sources(scratch.world(), &wire_positions)?
+        };
         for lamp in lamp_positions {
+            check_cancelled(monitor)?;
             dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), lamp)?);
         }
         for &bulb in &copper_bulbs {
+            check_cancelled(monitor)?;
             let sources = crate::redpiler::scratch::discover_lamp_sources(scratch.world(), bulb)?;
             if !sources.is_empty() {
                 return Err(error(bulb, "unsupported copper bulb input"));
             }
         }
         for &pos in &positions {
+            check_cancelled(monitor)?;
             let block = world.get_block(pos);
             if matches!(block, Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. }) {
                 dependencies.extend(crate::redpiler::scratch::discover_torch_sources(scratch.world(), pos, block)?);
             }
         }
         for piston in &pistons {
+            check_cancelled(monitor)?;
             dependencies.extend(crate::redpiler::scratch::discover_piston_sources(
                 scratch.world(),
                 piston.base,
@@ -252,6 +323,7 @@ pub(crate) fn compile_monitored(
             )?);
         }
         for record in &mut repeaters {
+            check_cancelled(monitor)?;
             let pos = positions[record.component];
             let Block::RedstoneRepeater { repeater } = world.get_block(pos) else {
                 unreachable!()
@@ -304,6 +376,7 @@ pub(crate) fn compile_monitored(
     })();
     scratch.finish_probe()?;
     let discovery = discovery?;
+    phases.next("link and watcher construction");
     let initial = positions.iter().map(|&p| world.get_block(p)).collect();
     let mut links = vec![];
     {
@@ -433,13 +506,18 @@ pub(crate) fn compile_monitored(
         }
     }
     // shortcut: only single-token source changes are sampled, replace with joint dependency groups before relying on interacting arrangements.
+    phases.next("movement transition sampling");
+    check_cancelled(monitor)?;
     let mut movement_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
     for token in &program.tokens {
+        check_cancelled(monitor)?;
         let arrangements = vec![Vec::new(); token.cells.len()];
         let mut updates = Vec::new();
         for &cell in &token.cells {
+            check_cancelled(monitor)?;
             let mut cell_updates = [Vec::new(), Vec::new()];
             for arrival in [false, true] {
+                check_cancelled(monitor)?;
                 movement_probe.revert();
                 let probe = &mut movement_probe;
                 if let Some(initial) = token.position {
@@ -583,8 +661,14 @@ pub(crate) fn compile_monitored(
         }
         program.move_steps.push(programs);
     }
-    program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program)?;
+    phases.next("piston arrangement discovery");
+    check_cancelled(monitor)?;
+    program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program, monitor)?;
+    phases.next("movement program validation");
+    check_cancelled(monitor)?;
     program.compile_movement_flips()?;
+    phases.next("source transition sampling");
+    check_cancelled(monitor)?;
     let mut ordering_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
     let output_sources: Vec<_> = sources
         .iter()
@@ -601,10 +685,12 @@ pub(crate) fn compile_monitored(
     let racing_sources: std::collections::HashSet<_> = output_sources
         .iter()
         .copied()
-        .filter(|&source| feeds_two_racers(&program, source))
+        .filter(|&source| matches!(program.initial[source], Block::StoneButton { .. }) || feeds_two_racers(&program, source))
         .collect();
     let mut comparisons = Vec::new();
     for (output_index, &source) in output_sources.iter().enumerate() {
+        check_cancelled(monitor)?;
+        check_cancelled(monitor)?;
         if !racing_sources.contains(&source) {
             let operations = source_operations(&program, source);
             program.output_programs[source] = [operations.clone(), operations];
@@ -640,6 +726,10 @@ pub(crate) fn compile_monitored(
                     lever.powered = false;
                     Block::Lever { lever }
                 }
+                Block::StoneButton { mut button } => {
+                    button.powered = false;
+                    Block::StoneButton { button }
+                }
                 Block::RedstoneRepeater { mut repeater } => {
                     repeater.powered = false;
                     repeater.locked = false;
@@ -668,7 +758,13 @@ pub(crate) fn compile_monitored(
         let initial_power = false;
         let mut first_edge = None;
         let mut samples: [Option<Vec<Frame>>; 2] = [None, None];
-        for powered in [!initial_power, initial_power, !initial_power] {
+        let edge_count = if matches!(program.initial[source], Block::StoneButton { .. }) {
+            2
+        } else {
+            3
+        };
+        for powered in [!initial_power, initial_power, !initial_power].into_iter().take(edge_count) {
+            check_cancelled(monitor)?;
             let w = scratch.world_mut();
             let mut frames = vec![];
             if let Block::RedstoneRepeater { mut repeater } = w.get_block(pos) {
@@ -681,6 +777,13 @@ pub(crate) fn compile_monitored(
             match w.get_block(pos) {
                 Block::Lever { lever } if lever.powered != powered => {
                     crate::interaction::use_redstone(w.get_block(pos), w, pos, None);
+                }
+                Block::StoneButton { button } if button.powered != powered => {
+                    if powered {
+                        crate::redstone::button::press(button, w, pos, None);
+                    } else {
+                        crate::redstone::button::release(button, w, pos);
+                    }
                 }
                 Block::RedstoneRepeater { mut repeater } if repeater.powered != powered => {
                     repeater.powered = powered;
@@ -721,7 +824,9 @@ pub(crate) fn compile_monitored(
             });
             if let Some(previous) = &first_edge {
                 if powered != initial_power && *previous != frames {
-                    eprintln!("sampled source probe at {pos:?}: repeated transition differs");
+                    if !matches!(program.initial[source], Block::StoneButton { .. }) {
+                        eprintln!("sampled source probe at {pos:?}: repeated transition differs");
+                    }
                 }
             } else {
                 first_edge = Some(frames.clone());
@@ -811,6 +916,7 @@ pub(crate) fn compile_monitored(
         if output_index >= sources.len()
             || program.initial.iter().any(|block| match block {
                 Block::Lever { lever } => lever.powered,
+                Block::StoneButton { button } => button.powered,
                 Block::RedstoneRepeater { repeater } => repeater.powered || repeater.locked,
                 Block::RedstoneWire { wire } => wire.power != 0,
                 Block::RedstoneLamp { lit } => *lit,
@@ -822,14 +928,24 @@ pub(crate) fn compile_monitored(
         comparisons.push((output_index, pos, samples));
     }
     for (output_index, pos, samples) in comparisons {
+        check_cancelled(monitor)?;
+        let source = output_sources[output_index];
         let mut runtime = program.start();
         for powered in [true, false] {
             runtime.set_input(output_index, powered)?;
             for (step, frame) in samples[usize::from(powered)].as_ref().unwrap().iter().enumerate() {
+                check_cancelled(monitor)?;
                 if step != 0 {
                     runtime.tick()?;
                 }
-                if runtime.blocks != frame.blocks || runtime.pending.iter_entries().collect::<Vec<_>>() != frame.pending {
+                let pending_matches = if matches!(program.initial[source], Block::StoneButton { .. }) {
+                    let pos = program.positions[source];
+                    runtime.pending.iter_entries().filter(|entry| entry.pos == pos).collect::<Vec<_>>()
+                        == frame.pending.iter().filter(|entry| entry.pos == pos).cloned().collect::<Vec<_>>()
+                } else {
+                    runtime.pending.iter_entries().collect::<Vec<_>>() == frame.pending
+                };
+                if runtime.blocks != frame.blocks || !pending_matches {
                     eprintln!(
                         "sampled runtime at {pos:?}, edge={powered}, step={step}: expected blocks={:?}, pending={:?}; observed blocks={:?}, pending={:?}",
                         frame.blocks,
@@ -841,7 +957,11 @@ pub(crate) fn compile_monitored(
             }
         }
     }
-    track_reactive(world, &entry, &mut program)?;
+    phases.next("reactive dependency tracking");
+    check_cancelled(monitor)?;
+    track_reactive(world, &entry, &mut program, monitor)?;
+    phases.next("program finalization");
+    check_cancelled(monitor)?;
     program.prepare_projection();
     Ok(program)
 }
@@ -959,7 +1079,12 @@ fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
     operations
 }
 
-fn track_reactive(world: &impl World, entry: &ScratchEntry, program: &mut Program) -> Result<(), ScratchError> {
+fn track_reactive(
+    world: &impl World,
+    entry: &ScratchEntry,
+    program: &mut Program,
+    monitor: Option<&TaskMonitor>,
+) -> Result<(), ScratchError> {
     let inputs = {
         let runtime = program.start();
         (0..program.initial.len())
@@ -967,6 +1092,7 @@ fn track_reactive(world: &impl World, entry: &ScratchEntry, program: &mut Progra
             .collect::<Vec<_>>()
     };
     for (node, &block) in program.initial.iter().enumerate() {
+        check_cancelled(monitor)?;
         let pos = program.positions[node];
         let pending = entry.scheduled.iter().any(|tick| tick.pos == pos);
         program.reactive[node] = match block {
@@ -1001,6 +1127,7 @@ fn track_reactive(world: &impl World, entry: &ScratchEntry, program: &mut Progra
         };
     }
     for node in 0..program.initial.len() {
+        check_cancelled(monitor)?;
         if !program.reactive[node] {
             continue;
         }
@@ -1057,7 +1184,7 @@ fn track_reactive(world: &impl World, entry: &ScratchEntry, program: &mut Progra
                 let front = pos.offset(comparator.facing.opposite().block_face());
                 adjacent(front).into_iter().chain([front]).collect()
             }
-            Block::Lever { .. } => update_footprint(pos, program.initial[node]),
+            Block::Lever { .. } | Block::StoneButton { .. } => update_footprint(pos, program.initial[node]),
             _ => Vec::new(),
         };
         for at in footprint {
@@ -1103,6 +1230,14 @@ fn update_footprint(pos: BlockPos, block: Block) -> Vec<BlockPos> {
                 LeverFace::Floor => BlockFace::Bottom,
                 LeverFace::Ceiling => BlockFace::Top,
                 LeverFace::Wall => lever.facing.opposite().block_face(),
+            };
+            neighbours(pos).into_iter().chain(neighbours(pos.offset(support))).collect()
+        }
+        Block::StoneButton { button } => {
+            let support = match button.face {
+                ButtonFace::Floor => BlockFace::Bottom,
+                ButtonFace::Ceiling => BlockFace::Top,
+                ButtonFace::Wall => button.facing.opposite().block_face(),
             };
             neighbours(pos).into_iter().chain(neighbours(pos.offset(support))).collect()
         }

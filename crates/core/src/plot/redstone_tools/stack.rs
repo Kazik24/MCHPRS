@@ -7,6 +7,7 @@ use anyhow::{Context, Result, bail};
 use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFacing, BlockPos};
 
+// TODO: rstack can be moved to worldedit module.
 const MAX_COPIES: u32 = 4096;
 const MAX_STACK_BLOCKS: u64 = 16_777_216;
 
