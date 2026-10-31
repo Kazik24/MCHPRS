@@ -140,6 +140,8 @@ pub(crate) struct Program {
     pub(super) output_programs: Vec<[Vec<Operation>; 2]>,
     pub(super) links: Vec<ElectricalLink>,
     pub(super) incoming: Vec<Vec<usize>>,
+    pub(super) outgoing: Vec<Vec<usize>>,
+    pub(super) outgoing_arrangements: Vec<Vec<usize>>,
     pub(super) watched_wires: Vec<WatchedWire>,
     pub(super) repeaters: Vec<RepeaterRecord>,
 }
@@ -252,6 +254,12 @@ impl Program {
         }
         self.movement_groups = groups;
         self.arrangement_links = links;
+        self.outgoing_arrangements = vec![vec![]; self.initial.len()];
+        for (index, link) in self.arrangement_links.iter().enumerate() {
+            if let ArrangementSource::Component(source) = link.source {
+                self.outgoing_arrangements[source].push(index);
+            }
+        }
         self.token_movement_groups = vec![vec![]; self.tokens.len()];
         for shared in [false, true] {
             for (group, record) in self.movement_groups.iter().enumerate() {
@@ -508,9 +516,12 @@ impl Program {
             }
         }
         let mut incoming = vec![vec![]; initial.len()];
+        let mut outgoing = vec![vec![]; initial.len()];
         for (id, link) in links.iter().enumerate() {
             incoming[link.target].push(id);
+            outgoing[link.source].push(id);
         }
+        let outgoing_arrangements = vec![vec![]; initial.len()];
         let component_indices = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
         Ok(Self {
             comparators: Vec::new(),
@@ -542,9 +553,18 @@ impl Program {
             output_programs,
             links,
             incoming,
+            outgoing,
+            outgoing_arrangements,
             watched_wires,
             repeaters,
         })
+    }
+
+    pub(super) fn push_link(&mut self, link: ElectricalLink) {
+        let index = self.links.len();
+        self.incoming[link.target].push(index);
+        self.outgoing[link.source].push(index);
+        self.links.push(link);
     }
 
     pub(super) fn start(&self) -> Runtime {

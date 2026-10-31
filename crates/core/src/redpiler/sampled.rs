@@ -9,6 +9,8 @@ mod group_probe;
 mod program;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod cpu_trace;
 
 use super::scratch::ScratchWorld;
 pub(super) use super::scratch::{ScratchEntry, ScratchError};

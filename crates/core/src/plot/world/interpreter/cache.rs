@@ -4,10 +4,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 
-
 /// Membership only: the scheduler retains priority, FIFO and ring ordering.
 /// Counts also preserve duplicate entries imported from older saves.
-pub(super) struct TickIndex {
+pub(in crate::plot::world) struct TickIndex {
     pending: FxHashMap<ScheduledBlockTick, usize>,
     dirty: bool,
 }
@@ -56,7 +55,7 @@ impl TickIndex {
 }
 
 /// Derived indexes only; the ordered serialized collections remain authoritative.
-pub(super) struct PistonIndex {
+pub(in crate::plot::world) struct PistonIndex {
     motions: FxHashMap<BlockPos, usize>,
     duplicates: FxHashSet<BlockPos>,
     events: FxHashMap<PistonEvent, usize>,

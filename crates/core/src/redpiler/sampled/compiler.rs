@@ -567,8 +567,7 @@ pub(crate) fn compile_monitored(
             if side {
                 program.side_links.push(link);
             } else if program.comparators.last().unwrap().rear_override.is_none() {
-                program.incoming[component].push(program.links.len());
-                program.links.push(link);
+                program.push_link(link);
             }
         }
     }

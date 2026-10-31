@@ -88,11 +88,18 @@ impl Runtime {
             if !self.consume_operation(self.program.positions[watcher]) {
                 return;
             }
-            if if matches!(self.blocks[watcher], Block::Observer { .. }) {
+            let delivered = if matches!(self.blocks[watcher], Block::Observer { .. }) {
                 shape
             } else {
                 update
-            } {
+            };
+            if self.trace_enabled && delivered {
+                self.trace(format!(
+                    "deliver {:?} -> {:?} shape={shape} update={update}",
+                    self.program.positions[source], self.program.positions[watcher]
+                ));
+            }
+            if delivered {
                 self.update_once(watcher);
             }
         }
@@ -651,6 +658,13 @@ impl Runtime {
             .and_then(|cells| cells.get(cell))
             .map(|edges| edges[usize::from(position.is_some())].clone())
             .unwrap_or_default();
+        // Movement callbacks read the new wire level even when that wire is not a piston watcher.
+        for &node in &switched {
+            if matches!(self.blocks[node], Block::RedstoneWire { .. }) {
+                let strength = self.input_strength(node);
+                self.refresh_wire_power(node, strength);
+            }
+        }
         let mut changed_wires = Vec::new();
         for step in steps {
             if !self.consume_operation(self.program.positions[step.node]) {
@@ -677,9 +691,9 @@ impl Runtime {
                 if self.mark_changed_wire(node) {
                     changed_wires.push(node);
                 }
-            } else if let Block::RedstoneWire { mut wire } = self.blocks[node] {
-                wire.power = self.input_strength(node);
-                self.blocks[node] = Block::RedstoneWire { wire };
+            } else if matches!(self.blocks[node], Block::RedstoneWire { .. }) {
+                let strength = self.input_strength(node);
+                self.refresh_wire_power(node, strength);
             } else {
                 self.update_once(node);
             }
@@ -702,15 +716,62 @@ impl Runtime {
             return false;
         };
         let strength = self.input_strength(wire);
-        if let Block::RedstoneWire { wire: mut state } = self.blocks[wire] {
-            state.power = strength;
-            self.blocks[wire] = Block::RedstoneWire { wire: state };
-        }
+        self.refresh_wire_power(wire, strength);
         if strength == self.watched_strengths[index] {
             return false;
         }
         self.watched_strengths[index] = strength;
         true
+    }
+
+    fn refresh_wire_power(&mut self, wire: usize, strength: u8) {
+        let Block::RedstoneWire { wire: mut state } = self.blocks[wire] else {
+            unreachable!()
+        };
+        let previous = state.power;
+        state.power = strength;
+        self.blocks[wire] = Block::RedstoneWire { wire: state };
+        if previous == strength {
+            return;
+        }
+        let outgoing = self.program.outgoing[wire].clone();
+        for index in outgoing {
+            let link = self.program.links[index].clone();
+            let contribution = strength.saturating_sub(link.attenuation);
+            let old = self.contributions[index];
+            self.contributions[index] = contribution;
+            if (old > 0) != (contribution > 0)
+                || (old != contribution
+                    && (matches!(self.blocks[link.target], Block::RedstoneComparator { .. })
+                        || self.program.watched_wires.iter().any(|record| record.wire == link.target)))
+            {
+                self.updated_in_phase[link.target] = None;
+            }
+            if self.trace_enabled && old != contribution {
+                self.trace(format!(
+                    "link {:?} -> {:?} strength={old}->{contribution}",
+                    self.program.positions[wire], self.program.positions[link.target]
+                ));
+            }
+        }
+        let outgoing_arrangements = self.program.outgoing_arrangements[wire].clone();
+        for index in outgoing_arrangements {
+            let link = self.program.arrangement_links[index].clone();
+            let contribution = if link.active[self.group_arrangements[link.group]] {
+                strength.saturating_sub(link.attenuation)
+            } else {
+                0
+            };
+            let old = self.arrangement_contributions[index];
+            self.arrangement_contributions[index] = contribution;
+            if (old > 0) != (contribution > 0)
+                || (old != contribution
+                    && (matches!(self.blocks[link.target], Block::RedstoneComparator { .. })
+                        || self.program.watched_wires.iter().any(|record| record.wire == link.target)))
+            {
+                self.updated_in_phase[link.target] = None;
+            }
+        }
     }
 
     // shortcut: receiver signatures omit geometry-dependent fixed links, extend arrangement groups to all readers.
@@ -848,6 +909,9 @@ impl Runtime {
             return;
         }
         self.updated_in_phase[receiver] = Some(self.phase);
+        if self.trace_enabled {
+            self.trace(format!("callback {:?}", self.program.positions[receiver]));
+        }
         self.update(receiver);
     }
 
@@ -984,11 +1048,8 @@ impl Runtime {
                     }
                 }
                 Operation::RefreshWire(slot) => {
-                    let Block::RedstoneWire { mut wire } = self.blocks[slot] else {
-                        unreachable!()
-                    };
-                    wire.power = self.input_strength(slot);
-                    self.blocks[slot] = Block::RedstoneWire { wire };
+                    let strength = self.input_strength(slot);
+                    self.refresh_wire_power(slot, strength);
                 }
                 Operation::CheckWatchedWire(record) => self.check_watched_wire(record),
                 Operation::UpdateLamp(slot) => self.dispatch_receiver(slot),
@@ -1182,9 +1243,25 @@ impl Runtime {
             self.blocks[component] = Block::RedstoneRepeater { repeater };
         }
         if repeater.locked {
+            if self.trace_enabled {
+                self.trace(format!(
+                    "repeater callback {:?} powered={} locked=true rear={} side={} pending={:?}",
+                    self.program.positions[component], repeater.powered,
+                    self.input_strength(component), self.side_strength(component),
+                    self.pending.iter_entries().filter(|entry| entry.pos == self.program.positions[component]).collect::<Vec<_>>()
+                ));
+            }
             return;
         }
         let rear_powered = self.input_strength(component) > 0;
+        if self.trace_enabled {
+            self.trace(format!(
+                "repeater callback {:?} powered={} locked=false rear={} side={} pending={:?}",
+                self.program.positions[component], repeater.powered, self.input_strength(component),
+                self.side_strength(component),
+                self.pending.iter_entries().filter(|entry| entry.pos == self.program.positions[component]).collect::<Vec<_>>()
+            ));
+        }
         if rear_powered == repeater.powered {
             return;
         }
@@ -1269,6 +1346,9 @@ impl Runtime {
         while let Some(tick) = self.pending.this_tick().pop_first() {
             if !self.consume_operation(tick.pos) {
                 return;
+            }
+            if self.trace_enabled {
+                self.trace(format!("due tick {:?} type={:?}", tick.pos, tick.block_type));
             }
             if let Some(component) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
                 if tick.block_type != Some(self.blocks[component].registry_id()) {
