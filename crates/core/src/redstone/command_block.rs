@@ -6,18 +6,11 @@ use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_world::TickPriority;
 
 fn facing(world: &impl World, pos: BlockPos) -> BlockFace {
-    match world.get_block(pos).property("facing") {
-        Some("up") => BlockFace::Top,
-        Some("down") => BlockFace::Bottom,
-        Some("east") => BlockFace::East,
-        Some("west") => BlockFace::West,
-        Some("south") => BlockFace::South,
-        _ => BlockFace::North,
-    }
+    world.get_block(pos).facing().unwrap_or(BlockFace::North)
 }
 
 fn condition_met(world: &impl World, pos: BlockPos) -> bool {
-    if world.get_block(pos).property("conditional") != Some("true") {
+    if world.get_block(pos).conditional() != Some(true) {
         return true;
     }
     let previous = pos.offset(facing(world, pos).opposite());

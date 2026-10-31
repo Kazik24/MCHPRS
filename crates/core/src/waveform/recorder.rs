@@ -28,10 +28,10 @@ pub(crate) fn signal_value(world: &impl crate::world::World, pos: BlockPos) -> O
         Block::RedstoneComparator { .. } => Some(crate::redstone::source_strength(block, world, pos) > 0),
         Block::RedstoneBlock => Some(true),
         Block::RedstoneTorch { lit } | Block::RedstoneWallTorch { lit, .. } | Block::RedstoneLamp { lit } => Some(lit),
-        _ => Some(if let Some(powered) = block.property("powered") {
-            powered == "true"
-        } else if let Some(power) = block.property("power") {
-            power != "0"
+        _ => Some(if let Some(powered) = block.powered() {
+            powered
+        } else if let Some(power) = block.power() {
+            power != 0
         } else {
             crate::redstone::redstone_lamp_should_be_lit(world, pos)
         }),

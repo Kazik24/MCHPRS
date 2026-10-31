@@ -593,7 +593,7 @@ impl GraphBackend {
             let facing = command_facing(block);
             for (neighbor, only_chain, required) in [
                 (position.offset(facing), true, true),
-                (position.offset(facing.opposite()), false, block.property("conditional") == Some("true")),
+                (position.offset(facing.opposite()), false, block.conditional() == Some(true)),
             ] {
                 if !required {
                     continue;

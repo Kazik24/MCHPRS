@@ -527,12 +527,7 @@ pub fn is_valid_position(block: Block, world: &impl World, pos: BlockPos) -> boo
         return true;
     }
     if matches!(block, Block::Unknown { .. }) && block.is_sign() {
-        let mut support_model = Block::from_name(if block.property("facing").is_some() {
-            "oak_wall_sign"
-        } else {
-            "oak_sign"
-        })
-        .unwrap();
+        let mut support_model = Block::from_name(if block.facing().is_some() { "oak_wall_sign" } else { "oak_sign" }).unwrap();
         let props = block.properties();
         support_model.set_properties(props.iter().map(|(k, v)| (*k, v.as_str())).collect());
         return is_valid_position(support_model, world, pos);
@@ -728,7 +723,7 @@ mod slab_placement_tests {
         let block = Block::from_name("oak_slab").unwrap();
         let placed = apply_item_properties(block, &nbt);
         assert_eq!(placed.slab_type(), Some(SlabType::Top));
-        assert_eq!(placed.property("waterlogged"), Some("true"));
+        assert_eq!(placed.waterlogged(), Some(true));
         assert_eq!(apply_item_properties(Block::Stone {}, &None), Block::Stone {});
     }
 }

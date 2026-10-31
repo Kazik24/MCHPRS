@@ -232,6 +232,52 @@ pub fn blocks() -> Result<TokenStream, String> {
         let properties = state.properties.iter().map(|(key, value)| quote! { (#key, #value) });
         quote! { &[#(#properties),*] }
     });
+    // One byte per state and property; 255 means absent, including for boolean tables.
+    let direct_properties = [
+        "lit",
+        "powered",
+        "conditional",
+        "eye",
+        "open",
+        "waterlogged",
+        "facing",
+        "power",
+        "layers",
+        "half",
+    ]
+    .into_iter()
+    .map(|key| {
+        let table = format_ident!("STATE_{}", key.to_ascii_uppercase());
+        let values = target
+            .iter()
+            .map(|state| -> Result<u8, String> {
+                let Some((_, value)) = state.properties.iter().find(|(name, _)| name == key) else {
+                    return Ok(u8::MAX);
+                };
+                let choices: &[&str] = match key {
+                    "facing" => &["down", "up", "north", "south", "west", "east"],
+                    "half" => &["bottom", "top", "lower", "upper"],
+                    "power" | "layers" => &[],
+                    _ => &["false", "true"],
+                };
+                let value = if choices.is_empty() {
+                    value.parse::<u8>().map_err(|error| error.to_string())?
+                } else {
+                    let index = choices
+                        .iter()
+                        .position(|choice| *choice == value)
+                        .ok_or_else(|| format!("invalid property {key}={value}"))? as u8;
+                    if key == "half" { index % 2 } else { index }
+                };
+                if value == u8::MAX {
+                    return Err("reserved property sentinel".into());
+                }
+                Ok(value)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(quote! { pub static #table: &[u8] = &[#(#values),*]; })
+    })
+    .collect::<Result<Vec<_>, String>>()?;
     let light_filters = blocks.iter().map(|block| block.filter_light);
     let item_rows = items.iter().map(|Item { name, stack_size, .. }| quote! { (#name, #stack_size) });
     let ids: serde_json::Value = load("builtin_ids.json", BUILTIN_IDS)?;
@@ -251,6 +297,7 @@ pub fn blocks() -> Result<TokenStream, String> {
         pub static LEGACY_BLOCK_STATES: &[u32] = &[#(#legacy_states),*];
         pub static TARGET_TO_LEGACY: &[u32] = &[#(#reverse_states),*];
         pub static STATE_TO_BLOCK_INDEX: &[u16] = &[#(#block_indices),*];
+        #(#direct_properties)*
         pub static STATE_SLAB_TYPES: &[u8] = &[#(#slab_types),*];
         pub static STATE_DRY_IDS: &[u16] = &[#(#dry_ids),*];
         pub static BLOCKS: &[(&str, u32, u32, u32, u32)] = &[#(#block_rows),*];

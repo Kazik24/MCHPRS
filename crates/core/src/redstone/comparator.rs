@@ -60,7 +60,7 @@ pub fn get_override(block: Block, world: &impl World, pos: BlockPos) -> u8 {
         Block::Cauldron { level } => level,
         Block::Composter { level } => level,
         Block::Cake { bites } => 14 - 2 * bites,
-        block if block.get_name() == "end_portal_frame" => super::bool_to_ss(block.property("eye") == Some("true")),
+        block if block.get_name() == "end_portal_frame" => super::bool_to_ss(block.eye() == Some(true)),
         _ => unreachable!("Block does not override comparators"),
     }
 }

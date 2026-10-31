@@ -90,7 +90,7 @@ impl CircuitDraft {
                     node: id,
                     previous,
                     next,
-                    conditional: block.property("conditional") == Some("true"),
+                    conditional: block.conditional() == Some(true),
                 })
             })
             .collect::<Vec<_>>()

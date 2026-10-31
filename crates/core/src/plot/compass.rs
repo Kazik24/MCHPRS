@@ -246,17 +246,17 @@ fn collision_bounds(block: Block) -> Option<Bounds> {
     };
     let name = block.get_name();
     if name.ends_with("_trapdoor") {
-        if block.property("open") == Some("true") {
+        if block.open() == Some(true) {
             bounds.min[1] = 0.0;
             bounds.max[1] = 1.0;
-            match block.property("facing") {
-                Some("north") => bounds.min[2] = 0.8125,
-                Some("south") => bounds.max[2] = 0.1875,
-                Some("west") => bounds.min[0] = 0.8125,
-                Some("east") => bounds.max[0] = 0.1875,
+            match block.facing() {
+                Some(mchprs_blocks::BlockFace::North) => bounds.min[2] = 0.8125,
+                Some(mchprs_blocks::BlockFace::South) => bounds.max[2] = 0.1875,
+                Some(mchprs_blocks::BlockFace::West) => bounds.min[0] = 0.8125,
+                Some(mchprs_blocks::BlockFace::East) => bounds.max[0] = 0.1875,
                 _ => {}
             }
-        } else if block.property("half") == Some("top") {
+        } else if block.upper_half() == Some(true) {
             bounds.min[1] = 0.8125;
         } else {
             bounds.max[1] = 0.1875;
@@ -305,13 +305,13 @@ fn vertical_bounds(block: Block) -> Option<(f64, f64)> {
     {
         return None;
     }
-    if name.ends_with("_fence_gate") && block.property("open") == Some("true") {
+    if name.ends_with("_fence_gate") && block.open() == Some(true) {
         return None;
     }
     let height = match name {
         "soul_sand" => 0.875,
         "farmland" | "dirt_path" => 0.9375,
-        "snow" => block.property("layers")?.parse::<f64>().ok()? / 8.0,
+        "snow" => f64::from(block.layers()?) / 8.0,
         "repeater" | "comparator" => 0.125,
         name if name.ends_with("_carpet") => 0.0625,
         name if name.ends_with("_pressure_plate") => 0.0625,

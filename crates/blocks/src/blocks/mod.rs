@@ -123,7 +123,7 @@ impl Block {
         let index = *crate::generated::STATE_TO_BLOCK_INDEX.get(self.get_id() as usize)?;
         crate::generated::BLOCKS.get(index as usize)
     }
-    // TODO: Remove the string searches from hot path.
+    /// Dynamic lookup for commands and serialization; prefer typed accessors in runtime code.
     pub fn property(self, name: &str) -> Option<&'static str> {
         crate::generated::STATE_PROPERTIES
             .get(self.get_id() as usize)?
@@ -131,13 +131,80 @@ impl Block {
             .find_map(|&(key, value)| (key == name).then_some(value))
     }
 
+    #[inline]
+    pub fn lit(self) -> Option<bool> {
+        let value = *crate::generated::STATE_LIT.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn powered(self) -> Option<bool> {
+        let value = *crate::generated::STATE_POWERED.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn conditional(self) -> Option<bool> {
+        let value = *crate::generated::STATE_CONDITIONAL.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn eye(self) -> Option<bool> {
+        let value = *crate::generated::STATE_EYE.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn open(self) -> Option<bool> {
+        let value = *crate::generated::STATE_OPEN.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn waterlogged(self) -> Option<bool> {
+        let value = *crate::generated::STATE_WATERLOGGED.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn power(self) -> Option<u8> {
+        let value = *crate::generated::STATE_POWER.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value)
+    }
+
+    #[inline]
+    pub fn layers(self) -> Option<u8> {
+        let value = *crate::generated::STATE_LAYERS.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value)
+    }
+
+    #[inline]
+    pub fn upper_half(self) -> Option<bool> {
+        let value = *crate::generated::STATE_HALF.get(self.get_id() as usize)?;
+        (value != u8::MAX).then_some(value != 0)
+    }
+
+    #[inline]
+    pub fn facing(self) -> Option<crate::BlockFace> {
+        use crate::BlockFace;
+        match *crate::generated::STATE_FACING.get(self.get_id() as usize)? {
+            0 => Some(BlockFace::Bottom),
+            1 => Some(BlockFace::Top),
+            2 => Some(BlockFace::North),
+            3 => Some(BlockFace::South),
+            4 => Some(BlockFace::West),
+            5 => Some(BlockFace::East),
+            _ => None,
+        }
+    }
+
     pub fn is_copper_bulb(self) -> bool {
         matches!(self, Self::Unknown { .. }) && self.get_name().ends_with("copper_bulb")
     }
 
     pub fn copper_bulb_state(self) -> Option<(bool, bool)> {
-        self.is_copper_bulb()
-            .then(|| (self.property("lit") == Some("true"), self.property("powered") == Some("true")))
+        self.is_copper_bulb().then(|| (self.lit() == Some(true), self.powered() == Some(true)))
     }
 
     pub fn with_copper_bulb_state(mut self, lit: bool, powered: bool) -> Option<Self> {
@@ -234,10 +301,10 @@ impl Block {
     pub fn with_slab_type(self, slab_type: SlabType) -> Option<Self> {
         self.slab_type()?;
         let definition = self.definition()?;
-        let waterlogged = self.property("waterlogged");
+        let waterlogged = self.waterlogged();
         let state = (definition.2..=definition.3).find(|&state| {
             let block = Self::from_id(state);
-            block.property("type") == Some(slab_type.as_str()) && block.property("waterlogged") == waterlogged
+            block.slab_type() == Some(slab_type) && block.waterlogged() == waterlogged
         })?;
         Some(Self::from_id(state))
     }
@@ -246,7 +313,7 @@ impl Block {
     pub fn pressure_plate_powered(self) -> Option<bool> {
         match self {
             Self::StonePressurePlate { powered } => Some(powered),
-            Self::Unknown { .. } if self.get_name().ends_with("_pressure_plate") => self.property("powered").map(|value| value == "true"),
+            Self::Unknown { .. } if self.get_name().ends_with("_pressure_plate") => self.powered(),
             _ => None,
         }
     }
@@ -261,12 +328,7 @@ impl Block {
         if !matches!(self, Self::Unknown { .. }) || !self.is_sign() {
             return false;
         }
-        let mut model = Self::from_name(if self.property("facing").is_some() {
-            "oak_wall_sign"
-        } else {
-            "oak_sign"
-        })
-        .unwrap();
+        let mut model = Self::from_name(if self.facing().is_some() { "oak_wall_sign" } else { "oak_sign" }).unwrap();
         let properties = self.properties();
         model.set_properties(properties.iter().map(|(k, v)| (*k, v.as_str())).collect());
         transform(&mut model);
@@ -376,7 +438,7 @@ fn slab_geometry_and_redstone_flags_cover_every_registry_state() {
 
             let top = block.with_slab_type(SlabType::Top).unwrap();
             assert_eq!(top.slab_type(), Some(SlabType::Top), "{name}: {id}");
-            assert_eq!(top.property("waterlogged"), block.property("waterlogged"));
+            assert_eq!(top.waterlogged(), block.waterlogged());
         }
     }
     assert_eq!(Block::Stone {}.slab_type(), None);
@@ -412,13 +474,13 @@ fn standing_sign_transform_preserves_species_and_waterlogging() {
     for name in ["oak_sign", "bamboo_sign", "cherry_sign", "mangrove_sign"] {
         let mut block = Block::from_name(name).unwrap();
         block.set_properties(HashMap::from([("rotation", "3")]));
-        let waterlogged = block.property("waterlogged");
+        let waterlogged = block.waterlogged();
         block.rotate(RotateAmt::Rotate90);
         assert_eq!(block.property("rotation"), Some("7"), "{name}");
         block.flip(FlipDirection::FlipX);
         assert_eq!(block.property("rotation"), Some("9"), "{name}");
         assert_eq!(block.get_name(), name);
-        assert_eq!(block.property("waterlogged"), waterlogged);
+        assert_eq!(block.waterlogged(), waterlogged);
     }
 }
 
@@ -2078,4 +2140,77 @@ mod decoded_state_tests {
             assert_eq!(Block::from_id(id), Block::Unknown { id });
         }
     }
+}
+
+#[test]
+fn typed_properties_match_registry() {
+    use crate::BlockFace;
+    let mut ids: Vec<u32> = (0..crate::generated::STATE_PROPERTIES.len() as u32).collect();
+    ids.extend([crate::generated::STATE_PROPERTIES.len() as u32, u32::MAX]);
+    for id in ids {
+        let block = Block::from_id(id);
+        assert_eq!(block.lit(), block.property("lit").map(|value| value == "true"), "{id}: lit");
+        assert_eq!(block.powered(), block.property("powered").map(|value| value == "true"), "{id}: powered");
+        assert_eq!(
+            block.conditional(),
+            block.property("conditional").map(|value| value == "true"),
+            "{id}: conditional"
+        );
+        assert_eq!(block.eye(), block.property("eye").map(|value| value == "true"), "{id}: eye");
+        assert_eq!(block.open(), block.property("open").map(|value| value == "true"), "{id}: open");
+        assert_eq!(
+            block.waterlogged(),
+            block.property("waterlogged").map(|value| value == "true"),
+            "{id}: waterlogged"
+        );
+        assert_eq!(
+            block.power(),
+            block.property("power").map(|value| value.parse::<u8>().unwrap()),
+            "{id}: power"
+        );
+        assert_eq!(
+            block.layers(),
+            block.property("layers").map(|value| value.parse::<u8>().unwrap()),
+            "{id}: layers"
+        );
+        assert_eq!(
+            block.upper_half(),
+            block.property("half").map(|value| matches!(value, "top" | "upper")),
+            "{id}: half"
+        );
+        assert_eq!(
+            block.facing(),
+            block.property("facing").map(|value| match value {
+                "down" => BlockFace::Bottom,
+                "up" => BlockFace::Top,
+                "north" => BlockFace::North,
+                "south" => BlockFace::South,
+                "west" => BlockFace::West,
+                "east" => BlockFace::East,
+                _ => panic!("invalid facing"),
+            }),
+            "{id}: facing"
+        );
+    }
+}
+
+#[test]
+#[ignore = "manual release-mode property lookup timing"]
+fn property_lookup_timing() {
+    use std::{hint::black_box, time::Instant};
+    let states: Vec<_> = (0..crate::generated::STATE_PROPERTIES.len() as u32).map(Block::from_id).collect();
+    let start = Instant::now();
+    for _ in 0..100 {
+        for &block in &states {
+            black_box(black_box(block).property("powered").map(|value| value == "true"));
+        }
+    }
+    let strings = start.elapsed();
+    let start = Instant::now();
+    for _ in 0..100 {
+        for &block in &states {
+            black_box(black_box(block).powered());
+        }
+    }
+    eprintln!("{} powered reads: strings={strings:?}, typed={:?}", states.len() * 100, start.elapsed());
 }

@@ -600,14 +600,7 @@ impl CircuitDraft {
 }
 
 pub(crate) fn command_facing(block: Block) -> BlockFace {
-    match block.property("facing") {
-        Some("up") => BlockFace::Top,
-        Some("down") => BlockFace::Bottom,
-        Some("east") => BlockFace::East,
-        Some("west") => BlockFace::West,
-        Some("south") => BlockFace::South,
-        _ => BlockFace::North,
-    }
+    block.facing().unwrap_or(BlockFace::North)
 }
 
 #[derive(Debug)]
