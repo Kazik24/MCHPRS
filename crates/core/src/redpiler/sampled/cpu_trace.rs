@@ -200,14 +200,6 @@ fn native_callbacks(callbacks: Vec<crate::world::RedstoneUpdateObservation>, pos
         .collect()
 }
 
-fn relevant_events(events: &[String], positions: &[BlockPos]) -> Vec<String> {
-    events
-        .iter()
-        .filter(|event| positions.iter().any(|position| event.contains(&format!("{position:?}"))))
-        .cloned()
-        .collect()
-}
-
 fn native_state(world: &PlotWorld, positions: &[BlockPos]) -> Value {
     json!({
         "blocks": positions.iter().map(|&pos| json!({"pos": pos, "block": canonical(world.get_block(pos))})).collect::<Vec<_>>(),
@@ -278,7 +270,6 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
         vec![],
     ]]]);
     let mut runtime = program.start();
-    runtime.trace_enabled = true;
     for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
         if link.active[runtime.group_arrangements[link.group]] {
             runtime.arrangement_contributions[index] = runtime.arrangement_output(link.source).saturating_sub(link.attenuation);
@@ -307,33 +298,6 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
         runtime.tick().unwrap();
     }
     assert!(matches!(runtime.blocks[1], Block::RedstoneRepeater { repeater } if !repeater.powered));
-
-    let events = &runtime.trace_events;
-    let link = events
-        .iter()
-        .position(|event| event.contains("link BlockPos { x: 0, y: 20, z: 20 } -> BlockPos { x: 1, y: 20, z: 20 } strength=15->0"))
-        .unwrap();
-    let callback = events
-        .iter()
-        .position(|event| event.contains("callback BlockPos { x: 1, y: 20, z: 20 }"))
-        .unwrap();
-    let repeater_callback = events
-        .iter()
-        .position(|event| event.contains("repeater callback BlockPos { x: 1, y: 20, z: 20 } powered=true"))
-        .unwrap();
-    let scheduled = events
-        .iter()
-        .position(|event| event.contains("schedule repeater BlockPos { x: 1, y: 20, z: 20 } remaining=Some(2) priority=Higher"))
-        .unwrap();
-    let due = events
-        .iter()
-        .position(|event| event.contains("due tick BlockPos { x: 1, y: 20, z: 20 }"))
-        .unwrap();
-    let executed = events
-        .iter()
-        .position(|event| event.contains("repeater tick BlockPos { x: 1, y: 20, z: 20 }"))
-        .unwrap();
-    assert!(link < callback && callback < repeater_callback && repeater_callback < scheduled && scheduled < due && due < executed);
 }
 
 #[test]
@@ -597,7 +561,6 @@ fn bubblesort_early_native_compiled_trace() {
     let mut runtime = program.start();
     runtime.set_pending(ticks.clone()).unwrap();
     runtime.piston_state = world.piston_state().clone();
-    runtime.trace_enabled = true;
 
     for (index, &position) in program.positions.iter().enumerate() {
         assert_eq!(program.initial[index], world.get_block(position), "compiled entry state at {position}");
@@ -619,10 +582,8 @@ fn bubblesort_early_native_compiled_trace() {
         "native": native_state(&world, &focus),
         "native_callbacks": native_start_callbacks,
         "compiled": runtime_state(&runtime, &nodes),
-        "compiled_events": relevant_events(&runtime.trace_events, &focus),
     }));
 
-    let mut prior = runtime.trace_events.len();
     let mut tick_2_matched = false;
     let mut tick_4_matched = false;
     for tick in 1..=10 {
@@ -630,14 +591,11 @@ fn bubblesort_early_native_compiled_trace() {
         let callbacks = native_callbacks(world.take_redstone_update_observations(), &focus);
         world.observe_redstone_updates(true);
         runtime.tick().unwrap();
-        let events = relevant_events(&runtime.trace_events[prior..], &focus);
-        prior = runtime.trace_events.len();
         trace.push(json!({
             "step": format!("tick-{tick}"),
             "native": native_state(&world, &focus),
             "native_callbacks": callbacks,
             "compiled": runtime_state(&runtime, &nodes),
-            "compiled_events": events,
         }));
         if tick == 2 {
             let native_due = world

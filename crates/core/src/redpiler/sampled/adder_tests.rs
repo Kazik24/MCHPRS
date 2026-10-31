@@ -389,7 +389,6 @@ fn adder1bit_reference_manifest_arithmetic() {
             }
         }
         let mut runtime = program.start();
-        runtime.trace_enabled = matches!(id, "prepared-0-1-0" | "prepared-0-1-1" | "prepared-1-1-0" | "prepared-1-1-1");
         let reference_case = reference
             .as_ref()
             .and_then(|value| value["cases"].as_array())
@@ -468,9 +467,6 @@ fn adder1bit_reference_manifest_arithmetic() {
             runtime.token_movements,
             runtime.motion_completions
         );
-        for event in &runtime.trace_events {
-            eprintln!("{id} trace {event}");
-        }
         regression |= id == "prepared-0-1-0";
         cases += 1;
     }

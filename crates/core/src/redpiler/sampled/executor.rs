@@ -3,12 +3,9 @@ use super::{Operation, Program, ScratchError};
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
 
-// Test captures keep ordering assertions independent of a process-wide subscriber.
 #[cfg(any(test, feature = "redpiler-trace"))]
 macro_rules! runtime_trace {
     ($runtime:expr, $($args:tt)*) => {{
-        #[cfg(test)]
-        $runtime.trace(format!($($args)*));
         #[cfg(all(not(test), feature = "redpiler-trace"))]
         tracing::trace!(target: "mchprs_core::redpiler", tick = $runtime.motion_time, phase = $runtime.phase, $($args)*);
     }};
@@ -18,7 +15,7 @@ macro_rules! runtime_trace {
 macro_rules! runtime_trace_enabled {
     ($runtime:expr) => {{
         #[cfg(test)]
-        { $runtime.trace_enabled }
+        { false }
         #[cfg(all(not(test), feature = "redpiler-trace"))]
         { tracing::enabled!(target: "mchprs_core::redpiler", tracing::Level::TRACE) }
     }};
@@ -88,26 +85,6 @@ pub(crate) struct Runtime {
     pub(super) accepted_piston_actions: usize,
     pub(super) token_movements: usize,
     pub(super) motion_completions: usize,
-    #[cfg(feature = "plot-bench")]
-    pub(super) extension_checks: usize,
-    #[cfg(feature = "plot-bench")]
-    pub(super) empty_extensions: usize,
-    #[cfg(feature = "plot-bench")]
-    pub(super) mate_checks: usize,
-    #[cfg(feature = "plot-bench")]
-    pub(super) onward_pushes: usize,
-    #[cfg(feature = "plot-bench")]
-    pub(super) token_queries: std::cell::Cell<usize>,
-    #[cfg(feature = "plot-bench")]
-    pub(super) token_candidates: std::cell::Cell<usize>,
-    #[cfg(feature = "plot-bench")]
-    pub(super) movement_flips: usize,
-    #[cfg(feature = "plot-bench")]
-    pub(super) movement_steps: usize,
-    #[cfg(test)]
-    pub(super) trace_enabled: bool,
-    #[cfg(test)]
-    pub(super) trace_events: Vec<String>,
     pub(super) blocks: Vec<Block>,
     pub(super) pending: super::scheduler::Scheduler,
     pub(super) pending_counts: Vec<usize>,
@@ -202,18 +179,6 @@ impl Runtime {
             }
         }
     }
-    #[cfg(test)]
-    fn trace(&mut self, event: String) {
-        #[cfg(any(test, feature = "redpiler-trace"))]
-        if runtime_trace_enabled!(self) && self.trace_events.len() < 2048 {
-            self.trace_events.push(format!(
-                "tick={} phase={} seq={} {event}",
-                self.motion_time,
-                self.phase,
-                self.trace_events.len()
-            ));
-        }
-    }
     pub(crate) fn project(&self, position: mchprs_blocks::BlockPos) -> Option<Block> {
         if let Some(&cell) = self.program.projection_indices.get(&position) {
             self.project_cell(cell)
@@ -223,14 +188,10 @@ impl Runtime {
     }
 
     fn token_at(&self, cell: usize) -> Option<usize> {
-        #[cfg(feature = "plot-bench")]
-        self.token_queries.set(self.token_queries.get() + 1);
         self.program.cell_tokens[cell]
             .iter()
             .copied()
             .find(|&token| {
-                #[cfg(feature = "plot-bench")]
-                self.token_candidates.set(self.token_candidates.get() + 1);
                 self.token_positions[token] == Some(self.program.projection_positions[cell])
             })
     }
@@ -507,13 +468,6 @@ impl Runtime {
             let token = self.token_at(self.program.piston_bindings[index].home_cell);
             let onward = token.and_then(|_| self.token_at(self.program.piston_bindings[index].far_cell));
             let mate = self.program.piston_bindings[index].mate;
-            #[cfg(feature = "plot-bench")]
-            {
-                self.extension_checks += 1;
-                self.empty_extensions += usize::from(token.is_none());
-                self.mate_checks += usize::from(mate.is_some());
-                self.onward_pushes += usize::from(onward.is_some());
-            }
             let mate_home_open = mate.is_some_and(|mate| {
                 !self.program.piston_bindings[mate].home_blocked
                     && self.token_at(self.program.piston_bindings[mate].home_cell).is_none()
@@ -806,8 +760,6 @@ impl Runtime {
                 record.depart[state].clone()
             };
             for index in flips {
-                #[cfg(feature = "plot-bench")]
-                { self.movement_flips += 1; }
                 let flip = self.program.movement_flips[index];
                 if !self.consume_operation(self.program.positions[flip.target]) {
                     return;
@@ -839,8 +791,6 @@ impl Runtime {
             }
         }
         for index in steps {
-            #[cfg(feature = "plot-bench")]
-            { self.movement_steps += 1; }
             let step = &self.program.movement_steps[index];
             let node = step.node;
             let wire = step.wire;

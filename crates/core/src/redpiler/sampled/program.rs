@@ -1192,26 +1192,6 @@ impl Program {
             accepted_piston_actions: 0,
             token_movements: 0,
             motion_completions: 0,
-            #[cfg(feature = "plot-bench")]
-            extension_checks: 0,
-            #[cfg(feature = "plot-bench")]
-            empty_extensions: 0,
-            #[cfg(feature = "plot-bench")]
-            mate_checks: 0,
-            #[cfg(feature = "plot-bench")]
-            onward_pushes: 0,
-            #[cfg(feature = "plot-bench")]
-            token_queries: std::cell::Cell::new(0),
-            #[cfg(feature = "plot-bench")]
-            token_candidates: std::cell::Cell::new(0),
-            #[cfg(feature = "plot-bench")]
-            movement_flips: 0,
-            #[cfg(feature = "plot-bench")]
-            movement_steps: 0,
-            #[cfg(test)]
-            trace_enabled: false,
-            #[cfg(test)]
-            trace_events: Vec::new(),
             blocks: self.initial.clone(),
             pending: super::scheduler::Scheduler::new(self.initial.len().checked_mul(2).expect("validated scheduled capacity").max(64)),
             pending_counts: vec![0; self.initial.len()],

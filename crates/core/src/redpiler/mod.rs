@@ -90,12 +90,6 @@ pub struct Compiler {
 }
 
 impl Compiler {
-    #[cfg(feature = "plot-bench")]
-    #[doc(hidden)]
-    pub fn diagnostic_work(&self) -> Option<[usize; 14]> {
-        self.runtime.as_ref().map(Runtime::diagnostic_work)
-    }
-
     pub fn stats(&self) -> Option<&CompileStatistics> {
         self.statistics.as_ref()
     }

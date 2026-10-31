@@ -113,8 +113,6 @@ fn main() {
 
     let mut native = cpus::load_cpu(cpu);
     let (mut compiled, mut compiler, compile_wall) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
-    #[cfg(feature = "plot-bench")]
-    let work_before = compiler.diagnostic_work().unwrap();
     let run = cpu.start;
     cpus::click_cpu(&mut native, cpu, run);
     let control_before = Snapshot::read();
@@ -153,19 +151,6 @@ fn main() {
     #[cfg(feature = "plot-bench")]
     let staged_after = staged_sections(&compiled);
     #[cfg(feature = "plot-bench")]
-    let work = {
-        let after = compiler.diagnostic_work().unwrap();
-        json!({"operations":after[0]-work_before[0],"deliveries":after[1]-work_before[1],
-            "accepted_piston_actions":after[2]-work_before[2],"token_movements":after[3]-work_before[3],
-            "motion_completions":after[4]-work_before[4],"scheduled_repeater_ticks":after[5]-work_before[5],
-            "extension_checks":after[6]-work_before[6],"empty_extensions":after[7]-work_before[7],
-            "mate_checks":after[8]-work_before[8],"onward_pushes":after[9]-work_before[9],
-            "token_queries":after[10]-work_before[10],"token_candidates":after[11]-work_before[11],
-            "movement_flips":after[12]-work_before[12],"movement_steps":after[13]-work_before[13]})
-    };
-    #[cfg(not(feature = "plot-bench"))]
-    let work = Value::Null;
-    #[cfg(feature = "plot-bench")]
     let staged = json!({"before":staged_before,"after":staged_after});
     #[cfg(not(feature = "plot-bench"))]
     let staged = Value::Null;
@@ -198,7 +183,6 @@ fn main() {
         "control_allocations":control_after.delta(control_before),"full_reset_allocations":reset_after.delta(reset_before),
         "timing_note":"allocator-instrumented diagnostic, not production throughput",
         "staged_sections":staged,
-        "runtime_work":work,
         "native_ram":native_ram,"compiled_ram_after_reset":compiled_ram,
         "kernel_samples":kernel_samples,"publication_samples":publication_samples,
         "executable_sha256":executable_sha256,

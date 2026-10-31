@@ -67,13 +67,6 @@ pub(super) fn start_runtime(
 }
 
 impl Runtime {
-    #[cfg(feature = "plot-bench")]
-    pub(super) fn diagnostic_work(&self) -> [usize; 14] {
-        [self.operations, self.deliveries, self.accepted_piston_actions, self.token_movements, self.motion_completions, self.scheduled_repeater_ticks,
-            self.extension_checks, self.empty_extensions, self.mate_checks, self.onward_pushes,
-            self.token_queries.get(), self.token_candidates.get(), self.movement_flips, self.movement_steps]
-    }
-
     pub(super) fn set_pending(&mut self, ticks: Vec<mchprs_world::TickEntry>) -> Result<(), ScratchError> {
         // Pending work has a fixed admission limit; exhaustion is an execution error.
         let limit = self
