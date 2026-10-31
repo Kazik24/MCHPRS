@@ -3,7 +3,7 @@ use crate::world::scheduler::TickScheduler;
 use mchprs_blocks::{BlockPos, blocks::Block};
 use std::collections::HashMap;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
     Contribution(usize),
     ArrangementContribution(usize),
@@ -142,6 +142,9 @@ pub(crate) struct Program {
     pub(super) incoming: Vec<Vec<usize>>,
     pub(super) outgoing: Vec<Vec<usize>>,
     pub(super) outgoing_arrangements: Vec<Vec<usize>>,
+    pub(super) incoming_arrangements: Vec<Vec<usize>>,
+    pub(super) input_groups_by_target: Vec<Vec<usize>>,
+    pub(super) incoming_side: Vec<Vec<usize>>,
     pub(super) watched_wires: Vec<WatchedWire>,
     pub(super) repeaters: Vec<RepeaterRecord>,
 }
@@ -255,7 +258,17 @@ impl Program {
         self.movement_groups = groups;
         self.arrangement_links = links;
         self.outgoing_arrangements = vec![vec![]; self.initial.len()];
+        self.incoming_arrangements = vec![vec![]; self.initial.len()];
+        self.input_groups_by_target = vec![vec![]; self.initial.len()];
+        self.incoming_side = vec![vec![]; self.initial.len()];
+        for (index, group) in self.input_arrangements.iter().enumerate() {
+            self.input_groups_by_target[group.target].push(index);
+        }
+        for (index, link) in self.side_links.iter().enumerate() {
+            self.incoming_side[link.target].push(index);
+        }
         for (index, link) in self.arrangement_links.iter().enumerate() {
+            self.incoming_arrangements[link.target].push(index);
             if let ArrangementSource::Component(source) = link.source {
                 self.outgoing_arrangements[source].push(index);
             }
@@ -522,6 +535,7 @@ impl Program {
             outgoing[link.source].push(id);
         }
         let outgoing_arrangements = vec![vec![]; initial.len()];
+        let component_count = initial.len();
         let component_indices = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
         Ok(Self {
             comparators: Vec::new(),
@@ -555,6 +569,9 @@ impl Program {
             incoming,
             outgoing,
             outgoing_arrangements,
+            incoming_arrangements: vec![vec![]; component_count],
+            input_groups_by_target: vec![vec![]; component_count],
+            incoming_side: vec![vec![]; component_count],
             watched_wires,
             repeaters,
         })

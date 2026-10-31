@@ -1,19 +1,32 @@
 #[path = "../../../test_support/cpus.rs"]
 mod cpus;
 
-use super::{ScratchEntry, compiler, program::{ArrangementSource, ElectricalLink, InputArrangement, MoveStep, Program, RepeaterRecord}};
-use crate::{plot::{PlotWorld, worldedit::load_schematic}, world::World};
-use mchprs_blocks::{BlockDirection, BlockPos, blocks::{Block, RedstoneRepeater, RedstoneWire}};
+use super::{
+    ScratchEntry, compiler,
+    program::{ArrangementSource, ElectricalLink, InputArrangement, MoveStep, Program, RepeaterRecord},
+};
+use crate::{
+    plot::{PlotWorld, worldedit::load_schematic},
+    world::World,
+};
+use mchprs_blocks::{
+    BlockDirection, BlockPos,
+    blocks::{Block, RedstoneRepeater, RedstoneWire},
+};
+use mchprs_world::TickPriority;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use mchprs_world::TickPriority;
 
 fn canonical(block: Block) -> String {
     let properties: BTreeMap<_, _> = block.properties().into_iter().collect();
     format!(
         "minecraft:{}[{}]",
         block.get_name(),
-        properties.iter().map(|(key, value)| format!("{key}={value}")).collect::<Vec<_>>().join(",")
+        properties
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(",")
     )
 }
 
@@ -54,7 +67,9 @@ fn cone(program: &super::Program, roots: &[usize]) -> BTreeSet<usize> {
             for source in &arrangement.conditional_sources {
                 match source {
                     ArrangementSource::Component(source) => queue.push_back(*source),
-                    ArrangementSource::Token(token) => { tokens.insert(*token); }
+                    ArrangementSource::Token(token) => {
+                        tokens.insert(*token);
+                    }
                 }
             }
         }
@@ -73,9 +88,15 @@ fn cone(program: &super::Program, roots: &[usize]) -> BTreeSet<usize> {
         }
     }
     while let Some(target) = queue.pop_front() {
-        if !found.insert(target) { continue; }
-        for &link in &program.incoming[target] { queue.push_back(program.links[link].source); }
-        for link in program.side_links.iter().filter(|link| link.target == target) { queue.push_back(link.source); }
+        if !found.insert(target) {
+            continue;
+        }
+        for &link in &program.incoming[target] {
+            queue.push_back(program.links[link].source);
+        }
+        for link in program.side_links.iter().filter(|link| link.target == target) {
+            queue.push_back(link.source);
+        }
     }
     found
 }
@@ -165,16 +186,26 @@ fn runtime_state(runtime: &super::Runtime, nodes: &BTreeSet<usize>) -> Value {
 }
 
 fn native_callbacks(callbacks: Vec<crate::world::RedstoneUpdateObservation>, positions: &[BlockPos]) -> Vec<Value> {
-    callbacks.into_iter().filter(|callback| positions.contains(&callback.pos)).map(|callback| json!({
-        "pos": callback.pos,
-        "block": canonical(callback.block),
-        "direction": format!("{:?}", callback.direction),
-        "input_on": callback.input_on,
-    })).collect()
+    callbacks
+        .into_iter()
+        .filter(|callback| positions.contains(&callback.pos))
+        .map(|callback| {
+            json!({
+                "pos": callback.pos,
+                "block": canonical(callback.block),
+                "direction": format!("{:?}", callback.direction),
+                "input_on": callback.input_on,
+            })
+        })
+        .collect()
 }
 
 fn relevant_events(events: &[String], positions: &[BlockPos]) -> Vec<String> {
-    events.iter().filter(|event| positions.iter().any(|position| event.contains(&format!("{position:?}")))).cloned().collect()
+    events
+        .iter()
+        .filter(|event| positions.iter().any(|position| event.contains(&format!("{position:?}"))))
+        .cloned()
+        .collect()
 }
 
 fn native_state(world: &PlotWorld, positions: &[BlockPos]) -> Value {
@@ -193,17 +224,36 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
     let mut program = Program::new(
         vec![wire_pos, repeater_pos],
         vec![
-            Block::RedstoneWire { wire: RedstoneWire { power: 15, ..Default::default() } },
+            Block::RedstoneWire {
+                wire: RedstoneWire {
+                    power: 15,
+                    ..Default::default()
+                },
+            },
             Block::RedstoneRepeater {
-                repeater: RedstoneRepeater { delay: 1, facing: BlockDirection::West, locked: false, powered: true },
+                repeater: RedstoneRepeater {
+                    delay: 1,
+                    facing: BlockDirection::West,
+                    locked: false,
+                    powered: true,
+                },
             },
         ],
         vec![],
         vec![[vec![], vec![]]; 2],
-        vec![ElectricalLink { source: 0, target: 1, attenuation: 0 }],
+        vec![ElectricalLink {
+            source: 0,
+            target: 1,
+            attenuation: 0,
+        }],
         vec![],
-        vec![RepeaterRecord { component: 1, output_is_diode: false, side_sources: None }],
-    ).unwrap();
+        vec![RepeaterRecord {
+            component: 1,
+            output_is_diode: false,
+            side_sources: None,
+        }],
+    )
+    .unwrap();
     program.tokens.push(compiler::PistonToken {
         block: Block::RedstoneBlock,
         position: Some(token_cell),
@@ -219,7 +269,12 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
     });
     program.compile_movement_flips().unwrap();
     program.move_steps = vec![vec![[
-        vec![MoveStep { node: 1, watcher: true, wire: false, wires: vec![] }],
+        vec![MoveStep {
+            node: 1,
+            watcher: true,
+            wire: false,
+            wires: vec![],
+        }],
         vec![],
     ]]];
     let mut runtime = program.start();
@@ -233,23 +288,51 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
     assert_eq!(runtime.input_strength(1), 15);
 
     runtime.set_token_pos(0, None);
-    assert_eq!(runtime.blocks[0], Block::RedstoneWire { wire: RedstoneWire { power: 0, ..Default::default() } });
+    assert_eq!(
+        runtime.blocks[0],
+        Block::RedstoneWire {
+            wire: RedstoneWire {
+                power: 0,
+                ..Default::default()
+            }
+        }
+    );
     assert_eq!(runtime.contributions[0], 0);
     let pending = runtime.pending_entries();
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].pos, repeater_pos);
     assert_eq!(pending[0].ticks_left, 2);
     assert_eq!(pending[0].tick_priority, TickPriority::Higher);
-    for _ in 0..2 { runtime.tick().unwrap(); }
+    for _ in 0..2 {
+        runtime.tick().unwrap();
+    }
     assert!(matches!(runtime.blocks[1], Block::RedstoneRepeater { repeater } if !repeater.powered));
 
     let events = &runtime.trace_events;
-    let link = events.iter().position(|event| event.contains("link BlockPos { x: 0, y: 20, z: 20 } -> BlockPos { x: 1, y: 20, z: 20 } strength=15->0")).unwrap();
-    let callback = events.iter().position(|event| event.contains("callback BlockPos { x: 1, y: 20, z: 20 }")).unwrap();
-    let repeater_callback = events.iter().position(|event| event.contains("repeater callback BlockPos { x: 1, y: 20, z: 20 } powered=true")).unwrap();
-    let scheduled = events.iter().position(|event| event.contains("schedule repeater BlockPos { x: 1, y: 20, z: 20 } remaining=Some(2) priority=Higher")).unwrap();
-    let due = events.iter().position(|event| event.contains("due tick BlockPos { x: 1, y: 20, z: 20 }")).unwrap();
-    let executed = events.iter().position(|event| event.contains("repeater tick BlockPos { x: 1, y: 20, z: 20 }")).unwrap();
+    let link = events
+        .iter()
+        .position(|event| event.contains("link BlockPos { x: 0, y: 20, z: 20 } -> BlockPos { x: 1, y: 20, z: 20 } strength=15->0"))
+        .unwrap();
+    let callback = events
+        .iter()
+        .position(|event| event.contains("callback BlockPos { x: 1, y: 20, z: 20 }"))
+        .unwrap();
+    let repeater_callback = events
+        .iter()
+        .position(|event| event.contains("repeater callback BlockPos { x: 1, y: 20, z: 20 } powered=true"))
+        .unwrap();
+    let scheduled = events
+        .iter()
+        .position(|event| event.contains("schedule repeater BlockPos { x: 1, y: 20, z: 20 } remaining=Some(2) priority=Higher"))
+        .unwrap();
+    let due = events
+        .iter()
+        .position(|event| event.contains("due tick BlockPos { x: 1, y: 20, z: 20 }"))
+        .unwrap();
+    let executed = events
+        .iter()
+        .position(|event| event.contains("repeater tick BlockPos { x: 1, y: 20, z: 20 }"))
+        .unwrap();
     assert!(link < callback && callback < repeater_callback && repeater_callback < scheduled && scheduled < due && due < executed);
 }
 
@@ -258,29 +341,172 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
 fn zcore12b_fix_interpreter_screen_trace() {
     let cpu = cpus::CPUS[3];
     let mut world = cpus::load_cpu(cpu);
-    let start = cpu.start + cpu.origin;
+    cpus::click_cpu(&mut world, cpu, cpu.start);
+    let mut quiet = 0;
+    for _ in 0..4096 {
+        world.tick_interpreted();
+        quiet =
+            if world.scheduler().iter_entries().next().is_none() && world.piston_state().events.is_empty() && world.piston_state().motions.is_empty()
+            {
+                quiet + 1
+            } else {
+                0
+            };
+        if quiet == 20 {
+            break;
+        }
+    }
+    assert_eq!(quiet, 20, "ZCore Load did not settle");
+    let run = BlockPos::new(207, 10, 154);
+    let start = run + cpu.origin;
     let button = world.get_block(start);
     assert!(matches!(button, Block::StoneButton { .. }), "ZCore Start at {start}: {button:?}");
     let mut frames = Vec::new();
     cpus::collect_screen(&world, cpu, 0, &mut frames);
-    cpus::click_cpu(&mut world, cpu, cpu.start);
+    cpus::click_cpu(&mut world, cpu, run);
     for tick in 1..=50_000 {
         world.tick_interpreted();
         cpus::collect_screen(&world, cpu, tick, &mut frames);
     }
     assert_eq!(frames.first().map(|frame| frame.tick), Some(0));
     let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/zcore12b-fix-screen-trace.json");
-    std::fs::write(&artifact, serde_json::to_vec_pretty(&json!({
-        "fixture": cpu.schematic,
-        "fixture_sha256": cpu.sha256,
-        "engine": "current Rust native interpreter",
-        "start": start,
-        "start_block": canonical(button),
-        "ticks": 50_000,
-        "screen_frames": frames,
-        "final_screen": cpus::screen(&world, cpu),
-    })).unwrap()).unwrap();
+    std::fs::write(
+        &artifact,
+        serde_json::to_vec_pretty(&json!({
+            "fixture": cpu.schematic,
+            "fixture_sha256": cpu.sha256,
+            "engine": "current Rust native interpreter",
+            "protocol": "Load, settle, Run; no counter reset",
+            "start": start,
+            "start_block": canonical(button),
+            "ticks": 50_000,
+            "screen_frames": frames,
+            "final_screen": cpus::screen(&world, cpu),
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     eprintln!("ZCore12B_FIX native screen trace: {}", artifact.display());
+}
+
+fn cpu_outputs_match_native(cpu_index: usize) {
+    let cpu = cpus::CPUS[cpu_index];
+    let mut native = cpus::load_cpu(cpu);
+    let (mut compiled, mut compiler, compile_duration) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
+    eprintln!("{} compile: {compile_duration:?}", cpu.name);
+    let quiet_native = |world: &crate::plot::PlotWorld| {
+        world.scheduler().iter_entries().next().is_none() && world.piston_state().events.is_empty() && world.piston_state().motions.is_empty()
+    };
+    let quiet_compiled = |compiler: &crate::redpiler::Compiler| {
+        let runtime = compiler.runtime.as_ref().unwrap();
+        runtime.pending_entries().is_empty() && runtime.pending_piston_events().is_empty() && !runtime.has_motions()
+    };
+    let mut preparation_ticks = 0;
+    let run = if cpu_index == 3 {
+        cpus::click_cpu(&mut native, cpu, cpu.start);
+        compiler.try_on_use_block(cpu.origin + cpu.start).unwrap();
+        let mut quiet = 0;
+        for tick in 1..=4096 {
+            native.tick_interpreted();
+            compiler.tick().unwrap();
+            compiler.try_flush(&mut compiled).unwrap();
+            assert_eq!(
+                cpus::screen(&compiled, cpu),
+                cpus::screen(&native, cpu),
+                "ZCore Load screen at tick {tick}"
+            );
+            quiet = if quiet_native(&native) && quiet_compiled(&compiler) {
+                quiet + 1
+            } else {
+                0
+            };
+            if quiet == 20 {
+                preparation_ticks = tick;
+                break;
+            }
+        }
+        assert_eq!(quiet, 20, "ZCore Load did not settle in both engines");
+        BlockPos::new(207, 10, 154)
+    } else {
+        cpu.start
+    };
+    let mut native_ram = Vec::new();
+    let mut compiled_ram = Vec::new();
+    let mut native_screen = Vec::new();
+    let mut compiled_screen = Vec::new();
+    cpus::collect_ram(&native, cpu, 0, &mut native_ram);
+    cpus::collect_ram(&compiled, cpu, 0, &mut compiled_ram);
+    if cpu.screen.is_some() {
+        cpus::collect_screen(&native, cpu, 0, &mut native_screen);
+        cpus::collect_screen(&compiled, cpu, 0, &mut compiled_screen);
+    }
+    let work_before = compiler.runtime.as_ref().unwrap().operations;
+    cpus::click_cpu(&mut native, cpu, run);
+    compiler.try_on_use_block(cpu.origin + run).unwrap();
+    for tick in 1..=50_000 {
+        native.tick_interpreted();
+        compiler.tick().unwrap();
+        compiler.try_flush(&mut compiled).unwrap();
+        cpus::collect_ram(&native, cpu, tick, &mut native_ram);
+        cpus::collect_ram(&compiled, cpu, tick, &mut compiled_ram);
+        assert_eq!(
+            compiled_ram.last(),
+            native_ram.last(),
+            "{} first RAM mismatch at Run tick {tick}",
+            cpu.name
+        );
+        if cpu.screen.is_some() {
+            cpus::collect_screen(&native, cpu, tick, &mut native_screen);
+            cpus::collect_screen(&compiled, cpu, tick, &mut compiled_screen);
+            assert_eq!(
+                compiled_screen.last(),
+                native_screen.last(),
+                "{} first screen mismatch at Run tick {tick}",
+                cpu.name
+            );
+        }
+        if tick % 1000 == 0 {
+            eprintln!("{} matched Run tick {tick}", cpu.name);
+        }
+        if cpu_index == 2 && tick >= cpu.active_ticks {
+            assert_eq!(quiet_compiled(&compiler), quiet_native(&native), "BubbleSort completion at tick {tick}");
+        }
+    }
+    let work = compiler.runtime.as_ref().unwrap().operations - work_before;
+    assert!(work > 0, "CPU must perform compiled work");
+    assert_eq!(native_ram, compiled_ram);
+    assert_eq!(native_screen, compiled_screen);
+    if cpu_index == 2 {
+        let initial = &native_ram[0].1;
+        let final_words = &native_ram.last().unwrap().1;
+        assert_eq!(&initial[..48], &final_words[..48], "program and unused RAM banks");
+        assert_eq!(&final_words[48..], (0..16).map(Some).collect::<Vec<_>>());
+        assert!(quiet_native(&native) && quiet_compiled(&compiler));
+    }
+    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/mair-crosscheck/{}-output-acceptance.json", cpu.name));
+    std::fs::write(
+        &artifact,
+        serde_json::to_vec_pretty(&json!({
+            "fixture_sha256": cpu.sha256, "compile_ms": compile_duration.as_millis(), "run_ticks": 50_000,
+            "preparation_ticks": preparation_ticks, "compiled_operations": work,
+            "native_ram": native_ram, "compiled_ram": compiled_ram,
+            "native_screen": native_screen, "compiled_screen": compiled_screen,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "full 50,000-tick BubbleSort native/compiled output acceptance"]
+fn bubblesort_outputs_match_native() {
+    cpu_outputs_match_native(2);
+}
+
+#[test]
+#[ignore = "ZCore Load, settle, Run and 50,000-tick native/compiled screen acceptance"]
+fn zcore_load_run_outputs_match_native() {
+    cpu_outputs_match_native(3);
 }
 
 #[test]
@@ -288,14 +514,24 @@ fn zcore12b_fix_interpreter_screen_trace() {
 fn bubblesort_early_native_compiled_trace() {
     let cpu = cpus::CPUS[2];
     let mut world = cpus::load_cpu(cpu);
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(cpu.schematic);
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../test_data")
+        .join(cpu.schematic);
     let clip = load_schematic(std::fs::File::open(path).unwrap()).unwrap();
     let bounds = (
         cpu.origin,
         cpu.origin + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
     );
     let ticks: Vec<_> = world.scheduler().iter_entries().collect();
-    let program = compiler::compile(&world, bounds, ScratchEntry { scheduled: ticks.clone(), piston: world.piston_state().clone() }).unwrap();
+    let program = compiler::compile(
+        &world,
+        bounds,
+        ScratchEntry {
+            scheduled: ticks.clone(),
+            piston: world.piston_state().clone(),
+        },
+    )
+    .unwrap();
     let start = cpu.start + cpu.origin;
     let wire = BlockPos::new(172, 14, 161);
     let repeater = BlockPos::new(173, 14, 162);
@@ -352,10 +588,22 @@ fn bubblesort_early_native_compiled_trace() {
             "compiled_events": events,
         }));
         if tick == 2 {
-            let native_due = world.scheduler().iter_entries().any(|entry| entry.pos == repeater && entry.ticks_left == 2 && entry.tick_priority == TickPriority::Higher);
-            let compiled_due = runtime.pending_entries().iter().any(|entry| entry.pos == repeater && entry.ticks_left == 2 && entry.tick_priority == TickPriority::Higher);
-            let contribution = runtime.program.incoming[repeater_index].iter().map(|&link| runtime.contributions[link]).max().unwrap_or(0);
-            tick_2_matched = native_due && compiled_due && contribution == 0
+            let native_due = world
+                .scheduler()
+                .iter_entries()
+                .any(|entry| entry.pos == repeater && entry.ticks_left == 2 && entry.tick_priority == TickPriority::Higher);
+            let compiled_due = runtime
+                .pending_entries()
+                .iter()
+                .any(|entry| entry.pos == repeater && entry.ticks_left == 2 && entry.tick_priority == TickPriority::Higher);
+            let contribution = runtime.program.incoming[repeater_index]
+                .iter()
+                .map(|&link| runtime.contributions[link])
+                .max()
+                .unwrap_or(0);
+            tick_2_matched = native_due
+                && compiled_due
+                && contribution == 0
                 && matches!(world.get_block(repeater), Block::RedstoneRepeater { repeater } if repeater.powered)
                 && matches!(runtime.project(repeater), Some(Block::RedstoneRepeater { repeater }) if repeater.powered);
         }
@@ -366,18 +614,23 @@ fn bubblesort_early_native_compiled_trace() {
     }
 
     let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/cpu-bubblesort-early-trace.json");
-    std::fs::write(&artifact, serde_json::to_vec_pretty(&json!({
-        "baseline": "ba76b232f97f90070d5bcbc2263bdfb9c7e983ac",
-        "fixture_sha256": cpu.sha256,
-        "start": start,
-        "moving_source": moving_source,
-        "wire": wire,
-        "repeater": repeater,
-        "component_count": program.component_count(),
-        "dependency_cone_component_count": dependency_cone.len(),
-        "dependency_cone": positions,
-        "trace": trace,
-    })).unwrap()).unwrap();
+    std::fs::write(
+        &artifact,
+        serde_json::to_vec_pretty(&json!({
+            "baseline": "ba76b232f97f90070d5bcbc2263bdfb9c7e983ac",
+            "fixture_sha256": cpu.sha256,
+            "start": start,
+            "moving_source": moving_source,
+            "wire": wire,
+            "repeater": repeater,
+            "component_count": program.component_count(),
+            "dependency_cone_component_count": dependency_cone.len(),
+            "dependency_cone": positions,
+            "trace": trace,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
     eprintln!("BubbleSort tick 0..10 trace: {}", artifact.display());
     assert!(tick_2_matched, "native and compiled executions retain the same tick-4 repeater pulse");
     assert!(tick_4_matched, "native and compiled repeaters both release at game tick 4");

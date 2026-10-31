@@ -15,9 +15,9 @@ use mchprs_core::{
 use mchprs_world::TickPriority;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{fs::File, path::Path};
-use std::sync::Arc;
 
 #[derive(Clone, Copy)]
 pub struct Cpu {
@@ -137,7 +137,7 @@ pub fn screen(world: &PlotWorld, cpu: Cpu) -> String {
             let pos = BlockPos::new(screen.x, y, z);
             match world.get_block(pos) {
                 Block::RedstoneLamp { lit } => pixels.push(if lit { '1' } else { '0' }),
-                _ if screen.sparse => {},
+                _ if screen.sparse => {}
                 _ => panic!("screen pixel missing at {pos}"),
             }
         }
@@ -480,7 +480,9 @@ pub fn replay(
         assert!(trace.iter().any(|(tick, text)| *tick == 12_051 && text.contains("shut")));
     }
     if cpu.screen.is_some() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data/cpu-references").join(format!("{}_screen.json", cpu.name));
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../test_data/cpu-references")
+            .join(format!("{}_screen.json", cpu.name));
         let frames: Vec<ScreenFrame> = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         assert!(!frames.is_empty(), "CPU must have a captured screen frame");
         assert_eq!(screen_trace, frames, "{} exact per-game-tick screen output", cpu.name);

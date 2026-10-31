@@ -1,8 +1,8 @@
 use super::compiler::find_changed_links;
 use super::program::{ArrangementSource, InputArrangement};
 use super::{Program, ScratchEntry, ScratchError, ScratchWorld};
-use crate::world::World;
 use crate::redpiler::TaskMonitor;
+use crate::world::World;
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
@@ -95,6 +95,14 @@ struct ProbeMetrics {
     affected_members: usize,
 }
 
+impl ProbeMetrics {
+    fn add(&mut self, other: Self) {
+        self.samples += other.samples;
+        self.member_reads += other.member_reads;
+        self.affected_members += other.affected_members;
+    }
+}
+
 fn affected_members(
     token_cells: &[BlockPos],
     positions: &[BlockPos],
@@ -124,7 +132,12 @@ fn affected_members(
             });
         }
         if depth < 15 {
-            queue.extend(indexes.wire_neighbors[wire].iter().copied().filter_map(|neighbor| touched.insert(neighbor).then_some((neighbor, depth + 1))));
+            queue.extend(
+                indexes.wire_neighbors[wire]
+                    .iter()
+                    .copied()
+                    .filter_map(|neighbor| touched.insert(neighbor).then_some((neighbor, depth + 1))),
+            );
         }
     }
 
@@ -149,7 +162,11 @@ fn affected_members(
     Ok(members)
 }
 
-fn wire_sources(world: &impl World, wires: &[BlockPos], monitor: Option<&TaskMonitor>) -> Result<Vec<super::super::scratch::WireSource>, ScratchError> {
+fn wire_sources(
+    world: &impl World,
+    wires: &[BlockPos],
+    monitor: Option<&TaskMonitor>,
+) -> Result<Vec<super::super::scratch::WireSource>, ScratchError> {
     if let Some(monitor) = monitor {
         crate::redpiler::scratch::discover_wire_sources_monitored(world, wires, monitor)
     } else {
@@ -339,7 +356,10 @@ pub(super) fn run(
         affects.push(affected_members(&token.cells, &program.positions, indexes, monitor)?);
     }
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
-        eprintln!("Redpiler arrangement affected-region construction: {} ms", affected_started.elapsed().as_millis());
+        eprintln!(
+            "Redpiler arrangement affected-region construction: {} ms",
+            affected_started.elapsed().as_millis()
+        );
     }
     let mut metrics = ProbeMetrics {
         affected_members: affects.iter().map(BTreeSet::len).sum(),
@@ -354,7 +374,10 @@ pub(super) fn run(
     let single_started = std::time::Instant::now();
     let mut depends: BTreeMap<Dependency, BTreeSet<usize>> = BTreeMap::new();
     let mut grown = BTreeSet::new();
-    for token in 0..program.tokens.len() {
+    let tokens: Vec<_> = (0..program.tokens.len()).collect();
+    let singles = scratch.probe_jobs(&tokens, monitor, |scratch, &token| {
+        let mut metrics = ProbeMetrics::default();
+        let mut dependencies = Vec::new();
         if monitor.is_some_and(TaskMonitor::cancelled) {
             return Err(ScratchError {
                 position: None,
@@ -363,9 +386,9 @@ pub(super) fn run(
         }
         let members: Vec<_> = affects[token].iter().copied().collect();
         if members.is_empty() {
-            continue;
+            return Ok((dependencies, metrics));
         }
-        let baseline = sample(&mut scratch, program, &[], &members, monitor, indexes, &mut metrics)?;
+        let baseline = sample(scratch, program, &[], &members, monitor, indexes, &mut metrics)?;
         let initial = program.tokens[token]
             .position
             .and_then(|p| program.tokens[token].cells.iter().position(|&c| c == p))
@@ -380,19 +403,28 @@ pub(super) fn run(
             if digit == initial {
                 continue;
             }
-            let changed = sample(&mut scratch, program, &[(token, digit)], &members, monitor, indexes, &mut metrics)?;
+            let changed = sample(scratch, program, &[(token, digit)], &members, monitor, indexes, &mut metrics)?;
             for (i, &member) in members.iter().enumerate() {
                 for (source, side) in find_changed_links(&baseline[i], &changed[i]) {
-                    let dep = (member, source, side);
-                    if depends.entry(dep).or_default().insert(token) {
-                        grown.insert(dep);
-                    }
+                    dependencies.push((member, source, side));
                 }
+            }
+        }
+        Ok((dependencies, metrics))
+    })?;
+    for (token, (dependencies, work)) in singles.into_iter().enumerate() {
+        metrics.add(work);
+        for dep in dependencies {
+            if depends.entry(dep).or_default().insert(token) {
+                grown.insert(dep);
             }
         }
     }
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
-        eprintln!("Redpiler arrangement individual-token probes: {} ms", single_started.elapsed().as_millis());
+        eprintln!(
+            "Redpiler arrangement individual-token probes: {} ms",
+            single_started.elapsed().as_millis()
+        );
     }
     let joint_started = std::time::Instant::now();
     let mut first = true;
@@ -401,8 +433,10 @@ pub(super) fn run(
         for (&dep, tokens) in &depends {
             grouped.entry(tokens.iter().copied().collect()).or_default().push(dep);
         }
-        let mut discovered = Vec::new();
-        for (tokens, deps) in grouped {
+        let grouped: Vec<_> = grouped.into_iter().collect();
+        let batches = scratch.probe_jobs(&grouped, monitor, |scratch, (tokens, deps)| {
+            let mut metrics = ProbeMetrics::default();
+            let mut discovered = Vec::new();
             if monitor.is_some_and(TaskMonitor::cancelled) {
                 return Err(ScratchError {
                     position: None,
@@ -410,7 +444,7 @@ pub(super) fn run(
                 });
             }
             if !first && !deps.iter().any(|dep| grown.contains(dep)) {
-                continue;
+                return Ok((discovered, metrics));
             }
             let members: Vec<_> = deps.iter().map(|dep| dep.0).collect::<BTreeSet<_>>().into_iter().collect();
             let nearby_tokens: BTreeSet<_> = members.iter().flat_map(|&member| tokens_near[member].iter().copied()).collect();
@@ -427,7 +461,7 @@ pub(super) fn run(
                 })
                 .collect();
             if candidates.is_empty() {
-                continue;
+                return Ok((discovered, metrics));
             }
             let size = count(program, &tokens, program.positions[members[0]])?;
             let initial: Vec<_> = tokens
@@ -450,7 +484,7 @@ pub(super) fn run(
                 if base.iter().map(|pair| pair.1).eq(initial.iter().copied()) {
                     continue;
                 }
-                let baseline = sample(&mut scratch, program, &base, &members, monitor, indexes, &mut metrics)?;
+                let baseline = sample(scratch, program, &base, &members, monitor, indexes, &mut metrics)?;
                 for &candidate in &candidates {
                     if monitor.is_some_and(TaskMonitor::cancelled) {
                         return Err(ScratchError {
@@ -474,7 +508,7 @@ pub(super) fn run(
                         }
                         let mut joint = base.clone();
                         joint.push((candidate, digit));
-                        let changed = sample(&mut scratch, program, &joint, &members, monitor, indexes, &mut metrics)?;
+                        let changed = sample(scratch, program, &joint, &members, monitor, indexes, &mut metrics)?;
                         for (i, &member) in members.iter().enumerate() {
                             if !affects[candidate].contains(&member) {
                                 continue;
@@ -489,12 +523,16 @@ pub(super) fn run(
                     }
                 }
             }
-        }
+            Ok((discovered, metrics))
+        })?;
         first = false;
         grown.clear();
-        for (dep, token) in discovered {
-            if depends.entry(dep).or_default().insert(token) {
-                grown.insert(dep);
+        for (discovered, work) in batches {
+            metrics.add(work);
+            for (dep, token) in discovered {
+                if depends.entry(dep).or_default().insert(token) {
+                    grown.insert(dep);
+                }
             }
         }
         if grown.is_empty() {
@@ -505,8 +543,10 @@ pub(super) fn run(
     for ((member, source, side), tokens) in depends {
         grouped.entry((tokens.into_iter().collect(), member, side)).or_default().push(source);
     }
-    let mut result = Vec::new();
-    for ((tokens, target, side), sources) in grouped {
+    let grouped: Vec<_> = grouped.into_iter().collect();
+    let batches = scratch.probe_jobs(&grouped, monitor, |scratch, ((tokens, target, side), sources)| {
+        let (target, side) = (*target, *side);
+        let mut metrics = ProbeMetrics::default();
         if monitor.is_some_and(TaskMonitor::cancelled) {
             return Err(ScratchError {
                 position: None,
@@ -517,7 +557,7 @@ pub(super) fn run(
         let mut inputs = Vec::with_capacity(size);
         for state in 0..size {
             let map = sample(
-                &mut scratch,
+                scratch,
                 program,
                 &placements(program, &tokens, state),
                 &[target],
@@ -525,22 +565,30 @@ pub(super) fn run(
                 indexes,
                 &mut metrics,
             )?
-                .pop()
-                .unwrap();
+            .pop()
+            .unwrap();
             inputs.push(
                 map.into_iter()
                     .filter_map(|((source, port), (distance, _))| (port == side && sources.contains(&source)).then_some((source, distance)))
                     .collect(),
             );
         }
-        result.push(InputArrangement {
-            target,
-            side,
-            silent: matches!(program.initial[target], Block::Piston { .. }),
-            tokens,
-            conditional_sources: sources,
-            inputs,
-        });
+        Ok((
+            InputArrangement {
+                target,
+                side,
+                silent: matches!(program.initial[target], Block::Piston { .. }),
+                tokens: tokens.clone(),
+                conditional_sources: sources.clone(),
+                inputs,
+            },
+            metrics,
+        ))
+    })?;
+    let mut result = Vec::with_capacity(batches.len());
+    for (group, work) in batches {
+        metrics.add(work);
+        result.push(group);
     }
     if std::env::var_os("MCHPRS_REDPILER_PHASE_TIMINGS").is_some() {
         eprintln!("Redpiler arrangement joint probes: {} ms", joint_started.elapsed().as_millis());

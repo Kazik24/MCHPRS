@@ -562,20 +562,17 @@ impl Runtime {
             .iter()
             .filter_map(|&id| {
                 let source = ArrangementSource::Component(self.program.links[id].source);
-                (!self
-                    .program
-                    .input_arrangements
-                    .iter()
-                    .any(|group| group.target == target && !group.side && group.conditional_sources.contains(&source)))
+                (!self.program.input_groups_by_target[target].iter().any(|&index| {
+                    let group = &self.program.input_arrangements[index];
+                    !group.side && group.conditional_sources.contains(&source)
+                }))
                 .then_some(self.contributions[id])
             })
             .max()
             .unwrap_or(0);
-        self.program
-            .arrangement_links
+        self.program.incoming_arrangements[target]
             .iter()
-            .enumerate()
-            .filter_map(|(index, link)| (link.target == target && !link.side).then_some(self.arrangement_contributions[index]))
+            .filter_map(|&index| (!self.program.arrangement_links[index].side).then_some(self.arrangement_contributions[index]))
             .fold(fixed, u8::max)
     }
 
@@ -778,7 +775,8 @@ impl Runtime {
     fn token_dependency_signature(&self, changed: usize, target: usize, position: Option<mchprs_blocks::BlockPos>) -> Vec<(ArrangementSource, u8)> {
         let token_position = |token: usize| if token == changed { position } else { self.token_positions[token] };
         let mut result = Vec::new();
-        for group in self.program.input_arrangements.iter().filter(|group| group.target == target) {
+        let arrangements: Vec<_> = self.program.input_arrangements.iter().filter(|group| group.target == target).collect();
+        for group in &arrangements {
             let mut index = 0;
             let mut stride = 1;
             for &token in &group.tokens {
@@ -792,11 +790,9 @@ impl Runtime {
             result.extend(group.inputs[index].iter().copied());
         }
         for (token, record) in self.program.tokens.iter().enumerate() {
-            if self
-                .program
-                .input_arrangements
+            if arrangements
                 .iter()
-                .any(|group| group.target == target && group.conditional_sources.contains(&ArrangementSource::Token(token)))
+                .any(|group| group.conditional_sources.contains(&ArrangementSource::Token(token)))
             {
                 continue;
             }
@@ -1066,24 +1062,25 @@ impl Runtime {
     }
 
     pub(super) fn side_strength(&self, component: usize) -> u8 {
-        let fixed = self
-            .program
-            .side_links
+        let fixed = self.program.incoming_side[component]
             .iter()
-            .filter(|link| link.target == component)
+            .map(|&index| &self.program.side_links[index])
             .filter(|link| {
-                !self.program.input_arrangements.iter().any(|group| {
-                    group.target == component && group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
+                !self.program.input_groups_by_target[component].iter().any(|&index| {
+                    let group = &self.program.input_arrangements[index];
+                    group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
                 })
             })
             .map(|link| self.output(link.source).saturating_sub(link.attenuation))
             .max()
             .unwrap_or(0);
-        self.program
-            .arrangement_links
+        self.program.incoming_arrangements[component]
             .iter()
-            .enumerate()
-            .filter_map(|(index, link)| (link.target == component && link.side).then_some(self.arrangement_contributions[index]))
+            .filter_map(|&index| {
+                self.program.arrangement_links[index]
+                    .side
+                    .then_some(self.arrangement_contributions[index])
+            })
             .fold(fixed, u8::max)
     }
 
@@ -1246,9 +1243,14 @@ impl Runtime {
             if self.trace_enabled {
                 self.trace(format!(
                     "repeater callback {:?} powered={} locked=true rear={} side={} pending={:?}",
-                    self.program.positions[component], repeater.powered,
-                    self.input_strength(component), self.side_strength(component),
-                    self.pending.iter_entries().filter(|entry| entry.pos == self.program.positions[component]).collect::<Vec<_>>()
+                    self.program.positions[component],
+                    repeater.powered,
+                    self.input_strength(component),
+                    self.side_strength(component),
+                    self.pending
+                        .iter_entries()
+                        .filter(|entry| entry.pos == self.program.positions[component])
+                        .collect::<Vec<_>>()
                 ));
             }
             return;
@@ -1257,9 +1259,14 @@ impl Runtime {
         if self.trace_enabled {
             self.trace(format!(
                 "repeater callback {:?} powered={} locked=false rear={} side={} pending={:?}",
-                self.program.positions[component], repeater.powered, self.input_strength(component),
+                self.program.positions[component],
+                repeater.powered,
+                self.input_strength(component),
                 self.side_strength(component),
-                self.pending.iter_entries().filter(|entry| entry.pos == self.program.positions[component]).collect::<Vec<_>>()
+                self.pending
+                    .iter_entries()
+                    .filter(|entry| entry.pos == self.program.positions[component])
+                    .collect::<Vec<_>>()
             ));
         }
         if rear_powered == repeater.powered {

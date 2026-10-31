@@ -132,6 +132,88 @@ fn reset_preserves_button_state_and_pending_release() {
 }
 
 #[test]
+fn headless_pistons_preserve_entry_and_match_native_motion_and_handoff() {
+    for (sticky, payload) in [
+        (false, Block::Air),
+        (true, Block::Air),
+        (true, Block::Stone {}),
+        (true, Block::RedstoneBlock),
+    ] {
+        for handoff in [false, true] {
+            let create = || {
+                let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
+                let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());
+                let lever = BlockPos::new(15, 15, 15);
+                let base = lever.offset(BlockFace::East);
+                world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+                world.set_block(
+                    lever,
+                    Block::Lever {
+                        lever: Lever::new(LeverFace::Floor, BlockDirection::North, true),
+                    },
+                );
+                world.set_block(
+                    base,
+                    Block::Piston {
+                        piston: RedstonePiston {
+                            facing: BlockFacing::East,
+                            sticky,
+                            extended: true,
+                        },
+                    },
+                );
+                world.set_block(base.offset(BlockFace::East).offset(BlockFace::East), payload);
+                world
+            };
+            let mut native = create();
+            let mut compiled = create();
+            let lever = BlockPos::new(15, 15, 15);
+            let base = lever.offset(BlockFace::East);
+            let home = base.offset(BlockFace::East);
+            let far = home.offset(BlockFace::East);
+            let positions = [lever, base, home, far];
+            let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+            let mut compiler = Compiler::default();
+            compiler
+                .compile(&compiled, bounds, CompilerOptions::default(), vec![], Arc::new(TaskMonitor::default()))
+                .unwrap();
+            compiler.try_flush(&mut compiled).unwrap();
+            assert_eq!(compiled.get_block(base), native.get_block(base));
+            assert_eq!(compiled.get_block(home), Block::Air, "initial publication must not invent a head");
+            for phase in 0..2 {
+                crate::interaction::use_redstone(native.get_block(lever), &mut native, lever, None);
+                if compiler.is_active() {
+                    compiler.try_on_use_block(lever).unwrap();
+                } else {
+                    crate::interaction::use_redstone(compiled.get_block(lever), &mut compiled, lever, None);
+                }
+                for tick in 1..=6 {
+                    native.tick_interpreted();
+                    if compiler.is_active() {
+                        compiler.tick().unwrap();
+                        compiler.try_flush(&mut compiled).unwrap();
+                        if handoff && phase == 0 && tick == 1 {
+                            compiler.try_reset(&mut compiled, bounds).unwrap();
+                            assert!(!compiler.is_active());
+                        }
+                    } else {
+                        compiled.tick_interpreted();
+                    }
+                    for pos in positions {
+                        assert_eq!(
+                            compiled.get_block(pos),
+                            native.get_block(pos),
+                            "sticky={sticky} payload={payload:?} handoff={handoff} phase={phase} tick={tick} at {pos}"
+                        );
+                    }
+                }
+                assert!(matches!(compiled.get_block(base), Block::Piston { piston } if piston.extended == (phase == 1)));
+            }
+        }
+    }
+}
+
+#[test]
 fn flush_and_reset_preserve_an_in_flight_piston_payload() {
     fn motions(world: &PlotWorld) -> Vec<(BlockPos, u64, f32, u64)> {
         world
@@ -485,13 +567,7 @@ fn powered_source_in_probe_context_rejects_compilation() {
     let bounds = (BlockPos::new(38, 29, 38), BlockPos::new(42, 32, 42));
     let mut compiler = Compiler::default();
     let error = compiler
-        .compile(
-            &world,
-            bounds,
-            CompilerOptions::default(),
-            Vec::new(),
-            Arc::new(TaskMonitor::default()),
-        )
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
         .unwrap_err();
     assert!(matches!(
         error,

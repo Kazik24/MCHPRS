@@ -84,6 +84,21 @@ struct SourceSamplingMetrics {
     observed_callbacks: usize,
 }
 
+impl SourceSamplingMetrics {
+    fn add(&mut self, other: &Self) {
+        self.scratch_setup += other.scratch_setup;
+        self.source_flips += other.source_flips;
+        self.frame_capture_comparison += other.frame_capture_comparison;
+        self.ordered_lowering += other.ordered_lowering;
+        self.completed_sources += other.completed_sources;
+        self.setup_component_walks += other.setup_component_walks;
+        self.entry_state_walks += other.entry_state_walks;
+        self.captured_frames += other.captured_frames;
+        self.frame_comparison_walks += other.frame_comparison_walks;
+        self.observed_callbacks += other.observed_callbacks;
+    }
+}
+
 impl Drop for SourceSamplingMetrics {
     fn drop(&mut self) {
         if self.enabled {
@@ -505,7 +520,10 @@ pub(crate) fn compile_monitored(
     for (observer, &pos) in positions.iter().enumerate() {
         if let Block::Observer { observer: state } = world.get_block(pos) {
             let at = pos.offset(state.facing.into());
-            if let Some(&wire) = position_index.get(&at).filter(|_| matches!(world.get_block(at), Block::RedstoneWire { .. })) {
+            if let Some(&wire) = position_index
+                .get(&at)
+                .filter(|_| matches!(world.get_block(at), Block::RedstoneWire { .. }))
+            {
                 if let Some(record) = watched_wires.iter_mut().find(|record| record.wire == wire) {
                     record.watchers.push(observer);
                 } else {
@@ -593,11 +611,12 @@ pub(crate) fn compile_monitored(
             }
         }
     }
-    // shortcut: only single-token source changes are sampled, replace with joint dependency groups before relying on interacting arrangements.
     phases.next("movement transition sampling");
     check_cancelled(monitor)?;
     let mut movement_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
-    for (token_index, token) in program.tokens.iter().enumerate() {
+    let token_jobs: Vec<_> = (0..program.tokens.len()).collect();
+    let movement = movement_probe.probe_jobs(&token_jobs, monitor, |probe, &token_index| {
+        let token = &program.tokens[token_index];
         check_cancelled(monitor)?;
         let arrangements = vec![Vec::new(); token.cells.len()];
         let mut updates = Vec::new();
@@ -606,8 +625,7 @@ pub(crate) fn compile_monitored(
             let mut cell_updates = [Vec::new(), Vec::new()];
             for arrival in [false, true] {
                 check_cancelled(monitor)?;
-                movement_probe.revert();
-                let probe = &mut movement_probe;
+                probe.revert();
                 if let Some(initial) = token.position {
                     probe.world_mut().set_block(initial, Block::Air);
                 }
@@ -629,8 +647,7 @@ pub(crate) fn compile_monitored(
                     if std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
                         eprintln!(
                             "Redpiler movement probe token={token_index} block={:?} initial={:?} cell={cell:?} arrival={arrival}: {error:?}",
-                            token.block,
-                            token.position
+                            token.block, token.position
                         );
                     }
                     return Err(error);
@@ -638,7 +655,10 @@ pub(crate) fn compile_monitored(
             }
             updates.push(cell_updates);
         }
-        program.token_sources.push(arrangements);
+        Ok((arrangements, updates))
+    })?;
+    for (sources, updates) in movement {
+        program.token_sources.push(sources);
         program.token_updates.push(updates);
     }
     for token in &program.tokens {
@@ -672,7 +692,10 @@ pub(crate) fn compile_monitored(
     let mut observers_by_target: std::collections::HashMap<BlockPos, Vec<usize>> = std::collections::HashMap::new();
     for (node, block) in program.initial.iter().enumerate() {
         if let Block::Observer { observer } = block {
-            observers_by_target.entry(program.positions[node].offset(observer.facing.into())).or_default().push(node);
+            observers_by_target
+                .entry(program.positions[node].offset(observer.facing.into()))
+                .or_default()
+                .push(node);
         }
     }
     for (source, &pos) in program.positions.iter().enumerate() {
@@ -689,7 +712,13 @@ pub(crate) fn compile_monitored(
             }
         }
         if let Some(observers) = observers_by_target.get(&pos) {
-            watchers.extend(observers.iter().copied().filter(|&node| node != source && seen.insert(node)).map(|node| (usize::MAX, node)));
+            watchers.extend(
+                observers
+                    .iter()
+                    .copied()
+                    .filter(|&node| node != source && seen.insert(node))
+                    .map(|node| (usize::MAX, node)),
+            );
         }
         watchers.sort_by_key(|&(order, _)| order);
         program.source_watchers[source] = watchers.into_iter().map(|(_, node)| node).collect();
@@ -783,6 +812,7 @@ pub(crate) fn compile_monitored(
     };
     phases.detail("source selection/index preparation", 0);
     let selection_started = Instant::now();
+    let source_index = SourceIndex::new(&program, monitor)?;
     let output_sources: Vec<_> = sources
         .iter()
         .copied()
@@ -798,23 +828,26 @@ pub(crate) fn compile_monitored(
     let racing_sources: std::collections::HashSet<_> = output_sources
         .iter()
         .copied()
-        .filter(|&source| matches!(program.initial[source], Block::StoneButton { .. }) || feeds_two_racers(&program, source))
+        .filter(|&source| matches!(program.initial[source], Block::StoneButton { .. }) || source_index.feeds_two_racers(&program, source))
         .collect();
     sampling.source_selection = selection_started.elapsed();
     sampling.candidate_sources = output_sources.len();
     sampling.racing_sources = racing_sources.len();
     let mut comparisons = Vec::new();
-    let mut quiet_basis = Vec::with_capacity(program.positions.len());
     if !racing_sources.is_empty() {
         let source = 0;
         let mut groups_by_target = vec![Vec::new(); program.positions.len()];
         for (index, group) in program.input_arrangements.iter().enumerate() {
-            if index % 1024 == 0 { check_cancelled(monitor)?; }
+            if index % 1024 == 0 {
+                check_cancelled(monitor)?;
+            }
             groups_by_target[group.target].push(index);
         }
         let mut links_by_target = vec![Vec::new(); program.positions.len()];
         for (index, link) in program.arrangement_links.iter().enumerate() {
-            if index % 1024 == 0 { check_cancelled(monitor)?; }
+            if index % 1024 == 0 {
+                check_cancelled(monitor)?;
+            }
             links_by_target[link.target].push(index);
         }
         phases.detail("loaded-arrangement preparation", source);
@@ -825,7 +858,9 @@ pub(crate) fn compile_monitored(
         phases.detail("quiet-basis preparation", source);
         let quiet_started = Instant::now();
         for (id, &at) in program.positions.iter().enumerate() {
-            if id % 1024 == 0 { check_cancelled(monitor)?; }
+            if id % 1024 == 0 {
+                check_cancelled(monitor)?;
+            }
             let block = ordering_probe.world().get_block(at);
             let constant_power = program.incoming[id]
                 .iter()
@@ -850,21 +885,26 @@ pub(crate) fn compile_monitored(
                 .unwrap_or(0);
             #[cfg(test)]
             if program.positions.len() < 1000 {
-                let original = program.incoming[id].iter().filter_map(|&index| {
-                    let link = &program.links[index];
-                    let conditional = program.input_arrangements.iter().any(|group| {
-                        group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
-                    });
-                    (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional)
-                        .then_some(15u8.saturating_sub(link.attenuation))
-                }).chain(program.arrangement_links.iter().filter_map(|link| {
-                    let constant = match link.source {
-                        ArrangementSource::Token(_) => true,
-                        ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock),
-                    };
-                    (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
-                        .then_some(15u8.saturating_sub(link.attenuation))
-                })).max().unwrap_or(0);
+                let original = program.incoming[id]
+                    .iter()
+                    .filter_map(|&index| {
+                        let link = &program.links[index];
+                        let conditional = program.input_arrangements.iter().any(|group| {
+                            group.target == id && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(link.source))
+                        });
+                        (matches!(program.initial[link.source], Block::RedstoneBlock) && !conditional)
+                            .then_some(15u8.saturating_sub(link.attenuation))
+                    })
+                    .chain(program.arrangement_links.iter().filter_map(|link| {
+                        let constant = match link.source {
+                            ArrangementSource::Token(_) => true,
+                            ArrangementSource::Component(node) => matches!(program.initial[node], Block::RedstoneBlock),
+                        };
+                        (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
+                            .then_some(15u8.saturating_sub(link.attenuation))
+                    }))
+                    .max()
+                    .unwrap_or(0);
                 assert_eq!(constant_power, original);
             }
             let quiet = match block {
@@ -898,40 +938,40 @@ pub(crate) fn compile_monitored(
                 Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { lit: false, facing },
                 _ => block,
             };
-            quiet_basis.push((quiet, matches!(block, Block::RedstoneComparator { .. })));
+            if matches!(block, Block::RedstoneComparator { .. }) {
+                ordering_probe
+                    .world_mut()
+                    .set_block_entity(at, BlockEntity::Comparator { output_strength: 0 });
+            }
+            ordering_probe.world_mut().set_block(at, quiet);
         }
+        ordering_probe.checkpoint()?;
         sampling.quiet_basis += quiet_started.elapsed();
         sampling.quiet_component_walks += 1;
     }
+    let mut racing_jobs = Vec::new();
     for (output_index, &source) in output_sources.iter().enumerate() {
         phases.detail("source transition", source);
         check_cancelled(monitor)?;
         if !racing_sources.contains(&source) {
             phases.detail("ordered-program lowering", source);
             let lowering_started = Instant::now();
-            let operations = source_operations(&program, source);
+            let operations = source_index.operations(source);
             program.output_programs[source] = [operations.clone(), operations];
             sampling.ordered_lowering += lowering_started.elapsed();
             sampling.completed_sources += 1;
             continue;
         }
-        phases.detail("scratch restore/setup", source);
+        racing_jobs.push((output_index, source));
+    }
+    phases.detail("parallel source probes", 0);
+    let batches = ordering_probe.probe_jobs(&racing_jobs, monitor, |scratch, &(output_index, source)| {
+        let mut sampling = SourceSamplingMetrics::default();
+        let mut outputs = [Vec::new(), Vec::new()];
         let scratch_started = Instant::now();
-        ordering_probe.revert();
+        scratch.revert();
         sampling.scratch_setup += scratch_started.elapsed();
-        let scratch = &mut ordering_probe;
         let pos = program.positions[source];
-        phases.detail("scratch quiet-state setup", source);
-        let scratch_setup_started = Instant::now();
-        for (index, (&at, &(quiet, comparator))) in program.positions.iter().zip(&quiet_basis).enumerate() {
-            if index % 1024 == 0 { check_cancelled(monitor)?; }
-            if comparator {
-                scratch.world_mut().set_block_entity(at, BlockEntity::Comparator { output_strength: 0 });
-            }
-            scratch.world_mut().set_block(at, quiet);
-        }
-        sampling.scratch_setup += scratch_setup_started.elapsed();
-        sampling.setup_component_walks += 1;
         let initial_power = false;
         let mut first_edge = None;
         let mut samples: [Option<Vec<Frame>>; 2] = [None, None];
@@ -941,7 +981,6 @@ pub(crate) fn compile_monitored(
             3
         };
         for powered in [!initial_power, initial_power, !initial_power].into_iter().take(edge_count) {
-            phases.detail("native source flip", source);
             check_cancelled(monitor)?;
             let w = scratch.world_mut();
             let mut frames = vec![];
@@ -997,7 +1036,6 @@ pub(crate) fn compile_monitored(
             }
             sampling.source_flips += flip_started.elapsed();
             // SourceOrdering records the immediate flip; scheduled feedback need not settle.
-            phases.detail("frame capture/comparison", source);
             let frame_started = Instant::now();
             frames.push(Frame {
                 blocks: program.positions.iter().map(|&p| w.get_block(p)).collect(),
@@ -1016,96 +1054,45 @@ pub(crate) fn compile_monitored(
                 first_edge = Some(frames.clone());
             }
             sampling.frame_capture_comparison += frame_started.elapsed();
-            phases.detail("ordered-program lowering", source);
             let lowering_started = Instant::now();
-            let mut targets = Vec::new();
-            for link in program.links.iter().filter(|link| link.source == source) {
-                if !targets.contains(&link.target) {
-                    targets.push(link.target);
-                }
-            }
-            for link in program
-                .arrangement_links
-                .iter()
-                .filter(|link| link.source == ArrangementSource::Component(source))
-            {
-                if !targets.contains(&link.target) {
-                    targets.push(link.target);
-                }
-            }
-            for link in program.side_links.iter().filter(|link| link.source == source) {
-                if !targets.contains(&link.target) {
-                    targets.push(link.target);
-                }
-            }
-            for record in &program.repeaters {
-                if record.side_sources.as_ref().is_some_and(|side| side.contains(&source)) && !targets.contains(&record.component) {
-                    targets.push(record.component);
-                }
-            }
+            let targets = &source_index.targets[source];
             let mut ordered = Vec::new();
             for delivery in &frames[0].deliveries {
                 let Some(&target) = probe_indexes.components.get(&delivery.pos) else {
                     continue;
                 };
-                if !targets.contains(&target) || ordered.contains(&target) || matches!(delivery.block, Block::RedstoneWire { .. }) {
+                let Some(record) = targets.iter().find(|record| record.target == target) else {
+                    continue;
+                };
+                if ordered.contains(&target) || matches!(delivery.block, Block::RedstoneWire { .. }) {
                     continue;
                 }
-                let rear = program.links.iter().any(|link| link.source == source && link.target == target)
-                    || program
-                        .arrangement_links
-                        .iter()
-                        .any(|link| link.source == ArrangementSource::Component(source) && link.target == target && !link.side);
                 if matches!(delivery.block, Block::Observer { .. })
-                    || delivery.input_on.is_some_and(|(main, side)| (if rear { main } else { side }) == powered)
+                    || delivery
+                        .input_on
+                        .is_some_and(|(main, side)| (if record.rear { main } else { side }) == powered)
                 {
                     ordered.push(target);
                 }
             }
-            for target in targets {
-                if !ordered.contains(&target) {
-                    ordered.push(target);
+            for record in targets {
+                if !ordered.contains(&record.target) {
+                    ordered.push(record.target);
                 }
             }
             let mut operations = Vec::new();
             for target in ordered {
-                operations.extend(
-                    program
-                        .links
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, link)| (link.source == source && link.target == target).then_some(Operation::Contribution(index))),
-                );
-                operations.extend(program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
-                    (link.source == ArrangementSource::Component(source) && link.target == target)
-                        .then_some(Operation::ArrangementContribution(index))
-                }));
-                match program.initial[target] {
-                    Block::RedstoneWire { .. } => {
-                        operations.push(Operation::RefreshWire(target));
-                        if let Some(record) = program.watched_wires.iter().position(|record| record.wire == target) {
-                            operations.push(Operation::CheckWatchedWire(record));
-                        }
-                    }
-                    Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
-                    Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),
-                    Block::RedstoneComparator { .. } => operations.push(Operation::UpdateComparator(target)),
-                    // CollectInputs marks piston electrical links silent; watchers deliver updates.
-                    Block::Piston { .. } => {}
-                    Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => operations.push(Operation::UpdateTorch(target)),
-                    _ => {}
-                }
+                operations.extend(targets.iter().find(|record| record.target == target).unwrap().operations.iter().cloned());
             }
-            program.output_programs[source][usize::from(powered)] = operations;
+            outputs[usize::from(powered)] = operations;
             samples[usize::from(powered)] = Some(frames);
             sampling.ordered_lowering += lowering_started.elapsed();
             scratch.finish_probe()?;
         }
         sampling.completed_sources += 1;
-        phases.detail("source entry-state comparison", source);
         let entry_check_started = Instant::now();
         sampling.entry_state_walks += 1;
-        if output_index >= sources.len()
+        let comparison = if output_index >= sources.len()
             || program.initial.iter().any(|block| match block {
                 Block::Lever { lever } => lever.powered,
                 Block::StoneButton { button } => button.powered,
@@ -1113,13 +1100,20 @@ pub(crate) fn compile_monitored(
                 Block::RedstoneWire { wire } => wire.power != 0,
                 Block::RedstoneLamp { lit } => *lit,
                 _ => false,
-            })
-        {
-            sampling.frame_capture_comparison += entry_check_started.elapsed();
-            continue;
-        }
+            }) {
+            None
+        } else {
+            Some((output_index, pos, samples))
+        };
         sampling.frame_capture_comparison += entry_check_started.elapsed();
-        comparisons.push((output_index, pos, samples));
+        Ok((source, outputs, comparison, sampling))
+    })?;
+    for (source, outputs, comparison, work) in batches {
+        sampling.add(&work);
+        program.output_programs[source] = outputs;
+        if let Some(comparison) = comparison {
+            comparisons.push(comparison);
+        }
     }
     for (output_index, pos, samples) in comparisons {
         phases.detail("captured-frame runtime comparison", output_sources[output_index]);
@@ -1177,6 +1171,122 @@ fn within_two(pos: BlockPos) -> Vec<BlockPos> {
     cells
 }
 
+struct SourceTarget {
+    target: usize,
+    rear: bool,
+    operations: Vec<Operation>,
+}
+
+struct SourceIndex {
+    targets: Vec<Vec<SourceTarget>>,
+}
+
+impl SourceIndex {
+    fn target(&mut self, source: usize, target: usize) -> &mut SourceTarget {
+        let targets = &mut self.targets[source];
+        let index = targets.iter().position(|record| record.target == target).unwrap_or_else(|| {
+            targets.push(SourceTarget {
+                target,
+                rear: false,
+                operations: Vec::new(),
+            });
+            targets.len() - 1
+        });
+        &mut targets[index]
+    }
+
+    fn new(program: &Program, monitor: Option<&TaskMonitor>) -> Result<Self, ScratchError> {
+        let mut index = Self {
+            targets: (0..program.initial.len()).map(|_| Vec::new()).collect(),
+        };
+        for (id, link) in program.links.iter().enumerate() {
+            if id % 1024 == 0 {
+                check_cancelled(monitor)?;
+            }
+            let target = index.target(link.source, link.target);
+            target.rear = true;
+            target.operations.push(Operation::Contribution(id));
+        }
+        for (id, link) in program.arrangement_links.iter().enumerate() {
+            if id % 1024 == 0 {
+                check_cancelled(monitor)?;
+            }
+            if let ArrangementSource::Component(source) = link.source {
+                let target = index.target(source, link.target);
+                target.rear |= !link.side;
+                target.operations.push(Operation::ArrangementContribution(id));
+            }
+        }
+        for link in &program.side_links {
+            index.target(link.source, link.target);
+        }
+        for record in &program.repeaters {
+            for &source in record.side_sources.iter().flatten() {
+                index.target(source, record.component);
+            }
+        }
+        let mut watched = vec![None; program.initial.len()];
+        for (id, wire) in program.watched_wires.iter().enumerate() {
+            watched[wire.wire].get_or_insert(id);
+        }
+        for (source, targets) in index.targets.iter_mut().enumerate() {
+            if source % 1024 == 0 {
+                check_cancelled(monitor)?;
+            }
+            for record in targets {
+                let target = record.target;
+                match program.initial[target] {
+                    Block::RedstoneWire { .. } => {
+                        record.operations.push(Operation::RefreshWire(target));
+                        if let Some(wire) = watched[target] {
+                            record.operations.push(Operation::CheckWatchedWire(wire));
+                        }
+                    }
+                    Block::RedstoneLamp { .. } => record.operations.push(Operation::UpdateLamp(target)),
+                    Block::RedstoneRepeater { .. } => record.operations.push(Operation::UpdateRepeater(target)),
+                    Block::RedstoneComparator { .. } => record.operations.push(Operation::UpdateComparator(target)),
+                    Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => record.operations.push(Operation::UpdateTorch(target)),
+                    _ => {}
+                }
+            }
+        }
+        #[cfg(test)]
+        if program.initial.len() < 1000 {
+            for source in 0..program.initial.len() {
+                assert_eq!(index.operations(source), source_operations(program, source));
+                assert_eq!(index.feeds_two_racers(program, source), feeds_two_racers(program, source));
+            }
+        }
+        Ok(index)
+    }
+
+    fn operations(&self, source: usize) -> Vec<Operation> {
+        self.targets[source].iter().flat_map(|record| record.operations.iter().cloned()).collect()
+    }
+
+    fn feeds_two_racers(&self, program: &Program, source: usize) -> bool {
+        self.targets[source]
+            .iter()
+            .filter(|record| {
+                matches!(
+                    program.initial[record.target],
+                    Block::RedstoneRepeater { .. }
+                        | Block::RedstoneComparator { .. }
+                        | Block::RedstoneTorch { .. }
+                        | Block::RedstoneWallTorch { .. }
+                        | Block::Observer { .. }
+                        | Block::Piston { .. }
+                        | Block::RedstoneWire { .. }
+                        | Block::RedstoneBlock
+                )
+            })
+            .take(2)
+            .count()
+            == 2
+    }
+}
+
+#[cfg(test)]
 fn feeds_two_racers(program: &Program, source: usize) -> bool {
     let mut targets = Vec::new();
     for link in program.links.iter().filter(|link| link.source == source) {
@@ -1223,6 +1333,7 @@ fn feeds_two_racers(program: &Program, source: usize) -> bool {
         == 2
 }
 
+#[cfg(test)]
 fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
     let mut targets = Vec::new();
     for link in program.links.iter().filter(|link| link.source == source) {
@@ -1501,7 +1612,7 @@ fn discover_piston_actors_monitored(
                     Block::MovingPiston { .. } => return Err(error(home, "moving piston state is unsupported")),
                     _ => false,
                 };
-                if piston.extended != head_present {
+                if !piston.extended && head_present {
                     return Err(error(base, "piston base and head state disagree"));
                 }
                 actors.push(PistonActor {

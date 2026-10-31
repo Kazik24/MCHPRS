@@ -20,7 +20,7 @@ pub struct ScratchError {
 
 pub(crate) struct ScratchWorld {
     world: PlotWorld,
-    baseline: HashMap<BlockPos, (u32, Option<mchprs_blocks::block_entities::BlockEntity>)>,
+    baseline: std::sync::Arc<HashMap<BlockPos, (u32, Option<mchprs_blocks::block_entities::BlockEntity>)>>,
     scheduled: Vec<TickEntry>,
     piston: mchprs_world::PistonState,
     bounds: (BlockPos, BlockPos),
@@ -574,6 +574,84 @@ mod tests {
     }
 
     #[test]
+    fn probe_workers_preserve_quiet_basis_results_order_and_cancellation() {
+        let host = fixture();
+        let host_before = sample(&host);
+        let mut scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
+        scratch.world_mut().set_block(LEVER, Block::Air);
+        scratch.checkpoint().unwrap();
+        let quiet = sample(scratch.world());
+        drive(scratch.world_mut());
+        scratch.world_mut().tick_interpreted();
+        let driven = sample(scratch.world());
+        scratch.revert();
+        let jobs: Vec<_> = (0..512).collect();
+        let results = scratch
+            .probe_jobs(&jobs, None, |probe, &index| {
+                assert_eq!(sample(probe.world()), quiet);
+                if index % 2 == 0 {
+                    drive(probe.world_mut());
+                    probe.world_mut().tick_interpreted();
+                }
+                probe.finish_probe()?;
+                Ok((index, sample(probe.world())))
+            })
+            .unwrap();
+        for (expected_index, (index, state)) in results.into_iter().enumerate() {
+            assert_eq!(index, expected_index);
+            assert_eq!(state, if index % 2 == 0 { driven.clone() } else { quiet.clone() });
+        }
+        let monitor = super::super::TaskMonitor::default();
+        monitor.cancel();
+        let error = scratch
+            .probe_jobs(&jobs, Some(&monitor), |_, _| -> Result<(), ScratchError> {
+                panic!("cancelled probe must not run")
+            })
+            .unwrap_err();
+        assert_eq!(error.reason, "compilation cancelled");
+        assert_eq!(sample(&host), host_before);
+    }
+
+    #[test]
+    fn checkpoint_reverts_blocks_entities_and_work_to_the_new_basis() {
+        use mchprs_blocks::block_entities::BlockEntity;
+        use mchprs_world::TickPriority;
+        let host = fixture();
+        let host_before = sample(&host);
+        let mut scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
+        let comparator = BlockPos::new(43, 30, 40);
+        scratch.world_mut().set_block(LEVER, Block::Air);
+        scratch.world_mut().set_block(comparator, Block::from_name("comparator").unwrap());
+        scratch
+            .world_mut()
+            .set_block_entity(comparator, BlockEntity::Comparator { output_strength: 7 });
+        scratch.world_mut().schedule_tick(comparator, 3, TickPriority::High);
+        scratch.world_mut().piston_state_mut().logical_tick = 91;
+        scratch.checkpoint().unwrap();
+        let expected = sample(scratch.world());
+        let expected_entity = serde_json::to_value(scratch.world().get_block_entity(comparator)).unwrap();
+        for _ in 0..2 {
+            scratch.world_mut().set_block(LEVER, Block::Stone {});
+            scratch.world_mut().set_block(comparator, Block::Air);
+            scratch.world_mut().delete_block_entity(comparator);
+            drive(scratch.world_mut());
+            scratch.world_mut().tick_interpreted();
+            let _ = scratch.world().get_block(BlockPos::new(-2, 30, 40));
+            scratch.revert();
+            assert_eq!(sample(scratch.world()), expected);
+            assert_eq!(scratch.world().get_block(LEVER), Block::Air);
+            assert_eq!(
+                serde_json::to_value(scratch.world().get_block_entity(comparator)).unwrap(),
+                expected_entity
+            );
+            assert_eq!(scratch.world().get_block(comparator), Block::from_name("comparator").unwrap());
+            scratch.finish_probe().unwrap();
+            assert!(scratch.world_mut().take_redstone_update_observations().is_empty());
+        }
+        assert_eq!(sample(&host), host_before);
+    }
+
+    #[test]
     fn scratch_reports_unknown_boundary_and_pending_entry_work() {
         let host = fixture();
         let scratch = ScratchWorld::from_world(&host, BOUNDS, entry(&host)).unwrap();
@@ -624,10 +702,7 @@ mod tests {
     #[test]
     fn scratch_plot_edge_context_uses_the_world_air_contract() {
         let host = fixture();
-        let bounds = (
-            BlockPos::new(0, 30, 40),
-            BlockPos::new(2, 32, 42),
-        );
+        let bounds = (BlockPos::new(0, 30, 40), BlockPos::new(2, 32, 42));
         let scratch = ScratchWorld::from_world(&host, bounds, entry(&host)).unwrap();
         let outside_plot = BlockPos::new(-1, 31, 41);
         assert_eq!(host.get_block(outside_plot), Block::Air);
@@ -636,10 +711,7 @@ mod tests {
         scratch.finish_probe().unwrap();
 
         let plot_max_x = PLOT_BLOCK_WIDTH - 1;
-        let edge_bounds = (
-            BlockPos::new(plot_max_x - 2, 30, 40),
-            BlockPos::new(plot_max_x, 32, 42),
-        );
+        let edge_bounds = (BlockPos::new(plot_max_x - 2, 30, 40), BlockPos::new(plot_max_x, 32, 42));
         let edge_scratch = ScratchWorld::from_world(&host, edge_bounds, entry(&host)).unwrap();
         let outside_plot = BlockPos::new(plot_max_x + 1, 31, 41);
         assert_eq!(host.get_block(outside_plot), Block::Air);
@@ -1008,12 +1080,24 @@ impl ScratchWorld {
         {
             return Err(invalid_bounds());
         }
-        let Some(probe_min_x) = min.x.checked_sub(1) else { return Err(invalid_bounds()) };
-        let Some(probe_min_y) = min.y.checked_sub(1) else { return Err(invalid_bounds()) };
-        let Some(probe_min_z) = min.z.checked_sub(1) else { return Err(invalid_bounds()) };
-        let Some(probe_max_x) = max.x.checked_add(1) else { return Err(invalid_bounds()) };
-        let Some(probe_max_y) = max.y.checked_add(1) else { return Err(invalid_bounds()) };
-        let Some(probe_max_z) = max.z.checked_add(1) else { return Err(invalid_bounds()) };
+        let Some(probe_min_x) = min.x.checked_sub(1) else {
+            return Err(invalid_bounds());
+        };
+        let Some(probe_min_y) = min.y.checked_sub(1) else {
+            return Err(invalid_bounds());
+        };
+        let Some(probe_min_z) = min.z.checked_sub(1) else {
+            return Err(invalid_bounds());
+        };
+        let Some(probe_max_x) = max.x.checked_add(1) else {
+            return Err(invalid_bounds());
+        };
+        let Some(probe_max_y) = max.y.checked_add(1) else {
+            return Err(invalid_bounds());
+        };
+        let Some(probe_max_z) = max.z.checked_add(1) else {
+            return Err(invalid_bounds());
+        };
         let probe_min = BlockPos::new(probe_min_x, probe_min_y, probe_min_z);
         let probe_max = BlockPos::new(probe_max_x, probe_max_y, probe_max_z);
         let read_bounds = (
@@ -1116,9 +1200,8 @@ impl ScratchWorld {
                     if contains(bounds, pos) {
                         continue;
                     }
-                    let in_plot = (plot_min_x..=plot_max_x).contains(&x)
-                        && (plot_min_z..=plot_max_z).contains(&z)
-                        && (0..PLOT_BLOCK_HEIGHT).contains(&y);
+                    let in_plot =
+                        (plot_min_x..=plot_max_x).contains(&x) && (plot_min_z..=plot_max_z).contains(&z) && (0..PLOT_BLOCK_HEIGHT).contains(&y);
                     if !in_plot {
                         if source.get_block(pos) == Block::Air && source.get_block_entity(pos).is_none() {
                             contract_air.insert(pos);
@@ -1135,7 +1218,7 @@ impl ScratchWorld {
         world.configure_scratch(bounds, read_bounds, read_chunks.clone(), contract_air.clone());
         Ok(Self {
             world,
-            baseline,
+            baseline: std::sync::Arc::new(baseline),
             scheduled: entry.scheduled,
             piston: entry.piston,
             bounds,
@@ -1150,6 +1233,114 @@ impl ScratchWorld {
     }
     pub(crate) fn world_mut(&mut self) -> &mut PlotWorld {
         &mut self.world
+    }
+
+    pub(crate) fn checkpoint(&mut self) -> Result<(), ScratchError> {
+        self.finish_probe()?;
+        let (blocks, entities) = self.world.take_scratch_changes();
+        for pos in blocks.union(&entities) {
+            let raw = self.world.get_block_raw(*pos);
+            let entity = self.world.get_block_entity(*pos).cloned();
+            if raw == Block::Air.get_id() && entity.is_none() {
+                std::sync::Arc::make_mut(&mut self.baseline).remove(pos);
+            } else {
+                std::sync::Arc::make_mut(&mut self.baseline).insert(*pos, (raw, entity));
+            }
+        }
+        self.scheduled = self.world.scheduler().iter_entries().collect();
+        self.piston = self.world.piston_state().clone();
+        self.revert();
+        Ok(())
+    }
+
+    fn fork_basis(&mut self) -> Self {
+        self.revert();
+        let mut world = self.world.activation_snapshot();
+        world.configure_scratch(self.bounds, self.read_bounds, self.read_chunks.clone(), self.contract_air.clone());
+        Self {
+            world,
+            baseline: self.baseline.clone(),
+            scheduled: self.scheduled.clone(),
+            piston: self.piston.clone(),
+            bounds: self.bounds,
+            read_bounds: self.read_bounds,
+            read_chunks: self.read_chunks.clone(),
+            contract_air: self.contract_air.clone(),
+        }
+    }
+
+    pub(crate) fn probe_jobs<J: Sync, R: Send>(
+        &mut self,
+        jobs: &[J],
+        monitor: Option<&super::TaskMonitor>,
+        probe: impl Fn(&mut Self, &J) -> Result<R, ScratchError> + Sync,
+    ) -> Result<Vec<R>, ScratchError> {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let workers = std::thread::available_parallelism().map_or(1, usize::from).min((jobs.len() / 128).max(1));
+        if workers == 1 {
+            return jobs
+                .iter()
+                .map(|job| {
+                    self.revert();
+                    if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                        return Err(ScratchError {
+                            position: None,
+                            reason: "compilation cancelled",
+                        });
+                    }
+                    probe(self, job)
+                })
+                .collect();
+        }
+        let next = AtomicUsize::new(0);
+        let stopped = AtomicBool::new(false);
+        let scratches = (0..workers)
+            .map(|_| {
+                if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                    Err(ScratchError {
+                        position: None,
+                        reason: "compilation cancelled",
+                    })
+                } else {
+                    Ok(self.fork_basis())
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut results = std::thread::scope(|scope| {
+            let handles: Vec<_> = scratches
+                .into_iter()
+                .map(|mut scratch| {
+                    let (next, stopped, probe) = (&next, &stopped, &probe);
+                    scope.spawn(move || {
+                        let mut results = Vec::new();
+                        while !stopped.load(Ordering::Relaxed) {
+                            let index = next.fetch_add(1, Ordering::Relaxed);
+                            let Some(job) = jobs.get(index) else { break };
+                            scratch.revert();
+                            let result = if monitor.is_some_and(super::TaskMonitor::cancelled) {
+                                Err(ScratchError {
+                                    position: None,
+                                    reason: "compilation cancelled",
+                                })
+                            } else {
+                                probe(&mut scratch, job)
+                            };
+                            if result.is_err() {
+                                stopped.store(true, Ordering::Relaxed);
+                            }
+                            results.push((index, result));
+                        }
+                        results
+                    })
+                })
+                .collect();
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().expect("scratch probe worker panicked"))
+                .collect::<Vec<_>>()
+        });
+        results.sort_unstable_by_key(|(index, _)| *index);
+        results.into_iter().map(|(_, result)| result).collect()
     }
 
     pub(crate) fn revert(&mut self) {
