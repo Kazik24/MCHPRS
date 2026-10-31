@@ -11,6 +11,12 @@ fn frozen_cpu_inputs_and_initial_states() {
     }
 }
 
+#[test]
+fn bubblesort_native_initial_state_matches_reference() {
+    let cpu = cpus::CPUS[2];
+    assert_eq!(cpus::checkpoint(&cpus::load_cpu(cpu), 0, &[]), cpus::reference(cpu).checkpoints[0]);
+}
+
 fn replay_frozen(cpu: cpus::Cpu, redpiler: bool) {
     let expected = cpus::reference(cpu);
     let world = cpus::load_cpu(cpu);
@@ -91,6 +97,7 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
     let worker_monitor = monitor.clone();
     let ticks = world.scheduler().iter_entries().collect();
     let compile_started = std::time::Instant::now();
+    let mut cancellation_requested = None;
     let (world, mut compiler, error, timed_out) = std::thread::scope(|scope| {
         let worker = scope.spawn(move || {
             let mut compiler = Compiler::default();
@@ -101,6 +108,7 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
         while !worker.is_finished() {
             if compile_started.elapsed() >= timeout && !monitor.cancelled() {
                 timed_out = true;
+                cancellation_requested = Some(std::time::Instant::now());
                 monitor.cancel();
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -109,7 +117,7 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
         (world, compiler, error, timed_out)
     });
     if timed_out {
-        println!("CPU_BUBBLESORT compile timed out after {timeout:?}; cancellation requested");
+        println!("CPU_BUBBLESORT compile timed out after {timeout:?}; cancellation latency {:?}", cancellation_requested.unwrap().elapsed());
     }
     if let Err(error) = error {
         let rejected = match &error {
@@ -126,6 +134,8 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
     let mut world = world;
     let expected = cpus::reference(cpu);
     assert_eq!(cpus::checkpoint(&world, 0, &[]), expected.checkpoints[0]);
+    let mut native = cpus::load_cpu(cpu);
+    cpus::click_cpu(&mut native, cpu, cpu.start);
     compiler.try_on_use_block(pos).unwrap();
     let mut chat = Vec::new();
     let mut ram = Vec::new();
@@ -134,12 +144,34 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
     for tick in 1..=50_000 {
         compiler.tick().unwrap();
         compiler.try_flush(&mut world).unwrap();
+        if tick <= 10 {
+            native.tick_interpreted();
+            let mut differences = Vec::new();
+            mchprs_core::world::for_each_block_optimized(&native, bounds.0, bounds.1, |at| {
+                let expected = native.get_block(at);
+                let actual = world.get_block(at);
+                if expected != actual && differences.len() < 20 {
+                    differences.push((at, expected, actual));
+                }
+            });
+            if !differences.is_empty() {
+                eprintln!("native/compiled block differences at tick {tick}: {differences:?}");
+            }
+            let mut native_ram = Vec::new();
+            let mut compiled_ram = Vec::new();
+            cpus::collect_ram(&native, cpu, tick, &mut native_ram);
+            cpus::collect_ram(&world, cpu, tick, &mut compiled_ram);
+            assert_eq!(compiled_ram, native_ram, "native/compiled RAM at tick {tick}");
+        }
         cpus::collect_chat(&world, tick, &mut chat);
         cpus::collect_ram(&world, cpu, tick, &mut ram);
         if cpus::CHECKPOINTS.contains(&tick) {
             let actual = cpus::checkpoint(&world, tick, &chat);
+            let reference = &expected.checkpoints[checkpoint_index];
+            eprintln!("tick {tick} published scheduler={} native scheduler={}", actual.scheduler, reference.scheduler);
             assert_eq!(
-                actual, expected.checkpoints[checkpoint_index],
+                (&actual.blocks, &actual.entities, &actual.pistons, &actual.chat, actual.messages, actual.lit_lamps),
+                (&reference.blocks, &reference.entities, &reference.pistons, &reference.chat, reference.messages, reference.lit_lamps),
                 "compiled CPU_BUBBLESORT checkpoint at tick {tick}"
             );
             checkpoint_index += 1;

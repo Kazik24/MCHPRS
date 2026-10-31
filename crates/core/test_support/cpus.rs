@@ -158,6 +158,12 @@ pub fn checkpoint(world: &PlotWorld, tick: u32, chat: &[(u32, String)]) -> Check
     let mut lit_lamps = 0;
     // Include section coordinates and empty sections: no dependency on palette layout.
     for chunk in world.get_chunks() {
+        // Schema 1 captured 16x16-chunk plots; still reject data in the added area.
+        if chunk.x >= 16 || chunk.z >= 16 {
+            assert!(chunk.sections.iter().all(|section| section.block_count() == 0));
+            assert!(chunk.block_entities.is_empty());
+            continue;
+        }
         blocks.update(chunk.x.to_le_bytes());
         blocks.update(chunk.z.to_le_bytes());
         for (section_y, section) in chunk.sections.iter().enumerate() {

@@ -806,7 +806,9 @@ impl World for PlotWorld {
 
     /// Returns the block state id of the block at `pos`
     fn get_block_raw(&self, pos: BlockPos) -> u32 {
-        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos))
+            && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+        {
             let first = self.scratch_boundary_read.replace(Some(pos)).is_none();
             if first && std::env::var_os("MCHPRS_REDPILER_BOUNDARY_TRACE").is_some() {
                 eprintln!("Redpiler unknown block read at {pos:?}\n{}", std::backtrace::Backtrace::force_capture());
@@ -863,7 +865,9 @@ impl World for PlotWorld {
     }
 
     fn get_block_entity(&self, pos: BlockPos) -> Option<&BlockEntity> {
-        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos)) {
+        if self.scratch_read_bounds.is_some_and(|bounds| !in_bounds(bounds, pos))
+            && !self.scratch_contract_air.as_ref().is_some_and(|positions| positions.contains(&pos))
+        {
             self.scratch_boundary_read.set(Some(pos));
             return None;
         }

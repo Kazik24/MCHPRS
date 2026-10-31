@@ -632,6 +632,7 @@ mod tests {
         let outside_plot = BlockPos::new(-1, 31, 41);
         assert_eq!(host.get_block(outside_plot), Block::Air);
         assert_eq!(scratch.world().get_block(outside_plot), Block::Air);
+        assert!(scratch.world().get_block_entity(outside_plot).is_none());
         scratch.finish_probe().unwrap();
 
         let plot_max_x = PLOT_BLOCK_WIDTH - 1;
@@ -643,6 +644,7 @@ mod tests {
         let outside_plot = BlockPos::new(plot_max_x + 1, 31, 41);
         assert_eq!(host.get_block(outside_plot), Block::Air);
         assert_eq!(edge_scratch.world().get_block(outside_plot), Block::Air);
+        assert!(edge_scratch.world().get_block_entity(outside_plot).is_none());
         edge_scratch.finish_probe().unwrap();
     }
 
