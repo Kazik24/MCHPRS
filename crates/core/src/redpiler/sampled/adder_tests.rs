@@ -1,4 +1,7 @@
 //! Manifest acceptance boundary for the independent reference executor.
+#[path = "copper_reference_tests.rs"]
+mod copper_reference_tests;
+
 use super::*;
 use crate::plot::worldedit::{load_schematic, paste_clipboard};
 use crate::plot::{PLOT_WIDTH, PlotWorld};
@@ -220,13 +223,13 @@ fn adder1bit_reference_manifest_arithmetic() {
                             "  {:?} {} move steps: {:?}",
                             token.cells[cell],
                             if arrival == 0 { "departure" } else { "arrival" },
-                            steps
+                            program.movement_steps[steps.clone()]
                                 .iter()
                                 .map(|step| (
                                     program.positions[step.node],
                                     step.watcher,
                                     step.wire,
-                                    step.wires.iter().map(|&node| program.positions[node]).collect::<Vec<_>>()
+                                    program.movement_wires[step.wires.clone()].iter().map(|&node| program.positions[node]).collect::<Vec<_>>()
                                 ))
                                 .collect::<Vec<_>>()
                         );
@@ -530,7 +533,7 @@ fn run_repeated_adder(manifest_name: &str, cases: &[(u64, u64, u64)]) {
             }
             elapsed_ticks += 32;
             assert!(
-                runtime.pending.iter_entries().next().is_none(),
+                runtime.pending_entries().into_iter().next().is_none(),
                 "{manifest_name} operation {operation}: rearm left pending work"
             );
         }
@@ -553,7 +556,7 @@ fn run_repeated_adder(manifest_name: &str, cases: &[(u64, u64, u64)]) {
         }
         elapsed_ticks += 32;
         assert!(
-            runtime.pending.iter_entries().next().is_none(),
+            runtime.pending_entries().into_iter().next().is_none(),
             "{manifest_name} operation {operation}: preparation left pending work"
         );
         let before = runtime.operations;

@@ -1,6 +1,8 @@
 //! Sampled compiled redstone execution.
 
 mod options;
+#[cfg(test)]
+mod publication_tests;
 mod sampled;
 mod scratch;
 mod task_monitor;
@@ -11,7 +13,7 @@ use crate::redstone;
 use crate::world::{World, for_each_block_mut_optimized};
 use mchprs_blocks::{BlockPos, block_entities::BlockEntity, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonMotion, TickEntry};
-use sampled::{ExportKey, Runtime, ScratchEntry, ScratchError};
+use sampled::{ExportKey, MovingPart, Runtime, ScratchEntry, ScratchError};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -69,12 +71,22 @@ impl CompileStatistics {
     }
 }
 
+struct ExportedMotion {
+    identity: u64,
+    seen: bool,
+}
+
 #[derive(Default)]
 pub struct Compiler {
     runtime: Option<Runtime>,
     options: CompilerOptions,
     statistics: Option<CompileStatistics>,
-    exported_motions: HashMap<ExportKey, u64>,
+    exported_motions: HashMap<ExportKey, ExportedMotion>,
+    publication_parts: Vec<MovingPart>,
+    publication_positions: HashSet<BlockPos>,
+    retired_motions: HashSet<u64>,
+    host_motion_indices: HashMap<BlockPos, usize>,
+    publication_phase: bool,
 }
 
 impl Compiler {
@@ -121,9 +133,19 @@ impl Compiler {
         }
         let components = program.component_count();
         let pending_ticks = ticks.len();
-        let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone());
-        self.runtime = Some(runtime);
+        let runtime = sampled::start_runtime(program, ticks, world.piston_state().clone()).map_err(CompileError::Unsupported)?;
+        let capacity = runtime.motion_part_capacity();
+        self.publication_parts.clear();
+        self.publication_parts.reserve(capacity);
+        self.publication_positions.clear();
+        self.publication_positions.reserve(capacity);
+        self.retired_motions.clear();
+        self.retired_motions.reserve(capacity);
+        self.host_motion_indices.clear();
+        self.host_motion_indices.reserve(capacity);
         self.exported_motions.clear();
+        self.exported_motions.reserve(capacity);
+        self.runtime = Some(runtime);
         self.statistics = Some(CompileStatistics {
             components,
             pending_ticks,
@@ -141,7 +163,7 @@ impl Compiler {
 
     pub fn try_reset<W: World>(&mut self, world: &mut W, bounds: (BlockPos, BlockPos)) -> Result<(), ExecutionError> {
         if self.runtime.is_some() {
-            self.publish(world, false)?;
+            self.publish(world, false, true)?;
             let runtime = self.runtime.as_ref().unwrap();
             let pending = runtime.pending_entries();
             self.runtime = None;
@@ -190,104 +212,131 @@ impl Compiler {
     }
 
     pub fn try_flush<W: World>(&mut self, world: &mut W) -> Result<(), ExecutionError> {
-        self.publish(world, self.options.io_only)
+        self.publish(world, self.options.io_only, cfg!(feature = "redpiler-full-publication"))
     }
 
-    fn publish<W: World>(&mut self, world: &mut W, io_only: bool) -> Result<(), ExecutionError> {
-        let runtime = self.runtime.as_ref().expect("compiler inactive");
-        let parts = if io_only {
-            Vec::new()
-        } else {
-            runtime.moving_parts().map_err(ExecutionError)?
-        };
-        let positions: HashSet<_> = parts.iter().map(|part| part.pos).collect();
-        if positions.len() != parts.len() {
-            return Err(ExecutionError(ScratchError {
-                position: None,
-                reason: "overlapping piston motion parts cannot be published",
-            }));
+    fn publish<W: World>(&mut self, world: &mut W, io_only: bool, full: bool) -> Result<(), ExecutionError> {
+        self.runtime
+            .as_mut()
+            .expect("compiler inactive")
+            .prepare_publication(io_only || !full)
+            .map_err(ExecutionError)?;
+        let runtime = self.runtime.as_ref().unwrap();
+        if full && !io_only {
+            runtime
+                .write_moving_parts(&mut self.publication_parts, &mut self.publication_positions)
+                .map_err(ExecutionError)?;
+            // Reserve identities before host setters register any new parts.
+            if world
+                .piston_state()
+                .next_identity
+                .checked_add((self.publication_parts.len() as u64).saturating_mul(2))
+                .is_none()
+            {
+                return Err(ExecutionError(ScratchError {
+                    position: None,
+                    reason: "piston motion identity limit exceeded",
+                }));
+            }
+            self.publication_phase = !self.publication_phase;
+            let mut next_identity = world.piston_state().next_identity;
+            for part in &self.publication_parts {
+                let entry = self.exported_motions.entry(part.key).or_insert_with(|| {
+                    next_identity += 1;
+                    ExportedMotion {
+                        identity: next_identity,
+                        seen: self.publication_phase,
+                    }
+                });
+                entry.seen = self.publication_phase;
+            }
+            world.piston_state_mut().next_identity = next_identity;
+            self.retired_motions.clear();
+            self.exported_motions.retain(|key, entry| {
+                if entry.seen == self.publication_phase {
+                    true
+                } else {
+                    self.retired_motions.insert(entry.identity);
+                    world.delete_block_entity(key.3);
+                    false
+                }
+            });
         }
-        let old = self.exported_motions.clone();
-        for (key, _) in &old {
-            world.delete_block_entity(key.3);
-        }
-        for (pos, block) in runtime.projected_blocks() {
+        for (pos, block, comparator) in runtime.publication_changes(full) {
             if io_only && !is_output(block) {
                 continue;
             }
-            if positions.contains(&pos) {
+            if full && !io_only && self.publication_positions.contains(&pos) {
+                continue;
+            }
+            if !full && world.get_block(pos).registry_id() != block.registry_id() {
                 continue;
             }
             if world.get_block(pos) != block {
                 world.set_block(pos, block);
             }
-        }
-        if !io_only {
-            for (pos, output_strength) in runtime.comparator_outputs() {
+            if !io_only && let Some(output_strength) = comparator {
                 if let Some(BlockEntity::Comparator { output_strength: current }) = world.get_block_entity_mut(pos) {
                     *current = output_strength;
                 }
             }
         }
-        if io_only {
-            return Ok(());
-        }
-        let old_ids: HashSet<_> = old.values().copied().collect();
-        let runtime = self.runtime.as_ref().unwrap();
-        let piston_state = runtime.piston_state();
-        let logical_tick = piston_state.logical_tick.saturating_add(runtime.motion_time());
-        let pending_events = runtime.pending_piston_events();
-        let old_carried: HashMap<_, _> = old
-            .iter()
-            .filter_map(|(key, identity)| {
-                world
-                    .piston_state()
-                    .motions
-                    .iter()
-                    .find(|motion| motion.identity == *identity)
-                    .map(|motion| (*key, motion.carried_entity.clone()))
-            })
-            .collect();
-        let mut next_identity = world.piston_state().next_identity;
-        let mut next_export = HashMap::new();
-        let mut motions = Vec::with_capacity(parts.len());
-        for part in &parts {
-            let identity = old.get(&part.key).copied().unwrap_or_else(|| {
-                next_identity = next_identity.saturating_add(1);
-                next_identity
-            });
-            next_export.insert(part.key, identity);
-            motions.push(PistonMotion {
-                pos: part.pos,
-                identity,
-                progress: part.progress,
-                previous_progress: (part.progress - 0.5).max(0.0),
-                last_tick: logical_tick,
-                carried_entity: old_carried.get(&part.key).cloned().flatten(),
-            });
-        }
-        {
+        if full && !io_only {
+            for part in &self.publication_parts {
+                if world.get_block(part.pos) != part.block {
+                    world.set_block(part.pos, part.block);
+                }
+                if let Some(BlockEntity::MovingPiston(entity)) = world.get_block_entity_mut(part.pos) {
+                    *entity = part.entity;
+                } else {
+                    world.set_block_entity(part.pos, BlockEntity::MovingPiston(part.entity));
+                }
+            }
+            let logical_tick = runtime.logical_tick();
             let state = world.piston_state_mut();
-            state.motions.retain(|motion| !old_ids.contains(&motion.identity));
+            self.host_motion_indices.clear();
+            let mut index = 0;
+            state.motions.retain(|motion| {
+                if self.retired_motions.contains(&motion.identity) {
+                    return false;
+                }
+                if self.publication_positions.contains(&motion.pos) {
+                    if self.host_motion_indices.contains_key(&motion.pos) {
+                        return false;
+                    }
+                    self.host_motion_indices.insert(motion.pos, index);
+                }
+                index += 1;
+                true
+            });
+            for part in &self.publication_parts {
+                let identity = self.exported_motions[&part.key].identity;
+                if let Some(&index) = self.host_motion_indices.get(&part.pos) {
+                    let motion = &mut state.motions[index];
+                    motion.identity = identity;
+                    motion.progress = part.progress;
+                    motion.previous_progress = (part.progress - 0.5).max(0.0);
+                    motion.last_tick = logical_tick;
+                } else {
+                    state.motions.push_back(PistonMotion {
+                        pos: part.pos,
+                        identity,
+                        progress: part.progress,
+                        previous_progress: (part.progress - 0.5).max(0.0),
+                        last_tick: logical_tick,
+                        carried_entity: None,
+                    });
+                }
+            }
             state.logical_tick = logical_tick;
             state.phase = AdvancePhase::BetweenTicks;
             state.scheduled_advanced = false;
-            state.events = pending_events.into();
+            state.events.retain(|event| !runtime.owns_piston(event.pos));
+            state.events.extend(runtime.pending_piston_event_iter());
             state.movement_work.clear();
             state.movement_cursor = 0;
-            state.next_identity = next_identity;
         }
-        for part in &parts {
-            world.delete_block_entity(part.pos);
-            world.set_block(part.pos, part.block);
-            world.set_block_entity(part.pos, BlockEntity::MovingPiston(part.entity));
-        }
-        {
-            let state = world.piston_state_mut();
-            state.motions.retain(|motion| !positions.contains(&motion.pos));
-            state.motions.extend(motions);
-        }
-        self.exported_motions = next_export;
+        self.runtime.as_mut().unwrap().mark_published(io_only || !full);
         Ok(())
     }
 }

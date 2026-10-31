@@ -1,4 +1,4 @@
-use super::program::{ArrangementSource, RepeaterRecord, WatchedWire};
+use super::program::{ArrangementSource, ComparatorInput, RepeaterRecord, WatchedWire};
 use super::{ElectricalLink, Operation, Program, ScratchEntry, ScratchError, ScratchWorld};
 use crate::redpiler::TaskMonitor;
 use crate::world::World;
@@ -159,7 +159,7 @@ struct Frame {
     pending: Vec<mchprs_world::TickEntry>,
     deliveries: Vec<crate::world::RedstoneUpdateObservation>,
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct PistonActor {
     pub(super) id: usize,
     pub(super) base: BlockPos,
@@ -180,10 +180,15 @@ pub(super) struct PistonToken {
 }
 
 fn is_passive_geometry(block: Block) -> bool {
+    let plate_power = block.pressure_plate_powered();
     !crate::redstone::has_neighbor_update(block)
-        && !matches!(block, Block::Unknown { .. } | Block::Composter { .. } | Block::Lever { .. })
-        && block.pressure_plate_powered().is_none()
-        && (block.is_solid() || (block.is_cube() && block.is_transparent()))
+        && (!matches!(block, Block::Unknown { .. }) || plate_power.is_some())
+        && !matches!(block, Block::Composter { .. } | Block::Lever { .. })
+        && plate_power != Some(true)
+        && (block.is_solid()
+            || (block.is_cube() && block.is_transparent())
+            || matches!(block, Block::TripwireHook { .. })
+            || plate_power == Some(false))
 }
 
 pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor]) -> Result<Vec<PistonToken>, ScratchError> {
@@ -223,7 +228,10 @@ pub(super) fn discover_piston_tokens(world: &impl World, actors: &[PistonActor])
                     reason: "unsupported carried block entity",
                 });
             }
-            if !matches!(block, Block::RedstoneBlock) && block.slab_type().is_none() && !is_passive_geometry(block) {
+            if !matches!(block, Block::RedstoneBlock)
+                && block.slab_type().is_none()
+                && (block.pressure_plate_powered().is_some() || !is_passive_geometry(block))
+            {
                 return Err(ScratchError {
                     position: Some(cell),
                     reason: "unsupported movable block",
@@ -318,6 +326,7 @@ pub(crate) fn compile_monitored(
                         sources.push(positions.len());
                         positions.push(pos);
                     }
+                    block if block.is_command_block() => positions.push(pos),
                     Block::RedstoneWire { .. } => {
                         positions.push(pos);
                     }
@@ -328,7 +337,10 @@ pub(crate) fn compile_monitored(
                     Block::NoteBlock { .. } => positions.push(pos),
                     Block::RedstoneBlock => positions.push(pos),
                     Block::RedstoneComparator { .. } => positions.push(pos),
-                    block if block.is_copper_bulb() => copper_bulbs.push(pos),
+                    block if block.is_copper_bulb() => {
+                        copper_bulbs.push(pos);
+                        positions.push(pos);
+                    }
                     Block::Piston { .. } => positions.push(pos),
                     Block::PistonHead { .. } => {}
                     Block::Observer { .. } | Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => positions.push(pos),
@@ -343,12 +355,21 @@ pub(crate) fn compile_monitored(
                     block if is_passive_geometry(block) => {}
                     _ => return Err(error(pos, "unsupported component")),
                 }
+                if world.get_block(pos).is_command_block() && world.get_block_entity(pos).is_none() {
+                    return Err(error(pos, "command block execution is unsupported"));
+                }
                 if let Some(entity) = world.get_block_entity(pos) {
                     let block = world.get_block(pos);
                     let supported = match (block, entity) {
                         (Block::RedstoneComparator { .. }, BlockEntity::Comparator { output_strength: 0..=15 }) => true,
                         (block, BlockEntity::Container { comparator_override, ty, .. }) => {
                             *comparator_override <= 15 && ContainerType::from_block(block) == Some(*ty)
+                        }
+                        (block, BlockEntity::CommandBlock(command)) if block.is_command_block() => {
+                            if command.automatic || command.powered || entry.scheduled.iter().any(|tick| tick.pos == pos) {
+                                return Err(error(pos, "command block execution is unsupported"));
+                            }
+                            true
                         }
                         (block, BlockEntity::Sign(_)) => block.is_sign(),
                         _ => false,
@@ -433,9 +454,12 @@ pub(crate) fn compile_monitored(
         }
         for &bulb in &copper_bulbs {
             check_cancelled(monitor)?;
-            let sources = crate::redpiler::scratch::discover_lamp_sources(scratch.world(), bulb)?;
-            if !sources.is_empty() {
-                return Err(error(bulb, "unsupported copper bulb input"));
+            dependencies.extend(crate::redpiler::scratch::discover_lamp_sources(scratch.world(), bulb)?);
+        }
+        for &pos in positions.iter().filter(|&&pos| world.get_block(pos).is_command_block()) {
+            check_cancelled(monitor)?;
+            if !crate::redpiler::scratch::discover_lamp_sources(scratch.world(), pos)?.is_empty() {
+                return Err(error(pos, "command block execution is unsupported"));
             }
         }
         for &pos in &positions {
@@ -572,11 +596,20 @@ pub(crate) fn compile_monitored(
         };
         let pos = program.positions[component];
         let rear = pos.offset(comparator.facing.block_face());
-        let override_at = |at| {
+        let override_at = |at| -> Result<Option<ComparatorInput>, ScratchError> {
             let block = world.get_block(at);
-            // The pinned reference registry treats copper bulbs as inert, non-analog blocks.
-            (crate::redstone::comparator::has_override(block) && !block.is_copper_bulb())
-                .then(|| crate::redstone::comparator::get_override(block, world, at))
+            if !crate::redstone::comparator::has_override(block) {
+                return Ok(None);
+            }
+            if block.is_copper_bulb() {
+                let source = position_index
+                    .get(&at)
+                    .copied()
+                    .ok_or_else(|| error(at, "unrepresented copper bulb comparator input"))?;
+                Ok(Some(ComparatorInput::CopperBulb(source)))
+            } else {
+                Ok(Some(ComparatorInput::Static(crate::redstone::comparator::get_override(block, world, at))))
+            }
         };
         let front = world.get_block(pos.offset(comparator.facing.opposite().block_face()));
         let front_facing = match front {
@@ -590,9 +623,9 @@ pub(crate) fn compile_monitored(
                 Some(BlockEntity::Comparator { output_strength }) => *output_strength,
                 _ => 0,
             },
-            rear_override: override_at(rear),
+            rear_override: override_at(rear)?,
             far_override: if world.get_block(rear).is_solid() {
-                override_at(rear.offset(comparator.facing.block_face()))
+                override_at(rear.offset(comparator.facing.block_face()))?
             } else {
                 None
             },
@@ -766,6 +799,7 @@ pub(crate) fn compile_monitored(
     for (index, wire) in program.watched_wires.iter().enumerate() {
         watched_by_node[wire.wire].get_or_insert(index);
     }
+    let mut move_steps = Vec::new();
     for (token, cells) in program.token_updates.iter().enumerate() {
         let mut programs = Vec::new();
         for (cell, updates) in cells.iter().enumerate() {
@@ -792,6 +826,7 @@ pub(crate) fn compile_monitored(
                     | Block::NoteBlock { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. } => true,
+                    block if block.is_copper_bulb() => true,
                     _ => false,
                 }));
                 nodes.extend(watchers.iter().copied());
@@ -802,7 +837,7 @@ pub(crate) fn compile_monitored(
                 nodes.retain(|node| seen.insert(*node));
                 edges[usize::from(arrival)] = nodes
                     .iter()
-                    .map(|&node| super::program::MoveStep {
+                    .map(|&node| super::program::MoveStepSpec {
                         node,
                         watcher: watchers.contains(&node),
                         wire: watched_by_node[node].is_some(),
@@ -816,8 +851,9 @@ pub(crate) fn compile_monitored(
             }
             programs.push(edges);
         }
-        program.move_steps.push(programs);
+        move_steps.push(programs);
     }
+    program.set_move_steps(move_steps);
     phases.next("piston arrangement discovery");
     check_cancelled(monitor)?;
     program.input_arrangements = super::group_probe::run(world, bounds, &entry, &program, &probe_indexes, monitor)?;
@@ -827,6 +863,17 @@ pub(crate) fn compile_monitored(
     phases.next("movement program validation");
     check_cancelled(monitor)?;
     program.compile_movement_flips()?;
+    for (component, block) in program.initial.iter().enumerate() {
+        if !block.is_command_block() {
+            continue;
+        }
+        let can_be_powered_by_motion = program.input_groups_by_target[component]
+            .iter()
+            .any(|&group| program.input_arrangements[group].inputs.iter().any(|inputs| !inputs.is_empty()));
+        if can_be_powered_by_motion {
+            return Err(error(program.positions[component], "command block execution is unsupported"));
+        }
+    }
     phases.next("source transition sampling");
     check_cancelled(monitor)?;
     let mut ordering_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
@@ -966,6 +1013,10 @@ pub(crate) fn compile_monitored(
                     note,
                     powered: constant_power > 0,
                 },
+                block if block.is_copper_bulb() => {
+                    let (lit, _) = block.copper_bulb_state().unwrap();
+                    block.with_copper_bulb_state(lit, constant_power > 0).unwrap()
+                }
                 Block::RedstoneTorch { .. } => Block::RedstoneTorch { lit: false },
                 Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { lit: false, facing },
                 _ => block,
@@ -989,7 +1040,8 @@ pub(crate) fn compile_monitored(
             phases.detail("ordered-program lowering", source);
             let lowering_started = Instant::now();
             let operations = source_index.operations(source);
-            program.output_programs[source] = [operations.clone(), operations];
+            program.set_output_program(source, false, operations.clone());
+            program.set_output_program(source, true, operations);
             sampling.ordered_lowering += lowering_started.elapsed();
             sampling.completed_sources += 1;
             continue;
@@ -1142,7 +1194,9 @@ pub(crate) fn compile_monitored(
     })?;
     for (source, outputs, comparison, work) in batches {
         sampling.add(&work);
-        program.output_programs[source] = outputs;
+        for (powered, operations) in [false, true].into_iter().zip(outputs) {
+            program.set_output_program(source, powered, operations);
+        }
         if let Some(comparison) = comparison {
             comparisons.push(comparison);
         }
@@ -1163,10 +1217,10 @@ pub(crate) fn compile_monitored(
                 let compare_started = Instant::now();
                 let pending_matches = if matches!(program.initial[source], Block::StoneButton { .. }) {
                     let pos = program.positions[source];
-                    runtime.pending.iter_entries().filter(|entry| entry.pos == pos).collect::<Vec<_>>()
+                    runtime.pending_entries().into_iter().filter(|entry| entry.pos == pos).collect::<Vec<_>>()
                         == frame.pending.iter().filter(|entry| entry.pos == pos).cloned().collect::<Vec<_>>()
                 } else {
-                    runtime.pending.iter_entries().collect::<Vec<_>>() == frame.pending
+                    runtime.pending_entries().into_iter().collect::<Vec<_>>() == frame.pending
                 };
                 sampling.frame_comparison_walks += 1;
                 let blocks_match = runtime.blocks == frame.blocks;
@@ -1177,7 +1231,7 @@ pub(crate) fn compile_monitored(
                         frame.blocks,
                         frame.pending,
                         runtime.blocks,
-                        runtime.pending.iter_entries().collect::<Vec<_>>()
+                        runtime.pending_entries().into_iter().collect::<Vec<_>>()
                     );
                 }
             }
@@ -1188,6 +1242,7 @@ pub(crate) fn compile_monitored(
     track_reactive(world, &entry, &mut program, &probe_indexes.components, monitor)?;
     phases.next("program finalization");
     check_cancelled(monitor)?;
+    program.validate()?;
     program.prepare_projection();
     Ok(program)
 }
@@ -1277,6 +1332,7 @@ impl SourceIndex {
                     Block::RedstoneLamp { .. } => record.operations.push(Operation::UpdateLamp(target)),
                     Block::Hopper { .. } => record.operations.push(Operation::UpdateHopper(target)),
                     Block::NoteBlock { .. } => record.operations.push(Operation::UpdateNoteBlock(target)),
+                    block if block.is_copper_bulb() => record.operations.push(Operation::UpdateCopperBulb(target)),
                     Block::RedstoneRepeater { .. } => record.operations.push(Operation::UpdateRepeater(target)),
                     Block::RedstoneComparator { .. } => record.operations.push(Operation::UpdateComparator(target)),
                     Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => record.operations.push(Operation::UpdateTorch(target)),
@@ -1416,6 +1472,7 @@ fn source_operations(program: &Program, source: usize) -> Vec<Operation> {
             Block::RedstoneLamp { .. } => operations.push(Operation::UpdateLamp(target)),
             Block::Hopper { .. } => operations.push(Operation::UpdateHopper(target)),
             Block::NoteBlock { .. } => operations.push(Operation::UpdateNoteBlock(target)),
+            block if block.is_copper_bulb() => operations.push(Operation::UpdateCopperBulb(target)),
             Block::RedstoneRepeater { .. } => operations.push(Operation::UpdateRepeater(target)),
             Block::RedstoneComparator { .. } => operations.push(Operation::UpdateComparator(target)),
             Block::Piston { .. } => {}
@@ -1456,12 +1513,18 @@ fn track_reactive(
             }
             Block::RedstoneComparator { comparator } => {
                 let record = program.comparators.iter().find(|record| record.component == node).unwrap();
+                let override_level = |input: ComparatorInput| match input {
+                    ComparatorInput::Static(level) => level,
+                    ComparatorInput::CopperBulb(source) => {
+                        if world.get_block(program.positions[source]).copper_bulb_state().unwrap().0 { 15 } else { 0 }
+                    }
+                };
                 let mut rear = inputs[node].0;
-                if let Some(level) = record.rear_override {
-                    rear = level;
+                if let Some(input) = record.rear_override {
+                    rear = override_level(input);
                 } else if rear < 15 {
-                    if let Some(level) = record.far_override {
-                        rear = level;
+                    if let Some(input) = record.far_override {
+                        rear = override_level(input);
                     }
                 }
                 let side = inputs[node].1;
@@ -1473,6 +1536,9 @@ fn track_reactive(
             Block::RedstoneLamp { lit } => lit != crate::redstone::redstone_lamp_should_be_lit(world, pos) && !(lit && pending),
             Block::Hopper { enabled, .. } => enabled == crate::redstone::redstone_lamp_should_be_lit(world, pos),
             Block::NoteBlock { powered, .. } => powered != crate::redstone::redstone_lamp_should_be_lit(world, pos),
+            block if block.is_copper_bulb() => {
+                block.copper_bulb_state().unwrap().1 != crate::redstone::redstone_lamp_should_be_lit(world, pos)
+            }
             _ => false,
         };
     }

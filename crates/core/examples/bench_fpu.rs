@@ -75,8 +75,9 @@ const OUTPUTS: [BlockPos; 16] = [
     BlockPos::new(170, 5, 92),
 ];
 const TRIGGER: BlockPos = BlockPos::new(6, 36, 76);
-const RAW_MASKS: [u64; 2] = [0x412345678, 0x558e1d715];
 const WINDOW_TICKS: u32 = 512;
+const INPUT_REPETITIONS: u32 = 128;
+const RANDOM_INPUT_SEED: u64 = 0x4d43_4850_5253;
 
 fn controls() -> [BlockPos; 35] {
     let mut controls = [BlockPos::new(0, 0, 0); 35];
@@ -89,6 +90,25 @@ fn control_bit(index: usize) -> u64 {
     1u64 << (34 - index)
 }
 
+fn control_mask(world: &PlotWorld) -> u64 {
+    controls().into_iter().enumerate().fold(0, |mask, (index, pos)| {
+        let Block::Lever { lever } = world.get_block(ORIGIN + pos) else {
+            panic!("missing input lever at {pos:?}")
+        };
+        mask | (u64::from(lever.powered) << (34 - index))
+    })
+}
+
+fn random_masks(opcode: u64) -> [u64; 4] {
+    let mut state = RANDOM_INPUT_SEED;
+    std::array::from_fn(|_| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (opcode & !u64::from(u32::MAX)) | u64::from(state as u32)
+    })
+}
+
 fn output_word(world: &PlotWorld) -> u16 {
     OUTPUTS.iter().fold(0, |word, pos| {
         let Block::RedstoneWire { wire } = world.get_block(ORIGIN + *pos) else {
@@ -96,6 +116,24 @@ fn output_word(world: &PlotWorld) -> u16 {
         };
         (word << 1) | u16::from(wire.power != 0)
     })
+}
+
+fn set_lever(world: &mut PlotWorld, pos: BlockPos, powered: bool) {
+    let Block::Lever { mut lever } = world.get_block(pos) else {
+        panic!("missing lever at {pos:?}")
+    };
+    if lever.powered == powered {
+        return;
+    }
+    lever.powered = powered;
+    world.set_block(pos, Block::Lever { lever });
+    mchprs_core::redstone::update_surrounding_blocks(world, pos);
+    let attached = match lever.face {
+        LeverFace::Ceiling => BlockFace::Top,
+        LeverFace::Floor => BlockFace::Bottom,
+        LeverFace::Wall => lever.facing.opposite().block_face(),
+    };
+    mchprs_core::redstone::update_surrounding_blocks(world, pos.offset(attached));
 }
 
 fn native_mask(world: &mut PlotWorld, previous: u64, next: u64) -> usize {
@@ -106,30 +144,34 @@ fn native_mask(world: &mut PlotWorld, previous: u64, next: u64) -> usize {
             continue;
         }
         changes += 1;
-        let pos = ORIGIN + pos;
-        let Block::Lever { mut lever } = world.get_block(pos) else {
-            unreachable!()
-        };
-        lever.powered = next & bit != 0;
-        world.set_block(pos, Block::Lever { lever });
-        mchprs_core::redstone::update_surrounding_blocks(world, pos);
-        let attached = match lever.face {
-            LeverFace::Ceiling => BlockFace::Top,
-            LeverFace::Floor => BlockFace::Bottom,
-            LeverFace::Wall => lever.facing.opposite().block_face(),
-        };
-        mchprs_core::redstone::update_surrounding_blocks(world, pos.offset(attached));
+        set_lever(world, ORIGIN + pos, next & bit != 0);
     }
     changes
 }
 
-fn run_native(world: &mut PlotWorld) -> (f64, Vec<u16>, usize) {
+fn normalize_native(world: &mut PlotWorld) {
+    set_lever(world, ORIGIN + TRIGGER, false);
+    for (index, pos) in controls().into_iter().enumerate() {
+        set_lever(world, ORIGIN + pos, index == 1);
+    }
+}
+
+fn normalize_compiled(compiler: &mut Compiler, world: &mut PlotWorld) {
+    for (pos, powered) in std::iter::once((TRIGGER, false)).chain(controls().into_iter().enumerate().map(|(i, pos)| (pos, i == 1))) {
+        if matches!(world.get_block(ORIGIN + pos), Block::Lever { lever } if lever.powered != powered) {
+            compiler.try_on_use_block(ORIGIN + pos).unwrap();
+        }
+    }
+    compiler.try_flush(world).unwrap();
+}
+
+fn run_native(world: &mut PlotWorld, masks: &[u64; 4]) -> (f64, Vec<u16>, usize) {
     let mut samples = Vec::with_capacity(WINDOW_TICKS as usize);
-    let mut previous = 0;
+    let mut previous = control_mask(world);
     let mut control_changes = 0;
     let started = Instant::now();
     for tick in 0..WINDOW_TICKS {
-        let next = RAW_MASKS[(tick as usize / 128) % RAW_MASKS.len()];
+        let next = masks[(tick / INPUT_REPETITIONS) as usize];
         control_changes += native_mask(world, previous, next);
         previous = next;
         world.tick_interpreted();
@@ -138,15 +180,15 @@ fn run_native(world: &mut PlotWorld) -> (f64, Vec<u16>, usize) {
     (started.elapsed().as_secs_f64(), samples, control_changes)
 }
 
-fn run_compiled(compiler: &mut Compiler, world: &mut PlotWorld, publish: bool) -> Result<(f64, f64, f64, Vec<u16>, usize), String> {
+fn run_compiled(compiler: &mut Compiler, world: &mut PlotWorld, masks: &[u64; 4], publish: bool) -> Result<(f64, f64, f64, Vec<u16>, usize), String> {
     let mut samples = Vec::with_capacity(WINDOW_TICKS as usize);
-    let mut previous = 0;
+    let mut previous = control_mask(world);
     let mut control_changes = 0;
     let mut tick_only_seconds = 0.0;
     let mut publication_seconds = 0.0;
     let started = Instant::now();
     for tick in 0..WINDOW_TICKS {
-        let next = RAW_MASKS[(tick as usize / 128) % RAW_MASKS.len()];
+        let next = masks[(tick / INPUT_REPETITIONS) as usize];
         for (index, pos) in controls().into_iter().enumerate() {
             if (previous ^ next) & control_bit(index) != 0 {
                 compiler.try_on_use_block(ORIGIN + pos).map_err(|error| error.to_string())?;
@@ -192,12 +234,9 @@ fn load(path: &Path) -> (PlotWorld, (BlockPos, BlockPos)) {
         ORIGIN + BlockPos::new(clip.size_x as i32 - 1, clip.size_y as i32 - 1, clip.size_z as i32 - 1),
     );
     for pos in INPUTS.into_iter().chain(OPCODE) {
-        assert!(
-            matches!(world.get_block(ORIGIN + pos), Block::Lever { lever } if !lever.powered),
-            "expected unpowered input lever at {pos:?}"
-        );
+        assert!(matches!(world.get_block(ORIGIN + pos), Block::Lever { .. }), "expected input lever at {pos:?}");
     }
-    assert!(matches!(world.get_block(ORIGIN + TRIGGER), Block::Lever { lever } if !lever.powered));
+    assert!(matches!(world.get_block(ORIGIN + TRIGGER), Block::Lever { .. }));
     for pos in OUTPUTS {
         assert!(
             matches!(world.get_block(ORIGIN + pos), Block::RedstoneWire { .. }),
@@ -243,8 +282,13 @@ fn main() {
         let native_import_started = Instant::now();
         let (mut native, bounds) = load(&path);
         let native_import_seconds = native_import_started.elapsed().as_secs_f64();
+        normalize_native(&mut native);
+        let trigger_powered_during_run = matches!(native.get_block(ORIGIN + TRIGGER), Block::Lever { lever } if lever.powered);
+        let initial_control_mask = control_mask(&native);
+        let masks = random_masks(initial_control_mask);
+        assert!(masks.windows(2).all(|pair| pair[0] != pair[1]));
         let compiler_import_started = Instant::now();
-        let (mut compiler_world, _) = load(&path);
+        let (compiler_world, _) = load(&path);
         let compiler_import_seconds = compiler_import_started.elapsed().as_secs_f64();
         let ticks: Vec<TickEntry> = compiler_world.scheduler().iter_entries().collect();
         let timeout = Duration::from_secs(
@@ -256,8 +300,9 @@ fn main() {
         let (mut compiler, mut compiler_world, result, compile_seconds, timed_out) = compile(compiler_world, bounds, ticks.clone(), timeout);
         let report = match result {
             Ok(()) => {
-                let (native_seconds, native_trace, native_control_changes) = run_native(&mut native);
-                let compiled = run_compiled(&mut compiler, &mut compiler_world, true);
+                normalize_compiled(&mut compiler, &mut compiler_world);
+                let (native_seconds, native_trace, native_control_changes) = run_native(&mut native, &masks);
+                let compiled = run_compiled(&mut compiler, &mut compiler_world, &masks, true);
                 match compiled {
                     Ok((
                         compiled_tick_only_seconds,
@@ -292,7 +337,12 @@ fn main() {
                             "output_changed":output_changed,
                             "compiled_output_changed":compiled_output_changed,
                             "falling_edge_parity":"unverified: clock coordinates not found in retained protocol",
-                            "physical_mask_order":"35-bit mask, most-significant bit maps to first opcode-4 lever; opcode 4,2,1 then interleaved operand levers in manifest order; no IEEE interpretation asserted"
+                            "initial_control_mask":initial_control_mask,
+                            "trigger_powered_during_run":trigger_powered_during_run,
+                            "random_input_seed":RANDOM_INPUT_SEED,
+                            "random_masks":masks,
+                            "input_repetitions":INPUT_REPETITIONS,
+                            "physical_mask_order":"35-bit mask, most-significant bit maps to first opcode lever then interleaved operand levers in manifest order; opcode bits are fixed at 010; no IEEE interpretation asserted"
                         })
                     }
                     Err(error) => json!({"status":"runtime_error", "phase":"tick_or_publication", "error":error}),
@@ -305,7 +355,7 @@ fn main() {
                         .map_or((None, None), |pos| (Some(pos), Some(format!("{:?}", native.get_block(pos))))),
                     _ => (None, None),
                 };
-                let (native_seconds, native_trace, native_control_changes) = run_native(&mut native);
+                let (native_seconds, native_trace, native_control_changes) = run_native(&mut native, &masks);
                 let output_changed = native_trace.first().is_some_and(|first| native_trace.iter().any(|value| value != first));
                 let native_active = native_control_changes > 0 || output_changed;
                 json!({
@@ -318,6 +368,11 @@ fn main() {
                     "native_tps":if native_active { Some(WINDOW_TICKS as f64 / native_seconds) } else { None },
                     "native_control_changes":native_control_changes, "native_active":native_active,
                     "native_outputs":native_trace, "output_changed":output_changed,
+                    "initial_control_mask":initial_control_mask,
+                    "trigger_powered_during_run":trigger_powered_during_run,
+                    "random_input_seed":RANDOM_INPUT_SEED,
+                    "random_masks":masks,
+                    "input_repetitions":INPUT_REPETITIONS,
                     "compiled_tps":null
                 })
             }
@@ -329,6 +384,6 @@ fn main() {
     }
     let output = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-six-build-bench/fpu.json");
     std::fs::create_dir_all(output.parent().unwrap()).unwrap();
-    std::fs::write(&output, serde_json::to_vec_pretty(&json!({"fixture_sha256":"b6182c6c0541d692d635d72d23ecc8f33cef2fb6071f4ba4be66485ff6892bc1", "dimensions":[171,43,107], "trigger_held_off":true, "raw_physical_masks":RAW_MASKS, "window_ticks":WINDOW_TICKS, "repetitions_per_mask":2, "reports":reports})).unwrap()).unwrap();
+    std::fs::write(&output, serde_json::to_vec_pretty(&json!({"fixture_sha256":"b6182c6c0541d692d635d72d23ecc8f33cef2fb6071f4ba4be66485ff6892bc1", "dimensions":[171,43,107], "trigger_reset_to_off":true, "opcode_mask":2, "input_repetitions":INPUT_REPETITIONS, "window_ticks":WINDOW_TICKS, "reports":reports})).unwrap()).unwrap();
     println!("wrote {}", output.display());
 }

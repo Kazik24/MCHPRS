@@ -1135,6 +1135,12 @@ impl ScratchWorld {
             });
         }
 
+        if let Some(tick) = entry.scheduled.iter().find(|tick| tick.ticks_left as usize >= crate::world::scheduler::NUM_QUEUES
+            || (tick.ticks_left == 0 && tick.tick_priority != mchprs_world::TickPriority::NanoTick))
+        {
+            return Err(ScratchError { position: Some(tick.pos), reason: "scratch entry has invalid scheduled delay or priority" });
+        }
+
         let mut read_chunks = HashSet::new();
         let plot_chunk_min_x = plot_min_x.div_euclid(16);
         let plot_chunk_max_x = plot_max_x.div_euclid(16);

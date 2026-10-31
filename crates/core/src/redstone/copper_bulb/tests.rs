@@ -155,28 +155,41 @@ fn interpreter_bulbs_match_java_1_21_5() {
 }
 
 #[test]
-fn compiled_copper_bulb_is_rejected_without_changing_native_state() {
+fn compiled_copper_bulb_matches_native_latch_comparators_and_observer() {
     use crate::redpiler::{Compiler, CompilerOptions};
 
     let mut world = circuit("copper_bulb", false, false);
     world.schedule_tick(DIRECT, 5, mchprs_world::TickPriority::Normal);
-    let positions = [BULB, INPUT, DIRECT, FAR, OBSERVER];
-    let blocks = positions.map(|pos| world.get_block(pos));
-    let entities = [DIRECT, FAR].map(|pos| format!("{:?}", world.get_block_entity(pos)));
-    let ticks = world.scheduler().iter_entries().collect::<Vec<_>>();
-    let piston_state = format!("{:?}", world.piston_state());
-
+    let mut compiled_world = circuit("copper_bulb", false, false);
+    compiled_world.schedule_tick(DIRECT, 5, mchprs_world::TickPriority::Normal);
+    let ticks = world.scheduler().iter_entries().collect();
     let mut compiler = Compiler::default();
-    assert!(
-        compiler
-            .compile(&world, world.get_corners(), CompilerOptions::default(), ticks.clone(), Default::default())
-            .is_err()
-    );
-    assert!(!compiler.is_active());
-    assert_eq!(positions.map(|pos| world.get_block(pos)), blocks);
-    assert_eq!([DIRECT, FAR].map(|pos| format!("{:?}", world.get_block_entity(pos))), entities);
-    assert_eq!(world.scheduler().iter_entries().collect::<Vec<_>>(), ticks);
-    assert_eq!(format!("{:?}", world.piston_state()), piston_state);
+    compiler
+        .compile(&compiled_world, compiled_world.get_corners(), CompilerOptions::default(), ticks, Default::default())
+        .unwrap();
+    compiled_world.clear_scheduled_ticks();
+
+    let positions = [BULB, INPUT, DIRECT, FAR, OBSERVER, DIRECT.offset(BlockFace::South), FAR.offset(BlockFace::East)];
+    for _ in 0..3 {
+        crate::interaction::use_redstone(world.get_block(INPUT), &mut world, INPUT, None);
+        compiler.try_on_use_block(INPUT).unwrap();
+        compiler.try_flush(&mut compiled_world).unwrap();
+        for tick in 1..=3 {
+            world.tick_interpreted();
+            compiler.tick().unwrap();
+            compiler.try_flush(&mut compiled_world).unwrap();
+            for pos in positions {
+                assert_eq!(world.get_block(pos), compiled_world.get_block(pos), "block {pos:?}, pulse tick {tick}");
+            }
+            for pos in [DIRECT, FAR] {
+                assert_eq!(
+                    format!("{:?}", world.get_block_entity(pos)),
+                    format!("{:?}", compiled_world.get_block_entity(pos)),
+                    "comparator entity {pos:?}, pulse tick {tick}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

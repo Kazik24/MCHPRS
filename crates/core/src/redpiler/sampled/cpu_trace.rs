@@ -3,7 +3,7 @@ mod cpus;
 
 use super::{
     ScratchEntry, compiler,
-    program::{ArrangementSource, ElectricalLink, InputArrangement, MoveStep, Program, RepeaterRecord},
+    program::{ArrangementSource, ElectricalLink, InputArrangement, MoveStepSpec as MoveStep, Program, RepeaterRecord},
 };
 use crate::{
     plot::{PlotWorld, worldedit::load_schematic},
@@ -166,16 +166,16 @@ fn runtime_state(runtime: &super::Runtime, nodes: &BTreeSet<usize>) -> Value {
                 }
                 json!({ "target": program.positions[group.target], "state": state })
             }).collect::<Vec<_>>(),
-        "pending": runtime.pending.iter_entries().map(|entry| json!({
+        "pending": runtime.pending_entries().into_iter().map(|entry| json!({
             "pos": entry.pos,
             "block": runtime.program.component_indices.get(&entry.pos).map(|&i| canonical(runtime.blocks[i])).unwrap_or_else(|| "outside-components".into()),
             "ticks_left": entry.ticks_left,
             "priority": format!("{:?}", entry.tick_priority),
         })).collect::<Vec<_>>(),
         "piston_events": runtime.pending_piston_events(),
-        "motions": runtime.motions.iter().map(|motion| json!({
+        "motions": runtime.active_motions.iter().map(|&slot| &runtime.motions[slot]).map(|motion| json!({
             "piston": program.pistons[motion.piston].base,
-            "destination": motion.destination,
+            "destination": program.projection_positions[motion.destination],
             "start": motion.start,
             "landing": motion.landing,
             "extending": motion.extending,
@@ -268,7 +268,7 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
         inputs: vec![vec![], vec![(ArrangementSource::Token(0), 0)]],
     });
     program.compile_movement_flips().unwrap();
-    program.move_steps = vec![vec![[
+    program.set_move_steps(vec![vec![[
         vec![MoveStep {
             node: 1,
             watcher: true,
@@ -276,7 +276,7 @@ fn moving_redstone_block_refreshes_wire_contribution_before_repeater_callback() 
             wires: vec![],
         }],
         vec![],
-    ]]];
+    ]]]);
     let mut runtime = program.start();
     runtime.trace_enabled = true;
     for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
@@ -389,7 +389,7 @@ fn zcore12b_fix_interpreter_screen_trace() {
     eprintln!("ZCore12B_FIX native screen trace: {}", artifact.display());
 }
 
-fn cpu_outputs_match_native(cpu_index: usize) {
+fn cpu_outputs_match_native(cpu_index: usize, publish_every_tick: bool) {
     let cpu = cpus::CPUS[cpu_index];
     let mut native = cpus::load_cpu(cpu);
     let (mut compiled, mut compiler, compile_duration) = cpus::compile_cpu(cpus::load_cpu(cpu), cpu);
@@ -477,7 +477,7 @@ fn cpu_outputs_match_native(cpu_index: usize) {
             );
         }
         observation += started.elapsed();
-        if cpus::CHECKPOINTS.contains(&tick) {
+        if publish_every_tick || cpus::CHECKPOINTS.contains(&tick) {
             let started = std::time::Instant::now();
             compiler.try_flush(&mut compiled).unwrap();
             let elapsed = started.elapsed();
@@ -525,11 +525,12 @@ fn cpu_outputs_match_native(cpu_index: usize) {
         assert_eq!(&final_words[48..], (0..16).map(Some).collect::<Vec<_>>());
         assert!(quiet_native(&native) && quiet_compiled(&compiler));
     }
-    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/mair-crosscheck/{}-output-acceptance.json", cpu.name));
+    let suffix = if publish_every_tick { "-full-publication" } else { "" };
+    let artifact = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../target/mair-crosscheck/{}-output-acceptance{suffix}.json", cpu.name));
     std::fs::write(
         &artifact,
         serde_json::to_vec_pretty(&json!({
-            "fixture_sha256": cpu.sha256, "compile_ms": compile_duration.as_millis(), "run_ticks": 50_000,
+            "fixture_sha256": cpu.sha256, "compile_ms": compile_duration.as_millis(), "run_ticks": 50_000, "publish_every_tick": publish_every_tick,
             "preparation_ticks": preparation_ticks, "compiled_operations": work,
             "native_tick_ms": native_ticks.as_secs_f64() * 1000.0, "compiled_tick_ms": compiled_ticks.as_secs_f64() * 1000.0,
             "observation_ms": observation.as_secs_f64() * 1000.0, "publication_ms": publication.as_secs_f64() * 1000.0,
@@ -545,13 +546,19 @@ fn cpu_outputs_match_native(cpu_index: usize) {
 #[test]
 #[ignore = "full 50,000-tick BubbleSort native/compiled output acceptance"]
 fn bubblesort_outputs_match_native() {
-    cpu_outputs_match_native(2);
+    cpu_outputs_match_native(2, false);
+}
+
+#[test]
+#[ignore = "full 50,000-tick BubbleSort native/compiled RAM and complete per-tick publication acceptance"]
+fn bubblesort_full_publication_outputs_match_native() {
+    cpu_outputs_match_native(2, true);
 }
 
 #[test]
 #[ignore = "ZCore Load, settle, Run and 50,000-tick native/compiled screen acceptance"]
 fn zcore_load_run_outputs_match_native() {
-    cpu_outputs_match_native(3);
+    cpu_outputs_match_native(3, false);
 }
 
 #[test]
@@ -588,7 +595,7 @@ fn bubblesort_early_native_compiled_trace() {
     let moving_source = BlockPos::new(172, 14, 160);
     let focus = [moving_source, wire, repeater];
     let mut runtime = program.start();
-    runtime.set_pending(ticks.clone());
+    runtime.set_pending(ticks.clone()).unwrap();
     runtime.piston_state = world.piston_state().clone();
     runtime.trace_enabled = true;
 

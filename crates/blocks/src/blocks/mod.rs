@@ -206,13 +206,12 @@ impl Block {
         self.is_copper_bulb().then(|| (self.lit() == Some(true), self.powered() == Some(true)))
     }
 
-    pub fn with_copper_bulb_state(mut self, lit: bool, powered: bool) -> Option<Self> {
+    pub fn with_copper_bulb_state(self, lit: bool, powered: bool) -> Option<Self> {
         self.copper_bulb_state()?;
-        self.set_properties(HashMap::from([
-            ("lit", if lit { "true" } else { "false" }),
-            ("powered", if powered { "true" } else { "false" }),
-        ]));
-        Some(self)
+        let definition = self.definition()?;
+        (definition.2..=definition.3)
+            .find(|&id| crate::generated::STATE_LIT[id as usize] == u8::from(lit) && crate::generated::STATE_POWERED[id as usize] == u8::from(powered))
+            .map(|id| Self::Unknown { id })
     }
 
     pub fn is_screen(self) -> bool {

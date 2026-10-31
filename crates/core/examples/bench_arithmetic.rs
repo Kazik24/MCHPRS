@@ -223,6 +223,7 @@ fn counter(output: &PathBuf, samples: usize, ticks: usize) {
 fn adder(output: &PathBuf, samples: usize, operations: usize) {
     // Inputs exercise full carry, 1023+1, zero and repeated re-arming on one compiled instance.
     let cases = [(2047u64, 1u64, 0u64), (1023, 1, 0), (0, 0, 0)];
+    let continue_on_divergence = std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     for sample in 0..samples {
         let (manifest, mut native, _) = load("adder_11bits");
         let (_, mut world, bounds) = load("adder_11bits");
@@ -262,6 +263,7 @@ fn adder(output: &PathBuf, samples: usize, operations: usize) {
         let mut active = 0usize;
         let mut ns = 0u128;
         let mut native_ns = 0u128;
+        let mut first_divergence = None;
         let overall_start = Instant::now();
         for i in 0..operations {
             let (a, b, cin) = cases[i % cases.len()];
@@ -357,13 +359,18 @@ fn adder(output: &PathBuf, samples: usize, operations: usize) {
                                     };
                                     word | (value << bit)
                                 });
-                        assert_eq!(actual, value, "Redpiler ADDER11BIT {} tick {tick} {port}", i % cases.len());
-                        assert_eq!(
-                            native_actual,
-                            actual,
-                            "native vs Redpiler ADDER11BIT {} tick {tick} {port}",
-                            i % cases.len()
-                        );
+                        if actual != value {
+                            first_divergence.get_or_insert_with(|| format!("Redpiler case {} tick {tick} {port}: {actual} vs expected {value}", i % cases.len()));
+                            if !continue_on_divergence {
+                                assert_eq!(actual, value, "Redpiler ADDER11BIT {} tick {tick} {port}", i % cases.len());
+                            }
+                        }
+                        if native_actual != actual {
+                            first_divergence.get_or_insert_with(|| format!("native vs Redpiler case {} tick {tick} {port}: {native_actual} vs {actual}", i % cases.len()));
+                            if !continue_on_divergence {
+                                assert_eq!(native_actual, actual, "native vs Redpiler ADDER11BIT {} tick {tick} {port}", i % cases.len());
+                            }
+                        }
                     }
                 }
             }
@@ -371,7 +378,8 @@ fn adder(output: &PathBuf, samples: usize, operations: usize) {
         let end_to_end_ns = overall_start.elapsed().as_nanos();
         assert!(active >= 512, "need >=512 active ticks");
         assert!(compiled.is_active());
-        let row = serde_json::json!({"circuit":"ADDER11BIT","sample":sample+1,"operations":operations,"active_ticks":active,"compile_ns":compile_ns,"end_to_end_ns":end_to_end_ns,"native_tick_ns":native_ns,"compiled_tick_flush_ns":ns,"native_tps":active as f64*1e9/native_ns as f64,"compiled_tick_flush_tps":active as f64*1e9/ns as f64,"case_cycle":["2047+1","1023+1","0+0"],"validation":"native and Redpiler sum_payload ticks 1-3; sum_repeater ticks 3-7"});
+        let validation = if first_divergence.is_some() { "diverged" } else { "native and Redpiler sum_payload ticks 1-3; sum_repeater ticks 3-7" };
+        let row = serde_json::json!({"circuit":"ADDER11BIT","sample":sample+1,"operations":operations,"active_ticks":active,"compile_ns":compile_ns,"end_to_end_ns":end_to_end_ns,"native_tick_ns":native_ns,"compiled_tick_flush_ns":ns,"native_tps":active as f64*1e9/native_ns as f64,"compiled_tick_flush_tps":active as f64*1e9/ns as f64,"case_cycle":["2047+1","1023+1","0+0"],"first_divergence":first_divergence,"validation":validation});
         println!("{}", row);
         std::fs::write(output.join(format!("adder-{sample}.json")), serde_json::to_vec_pretty(&row).unwrap()).unwrap();
     }

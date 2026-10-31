@@ -1,9 +1,8 @@
 use super::{Runtime, ScratchError};
-use crate::world::scheduler::TickScheduler;
 use mchprs_blocks::{BlockPos, blocks::Block};
 use std::collections::HashMap;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Operation {
     Contribution(usize),
     ArrangementContribution(usize),
@@ -12,13 +11,14 @@ pub(super) enum Operation {
     UpdateLamp(usize),
     UpdateHopper(usize),
     UpdateNoteBlock(usize),
+    UpdateCopperBulb(usize),
     UpdateRepeater(usize),
     UpdatePiston(usize),
     UpdateTorch(usize),
     UpdateComparator(usize),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(super) struct ElectricalLink {
     pub(super) source: usize,
     pub(super) target: usize,
@@ -32,11 +32,19 @@ pub(super) struct WatchedWire {
 }
 
 #[derive(Clone)]
-pub(super) struct MoveStep {
+pub(super) struct MoveStepSpec {
     pub(super) node: usize,
     pub(super) watcher: bool,
     pub(super) wire: bool,
     pub(super) wires: Vec<usize>,
+}
+
+#[derive(Clone)]
+pub(super) struct MoveStep {
+    pub(super) node: usize,
+    pub(super) watcher: bool,
+    pub(super) wire: bool,
+    pub(super) wires: std::ops::Range<usize>,
 }
 
 #[derive(Clone)]
@@ -86,8 +94,8 @@ pub(super) struct ArrangementLink {
 pub(super) struct MovementAxis {
     pub(super) token: usize,
     pub(super) stride: usize,
-    pub(super) depart: Vec<Vec<ArrangementFlip>>,
-    pub(super) arrive: Vec<Vec<ArrangementFlip>>,
+    pub(super) depart: Vec<std::ops::Range<usize>>,
+    pub(super) arrive: Vec<std::ops::Range<usize>>,
 }
 
 #[derive(Clone)]
@@ -99,9 +107,15 @@ pub(super) struct MovementGroup {
 pub(super) struct ComparatorRecord {
     pub(super) component: usize,
     pub(super) stored: u8,
-    pub(super) rear_override: Option<u8>,
-    pub(super) far_override: Option<u8>,
+    pub(super) rear_override: Option<ComparatorInput>,
+    pub(super) far_override: Option<ComparatorInput>,
     pub(super) output_is_diode: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ComparatorInput {
+    Static(u8),
+    CopperBulb(usize),
 }
 
 #[derive(Clone)]
@@ -112,8 +126,28 @@ pub(super) struct ReactiveWire {
 }
 
 #[derive(Clone)]
+pub(super) struct PistonBinding {
+    pub(super) component: usize,
+    pub(super) home_cell: usize,
+    pub(super) far_cell: usize,
+    pub(super) mate: Option<usize>,
+    pub(super) home_heads: Vec<usize>,
+    pub(super) far_heads: Vec<usize>,
+    pub(super) home_blocked: bool,
+    pub(super) far_blocked: bool,
+}
+
+#[derive(Clone)]
 pub(crate) struct Program {
+    pub(super) piston_by_component: Vec<Option<usize>>,
+    pub(super) piston_bindings: Vec<PistonBinding>,
+    pub(super) repeater_by_component: Vec<Option<usize>>,
+    pub(super) comparator_by_component: Vec<Option<usize>>,
+    pub(super) watched_by_component: Vec<Option<usize>>,
+    pub(super) movable_sources: Vec<bool>,
+    pub(super) has_reactive: bool,
     pub(super) comparators: Vec<ComparatorRecord>,
+    pub(super) comparators_by_copper_bulb: Vec<Vec<usize>>,
     pub(super) side_links: Vec<ElectricalLink>,
     pub(super) reactive: Vec<bool>,
     pub(super) reactive_wires: Vec<ReactiveWire>,
@@ -126,15 +160,24 @@ pub(crate) struct Program {
     pub(super) component_indices: HashMap<BlockPos, usize>,
     pub(super) geometry_indices: HashMap<BlockPos, Block>,
     pub(super) projection_positions: Vec<BlockPos>,
-    pub(super) tokens_by_cell: HashMap<BlockPos, Vec<usize>>,
-    pub(super) pistons_by_cell: HashMap<BlockPos, Vec<usize>>,
-    pub(super) observers_by_target: HashMap<BlockPos, Vec<usize>>,
+    pub(super) projection_indices: HashMap<BlockPos, usize>,
+    pub(super) component_cells: Vec<usize>,
+    pub(super) cell_components: Vec<Option<usize>>,
+    pub(super) token_cells: Vec<Vec<usize>>,
+    pub(super) cell_tokens: Vec<Vec<usize>>,
+    pub(super) cell_pistons: Vec<Vec<usize>>,
+    pub(super) cell_observers: Vec<Vec<usize>>,
+    pub(super) cell_geometry: Vec<Block>,
+    pub(super) token_piston_components: Vec<Vec<usize>>,
     pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
     pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
     pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
-    pub(super) move_steps: Vec<Vec<[Vec<MoveStep>; 2]>>,
+    pub(super) move_steps: Vec<Vec<[std::ops::Range<usize>; 2]>>,
+    pub(super) movement_steps: Vec<MoveStep>,
+    pub(super) movement_wires: Vec<usize>,
     pub(super) input_arrangements: Vec<InputArrangement>,
     pub(super) movement_groups: Vec<MovementGroup>,
+    pub(super) movement_flips: Vec<ArrangementFlip>,
     pub(super) token_movement_groups: Vec<Vec<(usize, usize)>>,
     pub(super) arrangement_links: Vec<ArrangementLink>,
     pub(super) source_watchers: Vec<Vec<usize>>,
@@ -142,16 +185,67 @@ pub(crate) struct Program {
     pub(super) positions: Vec<BlockPos>,
     pub(super) initial: Vec<Block>,
     pub(super) sources: Vec<usize>,
-    pub(super) output_programs: Vec<[Vec<Operation>; 2]>,
+    pub(super) output_programs: Vec<[std::ops::Range<usize>; 2]>,
+    pub(super) operations: Vec<Operation>,
     pub(super) links: Vec<ElectricalLink>,
     pub(super) incoming: Vec<Vec<usize>>,
     pub(super) outgoing: Vec<Vec<usize>>,
     pub(super) outgoing_arrangements: Vec<Vec<usize>>,
-    pub(super) incoming_arrangements: Vec<Vec<usize>>,
     pub(super) input_groups_by_target: Vec<Vec<usize>>,
-    pub(super) incoming_side: Vec<Vec<usize>>,
+    pub(super) effective_links: Vec<bool>,
+    pub(super) side_outputs: Vec<Vec<(usize, u8)>>,
     pub(super) watched_wires: Vec<WatchedWire>,
     pub(super) repeaters: Vec<RepeaterRecord>,
+}
+
+fn validate_operation(
+    operation: Operation,
+    initial: &[Block],
+    links: usize,
+    watched_wires: usize,
+    arrangements: Option<usize>,
+) -> Result<(), ScratchError> {
+    let invalid = |reason| ScratchError { position: None, reason };
+    match operation {
+        Operation::ArrangementContribution(link) if arrangements.is_some_and(|count| link >= count) => {
+            return Err(invalid("sampled arrangement contribution link is out of bounds"));
+        }
+        Operation::Contribution(link) if link >= links => {
+            return Err(invalid("sampled program contribution link is out of bounds"));
+        }
+        Operation::CheckWatchedWire(record) if record >= watched_wires => {
+            return Err(invalid("sampled program watched-wire index is out of bounds"));
+        }
+        Operation::RefreshWire(slot) if !matches!(initial.get(slot), Some(Block::RedstoneWire { .. })) => {
+            return Err(invalid("sampled program RefreshWire target is not a wire"));
+        }
+        Operation::UpdateLamp(slot) if !matches!(initial.get(slot), Some(Block::RedstoneLamp { .. })) => {
+            return Err(invalid("sampled program UpdateLamp target is not a lamp"));
+        }
+        Operation::UpdateHopper(slot) if !matches!(initial.get(slot), Some(Block::Hopper { .. })) => {
+            return Err(invalid("sampled program UpdateHopper target is not a hopper"));
+        }
+        Operation::UpdateNoteBlock(slot) if !matches!(initial.get(slot), Some(Block::NoteBlock { .. })) => {
+            return Err(invalid("sampled program UpdateNoteBlock target is not a note block"));
+        }
+        Operation::UpdateCopperBulb(slot) if !initial.get(slot).is_some_and(|block| block.is_copper_bulb()) => {
+            return Err(invalid("sampled program UpdateCopperBulb target is not a copper bulb"));
+        }
+        Operation::UpdateRepeater(slot) if !matches!(initial.get(slot), Some(Block::RedstoneRepeater { .. })) => {
+            return Err(invalid("sampled program UpdateRepeater target is not a repeater"));
+        }
+        Operation::UpdatePiston(slot) if !matches!(initial.get(slot), Some(Block::Piston { .. })) => {
+            return Err(invalid("sampled program UpdatePiston target is not a piston"));
+        }
+        Operation::UpdateComparator(slot) if !matches!(initial.get(slot), Some(Block::RedstoneComparator { .. })) => {
+            return Err(invalid("sampled UpdateComparator target is not a comparator"));
+        }
+        Operation::UpdateTorch(slot) if !matches!(initial.get(slot), Some(Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })) => {
+            return Err(invalid("sampled program UpdateTorch target is not a torch"));
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 impl Program {
@@ -208,17 +302,30 @@ impl Program {
                     reason: "invalid movement step dimensions",
                 });
             }
-            for step in cells.iter().flat_map(|edges| edges.iter().flatten()) {
-                let watched = |node| self.watched_wires.iter().any(|wire| wire.wire == node);
-                if step.node >= self.initial.len() || (step.wire && !watched(step.node)) || step.wires.iter().any(|&wire| !watched(wire)) {
+            for range in cells.iter().flatten() {
+                let Some(steps) = self.movement_steps.get(range.clone()) else {
                     return Err(ScratchError {
                         position: self.tokens[token].position,
-                        reason: "invalid movement step reference",
+                        reason: "invalid movement step range",
                     });
+                };
+                for step in steps {
+                    let watched = |node| self.watched_wires.iter().any(|wire| wire.wire == node);
+                    let wires = self.movement_wires.get(step.wires.clone());
+                    if step.node >= self.initial.len()
+                        || (step.wire && !watched(step.node))
+                        || wires.is_none_or(|wires| wires.iter().any(|&wire| !watched(wire)))
+                    {
+                        return Err(ScratchError {
+                            position: self.tokens[token].position,
+                            reason: "invalid movement step reference",
+                        });
+                    }
                 }
             }
         }
         let mut groups = Vec::new();
+        let mut flips = Vec::new();
         let mut links = Vec::new();
         let mut grouped: Vec<(Vec<usize>, Vec<Vec<(usize, ArrangementSource, u8, bool, bool)>>)> = Vec::new();
         for input in &self.input_arrangements {
@@ -237,7 +344,7 @@ impl Program {
             }
         }
         for (tokens, maps) in grouped {
-            let (group, entries) = self.movement_group(&tokens, &maps, groups.len(), links.len());
+            let (group, entries) = self.movement_group(&tokens, &maps, groups.len(), links.len(), &mut flips);
             groups.push(group);
             links.extend(entries);
         }
@@ -256,24 +363,19 @@ impl Program {
                     })
                     .collect()
             }));
-            let (group, entries) = self.movement_group(&[token], &maps, groups.len(), links.len());
+            let (group, entries) = self.movement_group(&[token], &maps, groups.len(), links.len(), &mut flips);
             groups.push(group);
             links.extend(entries);
         }
         self.movement_groups = groups;
+        self.movement_flips = flips;
         self.arrangement_links = links;
         self.outgoing_arrangements = vec![vec![]; self.initial.len()];
-        self.incoming_arrangements = vec![vec![]; self.initial.len()];
         self.input_groups_by_target = vec![vec![]; self.initial.len()];
-        self.incoming_side = vec![vec![]; self.initial.len()];
         for (index, group) in self.input_arrangements.iter().enumerate() {
             self.input_groups_by_target[group.target].push(index);
         }
-        for (index, link) in self.side_links.iter().enumerate() {
-            self.incoming_side[link.target].push(index);
-        }
         for (index, link) in self.arrangement_links.iter().enumerate() {
-            self.incoming_arrangements[link.target].push(index);
             if let ArrangementSource::Component(source) = link.source {
                 self.outgoing_arrangements[source].push(index);
             }
@@ -289,38 +391,194 @@ impl Program {
                 }
             }
         }
+        self.validate_input_bound()
+    }
+
+    fn validate_input_bound(&self) -> Result<(), ScratchError> {
+        let count = self
+            .links
+            .len()
+            .checked_add(self.arrangement_links.len())
+            .and_then(|n| n.checked_add(self.side_links.len()));
+        let mut count = count;
+        for record in &self.repeaters {
+            count = count.and_then(|n| n.checked_add(record.side_sources.as_ref().map_or(0, Vec::len)));
+        }
+        if count.is_none_or(|count| u32::try_from(count).is_err()) {
+            return Err(ScratchError {
+                position: None,
+                reason: "compiled input fan-in exceeds counter capacity",
+            });
+        }
         Ok(())
     }
 
     pub(super) fn prepare_projection(&mut self) {
+        let used: usize = self.output_programs.iter().flatten().map(|range| range.len()).sum();
+        if used != self.operations.len() {
+            let old = std::mem::take(&mut self.operations);
+            self.operations.reserve(used);
+            for range in self.output_programs.iter_mut().flatten() {
+                let start = self.operations.len();
+                self.operations.extend_from_slice(&old[range.clone()]);
+                *range = start..self.operations.len();
+            }
+        }
         self.geometry_indices = self.geometry.iter().copied().collect();
-        self.tokens_by_cell.clear();
-        self.pistons_by_cell.clear();
-        self.observers_by_target.clear();
-        for (index, block) in self.initial.iter().enumerate() {
-            if let Block::Observer { observer } = block {
-                self.observers_by_target
-                    .entry(self.positions[index].offset(observer.facing.into()))
-                    .or_default()
-                    .push(index);
-            }
-        }
-        for (index, token) in self.tokens.iter().enumerate() {
-            for &cell in &token.cells {
-                self.tokens_by_cell.entry(cell).or_default().push(index);
-            }
-        }
-        for (index, piston) in self.pistons.iter().enumerate() {
-            for cell in [piston.base, piston.home] {
-                self.pistons_by_cell.entry(cell).or_default().push(index);
-            }
-        }
         let mut positions = self.positions.clone();
         positions.extend(self.tokens.iter().flat_map(|token| token.cells.iter().copied()));
         positions.extend(self.pistons.iter().flat_map(|piston| [piston.base, piston.home, piston.far]));
         positions.sort_by_key(|position| (position.x, position.y, position.z));
         positions.dedup();
+        self.projection_indices = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
         self.projection_positions = positions;
+        let cells = self.projection_positions.len();
+        self.component_cells = self.positions.iter().map(|pos| self.projection_indices[pos]).collect();
+        self.cell_components = vec![None; cells];
+        for (component, &cell) in self.component_cells.iter().enumerate() {
+            self.cell_components[cell] = Some(component);
+        }
+        self.cell_geometry = self
+            .projection_positions
+            .iter()
+            .map(|pos| self.geometry_indices.get(pos).copied().unwrap_or(Block::Air))
+            .collect();
+        self.token_cells = self
+            .tokens
+            .iter()
+            .map(|token| token.cells.iter().map(|pos| self.projection_indices[pos]).collect())
+            .collect();
+        self.cell_tokens = vec![vec![]; cells];
+        for (token, cells) in self.token_cells.iter().enumerate() {
+            for &cell in cells {
+                self.cell_tokens[cell].push(token);
+            }
+        }
+        self.cell_pistons = vec![vec![]; cells];
+        for (piston, record) in self.pistons.iter().enumerate() {
+            for pos in [record.base, record.home] {
+                self.cell_pistons[self.projection_indices[&pos]].push(piston);
+            }
+        }
+        self.cell_observers = vec![vec![]; cells];
+        for (component, block) in self.initial.iter().enumerate() {
+            if let Block::Observer { observer } = block
+                && let Some(&cell) = self.projection_indices.get(&self.positions[component].offset(observer.facing.into()))
+            {
+                self.cell_observers[cell].push(component);
+            }
+        }
+        self.piston_by_component = vec![None; self.initial.len()];
+        self.piston_bindings = self
+            .pistons
+            .iter()
+            .enumerate()
+            .map(|(index, piston)| {
+                let component = self.component_indices[&piston.base];
+                self.piston_by_component[component] = Some(index);
+                let home_cell = self.projection_indices[&piston.home];
+                let far_cell = self.projection_indices[&piston.far];
+                let heads = |cell: usize| {
+                    self.cell_pistons[cell]
+                        .iter()
+                        .copied()
+                        .filter(|&other| other != index && self.pistons[other].home == self.projection_positions[cell])
+                        .collect()
+                };
+                PistonBinding {
+                    component,
+                    home_cell,
+                    far_cell,
+                    mate: self
+                        .pistons
+                        .iter()
+                        .position(|other| other.group == piston.group && other.far == piston.far && other.facing == piston.facing.opposite()),
+                    home_heads: heads(home_cell),
+                    far_heads: heads(far_cell),
+                    home_blocked: self.piston_scenery.contains(&piston.home),
+                    far_blocked: self.piston_scenery.contains(&piston.far),
+                }
+            })
+            .collect();
+        self.token_piston_components = self
+            .token_cells
+            .iter()
+            .map(|cells| {
+                let mut components = Vec::new();
+                for &cell in cells {
+                    for &piston in &self.cell_pistons[cell] {
+                        if self.piston_bindings[piston].home_cell == cell {
+                            let component = self.piston_bindings[piston].component;
+                            if !components.contains(&component) {
+                                components.push(component);
+                            }
+                        }
+                    }
+                }
+                components
+            })
+            .collect();
+        self.repeater_by_component = vec![None; self.initial.len()];
+        for (index, record) in self.repeaters.iter().enumerate() {
+            self.repeater_by_component[record.component] = Some(index);
+        }
+        self.comparator_by_component = vec![None; self.initial.len()];
+        self.comparators_by_copper_bulb = vec![vec![]; self.initial.len()];
+        for (index, record) in self.comparators.iter().enumerate() {
+            self.comparator_by_component[record.component] = Some(index);
+            for source in [record.rear_override, record.far_override]
+                .into_iter()
+                .flatten()
+                .filter_map(|input| match input {
+                    ComparatorInput::CopperBulb(source) => Some(source),
+                    ComparatorInput::Static(_) => None,
+                })
+            {
+                if !self.comparators_by_copper_bulb[source].contains(&record.component) {
+                    self.comparators_by_copper_bulb[source].push(record.component);
+                }
+            }
+        }
+        self.watched_by_component = vec![None; self.initial.len()];
+        for (index, record) in self.watched_wires.iter().enumerate() {
+            self.watched_by_component[record.wire].get_or_insert(index);
+        }
+        self.movable_sources = vec![false; self.initial.len()];
+        for token in &self.tokens {
+            if matches!(token.block, Block::RedstoneBlock)
+                && let Some(component) = token.position.and_then(|pos| self.component_indices.get(&pos))
+            {
+                self.movable_sources[*component] = true;
+            }
+        }
+        self.has_reactive = self.reactive.iter().any(|&flag| flag);
+        let shadowed = |target: usize, source, side| {
+            self.input_groups_by_target[target].iter().any(|&group| {
+                let group = &self.input_arrangements[group];
+                group.side == side && group.conditional_sources.contains(&ArrangementSource::Component(source))
+            })
+        };
+        self.effective_links = self.links.iter().map(|link| !shadowed(link.target, link.source, false)).collect();
+        self.side_outputs = vec![vec![]; self.initial.len()];
+        let mut sides = self.side_links.clone();
+        sides.extend(self.repeaters.iter().flat_map(|record| {
+            record.side_sources.iter().flatten().map(move |&source| ElectricalLink {
+                source,
+                target: record.component,
+                attenuation: 0,
+            })
+        }));
+        for link in sides {
+            if shadowed(link.target, link.source, true) {
+                continue;
+            }
+            let edges = &mut self.side_outputs[link.source];
+            if let Some((_, attenuation)) = edges.iter_mut().find(|(target, _)| *target == link.target) {
+                *attenuation = (*attenuation).min(link.attenuation);
+            } else {
+                edges.push((link.target, link.attenuation));
+            }
+        }
     }
 
     fn movement_group(
@@ -329,6 +587,7 @@ impl Program {
         maps: &[Vec<(usize, ArrangementSource, u8, bool, bool)>],
         group: usize,
         link_start: usize,
+        flips: &mut Vec<ArrangementFlip>,
     ) -> (MovementGroup, Vec<ArrangementLink>) {
         let mut conditions = Vec::new();
         for &entry in maps.iter().flatten() {
@@ -341,14 +600,15 @@ impl Program {
             .iter()
             .map(|&token| {
                 let radix = self.tokens[token].cells.len() + 1;
-                let mut depart = vec![vec![]; maps.len()];
-                let mut arrive = vec![vec![]; maps.len()];
+                let mut depart = vec![0..0; maps.len()];
+                let mut arrive = vec![0..0; maps.len()];
                 for state in 0..maps.len() {
                     let digit = state / stride % radix;
                     if digit == 0 {
                         continue;
                     }
                     let empty = state - digit * stride;
+                    let start = flips.len();
                     for (index, &(target, source, attenuation, side, silent)) in conditions.iter().enumerate() {
                         let entry = (target, source, attenuation, side, silent);
                         if maps[state].contains(&entry) != maps[empty].contains(&entry) {
@@ -359,13 +619,19 @@ impl Program {
                                 link: link_start + index,
                                 entering: maps[empty].contains(&entry),
                             };
-                            depart[state].push(flip);
-                            arrive[state].push(ArrangementFlip {
-                                entering: !flip.entering,
-                                ..flip
-                            });
+                            flips.push(flip);
                         }
                     }
+                    depart[state] = start..flips.len();
+                    let start = flips.len();
+                    for index in depart[state].clone() {
+                        let flip = flips[index];
+                        flips.push(ArrangementFlip {
+                            entering: !flip.entering,
+                            ..flip
+                        });
+                    }
+                    arrive[state] = start..flips.len();
                 }
                 let axis = MovementAxis {
                     token,
@@ -428,6 +694,7 @@ impl Program {
                 | Block::Observer { .. }
                 | Block::RedstoneTorch { .. }
                 | Block::RedstoneWallTorch { .. } => {}
+                block if block.is_command_block() || block.is_copper_bulb() => {}
                 Block::RedstoneWire { wire } if wire.power <= 15 => {}
                 Block::RedstoneWire { .. } => return Err(invalid("sampled program wire power exceeds 15")),
                 Block::RedstoneRepeater { repeater } if (1..=4).contains(&repeater.delay) => {}
@@ -487,7 +754,9 @@ impl Program {
                     | Block::Observer { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
-            ) {
+            ) && !source.is_copper_bulb()
+                && !source.is_command_block()
+            {
                 return Err(invalid("sampled program link source must be lever, button, wire or repeater"));
             }
             if !matches!(
@@ -501,7 +770,9 @@ impl Program {
                     | Block::Piston { .. }
                     | Block::RedstoneTorch { .. }
                     | Block::RedstoneWallTorch { .. }
-            ) {
+            ) && !target.is_copper_bulb()
+                && !target.is_command_block()
+            {
                 return Err(invalid("sampled program link target must be wire, lamp or repeater"));
             }
             if link.attenuation > 15 {
@@ -523,46 +794,8 @@ impl Program {
                 }
             }
         }
-        for programs in &output_programs {
-            for operations in programs {
-                for operation in operations {
-                    match *operation {
-                        Operation::Contribution(link) if link >= links.len() => {
-                            return Err(invalid("sampled program contribution link is out of bounds"));
-                        }
-                        Operation::CheckWatchedWire(record) if record >= watched_wires.len() => {
-                            return Err(invalid("sampled program watched-wire index is out of bounds"));
-                        }
-                        Operation::RefreshWire(slot) if !matches!(initial.get(slot), Some(Block::RedstoneWire { .. })) => {
-                            return Err(invalid("sampled program RefreshWire target is not a wire"));
-                        }
-                        Operation::UpdateLamp(slot) if !matches!(initial.get(slot), Some(Block::RedstoneLamp { .. })) => {
-                            return Err(invalid("sampled program UpdateLamp target is not a lamp"));
-                        }
-                        Operation::UpdateHopper(slot) if !matches!(initial.get(slot), Some(Block::Hopper { .. })) => {
-                            return Err(invalid("sampled program UpdateHopper target is not a hopper"));
-                        }
-                        Operation::UpdateNoteBlock(slot) if !matches!(initial.get(slot), Some(Block::NoteBlock { .. })) => {
-                            return Err(invalid("sampled program UpdateNoteBlock target is not a note block"));
-                        }
-                        Operation::UpdateRepeater(slot) if !matches!(initial.get(slot), Some(Block::RedstoneRepeater { .. })) => {
-                            return Err(invalid("sampled program UpdateRepeater target is not a repeater"));
-                        }
-                        Operation::UpdatePiston(slot) if !matches!(initial.get(slot), Some(Block::Piston { .. })) => {
-                            return Err(invalid("sampled program UpdatePiston target is not a piston"));
-                        }
-                        Operation::UpdateComparator(slot) if !matches!(initial.get(slot), Some(Block::RedstoneComparator { .. })) => {
-                            return Err(invalid("sampled UpdateComparator target is not a comparator"));
-                        }
-                        Operation::UpdateTorch(slot)
-                            if !matches!(initial.get(slot), Some(Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. })) =>
-                        {
-                            return Err(invalid("sampled program UpdateTorch target is not a torch"));
-                        }
-                        _ => {}
-                    }
-                }
-            }
+        for operation in output_programs.iter().flatten().flatten() {
+            validate_operation(*operation, &initial, links.len(), watched_wires.len(), None)?;
         }
         let mut incoming = vec![vec![]; initial.len()];
         let mut outgoing = vec![vec![]; initial.len()];
@@ -573,8 +806,27 @@ impl Program {
         let outgoing_arrangements = vec![vec![]; initial.len()];
         let component_count = initial.len();
         let component_indices = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
+        let mut operations = Vec::new();
+        let output_programs = output_programs
+            .into_iter()
+            .map(|programs| {
+                programs.map(|program| {
+                    let start = operations.len();
+                    operations.extend(program);
+                    start..operations.len()
+                })
+            })
+            .collect();
         Ok(Self {
+            piston_by_component: Vec::new(),
+            piston_bindings: Vec::new(),
+            repeater_by_component: Vec::new(),
+            comparator_by_component: Vec::new(),
+            watched_by_component: Vec::new(),
+            movable_sources: Vec::new(),
+            has_reactive: false,
             comparators: Vec::new(),
+            comparators_by_copper_bulb: vec![vec![]; component_count],
             side_links: Vec::new(),
             reactive: vec![false; initial.len()],
             reactive_wires: Vec::new(),
@@ -587,15 +839,24 @@ impl Program {
             component_indices,
             geometry_indices: HashMap::new(),
             projection_positions: Vec::new(),
-            tokens_by_cell: HashMap::new(),
-            pistons_by_cell: HashMap::new(),
-            observers_by_target: HashMap::new(),
+            projection_indices: HashMap::new(),
+            component_cells: Vec::new(),
+            cell_components: Vec::new(),
+            token_cells: Vec::new(),
+            cell_tokens: Vec::new(),
+            cell_pistons: Vec::new(),
+            cell_observers: Vec::new(),
+            cell_geometry: Vec::new(),
+            token_piston_components: Vec::new(),
             token_sources: Vec::new(),
             token_updates: Vec::new(),
             token_watchers: Vec::new(),
             move_steps: Vec::new(),
+            movement_steps: Vec::new(),
+            movement_wires: Vec::new(),
             input_arrangements: Vec::new(),
             movement_groups: Vec::new(),
+            movement_flips: Vec::new(),
             token_movement_groups: Vec::new(),
             arrangement_links: Vec::new(),
             source_watchers: vec![vec![]; initial.len()],
@@ -604,16 +865,203 @@ impl Program {
             initial,
             sources,
             output_programs,
+            operations,
             links,
             incoming,
             outgoing,
             outgoing_arrangements,
-            incoming_arrangements: vec![vec![]; component_count],
             input_groups_by_target: vec![vec![]; component_count],
-            incoming_side: vec![vec![]; component_count],
+            effective_links: Vec::new(),
+            side_outputs: Vec::new(),
             watched_wires,
             repeaters,
         })
+    }
+
+    pub(super) fn validate(&self) -> Result<(), ScratchError> {
+        let invalid = |reason| ScratchError { position: None, reason };
+        let nodes = self.initial.len();
+        let motion_capacity = self.pistons.len().checked_mul(2).and_then(|n| n.checked_add(self.tokens.len()));
+        if nodes.checked_mul(2).is_none() || self.pistons.len().checked_mul(3).is_none() || motion_capacity.and_then(|n| n.checked_mul(2)).is_none() {
+            return Err(invalid("runtime storage capacity overflow"));
+        }
+        self.validate_input_bound()?;
+        for range in self.output_programs.iter().flatten() {
+            let operations = self
+                .operations
+                .get(range.clone())
+                .ok_or_else(|| invalid("invalid output program range"))?;
+            for &operation in operations {
+                validate_operation(
+                    operation,
+                    &self.initial,
+                    self.links.len(),
+                    self.watched_wires.len(),
+                    Some(self.arrangement_links.len()),
+                )?;
+            }
+        }
+        for link in self.links.iter().chain(&self.side_links) {
+            if link.source >= nodes || link.target >= nodes || link.attenuation > 15 {
+                return Err(invalid("invalid electrical link reference"));
+            }
+        }
+        let mut piston_components = vec![false; nodes];
+        for piston in &self.pistons {
+            let Some(&component) = self.component_indices.get(&piston.base) else {
+                return Err(invalid("piston has no component"));
+            };
+            if !matches!(self.initial[component], Block::Piston { .. }) || piston_components[component] {
+                return Err(invalid("invalid or duplicate piston component"));
+            }
+            piston_components[component] = true;
+        }
+        for token in &self.tokens {
+            if token.position.is_some_and(|pos| !token.cells.contains(&pos)) {
+                return Err(invalid("invalid captured token position"));
+            }
+        }
+        let valid_source = |source| match source {
+            ArrangementSource::Component(node) => node < nodes,
+            ArrangementSource::Token(token) => token < self.tokens.len(),
+        };
+        let mut group_states = Vec::with_capacity(self.movement_groups.len());
+        for (group, record) in self.movement_groups.iter().enumerate() {
+            let mut states = 1usize;
+            for axis in &record.axes {
+                if axis.token >= self.tokens.len() || axis.stride != states {
+                    return Err(invalid("invalid movement axis reference"));
+                }
+                states = states
+                    .checked_mul(self.tokens[axis.token].cells.len() + 1)
+                    .ok_or_else(|| invalid("movement group capacity overflow"))?;
+            }
+            if states > 4096 || record.axes.iter().any(|axis| axis.depart.len() != states || axis.arrive.len() != states) {
+                return Err(invalid("invalid sealed movement group dimensions"));
+            }
+            for axis in &record.axes {
+                for range in axis.depart.iter().chain(&axis.arrive) {
+                    let flips = self
+                        .movement_flips
+                        .get(range.clone())
+                        .ok_or_else(|| invalid("invalid movement flip range"))?;
+                    for flip in flips {
+                        let link = self
+                            .arrangement_links
+                            .get(flip.link)
+                            .ok_or_else(|| invalid("invalid movement flip link"))?;
+                        if link.group != group || flip.target != link.target || flip.source != link.source || flip.attenuation != link.attenuation {
+                            return Err(invalid("movement flip does not match its link"));
+                        }
+                    }
+                }
+            }
+            group_states.push(states);
+        }
+        for link in &self.arrangement_links {
+            if link.target >= nodes || !valid_source(link.source) || link.attenuation > 15 || link.group >= self.movement_groups.len() {
+                return Err(invalid("invalid sealed arrangement link"));
+            }
+            if link.active.len() != group_states[link.group] {
+                return Err(invalid("invalid arrangement mask dimensions"));
+            }
+        }
+        let mut watched = vec![false; nodes];
+        for record in &self.watched_wires {
+            if record.wire >= nodes || record.watchers.iter().any(|&node| node >= nodes) {
+                return Err(invalid("invalid watcher reference"));
+            }
+            watched[record.wire] = true;
+        }
+        for (token, cells) in self.move_steps.iter().enumerate() {
+            if token >= self.tokens.len() || cells.len() != self.tokens[token].cells.len() {
+                return Err(invalid("invalid sealed movement step dimensions"));
+            }
+            for range in cells.iter().flatten() {
+                let steps = self
+                    .movement_steps
+                    .get(range.clone())
+                    .ok_or_else(|| invalid("invalid movement step range"))?;
+                for step in steps {
+                    let wires = self
+                        .movement_wires
+                        .get(step.wires.clone())
+                        .ok_or_else(|| invalid("invalid movement wire range"))?;
+                    if step.node >= nodes || (step.wire && !watched[step.node]) || wires.iter().any(|&wire| wire >= nodes || !watched[wire]) {
+                        return Err(invalid("invalid sealed movement step reference"));
+                    }
+                }
+            }
+        }
+        let mut comparators = vec![false; nodes];
+        for record in &self.comparators {
+            if !matches!(self.initial.get(record.component), Some(Block::RedstoneComparator { .. }))
+                || record.stored > 15
+                || comparators[record.component]
+            {
+                return Err(invalid("invalid comparator record"));
+            }
+            comparators[record.component] = true;
+            for input in [record.rear_override, record.far_override].into_iter().flatten() {
+                let valid = match input {
+                    ComparatorInput::Static(level) => level <= 15,
+                    ComparatorInput::CopperBulb(source) => self.initial.get(source).is_some_and(|block| block.is_copper_bulb()),
+                };
+                if !valid {
+                    return Err(invalid("invalid comparator override reference"));
+                }
+            }
+        }
+        for list in self.source_watchers.iter().chain(&self.home_watchers).chain(&self.reactive_neighbours) {
+            if list.iter().any(|&node| node >= nodes) {
+                return Err(invalid("invalid notification reference"));
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn set_move_steps(&mut self, programs: Vec<Vec<[Vec<MoveStepSpec>; 2]>>) {
+        self.move_steps.clear();
+        self.movement_steps.clear();
+        self.movement_wires.clear();
+        for cells in programs {
+            let mut compiled = Vec::with_capacity(cells.len());
+            for edges in cells {
+                compiled.push(edges.map(|steps| {
+                    let start = self.movement_steps.len();
+                    for step in steps {
+                        let wires = self.movement_wires.len();
+                        self.movement_wires.extend(step.wires);
+                        self.movement_steps.push(MoveStep {
+                            node: step.node,
+                            watcher: step.watcher,
+                            wire: step.wire,
+                            wires: wires..self.movement_wires.len(),
+                        });
+                    }
+                    start..self.movement_steps.len()
+                }));
+            }
+            self.move_steps.push(compiled);
+        }
+    }
+
+    pub(super) fn set_output_program(&mut self, component: usize, powered: bool, operations: Vec<Operation>) {
+        let start = self.operations.len();
+        self.operations.extend(operations);
+        self.output_programs[component][usize::from(powered)] = start..self.operations.len();
+    }
+
+    pub(super) fn output_program(&self, component: usize, powered: bool) -> &[Operation] {
+        &self.operations[self.output_programs[component][usize::from(powered)].clone()]
+    }
+
+    #[cfg(test)]
+    pub(super) fn output_vectors(&self) -> Vec<[Vec<Operation>; 2]> {
+        self.output_programs
+            .iter()
+            .map(|programs| programs.clone().map(|range| self.operations[range].to_vec()))
+            .collect()
     }
 
     pub(super) fn push_link(&mut self, link: ElectricalLink) {
@@ -624,10 +1072,19 @@ impl Program {
     }
 
     pub(super) fn start(&self) -> Runtime {
-        let mut program = self.clone();
-        program.prepare_projection();
+        self.clone().into_runtime()
+    }
+
+    pub(super) fn into_runtime(mut self) -> Runtime {
+        self.prepare_projection();
+        let cell_count = self.projection_positions.len();
+        let motion_capacity = self
+            .pistons
+            .len()
+            .checked_mul(2)
+            .and_then(|n| n.checked_add(self.tokens.len()))
+            .expect("validated motion capacity");
         let mut runtime = Runtime {
-            program: std::sync::Arc::new(program),
             piston_state: mchprs_world::PistonState::default(),
             comparator_outputs: {
                 let mut outputs = vec![0; self.initial.len()];
@@ -667,19 +1124,35 @@ impl Program {
                 })
                 .collect(),
             arrangement_contributions: vec![0; self.arrangement_links.len()],
-            piston_events: std::collections::VecDeque::new(),
+            piston_events: std::collections::VecDeque::with_capacity(self.pistons.len() * 3),
             queued_piston_events: vec![0; self.pistons.len()],
-            motions: Vec::new(),
+            motions: Vec::with_capacity(motion_capacity),
+            active_motions: std::collections::VecDeque::with_capacity(motion_capacity),
+            free_motion_slots: Vec::with_capacity(motion_capacity),
+            piston_motion: vec![None; self.pistons.len()],
+            cell_motion: vec![None; cell_count],
+            dirty_cells: (0..cell_count).collect(),
+            dirty: vec![true; cell_count],
+            needs_full_publication: false,
+            movement_switched: Vec::with_capacity(self.initial.len()),
+            movement_changed_wires: Vec::with_capacity(self.watched_wires.len()),
+            switched: vec![false; self.initial.len()],
+            changed_wires: vec![false; self.initial.len()],
             motion_time: 0,
             motion_phase: false,
             landing_cursor: None,
             accepted_piston_actions: 0,
             token_movements: 0,
             motion_completions: 0,
+            #[cfg(test)]
             trace_enabled: false,
+            #[cfg(test)]
             trace_events: Vec::new(),
             blocks: self.initial.clone(),
-            pending: TickScheduler::default(),
+            pending: super::scheduler::Scheduler::new(self.initial.len().checked_mul(2).expect("validated scheduled capacity").max(64)),
+            pending_counts: vec![0; self.initial.len()],
+            pending_passive_positions: Vec::new(),
+            input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
             contributions: self
                 .links
                 .iter()
@@ -758,10 +1231,26 @@ impl Program {
             scheduled_repeater_ticks: 0,
             tick_operations: 0,
             failure: None,
+            program: std::sync::Arc::new(self),
         };
-        for (index, link) in self.arrangement_links.iter().enumerate() {
+        for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
             if link.active[runtime.group_arrangements[link.group]] {
                 runtime.arrangement_contributions[index] = runtime.arrangement_output(link.source).saturating_sub(link.attenuation);
+            }
+        }
+        for (index, link) in runtime.program.links.iter().enumerate() {
+            if runtime.program.effective_links[index] {
+                runtime.input_levels[link.target][0].change(0, runtime.contributions[index]);
+            }
+        }
+        for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
+            runtime.input_levels[link.target][usize::from(link.side)].change(0, runtime.arrangement_contributions[index]);
+        }
+        for source in 0..runtime.program.side_outputs.len() {
+            let level = runtime.output(source);
+            for index in 0..runtime.program.side_outputs[source].len() {
+                let (target, attenuation) = runtime.program.side_outputs[source][index];
+                runtime.input_levels[target][1].change(0, level.saturating_sub(attenuation));
             }
         }
         runtime

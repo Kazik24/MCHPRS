@@ -131,21 +131,17 @@ fn unchanged_comparator_output_notifies_reactive_neighbor() {
     program.reactive[1] = true;
     program.reactive_neighbours[0].push(1);
     let mut runtime = program.start();
-    runtime.pending.schedule_tick(
-        super::ScheduledBlockTick {
-            pos: positions[0],
-            block_type: Some(comparator.registry_id()),
-        },
-        1,
-        TickPriority::Normal,
-    );
+    runtime.set_pending(vec![mchprs_world::TickEntry {
+        pos: positions[0], block_type: Some(comparator.registry_id()),
+        ticks_left: 2, tick_priority: TickPriority::Normal,
+    }]).unwrap();
     runtime.tick().unwrap();
     runtime.tick().unwrap();
     assert_eq!(runtime.project(positions[1]), Some(Block::RedstoneLamp { lit: true }));
 }
 #[test]
 fn token_move_notifies_wire_watchers_only_when_strength_changes() {
-    use super::program::MoveStep;
+    use super::program::MoveStepSpec as MoveStep;
     let cell = BlockPos::new(10, 10, 10);
     for masked in [false, true] {
         let mut program = test_program(
@@ -178,7 +174,7 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
             cells: vec![cell],
         });
         program.token_sources.push(vec![vec![(1, 0)]]);
-        program.move_steps.push(vec![[
+        program.set_move_steps(vec![vec![[
             vec![
                 MoveStep {
                     node: 1,
@@ -194,7 +190,7 @@ fn token_move_notifies_wire_watchers_only_when_strength_changes() {
                 },
             ],
             vec![],
-        ]]);
+        ]]]);
         program.compile_movement_flips().unwrap();
         let mut runtime = program.start();
         runtime.set_token_pos(0, None);
@@ -297,10 +293,10 @@ fn finishing_piston_motion_invalidates_its_update_mark() {
         group: 0,
     });
     let mut runtime = program.start();
-    runtime.motions.push(super::executor::Motion {
+    runtime.add_test_motion(super::executor::Motion {
         piston: 0,
         token: None,
-        destination: far,
+        destination: runtime.program.projection_indices[&far],
         start: 0,
         landing: 2,
         order: 0,
@@ -436,7 +432,7 @@ fn movement_flips_preserve_discovery_order_for_remaining_recipients() {
     let mut runtime = program.start();
     runtime.set_token_pos(0, None);
     assert_eq!(
-        runtime.pending.iter_entries().map(|entry| entry.pos).collect::<Vec<_>>(),
+        runtime.pending_entries().into_iter().map(|entry| entry.pos).collect::<Vec<_>>(),
         vec![positions[2], positions[1]]
     );
     runtime.set_token_pos(0, Some(cell));
@@ -480,7 +476,7 @@ fn conditional_source_changes_wait_for_their_ordered_link_instruction() {
     runtime.set_input(0, true).unwrap();
     assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: false });
     drop(runtime);
-    program.output_programs[0][1] = vec![Operation::ArrangementContribution(0), Operation::UpdateLamp(1)];
+    program.set_output_program(0, true, vec![Operation::ArrangementContribution(0), Operation::UpdateLamp(1)]);
     let mut runtime = program.start();
     runtime.set_input(0, true).unwrap();
     assert_eq!(runtime.input_strength(1), 14);
@@ -782,10 +778,10 @@ fn normal_and_early_retract_requests_keep_distinct_queue_identities() {
     let mut runtime = program.start();
     runtime.update_piston(0);
     runtime.update_piston(0);
-    runtime.motions.push(super::executor::Motion {
+    runtime.add_test_motion(super::executor::Motion {
         piston: 0,
         token: Some(0),
-        destination: far,
+        destination: runtime.program.projection_indices[&far],
         start: 0,
         landing: 2,
         order: 0,
@@ -845,10 +841,10 @@ fn landing_order_that_already_passed_requests_normal_retraction() {
         runtime.motion_time = motion_time;
         runtime.motion_phase = true;
         runtime.landing_cursor = Some(cursor);
-        runtime.motions.push(super::executor::Motion {
+        runtime.add_test_motion(super::executor::Motion {
             piston: 0,
             token: Some(0),
-            destination: far,
+            destination: runtime.program.projection_indices[&far],
             start: 0,
             landing: 2,
             order,
@@ -868,7 +864,7 @@ fn landing_order_that_already_passed_requests_normal_retraction() {
 
 #[test]
 fn landing_callbacks_preserve_both_motion_orders() {
-    use super::{executor::PistonEvent, program::MoveStep};
+    use super::{executor::PistonEvent, program::MoveStepSpec as MoveStep};
 
     let base = BlockPos::new(15, 15, 15);
     let home = base.offset(BlockFace::East);
@@ -912,7 +908,7 @@ fn landing_callbacks_preserve_both_motion_orders() {
             cells: vec![callback_cell],
         },
     ];
-    program.move_steps = vec![
+    program.set_move_steps(vec![
         vec![[Vec::new(), Vec::new()]],
         vec![[
             Vec::new(),
@@ -923,7 +919,7 @@ fn landing_callbacks_preserve_both_motion_orders() {
                 wires: vec![],
             }],
         ]],
-    ];
+    ]);
 
     let events_for_order = |callback_first: bool| {
         let pushing_order = usize::from(callback_first);
@@ -931,11 +927,11 @@ fn landing_callbacks_preserve_both_motion_orders() {
         let mut runtime = program.start();
         runtime.motion_time = 1;
         runtime.piston_head_moving[0] = true;
-        runtime.motions = vec![
+        for motion in [
             super::executor::Motion {
                 piston: 0,
                 token: Some(0),
-                destination: far,
+                destination: runtime.program.projection_indices[&far],
                 start: 0,
                 landing: 2,
                 order: pushing_order,
@@ -946,7 +942,7 @@ fn landing_callbacks_preserve_both_motion_orders() {
             super::executor::Motion {
                 piston: 0,
                 token: Some(1),
-                destination: callback_cell,
+                destination: runtime.program.projection_indices[&callback_cell],
                 start: 0,
                 landing: 2,
                 order: callback_order,
@@ -954,7 +950,9 @@ fn landing_callbacks_preserve_both_motion_orders() {
                 piston_done: true,
                 token_done: false,
             },
-        ];
+        ] {
+            runtime.add_test_motion(motion);
+        }
         runtime.tick().unwrap();
         runtime.piston_events.into_iter().collect::<Vec<_>>()
     };
@@ -1005,10 +1003,10 @@ fn interrupted_extension_exports_only_its_unfinished_parts() {
 
         let mut runtime = program.start();
         runtime.piston_head_moving[0] = true;
-        runtime.motions.push(super::executor::Motion {
+        runtime.add_test_motion(super::executor::Motion {
             piston: 0,
             token: Some(0),
-            destination: far,
+            destination: runtime.program.projection_indices[&far],
             start: 0,
             landing: 2,
             order: 0,
@@ -1047,13 +1045,13 @@ fn repeater_delays_priorities_short_pulses_and_rearm() {
         let program = repeater_program(delay, false, false, false);
         let mut runtime = program.start();
         runtime.set_input(0, true).unwrap();
-        let queued = runtime.pending.iter_entries().next().unwrap();
+        let queued = runtime.pending_entries().into_iter().next().unwrap();
         assert_eq!(queued.ticks_left, u32::from(delay) * 2);
         assert_eq!(queued.tick_priority, TickPriority::High);
         let due_in = queued.ticks_left;
         runtime.update_repeater(1);
-        assert_eq!(runtime.pending.iter_entries().count(), 1);
-        assert_eq!(runtime.pending.iter_entries().next().unwrap().ticks_left, due_in);
+        assert_eq!(runtime.pending_entries().into_iter().count(), 1);
+        assert_eq!(runtime.pending_entries().into_iter().next().unwrap().ticks_left, due_in);
         for _ in 1..u32::from(delay) * 2 {
             runtime.tick().unwrap();
             assert_repeater_powered(&runtime, false);
@@ -1065,7 +1063,7 @@ fn repeater_delays_priorities_short_pulses_and_rearm() {
         assert_eq!(runtime.scheduled_repeater_ticks, 1);
 
         runtime.set_input(0, false).unwrap();
-        let queued = runtime.pending.iter_entries().next().unwrap();
+        let queued = runtime.pending_entries().into_iter().next().unwrap();
         assert_eq!(queued.ticks_left, u32::from(delay) * 2);
         assert_eq!(queued.tick_priority, TickPriority::Higher);
         for _ in 1..u32::from(delay) * 2 {
@@ -1075,40 +1073,40 @@ fn repeater_delays_priorities_short_pulses_and_rearm() {
         runtime.tick().unwrap();
         assert_repeater_powered(&runtime, false);
         assert_eq!(runtime.scheduled_repeater_ticks, 2);
-        assert_eq!(runtime.pending.iter_entries().count(), 1);
+        assert_eq!(runtime.pending_entries().into_iter().count(), 1);
         for tick in 1..=4 {
             runtime.tick().unwrap();
             assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: tick < 4 });
         }
-        assert!(runtime.pending.iter_entries().next().is_none());
+        assert!(runtime.pending_entries().into_iter().next().is_none());
     }
 
     let diode_program = repeater_program(2, false, false, true);
     let mut diode = diode_program.start();
     diode.set_input(0, true).unwrap();
-    assert_eq!(diode.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Highest);
+    assert_eq!(diode.pending_entries().into_iter().next().unwrap().tick_priority, TickPriority::Highest);
     let loaded_fall_program = repeater_program(2, true, false, false);
     let mut falling = loaded_fall_program.start();
     falling.set_input(0, true).unwrap();
     falling.tick().unwrap();
     falling.tick().unwrap();
     falling.set_input(0, false).unwrap();
-    assert_eq!(falling.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Higher);
+    assert_eq!(falling.pending_entries().into_iter().next().unwrap().tick_priority, TickPriority::Higher);
 
     let short_program = repeater_program(2, false, false, false);
     let mut short = short_program.start();
     short.set_input(0, true).unwrap();
-    let first = short.pending.iter_entries().next().unwrap();
+    let first = short.pending_entries().into_iter().next().unwrap();
     short.set_input(0, false).unwrap();
-    assert_eq!(short.pending.iter_entries().count(), 1);
-    assert_eq!(short.pending.iter_entries().next().unwrap().ticks_left, first.ticks_left);
+    assert_eq!(short.pending_entries().into_iter().count(), 1);
+    assert_eq!(short.pending_entries().into_iter().next().unwrap().ticks_left, first.ticks_left);
     for _ in 0..3 {
         short.tick().unwrap();
         assert_repeater_powered(&short, false);
     }
     short.tick().unwrap();
     assert_repeater_powered(&short, true);
-    assert_eq!(short.pending.iter_entries().next().unwrap().tick_priority, TickPriority::Higher);
+    assert_eq!(short.pending_entries().into_iter().next().unwrap().tick_priority, TickPriority::Higher);
     for _ in 0..3 {
         short.tick().unwrap();
         assert_repeater_powered(&short, true);
@@ -1124,29 +1122,28 @@ fn repeater_loaded_output_locking_and_repeated_compiled_propagation() {
     assert_repeater_powered(&loaded, true);
     assert_eq!(loaded.contributions[1], 15);
     assert_eq!(loaded.blocks[2], Block::RedstoneLamp { lit: true });
-    assert!(loaded.pending.iter_entries().next().is_none());
+    assert!(loaded.pending_entries().into_iter().next().is_none());
     assert_eq!(loaded.deliveries, 0);
 
     let locked_program = repeater_program(1, false, true, false);
     let mut locked = locked_program.start();
     locked.set_input(0, true).unwrap();
-    assert!(locked.pending.iter_entries().next().is_none());
-    let tick = ScheduledBlockTick {
-        pos: locked.program.positions[1],
-        block_type: Some(locked.blocks[1].registry_id()),
-    };
-    locked.pending.schedule_tick(tick, 1, TickPriority::Normal);
+    assert!(locked.pending_entries().into_iter().next().is_none());
+    locked.set_pending(vec![mchprs_world::TickEntry {
+        pos: locked.program.positions[1], block_type: Some(locked.blocks[1].registry_id()),
+        ticks_left: 2, tick_priority: TickPriority::Normal,
+    }]).unwrap();
     locked.tick().unwrap();
     locked.tick().unwrap();
     assert_repeater_powered(&locked, false);
     assert_eq!(locked.scheduled_repeater_ticks, 1);
-    assert!(locked.pending.iter_entries().next().is_none());
+    assert!(locked.pending_entries().into_iter().next().is_none());
 
     let program = repeater_program(1, false, false, false);
     let mut runtime = program.start();
     for cycle in 1..=3 {
         runtime.set_input(0, true).unwrap();
-        assert_eq!(runtime.pending.iter_entries().count(), 1);
+        assert_eq!(runtime.pending_entries().into_iter().count(), 1);
         runtime.tick().unwrap();
         assert_repeater_powered(&runtime, false);
         runtime.tick().unwrap();
@@ -1159,12 +1156,12 @@ fn repeater_loaded_output_locking_and_repeated_compiled_propagation() {
         runtime.tick().unwrap();
         assert_repeater_powered(&runtime, false);
         assert_eq!(runtime.contributions[1], 0);
-        assert_eq!(runtime.pending.iter_entries().count(), 1);
+        assert_eq!(runtime.pending_entries().into_iter().count(), 1);
         for tick in 1..=4 {
             runtime.tick().unwrap();
             assert_eq!(runtime.blocks[2], Block::RedstoneLamp { lit: tick < 4 });
         }
-        assert!(runtime.pending.iter_entries().next().is_none());
+        assert!(runtime.pending_entries().into_iter().next().is_none());
         assert_eq!(runtime.scheduled_repeater_ticks, cycle * 2);
     }
     assert!(runtime.operations > 0);
@@ -1172,7 +1169,7 @@ fn repeater_loaded_output_locking_and_repeated_compiled_propagation() {
 #[test]
 fn malformed_repeater_program_records_and_instructions_reject() {
     let program = repeater_program(1, false, false, false);
-    let mut outputs = program.output_programs.clone();
+    let mut outputs = program.output_vectors();
     outputs[0][1] = vec![Operation::UpdateRepeater(2)];
     assert_eq!(
         Program::new(
@@ -1193,7 +1190,7 @@ fn malformed_repeater_program_records_and_instructions_reject() {
         .reason,
         "sampled program UpdateRepeater target is not a repeater"
     );
-    let outputs = program.output_programs.clone();
+    let outputs = program.output_vectors();
     assert_eq!(
         Program::new(
             program.positions.clone(),
@@ -1299,7 +1296,7 @@ fn explicit_deliveries_repeat_while_watchers_update_once() {
     assert_eq!(runtime.deliveries, 3);
     runtime.dispatch_receiver(1);
     assert_eq!(runtime.deliveries, 4);
-    assert!(runtime.pending.iter_entries().next().is_none());
+    assert!(runtime.pending_entries().into_iter().next().is_none());
 }
 #[test]
 fn empty() {
@@ -1373,13 +1370,13 @@ fn competing_sources_preserve_attenuation_masking_and_lamp_delay() {
         assert_eq!(runtime.input_strength(1), expected);
         assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: true });
         if expected > 0 {
-            assert!(runtime.pending.iter_entries().next().is_none());
+            assert!(runtime.pending_entries().into_iter().next().is_none());
         } else {
-            assert_eq!(runtime.pending.iter_entries().count(), 1);
+            assert_eq!(runtime.pending_entries().into_iter().count(), 1);
             for tick in 1..=4 {
                 runtime.tick().unwrap();
                 assert_eq!(runtime.blocks[3], Block::RedstoneLamp { lit: tick < 4 });
-                assert_eq!(runtime.pending.iter_entries().count(), usize::from(tick < 4));
+                assert_eq!(runtime.pending_entries().into_iter().count(), usize::from(tick < 4));
             }
         }
     }
@@ -1415,7 +1412,7 @@ fn electrical_change_without_notification_preserves_lamp_and_queue() {
         runtime.set_input(0, powered).unwrap();
         assert_eq!(runtime.input_strength(1), strength);
         assert_eq!(runtime.blocks[1], Block::RedstoneLamp { lit: true });
-        assert!(runtime.pending.iter_entries().next().is_none());
+        assert!(runtime.pending_entries().into_iter().next().is_none());
     }
     assert_eq!(runtime.operations, 2);
 }
@@ -1696,7 +1693,7 @@ fn watcher_update_once_invalidates_on_effective_input_change_and_resets_per_phas
         runtime.tick().unwrap();
     }
     assert_eq!(runtime.phase, phase + 4, "each scheduler tick starts an update phase");
-    assert!(runtime.pending.iter_entries().next().is_none());
+    assert!(runtime.pending_entries().into_iter().next().is_none());
     runtime.set_input(0, true).unwrap();
     assert_eq!(runtime.watched_strengths[0], 15);
     assert_eq!(runtime.deliveries, 4, "the next external transition starts a fresh update phase");
@@ -1991,7 +1988,7 @@ fn program_construction_rejects_malformed_records() {
 fn rejects_unrepresented_blocks() {
     let mut w = host();
     let pos = BlockPos::new(15, 15, 15);
-    w.set_block(pos, Block::from_name("note_block").unwrap());
+    w.set_block(pos, Block::from_name("command_block").unwrap());
     let err = match compile(&w, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&w)) {
         Err(err) => err,
         Ok(_) => panic!("unsupported block admitted"),
@@ -2029,13 +2026,19 @@ fn projection_skips_stationary_geometry_but_keeps_components() {
     let mut world = host();
     let lamp = BlockPos::new(12, 15, 12);
     let stone = BlockPos::new(13, 15, 12);
+    let tripwire = BlockPos::new(14, 15, 12);
+    let plate = BlockPos::new(14, 15, 13);
     world.set_block(lamp, Block::RedstoneLamp { lit: false });
     world.set_block(stone, Block::Stone {});
+    world.set_block(tripwire, Block::from_name("tripwire_hook").unwrap());
+    world.set_block(plate, Block::StonePressurePlate { powered: false });
     let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(15, 20, 15));
     let program = compile(&world, bounds, entry(&world)).unwrap();
 
     assert_eq!(program.start().projected_blocks(), vec![(lamp, Block::RedstoneLamp { lit: false })]);
     assert_eq!(program.start().project(stone), Some(Block::Stone {}));
+    assert_eq!(program.start().project(tripwire), Some(Block::from_name("tripwire_hook").unwrap()));
+    assert_eq!(program.start().project(plate), Some(Block::StonePressurePlate { powered: false }));
 }
 #[test]
 fn rejects_unrelated_block_entities() {
@@ -2075,7 +2078,52 @@ fn container_comparator_override_is_compiled_as_static_analog_input() {
 
     let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
     assert_eq!(program.comparators.len(), 1);
-    assert_eq!(program.comparators[0].rear_override, Some(15));
+    assert_eq!(program.comparators[0].rear_override, Some(super::program::ComparatorInput::Static(15)));
+}
+
+#[test]
+fn command_block_success_count_is_a_static_comparator_input() {
+    use mchprs_blocks::block_entities::CommandBlockEntity;
+
+    let mut world = host();
+    let comparator_pos = BlockPos::new(15, 15, 15);
+    let comparator = Block::from_name("comparator").unwrap();
+    let Block::RedstoneComparator { comparator: state } = comparator else {
+        unreachable!()
+    };
+    let command_pos = comparator_pos.offset(state.facing.block_face());
+    let mut command = CommandBlockEntity::default();
+    command.success_count = 9;
+    world.set_block(comparator_pos, comparator);
+    world.set_block_entity(comparator_pos, BlockEntity::Comparator { output_strength: 0 });
+    world.set_block(command_pos, Block::from_name("command_block").unwrap());
+    world.set_block_entity(command_pos, BlockEntity::CommandBlock(Box::new(command)));
+
+    let program = compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)).unwrap();
+    assert_eq!(program.comparators.len(), 1);
+    assert_eq!(program.comparators[0].rear_override, Some(super::program::ComparatorInput::Static(9)));
+}
+
+#[test]
+fn command_blocks_with_redstone_inputs_remain_rejected() {
+    let mut world = host();
+    let command = BlockPos::new(15, 15, 15);
+    let lever = command.offset(BlockFace::West);
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(command, Block::from_name("command_block").unwrap());
+    world.set_block_entity(command, BlockEntity::CommandBlock(Box::default()));
+    let error = match compile(&world, (BlockPos::new(10, 10, 10), BlockPos::new(20, 20, 20)), entry(&world)) {
+        Err(error) => error,
+        Ok(_) => panic!("powered command block was admitted"),
+    };
+    assert_eq!(error.position, Some(command));
+    assert_eq!(error.reason, "command block execution is unsupported");
 }
 
 #[test]
@@ -2354,7 +2402,7 @@ fn wall_lever_bent_dust_and_decorative_sign_match_native() {
             }
             assert_eq!(runtime.blocks, program.positions.iter().map(|&pos| w.get_block(pos)).collect::<Vec<_>>());
             assert_eq!(
-                runtime.pending.iter_entries().collect::<Vec<_>>(),
+                runtime.pending_entries().into_iter().collect::<Vec<_>>(),
                 w.scheduler().iter_entries().collect::<Vec<_>>()
             );
             assert_eq!(w.get_block(lamp), Block::RedstoneLamp { lit: powered || tick < 4 });
@@ -2429,7 +2477,7 @@ fn world_compiler_runs_repeater_and_lamp() {
     let repeater_index = program.positions.iter().position(|&pos| pos == repeater).unwrap();
     let lamp_index = program.positions.iter().position(|&pos| pos == lamp).unwrap();
     assert!(
-        program.output_programs[repeater_index][0]
+        program.output_program(repeater_index, false)
             .iter()
             .any(|op| matches!(op, Operation::UpdateLamp(id) if *id == lamp_index))
     );
@@ -2623,7 +2671,8 @@ fn native_edges_and_host_preservation() {
                 .any(|link| p.positions[link.source] == BlockPos::new(16, 15, 15) && p.positions[link.target] == BlockPos::new(17, 15, 15)),
             "lamp dependencies must use extracted source identities"
         );
-        for operations in &p.output_programs[0] {
+        for powered in [false, true] {
+            let operations = p.output_program(0, powered);
             assert!(
                 operations
                     .iter()
@@ -2637,7 +2686,7 @@ fn native_edges_and_host_preservation() {
         let compare = |runtime: &Runtime, world: &PlotWorld| {
             assert_eq!(runtime.blocks, p.positions.iter().map(|&pos| world.get_block(pos)).collect::<Vec<_>>());
             assert_eq!(
-                runtime.pending.iter_entries().collect::<Vec<_>>(),
+                runtime.pending_entries().into_iter().collect::<Vec<_>>(),
                 world.scheduler().iter_entries().collect::<Vec<_>>()
             );
         };
@@ -2673,7 +2722,7 @@ fn native_edges_and_host_preservation() {
                 }
             }
             assert!(w.scheduler().iter_entries().next().is_none());
-            assert!(r.pending.iter_entries().next().is_none());
+            assert!(r.pending_entries().into_iter().next().is_none());
         }
         assert!(r.operations > 0);
     }
@@ -2993,3 +3042,4 @@ fn preserves_pending_ticks_and_rejects_boundary() {
     };
     assert!(compile(&w, (BlockPos::new(-1, 0, 0), pos), entry).is_err());
 }
+

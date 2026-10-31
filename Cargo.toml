@@ -36,6 +36,8 @@ strip = "none"
 [features]
 default = ["static-log-levels"]
 static-log-levels = ["tracing/release_max_level_info", "tracing/max_level_debug"]
+redpiler-trace = ["mchprs_core/redpiler-trace"]
+redpiler-full-publication = ["mchprs_core/redpiler-full-publication"]
 
 [dependencies]
 mchprs_core = { path = "./crates/core" }

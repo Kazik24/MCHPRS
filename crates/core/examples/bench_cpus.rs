@@ -3,7 +3,7 @@
 mod cpus;
 
 use mchprs_blocks::BlockPos;
-use mchprs_core::{plot::PlotWorld, redpiler::Compiler, world::World};
+use mchprs_core::{plot::PlotWorld, world::World};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
@@ -84,6 +84,11 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize) -> Value {
     if initial != expected[0] {
         first_difference = Some(json!({"tick":0,"native":expected[0],"compiled":initial}));
     }
+    if std::env::var_os("MCHPRS_BENCH_WAIT_FOR_TRACE").is_some() {
+        eprintln!("trace-ready pid={}", std::process::id());
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).unwrap();
+    }
     compiler.try_on_use_block(cpu.origin + run).unwrap();
     let mut compiled_ticks = Duration::ZERO;
     let mut publication = Duration::ZERO;
@@ -111,7 +116,8 @@ fn run_sample(cpu: cpus::Cpu, ticks: u32, sample: usize) -> Value {
         "native_ms":native_ticks.as_secs_f64()*1000.0,"compiled_tick_ms":compiled_ticks.as_secs_f64()*1000.0,
         "publication_ms":publication.as_secs_f64()*1000.0,
         "native_tps":ticks as f64/native_ticks.as_secs_f64(),"compiled_tick_tps":ticks as f64/compiled_ticks.as_secs_f64(),
-        "compiled_full_publication_tps":ticks as f64/compiled_total.as_secs_f64(),
+        "publication_visibility":if cfg!(feature = "redpiler-full-publication") { "complete" } else { "redstone-only" },
+        "compiled_publication_tps":ticks as f64/compiled_total.as_secs_f64(),
         "first_difference":first_difference,"native_outputs":expected,"compiled_outputs":actual})
 }
 
@@ -126,14 +132,15 @@ fn main() {
     let ticks: u32 = args.get(2).map(|v| v.parse().unwrap()).unwrap_or(512);
     let runs: usize = args.get(3).map(|v| v.parse().unwrap()).unwrap_or(3);
     assert!(ticks > 0 && runs > 0);
+    let continue_on_divergence = std::env::var_os("MCHPRS_BENCH_ALLOW_DIVERGENCE").is_some();
     let destination = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/mair-six-build-bench");
     std::fs::create_dir_all(&destination).unwrap();
     let mut results = Vec::new();
     for sample in 1..=runs {
         let result = run_sample(cpus::CPUS[index], ticks, sample);
         eprintln!(
-            "{name} sample {sample}: status={} native TPS={} compiled full TPS={} compile ms={}",
-            result["status"], result["native_tps"], result["compiled_full_publication_tps"], result["compile_ms"]
+            "{name} sample {sample}: status={} native TPS={} compiled {} publication TPS={} compile ms={}",
+            result["status"], result["native_tps"], result["publication_visibility"], result["compiled_publication_tps"], result["compile_ms"]
         );
         let passed = result["status"] == "passed";
         results.push(result);
@@ -142,7 +149,7 @@ fn main() {
             serde_json::to_vec_pretty(&results).unwrap(),
         )
         .unwrap();
-        if !passed {
+        if !passed && !continue_on_divergence {
             break;
         }
     }

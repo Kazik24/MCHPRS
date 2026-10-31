@@ -148,7 +148,7 @@ fn unsupported_barrel_compile_keeps_the_open_container_in_native_mode() {
 }
 
 #[test]
-fn unsupported_pressure_plate_compile_keeps_native_simulation_active() {
+fn unpowered_pressure_plate_compiles_and_hands_off_on_player_contact() {
     let (mut plot, _peer) = fixture(false);
     let plate = BlockPos::new(34, 20, 34);
     let outside = PlayerPos::new(33.5, 20.0, 34.5);
@@ -157,11 +157,13 @@ fn unsupported_pressure_plate_compile_keeps_native_simulation_active() {
     plot.world.set_block(plate, Block::StonePressurePlate { powered: false });
     plot.start_redpiler(CompilerOptions::default());
     plot.wait_for_redpiler();
-    assert!(!plot.redpiler.is_active());
+    assert!(plot.redpiler.is_active());
     plot.players[0].on_ground = true;
 
     plot.players[0].pos = outside;
     plot.on_player_move(0, outside, on_plate);
+    assert_eq!(plot.world.get_block(plate).pressure_plate_powered(), Some(true));
+    assert!(!plot.redpiler.is_active(), "plate input hands execution back to the interpreter");
     plot.players[0].pos = outside;
     plot.on_player_move(0, on_plate, outside);
 

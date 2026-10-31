@@ -195,6 +195,9 @@ pub(super) fn inputs_of(
         Block::RedstoneLamp { .. } | Block::Hopper { .. } | Block::NoteBlock { .. } => {
             found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?
         }
+        block if block.is_copper_bulb() || block.is_command_block() => {
+            found = crate::redpiler::scratch::discover_lamp_sources(world, pos)?
+        }
         Block::RedstoneTorch { .. } | Block::RedstoneWallTorch { .. } => found = crate::redpiler::scratch::discover_torch_sources(world, pos, block)?,
         Block::RedstoneRepeater { .. } | Block::RedstoneComparator { .. } => {
             let (facing, comparator) = match block {
@@ -207,7 +210,7 @@ pub(super) fn inputs_of(
             let block = world.get_block(rear);
             if matches!(block, Block::RedstoneWire { .. }) {
                 found = wire_sources(world, &[rear], monitor)?;
-            } else if block.is_solid() || block.is_copper_bulb() {
+            } else if block.is_solid() {
                 for direction in BlockFace::values() {
                     let at = rear.offset(direction);
                     if crate::redstone::power::emits_strong_power(world.get_block(at), world, at, direction, true) {
