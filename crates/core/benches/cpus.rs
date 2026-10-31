@@ -1,9 +1,12 @@
 //! Deterministic end-to-end interpreter/Redpiler CPU benchmarks with frozen-state assertions.
 //! CPU initialization, Redpiler compilation and verification are excluded from tick timing.
 #![recursion_limit = "256"]
-#[path = "support/cpus.rs"]
+#[path = "../test_support/cpus.rs"]
 mod cpu_support;
+#[path = "support/cpu_timing.rs"]
+mod cpu_timing;
 use cpu_support::*;
+use cpu_timing::replay_with_visuals;
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
     assert!(

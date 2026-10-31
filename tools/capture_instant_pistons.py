@@ -16,7 +16,7 @@ SOURCES = ["Cargo.lock", "crates/core/src/redstone/mod.rs", "crates/core/src/red
            "crates/core/src/redstone/wire/mod.rs", "crates/core/src/redstone/wire/turbo.rs",
            "crates/core/src/redstone/wire/turbo_cache.rs", "crates/core/src/plot/mod.rs",
            "crates/core/src/plot/worldedit/mod.rs", "crates/core/src/plot/worldedit/schematic.rs",
-           "crates/core/src/interaction.rs", "crates/core/src/redpiler/backend/queue.rs",
+           "crates/core/src/interaction.rs", "crates/core/src/world/scheduler.rs",
            "crates/core/src/world/mod.rs", "crates/core/src/world/wire_cache.rs",
            "crates/world/src/lib.rs", "crates/blocks/src/block_entities.rs", "crates/blocks/src/blocks/mod.rs",
            "crates/core/src/redstone/instant_piston_tests.rs", "tools/inspect_instant_pistons.py",

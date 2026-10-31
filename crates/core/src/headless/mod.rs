@@ -11,9 +11,9 @@ use mchprs_world::{TickEntry, TickPriority};
 
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld};
 pub use crate::redpiler::{CompileStatistics, CompilerOptions};
-use crate::redpiler::{Compiler, TaskMonitor, TickScheduler};
+use crate::redpiler::{Compiler, TaskMonitor};
 use crate::redstone;
-use crate::world::{World, storage::Chunk};
+use crate::world::{World, scheduler::TickScheduler, storage::Chunk};
 use std::io::Cursor;
 
 /// A complete sparse snapshot in plot coordinates; unspecified cells are air.

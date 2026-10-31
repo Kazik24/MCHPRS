@@ -340,7 +340,7 @@ pub fn reference(cpu: Cpu) -> Reference {
         schema: u32,
         cpus: std::collections::BTreeMap<String, Vec<BlockPatch>>,
     }
-    let migration: Migration = serde_json::from_str(include_str!("../../../../test_data/cpu-references/piston-shape-checkpoints.json")).unwrap();
+    let migration: Migration = serde_json::from_str(include_str!("../../../test_data/cpu-references/piston-shape-checkpoints.json")).unwrap();
     assert_eq!(migration.schema, 1);
     for patch in migration.cpus.get(cpu.name).into_iter().flatten() {
         let checkpoint = reference
@@ -352,16 +352,6 @@ pub fn reference(cpu: Cpu) -> Reference {
         checkpoint.blocks.clone_from(&patch.after);
     }
     reference
-}
-
-/// Load, compile and verify outside timing; simulation plus output flushes are timed.
-pub struct RunTiming {
-    pub total: Duration,
-    pub active: Duration,
-    pub active_ticks: u32,
-    pub compile: Option<Duration>,
-    pub visual_counts: (u64, u64, u64),
-    pub instant_piston_cache_stats: Option<(usize, usize, u64)>,
 }
 
 pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration) {
@@ -403,64 +393,52 @@ pub fn compile_cpu(world: PlotWorld, cpu: Cpu) -> (PlotWorld, Compiler, Duration
     (world, compiler, compile_started.elapsed())
 }
 
-pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, flush_every: u32, redpiler: bool) -> RunTiming {
-    let mut world = load_cpu(cpu);
-    if flush_every != 0 {
-        // Flush imported initial blocks outside timing in both modes.
-        world.flush_block_changes();
-    }
-    let (mut world, mut compiler, compile) = if redpiler {
-        let (world, compiler, elapsed) = compile_cpu(world, cpu);
-        (world, Some(compiler), Some(elapsed))
-    } else {
-        (world, None, None)
-    };
+#[derive(Clone, Copy)]
+pub enum ReplayStep {
+    Start,
+    Tick(u32),
+    Stop,
+    StopTick,
+}
+
+pub fn replay(
+    world: &mut PlotWorld,
+    cpu: Cpu,
+    expected: &Reference,
+    screen_only: bool,
+    flush_every: u32,
+    redpiler: bool,
+    mut step: impl FnMut(&mut PlotWorld, ReplayStep),
+) -> (u64, u64, u64) {
     world.set_screen_only(screen_only);
     let initial_visual_counts = world.visual_update_counts();
     let mut trace = Vec::new();
     let mut screen_trace = Vec::new();
     let mut ram_trace = Vec::new();
-    collect_ram(&world, cpu, 0, &mut ram_trace);
+    collect_ram(world, cpu, 0, &mut ram_trace);
     if cpu.screen.is_some() {
-        collect_screen(&world, cpu, 0, &mut screen_trace);
+        collect_screen(world, cpu, 0, &mut screen_trace);
     }
-    assert_eq!(checkpoint(&world, 0, &trace), expected.checkpoints[0], "{} initial state", cpu.name);
-    if let Some(compiler) = &mut compiler {
-        compiler.try_on_use_block(cpu.start + cpu.origin).unwrap();
-    } else {
-        click_cpu(&mut world, cpu, cpu.start);
-    }
-    let mut elapsed = Duration::ZERO;
+    assert_eq!(checkpoint(world, 0, &trace), expected.checkpoints[0], "{} initial state", cpu.name);
+    step(world, ReplayStep::Start);
     let active_ticks = cpu.active_ticks;
-    let mut active = Duration::ZERO;
     let mut next_checkpoint = 1;
     for tick in 1..=50_000 {
-        let now = Instant::now();
-        if let Some(compiler) = &mut compiler {
-            compiler.tick().unwrap();
-            compiler.try_flush(&mut world).unwrap();
-        } else {
-            world.tick_interpreted();
-        }
+        step(world, ReplayStep::Tick(tick));
         if flush_every != 0 && tick % flush_every == 0 {
             world.flush_block_changes();
         }
-        let tick_elapsed = now.elapsed();
-        elapsed += tick_elapsed;
-        if tick <= active_ticks {
-            active += tick_elapsed;
-        }
-        collect_chat(&world, tick, &mut trace);
-        collect_ram(&world, cpu, tick, &mut ram_trace);
-        if cpu.name == "cpu_bubblesort" && compiler.is_none() && tick >= active_ticks {
-            assert_eq!(quiet(&world), tick > active_ticks, "BubbleSort stop boundary at {tick}");
+        collect_chat(world, tick, &mut trace);
+        collect_ram(world, cpu, tick, &mut ram_trace);
+        if cpu.name == "cpu_bubblesort" && !redpiler && tick >= active_ticks {
+            assert_eq!(quiet(world), tick > active_ticks, "BubbleSort stop boundary at {tick}");
         }
         if cpu.screen.is_some() {
-            collect_screen(&world, cpu, tick, &mut screen_trace);
+            collect_screen(world, cpu, tick, &mut screen_trace);
         }
         if CHECKPOINTS.contains(&tick) {
             assert_eq!(
-                checkpoint(&world, tick, &trace),
+                checkpoint(world, tick, &trace),
                 expected.checkpoints[next_checkpoint],
                 "{} at tick {tick}",
                 cpu.name
@@ -468,23 +446,14 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
             next_checkpoint += 1;
         }
     }
-    if let Some(stop) = cpu.stop {
-        if let Some(compiler) = &mut compiler {
-            compiler.try_on_use_block(stop + cpu.origin).unwrap();
-        } else {
-            click_cpu(&mut world, cpu, stop);
-        }
+    if cpu.stop.is_some() {
+        step(world, ReplayStep::Stop);
         for tick in 50_001..=50_100 {
-            if let Some(compiler) = &mut compiler {
-                compiler.tick().unwrap();
-                compiler.try_flush(&mut world).unwrap();
-            } else {
-                world.tick_interpreted();
-            }
-            collect_chat(&world, tick, &mut trace);
+            step(world, ReplayStep::StopTick);
+            collect_chat(world, tick, &mut trace);
         }
         assert_eq!(
-            checkpoint(&world, 50_100, &trace),
+            checkpoint(world, 50_100, &trace),
             expected.checkpoints[next_checkpoint],
             "{} stop control",
             cpu.name
@@ -513,23 +482,13 @@ pub fn replay_with_visuals(cpu: Cpu, expected: &Reference, screen_only: bool, fl
     // A disconnected start button must not pass merely by reaching an idle final state.
     assert_ne!(expected.checkpoints[0].blocks, expected.checkpoints[3].blocks);
     assert_ne!(expected.checkpoints[2].blocks, expected.checkpoints[3].blocks);
-    RunTiming {
-        total: elapsed,
-        active,
-        active_ticks,
-        compile,
-        instant_piston_cache_stats: world.instant_piston_cache().map(|cache| cache.stats()),
-        visual_counts: {
-            let final_counts = world.visual_update_counts();
-            (
-                final_counts.0 - initial_visual_counts.0,
-                final_counts.1 - initial_visual_counts.1,
-                final_counts.2 - initial_visual_counts.2,
-            )
-        },
-    }
+    let final_counts = world.visual_update_counts();
+    (
+        final_counts.0 - initial_visual_counts.0,
+        final_counts.1 - initial_visual_counts.1,
+        final_counts.2 - initial_visual_counts.2,
+    )
 }
-
 fn load_at(name: &str, origin: BlockPos) -> PlotWorld {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test_data").join(name);
     let mut clip = load_schematic(File::open(path).unwrap()).unwrap();

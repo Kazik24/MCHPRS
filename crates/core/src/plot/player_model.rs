@@ -1,4 +1,4 @@
-use super::super::Plot;
+use super::Plot;
 use crate::messages;
 use crate::player::{PacketSender, Player, SmallAnimal, SmallModel};
 use crate::world::World;
@@ -100,7 +100,7 @@ impl Plot {
             return true;
         }
         if !enabled
-            && !super::compass::body_clear(current.pos, 1.0, &|pos| {
+            && !super::redstone_tools::compass::body_clear(current.pos, 1.0, &|pos| {
                 if !Plot::in_plot_bounds(self.world.x, self.world.z, pos.x, pos.z) {
                     None
                 } else {

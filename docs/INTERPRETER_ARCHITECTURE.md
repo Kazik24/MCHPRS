@@ -24,12 +24,12 @@ activity and do not prove general Minecraft compatibility.
 | Power and component dispatch | [redstone/mod.rs](../crates/core/src/redstone/mod.rs), [power.rs](../crates/core/src/redstone/power.rs) | Directional weak/strong input, immediate updates, delayed ticks |
 | Dust geometry and propagation | [wire/mod.rs](../crates/core/src/redstone/wire/mod.rs), [turbo.rs](../crates/core/src/redstone/wire/turbo.rs) | Dust sides, attenuation, ordered Wire Turbo walks |
 | Dust addresses and facts | [world/wire_cache.rs](../crates/core/src/world/wire_cache.rs), [turbo_cache.rs](../crates/core/src/redstone/wire/turbo_cache.rs) | Canonical neighborhoods, immutable state facts, per-walk node lookup |
-| Shared scheduled work | [backend/queue.rs](../crates/core/src/redpiler/backend/queue.rs) | `TickScheduler`, priority/FIFO queues, saved tick entries |
+| Shared scheduled work | [world/scheduler.rs](../crates/core/src/world/scheduler.rs) | `TickScheduler`, priority/FIFO queues, saved tick entries |
 | Tick and piston lookup indexes | [plot/interpreter_cache.rs](../crates/core/src/plot/interpreter_cache.rs) | Counted membership and derived motion/event indexes |
 | Physical piston execution | [piston.rs](../crates/core/src/redstone/piston.rs), [world state](../crates/world/src/lib.rs) | Requests, event acceptance, payload transport, exact progress and identities |
 | Native piston route qualification | [piston/instant.rs](../crates/core/src/redstone/piston/instant.rs), [world/instant_piston.rs](../crates/core/src/world/instant_piston.rs) | Observed-cycle certificates and cached power-query addresses |
 | Attachment and shape callbacks | [interaction.rs](../crates/core/src/interaction.rs) | Support checks and geometry changes |
-| Performance and frozen replay | [cpus.rs](../crates/core/benches/cpus.rs), [support/cpus.rs](../crates/core/benches/support/cpus.rs), [piston.rs](../crates/core/benches/piston.rs), [instant.rs](../crates/core/benches/instant.rs) | Timed workloads with state and output assertions |
+| Performance and frozen replay | [cpus.rs](../crates/core/test_support/cpus.rs), [cpu_timing.rs](../crates/core/benches/support/cpu_timing.rs), [piston.rs](../crates/core/benches/piston.rs), [instant.rs](../crates/core/benches/instant.rs) | Timed workloads with state and output assertions |
 
 `Plot::tick` chooses `redpiler.tick_with_world` while a compiler is active and
 `world.tick_interpreted` otherwise. Interpreter cache hits do not activate a

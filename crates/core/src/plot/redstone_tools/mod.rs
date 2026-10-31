@@ -1,5 +1,4 @@
 pub(super) mod compass;
-pub(super) mod small;
 pub(super) mod waveform;
 use crate::messages;
 mod completion;

@@ -1,7 +1,6 @@
 //! Shared isolated native-interpreter world used by private compilers.
 use crate::plot::{PLOT_BLOCK_HEIGHT, PLOT_BLOCK_WIDTH, PLOT_WIDTH, PlotWorld};
-use crate::redpiler::ScheduledBlockTick;
-use crate::redpiler::TickScheduler;
+use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::{BlockFace, BlockPos, blocks::Block};
 use mchprs_world::{AdvancePhase, PistonState, TickEntry};

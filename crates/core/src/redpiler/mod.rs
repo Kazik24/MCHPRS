@@ -1,7 +1,6 @@
 //! Sampled compiled redstone execution.
 
 mod options;
-mod queue;
 mod sampled;
 mod scratch;
 mod task_monitor;
@@ -17,8 +16,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub use crate::world::scheduler::{Queues, ScheduledBlockTick, TickScheduler};
 pub use options::CompilerOptions;
-pub use queue::{Queues, ScheduledBlockTick, TickScheduler};
 pub use task_monitor::TaskMonitor;
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-#[path = "../benches/support/cpus.rs"]
+#[path = "../test_support/cpus.rs"]
 #[allow(dead_code)]
 mod cpus;
 
@@ -9,6 +9,50 @@ fn frozen_cpu_inputs_and_initial_states() {
         let world = cpus::load_cpu(cpu);
         assert_eq!(cpus::checkpoint(&world, 0, &[]), expected.checkpoints[0]);
     }
+}
+
+fn replay_frozen(cpu: cpus::Cpu, redpiler: bool) {
+    let expected = cpus::reference(cpu);
+    let world = cpus::load_cpu(cpu);
+    let (mut world, mut compiler) = if redpiler {
+        let (world, compiler, _) = cpus::compile_cpu(world, cpu);
+        (world, Some(compiler))
+    } else {
+        (world, None)
+    };
+    cpus::replay(&mut world, cpu, &expected, false, 0, redpiler, |world, step| match step {
+        cpus::ReplayStep::Start => {
+            if let Some(compiler) = &mut compiler {
+                compiler.try_on_use_block(cpu.start + cpu.origin).unwrap();
+            } else {
+                cpus::click_cpu(world, cpu, cpu.start);
+            }
+        }
+        cpus::ReplayStep::Tick(_) => {
+            if let Some(compiler) = &mut compiler {
+                compiler.tick().unwrap();
+                compiler.try_flush(world).unwrap();
+            } else {
+                world.tick_interpreted();
+            }
+        }
+        cpus::ReplayStep::StopTick => {
+            if let Some(compiler) = &mut compiler {
+                compiler.tick().unwrap();
+                compiler.try_flush(world).unwrap();
+            } else {
+                world.tick_interpreted();
+            }
+        }
+        cpus::ReplayStep::Stop => {
+            let stop = cpu.stop.unwrap();
+            if let Some(compiler) = &mut compiler {
+                compiler.try_on_use_block(stop + cpu.origin).unwrap();
+            } else {
+                cpus::click_cpu(world, cpu, stop);
+            }
+        }
+    });
 }
 
 #[test]
@@ -108,31 +152,31 @@ fn compiled_bubblesort_load_reset_start_checkpoints() {
 #[test]
 #[ignore = "50,000-tick CPU regression; run with --release -- --ignored"]
 fn pm1_sort_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[0], &cpus::reference(cpus::CPUS[0]), false, 0, false);
+    replay_frozen(cpus::CPUS[0], false);
 }
 
 #[test]
 #[ignore = "50,000-tick CPU regression; run with --release -- --ignored"]
 fn anpu_pong_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[1], &cpus::reference(cpus::CPUS[1]), false, 0, false);
+    replay_frozen(cpus::CPUS[1], false);
 }
 
 #[test]
 #[ignore = "50,000-tick CPU regression; run explicitly"]
 fn bubblesort_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[2], &cpus::reference(cpus::CPUS[2]), false, 0, false);
+    replay_frozen(cpus::CPUS[2], false);
 }
 
 #[test]
 #[ignore = "50,000-tick interpreter baseline; run explicitly"]
 fn zcore12b_sierpinski_frozen_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[3], &cpus::reference(cpus::CPUS[3]), false, 0, false);
+    replay_frozen(cpus::CPUS[3], false);
 }
 
 #[test]
 #[ignore = "full CPU Redpiler compile plus 50,000-tick replay; run explicitly"]
 fn zcore12b_sierpinski_redpiler_matches_interpreter_reference() {
-    cpus::replay_with_visuals(cpus::CPUS[3], &cpus::reference(cpus::CPUS[3]), false, 0, true);
+    replay_frozen(cpus::CPUS[3], true);
 }
 
 #[test]

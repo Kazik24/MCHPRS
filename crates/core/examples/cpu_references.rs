@@ -1,5 +1,5 @@
 //! Explicit reference capture, before changing interpreter behavior.
-#[path = "../benches/support/cpus.rs"]
+#[path = "../test_support/cpus.rs"]
 #[allow(dead_code)]
 mod cpus;
 use cpus::*;

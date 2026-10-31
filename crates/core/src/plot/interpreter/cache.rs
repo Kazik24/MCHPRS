@@ -2,7 +2,7 @@ use mchprs_blocks::BlockPos;
 use mchprs_world::{PistonEvent, PistonState};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::redpiler::{ScheduledBlockTick, TickScheduler};
+use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 
 
 /// Membership only: the scheduler retains priority, FIFO and ring ordering.

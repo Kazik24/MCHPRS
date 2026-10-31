@@ -1,6 +1,6 @@
-use super::super::TickScheduler;
 use super::program::ArrangementSource;
-use super::{Operation, Program, ScheduledBlockTick, ScratchError};
+use super::{Operation, Program, ScratchError};
+use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 use mchprs_blocks::blocks::Block;
 use mchprs_world::TickPriority;
 

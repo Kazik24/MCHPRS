@@ -14,7 +14,6 @@ pub mod commands;
 use redstone_tools::compass;
 mod containers;
 mod data;
-#[path = "repository/mod.rs"]
 pub mod database;
 mod diagnostics;
 mod git;
@@ -28,8 +27,9 @@ mod neighbors;
 mod packet_handlers;
 mod picking;
 #[cfg(test)]
-#[path = "../redstone/piston/tests/plot.rs"]
+#[path = "tests/piston.rs"]
 mod piston_tests;
+mod player_model;
 mod preview;
 mod redpiler_compilation;
 pub(crate) mod redstone_tools;
@@ -37,7 +37,6 @@ mod scoreboard;
 mod screen_updates;
 #[cfg(test)]
 mod sign_tests;
-use redstone_tools::small;
 mod visuals;
 use redstone_tools::waveform;
 pub mod worldedit;
@@ -45,10 +44,11 @@ pub mod worldedit;
 use crate::chat::ChatComponent;
 use crate::config::CONFIG;
 use crate::player::{EntityId, Gamemode, PacketSender, Player, PlayerPos};
-use crate::redpiler::{Compiler, CompilerOptions, ScheduledBlockTick, TickScheduler};
+use crate::redpiler::{Compiler, CompilerOptions};
 use crate::redstone;
 use crate::server::{BroadcastMessage, Message, PrivMessage};
 use crate::utils::HyphenatedUUID;
+use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 use crate::world::storage::Chunk;
 use crate::world::{BlockAction, RedstoneUpdateObservation, World};
 use anyhow::Context;
@@ -1470,7 +1470,7 @@ impl Plot {
             .encode(),
         );
         viewer.send_packet(&player.entity_equipment_packet());
-        small::spawn_model(viewer, player);
+        player_model::spawn_model(viewer, player);
     }
 
     fn enter_plot(&mut self, player: Player) {

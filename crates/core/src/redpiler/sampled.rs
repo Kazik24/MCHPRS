@@ -10,10 +10,12 @@ mod program;
 #[cfg(test)]
 mod tests;
 
+use super::scratch::ScratchWorld;
 pub(super) use super::scratch::{ScratchEntry, ScratchError};
-use super::{queue::ScheduledBlockTick, scratch::ScratchWorld};
 #[cfg(test)]
 use crate::world::World;
+#[cfg(test)]
+use crate::world::scheduler::ScheduledBlockTick;
 #[cfg(test)]
 use compiler::{PistonActor, assign_piston_groups, compile, discover_piston_actors};
 pub(super) use executor::Runtime;

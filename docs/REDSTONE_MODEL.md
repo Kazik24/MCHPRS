@@ -1406,7 +1406,7 @@ Several rules can be expressed more generally, but the current implementation ha
 | Dust shape and seed evaluation | [wire/mod.rs](../crates/core/src/redstone/wire/mod.rs) |
 | Dust snapshots, queue order and headings | [wire/turbo.rs](../crates/core/src/redstone/wire/turbo.rs), [world/wire_cache.rs](../crates/core/src/world/wire_cache.rs) |
 | Delayed diode transitions | [repeater.rs](../crates/core/src/redstone/repeater.rs), [comparator.rs](../crates/core/src/redstone/comparator.rs) |
-| Scheduler ring and priority FIFOs | [backend/queue.rs](../crates/core/src/redpiler/backend/queue.rs) |
+| Scheduler ring and priority FIFOs | [scheduler.rs](../crates/core/src/world/scheduler.rs) |
 | Interpreter phases, stepping and typed request binding | [plot/mod.rs](../crates/core/src/plot/mod.rs) |
 | Support, placement, destruction and use | [interaction.rs](../crates/core/src/interaction.rs) |
 | Piston transitions and motion state | [PISTON_MODEL.md](PISTON_MODEL.md) |

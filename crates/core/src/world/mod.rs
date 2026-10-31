@@ -1,3 +1,4 @@
+pub mod scheduler;
 pub mod storage;
 pub use crate::redstone::piston::InstantPistonCache;
 pub(crate) use crate::redstone::piston::PowerRoute;

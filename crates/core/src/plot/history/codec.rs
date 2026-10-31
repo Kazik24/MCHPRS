@@ -1,8 +1,7 @@
 use super::budget::{Budget, Bytes};
 use super::{PLOT_SECTIONS, PlotWorld};
 use crate::messages;
-use crate::redpiler::ScheduledBlockTick;
-use crate::redpiler::TickScheduler;
+use crate::world::scheduler::{ScheduledBlockTick, TickScheduler};
 use crate::world::storage::Chunk;
 use bincode::Options;
 use mchprs_save_data::plot_data::ChunkData;

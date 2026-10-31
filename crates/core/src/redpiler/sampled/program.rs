@@ -1,5 +1,5 @@
-use super::super::TickScheduler;
 use super::{Runtime, ScratchError};
+use crate::world::scheduler::TickScheduler;
 use mchprs_blocks::{BlockPos, blocks::Block};
 use std::collections::HashMap;
 

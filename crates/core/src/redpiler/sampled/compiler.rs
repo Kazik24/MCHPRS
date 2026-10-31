@@ -7,13 +7,14 @@ use mchprs_blocks::{
     BlockFacing, BlockPos,
     blocks::{Block, ButtonFace, LeverFace},
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 struct CompilePhases {
     enabled: bool,
     total: Instant,
     started: Instant,
     phase: &'static str,
+    detail: Option<(&'static str, usize)>,
 }
 
 impl CompilePhases {
@@ -24,6 +25,7 @@ impl CompilePhases {
             total: now,
             started: now,
             phase: "scratch snapshot",
+            detail: None,
         }
     }
 
@@ -33,17 +35,81 @@ impl CompilePhases {
         }
         self.phase = phase;
         self.started = Instant::now();
+        self.detail = None;
+    }
+
+    fn detail(&mut self, detail: &'static str, item: usize) {
+        self.detail = Some((detail, item));
     }
 }
 
 impl Drop for CompilePhases {
     fn drop(&mut self) {
         if self.enabled {
+            let detail = self
+                .detail
+                .map_or_else(String::new, |(step, item)| format!("; last step {step}, source/component {item}"));
             eprintln!(
-                "Redpiler compile phase {}: {} ms; total {} ms",
+                "Redpiler compile phase {}{}: {} ms; total {} ms",
                 self.phase,
+                detail,
                 self.started.elapsed().as_millis(),
                 self.total.elapsed().as_millis()
+            );
+        }
+    }
+}
+
+#[derive(Default)]
+struct SourceSamplingMetrics {
+    enabled: bool,
+    source_selection: Duration,
+    loaded_arrangement: Duration,
+    quiet_basis: Duration,
+    scratch_setup: Duration,
+    source_flips: Duration,
+    frame_capture_comparison: Duration,
+    ordered_lowering: Duration,
+    candidate_sources: usize,
+    racing_sources: usize,
+    completed_sources: usize,
+    static_links: usize,
+    conditional_links: usize,
+    program_starts: usize,
+    quiet_component_walks: usize,
+    setup_component_walks: usize,
+    entry_state_walks: usize,
+    captured_frames: usize,
+    frame_comparison_walks: usize,
+    observed_callbacks: usize,
+}
+
+impl Drop for SourceSamplingMetrics {
+    fn drop(&mut self) {
+        if self.enabled {
+            eprintln!(
+                "Redpiler source sampling: select={} ms loaded-arrangement={} ms quiet-basis={} ms scratch-restore/setup={} ms native-flips/callbacks={} ms frame-capture/comparison={} ms ordered-lowering={} ms; candidates={} racing={} completed={} static_links={} conditional_links={} program.start_calls={} full_component_walks={} (quiet={}, setup={}, frame_capture={}) entry_state_checks={} frame_comparison_walks={} frames={} observed_callbacks={}",
+                self.source_selection.as_millis(),
+                self.loaded_arrangement.as_millis(),
+                self.quiet_basis.as_millis(),
+                self.scratch_setup.as_millis(),
+                self.source_flips.as_millis(),
+                self.frame_capture_comparison.as_millis(),
+                self.ordered_lowering.as_millis(),
+                self.candidate_sources,
+                self.racing_sources,
+                self.completed_sources,
+                self.static_links,
+                self.conditional_links,
+                self.program_starts,
+                self.quiet_component_walks + self.setup_component_walks + self.captured_frames,
+                self.quiet_component_walks,
+                self.setup_component_walks,
+                self.captured_frames,
+                self.entry_state_walks,
+                self.frame_comparison_walks,
+                self.captured_frames,
+                self.observed_callbacks
             );
         }
     }
@@ -710,6 +776,14 @@ pub(crate) fn compile_monitored(
     phases.next("source transition sampling");
     check_cancelled(monitor)?;
     let mut ordering_probe = ScratchWorld::from_world_monitored(world, bounds, entry.clone(), monitor)?;
+    let mut sampling = SourceSamplingMetrics {
+        enabled: phases.enabled,
+        static_links: program.links.len() + program.side_links.len(),
+        conditional_links: program.arrangement_links.len(),
+        ..SourceSamplingMetrics::default()
+    };
+    phases.detail("source selection/index preparation", 0);
+    let selection_started = Instant::now();
     let output_sources: Vec<_> = sources
         .iter()
         .copied()
@@ -727,19 +801,38 @@ pub(crate) fn compile_monitored(
         .copied()
         .filter(|&source| matches!(program.initial[source], Block::StoneButton { .. }) || feeds_two_racers(&program, source))
         .collect();
+    sampling.source_selection = selection_started.elapsed();
+    sampling.candidate_sources = output_sources.len();
+    sampling.racing_sources = racing_sources.len();
     let mut comparisons = Vec::new();
+    let mut quiet_basis = Vec::with_capacity(program.positions.len());
     for (output_index, &source) in output_sources.iter().enumerate() {
+        phases.detail("source transition", source);
         check_cancelled(monitor)?;
         check_cancelled(monitor)?;
         if !racing_sources.contains(&source) {
+            phases.detail("ordered-program lowering", source);
+            let lowering_started = Instant::now();
             let operations = source_operations(&program, source);
             program.output_programs[source] = [operations.clone(), operations];
+            sampling.ordered_lowering += lowering_started.elapsed();
+            sampling.completed_sources += 1;
             continue;
         }
+        phases.detail("scratch restore/setup", source);
+        let scratch_started = Instant::now();
         ordering_probe.revert();
+        sampling.scratch_setup += scratch_started.elapsed();
         let scratch = &mut ordering_probe;
+        phases.detail("loaded-arrangement preparation", source);
+        let arrangement_started = Instant::now();
         let loaded = program.start();
+        sampling.loaded_arrangement += arrangement_started.elapsed();
+        sampling.program_starts += 1;
         let pos = program.positions[source];
+        phases.detail("quiet-basis preparation", source);
+        let quiet_started = Instant::now();
+        quiet_basis.clear();
         for (id, &at) in program.positions.iter().enumerate() {
             let block = scratch.world().get_block(at);
             let constant_power = program.incoming[id]
@@ -793,8 +886,20 @@ pub(crate) fn compile_monitored(
                 Block::RedstoneWallTorch { facing, .. } => Block::RedstoneWallTorch { lit: false, facing },
                 _ => block,
             };
+            quiet_basis.push((quiet, matches!(block, Block::RedstoneComparator { .. })));
+        }
+        sampling.quiet_basis += quiet_started.elapsed();
+        sampling.quiet_component_walks += 1;
+        phases.detail("scratch quiet-state setup", source);
+        let scratch_setup_started = Instant::now();
+        for (&at, &(quiet, comparator)) in program.positions.iter().zip(&quiet_basis) {
+            if comparator {
+                scratch.world_mut().set_block_entity(at, BlockEntity::Comparator { output_strength: 0 });
+            }
             scratch.world_mut().set_block(at, quiet);
         }
+        sampling.scratch_setup += scratch_setup_started.elapsed();
+        sampling.setup_component_walks += 1;
         let initial_power = false;
         let mut first_edge = None;
         let mut samples: [Option<Vec<Frame>>; 2] = [None, None];
@@ -804,6 +909,7 @@ pub(crate) fn compile_monitored(
             3
         };
         for powered in [!initial_power, initial_power, !initial_power].into_iter().take(edge_count) {
+            phases.detail("native source flip", source);
             check_cancelled(monitor)?;
             let w = scratch.world_mut();
             let mut frames = vec![];
@@ -813,6 +919,7 @@ pub(crate) fn compile_monitored(
                     w.set_block(pos, Block::RedstoneRepeater { repeater });
                 }
             }
+            let flip_started = Instant::now();
             w.observe_redstone_updates(true);
             match w.get_block(pos) {
                 Block::Lever { lever } if lever.powered != powered => {
@@ -856,12 +963,17 @@ pub(crate) fn compile_monitored(
                 }
                 _ => continue,
             }
+            sampling.source_flips += flip_started.elapsed();
             // SourceOrdering records the immediate flip; scheduled feedback need not settle.
+            phases.detail("frame capture/comparison", source);
+            let frame_started = Instant::now();
             frames.push(Frame {
                 blocks: program.positions.iter().map(|&p| w.get_block(p)).collect(),
                 pending: w.scheduler().iter_entries().collect(),
                 deliveries: w.take_redstone_update_observations(),
             });
+            sampling.captured_frames += 1;
+            sampling.observed_callbacks += frames[0].deliveries.len();
             if let Some(previous) = &first_edge {
                 if powered != initial_power && *previous != frames {
                     if !matches!(program.initial[source], Block::StoneButton { .. }) {
@@ -871,6 +983,9 @@ pub(crate) fn compile_monitored(
             } else {
                 first_edge = Some(frames.clone());
             }
+            sampling.frame_capture_comparison += frame_started.elapsed();
+            phases.detail("ordered-program lowering", source);
+            let lowering_started = Instant::now();
             let mut targets = Vec::new();
             for link in program.links.iter().filter(|link| link.source == source) {
                 if !targets.contains(&link.target) {
@@ -951,8 +1066,13 @@ pub(crate) fn compile_monitored(
             }
             program.output_programs[source][usize::from(powered)] = operations;
             samples[usize::from(powered)] = Some(frames);
+            sampling.ordered_lowering += lowering_started.elapsed();
             scratch.finish_probe()?;
         }
+        sampling.completed_sources += 1;
+        phases.detail("source entry-state comparison", source);
+        let entry_check_started = Instant::now();
+        sampling.entry_state_walks += 1;
         if output_index >= sources.len()
             || program.initial.iter().any(|block| match block {
                 Block::Lever { lever } => lever.powered,
@@ -963,13 +1083,17 @@ pub(crate) fn compile_monitored(
                 _ => false,
             })
         {
+            sampling.frame_capture_comparison += entry_check_started.elapsed();
             continue;
         }
+        sampling.frame_capture_comparison += entry_check_started.elapsed();
         comparisons.push((output_index, pos, samples));
     }
     for (output_index, pos, samples) in comparisons {
+        phases.detail("captured-frame runtime comparison", output_sources[output_index]);
         check_cancelled(monitor)?;
         let source = output_sources[output_index];
+        sampling.program_starts += 1;
         let mut runtime = program.start();
         for powered in [true, false] {
             runtime.set_input(output_index, powered)?;
@@ -978,6 +1102,7 @@ pub(crate) fn compile_monitored(
                 if step != 0 {
                     runtime.tick()?;
                 }
+                let compare_started = Instant::now();
                 let pending_matches = if matches!(program.initial[source], Block::StoneButton { .. }) {
                     let pos = program.positions[source];
                     runtime.pending.iter_entries().filter(|entry| entry.pos == pos).collect::<Vec<_>>()
@@ -985,7 +1110,10 @@ pub(crate) fn compile_monitored(
                 } else {
                     runtime.pending.iter_entries().collect::<Vec<_>>() == frame.pending
                 };
-                if runtime.blocks != frame.blocks || !pending_matches {
+                sampling.frame_comparison_walks += 1;
+                let blocks_match = runtime.blocks == frame.blocks;
+                sampling.frame_capture_comparison += compare_started.elapsed();
+                if !blocks_match || !pending_matches {
                     eprintln!(
                         "sampled runtime at {pos:?}, edge={powered}, step={step}: expected blocks={:?}, pending={:?}; observed blocks={:?}, pending={:?}",
                         frame.blocks,

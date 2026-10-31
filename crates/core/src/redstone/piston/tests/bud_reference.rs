@@ -5,7 +5,7 @@ use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockFace, BlockFacing, BlockPos};
 use rustc_hash::FxHashSet;
 
-#[path = "../../../../benches/support/cpus.rs"]
+#[path = "../../../../test_support/cpus.rs"]
 #[allow(dead_code)]
 mod cpus;
 use serde::{Deserialize, Serialize};

@@ -21,7 +21,7 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     sources = [
         "Cargo.lock",
-        "crates/core/benches/support/cpus.rs",
+        "crates/core/test_support/cpus.rs",
         "crates/core/tests/cpu_references.rs",
         "crates/core/src/interaction.rs",
         "crates/core/src/redstone/mod.rs",

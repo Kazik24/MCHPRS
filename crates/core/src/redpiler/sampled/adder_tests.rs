@@ -591,7 +591,7 @@ fn run_repeated_adder(manifest_name: &str, cases: &[(u64, u64, u64)]) {
         }
         assert!(runtime.operations > before, "{manifest_name} operation {operation}: no compiled work");
     }
-    assert!(elapsed_ticks > 2 * super::super::queue::NUM_QUEUES as u64);
+    assert!(elapsed_ticks > 2 * crate::world::scheduler::NUM_QUEUES as u64);
 }
 
 #[test]
