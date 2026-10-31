@@ -40,6 +40,14 @@ pub fn play_note(world: &mut impl World, pos: BlockPos, instrument: Instrument, 
     );
 }
 
+pub(crate) fn tune(world: &mut impl World, pos: BlockPos, instrument: Instrument, note: u32, powered: bool) {
+    let note = (note + 1) % 25;
+    world.set_block(pos, Block::NoteBlock { instrument, note, powered });
+    if is_noteblock_unblocked(world, pos) {
+        play_note_for_action(world, pos, instrument, note);
+    }
+}
+
 /// The client waits for the server to play a manually tuned note.
 pub fn play_note_for_action(world: &mut impl World, pos: BlockPos, instrument: Instrument, note: u32) {
     let Some(pitch) = pitch(note) else {

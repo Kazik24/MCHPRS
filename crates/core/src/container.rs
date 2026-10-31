@@ -53,6 +53,7 @@ struct FurnaceRules {
     smeltable: Vec<String>,
 }
 
+// Furnace menu rules belong with server inventory actions, rather than block state data.
 impl FurnaceRules {
     fn get() -> &'static Self {
         static RULES: std::sync::OnceLock<FurnaceRules> = std::sync::OnceLock::new();

@@ -579,7 +579,17 @@ fn normal_and_early_retract_requests_keep_distinct_queue_identities() {
     let mut runtime = program.start();
     runtime.update_piston(0);
     runtime.update_piston(0);
-    runtime.motions.push((0, Some(0), far, 2, true));
+    runtime.motions.push(super::executor::Motion {
+        piston: 0,
+        token: Some(0),
+        destination: far,
+        start: 0,
+        landing: 2,
+        order: 0,
+        extending: true,
+        piston_done: false,
+        token_done: false,
+    });
     runtime.update_piston(0);
     runtime.update_piston(0);
     assert_eq!(
@@ -587,6 +597,238 @@ fn normal_and_early_retract_requests_keep_distinct_queue_identities() {
         vec![(0, PistonEvent::Retract), (0, PistonEvent::EarlyRetract)]
     );
 }
+
+#[test]
+fn landing_order_that_already_passed_requests_normal_retraction() {
+    use super::executor::PistonEvent;
+
+    let base = BlockPos::new(15, 15, 15);
+    let home = base.offset(BlockFace::East);
+    let far = home.offset(BlockFace::East);
+    let mut program = test_program(
+        vec![base],
+        vec![Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: true,
+                extended: true,
+            },
+        }],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    program.pistons.push(super::compiler::PistonActor {
+        id: 0,
+        base,
+        facing: BlockFacing::East,
+        sticky: true,
+        home,
+        far,
+        extended: true,
+        head_present: false,
+        group: 0,
+    });
+    program.tokens.push(super::compiler::PistonToken {
+        block: Block::Stone {},
+        position: None,
+        cells: vec![far],
+    });
+
+    let request = |motion_time, order, cursor| {
+        let mut runtime = program.start();
+        runtime.motion_time = motion_time;
+        runtime.motion_phase = true;
+        runtime.landing_cursor = Some(cursor);
+        runtime.motions.push(super::executor::Motion {
+            piston: 0,
+            token: Some(0),
+            destination: far,
+            start: 0,
+            landing: 2,
+            order,
+            extending: true,
+            piston_done: false,
+            token_done: false,
+        });
+        runtime.update_piston(0);
+        runtime.piston_events.into_iter().collect::<Vec<_>>()
+    };
+
+    assert_eq!(request(2, 0, 1), vec![(0, PistonEvent::EarlyRetract)]);
+    assert_eq!(request(2, 1, 0), vec![(0, PistonEvent::Retract)]);
+    assert_eq!(request(2, 1, 1), vec![(0, PistonEvent::Retract)]);
+    assert_eq!(request(1, 0, 1), vec![(0, PistonEvent::EarlyRetract)]);
+}
+
+#[test]
+fn landing_callbacks_preserve_both_motion_orders() {
+    use super::{executor::PistonEvent, program::MoveStep};
+
+    let base = BlockPos::new(15, 15, 15);
+    let home = base.offset(BlockFace::East);
+    let far = home.offset(BlockFace::East);
+    let callback_cell = BlockPos::new(20, 15, 15);
+    let mut program = test_program(
+        vec![base],
+        vec![Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: true,
+            },
+        }],
+        vec![],
+        vec![],
+        vec![],
+        vec![],
+    )
+    .unwrap();
+    program.pistons.push(super::compiler::PistonActor {
+        id: 0,
+        base,
+        facing: BlockFacing::East,
+        sticky: false,
+        home,
+        far,
+        extended: true,
+        head_present: false,
+        group: 0,
+    });
+    program.tokens = vec![
+        super::compiler::PistonToken {
+            block: Block::Stone {},
+            position: None,
+            cells: vec![far],
+        },
+        super::compiler::PistonToken {
+            block: Block::Stone {},
+            position: None,
+            cells: vec![callback_cell],
+        },
+    ];
+    program.move_steps = vec![
+        vec![[Vec::new(), Vec::new()]],
+        vec![[
+            Vec::new(),
+            vec![MoveStep {
+                node: 0,
+                watcher: true,
+                wire: false,
+                wires: vec![],
+            }],
+        ]],
+    ];
+
+    let events_for_order = |callback_first: bool| {
+        let pushing_order = usize::from(callback_first);
+        let callback_order = usize::from(!callback_first);
+        let mut runtime = program.start();
+        runtime.motion_time = 1;
+        runtime.piston_head_moving[0] = true;
+        runtime.motions = vec![
+            super::executor::Motion {
+                piston: 0,
+                token: Some(0),
+                destination: far,
+                start: 0,
+                landing: 2,
+                order: pushing_order,
+                extending: true,
+                piston_done: false,
+                token_done: false,
+            },
+            super::executor::Motion {
+                piston: 0,
+                token: Some(1),
+                destination: callback_cell,
+                start: 0,
+                landing: 2,
+                order: callback_order,
+                extending: true,
+                piston_done: true,
+                token_done: false,
+            },
+        ];
+        runtime.tick().unwrap();
+        runtime.piston_events.into_iter().collect::<Vec<_>>()
+    };
+
+    assert_eq!(events_for_order(false), vec![(0, PistonEvent::Retract)]);
+    assert_eq!(events_for_order(true), vec![(0, PistonEvent::Retract)]);
+}
+
+#[test]
+fn interrupted_extension_exports_only_its_unfinished_parts() {
+    use super::executor::PistonEvent;
+
+    let base = BlockPos::new(15, 15, 15);
+    let home = base.offset(BlockFace::East);
+    let far = home.offset(BlockFace::East);
+    for sticky in [false, true] {
+        let mut program = test_program(
+            vec![base],
+            vec![Block::Piston {
+                piston: RedstonePiston {
+                    facing: BlockFacing::East,
+                    sticky,
+                    extended: true,
+                },
+            }],
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        program.pistons.push(super::compiler::PistonActor {
+            id: 0,
+            base,
+            facing: BlockFacing::East,
+            sticky,
+            home,
+            far,
+            extended: true,
+            head_present: false,
+            group: 0,
+        });
+        program.tokens.push(super::compiler::PistonToken {
+            block: Block::Stone {},
+            position: None,
+            cells: vec![far],
+        });
+
+        let mut runtime = program.start();
+        runtime.piston_head_moving[0] = true;
+        runtime.motions.push(super::executor::Motion {
+            piston: 0,
+            token: Some(0),
+            destination: far,
+            start: 0,
+            landing: 2,
+            order: 0,
+            extending: true,
+            piston_done: false,
+            token_done: false,
+        });
+        runtime.update_piston(0);
+        assert_eq!(runtime.piston_events.front(), Some(&(0, PistonEvent::EarlyRetract)));
+
+        runtime.tick().unwrap();
+
+        assert!(runtime.motions[0].piston_done);
+        assert_eq!(runtime.motions[0].token_done, sticky);
+        let parts = runtime.moving_parts().unwrap();
+        assert_eq!(parts.len(), if sticky { 1 } else { 2 });
+        assert!(parts.iter().any(|part| part.pos == base && part.entity.source));
+        assert!(!parts.iter().any(|part| part.pos == home));
+        assert_eq!(runtime.project(far), if sticky { Some(Block::Stone {}) } else { None });
+        assert_eq!(parts.iter().any(|part| part.pos == far), !sticky);
+    }
+}
+
 fn entry(w: &PlotWorld) -> ScratchEntry {
     ScratchEntry {
         scheduled: w.scheduler().iter_entries().collect(),
@@ -1577,6 +1819,20 @@ fn passive_geometry_preserves_material_properties_and_can_move() {
     assert_eq!(program.start().project(sandstone), Some(Block::Sandstone {}));
     assert!(!world.get_block(home).is_solid());
     assert!(world.get_block(sandstone).is_solid());
+}
+
+#[test]
+fn projection_skips_stationary_geometry_but_keeps_components() {
+    let mut world = host();
+    let lamp = BlockPos::new(12, 15, 12);
+    let stone = BlockPos::new(13, 15, 12);
+    world.set_block(lamp, Block::RedstoneLamp { lit: false });
+    world.set_block(stone, Block::Stone {});
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(15, 20, 15));
+    let program = compile(&world, bounds, entry(&world)).unwrap();
+
+    assert_eq!(program.start().projected_blocks(), vec![(lamp, Block::RedstoneLamp { lit: false })]);
+    assert_eq!(program.start().project(stone), Some(Block::Stone {}));
 }
 #[test]
 fn rejects_unrelated_block_entities() {

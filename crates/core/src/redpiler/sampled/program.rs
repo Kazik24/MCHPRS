@@ -1,6 +1,7 @@
 use super::super::TickScheduler;
 use super::{Runtime, ScratchError};
 use mchprs_blocks::{BlockPos, blocks::Block};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub(super) enum Operation {
@@ -120,6 +121,9 @@ pub(crate) struct Program {
     pub(super) tokens: Vec<super::compiler::PistonToken>,
     pub(super) piston_scenery: Vec<BlockPos>,
     pub(super) geometry: Vec<(BlockPos, Block)>,
+    pub(super) component_indices: HashMap<BlockPos, usize>,
+    pub(super) geometry_indices: HashMap<BlockPos, Block>,
+    pub(super) projection_positions: Vec<BlockPos>,
     pub(super) token_sources: Vec<Vec<Vec<(usize, u8)>>>,
     pub(super) token_updates: Vec<Vec<[Vec<usize>; 2]>>,
     pub(super) token_watchers: Vec<Vec<Vec<usize>>>,
@@ -260,6 +264,16 @@ impl Program {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn prepare_projection(&mut self) {
+        self.geometry_indices = self.geometry.iter().copied().collect();
+        let mut positions = self.positions.clone();
+        positions.extend(self.tokens.iter().flat_map(|token| token.cells.iter().copied()));
+        positions.extend(self.pistons.iter().flat_map(|piston| [piston.base, piston.home, piston.far]));
+        positions.sort_by_key(|position| (position.x, position.y, position.z));
+        positions.dedup();
+        self.projection_positions = positions;
     }
 
     fn movement_group(
@@ -495,6 +509,7 @@ impl Program {
         for (id, link) in links.iter().enumerate() {
             incoming[link.target].push(id);
         }
+        let component_indices = positions.iter().enumerate().map(|(index, &pos)| (pos, index)).collect();
         Ok(Self {
             comparators: Vec::new(),
             side_links: Vec::new(),
@@ -506,6 +521,9 @@ impl Program {
             tokens: Vec::new(),
             piston_scenery: Vec::new(),
             geometry: Vec::new(),
+            component_indices,
+            geometry_indices: HashMap::new(),
+            projection_positions: Vec::new(),
             token_sources: Vec::new(),
             token_updates: Vec::new(),
             token_watchers: Vec::new(),
@@ -573,6 +591,8 @@ impl Program {
             queued_piston_events: vec![0; self.pistons.len()],
             motions: Vec::new(),
             motion_time: 0,
+            motion_phase: false,
+            landing_cursor: None,
             accepted_piston_actions: 0,
             token_movements: 0,
             motion_completions: 0,

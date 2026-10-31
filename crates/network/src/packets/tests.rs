@@ -469,3 +469,29 @@ fn compressed_status_framing_round_trips() {
         read_packet(&mut Cursor::new(data), &Arc::new(AtomicBool::new(true)), &mut state).unwrap();
     }
 }
+
+#[test]
+fn compression_preserves_multibyte_packet_ids_and_payload_at_threshold() {
+    use std::io::Read;
+
+    for size in [0, 253, 254, 255, 1024] {
+        let payload: Vec<u8> = (0..size).map(|i| i as u8).collect();
+        let mut encoded = Vec::new();
+        PacketEncoder::new(payload.clone(), 300).write_compressed(&mut encoded).unwrap();
+        let mut frame = Cursor::new(encoded);
+        let frame_length = frame.read_varint().unwrap() as usize;
+        assert_eq!(frame_length, frame.get_ref().len() - frame.position() as usize);
+        let data_length = frame.read_varint().unwrap() as usize;
+        let mut data = Vec::new();
+        if size + 2 < 256 {
+            assert_eq!(data_length, 0);
+            Read::read_to_end(&mut frame, &mut data).unwrap();
+        } else {
+            assert_eq!(data_length, size + 2);
+            flate2::read::ZlibDecoder::new(frame).read_to_end(&mut data).unwrap();
+        }
+        let mut data = Cursor::new(data);
+        assert_eq!(data.read_varint().unwrap(), 300);
+        assert_eq!(&data.get_ref()[data.position() as usize..], payload.as_slice());
+    }
+}

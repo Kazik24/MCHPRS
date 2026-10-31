@@ -80,6 +80,131 @@ fn flush_and_reset_preserve_an_in_flight_piston_payload() {
 }
 
 #[test]
+fn flush_and_reset_export_only_the_unfinished_interrupted_motion_part() {
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
+    let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());
+    let lever = BlockPos::new(15, 15, 15);
+    let base = lever.offset(BlockFace::East);
+    let home = base.offset(BlockFace::East);
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    world.set_block(
+        base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.tick().unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.tick().unwrap();
+
+    compiler.try_flush(&mut world).unwrap();
+    let moving_positions: Vec<_> = world.piston_state().motions.iter().map(|motion| motion.pos).collect();
+    assert_eq!(moving_positions, [base]);
+    assert!(matches!(world.get_block(base), Block::MovingPiston { .. }));
+    assert_eq!(world.get_block(home), Block::Air);
+
+    compiler.try_reset(&mut world, bounds).unwrap();
+    assert!(!compiler.is_active());
+    assert_eq!(
+        world.piston_state().motions.iter().map(|motion| motion.pos).collect::<Vec<_>>(),
+        moving_positions
+    );
+    assert_eq!(world.get_block(home), Block::Air);
+}
+
+#[test]
+fn interrupted_payload_survives_flush_reset_and_native_continuation() {
+    let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();
+    let mut world = PlotWorld::from_chunks(0, 0, chunks, TickScheduler::default());
+    let lever = BlockPos::new(15, 15, 15);
+    let base = lever.offset(BlockFace::East);
+    let home = base.offset(BlockFace::East);
+    let far = home.offset(BlockFace::East);
+    let opposing_base = far.offset(BlockFace::East);
+    world.set_block(lever.offset(BlockFace::Bottom), Block::Stone {});
+    world.set_block(
+        lever,
+        Block::Lever {
+            lever: Lever::new(LeverFace::Floor, BlockDirection::North, false),
+        },
+    );
+    world.set_block(
+        base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::East,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+    world.set_block(home, Block::Stone {});
+    world.set_block(
+        opposing_base,
+        Block::Piston {
+            piston: RedstonePiston {
+                facing: BlockFacing::West,
+                sticky: false,
+                extended: false,
+            },
+        },
+    );
+
+    let bounds = (BlockPos::new(10, 10, 10), BlockPos::new(22, 20, 20));
+    let mut compiler = Compiler::default();
+    compiler
+        .compile(&world, bounds, CompilerOptions::default(), Vec::new(), Arc::new(TaskMonitor::default()))
+        .unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.tick().unwrap();
+    compiler.try_on_use_block(lever).unwrap();
+    compiler.tick().unwrap();
+
+    compiler.try_flush(&mut world).unwrap();
+    let mut moving_positions: Vec<_> = world.piston_state().motions.iter().map(|motion| motion.pos).collect();
+    moving_positions.sort_by_key(|pos| (pos.x, pos.y, pos.z));
+    let mut expected_positions = vec![base, far];
+    expected_positions.sort_by_key(|pos| (pos.x, pos.y, pos.z));
+    assert_eq!(moving_positions, expected_positions);
+    assert!(world.piston_state().motions.iter().any(|motion| motion.pos == far));
+    assert!(world.piston_state().motions.iter().any(|motion| motion.pos == base));
+    assert_eq!(world.get_block(home), Block::Air);
+
+    compiler.try_reset(&mut world, bounds).unwrap();
+    assert!(!compiler.is_active());
+    assert!(matches!(world.get_block(base), Block::MovingPiston { .. }));
+    assert!(matches!(world.get_block(far), Block::MovingPiston { .. }));
+
+    world.tick_interpreted();
+    assert_eq!(world.get_block(far), Block::Stone {});
+    assert_eq!(world.get_block(home), Block::Air);
+    assert_eq!(world.piston_state().motions.len(), 1, "the payload settles before the retracting base");
+
+    world.tick_interpreted();
+    assert_eq!(world.get_block(far), Block::Stone {});
+    assert_eq!(world.get_block(home), Block::Air);
+    assert!(matches!(world.get_block(base), Block::Piston { piston } if !piston.extended));
+    assert!(world.piston_state().motions.is_empty());
+}
+
+#[test]
 fn stale_imported_ticks_are_ignored_like_native() {
     let pos = BlockPos::new(20, 20, 20);
     let bounds = (BlockPos::new(15, 15, 15), BlockPos::new(25, 25, 25));

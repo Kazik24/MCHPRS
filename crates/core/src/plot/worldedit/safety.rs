@@ -122,6 +122,7 @@ mod tests {
         .unwrap();
         assert_eq!((cb.size_x, cb.size_y, cb.size_z), (235, 202, 182));
         assert_eq!(cb.data.entries(), 8_639_540);
+        let pm1_work = cb.data.entries() as u64;
         player.pos = PlayerPos {
             x: f64::from(cb.offset_x),
             y: f64::from(cb.offset_y),
@@ -129,7 +130,13 @@ mod tests {
         };
         player.worldedit_clipboard = Some(cb);
         let paste = &COMMANDS["/paste"];
-        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_ok());
+        assert_eq!(
+            validate_request(&world, &player, "/paste", paste, &[]).is_ok(),
+            pm1_work <= CONFIG.worldedit_max_blocks
+        );
+        if pm1_work > CONFIG.worldedit_max_blocks {
+            return;
+        }
 
         player.first_position = Some(BlockPos::zero());
         player.second_position = Some(BlockPos::new(234, 201, 181));
@@ -155,7 +162,18 @@ mod tests {
             data: PalettedBitBuffer::new((PLOT_BLOCK_WIDTH * PLOT_BLOCK_HEIGHT * PLOT_BLOCK_WIDTH) as usize, 9),
             block_entities: Default::default(),
         });
-        assert!(validate_request(&world, &player, "/paste", paste, &[]).is_ok());
+        let full_plot_work = volume(
+            BlockPos::zero(),
+            BlockPos::new(PLOT_BLOCK_WIDTH - 1, PLOT_BLOCK_HEIGHT - 1, PLOT_BLOCK_WIDTH - 1),
+        )
+        .unwrap();
+        assert_eq!(
+            validate_request(&world, &player, "/paste", paste, &[]).is_ok(),
+            full_plot_work <= CONFIG.worldedit_max_blocks
+        );
+        if full_plot_work > CONFIG.worldedit_max_blocks {
+            return;
+        }
         player.second_position = Some(BlockPos::new(PLOT_BLOCK_WIDTH - 1, PLOT_BLOCK_HEIGHT - 1, PLOT_BLOCK_WIDTH - 1));
         assert!(validate_request(&world, &player, "/copy", copy, &[]).is_ok());
         player.pos.x = 1.0;

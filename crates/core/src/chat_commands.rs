@@ -73,7 +73,7 @@ fn component_object(object: &Map<String, Value>, depth: usize) -> Result<Value, 
     }
 
     if let Some(color) = object.get("color").and_then(Value::as_str) {
-        if valid_color(color) {
+        if crate::chat::valid_color(color) {
             result.insert("color".into(), color.into());
         }
     }
@@ -86,37 +86,6 @@ fn component_object(object: &Map<String, Value>, depth: usize) -> Result<Value, 
     }
 
     Ok(Value::Object(result))
-}
-
-fn valid_color(color: &str) -> bool {
-    if matches!(
-        color,
-        "black"
-            | "dark_blue"
-            | "dark_green"
-            | "dark_aqua"
-            | "dark_red"
-            | "dark_purple"
-            | "gold"
-            | "gray"
-            | "dark_gray"
-            | "blue"
-            | "green"
-            | "aqua"
-            | "red"
-            | "light_purple"
-            | "yellow"
-            | "white"
-            | "reset"
-    ) {
-        return true;
-    }
-
-    let Some(hex) = color.strip_prefix('#') else {
-        return false;
-    };
-
-    hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn target<'a>(input: &'a str, player: Option<&str>) -> Result<(Recipient, &'a str), String> {

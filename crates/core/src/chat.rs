@@ -4,6 +4,37 @@ use serde::Serialize;
 
 static URL_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new("([a-zA-Z0-9§\\-:/]+\\.[a-zA-Z/0-9§\\-:_#]+(\\.[a-zA-Z/0-9.§\\-:#\\?\\+=_]+)?)").unwrap());
 
+pub(crate) fn valid_color(color: &str) -> bool {
+    if matches!(
+        color,
+        "black"
+            | "dark_blue"
+            | "dark_green"
+            | "dark_aqua"
+            | "dark_red"
+            | "dark_purple"
+            | "gold"
+            | "gray"
+            | "dark_gray"
+            | "blue"
+            | "green"
+            | "aqua"
+            | "red"
+            | "light_purple"
+            | "yellow"
+            | "white"
+            | "reset"
+    ) {
+        return true;
+    }
+
+    let Some(hex) = color.strip_prefix('#') else {
+        return false;
+    };
+
+    hex.len() == 6 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[derive(Serialize, Debug, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum ColorCode {

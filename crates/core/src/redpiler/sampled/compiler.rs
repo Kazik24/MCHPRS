@@ -842,6 +842,7 @@ pub(crate) fn compile_monitored(
         }
     }
     track_reactive(world, &entry, &mut program)?;
+    program.prepare_projection();
     Ok(program)
 }
 

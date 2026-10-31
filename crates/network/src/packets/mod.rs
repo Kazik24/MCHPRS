@@ -479,31 +479,29 @@ impl PacketEncoder {
     }
 
     pub fn write_compressed(&self, mut w: impl Write) -> io::Result<()> {
-        // TODO Write the packet ID and payload directly instead of allocating their concatenation.
         let packet_id = PacketEncoder::varint(self.packet_id as i32);
-        let data = [packet_id.as_slice(), self.buffer.as_slice()].concat();
-        if data.len() < 256 {
+        let data_len = packet_id.len() + self.buffer.len();
+        if data_len < 256 {
             // Data Length adds another byte
-            let packet_length = PacketEncoder::varint((1 + data.len()) as i32);
+            let packet_length = PacketEncoder::varint((1 + data_len) as i32);
 
             w.write_all(&packet_length)?;
             // Data Length: 0 because uncompressed
             w.write_all(&[0])?;
-            w.write_all(&data)?;
+            w.write_all(&packet_id)?;
+            w.write_all(&self.buffer)?;
         } else {
-            let data_length = PacketEncoder::varint(data.len() as i32);
+            let data_length = PacketEncoder::varint(data_len as i32);
             let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-            encoder.write_all(&data)?;
-            let compressed = encoder.finish().unwrap();
+            encoder.write_all(&packet_id)?;
+            encoder.write_all(&self.buffer)?;
+            let compressed = encoder.finish()?;
             let packet_length = PacketEncoder::varint((data_length.len() + compressed.len()) as i32);
 
             w.write_all(&packet_length)?;
             w.write_all(&data_length)?;
             w.write_all(&compressed)?;
         }
-
-        // self.c_cache = Some(finished);
-        // return self.c_cache.as_ref().unwrap();
 
         Ok(())
     }

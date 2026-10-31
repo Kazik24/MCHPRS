@@ -211,6 +211,54 @@ impl Connection {
     }
 }
 
+fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<(u64, Value)>> {
+    let mut line = Vec::new();
+    let count = reader.by_ref().take(MAX_MESSAGE + 1).read_until(b'\n', &mut line)?;
+    if count == 0 {
+        return Ok(None);
+    }
+    if count as u64 > MAX_MESSAGE || line.last() != Some(&b'\n') {
+        return Ok(None);
+    }
+    let request: Value = match serde_json::from_slice(&line) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    let Some(id) = request["id"].as_u64() else { return Ok(None) };
+    Ok(Some((id, request)))
+}
+
+fn response(id: u64, result: Result<Value, String>) -> (Value, bool) {
+    let (mut response, fatal) = match result {
+        Ok(value) => (value, false),
+        Err(error) => {
+            let fatal = error.starts_with("session failed:");
+            (json!({"error":error,"fatal":fatal}), fatal)
+        }
+    };
+    response["id"] = json!(id);
+    response["ok"] = json!(response.get("error").is_none());
+    (response, fatal)
+}
+
+fn start_watchdog(stream: &TcpStream) -> std::io::Result<(Arc<AtomicBool>, std::thread::JoinHandle<()>)> {
+    let finished = Arc::new(AtomicBool::new(false));
+    let watchdog_done = finished.clone();
+    let watchdog_stream = stream.try_clone()?;
+    let watchdog = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while !watchdog_done.load(Ordering::Acquire) {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                let _ = watchdog_stream.shutdown(std::net::Shutdown::Both);
+                break;
+            }
+            std::thread::park_timeout(remaining);
+        }
+    });
+    Ok((finished, watchdog))
+}
+
 fn serve(mut stream: TcpStream) -> std::io::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(300)))?;
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
@@ -223,47 +271,14 @@ fn serve(mut stream: TcpStream) -> std::io::Result<()> {
         compiled: false,
     };
     loop {
-        let mut line = Vec::new();
-        let count = reader.by_ref().take(MAX_MESSAGE + 1).read_until(b'\n', &mut line)?;
-        if count == 0 {
-            break;
-        }
-        if count as u64 > MAX_MESSAGE || line.last() != Some(&b'\n') {
-            break;
-        }
-        let request: Value = match serde_json::from_slice(&line) {
-            Ok(v) => v,
-            Err(_) => break,
-        };
-        let Some(id) = request["id"].as_u64() else { break };
+        let Some((id, request)) = read_request(&mut reader)? else { break };
         let close = request["op"] == "close";
-        let finished = Arc::new(AtomicBool::new(false));
-        let watchdog_done = finished.clone();
-        let watchdog_stream = stream.try_clone()?;
-        let watchdog = std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + Duration::from_secs(30);
-            while !watchdog_done.load(Ordering::Acquire) {
-                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-                if remaining.is_zero() {
-                    let _ = watchdog_stream.shutdown(std::net::Shutdown::Both);
-                    break;
-                }
-                std::thread::park_timeout(remaining);
-            }
-        });
+        let (finished, watchdog) = start_watchdog(&stream)?;
         let result = connection.handle(&request);
         finished.store(true, Ordering::Release);
         watchdog.thread().unpark();
         let _ = watchdog.join();
-        let (mut response, fatal) = match result {
-            Ok(value) => (value, false),
-            Err(error) => {
-                let fatal = error.starts_with("session failed:");
-                (json!({"error":error,"fatal":fatal}), fatal)
-            }
-        };
-        response["id"] = json!(id);
-        response["ok"] = json!(!response.get("error").is_some());
+        let (response, fatal) = response(id, result);
         let bytes = serde_json::to_vec(&response)?;
         if bytes.len() as u64 + 1 > MAX_MESSAGE {
             break;

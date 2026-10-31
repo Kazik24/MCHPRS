@@ -75,8 +75,16 @@ impl Cursor {
         if p.len() != 11 || p[0] != "1" {
             return Err(invalid());
         }
+        let result = Self::from_fields(&p)?;
+        if result.first > result.observed || result.completed > result.observed {
+            return Err(invalid());
+        }
+        Ok(result)
+    }
+    fn from_fields(p: &[&str]) -> Result<Self, Error> {
+        let invalid = || Error::new(400, "invalid_cursor");
         let u64_at = |i| u64::from_str_radix(p[i], 16).map_err(|_| invalid());
-        let result = Self {
+        Ok(Self {
             plot: (p[1].parse().map_err(|_| invalid())?, p[2].parse().map_err(|_| invalid())?),
             source: u128::from_str_radix(p[3], 16).map_err(|_| invalid())?,
             capture: u128::from_str_radix(p[4], 16).map_err(|_| invalid())?,
@@ -90,11 +98,7 @@ impl Cursor {
                 "1" => true,
                 _ => return Err(invalid()),
             },
-        };
-        if result.first > result.observed || result.completed > result.observed {
-            return Err(invalid());
-        }
-        Ok(result)
+        })
     }
 }
 pub(crate) struct Query {
@@ -181,6 +185,11 @@ fn registered(plot: Coord, generation: Option<u128>) -> bool {
         .is_some_and(|(id, _)| generation.is_none_or(|expected| expected == *id))
 }
 async fn read(plot: Coord, query: Query) -> Result<Page, Error> {
+    let reply = enqueue_read(plot, query)?;
+    await_read(plot, reply).await
+}
+
+fn enqueue_read(plot: Coord, query: Query) -> Result<oneshot::Receiver<Result<Page, Error>>, Error> {
     let sender = SOURCES
         .lock()
         .unwrap()
@@ -200,6 +209,10 @@ async fn read(plot: Coord, query: Query) -> Result<Page, Error> {
             mpsc::TrySendError::Full(_) => Error::new(503, "busy"),
             _ => Error::new(404, "plot_not_loaded"),
         })?;
+    Ok(reply)
+}
+
+async fn await_read(plot: Coord, reply: oneshot::Receiver<Result<Page, Error>>) -> Result<Page, Error> {
     let page = tokio::time::timeout(Duration::from_secs(2), reply)
         .await
         .map_err(|_| Error::new(503, "source_timeout"))?

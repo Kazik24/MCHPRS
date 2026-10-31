@@ -17,6 +17,19 @@ impl PistonEvent {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Motion {
+    pub(super) piston: usize,
+    pub(super) token: Option<usize>,
+    pub(super) destination: mchprs_blocks::BlockPos,
+    pub(super) start: u64,
+    pub(super) landing: u64,
+    pub(super) order: usize,
+    pub(super) extending: bool,
+    pub(super) piston_done: bool,
+    pub(super) token_done: bool,
+}
+
 pub(crate) struct Runtime {
     pub(super) comparator_outputs: Vec<u8>,
     pub(super) reactive_wire_strengths: Vec<u8>,
@@ -31,8 +44,10 @@ pub(crate) struct Runtime {
     pub(super) arrangement_contributions: Vec<u8>,
     pub(super) piston_events: std::collections::VecDeque<(usize, PistonEvent)>,
     pub(super) queued_piston_events: Vec<u8>,
-    pub(super) motions: Vec<(usize, Option<usize>, mchprs_blocks::BlockPos, u64, bool)>,
+    pub(super) motions: Vec<Motion>,
     pub(super) motion_time: u64,
+    pub(super) motion_phase: bool,
+    pub(super) landing_cursor: Option<usize>,
     pub(super) accepted_piston_actions: usize,
     pub(super) token_movements: usize,
     pub(super) motion_completions: usize,
@@ -105,7 +120,11 @@ impl Runtime {
         }
     }
     pub(crate) fn project(&self, position: mchprs_blocks::BlockPos) -> Option<Block> {
-        if self.motions.iter().any(|motion| motion.1.is_some() && motion.2 == position) {
+        if self
+            .motions
+            .iter()
+            .any(|motion| motion.token.is_some() && !motion.token_done && motion.destination == position)
+        {
             return None;
         }
         if let Some(index) = self.token_positions.iter().position(|&at| at == Some(position)) {
@@ -137,11 +156,10 @@ impl Runtime {
         }
         Some(
             self.program
-                .positions
-                .iter()
-                .position(|&at| at == position)
-                .map(|index| self.blocks[index])
-                .or_else(|| self.program.geometry.iter().find_map(|&(at, block)| (at == position).then_some(block)))
+                .component_indices
+                .get(&position)
+                .map(|&index| self.blocks[index])
+                .or_else(|| self.program.geometry_indices.get(&position).copied())
                 .unwrap_or(Block::Air),
         )
     }
@@ -175,6 +193,44 @@ impl Runtime {
         }
     }
 
+    fn pushing_motion(&self, piston: usize) -> Option<usize> {
+        let piston = &self.program.pistons[piston];
+        self.motions.iter().position(|motion| {
+            motion.token.is_some()
+                && !motion.token_done
+                && motion.extending
+                && motion.destination == piston.far
+                && self.program.pistons[motion.piston].facing == piston.facing
+        })
+    }
+
+    fn is_early_retract(&self, motion: usize) -> bool {
+        let motion = self.motions[motion];
+        if self.motion_phase && self.motion_time.saturating_sub(motion.start) > 1 {
+            self.landing_cursor.is_some_and(|cursor| motion.order < cursor)
+        } else {
+            true
+        }
+    }
+
+    fn add_motion(&mut self, piston: usize, token: Option<usize>, destination: mchprs_blocks::BlockPos, extending: bool) -> usize {
+        let landing = self.motion_time + 2;
+        let order = self.motions.iter().filter(|motion| motion.landing == landing).count();
+        let slot = self.motions.len();
+        self.motions.push(Motion {
+            piston,
+            token,
+            destination,
+            start: self.motion_time,
+            landing,
+            order,
+            extending,
+            piston_done: false,
+            token_done: token.is_none(),
+        });
+        slot
+    }
+
     pub(super) fn update_piston(&mut self, component: usize) {
         let Some(index) = self.program.pistons.iter().position(|p| p.base == self.program.positions[component]) else {
             return;
@@ -197,18 +253,10 @@ impl Runtime {
         if powered == self.piston_extended[index] {
             return;
         }
-        let piston = &self.program.pistons[index];
-        // shortcut: landing-phase age/order classification awaits independent motion-part records.
-        let pushing = self.motions.iter().any(|motion| {
-            motion.0 != usize::MAX
-                && motion.1.is_some()
-                && motion.4
-                && motion.2 == piston.far
-                && self.program.pistons[motion.0].facing == piston.facing
-        });
+        let pushing = self.pushing_motion(index);
         let event = if powered {
             PistonEvent::Extend
-        } else if pushing {
+        } else if pushing.is_some_and(|motion| self.is_early_retract(motion)) {
             PistonEvent::EarlyRetract
         } else {
             PistonEvent::Retract
@@ -251,23 +299,22 @@ impl Runtime {
             if !extending {
                 let early = event == PistonEvent::EarlyRetract;
                 if self.piston_head_moving[index] {
-                    if let Some(slot) = self.motions.iter().position(|motion| motion.0 == index && motion.4) {
-                        let (_, token, destination, _, _) = self.motions[slot];
-                        self.motions[slot].0 = usize::MAX;
-                        self.motions[slot].1 = None;
-                        self.piston_head_moving[index] = false;
-                        if let Some(token) = token {
-                            self.set_token_pos(token, Some(destination));
-                        }
+                    if let Some(slot) = self
+                        .motions
+                        .iter()
+                        .position(|motion| motion.piston == index && motion.extending && !motion.piston_done)
+                    {
+                        self.finish_piston_part(slot, true);
                     }
                 }
                 self.piston_base_moving[index] = true;
-                self.notify_source_watchers(component, true, true);
                 let token = if piston.sticky && !early {
                     self.token_positions.iter().position(|&position| position == Some(piston.far))
                 } else {
                     None
                 };
+                self.add_motion(index, token, piston.home, false);
+                self.notify_source_watchers(component, true, true);
                 if let Some(token) = token {
                     self.token_movements += 1;
                     if self.trace_enabled {
@@ -275,8 +322,6 @@ impl Runtime {
                     }
                     self.set_token_pos(token, None);
                 }
-                self.piston_head_present[index] = false;
-                self.motions.push((index, token, piston.home, self.motion_time + 2, false));
                 if self.trace_enabled {
                     self.trace(format!(
                         "piston accepted {:?} retract token={token:?} landing={}",
@@ -284,8 +329,17 @@ impl Runtime {
                         self.motion_time + 2
                     ));
                 }
-                self.notify_shape(piston.home);
                 self.accepted_piston_actions += 1;
+                if piston.sticky {
+                    if let Some(slot) = self.pushing_motion(index) {
+                        self.finish_token_part(slot);
+                        continue;
+                    }
+                }
+                if self.piston_head_present[index] {
+                    self.piston_head_present[index] = false;
+                    self.notify_shape(piston.home);
+                }
                 continue;
             }
             if self.piston_extended[index] || self.piston_head_present[index] || self.piston_head_moving[index] {
@@ -295,7 +349,10 @@ impl Runtime {
                 continue;
             }
             if self.program.piston_scenery.contains(&piston.home)
-                || self.motions.iter().any(|m| m.1.is_some() && m.2 == piston.home)
+                || self
+                    .motions
+                    .iter()
+                    .any(|m| m.token.is_some() && !m.token_done && m.destination == piston.home)
                 || self
                     .program
                     .pistons
@@ -312,7 +369,10 @@ impl Runtime {
             if token.is_some()
                 && (self.program.piston_scenery.contains(&piston.far)
                     || self.token_positions.contains(&Some(piston.far))
-                    || self.motions.iter().any(|motion| motion.1.is_some() && motion.2 == piston.far)
+                    || self
+                        .motions
+                        .iter()
+                        .any(|motion| motion.token.is_some() && !motion.token_done && motion.destination == piston.far)
                     || self.program.pistons.iter().enumerate().any(|(other, p)| {
                         other != index && p.home == piston.far && (self.piston_head_present[other] || self.piston_head_moving[other])
                     }))
@@ -322,14 +382,14 @@ impl Runtime {
                 }
                 continue;
             }
+            if token.is_some_and(|token| !self.program.tokens[token].cells.contains(&piston.far)) {
+                self.failure = Some(ScratchError {
+                    position: Some(piston.far),
+                    reason: "unsupported token destination",
+                });
+                return;
+            }
             if let Some(token) = token {
-                if !self.program.tokens[token].cells.contains(&piston.far) {
-                    self.failure = Some(ScratchError {
-                        position: Some(piston.far),
-                        reason: "unsupported token destination",
-                    });
-                    return;
-                }
                 self.token_movements += 1;
                 if self.trace_enabled {
                     self.trace(format!("token {token} departs {:?} for {:?}", piston.home, piston.far));
@@ -343,7 +403,7 @@ impl Runtime {
             }
             self.notify_source_watchers(component, true, true);
             self.piston_head_moving[index] = true;
-            self.motions.push((index, token, piston.far, self.motion_time + 2, true));
+            self.add_motion(index, token, piston.far, true);
             if self.trace_enabled {
                 self.trace(format!(
                     "piston accepted {:?} extend token={token:?} from={:?} to={:?} landing={}",
@@ -361,53 +421,89 @@ impl Runtime {
         }
     }
 
-    fn tick_motions(&mut self) {
-        let mut index = 0;
-        while index < self.motions.len() {
-            if self.motions[index].3 > self.motion_time {
-                index += 1;
-                continue;
-            }
-            let (piston, token, destination, _, extending) = self.motions.remove(index);
-            if piston == usize::MAX {
-                continue;
-            }
-            if !self.consume_operation(self.program.pistons[piston].base) {
-                return;
-            }
-            if extending {
-                if let Some(token) = token {
-                    self.set_token_pos(token, Some(destination));
-                }
-                self.piston_head_moving[piston] = false;
-                self.piston_head_present[piston] = true;
-            } else {
-                self.piston_base_moving[piston] = false;
-                self.piston_extended[piston] = false;
-                if let Some(component) = self.program.positions.iter().position(|&pos| pos == self.program.pistons[piston].base)
-                    && let Block::Piston { mut piston } = self.blocks[component]
-                {
-                    piston.extended = false;
-                    self.blocks[component] = Block::Piston { piston };
-                }
-                self.notify_shape(self.program.pistons[piston].base);
-                if let Some(token) = token {
-                    self.set_token_pos(token, Some(destination));
-                }
-            }
-            self.motion_completions += 1;
-            if self.trace_enabled {
-                self.trace(format!(
-                    "motion complete {:?} token={token:?} destination={destination:?} extending={extending}",
-                    self.program.pistons[piston].base
-                ));
-            }
-            self.notify_shape(self.program.pistons[piston].home);
-            self.notify_home_watchers(piston, false);
-            if let Some(component) = self.program.positions.iter().position(|&pos| pos == self.program.pistons[piston].base) {
-                self.update_piston(component);
+    fn finish_token_part(&mut self, slot: usize) {
+        let motion = self.motions[slot];
+        if let Some(token) = motion.token
+            && !motion.token_done
+        {
+            self.motions[slot].token_done = true;
+            self.set_token_pos(token, Some(motion.destination));
+        }
+    }
+
+    fn finish_piston_part(&mut self, slot: usize, interrupted: bool) {
+        let motion = self.motions[slot];
+        if motion.piston_done {
+            return;
+        }
+        self.motions[slot].piston_done = true;
+        let base = self.program.pistons[motion.piston].base;
+        let home = self.program.pistons[motion.piston].home;
+        if motion.extending {
+            self.piston_head_moving[motion.piston] = false;
+            self.piston_head_present[motion.piston] = !interrupted;
+            self.notify_shape(home);
+            self.notify_home_watchers(motion.piston, false);
+        } else {
+            self.piston_base_moving[motion.piston] = false;
+            self.piston_extended[motion.piston] = false;
+            if let Some(component) = self.program.positions.iter().position(|&pos| pos == base)
+                && let Block::Piston { mut piston } = self.blocks[component]
+            {
+                piston.extended = false;
+                self.blocks[component] = Block::Piston { piston };
+                self.notify_source_watchers(component, true, true);
             }
         }
+        if !interrupted && let Some(component) = self.program.positions.iter().position(|&pos| pos == base) {
+            self.update_piston(component);
+        }
+    }
+
+    fn tick_motions(&mut self) {
+        let Some(last_order) = self
+            .motions
+            .iter()
+            .filter(|motion| motion.landing == self.motion_time)
+            .map(|motion| motion.order)
+            .max()
+        else {
+            return;
+        };
+        self.motion_phase = true;
+        for cursor in 0..=last_order {
+            self.landing_cursor = Some(cursor);
+            let Some(slot) = self
+                .motions
+                .iter()
+                .position(|motion| motion.landing == self.motion_time && motion.order == cursor)
+            else {
+                continue;
+            };
+            let motion = self.motions[slot];
+            if !motion.piston_done || !motion.token_done {
+                if !self.consume_operation(self.program.pistons[motion.piston].base) {
+                    break;
+                }
+                self.motion_completions += 1;
+                if motion.extending {
+                    self.finish_token_part(slot);
+                    self.finish_piston_part(slot, false);
+                } else {
+                    self.finish_piston_part(slot, false);
+                    self.finish_token_part(slot);
+                }
+                if self.trace_enabled {
+                    self.trace(format!(
+                        "motion complete {:?} token={:?} destination={:?} extending={}",
+                        self.program.pistons[motion.piston].base, motion.token, motion.destination, motion.extending
+                    ));
+                }
+            }
+            self.motions.remove(slot);
+        }
+        self.landing_cursor = None;
+        self.motion_phase = false;
     }
     fn consume_operation(&mut self, position: mchprs_blocks::BlockPos) -> bool {
         if self.failure.is_some() {
@@ -1116,10 +1212,7 @@ impl Runtime {
                 return;
             }
             if let Some(component) = self.program.positions.iter().position(|&pos| pos == tick.pos) {
-                if tick
-                    .block_type
-                    .is_some_and(|block_type| self.blocks[component].registry_id() != block_type)
-                {
+                if tick.block_type != Some(self.blocks[component].registry_id()) {
                     continue;
                 }
                 match self.blocks[component] {
@@ -1241,13 +1334,10 @@ impl Runtime {
     }
 
     pub(crate) fn projected_blocks(&self) -> Vec<(mchprs_blocks::BlockPos, Block)> {
-        let mut positions = self.program.positions.clone();
-        positions.extend(self.program.geometry.iter().map(|(pos, _)| *pos));
-        positions.extend(self.program.tokens.iter().flat_map(|token| token.cells.iter().copied()));
-        positions.extend(self.program.pistons.iter().flat_map(|piston| [piston.base, piston.home, piston.far]));
-        positions.sort_by_key(|position| (position.x, position.y, position.z));
-        positions.dedup();
-        positions
+        self.program
+            .projection_positions
+            .iter()
+            .copied()
             .into_iter()
             .filter_map(|pos| self.project(pos).map(|block| (pos, block)))
             .collect()

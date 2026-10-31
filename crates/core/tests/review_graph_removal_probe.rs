@@ -157,33 +157,25 @@ fn review_exported_extension_keeps_payload_before_head_order() {
 }
 
 #[test]
-fn review_projection_cost() {
-    for n in [1000, 10000] {
-        let mut w = world(0, 0);
-        for i in 0..n {
-            w.set_block(BlockPos::new(10 + i % 100, 20, 10 + i / 100), Block::Stone {});
-        }
-        let mut c = compile(&w, (BlockPos::new(5, 15, 5), BlockPos::new(115, 25, 115)));
-        let start = std::time::Instant::now();
-        for _ in 0..10 {
-            c.try_flush(&mut w).unwrap();
-        }
-        eprintln!("projection n={n}: {:?} per flush", start.elapsed() / 10);
-    }
-}
-
-#[test]
 fn review_headless_untyped_tick_matches_native() {
     use mchprs_core::headless::{Session, Snapshot};
-    let pos=BlockPos::new(20,20,20);
-    let snapshot=|| Snapshot {
-        min:BlockPos::new(15,15,15),max:BlockPos::new(25,25,25),
-        blocks:vec![(pos,Block::RedstoneLamp {lit:true})],entities:vec![],
-        ticks:vec![TickEntry {pos,ticks_left:1,tick_priority:TickPriority::Normal,block_type:None}],
+    let pos = BlockPos::new(20, 20, 20);
+    let snapshot = || Snapshot {
+        min: BlockPos::new(15, 15, 15),
+        max: BlockPos::new(25, 25, 25),
+        blocks: vec![(pos, Block::RedstoneLamp { lit: true })],
+        entities: vec![],
+        ticks: vec![TickEntry {
+            pos,
+            ticks_left: 1,
+            tick_priority: TickPriority::Normal,
+            block_type: None,
+        }],
     };
-    let mut native=Session::new(snapshot()).unwrap();
-    let mut sampled=Session::new(snapshot()).unwrap();
+    let mut native = Session::new(snapshot()).unwrap();
+    let mut sampled = Session::new(snapshot()).unwrap();
     sampled.compile(CompilerOptions::default()).unwrap();
-    native.advance(1).unwrap();sampled.advance(1).unwrap();
-    assert_eq!(sampled.get(pos).unwrap(),native.get(pos).unwrap());
+    native.advance(1).unwrap();
+    sampled.advance(1).unwrap();
+    assert_eq!(sampled.get(pos).unwrap(), native.get(pos).unwrap());
 }

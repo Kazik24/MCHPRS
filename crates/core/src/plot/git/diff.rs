@@ -15,6 +15,16 @@ pub(super) struct Marker {
     pub kind: u8,
 }
 
+// Field order preserves deterministic distance and coordinate tie-breaking.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct NearbyMarker {
+    distance: i64,
+    x: i32,
+    y: i32,
+    z: i32,
+    kind: u8,
+}
+
 pub(super) struct Diff {
     pub from_id: String,
     pub to_id: String,
@@ -115,8 +125,7 @@ impl Diff {
         summary
     }
 
-    pub fn near(&self, center: PlayerPos, radius: f64, limit: usize) -> Result<Vec<Marker>> {
-        // TODO: This sections vector is very hard to follow, need to extract a helpers.
+    fn sections_by_distance(&self, center: PlayerPos) -> Vec<(f64, usize)> {
         let mut sections: Vec<_> = self
             .sections
             .iter()
@@ -130,8 +139,12 @@ impl Diff {
             })
             .collect();
         sections.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        // TODO: Heap has very abstract type here (tuple of 5 values without known meaning). Need to extract a struct with named fields for clarity.
-        let mut heap = BinaryHeap::new();
+        sections
+    }
+
+    pub fn near(&self, center: PlayerPos, radius: f64, limit: usize) -> Result<Vec<Marker>> {
+        let sections = self.sections_by_distance(center);
+        let mut heap: BinaryHeap<NearbyMarker> = BinaryHeap::new();
         if limit == 0 {
             return Ok(Vec::new());
         }
@@ -139,7 +152,7 @@ impl Diff {
             if distance > radius * radius {
                 break;
             }
-            if heap.len() == limit && (distance * 1024.0) as i64 > heap.peek().map(|v: &(i64, i32, i32, i32, u8)| v.0).unwrap_or(i64::MAX) {
+            if heap.len() == limit && (distance * 1024.0) as i64 > heap.peek().map(|marker| marker.distance).unwrap_or(i64::MAX) {
                 break;
             }
             let chunk = section / PLOT_SECTIONS;
@@ -159,7 +172,13 @@ impl Diff {
                 let Some(kind) = self.kind(pos)? else {
                     continue;
                 };
-                let candidate = ((distance * 1024.0) as i64, pos.x, pos.y, pos.z, kind);
+                let candidate = NearbyMarker {
+                    distance: (distance * 1024.0) as i64,
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    kind,
+                };
                 if heap.len() < limit {
                     heap.push(candidate);
                 } else if heap.peek().is_some_and(|last| candidate < *last) {
@@ -171,9 +190,9 @@ impl Diff {
         Ok(heap
             .into_sorted_vec()
             .into_iter()
-            .map(|(_, x, y, z, kind)| Marker {
-                pos: BlockPos::new(x, y, z),
-                kind,
+            .map(|marker| Marker {
+                pos: BlockPos::new(marker.x, marker.y, marker.z),
+                kind: marker.kind,
             })
             .collect())
     }

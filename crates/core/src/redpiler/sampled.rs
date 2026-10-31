@@ -82,24 +82,24 @@ impl Runtime {
             blocks::{Block, RedstonePistonHead},
         };
         let mut parts = Vec::new();
-        for &(index, token, destination, landing, extending) in &self.motions {
-            if index == usize::MAX {
+        for motion in &self.motions {
+            if motion.piston_done && motion.token_done {
                 continue;
             }
-            let piston = &self.program.pistons[index];
-            let remaining = landing.saturating_sub(self.motion_time);
+            let piston = &self.program.pistons[motion.piston];
+            let remaining = motion.landing.saturating_sub(self.motion_time);
             let progress = if remaining >= 2 { 0.5 } else { 1.0 };
             let mut add = |pos: mchprs_blocks::BlockPos, block: Block, source: bool| {
                 let mut entity = MovingPistonEntity {
                     facing: piston.facing.into(),
                     progress: 0,
                     block_state: block.get_id(),
-                    extending,
+                    extending: motion.extending,
                     source,
                 };
                 entity.set_progress(progress);
                 parts.push(MovingPart {
-                    key: (index, landing, extending, pos),
+                    key: (motion.piston, motion.landing, motion.extending, pos),
                     pos,
                     block: Block::MovingPiston {
                         moving: mchprs_blocks::blocks::RedstoneMovingPiston {
@@ -111,36 +111,44 @@ impl Runtime {
                     progress,
                 });
             };
-            if extending {
-                if let Some(token) = token {
-                    add(destination, self.program.tokens[token].block, false);
+            if motion.extending {
+                if !motion.token_done {
+                    if let Some(token) = motion.token {
+                        add(motion.destination, self.program.tokens[token].block, false);
+                    }
                 }
-                add(
-                    piston.home,
-                    Block::PistonHead {
-                        head: RedstonePistonHead {
-                            facing: piston.facing,
-                            sticky: piston.sticky,
-                            short: false,
+                if !motion.piston_done {
+                    add(
+                        piston.home,
+                        Block::PistonHead {
+                            head: RedstonePistonHead {
+                                facing: piston.facing,
+                                sticky: piston.sticky,
+                                short: false,
+                            },
                         },
-                    },
-                    true,
-                );
+                        true,
+                    );
+                }
             } else {
-                let component = self.program.positions.iter().position(|&pos| pos == piston.base).ok_or(ScratchError {
-                    position: Some(piston.base),
-                    reason: "piston component missing during motion export",
-                })?;
-                let Block::Piston { piston: mut base } = self.blocks[component] else {
-                    return Err(ScratchError {
+                if !motion.piston_done {
+                    let component = self.program.positions.iter().position(|&pos| pos == piston.base).ok_or(ScratchError {
                         position: Some(piston.base),
-                        reason: "piston base missing during motion export",
-                    });
-                };
-                base.extended = false;
-                add(piston.base, Block::Piston { piston: base }, true);
-                if let Some(token) = token {
-                    add(destination, self.program.tokens[token].block, false);
+                        reason: "piston component missing during motion export",
+                    })?;
+                    let Block::Piston { piston: mut base } = self.blocks[component] else {
+                        return Err(ScratchError {
+                            position: Some(piston.base),
+                            reason: "piston base missing during motion export",
+                        });
+                    };
+                    base.extended = false;
+                    add(piston.base, Block::Piston { piston: base }, true);
+                }
+                if !motion.token_done {
+                    if let Some(token) = motion.token {
+                        add(motion.destination, self.program.tokens[token].block, false);
+                    }
                 }
             }
         }

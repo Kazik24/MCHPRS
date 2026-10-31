@@ -16,9 +16,11 @@ fn empty_world() -> PlotWorld {
 #[test]
 fn dust_shape_change_does_not_start_piston_observer_early() {
     use sha2::{Digest, Sha256};
-    let schematic = include_bytes!("../../../../../test_data/EDGECASE_PISTION.schem");
-    let reference: serde_json::Value =
-        serde_json::from_str(include_str!("../../../../../test_data/piston-repair/java-piston-oscillator-trace.json")).unwrap();
+    let schematic = include_bytes!("../../../../../../test_data/EDGECASE_PISTION.schem");
+    let reference: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../../test_data/piston-repair/java-piston-oscillator-trace.json"
+    ))
+    .unwrap();
     assert_eq!(reference["version"], "1.21.5");
     assert_eq!(reference["server_sha1"], "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
     assert_eq!(reference["schematic_sha256"], format!("{:x}", Sha256::digest(schematic)));
@@ -112,9 +114,11 @@ fn redstone_update_edgecase_spits_then_recaptures_block_like_java_1_21_5() {
         cases: Vec<Case>,
     }
 
-    let schematic = include_bytes!("../../../../../test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem");
-    let reference: Reference =
-        serde_json::from_str(include_str!("../../../../../test_data/piston-repair/java-redstone-update-edgecase.json")).unwrap();
+    let schematic = include_bytes!("../../../../../../test_data/MCHPRS_REDSTONE_UPDATE_EDGECASE.schem");
+    let reference: Reference = serde_json::from_str(include_str!(
+        "../../../../../../test_data/piston-repair/java-redstone-update-edgecase.json"
+    ))
+    .unwrap();
     assert_eq!(reference.version, "1.21.5");
     assert_eq!(reference.server_sha1, "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
     assert_eq!(reference.schematic_sha256, format!("{:x}", Sha256::digest(schematic)));
@@ -238,8 +242,10 @@ fn observer_piston_feedback_matches_java_for_block_and_dust_triggers() {
         server_sha1: String,
         cases: Vec<Case>,
     }
-    let reference: Reference =
-        serde_json::from_str(include_str!("../../../../../test_data/piston-repair/java-observer-piston-feedback.json")).unwrap();
+    let reference: Reference = serde_json::from_str(include_str!(
+        "../../../../../../test_data/piston-repair/java-observer-piston-feedback.json"
+    ))
+    .unwrap();
     assert_eq!(reference.version, "1.21.5");
     assert_eq!(reference.server_sha1, "e6ec2f64e6080b9b5d9b471b291c33cc7f509733");
     assert_eq!(reference.cases.len(), 16);

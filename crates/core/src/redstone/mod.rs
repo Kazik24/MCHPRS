@@ -4,10 +4,12 @@
 
 #[cfg(test)]
 mod adder_tests;
+pub(crate) mod button;
 pub(crate) mod command_block;
 pub mod comparator;
 pub(crate) mod copper_bulb;
 #[cfg(test)]
+#[path = "piston/tests/instant.rs"]
 pub(crate) mod instant_piston_tests;
 #[cfg(test)]
 mod master_tests;
@@ -21,7 +23,7 @@ pub mod wire;
 
 use crate::world::World;
 use mchprs_blocks::block_entities::BlockEntity;
-use mchprs_blocks::blocks::{Block, ButtonFace};
+use mchprs_blocks::blocks::Block;
 use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos};
 use mchprs_world::TickPriority;
 
@@ -340,23 +342,7 @@ pub fn tick(block: Block, world: &mut impl World, pos: BlockPos) {
                 world.set_block(pos, Block::RedstoneLamp { lit: false });
             }
         }
-        Block::StoneButton { mut button } => {
-            if button.powered {
-                button.powered = false;
-                world.set_block(pos, Block::StoneButton { button });
-                world.play_sound(pos, crate::sound::event_id("block.stone_button.click_off"), 4, 1.0, 1.0);
-                update_surrounding_blocks(world, pos);
-                match button.face {
-                    ButtonFace::Ceiling => {
-                        update_surrounding_blocks(world, pos.offset(BlockFace::Top));
-                    }
-                    ButtonFace::Floor => {
-                        update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
-                    }
-                    ButtonFace::Wall => update_surrounding_blocks(world, pos.offset(button.facing.opposite().block_face())),
-                }
-            }
-        }
+        Block::StoneButton { button } => button::release(button, world, pos),
         Block::Observer { observer } => {
             if observer.powered {
                 world.set_block(

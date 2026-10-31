@@ -75,7 +75,7 @@ fn limits() -> Limits {
     }
 }
 
-// TODO: Simplify, track what permissions are used in prod and remove unessesery code.
+// Both namespaces are supported by the configurable dedicated permission policy.
 fn storage_permission_prefix() -> &'static str {
     if permissions::dedicated_permissions() {
         "mchprs.git.storage."
@@ -115,38 +115,39 @@ struct Job {
     reply: SyncSender<Result<Reply>>,
     span: tracing::Span,
 }
+fn run_worker(receiver: Arc<Mutex<Receiver<Job>>>) {
+    loop {
+        let job = receiver.lock().unwrap().recv();
+        let Ok(job) = job else {
+            break;
+        };
+        let _entered = job.span.enter();
+        let started = Instant::now();
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(job.task)).unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
+        match &result {
+            Ok(reply) => {
+                if let Payload::Text(text, _) = &reply.payload {
+                    tracing::info!(result = %text, "Git result");
+                }
+                tracing::info!(elapsed_ms = started.elapsed().as_millis(), "Git worker completed");
+            }
+            Err(error) => {
+                tracing::warn!(elapsed_ms = started.elapsed().as_millis(), error = %format_args!("{error:#}"), "Git worker rejected")
+            }
+        }
+        let _ = job.reply.send(result);
+    }
+}
+
 static WORKERS: Lazy<SyncSender<Job>> = Lazy::new(|| {
     let (sender, receiver) = mpsc::sync_channel::<Job>(16);
     let receiver = Arc::new(Mutex::new(receiver));
     for index in 0..2 {
         let receiver = receiver.clone();
-        // TODO: cleanup this code, quite unreadable.
         std::thread::Builder::new()
             .name(format!("plot-git-{index}"))
-            .spawn(move || {
-                loop {
-                    let job = receiver.lock().unwrap().recv();
-                    let Ok(job) = job else {
-                        break;
-                    };
-                    let _entered = job.span.enter();
-                    let started = Instant::now();
-                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job.task))
-                        .unwrap_or_else(|_| Err(anyhow::anyhow!(messages::GIT_WORKER_FAILED)));
-                    match &result {
-                        Ok(reply) => {
-                            if let Payload::Text(text, _) = &reply.payload {
-                                tracing::info!(result = %text, "Git result");
-                            }
-                            tracing::info!(elapsed_ms = started.elapsed().as_millis(), "Git worker completed");
-                        }
-                        Err(error) => {
-                            tracing::warn!(elapsed_ms = started.elapsed().as_millis(), error = %format_args!("{error:#}"), "Git worker rejected")
-                        }
-                    }
-                    let _ = job.reply.send(result);
-                }
-            })
+            .spawn(move || run_worker(receiver))
             .expect("Cannot start plot Git worker");
     }
     sender

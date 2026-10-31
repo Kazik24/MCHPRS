@@ -11,38 +11,45 @@ use mchprs_blocks::blocks::*;
 use mchprs_blocks::items::{Item, ItemStack};
 use mchprs_blocks::{BlockFace, BlockPos};
 use mchprs_network::packets::clientbound::{COpenSignEditor, ClientBoundPacket};
-use mchprs_world::TickPriority;
+
+fn can_interact(player: &Player, block: Block) -> bool {
+    if !crate::permissions::dedicated_permissions() {
+        return true;
+    }
+    let action = if block.is_sign() {
+        "sign"
+    } else if ContainerType::from_block(block).is_some() {
+        "container"
+    } else if block.is_command_block() {
+        "commandblock"
+    } else {
+        "interact"
+    };
+    player.has_permission(&format!("mchprs.build.{action}"))
+}
+
+fn send_block_debug(player: &Player, world: &impl World, pos: BlockPos, block: Block) {
+    player.send_color_message(ColorCode::DarkAqua, messages::block_debug(pos.x, pos.y, pos.z, block));
+
+    let power_desc = BlockFace::values()
+        .map(|face| {
+            let power = redstone::get_redstone_power(block, world, pos, face);
+            let name = format!("{face:?}").chars().next().unwrap_or('-');
+            format!("{name}: {power:>2}")
+        })
+        .join(", ");
+    player.send_color_message(ColorCode::Gold, messages::block_debug_power(power_desc));
+    if let Some(entity) = world.get_block_entity(pos) {
+        player.send_color_message(ColorCode::Aqua, messages::block_debug_entity(entity));
+    };
+}
 
 pub fn on_use(block: Block, world: &mut impl World, player: &mut Player, pos: BlockPos, item_in_hand: Option<Item>) -> ActionResult {
-    if crate::permissions::dedicated_permissions() {
-        let action = if block.is_sign() {
-            "sign"
-        } else if ContainerType::from_block(block).is_some() {
-            "container"
-        } else if block.is_command_block() {
-            "commandblock"
-        } else {
-            "interact"
-        };
-        if !player.has_permission(&format!("mchprs.build.{action}")) {
-            return ActionResult::Pass;
-        }
+    if !can_interact(player, block) {
+        return ActionResult::Pass;
     }
     if item_in_hand == Some(Item::Stick) {
-        //debug info about blocks
-        player.send_color_message(ColorCode::DarkAqua, messages::block_debug(pos.x, pos.y, pos.z, block));
-
-        let power_desc = BlockFace::values()
-            .map(|face| {
-                let power = redstone::get_redstone_power(block, world, pos, face);
-                let name = format!("{face:?}").chars().next().unwrap_or('-');
-                format!("{name}: {power:>2}")
-            })
-            .join(", ");
-        player.send_color_message(ColorCode::Gold, messages::block_debug_power(power_desc));
-        if let Some(entity) = world.get_block_entity(pos) {
-            player.send_color_message(ColorCode::Aqua, messages::block_debug_entity(entity));
-        };
+        send_block_debug(player, world, pos, block);
         return ActionResult::Pass;
     }
     if let Some(result) = use_redstone(block, world, pos, Some(player.uuid)) {
@@ -61,81 +68,87 @@ pub fn on_use(block: Block, world: &mut impl World, player: &mut Player, pos: Bl
             }
             ActionResult::Success
         }
-        b if b.is_command_block() => {
-            if !player.has_permission("commands.commandblock.edit") {
-                player.send_no_permission_message();
-                return ActionResult::Success;
-            }
-            if let Some(entity) = world.get_block_entity(pos) {
-                if let Some(nbt) = entity.to_nbt(false) {
-                    use mchprs_network::packets::clientbound::CBlockEntityData;
-                    player.send_packet(
-                        &CBlockEntityData {
-                            pos: pos.packed(),
-                            ty: entity.ty(),
-                            nbt,
-                        }
-                        .encode(),
-                    );
-                }
-            }
-            ActionResult::Success
-        }
-        b if b.is_sign() => {
-            if let Some(BlockEntity::Sign(sign)) = world.get_block_entity(pos) {
-                if !sign.waxed {
-                    let properties = b.properties();
-                    let rotation = if let Some(facing) = properties.get("facing") {
-                        match facing.as_str() {
-                            "north" => 8,
-                            "east" => 12,
-                            "south" => 0,
-                            "west" => 4,
-                            _ => return ActionResult::Pass,
-                        }
-                    } else {
-                        properties.get("rotation").and_then(|rotation| rotation.parse::<u8>().ok()).unwrap_or(0)
-                    };
-                    let angle = f64::from(rotation) * std::f64::consts::TAU / 16.0;
-                    let dx = player.pos.x - pos.x as f64 - 0.5;
-                    let dz = player.pos.z - pos.z as f64 - 0.5;
-                    player.send_packet(
-                        &COpenSignEditor {
-                            pos: pos.packed(),
-                            front: -angle.sin() * dx + angle.cos() * dz > 0.0,
-                        }
-                        .encode(),
-                    );
-                }
-            }
-            ActionResult::Success
-        }
-        b if b.has_block_entity() => {
-            // Open container
-            if let Some(ty) = ContainerType::from_block(b) {
-                // Repair containers from plots saved before empty inventories existed.
-                if !matches!(world.get_block_entity(pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty) {
-                    world.set_block_entity(
-                        pos,
-                        BlockEntity::Container {
-                            inventory: Default::default(),
-                            comparator_override: 0,
-                            ty,
-                        },
-                    );
-                }
-            }
-            let block_entity = world.get_block_entity(pos);
-            if let Some(BlockEntity::Container { inventory, ty, .. }) = block_entity {
-                player.open_container(pos, inventory, *ty);
-                world.container_opened(pos, *ty);
-                crate::container::set_barrel_open(world, pos, true);
-                ActionResult::Success
-            } else {
-                ActionResult::Pass
-            }
-        }
+        b if b.is_command_block() => use_command_block(world, player, pos),
+        b if b.is_sign() => use_sign(b, world, player, pos),
+        b if b.has_block_entity() => use_container(b, world, player, pos),
         _ => ActionResult::Pass,
+    }
+}
+
+fn use_command_block(world: &impl World, player: &Player, pos: BlockPos) -> ActionResult {
+    if !player.has_permission("commands.commandblock.edit") {
+        player.send_no_permission_message();
+        return ActionResult::Success;
+    }
+    if let Some(entity) = world.get_block_entity(pos) {
+        if let Some(nbt) = entity.to_nbt(false) {
+            use mchprs_network::packets::clientbound::CBlockEntityData;
+            player.send_packet(
+                &CBlockEntityData {
+                    pos: pos.packed(),
+                    ty: entity.ty(),
+                    nbt,
+                }
+                .encode(),
+            );
+        }
+    }
+    ActionResult::Success
+}
+
+fn use_sign(block: Block, world: &impl World, player: &Player, pos: BlockPos) -> ActionResult {
+    if let Some(BlockEntity::Sign(sign)) = world.get_block_entity(pos) {
+        if !sign.waxed {
+            let properties = block.properties();
+            let rotation = if let Some(facing) = properties.get("facing") {
+                match facing.as_str() {
+                    "north" => 8,
+                    "east" => 12,
+                    "south" => 0,
+                    "west" => 4,
+                    _ => return ActionResult::Pass,
+                }
+            } else {
+                properties.get("rotation").and_then(|rotation| rotation.parse::<u8>().ok()).unwrap_or(0)
+            };
+            let angle = f64::from(rotation) * std::f64::consts::TAU / 16.0;
+            let dx = player.pos.x - pos.x as f64 - 0.5;
+            let dz = player.pos.z - pos.z as f64 - 0.5;
+            player.send_packet(
+                &COpenSignEditor {
+                    pos: pos.packed(),
+                    front: -angle.sin() * dx + angle.cos() * dz > 0.0,
+                }
+                .encode(),
+            );
+        }
+    }
+    ActionResult::Success
+}
+
+fn use_container(block: Block, world: &mut impl World, player: &mut Player, pos: BlockPos) -> ActionResult {
+    // Open container
+    if let Some(ty) = ContainerType::from_block(block) {
+        // Repair containers from plots saved before empty inventories existed.
+        if !matches!(world.get_block_entity(pos), Some(BlockEntity::Container { ty: existing, .. }) if *existing == ty) {
+            world.set_block_entity(
+                pos,
+                BlockEntity::Container {
+                    inventory: Default::default(),
+                    comparator_override: 0,
+                    ty,
+                },
+            );
+        }
+    }
+    let block_entity = world.get_block_entity(pos);
+    if let Some(BlockEntity::Container { inventory, ty, .. }) = block_entity {
+        player.open_container(pos, inventory, *ty);
+        world.container_opened(pos, *ty);
+        crate::container::set_barrel_open(world, pos, true);
+        ActionResult::Success
+    } else {
+        ActionResult::Pass
     }
 }
 
@@ -178,40 +191,13 @@ pub(crate) fn use_redstone(block: Block, world: &mut impl World, pos: BlockPos, 
             }
             ActionResult::Success
         }
-        Block::StoneButton { mut button } => {
-            if !button.powered {
-                button.powered = true;
-                world.set_block(pos, Block::StoneButton { button });
-                if let Some(uuid) = player {
-                    crate::sound::control_used(world, pos, block, uuid);
-                }
-                world.schedule_tick(pos, 10, TickPriority::Normal);
-                redstone::update_surrounding_blocks(world, pos);
-                match button.face {
-                    ButtonFace::Ceiling => {
-                        redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Top));
-                    }
-                    ButtonFace::Floor => {
-                        redstone::update_surrounding_blocks(world, pos.offset(BlockFace::Bottom));
-                    }
-                    ButtonFace::Wall => redstone::update_surrounding_blocks(world, pos.offset(button.facing.opposite().block_face())),
-                }
-            }
+        Block::StoneButton { button } => {
+            redstone::button::press(button, world, pos, player);
             ActionResult::Success
         }
         Block::RedstoneWire { wire } => redstone::wire::on_use(wire, world, pos),
         Block::NoteBlock { instrument, note, powered } => {
-            world.set_block(
-                pos,
-                Block::NoteBlock {
-                    instrument,
-                    note: (note + 1) % 25,
-                    powered,
-                },
-            );
-            if redstone::noteblock::is_noteblock_unblocked(world, pos) {
-                redstone::noteblock::play_note_for_action(world, pos, instrument, (note + 1) % 25);
-            }
+            redstone::noteblock::tune(world, pos, instrument, note, powered);
             ActionResult::Success
         }
         _ => return None,

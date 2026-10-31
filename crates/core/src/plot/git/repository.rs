@@ -248,7 +248,7 @@ impl Repository {
             return Ok(());
         }
         ensure!(bytes <= self.limits.plot_bytes, messages::GIT_PLOT_STORAGE_FULL);
-        // TODO: Other bytes are required? It previusly made a lot of debugging bsc of this code.
+        // The global quota includes every other plot repository as well as this one.
         let total = bytes.saturating_add(self.other_database_bytes()?);
         ensure!(total <= self.limits.total_bytes, messages::GIT_GLOBAL_STORAGE_FULL);
         Ok(())

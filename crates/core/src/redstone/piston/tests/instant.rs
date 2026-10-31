@@ -14,7 +14,9 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
+#[path = "instant/io.rs"]
 mod io;
+#[path = "instant/reference_contract.rs"]
 mod reference_contract;
 
 thread_local! {
