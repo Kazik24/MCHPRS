@@ -70,6 +70,15 @@ pub(super) fn start_runtime(
 }
 
 impl Runtime {
+    #[cfg(test)]
+    pub(super) fn describe_inputs(&self, pos: mchprs_blocks::BlockPos) -> String {
+        let index = self.program.component_indices[&pos];
+        let mut detail = format!("rear={} side={} reactive={} pending={:?}", self.input_strength(index), self.side_strength(index), self.program.reactive[index], self.pending_entries());
+        for link in self.program.links.iter().chain(&self.program.side_links).filter(|link| link.target == index) {
+            detail.push_str(&format!("; source {:?} {:?} output={} attenuation={}", self.program.positions[link.source], self.blocks[link.source], self.output(link.source), link.attenuation));
+        }
+        detail
+    }
     pub(super) fn set_pending(&mut self, ticks: Vec<mchprs_world::TickEntry>) -> Result<(), ScratchError> {
         // Pending work has a fixed admission limit; exhaustion is an execution error.
         let limit = self

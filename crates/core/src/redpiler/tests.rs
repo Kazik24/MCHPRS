@@ -177,7 +177,7 @@ fn headless_pistons_preserve_entry_and_match_native_motion_and_handoff() {
             compiler
                 .compile(&compiled, bounds, CompilerOptions::default(), vec![], Arc::new(TaskMonitor::default()))
                 .unwrap();
-            compiler.try_flush(&mut compiled).unwrap();
+            compiler.try_flush_complete(&mut compiled).unwrap();
             assert_eq!(compiled.get_block(base), native.get_block(base));
             assert_eq!(compiled.get_block(home), Block::Air, "initial publication must not invent a head");
             for phase in 0..2 {
@@ -191,7 +191,7 @@ fn headless_pistons_preserve_entry_and_match_native_motion_and_handoff() {
                     native.tick_interpreted();
                     if compiler.is_active() {
                         compiler.tick().unwrap();
-                        compiler.try_flush(&mut compiled).unwrap();
+                        compiler.try_flush_complete(&mut compiled).unwrap();
                         if handoff && phase == 0 && tick == 1 {
                             compiler.try_reset(&mut compiled, bounds).unwrap();
                             assert!(!compiler.is_active());
@@ -262,7 +262,7 @@ fn flush_and_reset_preserve_an_in_flight_piston_payload() {
     compiler.try_on_use_block(lever).unwrap();
     compiler.tick().unwrap();
 
-    compiler.try_flush(&mut world).unwrap();
+    compiler.try_flush_complete(&mut world).unwrap();
     assert!(matches!(world.get_block(head), Block::MovingPiston { .. }));
     assert!(matches!(world.get_block(payload), Block::MovingPiston { .. }));
     let first = motions(&world);
@@ -271,7 +271,7 @@ fn flush_and_reset_preserve_an_in_flight_piston_payload() {
     assert!(first.iter().all(|motion| motion.2 == 0.5));
     let entities = [head, payload].map(|pos| format!("{:?}", world.get_block_entity(pos)));
 
-    compiler.try_flush(&mut world).unwrap();
+    compiler.try_flush_complete(&mut world).unwrap();
     assert_eq!(motions(&world), first, "repeated publication keeps motion identities and timing");
     assert_eq!([head, payload].map(|pos| format!("{:?}", world.get_block_entity(pos))), entities);
     compiler
@@ -322,7 +322,7 @@ fn flush_and_reset_export_only_the_unfinished_interrupted_motion_part() {
     compiler.try_on_use_block(lever).unwrap();
     compiler.tick().unwrap();
 
-    compiler.try_flush(&mut world).unwrap();
+    compiler.try_flush_complete(&mut world).unwrap();
     let moving_positions: Vec<_> = world.piston_state().motions.iter().map(|motion| motion.pos).collect();
     assert_eq!(moving_positions, [base]);
     assert!(matches!(world.get_block(base), Block::MovingPiston { .. }));
@@ -385,7 +385,7 @@ fn interrupted_payload_survives_flush_reset_and_native_continuation() {
     compiler.try_on_use_block(lever).unwrap();
     compiler.tick().unwrap();
 
-    compiler.try_flush(&mut world).unwrap();
+    compiler.try_flush_complete(&mut world).unwrap();
     let mut moving_positions: Vec<_> = world.piston_state().motions.iter().map(|motion| motion.pos).collect();
     moving_positions.sort_by_key(|pos| (pos.x, pos.y, pos.z));
     let mut expected_positions = vec![base, far];

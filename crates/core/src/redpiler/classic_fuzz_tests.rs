@@ -137,6 +137,10 @@ fn compare(seed: u64) -> Result<(), String> {
             compiler.on_use_block(input);
         }
         for tick in 0..=wait {
+            if seed == 410 && step >= 35 {
+                let pos = BASE + BlockPos::new(1, 0, 5);
+                eprintln!("BEFORE step={step} tick={tick} native {:?} pending {:?}; compiled {:?} {}", native.get_block(pos), native.scheduler().iter_entries().collect::<Vec<_>>(), compiled.get_block(pos), compiler.runtime.as_ref().unwrap().describe_inputs(pos));
+            }
             if tick > 0 {
                 native.tick_interpreted();
                 compiler.tick().unwrap();
@@ -148,6 +152,13 @@ fn compare(seed: u64) -> Result<(), String> {
                     let actual = compiled.get_block(pos);
                     let expected = native.get_block(pos);
                     if actual != expected {
+                        eprintln!("{}", compiler.runtime.as_ref().unwrap().describe_inputs(pos));
+                        for dz in -1..=0 {
+                            for dx in -1..=1 {
+                                let at = pos + BlockPos::new(dx, 0, dz);
+                                eprintln!("neighbor {at:?} native {:?} compiled {:?}", native.get_block(at), compiled.get_block(at));
+                            }
+                        }
                         return Err(format!(
                             "seed={seed} warmup={warmup} step={step} tick={tick} input=({z},{powered}) pos={pos:?} actual={actual:?} expected={expected:?}; circuit={blocks:?}; actions={:?}",
                             &actions[..=step],
