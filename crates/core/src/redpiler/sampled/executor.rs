@@ -77,6 +77,8 @@ pub(crate) struct Runtime {
     pub(super) contributions: Vec<u8>,
     /// arrangement-link-indexed current contribution level, in 0–15.
     pub(super) arrangement_contributions: Vec<u8>,
+    pub(super) routing_attenuations: Vec<Option<u8>>,
+    pub(super) route_search: super::routing::Search,
     /// per-component input aggregates for primary and side input channels.
     pub(super) input_levels: Vec<[super::input::InputState; 2]>,
     /// analog strength histograms referenced by `InputState::analog` slots.
@@ -786,14 +788,69 @@ impl Runtime {
         }
     }
 
-    fn arrangement_contribution(&self, index: usize) -> (usize, bool, u8) {
+    pub(super) fn arrangement_contribution(&self, index: usize) -> (usize, bool, u8) {
         let link = &self.program.arrangement_links[index];
         let value = if link.active[self.group_arrangements[link.group]] {
-            self.arrangement_output(link.source).saturating_sub(link.attenuation)
+            let attenuation = self.routing_attenuations.get(index).copied().flatten().unwrap_or(link.attenuation);
+            self.arrangement_output(link.source).saturating_sub(attenuation)
         } else {
             0
         };
         (link.target, link.side, value)
+    }
+
+    fn routed_values(&mut self, changed: Option<usize>) -> Result<Vec<(usize, u8)>, ScratchError> {
+        let program = std::sync::Arc::clone(&self.program);
+        let Some(graph) = &program.routing else { return Ok(Vec::new()); };
+        let readers: Vec<_> = changed.map_or_else(|| (0..graph.reader_count()).collect(), |token| graph.readers_for_token(token).to_vec());
+        let mut updates = Vec::new();
+        for reader in readers {
+            let values = graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| {
+                self.token_positions[token].and_then(|pos| program.tokens[token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
+            }, &mut self.route_search)?;
+            for &index in graph.links(reader) {
+                let link = &program.arrangement_links[index];
+                updates.push((index, values.get(&(link.source, link.side)).copied().unwrap_or(u8::MAX)));
+            }
+        }
+        Ok(updates)
+    }
+
+    pub(super) fn initialize_routing(&mut self) {
+        match self.routed_values(None) {
+            Ok(values) => for (index, attenuation) in values { self.routing_attenuations[index] = Some(attenuation); },
+            Err(error) => self.failure = Some(error),
+        }
+    }
+
+    fn refresh_routing(&mut self, token: usize, switched: &mut Vec<usize>) {
+        let updates = match self.routed_values(Some(token)) {
+            Ok(values) => values,
+            Err(error) => { self.failure = Some(error); return; }
+        };
+        for (index, attenuation) in updates {
+            let old = self.routing_attenuations[index].unwrap_or(u8::MAX);
+            if old == attenuation { continue; }
+            let link = self.program.arrangement_links[index].clone();
+            let strength = self.arrangement_output(link.source);
+            if old != u8::MAX {
+                if !self.consume_component_operation(link.target) { return; }
+                self.routing_attenuations[index] = Some(u8::MAX);
+                self.set_arrangement_contribution(index, link.target, link.side, 0);
+                self.operations += 1;
+            }
+            if attenuation != u8::MAX {
+                if !self.consume_component_operation(link.target) { return; }
+                self.routing_attenuations[index] = Some(attenuation);
+                self.set_arrangement_contribution(index, link.target, link.side, strength.saturating_sub(attenuation));
+                self.operations += 1;
+            }
+            if strength > old || strength > attenuation { self.updated_in_phase[link.target] = 0; }
+            if !matches!(self.blocks[link.target], Block::Piston { .. }) && !self.switched[link.target] {
+                self.switched[link.target] = true;
+                switched.push(link.target);
+            }
+        }
     }
 
     pub(super) fn arrangement_output(&self, source: ArrangementSource) -> u8 {
@@ -849,6 +906,8 @@ impl Runtime {
     }
 
     fn run_move_steps(&mut self, token: usize, cell: usize, arriving: bool, switched: &mut Vec<usize>, changed_wires: &mut Vec<usize>) {
+        self.refresh_routing(token, switched);
+        if self.failure.is_some() { return; }
         for &component in &self.program.token_piston_components[token] {
             self.updated_in_phase[component] = 0;
         }
@@ -1020,8 +1079,13 @@ impl Runtime {
     }
 
     // shortcut: receiver signatures omit geometry-dependent fixed links, extend arrangement groups to all readers.
-    fn token_dependency_signature(&self, changed: usize, target: usize, position: Option<mchprs_blocks::BlockPos>) -> Vec<(ArrangementSource, u8)> {
+    fn token_dependency_signature(&self, changed: usize, target: usize, position: Option<mchprs_blocks::BlockPos>) -> Result<Vec<(ArrangementSource, u8)>, ScratchError> {
         let token_position = |token: usize| if token == changed { position } else { self.token_positions[token] };
+        if let Some(graph) = &self.program.routing && let Some(reader) = graph.reader_for_component(target) {
+            return graph.reader_sources(reader, |super::routing::Axis::Token(token, _)| {
+                token_position(token).and_then(|pos| self.program.tokens[token].cells.iter().position(|&cell| cell == pos)).map_or(0, |cell| cell + 1)
+            }, &mut super::routing::Search::default()).map(|sources| sources.into_iter().filter_map(|((source, side), attenuation)| (!side).then_some((source, attenuation))).collect());
+        }
         let mut result = Vec::new();
         let arrangements: Vec<_> = self.program.input_arrangements.iter().filter(|group| group.target == target).collect();
         for group in &arrangements {
@@ -1056,7 +1120,7 @@ impl Runtime {
             }
         }
         result.sort_unstable();
-        result
+        Ok(result)
     }
 
     pub(super) fn output(&self, source: usize) -> u8 {

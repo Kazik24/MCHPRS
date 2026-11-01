@@ -4,7 +4,7 @@
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::{World, storage::Chunk};
-use mchprs_blocks::BlockDirection;
+use mchprs_blocks::{BlockDirection, BlockPos, blocks::Block};
 use mchprs_blocks::BlockFace;
 use mchprs_blocks::block_entities::BlockEntity;
 use mchprs_blocks::blocks::{ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstoneRepeater, RedstoneWire};

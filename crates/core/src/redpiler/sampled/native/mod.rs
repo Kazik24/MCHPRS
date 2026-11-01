@@ -62,7 +62,7 @@ pub(super) struct NativeProgram {
     pub(super) blob: Vec<u8>,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(in crate::redpiler) struct NativeRuntime {
     library: Library,
     state: Vec<u64>,
@@ -73,7 +73,7 @@ pub(in crate::redpiler) struct NativeRuntime {
     sources: Vec<(BlockPos, u32)>,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 impl NativeRuntime {
     pub(in crate::redpiler) fn new(program: Program, ticks: &[TickEntry]) -> Result<Self, ScratchError> {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
@@ -312,7 +312,7 @@ impl NativeRuntime {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 impl Drop for NativeRuntime {
     fn drop(&mut self) {
         if std::env::var_os("MCHPRS_LLVM_DIAGNOSTICS").is_some() {
@@ -325,10 +325,10 @@ impl Drop for NativeRuntime {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub(in crate::redpiler) struct NativeRuntime;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 impl NativeRuntime {
     pub(in crate::redpiler) fn new(_: Program, _: &[TickEntry]) -> Result<Self, ScratchError> {
         Library::load().map(|_| Self)
@@ -354,7 +354,8 @@ impl NativeRuntime {
 }
 
 fn supported(program: &Program) -> bool {
-    !program.has_reactive
+    program.routing.is_none()
+        && !program.has_reactive
         && program.command_blocks.is_empty()
         && program.command_output_state.is_none()
         && program.initial.iter().all(|block| {
@@ -492,15 +493,76 @@ impl Drop for Library {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+struct Library {
+    handle: *mut c_void,
+    api_descriptor: unsafe extern "C" fn() -> NativeApiDescriptor,
+    state_size: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32) -> usize,
+    create: unsafe extern "C" fn(*const NativeProgramDescriptor, *const u8, u32, *mut c_void, usize) -> u32,
+    import_tick: unsafe extern "C" fn(*mut c_void, u32, u32, u8) -> u32,
+    destroy: unsafe extern "C" fn(*mut c_void),
+    tick: unsafe extern "C" fn(*mut c_void) -> u32,
+    use_control: unsafe extern "C" fn(*mut c_void, u32) -> u32,
+    read_state: unsafe extern "C" fn(*const c_void, *mut u8, u32) -> u32,
+    pending_count: unsafe extern "C" fn(*const c_void) -> u32,
+    read_pending: unsafe extern "C" fn(*const c_void, *mut NativePendingTick, u32) -> u32,
+    work_count: unsafe extern "C" fn(*const c_void) -> u64,
+    snapshot_words: unsafe extern "C" fn(*const c_void) -> u32,
+    read_snapshot: unsafe extern "C" fn(*const c_void, *mut u32, u32) -> u32,
+}
+
+#[cfg(target_os = "linux")]
+unsafe impl Send for Library {}
+
+#[cfg(target_os = "linux")]
+impl Library {
+    fn load() -> Result<Self, ScratchError> {
+        use std::ffi::CString;
+        let path = cache::module_path(None).map_err(|_| ScratchError { position: None, reason: "could not build LLVM native module" })?;
+        let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| ScratchError { position: None, reason: "invalid LLVM module path" })?;
+        let handle = unsafe { dlopen(path.as_ptr(), 2) };
+        if handle.is_null() { return Err(ScratchError { position: None, reason: "could not load LLVM native module" }); }
+        unsafe fn symbol<T: Copy>(handle: *mut c_void, name: &'static [u8]) -> Result<T, ScratchError> {
+            let address = unsafe { dlsym(handle, name.as_ptr().cast()) };
+            if address.is_null() { return Err(ScratchError { position: None, reason: "LLVM native module is missing a required export" }); }
+            Ok(unsafe { std::mem::transmute_copy(&address) })
+        }
+        let result = (|| unsafe {
+            Ok(Self {
+                handle, api_descriptor: symbol(handle, b"ne_api_descriptor\0")?, state_size: symbol(handle, b"ne_state_size\0")?,
+                create: symbol(handle, b"ne_create\0")?, import_tick: symbol(handle, b"ne_import_tick\0")?,
+                destroy: symbol(handle, b"ne_destroy\0")?, tick: symbol(handle, b"ne_tick\0")?,
+                use_control: symbol(handle, b"ne_use_control\0")?, read_state: symbol(handle, b"ne_read_state\0")?,
+                pending_count: symbol(handle, b"ne_pending_count\0")?, read_pending: symbol(handle, b"ne_read_pending\0")?,
+                work_count: symbol(handle, b"ne_work_count\0")?, snapshot_words: symbol(handle, b"ne_snapshot_words\0")?,
+                read_snapshot: symbol(handle, b"ne_read_snapshot\0")?,
+            })
+        })();
+        if result.is_err() { unsafe { dlclose(handle); } }
+        result
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Drop for Library { fn drop(&mut self) { unsafe { dlclose(self.handle); } } }
+
+#[cfg(target_os = "linux")]
+#[link(name = "dl")]
+unsafe extern "C" {
+    fn dlopen(filename: *const std::ffi::c_char, flags: i32) -> *mut c_void;
+    fn dlsym(handle: *mut c_void, symbol: *const std::ffi::c_char) -> *mut c_void;
+    fn dlclose(handle: *mut c_void) -> i32;
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 struct Library;
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 impl Library {
     fn load() -> Result<Self, ScratchError> {
         Err(ScratchError {
             position: None,
-            reason: "LLVM DLL loading is currently supported on Windows only",
+            reason: "LLVM native runtime is supported on Windows and Linux only",
         })
     }
 }

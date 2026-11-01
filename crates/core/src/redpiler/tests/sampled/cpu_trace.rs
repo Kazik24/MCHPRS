@@ -1,4 +1,4 @@
-#[path = "../../../test_support/cpus.rs"]
+#[path = "../../../../test_support/cpus.rs"]
 pub(super) mod cpus;
 
 use super::{

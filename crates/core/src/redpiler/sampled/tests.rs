@@ -619,6 +619,7 @@ fn group_probe_finds_masked_conductor_dependency() {
     )
     .unwrap();
     let group = groups
+        .groups
         .iter()
         .find(|group| group.target == 2 && !group.side && group.conditional_sources.contains(&ArrangementSource::Component(0)))
         .unwrap();
@@ -655,6 +656,7 @@ fn group_probe_finds_direct_token_inputs_for_all_reader_families() {
         )
         .unwrap();
         let group = groups
+            .groups
             .iter()
             .find(|group| group.target == 1 && !group.side)
             .unwrap_or_else(|| panic!("missing group for {name}"));
@@ -2771,7 +2773,6 @@ fn joint_movement_discovers_sources_hidden_behind_two_tokens() {
 }
 
 #[test]
-#[ignore = "known compiler discovery defect: two blockers without an intermediate seed"]
 fn joint_movement_discovers_sources_without_a_single_token_seed() {
     check_joint_movement_sources(false);
 }
@@ -2804,7 +2805,7 @@ fn check_joint_movement_sources(intermediate_source: bool) {
     for pos in gates { world.set_block(pos, Block::Air); }
     let actual = crate::redpiler::scratch::discover_wire_sources(&world, &[program.positions[0]]).unwrap();
     assert!(actual.iter().any(|input| input.source == BlockPos::new(16, 10, 11) && input.attenuation == 8));
-    let group = groups.iter().find(|group| group.target == 0 && group.conditional_sources.contains(&source))
+    let group = groups.groups.iter().find(|group| group.target == 0 && group.conditional_sources.contains(&source))
         .expect("jointly opened dust path must retain its newly discovered far source");
     assert_eq!(group.tokens, vec![0, 1]);
     assert!(group.inputs[0].iter().any(|&(input, attenuation)| input == source && attenuation == 8));

@@ -1,9 +1,11 @@
 use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
+use crate::redpiler::scratch::ScratchError;
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::blocks::{ButtonFace, Lever, LeverFace, RedstonePiston, StoneButton};
-use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing};
+use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos, block_entities::BlockEntity, blocks::Block};
 use mchprs_world::{TickEntry, TickPriority};
+use std::sync::Arc;
 
 fn button_world(face: ButtonFace, facing: BlockDirection) -> (PlotWorld, BlockPos, BlockPos, (BlockPos, BlockPos)) {
     let chunks = (0..PLOT_WIDTH).flat_map(|x| (0..PLOT_WIDTH).map(move |z| Chunk::empty(x, z))).collect();

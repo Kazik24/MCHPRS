@@ -9,6 +9,7 @@ mod admission_tests;
 mod commands;
 mod compiler;
 #[cfg(test)]
+#[path = "../tests/sampled/cpu_trace.rs"]
 mod cpu_trace;
 mod executor;
 mod group_probe;

@@ -11,7 +11,7 @@ ARG RUST_VERSION
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        git pkg-config libssl-dev \
+        git pkg-config libssl-dev clang lld \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -26,12 +26,15 @@ RUN sed -i 's/pub const PLOT_SCALE: u32 = 4;/pub const PLOT_SCALE: u32 = 5;/' cr
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 clang lld \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/mroww /usr/local/bin/mroww
 COPY docker/Config.toml /etc/mchprs/Config.toml
 ENV MCHPRS_CONFIG=/etc/mchprs/Config.toml
+ENV MCHPRS_LLVM_WORK_DIR=/data/work/llvm \
+    MCHPRS_LLVM_CLANG=/usr/bin/clang \
+    MCHPRS_LLVM_LINKER=/usr/bin/ld.lld
 WORKDIR /data
 VOLUME ["/data"]
 EXPOSE 25565

@@ -2,7 +2,8 @@ use super::*;
 use crate::plot::{PLOT_WIDTH, PlotWorld};
 use crate::world::{World, storage::Chunk};
 use mchprs_blocks::blocks::{ComparatorMode, Lever, LeverFace, RedstoneComparator, RedstonePiston};
-use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing};
+use mchprs_blocks::{BlockDirection, BlockFace, BlockFacing, BlockPos, block_entities::BlockEntity, blocks::Block};
+use std::sync::Arc;
 
 fn piston_world() -> (
     PlotWorld,

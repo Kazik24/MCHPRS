@@ -199,7 +199,7 @@ pub(in super::super) fn run(
                         }
                     };
                     (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
-                        .then_some(15u8.saturating_sub(link.attenuation))
+                        .then_some(loaded.arrangement_contribution(index).2)
                 }))
                 .max()
                 .unwrap_or(0);
@@ -217,7 +217,7 @@ pub(in super::super) fn run(
                             && !conditional)
                             .then_some(15u8.saturating_sub(link.attenuation))
                     })
-                    .chain(program.arrangement_links.iter().filter_map(|link| {
+                    .chain(program.arrangement_links.iter().enumerate().filter_map(|(index, link)| {
                         let constant = match link.source {
                             ArrangementSource::Token(_) => true,
                             ArrangementSource::Component(node) => {
@@ -225,7 +225,7 @@ pub(in super::super) fn run(
                             }
                         };
                         (link.target == id && !link.side && constant && link.active[loaded.group_arrangements[link.group]])
-                            .then_some(15u8.saturating_sub(link.attenuation))
+                            .then_some(loaded.arrangement_contribution(index).2)
                     }))
                     .max()
                     .unwrap_or(0);

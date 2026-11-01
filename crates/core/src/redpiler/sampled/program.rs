@@ -1462,6 +1462,8 @@ impl Program {
                 })
                 .collect(),
             arrangement_contributions: vec![0; self.arrangement_links.len()],
+            routing_attenuations: if self.routing.is_some() { vec![None; self.arrangement_links.len()] } else { Vec::new() },
+            route_search: super::routing::Search::default(),
             input_levels: vec![[super::input::InputState::default(); 2]; self.initial.len()],
             input_histograms: Vec::new(),
             comparator_outputs: {
@@ -1560,10 +1562,9 @@ impl Program {
                 }
             }
         }
-        for (index, link) in runtime.program.arrangement_links.iter().enumerate() {
-            if link.active[runtime.group_arrangements[link.group]] {
-                runtime.arrangement_contributions[index] = runtime.arrangement_output(link.source).saturating_sub(link.attenuation);
-            }
+        runtime.initialize_routing();
+        for index in 0..runtime.program.arrangement_links.len() {
+            runtime.arrangement_contributions[index] = runtime.arrangement_contribution(index).2;
         }
         for (index, link) in runtime.program.links.iter().enumerate() {
             if runtime.program.effective_links[index] {

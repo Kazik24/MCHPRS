@@ -19,6 +19,9 @@ services:
     cpus: 4.0
     environment:
       MCHPRS_CONFIG: /run/config/Config.toml
+      MCHPRS_LLVM_WORK_DIR: /data/work/llvm
+      MCHPRS_LLVM_CLANG: /usr/bin/clang
+      MCHPRS_LLVM_LINKER: /usr/bin/ld.lld
     stop_grace_period: 60s
     networks:
       - backend
