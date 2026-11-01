@@ -43,6 +43,7 @@ pub(crate) struct WireSource {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg(test)]
 pub(crate) struct WireDiscovery {
     pub(crate) watchers: Vec<WireWatcher>,
     pub(crate) sources: Vec<WireSource>,
@@ -90,6 +91,7 @@ pub(crate) fn max_attenuated_strength(contributions: impl IntoIterator<Item = (u
         .unwrap_or(0)
 }
 
+#[cfg(test)]
 pub(crate) fn discover_watched_wire_sources(world: &impl World, bounds: (BlockPos, BlockPos)) -> Result<WireDiscovery, ScratchError> {
     let (min, max) = bounds;
     let mut wires = Vec::new();
@@ -1040,6 +1042,7 @@ mod tests {
 }
 
 impl ScratchWorld {
+    #[cfg(test)]
     pub(crate) fn from_world(source: &impl World, bounds: (BlockPos, BlockPos), entry: ScratchEntry) -> Result<Self, ScratchError> {
         Self::from_world_monitored(source, bounds, entry, None)
     }
